@@ -2,6 +2,33 @@
 
 <rule id="agents" reiterate="task-relevant:agent-launch">
 
+## NEVER use passive/background waits — active polling only, no exceptions
+
+**The failure pattern this rule exists to stop:** an agent polls a shell command correctly 2-3
+times, then talks itself into "I should stop doing no-op queries and use a background
+mechanism to wake me up instead" — and switches to `ScheduleWakeup`, `Monitor`, a background
+task, or a self-invented shell trick (`sleep N && <signal>`, a detached watcher process, a
+cron-style callback). That switch is the bug. This machine has repeatedly, observably failed
+to reliably resume an agent parked on a passive/background wait — the agent goes idle waiting
+for a callback that may never fire, and the whole turn silently stalls with no one watching.
+This has happened multiple times across this project's history despite repeated correction.
+
+**The rule, unconditionally:** any wait for a long-running external process (build, configure,
+render, deploy, queue position, or any other multi-minute operation) MUST be an ACTIVE
+FOREGROUND polling loop — a real command (or the harness's Monitor/until-loop equivalent used
+in its FOREGROUND, blocking form) that re-checks status on a ~15-30s interval and prints a
+readable status line each iteration, keeping both the user informed and the agent's own process
+genuinely alive and attentive. Never hand the wait off to something that returns control and
+expects to be called back later. If you find yourself thinking "I've checked this enough times
+manually, let me set up something to notify me instead" — that thought is the trigger to STOP
+and keep polling, not to switch mechanisms. There is no volume of prior manual polling that
+makes a background/passive wait safe on this machine. Do not rationalize an exception.
+
+This applies to every subagent this rule reaches (via `reiterate="task-relevant:agent-launch"`)
+and every worker dispatched through the `post-brainstorm-context-manager` skill — restate it
+explicitly in every implementer/validator brief that involves a build, queue, or other
+long-running wait, do not assume the worker already internalized it from this file alone.
+
 ## Available Agents
 
 | Agent | Use For | Model |

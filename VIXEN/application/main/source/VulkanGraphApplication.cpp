@@ -40,6 +40,18 @@
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
 #include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
 #include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
+#include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
+#include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
+#include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
+#include "LightTree.h"                        // Sampled Lighting Inc3 M4: Vixen::SVO::LightTreeNode for the DIAG readback recomputation
+
+// Sampled Lighting Inc3 M4: the world-transformed light-tree cut for the ReSTIR gate demo
+// (VIXEN_RESTIR_GATE_DEMO), stashed by BuildRenderGraph.cpp's demo-scene block and read by
+// this file's Update() tick hook to compute a PER-PIXEL brute-force reference (evaluated at
+// each pixel's own HitRecord.worldPos) once temporal reservoirs have converged. Plain global
+// (process-lifetime-scoped, matching every other VIXEN_*_DEMO env-gated block's own static
+// state in this file) -- not a general mechanism, a one-shot gate wire.
+std::vector<Vixen::SVO::LightTreeNode>* g_restirGateWorldCut = nullptr;
 
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
@@ -515,6 +527,257 @@ void VulkanGraphApplication::Update() {
         }
 
         // Sparse-Mip ESVO LOD Inc1 M4c live gate: env-gated scripted camera move, unattended
+        // Sampled Lighting Inc3 M4 live gate (VIXEN_RESTIR_GATE_DEMO=1): at a fixed tick (after
+        // enough frames for the temporal reservoir to converge -- see kReadbackTick's own
+        // rationale comment), map reservoirRecordsA/B (both host-visible/host-coherent, per
+        // StorageBufferNode) and sum pixel(targetPdf * UnbiasedWeight) over every VALID
+        // reservoir record -- exactly the same per-pixel RIS estimator identity 1's CPU-mirror
+        // test already validates (test_reservoir_mirror.cpp's WeightNormalizationFormula*),
+        // now read back from the REAL GPU-computed reservoirs instead of a synthetic candidate
+        // set.
+        //
+        // PER-PIXEL brute-force reference (NOT a single hand-picked canonical point): an earlier
+        // version of this gate compared the window-averaged GPU estimate against Sum(power_i/
+        // dist_i^2) evaluated at ONE assumed camera-facing surface point -- a live-gate DIAG dump
+        // (see git history) proved that assumption wrong: recomputing pHat at the assumed point
+        // for the SAME node each reservoir actually chose gave ratios vs the shader's own
+        // targetPdf that varied 28x-71x across different nodes/pixels -- the signature of a
+        // GEOMETRIC mismatch (a uniform scale/unit bug would give a CONSTANT ratio), not a math
+        // bug. Root cause: the assumed point doesn't equal the real per-pixel bestWorldPos. Fixed
+        // by mapping hit_record_buffer (ALSO host-visible/host-coherent, per StorageBufferNode --
+        // same read pattern) and reading each pixel's OWN HitRecord.worldPos (offset 32 in the
+        // hand-written std430 layout, see HitRecord.glsl's own field-offset comment) to compute
+        // the brute-force reference AT THE SAME POINT each pixel's own RIS estimate is for --
+        // genuinely apples-to-apples, no assumed geometry.
+        //
+        // Read from ONLY the buffer frameParity says is CURRENT this frame (mirrors the
+        // shader's own `parityEven` selector in DirectLighting.comp exactly) -- summing BOTH
+        // buffers would double-count every pixel, since the buffer that was NOT written this
+        // frame still holds its own last-written (stale but non-empty) reservoir content, not
+        // zeros.
+        if (renderGraph && std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
+            static long restirGateTick = 0;
+            ++restirGateTick;
+            // kReadbackTick: chosen well past the point where ReservoirConfig.temporalCap=32
+            // (the default, see ReservoirConfigNode's MakeDefaultReservoirConfig) worth of
+            // frames have accumulated into the reservoir AND the accumulation seam's own
+            // converging-1/N alpha (Inc2) has had time to settle on a static camera -- 60
+            // frames is generously 2x the temporal cap, giving the reservoir's own M-clamp
+            // several full refresh cycles to reach its steady-state distribution before the
+            // readback fires exactly once.
+            constexpr long kReadbackTick = 60;
+            if (restirGateTick == kReadbackTick) {
+                auto* bufA = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("reservoir_buffer_a"));
+                auto* bufB = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("reservoir_buffer_b"));
+                auto* hitRecordBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+                auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+                auto* reservoirConfigInst = static_cast<ReservoirConfigNode*>(renderGraph->GetInstanceByName("reservoir_config"));
+                auto* renderTargetInst = renderGraph->GetInstanceByName("compute_render_target");
+                if (bufA && bufB && hitRecordBuf && deviceInst && deviceInst->GetVulkanDevice() &&
+                    reservoirConfigInst && renderTargetInst && g_restirGateWorldCut) {
+                    auto* device = deviceInst->GetVulkanDevice();
+                    // Ensure every in-flight dispatch that could still be writing these buffers
+                    // has fully retired before mapping -- mirrors WorldPosHistoryNode's own
+                    // one-shot-transition vkQueueWaitIdle discipline (no partial/torn reads).
+                    vkDeviceWaitIdle(device->device);
+
+                    // parityEven mirrors DirectLighting.comp's own selector exactly: frameParity&1==0 -> A is current.
+                    const bool parityEven = (reservoirConfigInst->GetLastFrameParity() & 1u) == 0u;
+                    StorageBufferNode* currentBuf = parityEven ? bufA : bufB;
+
+                    // RenderTargetNodeConfig::WIDTH_OUT/HEIGHT_OUT are slots 2/3 (see that config's
+                    // own OUTPUT_SLOT declarations) -- needed to decode reservoirIdx = y*width+x
+                    // (DirectLighting.comp's own flat row-major addressing) back into (x,y) so the
+                    // center-window filter below can be applied.
+                    Resource* widthRes  = renderTargetInst->GetOutput(2, 0);
+                    Resource* heightRes = renderTargetInst->GetOutput(3, 0);
+                    const uint32_t imgWidth  = widthRes  ? widthRes->GetHandle<uint32_t>()  : 0u;
+                    const uint32_t imgHeight = heightRes ? heightRes->GetHandle<uint32_t>() : 0u;
+
+                    double gpuEstimateSum = 0.0;
+                    double bruteForceSum = 0.0;
+                    uint64_t validPixels = 0;
+                    if (imgWidth > 0 && imgHeight > 0) {
+                        void* mapped = currentBuf->MapForReadback(device);
+                        void* hitMapped = hitRecordBuf->MapForReadback(device);
+                        if (mapped && hitMapped) {
+                            const auto* records = reinterpret_cast<const Vixen::Gpu::ReservoirRecord*>(mapped);
+                            const size_t count = static_cast<size_t>(currentBuf->GetSizeBytes()) / sizeof(Vixen::Gpu::ReservoirRecord);
+                            const uint8_t* hitBytes = reinterpret_cast<const uint8_t*>(hitMapped);
+                            constexpr size_t kHitRecordStride = 64;   // HitRecord.glsl's own documented struct size
+                            constexpr size_t kHitRecordWorldPosOffset = 32;  // HitRecord.glsl's own documented worldPos offset
+                            const uint32_t centerX = imgWidth / 2u, centerY = imgHeight / 2u;
+                            constexpr uint32_t kWindowHalf = 8u;  // a 17x17 center window
+                            for (size_t i = 0; i < count && i < static_cast<size_t>(imgWidth) * imgHeight; ++i) {
+                                const uint32_t px = static_cast<uint32_t>(i % imgWidth);
+                                const uint32_t py = static_cast<uint32_t>(i / imgWidth);
+                                if (px + kWindowHalf < centerX || px > centerX + kWindowHalf ||
+                                    py + kWindowHalf < centerY || py > centerY + kWindowHalf) continue;
+
+                                const Vixen::Gpu::ReservoirRecord& r = records[i];
+                                if (r.y == 0xFFFFFFFFu || r.sampleCount == 0u || r.targetPdf <= 0.0f) continue;
+                                if (r.y >= g_restirGateWorldCut->size()) continue;
+
+                                const double W = (1.0 / static_cast<double>(r.targetPdf)) *
+                                                  (static_cast<double>(r.weightSum) / static_cast<double>(r.sampleCount));
+                                gpuEstimateSum += static_cast<double>(r.targetPdf) * W;
+
+                                // This pixel's OWN shading point, read directly from the same
+                                // HitRecord the march wrote and DirectLighting.comp's RIS block
+                                // itself shaded from -- genuinely the point THIS reservoir's pHat
+                                // was evaluated at, not an assumption.
+                                float hitWorldPos[3];
+                                std::memcpy(hitWorldPos, hitBytes + i * kHitRecordStride + kHitRecordWorldPosOffset, sizeof(hitWorldPos));
+                                const glm::vec3 shadingPos(hitWorldPos[0], hitWorldPos[1], hitWorldPos[2]);
+
+                                double pixelBruteForce = 0.0;
+                                for (const auto& node : *g_restirGateWorldCut) {
+                                    const glm::vec3 toLight = node.worldPos - shadingPos;
+                                    const double dist2 = std::max(static_cast<double>(glm::dot(toLight, toLight)), 1e-4);
+                                    const double nodePower = static_cast<double>(node.intensity) * static_cast<double>(node.coverage) *
+                                        std::pow(static_cast<double>(node.worldExtent), 3.0);
+                                    pixelBruteForce += nodePower / dist2;
+                                }
+                                bruteForceSum += pixelBruteForce;
+
+                                ++validPixels;
+                            }
+                            currentBuf->UnmapReadback(device);
+                            hitRecordBuf->UnmapReadback(device);
+                        } else {
+                            if (mapped) currentBuf->UnmapReadback(device);
+                            if (hitMapped) hitRecordBuf->UnmapReadback(device);
+                        }
+                    }
+                    const double gpuEstimateAvg = validPixels > 0 ? gpuEstimateSum / static_cast<double>(validPixels) : 0.0;
+                    const double bruteForceAvg = validPixels > 0 ? bruteForceSum / static_cast<double>(validPixels) : 0.0;
+
+                    if (mainLogger) {
+                        if (bruteForceAvg > 0.0 && validPixels > 0) {
+                            const double relError = std::fabs(gpuEstimateAvg - bruteForceAvg) / bruteForceAvg;
+                            mainLogger->Info("[RestirGateDemo] tick " + std::to_string(restirGateTick) +
+                                              ": validPixels=" + std::to_string(validPixels) +
+                                              " gpuEstimateAvg=" + std::to_string(gpuEstimateAvg) +
+                                              " bruteForcePerPixelAvg=" + std::to_string(bruteForceAvg) +
+                                              " relativeError=" + std::to_string(relError));
+                        } else {
+                            mainLogger->Warning("[RestirGateDemo] tick " + std::to_string(restirGateTick) +
+                                                 ": no comparable data (bruteForceAvg=" + std::to_string(bruteForceAvg) +
+                                                 ", validPixels=" + std::to_string(validPixels) + ")");
+                        }
+                    }
+                } else if (mainLogger) {
+                    mainLogger->Warning("[RestirGateDemo] tick " + std::to_string(restirGateTick) +
+                                         ": reservoir/hit-record buffers, device, or the world-cut stash not found -- readback skipped");
+                }
+
+                // Sampled Lighting Inc3 M6: SAME equal-error identity, now read from the
+                // POST-SPATIAL-COMBINE debug buffer (binding 27, SpatialReuseShade.comp's
+                // `spatialReservoirDebug` -- see that shader's own header) instead of
+                // DirectLightingNode's pre-spatial buffer above. This is the gap M5's own
+                // Progress Log explicitly flagged: M4/M5's gate re-ran the SAME pre-spatial
+                // estimator unchanged and deferred "validate the rest of the stack" to M6.
+                // Independent block (does not touch/replace the M4/M5 measurement above) so
+                // both numbers are visible side-by-side in one gate run.
+                {
+                    auto* spatialDebugBuf = static_cast<StorageBufferNode*>(
+                        renderGraph->GetInstanceByName("spatial_reservoir_debug_buffer"));
+                    auto* hitRecordBuf2 = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+                    auto* deviceInst2 = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+                    auto* renderTargetInst2 = renderGraph->GetInstanceByName("compute_render_target");
+                    if (spatialDebugBuf && hitRecordBuf2 && deviceInst2 && deviceInst2->GetVulkanDevice() &&
+                        renderTargetInst2 && g_restirGateWorldCut) {
+                        auto* device2 = deviceInst2->GetVulkanDevice();
+                        vkDeviceWaitIdle(device2->device);
+
+                        Resource* widthRes2  = renderTargetInst2->GetOutput(2, 0);
+                        Resource* heightRes2 = renderTargetInst2->GetOutput(3, 0);
+                        const uint32_t imgWidth2  = widthRes2  ? widthRes2->GetHandle<uint32_t>()  : 0u;
+                        const uint32_t imgHeight2 = heightRes2 ? heightRes2->GetHandle<uint32_t>() : 0u;
+
+                        double gpuEstimateSum2 = 0.0;
+                        double bruteForceSum2 = 0.0;
+                        uint64_t validPixels2 = 0;
+                        if (imgWidth2 > 0 && imgHeight2 > 0) {
+                            void* mapped2 = spatialDebugBuf->MapForReadback(device2);
+                            void* hitMapped2 = hitRecordBuf2->MapForReadback(device2);
+                            if (mapped2 && hitMapped2) {
+                                const auto* records2 = reinterpret_cast<const Vixen::Gpu::ReservoirRecord*>(mapped2);
+                                const size_t count2 = static_cast<size_t>(spatialDebugBuf->GetSizeBytes()) / sizeof(Vixen::Gpu::ReservoirRecord);
+                                const uint8_t* hitBytes2 = reinterpret_cast<const uint8_t*>(hitMapped2);
+                                constexpr size_t kHitRecordStride2 = 64;
+                                constexpr size_t kHitRecordWorldPosOffset2 = 32;
+                                const uint32_t centerX2 = imgWidth2 / 2u, centerY2 = imgHeight2 / 2u;
+                                constexpr uint32_t kWindowHalf2 = 8u;
+                                for (size_t i = 0; i < count2 && i < static_cast<size_t>(imgWidth2) * imgHeight2; ++i) {
+                                    const uint32_t px = static_cast<uint32_t>(i % imgWidth2);
+                                    const uint32_t py = static_cast<uint32_t>(i / imgWidth2);
+                                    if (px + kWindowHalf2 < centerX2 || px > centerX2 + kWindowHalf2 ||
+                                        py + kWindowHalf2 < centerY2 || py > centerY2 + kWindowHalf2) continue;
+
+                                    const Vixen::Gpu::ReservoirRecord& r = records2[i];
+                                    // A pixel this frame's SpatialReuseShade.comp never entered the
+                                    // ReSTIR block for (reservoirEnabled==0 or !anyHitRT) never wrote
+                                    // this buffer -- its content is whatever a PRIOR frame's dispatch
+                                    // left there (or uninitialized on frame 1). Guard identically to
+                                    // the pre-spatial block: skip anything that doesn't look like a
+                                    // genuinely valid THIS-frame reservoir.
+                                    if (r.y == 0xFFFFFFFFu || r.sampleCount == 0u || r.targetPdf <= 0.0f) continue;
+                                    if (r.y >= g_restirGateWorldCut->size()) continue;
+
+                                    const double W = (1.0 / static_cast<double>(r.targetPdf)) *
+                                                      (static_cast<double>(r.weightSum) / static_cast<double>(r.sampleCount));
+                                    gpuEstimateSum2 += static_cast<double>(r.targetPdf) * W;
+
+                                    float hitWorldPos2[3];
+                                    std::memcpy(hitWorldPos2, hitBytes2 + i * kHitRecordStride2 + kHitRecordWorldPosOffset2, sizeof(hitWorldPos2));
+                                    const glm::vec3 shadingPos2(hitWorldPos2[0], hitWorldPos2[1], hitWorldPos2[2]);
+
+                                    double pixelBruteForce2 = 0.0;
+                                    for (const auto& node : *g_restirGateWorldCut) {
+                                        const glm::vec3 toLight = node.worldPos - shadingPos2;
+                                        const double dist2 = std::max(static_cast<double>(glm::dot(toLight, toLight)), 1e-4);
+                                        const double nodePower = static_cast<double>(node.intensity) * static_cast<double>(node.coverage) *
+                                            std::pow(static_cast<double>(node.worldExtent), 3.0);
+                                        pixelBruteForce2 += nodePower / dist2;
+                                    }
+                                    bruteForceSum2 += pixelBruteForce2;
+
+                                    ++validPixels2;
+                                }
+                                spatialDebugBuf->UnmapReadback(device2);
+                                hitRecordBuf2->UnmapReadback(device2);
+                            } else {
+                                if (mapped2) spatialDebugBuf->UnmapReadback(device2);
+                                if (hitMapped2) hitRecordBuf2->UnmapReadback(device2);
+                            }
+                        }
+                        const double gpuEstimateAvg2 = validPixels2 > 0 ? gpuEstimateSum2 / static_cast<double>(validPixels2) : 0.0;
+                        const double bruteForceAvg2 = validPixels2 > 0 ? bruteForceSum2 / static_cast<double>(validPixels2) : 0.0;
+
+                        if (mainLogger) {
+                            if (bruteForceAvg2 > 0.0 && validPixels2 > 0) {
+                                const double relError2 = std::fabs(gpuEstimateAvg2 - bruteForceAvg2) / bruteForceAvg2;
+                                mainLogger->Info("[RestirGateDemoM6PostSpatial] tick " + std::to_string(restirGateTick) +
+                                                  ": validPixels=" + std::to_string(validPixels2) +
+                                                  " gpuEstimateAvg=" + std::to_string(gpuEstimateAvg2) +
+                                                  " bruteForcePerPixelAvg=" + std::to_string(bruteForceAvg2) +
+                                                  " relativeError=" + std::to_string(relError2));
+                            } else {
+                                mainLogger->Warning("[RestirGateDemoM6PostSpatial] tick " + std::to_string(restirGateTick) +
+                                                     ": no comparable data (bruteForceAvg=" + std::to_string(bruteForceAvg2) +
+                                                     ", validPixels=" + std::to_string(validPixels2) + ")");
+                            }
+                        }
+                    } else if (mainLogger) {
+                        mainLogger->Warning("[RestirGateDemoM6PostSpatial] tick " + std::to_string(restirGateTick) +
+                                             ": spatial-debug/hit-record buffers, device, or the world-cut stash not found -- readback skipped");
+                    }
+                }
+            }
+        }
+
+        // Sparse-Mip ESVO LOD Inc1 M4c live gate: env-gated scripted camera move, unattended
         // (VIXEN_RESIDENCY_GATE_DEMO=1) — mirrors VIXEN_RESIZE_AT_FRAME's "env-var-scripted
         // behavior for an automated run" shape directly above. Sweeps orbitDistance from far
         // (kOrbitDistanceMax, mip-only range) to near (kOrbitDistanceMin, brick-resolvable
@@ -546,6 +809,28 @@ void VulkanGraphApplication::Update() {
                 if (gateTick % 60 == 0 && mainLogger) {
                     mainLogger->Info("[ResidencyGateDemo] tick " + std::to_string(gateTick));
                 }
+            }
+        }
+
+        // Sampled Lighting Inc3 M5 live gate: env-gated continuous yaw orbit
+        // (VIXEN_RESTIR_ORBIT_DEMO=1), scene-agnostic so it composes with whatever
+        // VIXEN_RESTIR_GATE_DEMO built. Mirrors VIXEN_RESIDENCY_GATE_DEMO's own yaw-sweep
+        // phase directly above (SetYawForTest, no new InputNode injector) -- this demo
+        // exists to exercise temporal reservoir reprojection + spatial reuse under
+        // continuous camera motion (the no-ghosting/temporal-stability gate), a full
+        // 0->2pi sweep held over the whole run rather than a phase within a larger
+        // distance sweep.
+        if (renderGraph && std::getenv("VIXEN_RESTIR_ORBIT_DEMO")) {
+            static long orbitTick = 0;
+            ++orbitTick;
+            constexpr long kOrbitPeriodTicks = 300;
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const float t = static_cast<float>(orbitTick % kOrbitPeriodTicks) /
+                                static_cast<float>(kOrbitPeriodTicks);
+                camera->SetYawForTest(t * 2.0f * 3.14159265358979323846f);
+            }
+            if (orbitTick % 60 == 0 && mainLogger) {
+                mainLogger->Info("[RestirOrbitDemo] tick " + std::to_string(orbitTick));
             }
         }
 

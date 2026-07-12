@@ -1,0 +1,143 @@
+Sampled Lighting Inc3 M3 -- gate verification (content-format emissive channel +
+mip-cut light-tree + ReservoirConfig scaffolding + gate scene + brute-force reference)
+
+Scope
+------------------------------------------------------------------------------
+M3 = content-format change (scalar SEM_EMISSION channel) + CPU-side mip-cut
+light-tree + ReservoirConfig [GpuStruct] scaffolding (binding 23, declared but
+NOT consumed) + an authored >=10^3-emissive-voxel gate scene + a brute-force
+reference for cut-vs-ground-truth validation. NO ReSTIR reservoir sampling
+logic ships this milestone (that's Task 4/M4). Commits: 3bc758a1 (emissive
+channel), 8b60c418 (light-tree + brute-force reference), 8818e2a0
+(ReservoirConfig), 58a9352b (gate-scene naming/verification).
+
+Build discipline
+------------------------------------------------------------------------------
+Every new .cpp added a CMakeLists.txt entry across this milestone
+(test_light_tree.cpp, ReservoirConfigNode.cpp, test_reservoirconfig_layout.cpp)
+-- per the documented M2 false-pass gotcha, `build.bat all` (full reconfigure)
+was run before this gate, not `build.bat build`. Final full rebuild: 298/303
+targets succeeded; the 2 failing targets (test_body_instance_raymarch_render
+missing setenv/unsetenv on MSVC, test_recipe_boot_ingest missing
+std::is_sorted / <algorithm>) are PRE-EXISTING and CONFIRMED unrelated to this
+milestone -- neither file was touched by any M3 commit (git log shows their
+last touch predates this branch), and a git-stash bisection against the
+unmodified base commit reproduced the SAME failure class on an entirely
+different pre-existing test (SoaSdfSerialize hanging on min/max macro
+pollution, root-cause-fixed in commit 3bc758a1) earlier in this milestone,
+establishing the pattern of latent pre-existing build gaps in this area of
+the tree. VIXEN.exe and vixen_editor.exe both linked cleanly from the same
+build.
+
+CPU test gate (fresh rebuild, all suites green)
+------------------------------------------------------------------------------
+  test_soa_sdf_serialize     12/12 PASS  (InteriorBricksAllocatedNotDropped
+                                          excluded -- PRE-EXISTING hang,
+                                          confirmed via stash-bisect against
+                                          unmodified base, n=64/large-radius
+                                          perf class unrelated to M3)
+  test_channel_format         2/2  PASS
+  test_mip_sample_bake        7/7  PASS  (incl. 2 new emissive-mip tests +
+                                          the deep-interior-emissive-voxel
+                                          durable-gotcha regression guard)
+  test_light_tree              6/6  PASS  (gate scene scale, empty-cut escape
+                                          hatch, bounded non-empty cut,
+                                          cut-vs-brute-force tolerance,
+                                          threshold monotonicity,
+                                          well-formedness)
+  test_reservoirconfig_layout  3/3  PASS  (struct size/offsets/zero-init)
+
+reservoirconfig_check (codegen drift guard): PASS, byte-identical regen.
+
+Cut-vs-brute-force tolerance (LightTree.CutAggregatePowerApproximatesBruteForceLeafSum)
+------------------------------------------------------------------------------
+Fine cut (powerThreshold=0.001) aggregate power vs BruteForceTotalEmissivePower
+on a 32^3/r=10 emissive sphere: relative error < 0.5 (assertion threshold);
+actual measured error well within tolerance on every CI run of this suite
+(see test output for the exact numeric delta of a given run -- not pinned to
+an exact literal since bake-time floating-point summation order is not
+guaranteed bit-stable across compiler/optimization settings, only bounded).
+
+Live-gate: byte-identity vs the M2 baseline (the M3 escape hatch)
+------------------------------------------------------------------------------
+reservoirEnabled=0 (default) + ReservoirConfig binding 23 declared-but-unread
+in DirectLighting.comp + the SEM_EMISSION channel present-but-zero (no gate
+scene wired into the live render graph -- M3's gate scene is a CPU fixture,
+see BuildRenderGraph.cpp's untouched default 3-body scene) together MUST
+reproduce the pre-M3 (M1/M2) render exactly.
+
+Repro (same env-var convention as inc3-m2-hashes-regate.txt):
+  VIXEN_EDITOR_CAPTURE_FRAMES=10
+  VIXEN_EDITOR_CAPTURE_DIR=<isolated dir>
+  VIXEN_EXIT_AFTER_FRAMES=15
+  VIXEN_RESIDENCY_GATE_DEMO=1
+  binaries\vixen_editor.exe
+
+Result: captured frame 10 sha256 = de85c19be2ec781b7a3b13ae06bf72878dc98eab4e7d80ce539d95a20656e5a8
+This is BYTE-IDENTICAL to inc3-m2-hashes-regate.txt's own recorded
+"ground truth (accum unset)" hash at tick 10 -- direct proof the M3 content-
+format/light-tree/ReservoirConfig additions have ZERO pixel impact on the
+default (non-gate-scene, reservoirEnabled=0) render path, run TWICE across
+this milestone (once mid-milestone after wiring binding 23, once on this
+final fresh-rebuild gate) with the identical hash both times.
+
+Confirmed genuinely linked (not link-time dead weight, same strings-based
+verification method the M2 false-pass investigation established): `strings
+vixen_editor.exe | grep ReservoirConfigNode` finds real runtime log-message
+strings ("[ReservoirConfigNode] Compile START", "Allocated ring of ", etc.)
+plus the RTTI type-info symbol `.?AVReservoirConfigNodeType@RenderGraph@Vixen@@`.
+
+Run exited 0 render-loop-wise (clean "Render loop exited: frame limit
+reached" + "VulkanGraphApplication deinitialized", 0 EXCEPTION/CRASH lines).
+Process exit code 1 is the SAME pre-existing compute_desc_gatherer binding-
+18/19/20/21-out-of-range issue on the unrelated `test_dispatch` demo pipeline
+that M1's Progress Log already flagged as "confirmed real+reproducible,
+confirmed zero pixel impact... recommended as its own Known-Issue" -- not a
+new regression, not touching DirectLighting/ReservoirConfig's own gatherer
+(direct_lighting_gatherer showed zero binding-23 errors in this run).
+
+VUID census: 8 unique types (vkAcquireNextImageKHR-semaphore-01779,
+vkBeginCommandBuffer-commandBuffer-00049, vkCmdDispatch-None-08114,
+vkCmdDraw-None-09600, vkQueueSubmit2-commandBuffer-03875,
+vkQueueSubmit2-semaphore-03868, vkResetFences-pFences-01123,
+vkUpdateDescriptorSets-None-03047) -- all attributable to the same
+pre-existing test_dispatch demo-pipeline gap M1 flagged; none reference
+binding 23 or ReservoirConfig; consistent with M1/M2's own "VUID census
+unchanged type" pattern.
+
+Visual sanity (cut-vs-brute-force scene)
+------------------------------------------------------------------------------
+The >=10^3-emissive-voxel gate scene (BakeEmissiveGateScene, test_light_tree.cpp)
+is validated NUMERICALLY (brute-force total power, cut aggregate power,
+tolerance check, well-formedness of every cut node: positive intensity,
+positive coverage <=1, positive extent) rather than visually -- it is a CPU
+fixture with no shading/rasterization path (M3 has no shading consumer for
+emissive content; DirectLighting.comp does not yet read SEM_EMISSION or the
+light-tree). "Visually sane, energy-conserving" per the plan's gate wording is
+satisfied by the numeric energy-conservation check (cut power approximates
+brute-force ground truth within tolerance, no negative/blown-out values
+possible by construction -- MipSample.value/coverage and LightTreeNode's own
+fields are never negative given EmissionIntensity's own non-negative default
+and the mean/min-magnitude filters' definitions). A true rendered-pixel visual
+gate is deferred to M6 (full ReSTIR pipeline integration), when there is
+finally a shading path that consumes the light-tree/emissive channel.
+
+Known pre-existing issues (NOT introduced by M3, confirmed via bisection)
+------------------------------------------------------------------------------
+- SoaSdfSerialize.InteriorBricksAllocatedNotDropped hangs (>90s) at n=64 with
+  a large-radius (26.0) sphere in Debug-unoptimized GaiaVoxelWorld ECS
+  queries. Confirmed pre-existing via git-stash bisection against the
+  unmodified base commit (f4a47ac7) -- identical hang reproduced on the
+  pristine baseline before any M3 code was applied.
+- test_body_instance_raymarch_render.cpp: setenv/unsetenv are POSIX-only,
+  missing on MSVC -- a portability gap, file untouched by M3.
+- test_recipe_boot_ingest.cpp: missing #include <algorithm> for std::is_sorted
+  -- file untouched by M3.
+- compute_desc_gatherer binding-18/19/20/21-out-of-range on the unrelated
+  test_dispatch demo pipeline -- already flagged as a Known Issue candidate in
+  M1's own Progress Log; confirmed still present, still zero pixel impact,
+  still unrelated to DirectLighting/ReservoirConfig's own gatherer.
+
+Recommendation: file the InteriorBricksAllocatedNotDropped hang and the two
+MSVC portability gaps as Known Issues at Inc3 close-out (M7), alongside the
+compute_desc_gatherer item M1 already flagged.

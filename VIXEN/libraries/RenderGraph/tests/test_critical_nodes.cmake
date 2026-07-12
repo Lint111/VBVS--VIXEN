@@ -833,6 +833,25 @@ gtest_discover_tests(test_prevcameraconfig_sdi_parity
 message(STATUS "[RenderGraph Tests] Added: test_prevcameraconfig_sdi_parity (SDI layout drift-guard)")
 
 # ===========================================================================
+# ReservoirConfig Layout Test (Sampled Lighting Inc3 M3)
+# ===========================================================================
+# Pure C++ struct-size/offsetof test — NO shader reflection (ReservoirConfig
+# is M3 scaffolding for M4/M5; no .comp binds it yet, so unlike the SDI-parity
+# tests above there is no compiled SPIR-V to reflect against). See the test
+# file's own header for the "add a real SDI-parity sibling once M4/M5 wire a
+# shader binding" note. Pure CPU, no GPU, no body_instance_raymarch_spv dep.
+# ===========================================================================
+add_executable(test_reservoirconfig_layout
+    Nodes/test_reservoirconfig_layout.cpp
+)
+target_link_libraries(test_reservoirconfig_layout PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+set_target_properties(test_reservoirconfig_layout PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_reservoirconfig_layout
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_reservoirconfig_layout (struct layout drift-guard)")
+
+# ===========================================================================
 # Sampled Lighting Inc1 M4 — shadow-ray correctness live gate: dispatches the
 # REAL shader against a known scene + known directional light, asserting a
 # pixel's occlusion classification (shadowed/lit, via shaded colour luminance)

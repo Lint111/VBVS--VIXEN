@@ -111,6 +111,14 @@ PreprocessedSource ShaderPreprocessor::ProcessRecursive(
                 depth + 1
             );
 
+            // Leave the active include chain now that this file's subtree is done
+            // processing, so includeGuard only ever reflects files currently being
+            // included (true cycle detection), not every file ever seen anywhere in
+            // the tree -- a later, non-nested re-include of an already-#ifndef-guarded
+            // file must fall through as a normal (cheap no-op) re-read, matching every
+            // other GLSL/C preprocessor.
+            includeGuard.erase(canonicalPath);
+
             if (!nestedResult.success) {
                 return nestedResult;
             }

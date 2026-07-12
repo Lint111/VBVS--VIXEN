@@ -1,0 +1,111 @@
+Sampled Lighting Inc3 M7 -- SECOND Tiered-ESVO reconciliation (deferred from M5)
+==================================================================================
+Date: 2026-07-12.
+
+Reconciles origin/main's Tiered-ESVO Inc3 M8 Task 23 (commit 011ca779,
+"camera-anchored, world-unit-correct tier-crossing LOD gate + child-miss mip
+fallback") onto this branch, which relocated traverseOctreeInstancedOnce/
+traverseOctreeInstanced out of BodyInstanceRayMarch.comp into SceneBindings.glsl
+at M1 (the pass-split). Follows the EXACT precedent set at the POST-M1
+reconciliation (merge d509fdc6, documented in the plan doc): port the algorithm
+verbatim (preserving comments) into SceneBindings.glsl, take "ours" for
+BodyInstanceRayMarch.comp itself (fully superseded -- content already migrated).
+
+SOURCE DIFF READ
+-----------------
+`git show 011ca779` from the main checkout (/mnt/c/cpp/VBVS--VIXEN/VIXEN).
+Actual diff: 2 files, 189 insertions / 30 deletions (201 net lines to
+BodyInstanceRayMarch.comp + 18 comment-only lines to GpuTraversalMirror.h) --
+the plan doc's "575-line diff" figure was an overestimate; the real diff was
+read in full before any porting began.
+
+WHAT IT DOES (read+understood, not guessed)
+---------------------------------------------
+The tier-crossing LOD gate (decides whether to descend into a childScale-times-
+smaller child tree, or shade the parent leaf's own mip sample instead) previously
+compared `tv_max` (the LEAF's own exit-t, chord-floored for any interior ray --
+Task 20's finding) against `childScale*scale_exp2`. At deep childScale ratios
+(2^-10) the chord floor made the gate permanently declined regardless of camera
+distance (Task 22's algebraic proof: the depth term cancels from both sides).
+
+Task 23 fixes the gate's DISTANCE argument to be genuinely camera-anchored and
+expressed in true world units at every hop:
+  tChild           = along-ray t of the child cube's center (childOriginLocal,
+                      clamped to [t_min, tv_max]) -- replaces tv_max.
+  kPhys            = true-world distance per t-unit at this hop (==1.0 at hop 0).
+  worldDistToChild = tWorldBase (hop-composed camera distance) +
+                      (tEntryWorld + tChild) * kPhys.
+  childWorldSize   = childScale * scale_exp2 * tLocalUnitWorld (keeps the
+                      existing RHS semantics, expressed in world units).
+  decline iff worldDistToChild*raySizeCoef + raySizeBias >= childWorldSize.
+
+Two new hop-threaded floats (tWorldBase, tLocalUnitWorld) thread through the
+wrapper's hop loop and into each call of the (per-hop) traversal body. A
+companion fix: a taken crossing whose child tree then misses (or a
+hop-budget-exhausted chain) now falls back to the deepest parked crossing
+leaf's own mip sample (shadeFromMipSample) instead of a whole-ray sky miss --
+gated on real mip coverage, so mip-less crossing scenes stay byte-identical.
+
+PORT APPLIED
+-------------
+Verified all anchor points (function signatures, the leaf-branch gate block,
+the tierCrossHit=true assignment, the wrapper's hop loop, both miss-exit
+points) in SceneBindings.glsl matched the diff's pre-image byte-for-byte
+before editing -- confirms this is a clean relocation-only conflict, not a
+divergent edit. Ported verbatim (comments preserved) into:
+  - VIXEN/shaders/SceneBindings.glsl (traverseOctreeInstancedOnce signature +
+    leaf-branch gate + tierCrossLeafNodeIndex; traverseOctreeInstanced's hop
+    loop + fallback park/consume + both miss-exit points)
+  - VIXEN/libraries/SVO/include/GpuTraversalMirror.h (comment-only sync notes,
+    matching the source commit exactly -- no functional mirror change, since
+    the mirror is raySizeCoef==0-gated and never exercises this code path)
+BodyInstanceRayMarch.comp itself: fully superseded on this branch (M1 already
+migrated its content to SceneBindings.glsl) -- "ours" kept, no port needed
+there. Verified traverseOctreeInstancedOnce has exactly ONE call site (the
+wrapper, updated) and traverseOctreeInstanced's own external signature is
+UNCHANGED by Task 23 (only its internal locals + inner call grew) -- no other
+shader file needed updating.
+
+GATE
+-----
+Fresh from-scratch rebuild (`build.bat all vixen-ninja`, this worktree,
+2026-07-12): 563/565 targets succeeded. The 2 failures
+(test_recipe_boot_ingest.cpp.obj -- std::is_sorted missing <algorithm>;
+test_body_instance_raymarch_render.cpp.obj -- POSIX setenv/unsetenv on MSVC)
+are the exact KI-026/KI-020 signatures, confirmed already fixed on the
+UNMERGED `fix/ki-020-ki-017-windows-portability` branch (commits f3f25e35,
+a82b8210) -- genuinely pre-existing on this worktree's branch, unrelated to
+this reconciliation or any Inc3 code.
+
+Byte-identity (reproducing M1/M4/M6's own exact methodology -- vixen_editor.exe,
+default editor scene, VIXEN_EDITOR_CAPTURE_FRAMES=10, VIXEN_EXIT_AFTER_FRAMES=20,
+run from build/ninja/binaries/):
+
+  reservoirEnabled=0 (default):
+    sha256 = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+    MATCH vs the canonical baseline (Inc0-2, Inc3 M1-M6). File size 8227 bytes.
+    vixen_editor.exe exit 0, clean shutdown.
+
+  VIXEN_RESERVOIR_CONFIG_ENABLED=1 on the SAME default non-emissive scene:
+    sha256 = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+    MATCH -- identical to the reservoirEnabled=0 capture. Reconfirms M4/M6's
+    finding that reservoirEnabled=1 is inert on a non-emissive scene (empty
+    light-tree cut -> zero RIS contribution), now also proven unperturbed by
+    the Task 23 traversal port (a non-crossing scene never enters the ported
+    code path at all -- both captures are a genuine regression check on the
+    "untouched for non-crossing rays" claim in Task 23's own commit message).
+
+log noise: compute_desc_gatherer "Binding N out of range" errors on both runs
+match the pre-existing KI-024 signature exactly (bindings 18-21, the unrelated
+test_dispatch demo pipeline) -- zero relation to this reconciliation.
+
+CONCLUSION
+-----------
+Reconciliation ported correctly, non-crossing byte-identity held exactly
+through the merge of another program's already-shipped, already-validated
+work. Tiered-ESVO's own tier-crossing behavior itself was NOT independently
+re-gated here (would require Tiered-ESVO's own live gate/scene, out of this
+milestone's scope per the plan's precedent -- the POST-M1 reconciliation
+likewise did not re-run Tiered-ESVO's own gates, only confirmed Inc3's own
+byte-identity + test-failure-count invariants held). Ready to merge
+origin/main.

@@ -341,3 +341,177 @@ TEST(FrameSyncWSILaw, SwapchainAdjacentGraph_WSIBinaryPointsAreTaggedAndNotTimel
             << "WSI law: no timeline edge may originate from the present group (fromGroup == presentGroupId)";
     }
 }
+
+// ============================================================================
+// Sampled Lighting Inc3 M5: array-hazard constituent expansion
+// ============================================================================
+// BufferSyncGathererNode collapses N buffer-sync hazards into ONE array-typed
+// Resource* (std::vector<VkBuffer>) so ComputeStageNodeConfig no longer needs a
+// fixed named slot per buffer (BUFFER_WRITE/BUFFER_READ_A/BUFFER_READ_B). This
+// is ONLY correct if ResourceAccessTracker::AddNode expands that ONE array-
+// wrapper Resource* back into N independent per-constituent hazard records
+// (Resource::hazardConstituents_) — otherwise the fan-in demo's two INDEPENDENT
+// producers (aStage writes only bufA, bStage writes only bufB) would collapse
+// into a single indivisible array hazard, and BuildScheduleFromTimelines would
+// bake a spurious write-write aStage->bStage edge (from walking one shared
+// Resource*'s access list in execution order) instead of the two genuine direct
+// edges (bufA: aStage->cStage, bufB: bStage->cStage) the fan-in proof requires.
+// These tests exercise ResourceAccessTracker::AddNode directly (the actual
+// surgery — BuildScheduleFromTimelines itself is unchanged and already covered
+// by FanIn_TwoProducersOneConsumer above) to prove the expansion is correct.
+
+TEST(FrameSyncArrayHazard, ConstituentExpansion_ProducesIndependentPerBufferTimelines) {
+    // Mirrors BuildFanInDemoGraph.cpp's real shape: aStage writes a 1-entry array
+    // (bufA only) via aWriteGatherer's array Resource*; bStage writes its OWN
+    // 1-entry array (bufB only) via bWriteGatherer's array Resource*; cStage reads
+    // a 2-entry array (bufA, bufB) via cReadGatherer's array Resource*. THREE
+    // DISTINCT array-wrapper Resource*s (one per gatherer instance) — exactly as
+    // the real graph wires it — each carrying hazardConstituents_ pointing back
+    // to the SAME two underlying buffer Resource*s (bufA, bufB).
+    MockNodeType2 aStageType("a_stage"), bStageType("b_stage"), cStageType("c_stage");
+
+    // mutability = ReadWrite is required for an INPUT slot to count as a writer
+    // (ResourceAccessTracker::AddNode upgrades ResourceAccessType::Read -> ReadWrite
+    // only when desc->mutability == SlotMutability::ReadWrite — the AccessKind alone,
+    // e.g. ComputeStorageWrite, does not imply this; see ResourceDescriptor's own
+    // "Auto-sync P1: ReadWrite inputs count as writers" doc comment).
+    Schema aWriteIn(1);
+    aWriteIn[0].accessKind = AccessKind::ComputeStorageWrite;
+    aWriteIn[0].mutability = SlotMutability::ReadWrite;
+    aStageType.SetInputSchema(aWriteIn);
+
+    Schema bWriteIn(1);
+    bWriteIn[0].accessKind = AccessKind::ComputeStorageWrite;
+    bWriteIn[0].mutability = SlotMutability::ReadWrite;
+    bStageType.SetInputSchema(bWriteIn);
+
+    Schema cReadIn(1);
+    cReadIn[0].accessKind = AccessKind::ComputeStorageRead;
+    cStageType.SetInputSchema(cReadIn);
+
+    auto aStage = aStageType.CreateInstance("a_stage_inst");
+    auto bStage = bStageType.CreateInstance("b_stage_inst");
+    auto cStage = cStageType.CreateInstance("c_stage_inst");
+
+    // The two REAL underlying buffers (what BufferSyncGathererNode's own
+    // hazardConstituents_ would point at — e.g. bufANode/bufBNode's own
+    // StorageBufferNode::STORAGE_BUFFER Resource*s in the live graph).
+    MockResource2 bufA; bufA.debugName = "bufA";
+    MockResource2 bufB; bufB.debugName = "bufB";
+
+    // The three array-wrapper Resource*s a real BufferSyncGathererNode instance
+    // would publish as its BUFFER_ARRAY output — each with its OWN preserved
+    // constituent list, exactly as BufferSyncGathererNode::CompileImpl does via
+    // Resource::SetHazardConstituents.
+    MockResource2 aWriteArray; aWriteArray.debugName = "aWriteArray";
+    aWriteArray.SetHazardConstituents({&bufA});
+    MockResource2 bWriteArray; bWriteArray.debugName = "bWriteArray";
+    bWriteArray.SetHazardConstituents({&bufB});
+    MockResource2 cReadArray; cReadArray.debugName = "cReadArray";
+    cReadArray.SetHazardConstituents({&bufA, &bufB});
+
+    AddInput2(aStage.get(), &aWriteArray);
+    AddInput2(bStage.get(), &bWriteArray);
+    AddInput2(cStage.get(), &cReadArray);
+
+    ResourceAccessTracker tracker;
+    tracker.AddNode(aStage.get());
+    tracker.AddNode(bStage.get());
+    tracker.AddNode(cStage.get());
+
+    // The tracker must have expanded EACH array wrapper into its constituents —
+    // querying by the TRUE underlying Resource* (bufA/bufB), not the array
+    // wrappers, must show the correct writers/readers.
+    const ResourceAccessInfo* bufAInfo = tracker.GetAccessInfo(&bufA);
+    const ResourceAccessInfo* bufBInfo = tracker.GetAccessInfo(&bufB);
+    ASSERT_NE(bufAInfo, nullptr) << "bufA must be tracked via aStage's/cStage's array constituent expansion";
+    ASSERT_NE(bufBInfo, nullptr) << "bufB must be tracked via bStage's/cStage's array constituent expansion";
+
+    EXPECT_TRUE(bufAInfo->HasWriter());
+    EXPECT_TRUE(bufBInfo->HasWriter());
+    // bufA's own accesses: aStage (write) + cStage (read) — NOT bStage.
+    EXPECT_EQ(bufAInfo->accesses.size(), 2u)
+        << "bufA must show EXACTLY aStage's write + cStage's read, not a spurious bStage access";
+    // bufB's own accesses: bStage (write) + cStage (read) — NOT aStage.
+    EXPECT_EQ(bufBInfo->accesses.size(), 2u)
+        << "bufB must show EXACTLY bStage's write + cStage's read, not a spurious aStage access";
+
+    // The array WRAPPER Resource*s themselves must NOT appear as tracked hazard
+    // resources (the expansion replaces them, it doesn't track both).
+    EXPECT_EQ(tracker.GetAccessInfo(&aWriteArray), nullptr)
+        << "the array-wrapper Resource* itself must not be a separate tracked hazard "
+           "once its constituents are expanded — only the true per-buffer Resource*s are";
+}
+
+TEST(FrameSyncArrayHazard, ConstituentExpansion_BakesTwoIndependentEdges_NotASpuriousChain) {
+    // End-to-end: ResourceAccessTracker::AddNode (the surgery) feeding
+    // FrameSyncScheduler::Build (unchanged) must bake the SAME 2-independent-edge
+    // shape FanIn_TwoProducersOneConsumer proves at the raw-timeline level —
+    // confirming the array-hazard path produces IDENTICAL scheduling to the old
+    // fixed-named-slot path, not a spurious aStage->bStage->cStage chain.
+    MockNodeType2 aStageType("a_stage"), bStageType("b_stage"), cStageType("c_stage");
+    Schema writeIn(1);
+    writeIn[0].accessKind = AccessKind::ComputeStorageWrite;
+    aStageType.SetInputSchema(writeIn);
+    bStageType.SetInputSchema(writeIn);
+    Schema readIn(1);
+    readIn[0].accessKind = AccessKind::ComputeStorageRead;
+    cStageType.SetInputSchema(readIn);
+
+    auto aStage = aStageType.CreateInstance("a_stage_inst");
+    auto bStage = bStageType.CreateInstance("b_stage_inst");
+    auto cStage = cStageType.CreateInstance("c_stage_inst");
+
+    MockResource2 bufA; bufA.debugName = "bufA";
+    MockResource2 bufB; bufB.debugName = "bufB";
+    MockResource2 aWriteArray; aWriteArray.debugName = "aWriteArray";
+    aWriteArray.SetHazardConstituents({&bufA});
+    MockResource2 bWriteArray; bWriteArray.debugName = "bWriteArray";
+    bWriteArray.SetHazardConstituents({&bufB});
+    MockResource2 cReadArray; cReadArray.debugName = "cReadArray";
+    cReadArray.SetHazardConstituents({&bufA, &bufB});
+
+    AddInput2(aStage.get(), &aWriteArray);
+    AddInput2(bStage.get(), &bWriteArray);
+    AddInput2(cStage.get(), &cReadArray);
+
+    ResourceAccessTracker tracker;
+    tracker.AddNode(aStage.get());
+    tracker.AddNode(bStage.get());
+    tracker.AddNode(cStage.get());
+
+    // Execution order: aStage(0), bStage(1), cStage(2) — mirrors the real graph's
+    // topological sort (both producers before the consumer).
+    std::vector<NodeInstance*> execOrder = {aStage.get(), bStage.get(), cStage.get()};
+    FrameSyncScheduler scheduler;
+    ASSERT_TRUE(scheduler.Build(execOrder, tracker));
+    const FrameSyncSchedule& s = scheduler.GetSchedule();
+
+    ASSERT_EQ(s.groups.size(), 3u);
+    // The genuine 2-wait fan-in: exactly 2 edges, both terminating at cStage (group 2).
+    ASSERT_EQ(s.edges.size(), 2u)
+        << "must bake exactly 2 independent edges (bufA->cStage, bufB->cStage), not a "
+           "3-node aStage->bStage->cStage chain (which would also produce edges.size()==2 "
+           "but with the WRONG topology — the from/to assertions below catch that)";
+    EXPECT_EQ(s.groups[2].waitEdges.size(), 2u)
+        << "cStage (group 2) must have 2 waitEdges — the genuine fan-in this whole test proves";
+
+    // Both edges must originate from a PRODUCER group (0 or 1) and terminate at
+    // cStage (group 2) — NOT a spurious aStage(0)->bStage(1) edge.
+    for (const SyncEdge& e : s.edges) {
+        EXPECT_TRUE(e.fromGroup == 0u || e.fromGroup == 1u)
+            << "each edge must originate from aStage or bStage, not cStage";
+        EXPECT_EQ(e.toGroup, 2u)
+            << "each edge must terminate at cStage (group 2) — a spurious "
+               "aStage->bStage edge would show toGroup==1, which this catches";
+    }
+    // Exactly one edge from each producer (not two edges from the same producer,
+    // which would mean bufA and bufB were incorrectly merged into one timeline).
+    bool sawFromA = false, sawFromB = false;
+    for (const SyncEdge& e : s.edges) {
+        if (e.fromGroup == 0u) sawFromA = true;
+        if (e.fromGroup == 1u) sawFromB = true;
+    }
+    EXPECT_TRUE(sawFromA) << "missing the bufA: aStage->cStage edge";
+    EXPECT_TRUE(sawFromB) << "missing the bufB: bStage->cStage edge";
+}

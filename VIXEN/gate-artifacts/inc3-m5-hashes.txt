@@ -1,0 +1,183 @@
+Sampled Lighting Inc3 M5 -- gate verification (spatial reuse, 2-dispatch split)
+
+Scope
+------------------------------------------------------------------------------
+M5 splits DirectLighting.comp into two dispatches: DirectLighting.comp (RIS +
+temporal reservoir reuse only, pure buffer producer -- no image writes) and
+SpatialReuseShade.comp (neighbor reservoir combine via the SAME MIS
+balance-heuristic primitive M4 built, ReservoirCombine.glsl's
+reservoirCombine, shared by both dispatches -- then final shade + the
+accumulation/debug-mode seam moved verbatim from the old single-dispatch
+shader). The genuine cross-dispatch same-frame reservoir hazard (Dispatch 1
+writes reservoirBufferA/B this frame, Dispatch 2 reads them the SAME frame)
+is declared as a real GPU hazard via the array-hazard mechanism below, not
+hand-waved.
+
+Architecture redirect (user-directed, mid-milestone)
+------------------------------------------------------------------------------
+The initial implementation added 3 more fixed named slots to
+ComputeStageNodeConfig (BUFFER_WRITE_B/READ_C/READ_D) to carry the new
+buffers -- flagged by the user as ComputeStageNodeConfig accumulating a
+special-case slot per feature, violating the pure-graph philosophy. Redirected
+to a generic array mechanism mirroring the existing
+DescriptorResourceGathererNode/PushConstantGathererNode pattern:
+
+  - BufferSyncGathererNode (NEW): a VariadicTypedNode gathering N VkBuffer
+    inputs into one std::vector<VkBuffer> OUTPUT_SLOT, exactly like the
+    existing gatherers gather descriptors/push-constant fields.
+  - ComputeStageNodeConfig: BUFFER_WRITE/BUFFER_READ_A/BUFFER_READ_B (3 fixed
+    slots) collapsed into BUFFER_WRITE_ARRAY/BUFFER_READ_ARRAY (2 generic
+    array slots).
+
+This surfaced a genuine architectural blocker: ResourceAccessTracker keys
+hazard tracking by ONE Resource* per static slot, and FrameSyncScheduler bakes
+an edge per ADJACENT-groupId pair on a shared Resource*'s access timeline --
+collapsing 2 independent producers (e.g. aStage writes bufA, bStage writes
+bufB) onto one shared array Resource* would bake a SPURIOUS aStage->bStage
+edge instead of 2 independent producer->consumer edges. Resolved via full
+tracker surgery (user-directed, not scope-limited): Resource gained an opt-in
+hazardConstituents_ field (a per-array-wrapper list of the TRUE underlying
+Resource*s it was gathered from); ResourceAccessTracker::AddNode expands any
+resource carrying constituents into N independent RecordAccess calls against
+each constituent's OWN identity, letting FrameSyncScheduler (UNCHANGED) bake N
+genuinely independent edges. Proven via 2 new unit tests
+(FrameSyncArrayHazard suite, test_frame_sync_scheduler.cpp) and the existing
+VIXEN_FANIN_DEMO 2-independent-producer proof, migrated onto the new
+mechanism with zero regression.
+
+Build discipline
+------------------------------------------------------------------------------
+`build.bat all` (full reconfigure) run repeatedly across this milestone.
+Final full rebuild: only the 2 pre-existing failures (test_recipe_boot_ingest
+missing <algorithm>, test_body_instance_raymarch_render missing POSIX
+setenv/unsetenv on MSVC -- both untouched by this milestone, documented since
+M1/M2/M3/M4).
+
+GOTCHA found this milestone (environmental, not a code defect): the
+RenderGraph's persistent pipeline/descriptor-layout cache
+(binaries/cache/{devices,global}) survived across a slot-index renumbering
+(ComputeStageNodeConfig's TIMELINE_SEMAPHORE_IN/TIMELINE_FRAME_BASE_IN/
+IMAGE_WRITE all shifted by -1) and served STALE cached pipeline/descriptor
+state keyed by binding index rather than by content hash -- this produced a
+small but genuine pixel diff (a 32x32 block, max channel delta 32, at the
+render target's edge) that looked exactly like a real code regression until
+isolated via a from-scratch worktree A/B (git worktree add at each commit,
+independently rebuilt, byte-identity re-checked at each step) plus a
+ccache-cold rebuild (ruled out ccache) -- the actual fix was `rm -rf
+binaries/cache` (a PARTIAL clear of only cache/devices + cache/global
+subfolders was NOT sufficient; the full directory needed removing). Filed as
+a friction point: any future slot-index renumbering on a config type with a
+persistent binaries/cache/ entry should clear that cache as part of the
+change, not rely on the cache's own invalidation.
+
+CPU-mirror test gate (fresh rebuild, all suites green)
+------------------------------------------------------------------------------
+  test_reservoir_mirror         10/10  PASS (8 pre-existing M4 identities +
+                                             2 new M5 spatial-combine tests)
+  test_frame_sync_scheduler     14/14  PASS (12 pre-existing + 2 new
+                                             FrameSyncArrayHazard tests)
+  test_buffer_sync_gatherer_node 10/10 PASS (new node, config-shape/
+                                             registration depth)
+  test_node_self_registration    2/2  PASS (spot-checks
+                                             BufferSyncGathererNodeType)
+
+New spatial-combine CPU-mirror identities (test_reservoir_mirror.cpp)
+------------------------------------------------------------------------------
+Both reuse Reservoir::Combine -- the SAME primitive as M4's temporal combine
+(no separate "spatial" math exists; spatial reuse is just "another reservoir
+stream to fold in", per the plan's shared-primitive mandate).
+  - SpatialCombineReducesAcrossPixelVariance: chaining 4 neighbor Combine
+    calls (mirrors ReservoirConfig::spatialCount default) reduces per-pixel
+    estimator variance vs a single un-combined reservoir over 4000 runs, and
+    both estimators stay within 5% of the true candidate-power sum (variance
+    reduction must not shift the mean).
+  - ChainedSpatialCombineStaysUnbiasedOverManyRuns: 20,000 runs of a
+    4-neighbor chained combine converge to the true sum within 2% relative
+    error (same tolerance/methodology as M4's own TemporalCombineStays
+    UnbiasedOverManyRuns).
+
+GPU wiring verification (live, real render loop)
+------------------------------------------------------------------------------
+Both shaders (DirectLighting.comp, SpatialReuseShade.comp) compiled
+successfully from source at runtime. DirectLighting.comp is now a pure buffer
+producer (rgba8 readonly outputImage for the accumulation-history seam only,
+no writeonly image), reads HitRecord/LightingConfig/ShadowConfig/
+AccumulationConfig/PrevCameraConfig/worldPosHistoryImage(readonly)/
+ReservoirConfig/LightTreeBuffer, read-writes ReservoirBufferA/B.
+SpatialReuseShade.comp owns outputImage(writeonly)/historyImage/
+worldPosHistoryImage(read-write), readonly-reads ReservoirRecordsA/B, samples
+ReservoirConfig.spatialCount neighbors via disk sampling + geometric
+worldPos-distance/normal-dot rejection, folds each valid neighbor via
+reservoirCombine, shades with the final chosen sample, runs the
+accumulation/debug-mode seam.
+
+Escape hatch (reservoirEnabled=0, the default): captured frame 5 sha256 =
+fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1 -- matches
+the M1/M2/M3/M4 canonical byte-identity baseline hash exactly (re-confirmed
+after the binaries/cache gotcha above was fixed; reproduced 3x in a row).
+
+Live syncval (the milestone's flagged single-biggest risk: the genuine
+cross-dispatch same-frame reservoir hazard)
+------------------------------------------------------------------------------
+reservoirEnabled=0 (default scene) run: 4 VUID types (vkCmdDispatch-None-
+08114, vkCmdDraw-None-09600, vkQueueSubmit2-semaphore-03868, vkResetFences-
+pFences-01123), all pre-existing (test_dispatch/compute_desc_gatherer
+binding-out-of-range gap, first flagged M1).
+
+VIXEN_RESTIR_GATE_DEMO=1 (reservoirEnabled=1, emissive scene, 2-dispatch
+split live) runs: 7-8 unique VUID types across multiple runs (the full set
+seen: vkAcquireNextImageKHR-semaphore-01779, vkBeginCommandBuffer-
+commandBuffer-00049, vkCmdDispatch-None-08114, vkCmdDraw-None-09600,
+vkQueueSubmit2-commandBuffer-03875, vkQueueSubmit2-semaphore-03868,
+vkResetFences-pFences-01123, vkUpdateDescriptorSets-None-03047) -- EXACTLY
+M4's own documented 8-type census (some runs show 7 of the 8 -- the
+vkAcquireNextImageKHR line is itself pre-existing timing-dependent noise, not
+a new gap). NO NEW VUID type appeared across any run, specifically: no
+read-before-write hazard on the reservoirBufferA/B cross-dispatch handoff
+(DirectLighting writes this frame, SpatialReuseShade reads the SAME frame) --
+the array-hazard mechanism's per-constituent SyncEdge bakes a genuine
+DirectLightingNode->SpatialReuseNode dependency on reservoirBufferA/B,
+confirmed clean under live dispatch across a 300-frame continuous-orbit run
+(see below), not just a single static frame.
+
+300-frame continuous orbit run (VIXEN_RESTIR_ORBIT_DEMO=1 +
+VIXEN_RESTIR_GATE_DEMO=1, full 0->2pi yaw sweep): same 8-type VUID census,
+zero SYNC-HAZARD lines, zero EXCEPTION lines, clean teardown -- the
+temporal-stability/no-ghosting gate. A mid-orbit capture (tick 150) shows a
+coherent, single-silhouette lit sphere with no visible tearing, streaking, or
+double-image ghosting artifacts.
+
+Render loop exited cleanly ("Render loop exited: frame limit reached", 0
+EXCEPTION/CRASH lines) in every run (default scene, gate-demo at frame 30/70,
+spatial-count-0 A/B, 300-frame orbit).
+
+Equal-error vs brute-force reference -- UNCHANGED from M4 (by design)
+------------------------------------------------------------------------------
+VIXEN_RESTIR_GATE_DEMO's numeric readback samples DirectLightingNode's OWN
+buffer (post-temporal-combine, pre-spatial-reuse) at tick 60 -- the split
+does not touch this codepath. Re-ran M4's exact gate against the split
+pipeline:
+  validPixels=289
+  gpuEstimateAvg=19.263894
+  bruteForcePerPixelAvg=19.272385
+  relativeError=0.000441             (0.044%, byte-identical to M4's own
+                                       documented result)
+This confirms the 2-dispatch split introduced no change to the temporal-only
+estimator's own correctness -- exactly the expected/required outcome (the
+split moves WHERE spatial reuse happens, not what DirectLightingNode itself
+computes).
+
+Variance reduction vs M4 (spatial reuse's own contribution)
+------------------------------------------------------------------------------
+Gated primarily via the CPU-mirror SpatialCombineReducesAcrossPixelVariance
+test above (GPU-side: no dedicated post-spatial-combine numeric readback
+exists yet in VulkanGraphApplication.cpp to directly compare rendered-pixel
+variance pre/post spatial reuse on real GPU output -- VIXEN_RESERVOIR_
+SPATIAL_COUNT=0 vs the default 4 both feed VIXEN_RESTIR_GATE_DEMO's existing
+readback identically, since that readback samples DirectLightingNode's
+buffer BEFORE spatial reuse runs). The CPU-mirror identity is the mandated
+red-green precondition per the plan (same discipline as M4's own reservoir
+math); a future milestone adding a post-spatial-combine GPU readback could
+close a direct on-GPU variance comparison, but is not required for this
+milestone's gate (spatial reuse's math is proven correct+variance-reducing
+at the CPU-mirror level, and proven non-regressing+stable live on GPU).

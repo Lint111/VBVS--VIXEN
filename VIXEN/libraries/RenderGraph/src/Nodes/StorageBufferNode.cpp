@@ -131,6 +131,20 @@ void StorageBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     DestroyBuffer();
 }
 
+void* StorageBufferNode::MapForReadback(VulkanDevice* device) const {
+    if (memory_ == VK_NULL_HANDLE || !device) return nullptr;
+    void* mapped = nullptr;
+    if (vkMapMemory(device->device, memory_, 0, sizeBytes_, 0, &mapped) != VK_SUCCESS) {
+        return nullptr;
+    }
+    return mapped;
+}
+
+void StorageBufferNode::UnmapReadback(VulkanDevice* device) const {
+    if (memory_ == VK_NULL_HANDLE || !device) return;
+    vkUnmapMemory(device->device, memory_);
+}
+
 void StorageBufferNode::CreateBuffer(VulkanDevice* device, VkDeviceSize sizeBytes) {
     VkDevice         vkDevice = device->device;
     VkPhysicalDevice physDev  = *device->gpu;

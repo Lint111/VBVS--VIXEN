@@ -212,6 +212,7 @@ public:
             // screen-space LOD gate is NOT ported here — the whole mirror is
             // used exclusively with raySizeCoef==0 (LOD structurally disabled,
             // see castRayOnce's own "(LOD disabled in parity...)" comment).
+            //
             // Inc3 M8 Task 23 sync note: the shader's crossing gate is now
             // camera-anchored and world-unit-correct (tChild projection of
             // TierRef.childOriginLocal, hop-threaded tWorldBase/tLocalUnitWorld,
@@ -395,6 +396,7 @@ private:
                     // reference, NOT a brick — checked BEFORE handleLeafHit's
                     // getContourPointer read (the shader's own insertion point,
                     // BodyInstanceRayMarch.comp's traverseOctreeInstancedOnce).
+                    //
                     // Inc3 M8 Task 23 sync: the shader evaluates its (raySizeCoef-
                     // gated) camera-anchored crossing LOD gate right here and also
                     // reports tierCrossLeafNodeIndex for the wrapper's child-miss

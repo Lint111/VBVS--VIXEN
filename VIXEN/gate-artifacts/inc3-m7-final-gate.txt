@@ -1,0 +1,64 @@
+Sampled Lighting Inc3 M7 -- FINAL GATE (fresh rebuild + full re-verification)
+================================================================================
+Date: 2026-07-12. Final tree: commit 43d488e8 (feat/sampled-lighting-inc3).
+Binary basis: fresh from-scratch `build.bat all` at commit 023aabb8 (the last
+commit that touched source/CMake; 64bc8c57/43d488e8 are doc-only, no rebuild
+needed for those per vixen-build-policy's own "build.bat build alone is only
+safe for iterating on EXISTING files" rule -- these are pure .md/.txt edits,
+not new source files).
+
+BUILD
+-----
+Full `build.bat all vixen-ninja`: all targets built successfully (623+
+targets). Only the 2 pre-existing known failures present (KI-020/KI-026 class
+-- std::is_sorted missing <algorithm>, POSIX setenv/unsetenv on MSVC -- both
+already fixed on the unmerged fix/ki-020-ki-017-windows-portability branch,
+confirmed unrelated to any Inc3 code).
+
+CPU-MIRROR TESTS
+-----------------
+test_reservoir_mirror.exe: 10/10 PASS (8 from M4's weight-normalization/MIS-
+combine/RIS-converges-to-brute-force identities + 2 from M5's spatial-combine
+variance-reduction/chained-unbiasedness tests).
+
+EQUAL-ERROR-VS-BRUTE-FORCE LIVE GATE (re-run, exact reproduction)
+--------------------------------------------------------------------
+VIXEN_RESTIR_GATE_DEMO=1, VIXEN.exe, 200 frames:
+  RestirGateDemo (pre-spatial) tick 60: validPixels=289
+    gpuEstimateAvg=19.263894 bruteForcePerPixelAvg=19.272385
+    relativeError=0.000441  -- EXACT MATCH to M4/M5's recorded 0.044%.
+  RestirGateDemoM6PostSpatial tick 60: validPixels=289
+    gpuEstimateAvg=19.301395 bruteForcePerPixelAvg=19.272385
+    relativeError=0.001505  -- EXACT MATCH to M6's recorded 0.15%.
+Confirms the full M1-M7 stack -- including the Tiered-ESVO Task-23
+reconciliation, the origin/main merge, and the SkyProjectionNode fix -- did
+not perturb the reservoir estimator math at all.
+
+BYTE-IDENTITY
+--------------
+vixen_editor.exe, default scene, VIXEN_EDITOR_CAPTURE_FRAMES=10,
+VIXEN_EXIT_AFTER_FRAMES=20:
+  sha256 = fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+  MATCH vs the canonical baseline (Inc0-2, Inc3 M1-M6, all held through this
+  entire program). vixen_editor.exe exit 0, clean shutdown.
+
+VUID CENSUS
+------------
+8 distinct VUID types on the byte-identity run -- identical to every prior
+milestone's recorded census (M1 through M6): vkAcquireNextImageKHR-semaphore-
+01779, vkBeginCommandBuffer-commandBuffer-00049, vkCmdDispatch-None-08114,
+vkCmdDraw-None-09600, vkQueueSubmit2-commandBuffer-03875, vkQueueSubmit2-
+semaphore-03868, vkResetFences-pFences-01123, vkUpdateDescriptorSets-None-
+03047. All pre-existing/attributable to the demo test_dispatch/compute_desc_
+gatherer pipeline (KI-024), zero new types.
+
+LIVE STABILITY
+---------------
+VIXEN_RESTIR_GATE_DEMO=1 + VIXEN_RESERVOIR_CONFIG_ENABLED=1, VIXEN.exe, 300
+frames: zero SYNC-HAZARD lines, clean render-loop exit + clean deinit.
+
+CONCLUSION
+-----------
+All four pieces of M7 gated clean on the FINAL integrated tree (Tiered-ESVO
+reconciliation + origin/main merge + SkyProjectionNode fix + docs). Ready for
+Opus final whole-diff review.

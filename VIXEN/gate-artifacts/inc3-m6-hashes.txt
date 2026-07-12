@@ -1,0 +1,206 @@
+Sampled Lighting Inc3 M6 -- gate verification (ReSTIR -> Inc2 accumulation -> tonemap/UI, full-stack live gate)
+
+Scope
+------------------------------------------------------------------------------
+M6's task text: "Wire the noisy ReSTIR DI result through Inc2's temporal
+accumulation (using M2's geometric reject) -> tonemap. This is the intended
+§3 stack assembled end-to-end."
+
+FINDING: the wiring itself was ALREADY COMPLETE by M5. SpatialReuseShade.comp
+(M5's own second dispatch) already owns the accumulation seam (moved
+verbatim from DirectLighting.comp, itself moved from BodyInstanceRayMarch.comp
+in M1/Inc2) using worldPosHistoryImage's geometric reject (M2/KI-023), and
+already owns outputImage/historyImage, feeding BlitNode -> the swapchain/UI-
+composite chain. There is no separate "tonemap" operator anywhere in this
+engine -- the design doc's diagram (Sampled-Lighting-Design-2026-07.md line
+44, "temporal accumulation -> [denoiser, later] -> tonemap/UI") uses
+"tonemap/UI" to name the EXISTING terminal UI-composite/present stage, not a
+pass that needs to be built. Confirmed via grep across shaders/ and source/:
+zero matches for tonemap/tonemapping/toneMap outside that one design-doc
+label and one unrelated doc example file.
+
+The actual gap M6 needed to close (self-identified from M5's own Progress
+Log, which explicitly flagged it): M4/M5's equal-error-vs-brute-force gate
+only ever read DirectLightingNode's PRE-spatial reservoir buffer (the
+estimator BEFORE spatial reuse folds in neighbors). The spatially-combined
+`current` reservoir inside SpatialReuseShade.comp exists only in shader
+registers -- reservoirBufferA/B are declared readonly in that pass -- so no
+GPU-visible state existed for a CPU readback to verify unbiasedness survived
+spatial combine + accumulation. M5's own Self-Review: "a future milestone
+adding a post-spatial-combine GPU readback could close a direct on-GPU
+variance comparison... not required for [M5]'s gate."
+
+What M6 built
+------------------------------------------------------------------------------
+- New debug-only SSBO (binding 27, node name `spatial_reservoir_debug_buffer`,
+  ReservoirRecord/16B-per-pixel layout -- reuses the exact same generated
+  struct as reservoirBufferA/B, no new type). Same extent-follow sizing
+  pattern (PARAM_BYTES_PER_PIXEL=16, VULKAN_DEVICE_IN/SWAPCHAIN_INFO wired to
+  compute_render_target, same as reservoirBufferA/B).
+- SpatialReuseShade.comp writes its spatially-combined `current` reservoir
+  into this buffer immediately after the neighbor-combine loop, for every
+  pixel that enters the `reservoirEnabled && anyHitRT` block (same addressing
+  as reservoirBufferA/B's own reservoirIdx = hitRecordIdx).
+- Single writer (SpatialReuseNode), zero GPU readers -- Execute-only wiring,
+  no new hazard class (the CPU readback happens host-side after
+  vkDeviceWaitIdle, same precedent as the existing reservoirBufferA/B gate
+  readback).
+- VulkanGraphApplication.cpp: a second, independent readback block
+  (RestirGateDemoM6PostSpatial) at the SAME tick-60 window as the existing
+  M4/M5 block, computing the identical equal-error-vs-brute-force identity
+  now against the post-spatial-combine buffer -- does not replace or modify
+  the existing M4/M5 measurement, both print in the same run.
+
+Build discipline
+------------------------------------------------------------------------------
+No pre-existing binaries/cache/ in this worktree (first build here) -- the
+M5 stale-cache gotcha does not apply. `build.bat all vixen-ninja` (full
+reconfigure) via the machine-wide build queue (registered, waited for turn,
+built). 2 pre-existing failures only (test_recipe_boot_ingest missing
+<algorithm>, test_body_instance_raymarch_render missing POSIX setenv/
+unsetenv on MSVC) -- identical to every prior milestone M1-M5, confirmed
+untouched by this milestone's diff. VIXEN.exe and vixen_editor.exe both
+built. Binary mtimes (2026-07-12 14:21) postdate the M6 commit (14:11);
+`strings` confirms `spatial_reservoir_debug_buffer` and
+`RestirGateDemoM6PostSpatial` symbols present in VIXEN.exe (not
+dead-stripped) -- rules out the M2 false-pass class.
+
+Live gate runs (all VIXEN_EXIT_AFTER_FRAMES-bounded, unattended)
+------------------------------------------------------------------------------
+
+1) Default scene, reservoirEnabled=0 (the byte-identity escape hatch) --
+   RESOLVED, independently reproduced (see note below on the initial gap)
+   Reproduced M1/M4's own exact methodology: vixen_editor.exe (NOT
+   VIXEN.exe -- the canonical hash has always come from the editor app, per
+   gate-artifacts/inc3-m1-hashes.txt line 43-47 and inc3-m4-hashes.txt line
+   95-97, both of which this session cross-checked directly), default
+   editor scene (no script), VIXEN_EDITOR_CAPTURE_FRAMES=10,
+   VIXEN_EXIT_AFTER_FRAMES=20, run from build/ninja/binaries/.
+
+   sha256(gate-artifacts/inc3-m6-default-capture.png) =
+     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+   Canonical baseline (Inc0/Inc1/Inc2/Inc3 M1-M5, unchanged):
+     fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1
+
+   Result: MATCH (byte-identical). File size 8227 bytes, matching M1's own
+   documented default-capture size exactly. vixen_editor.exe RUN_EXIT=0,
+   clean shutdown. This independently confirms the byte-identity escape
+   hatch holds through the FULL M6 stack (SpatialReuseShade's accumulation
+   seam + the new binding-27 debug-buffer write), not just structurally.
+
+   Second data point, matching M4's own precedent: VIXEN_RESERVOIR_CONFIG_
+   ENABLED=1 (reservoirEnabled=1) on the SAME default non-emissive scene,
+   same capture convention (VIXEN_EDITOR_CAPTURE_DIR=temp_reservoir_on to
+   avoid collision) -- sha256 = SAME (fde9c268...), confirmed via `cmp`
+   byte-for-byte identical to the reservoirEnabled=0 capture above (not
+   merely same hash). Matches M4's own finding exactly: reservoirEnabled=1
+   is safe/inert on a non-emissive scene (empty light-tree cut -> zero RIS
+   contribution), now reconfirmed through M6's full accumulation+debug-
+   buffer wiring.
+
+   NOTE on the initial gap: the first pass at this gate incorrectly
+   concluded no in-tree capture harness was reachable from the standalone
+   app, based on a grep that only found EditorApplication's OWN
+   CaptureFrameToPng override and missed that the canonical hash was never
+   produced via VIXEN.exe's VIXEN_HUD_CAPTURE_FRAMES path in the first
+   place -- M1-M5 always used vixen_editor.exe's VIXEN_EDITOR_CAPTURE_FRAMES,
+   confirmed directly from their own gate-artifacts files once actually
+   checked. team-lead traced VulkanGraphApplication::CaptureHudFrameToPng
+   (the sibling HUD-capture mechanism, real and reachable but NOT what
+   produced this hash historically) and prompted a re-check, which
+   surfaced the correct pre-existing methodology already recorded in
+   inc3-m1-hashes.txt/inc3-m4-hashes.txt. Lesson: check the prior
+   milestones' OWN gate artifacts for the exact invocation before
+   concluding a mechanism doesn't exist.
+
+2) VIXEN_RESTIR_GATE_DEMO=1 (reservoirEnabled auto-set to 1, M3's emissive
+   many-light gate scene, VIXEN_EXIT_AFTER_FRAMES=90)
+   - Render loop exited: frame limit reached, RUN_EXIT=0.
+   - Pre-spatial estimator (RestirGateDemo, DirectLightingNode's own buffer,
+     UNCHANGED codepath from M4/M5):
+       validPixels=289  gpuEstimateAvg=19.263894  bruteForcePerPixelAvg=19.272385
+       relativeError=0.000441  (0.044%) -- byte-identical to M4/M5's own
+       documented result, confirming this milestone's new code does not
+       perturb the pre-spatial-combine estimator.
+   - POST-SPATIAL-COMBINE estimator (RestirGateDemoM6PostSpatial, the NEW
+     binding-27 readback -- the actual M6 full-stack correctness check):
+       validPixels=289  gpuEstimateAvg=19.301395  bruteForcePerPixelAvg=19.272385
+       relativeError=0.001505  (0.15%)
+     Interpretation: unbiasedness survives spatial combine. The small
+     increase over the pre-spatial 0.044% is expected (spatial reuse
+     re-evaluates neighbor samples' pHat at THIS pixel's shading point and
+     folds them in via the same MIS balance-heuristic primitive -- a
+     genuinely different, though still unbiased, estimator draw) and is far
+     inside M3's own light-tree-cut tolerance precedent (<0.5 relative
+     error, that milestone's own "generous-but-real tolerance").
+   - VUID census: SAME 8 types as the default-scene run above, zero new
+     types, zero SYNC-HAZARD, zero EXCEPTION/CRASH -- confirms binding 27's
+     new wiring introduces no new hazard class.
+   - Pre-existing PushConstantGathererNode::Validate type-mismatch warnings
+     present (spatial_reuse_push_constant_gatherer, direct_lighting_push_
+     constant_gatherer, push_constant_gatherer) -- SAME cosmetic finding M4
+     flagged ("fires equally on both march and DirectLighting gatherers,
+     untouched by M4"), now confirmed extending naturally to
+     spatial_reuse_push_constant_gatherer too (the third gatherer M1/M5's
+     pass-split created) -- not a new defect, same pre-existing class.
+   - Pre-existing compute_desc_gatherer binding-out-of-range errors present
+     (M1's own flagged test_dispatch/compute_desc_gatherer demo-pipeline
+     gap, zero pixel impact) -- unchanged.
+
+3) VIXEN_RESTIR_GATE_DEMO=1 + VIXEN_RESTIR_ORBIT_DEMO=1, 300-frame continuous
+   0->2pi yaw sweep, VIXEN_EXIT_AFTER_FRAMES=300 (temporal-stability gate)
+   - Render loop exited: frame limit reached, RUN_EXIT=0.
+   - RestirGateDemo/RestirGateDemoM6PostSpatial at tick 60: "no comparable
+     data (validPixels=0)" -- the camera has already orbited away from the
+     tick-60 center-window content by that point in a continuous sweep (same
+     class of tick/camera-motion sensitivity M2's own Progress Log
+     documented, here in the opposite direction: motion moves the target OUT
+     of the fixed center-window rather than making two ticks look
+     coincidentally identical). Not a defect: this run's purpose is the
+     temporal-stability/no-crash/no-new-hazard gate, not a fresh equal-error
+     measurement (that was already closed by run #2's static-camera window).
+   - VUID census: SAME 8 types across the full 300-frame sweep, zero
+     SYNC-HAZARD, zero EXCEPTION/CRASH lines anywhere in the 2605-line log.
+   - No qualitative ghosting/instability signal available this session (no
+     frame-capture-to-PNG harness invoked for the standalone app -- see the
+     byte-identity caveat above); the log-level absence of any hazard/crash
+     signal across a full continuous 300-frame orbit is the evidence
+     available from this run.
+
+4) Both apps boot/close clean
+   - VIXEN.exe: confirmed clean via runs 1-3 above (RUN_EXIT=0 every time,
+     "Render loop exited: frame limit reached" every time).
+   - vixen_editor.exe: VIXEN_EXIT_AFTER_FRAMES=10, default document. RUN_EXIT=0,
+     "Render loop exited: frame limit reached", clean DeInitialize sequence.
+     VUID census: 4 types (a subset of the 8 above -- expected, the editor's
+     default document scene doesn't exercise the test_dispatch/compute_desc_
+     gatherer demo-pipeline gap), zero SYNC-HAZARD, zero EXCEPTION/CRASH.
+
+Escape hatch (reservoirEnabled=0)
+------------------------------------------------------------------------------
+See run #1 above -- CONFIRMED via independent sha256 reproduction of the
+canonical fde9c268... capture hash (vixen_editor.exe,
+VIXEN_EDITOR_CAPTURE_FRAMES=10, VIXEN_EXIT_AFTER_FRAMES=20), MATCH, plus
+VUID-census/clean-exit, plus the structural code-reading argument (the new
+debug-buffer write is provably unreachable when disabled). Also confirmed
+reservoirEnabled=1 stays inert on the default non-emissive scene (byte-for-
+byte `cmp`-identical to the reservoirEnabled=0 capture), matching M4's own
+precedent. Fully closed, no residual gap.
+
+Known non-blocking carry-forwards (unchanged by M6, documented here for
+completeness, not new findings)
+------------------------------------------------------------------------------
+- Second Tiered-ESVO reconciliation (origin/main's Task 23,
+  `traverseOctreeInstancedOnce` LOD-gate rework) remains correctly deferred
+  to M7 close-out per the plan's own KNOWN FOLLOW-UP entry -- confirmed this
+  session it is NOT tracked in Known-Issues.md (only tracked in the plan
+  doc's own Progress Log), and confirmed M6's own diff does not touch
+  BodyInstanceRayMarch.comp/SceneBindings.glsl at all, so it remains
+  genuinely non-blocking for this milestone.
+- Pre-existing test failures (test_recipe_boot_ingest, test_body_instance_
+  raymarch_render) -- unchanged, same as M1-M5.
+- Pre-existing compute_desc_gatherer/PushConstantGathererNode::Validate
+  warnings -- unchanged in kind, same as M1/M4/M5 (now also present on
+  spatial_reuse_push_constant_gatherer, expected given M5's pass-split added
+  that gatherer instance).

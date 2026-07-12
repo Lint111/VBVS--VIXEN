@@ -1,0 +1,296 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// DirectLighting.comp - RIS + temporal reservoir pass (Sampled Lighting Inc3 M1/M4/M5)
+// ============================================================================
+// KI-018: the shading half of BodyInstanceRayMarch.comp, split into its own
+// ComputeStageNode pass (M1). Sampled Lighting Inc3 M5 splits this pass AGAIN:
+// this shader is now RIS-initial-candidates + TEMPORAL reservoir reuse ONLY —
+// a pure buffer producer, no image writes at all. The analytic shading, the
+// SPATIAL reservoir reuse, and the outputImage/historyImage/worldPosHistoryImage
+// writes all moved to the new SpatialReuseShade.comp (its own ComputeStageNode
+// pass, run AFTER this one — see BuildRenderGraph.cpp's spatialReuseNode wiring).
+//
+// WHY SPLIT AGAIN (M5): the plan's Task 5 calls for spatial reuse to read EVERY
+// neighbor pixel's post-temporal reservoir, not just its own. That is only sound
+// once ALL pixels' temporal-reuse writes for this frame have retired — a genuine
+// cross-DISPATCH, same-frame hazard (not the same shape as M4's cross-FRAME
+// same-node reuse, which relied on the persistent-buffer/fence precedent). This
+// pass's reservoir writes (bindings 25/26) are declared to the scheduler via a
+// BufferSyncGathererNode-fed BUFFER_WRITE_ARRAY (ComputeStageNodeConfig's generic
+// array-hazard slot — see that config's own class doc for the array-hazard
+// mechanism) so SpatialReuseShade.comp's own BUFFER_READ_ARRAY bakes a REAL
+// timeline edge — not an incidental ordering. See BuildRenderGraph.cpp's
+// sync-slot wiring comment for the full hazard-declaration shape.
+//
+// TraceWorldShadow (SceneBindings.glsl, #included below) needs the FULL scene
+// traversal machinery to cast an any-hit occlusion ray against the same body
+// instances/octrees the march traversed — this pass therefore declares its
+// OWN copy of every scene SSBO (bindings 1/2/3/4/5/10/11/12/13/14/15) via a
+// SEPARATE DescriptorResourceGathererNode (see BuildRenderGraph.cpp), mirroring
+// the march's own gatherer wiring. Those scene buffers are read-only in BOTH
+// passes (read-after-read is not a hazard), so no auto-sync hazard slot is
+// declared for them.
+// ============================================================================
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// ============================================================================
+// BUFFER BINDINGS
+// ============================================================================
+// This pass no longer WRITES outputImage (SpatialReuseShade.comp owns that write,
+// M5) but still binds it read-only at binding 0, EXCLUSIVELY for imageSize() —
+// the same "declared but only for extent" convention BodyInstanceRayMarch.comp's
+// own binding-0 already established pre-M5 (see that shader's MAIN comment) —
+// so this pass's dispatch extent always matches the real render target under
+// VIXEN_RENDER_SCALE with no new push-constant field needed.
+layout(rgba8, binding = 0) uniform readonly image2D outputImage;
+
+#include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
+
+// ============================================================================
+// LIGHTING CONFIG (binding 16) — still declared: TraceWorldShadow needs the
+// scene bound, and shadowConfig below gates this pass's OWN visibility ray
+// (cast against the reservoir's chosen sample, see the RIS section).
+// ============================================================================
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+// ============================================================================
+// HIT RECORD BUFFER (binding 17) — this pass READS ONLY
+// ============================================================================
+#include "HitRecord.glsl"
+
+layout(std430, binding = 17) readonly buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// ============================================================================
+// SHADOW CONFIG (binding 18)
+// ============================================================================
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+// ============================================================================
+// TEMPORAL ACCUMULATION CONFIG (binding 19) — reprojectionEnabled gates this
+// pass's OWN temporal reservoir reproject (mirrors the pre-M5 gating exactly).
+// historyImage/worldPosHistoryImage themselves are no longer bound here (M5 —
+// this pass no longer reads/writes them for the accumulate seam; it still
+// reads worldPosHistoryImage@22 for reservoir-reprojection validity, below).
+// ============================================================================
+#include "Generated/AccumulationConfig.glsl"
+
+layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
+    AccumulationConfig accumulationConfig;
+};
+
+// ============================================================================
+// PREV-FRAME CAMERA MATRIX (binding 21)
+// ============================================================================
+#include "Generated/PrevCameraConfig.glsl"
+
+layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
+    PrevCameraConfig prevCameraConfig;
+};
+
+// ============================================================================
+// WORLDPOS/DEPTH COMPANION HISTORY (binding 22) — Sampled Lighting Inc3 M2 (KI-023)
+// ============================================================================
+// This pass reads it ONLY (reservoir-reprojection validity, KI-023's geometric
+// reject reused for temporal reservoir reuse) — SpatialReuseShade.comp now owns
+// the WRITE of this image (moved there alongside the accumulate seam's own
+// historyImage write, M5).
+layout(rgba32f, binding = 22) uniform readonly image2D worldPosHistoryImage;
+
+// ============================================================================
+// RESERVOIR CONFIG (binding 23)
+// ============================================================================
+#include "Generated/ReservoirConfig.glsl"
+
+layout(std430, binding = 23) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
+
+// ============================================================================
+// LIGHT TREE BUFFER (binding 24)
+// ============================================================================
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+// ============================================================================
+// RESERVOIR CURRENT/PREVIOUS PING-PONG (bindings 25/26)
+// ============================================================================
+// Both buffers are ALWAYS bound at BOTH bindings; reservoirConfig.frameParity&1 (see
+// ReservoirConfig.cs's own doc comment) picks which is CURRENT (this frame's write
+// target, THIS pass) vs PREVIOUS (last frame's reservoir, read for temporal reuse) — no
+// CPU-side rewiring needed frame-to-frame. Sampled Lighting Inc3 M5: THIS shader is now
+// the ONLY writer of these buffers (SpatialReuseShade.comp reads them read-only for
+// neighbor sampling) — see BuildRenderGraph.cpp's array-hazard wiring.
+#include "Generated/ReservoirRecord.glsl"
+
+layout(std430, binding = 25) buffer ReservoirBufferA {
+    ReservoirRecord reservoirRecordsA[];
+};
+layout(std430, binding = 26) buffer ReservoirBufferB {
+    ReservoirRecord reservoirRecordsB[];
+};
+
+// ============================================================================
+// RIS / RESERVOIR MATH (Sampled Lighting Inc3 M4) — GPU twin of Reservoir.h
+// ============================================================================
+// SYNC CONTRACT: reservoirUpdate/reservoirUnbiasedWeight/reservoirCombine below are a
+// line-by-line port of libraries/SVO/include/Reservoir.h's Reservoir::Update /
+// Reservoir::UnbiasedWeight / Reservoir::Combine — see that file's header for the full
+// WRS/MIS derivation (unbiasedness identity, temporal-combine-as-resumed-WRS-stream).
+// Any change here must be mirrored there (test_reservoir_mirror.cpp's CPU-mirror tests
+// are the red-green gate for this math, run BEFORE trusting this GPU path). Sampled
+// Lighting Inc3 M5: SpatialReuseShade.comp #includes ReservoirCombine.glsl (factored out
+// of this file, see that include) rather than re-declaring reservoirUnbiasedWeight/
+// reservoirCombine a second time — one primitive, two call sites, matching the plan's
+// "reuse the same combine primitive" mandate for spatial reuse.
+#include "ReservoirCombine.glsl"
+
+// Target-function value p_hat(i) for light-tree cut node i — see ReservoirCombine.glsl's
+// own copy of this comment for the full derivation; declared here too (both shaders need
+// it, and it depends on lightTreeBuffer which is declared per-shader above it).
+float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
+    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
+    vec3 toLight = node.worldPos - shadingPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
+    return nodePower / dist2;
+}
+
+// Builds a fresh reservoir from reservoirConfig.candidateCount uniform draws over the
+// light-tree cut (Reservoir::BuildFromUniformCandidates mirror). Returns an
+// empty/invalid reservoir (y=0xFFFFFFFF) if the cut has no nodes this frame.
+ReservoirRecord reservoirBuildFromLightTree(vec3 shadingPos, inout uint rngState) {
+    ReservoirRecord r;
+    r.y = 0xFFFFFFFFu;
+    r.weightSum = 0.0;
+    r.sampleCount = 0u;
+    r.targetPdf = 0.0;
+
+    uint cutCount = lightTreeBuffer.nodeCount;
+    if (cutCount == 0u) return r;
+
+    float sourcePdf = 1.0 / float(cutCount);
+    uint M = max(reservoirConfig.candidateCount, 1u);
+    for (uint i = 0u; i < M; ++i) {
+        uint candidateIndex = uint(rngNextFloat(rngState) * float(cutCount));
+        candidateIndex = min(candidateIndex, cutCount - 1u);
+        float pHat = lightTreeNodePHat(candidateIndex, shadingPos);
+        reservoirUpdate(r, candidateIndex, pHat, sourcePdf, rngNextFloat(rngState));
+    }
+    return r;
+}
+
+// ============================================================================
+// PUSH CONSTANTS: the `pc` block (PushConstants, incl. DEBUG_MODE_* defines) is
+// declared once in SceneBindings.glsl (#included above).
+// ============================================================================
+// MAIN
+// ============================================================================
+// RIS initial candidates + TEMPORAL reservoir reuse ONLY (Sampled Lighting Inc3 M5 split).
+// Reads HitRecord back (written by the march this same frame), builds a fresh reservoir
+// from the light-tree cut, folds in the reprojected previous-frame reservoir if valid,
+// and publishes the result into whichever ping-pong buffer is CURRENT this frame. Writes
+// NO image — a pure buffer producer, consumed by SpatialReuseShade.comp's own dispatch.
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize      = imageSize(outputImage);  // read-only binding, extent only (see above)
+
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+
+    if (reservoirConfig.reservoirEnabled == 0u) return;  // byte-identity escape hatch: no reservoir work at all
+
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
+    vec3 rayDir = getRayDir(uv);
+
+    // -----------------------------------------------------------------------
+    // Read back the HitRecord the march wrote this frame.
+    // -----------------------------------------------------------------------
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    HitRecord recReadback = hitRecords[hitRecordIdx];
+
+    bool anyHitRT     = (recReadback.flags & HITRECORD_FLAG_HIT) != 0u;
+    vec3 bestWorldPos = recReadback.worldPos;
+
+    if (!anyHitRT) return;  // nothing to build a reservoir for; SpatialReuseShade.comp's
+                             // own reservoir-validity check (current.y==0xFFFFFFFF) skips it
+
+    uint reservoirIdx = hitRecordIdx;
+
+    // frameParity picks which ping-pong buffer is CURRENT (this frame's write target) vs
+    // PREVIOUS (last frame's reservoir, read for temporal reuse) — see ReservoirConfig.cs's
+    // own doc comment. Both buffers are always bound; only the ROLE each plays this frame
+    // changes.
+    bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
+
+    // RNG seed: per-pixel XOR'd with frameParity — see this file's earlier RIS-section
+    // comment for why (fresh candidate set every frame, not a repeated one).
+    uint rngState = pcgHash(reservoirIdx ^ (reservoirConfig.frameParity * 2654435761u));
+
+    ReservoirRecord current = reservoirBuildFromLightTree(bestWorldPos, rngState);
+
+    // Temporal reuse: fold in the REPROJECTED previous-frame reservoir, validated
+    // GEOMETRICALLY via the SAME worldPosHistoryImage buffer KI-023's reproject reject
+    // uses (M2) — one buffer, two consumers, per the plan's design note.
+    if (accumulationConfig.reprojectionEnabled != 0u) {
+        vec4 prevClip = prevCameraConfig.prevViewProj * vec4(bestWorldPos, 1.0);
+        if (prevClip.w > 1e-5) {
+            vec2 prevNDC = prevClip.xy / prevClip.w;
+            vec2 reprojUV = prevNDC * 0.5 + 0.5;
+            bool onScreen = all(greaterThanEqual(reprojUV, vec2(0.0))) &&
+                            all(lessThanEqual(reprojUV, vec2(1.0)));
+            if (onScreen) {
+                ivec2 reprojTexel = clamp(ivec2(reprojUV * vec2(imgSize)), ivec2(0), imgSize - ivec2(1));
+                vec2 texelDelta = vec2(reprojTexel - pixelCoords);
+                const float kMaxReprojTexelDist = 64.0;  // 8px radius, matches the accumulation seam's own bound
+                if (dot(texelDelta, texelDelta) <= (kMaxReprojTexelDist * kMaxReprojTexelDist)) {
+                    vec4 histWorldPosT = imageLoad(worldPosHistoryImage, reprojTexel);
+                    const float kMaxReprojWorldPosDelta = 0.1;  // matches the accumulation seam's own epsilon
+                    if (distance(histWorldPosT.xyz, bestWorldPos) <= kMaxReprojWorldPosDelta) {
+                        uint prevReservoirIdx = uint(reprojTexel.y) * uint(imgSize.x) + uint(reprojTexel.x);
+                        ReservoirRecord prevReservoir = parityEven
+                            ? reservoirRecordsB[prevReservoirIdx]
+                            : reservoirRecordsA[prevReservoirIdx];
+
+                        // Cap the carried sample count (ReservoirConfig.temporalCap).
+                        if (prevReservoir.sampleCount > reservoirConfig.temporalCap) {
+                            float scale = float(reservoirConfig.temporalCap) / float(prevReservoir.sampleCount);
+                            prevReservoir.weightSum *= scale;
+                            prevReservoir.sampleCount = reservoirConfig.temporalCap;
+                        }
+
+                        if (prevReservoir.y != 0xFFFFFFFFu && prevReservoir.y < lightTreeBuffer.nodeCount) {
+                            float pHatAtPrevY = lightTreeNodePHat(prevReservoir.y, bestWorldPos);
+                            reservoirCombine(current, prevReservoir, pHatAtPrevY, rngNextFloat(rngState));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Publish this frame's POST-TEMPORAL reservoir into whichever buffer is CURRENT this
+    // frame — SpatialReuseShade.comp's own dispatch (which runs strictly after this one,
+    // per the baked array-hazard write->read edge) reads it back for both its own pixel
+    // AND its neighbors.
+    if (parityEven) {
+        reservoirRecordsA[reservoirIdx] = current;
+    } else {
+        reservoirRecordsB[reservoirIdx] = current;
+    }
+}

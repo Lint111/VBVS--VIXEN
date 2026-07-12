@@ -60,6 +60,20 @@ Vixen::Gpu::AccumulationConfig MakeDefaultAccumulationConfig() {
     if (const char* reprojectEnv = std::getenv("VIXEN_ACCUMULATION_REPROJECT")) {
         cfg.reprojectionEnabled = (reprojectEnv[0] == '1') ? 1u : 0u;
     }
+
+    // Sampled Lighting Inc3 M4: the equal-error-vs-brute-force live gate demo scene
+    // (VIXEN_RESTIR_GATE_DEMO) needs its OWN temporal reservoir reuse (DirectLighting.comp's
+    // RIS+Combine block) to actually fire every frame -- that block is itself gated on
+    // accumulationConfig.reprojectionEnabled (reusing the M2 worldPos/depth reproject
+    // infrastructure), so without this, the demo's reservoir never accumulates past a single
+    // frame's M=8 candidates and the readback measures high-variance single-frame noise
+    // instead of the converged multi-frame estimate the gate's own kReadbackTick design
+    // assumes. Explicit overrides (VIXEN_ACCUMULATION_ENABLED/_REPROJECT, above) still win if
+    // set, matching every other VIXEN_*_DEMO block's "explicit override wins" convention.
+    if (std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
+        if (!std::getenv("VIXEN_ACCUMULATION_ENABLED"))  cfg.enabled = 1u;
+        if (!std::getenv("VIXEN_ACCUMULATION_REPROJECT")) cfg.reprojectionEnabled = 1u;
+    }
     return cfg;
 }
 

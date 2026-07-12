@@ -1,0 +1,200 @@
+Sampled Lighting Inc3 M4 -- gate verification (RIS + temporal reservoir reuse)
+
+Scope
+------------------------------------------------------------------------------
+M4 = reservoir CURRENT/PREVIOUS ping-pong SSBOs (Vixen::Gpu::ReservoirRecord,
+one per pixel) + LightTreeBuffer GPU upload of the M3 CPU light-tree cut +
+RIS initial-candidate generation (WRS over the light-tree cut, uniform source
+pdf) + temporal reuse (reprojected via the M2 worldPos/depth buffer,
+geometric validity test, ReservoirConfig.temporalCap clamp) wired into
+DirectLighting.comp, additive to the existing analytic lighting.lights[]
+contribution. CPU-mirror tests (Reservoir.h / test_reservoir_mirror.cpp)
+land the 3 mandated unbiasedness identities RED-GREEN before this GPU path.
+
+Build discipline
+------------------------------------------------------------------------------
+Every new .cpp/schema addition got a CMakeLists.txt entry across this
+milestone (LightTreeBufferNode.cpp, test_reservoir_mirror.cpp,
+LightTreeBuffer.cs/ReservoirRecord.cs codegen targets) -- `build.bat all`
+(full reconfigure) run before this gate, not `build.bat build`, per the
+documented M2 false-pass gotcha.
+
+Final full rebuild: 144/149 targets succeeded on the first full pass; of the
+5 reported failures, 2 are the SAME pre-existing gaps M1/M2/M3 already
+documented (test_recipe_boot_ingest missing <algorithm>, 
+test_body_instance_raymarch_render missing POSIX setenv/unsetenv on MSVC --
+both files untouched by this milestone), and 3 (view_hud_check,
+accumulationconfig_check, prevcameraconfig_check) are a PRE-EXISTING
+parallel-dotnet-invocation race in the Yeroket kernel-codegen tool's shared
+obj/ directory (multiple _check targets racing to write the same
+CodegenTool.pdb/dll under concurrent ninja -j -- confirmed independent of
+this milestone's own new schemas by re-running ALL affected _check targets,
+including the two this milestone ADDED (lighttreebuffer_check,
+reservoirrecord_check), SERIALLY: all pass cleanly with zero drift). Filed
+as a friction-log entry (~/.claude/friction.md, 2026-07-12) for the
+underlying dotnet-lock-contention gap; not a code defect.
+
+Also found + worked around a genuine Yeroket kernel-codegen emitter bug
+(GpuStructCppEmitter never emits TRAILING struct padding after the last
+field, so a [GpuStruct] with a leading Float3 forcing 16B struct alignment
+whose natural field-sum isn't already a 16B multiple gets a static_assert
+its own emitted layout can't satisfy -- hard compile error). Worked around
+in LightTreeGpuNode's schema (explicit _reserved0/1 fields reaching a
+naturally-32B size) rather than touching the shared emitter, to keep this
+milestone's blast radius contained. Filed in ~/.claude/friction.md with a
+concrete fix suggestion (trailing-pad emission, mirroring the existing
+inter-field pad logic).
+
+VIXEN.exe and vixen_editor.exe both linked cleanly from the same build.
+
+CPU-mirror test gate (fresh rebuild, all suites green)
+------------------------------------------------------------------------------
+  test_reservoir_mirror        8/8   PASS (all 3 mandated unbiasedness
+                                           identities, see below)
+  test_reservoirconfig_layout  3/3   PASS (updated for the new 32B/
+                                           frameParity layout)
+
+Unbiasedness identities (test_reservoir_mirror.cpp)
+------------------------------------------------------------------------------
+1. Weight normalization: W = (1/targetPdf) * (weightSum/M).
+   - WeightNormalizationFormulaMatchesManualComputation: exact formula match
+     vs an independently-transcribed manual recomputation.
+   - WeightNormalizationProducesUnbiasedEstimateOverManyRuns: 20,000
+     independent reservoir runs against a 12-candidate synthetic cut,
+     estimate converges to the true candidate-power sum within 2% relative
+     error (tolerance chosen for statistical noise at this sample count,
+     not hand-waved -- see the test's own inline rationale).
+2. Temporal combine preserves the estimator's expected value.
+   - TemporalCombineBookkeepingIsExactlyAdditive: structural check --
+     weightSum/sampleCount are EXACTLY additive across a combine (the
+     "resume the same WRS stream" identity), verified to 1e-4 float
+     tolerance.
+   - TemporalCombineStaysUnbiasedOverManyRuns: 20,000 runs, post-combine
+     estimate STILL converges to the SAME true sum as identity 1's
+     single-reservoir baseline within 2% -- the combine introduces no bias.
+3. RIS converges to an INDEPENDENT brute-force Monte-Carlo estimate.
+   - RisConvergesToBruteForceMonteCarloEstimate_SmallCut (8 candidates,
+     50,000 runs, <1.5% relative error) and _LargeCut (40 candidates,
+     50,000 runs, <2% relative error) -- SyntheticCut::
+     BruteForceMonteCarloEstimate shares NO code with Reservoir::Update /
+     BuildFromUniformCandidates (a direct closed-form sum over the
+     candidate set), satisfying the "shape-check vs external ref, not
+     circular parity" discipline from the kernel-framework work.
+
+GPU wiring verification (live, real render loop -- vixen_editor.exe)
+------------------------------------------------------------------------------
+Both shaders (BodyInstanceRayMarch, DirectLighting) compiled successfully
+from source at runtime (confirmed via the live "[Builder] Shader bundle
+build completed successfully: DirectLighting" log line) -- this is the
+first real-glslang-compile confirmation of the RIS/reservoir GLSL code
+(binding 24 LightTreeBuffer, bindings 25/26 reservoir ping-pong, the
+pcgHash/reservoirUpdate/reservoirUnbiasedWeight/reservoirCombine/
+reservoirBuildFromLightTree functions, and the RIS+temporal-reuse+shade
+block in main()).
+
+Escape hatch (reservoirEnabled=0, the default): captured frame 10 sha256 =
+fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1 -- matches
+the M1/M2/M3 canonical byte-identity baseline hash exactly.
+
+reservoirEnabled=1 (VIXEN_RESERVOIR_CONFIG_ENABLED=1) on the DEFAULT 3-body
+demo scene: captured frame 10 sha256 = SAME
+(fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1),
+confirmed via `cmp` (byte-for-byte identical PNG, not merely same hash).
+This is the CORRECT and expected result -- the default demo scene has no
+baked SEM_EMISSION content (per M3's own scope note), so
+LightTreeBufferNode's cut is empty (nodeCount=0) and the RIS block's
+reservoirBuildFromLightTree returns an invalid reservoir every pixel,
+contributing zero radiance. This proves reservoirEnabled=1 is SAFE/INERT on
+a non-emissive scene (no crash, no visual regression, no VUID change) but
+does NOT by itself constitute the equal-error-vs-brute-force gate below.
+
+Live syncval (the milestone's flagged single-biggest risk)
+------------------------------------------------------------------------------
+reservoirEnabled=1 run: 8 unique VUID types (vkAcquireNextImageKHR-
+semaphore-01779, vkBeginCommandBuffer-commandBuffer-00049,
+vkCmdDispatch-None-08114, vkCmdDraw-None-09600,
+vkQueueSubmit2-commandBuffer-03875, vkQueueSubmit2-semaphore-03868,
+vkResetFences-pFences-01123, vkUpdateDescriptorSets-None-03047) --
+EXACTLY M3's own documented 8-type census, all attributable to the
+pre-existing test_dispatch/compute_desc_gatherer binding-18-21-out-of-range
+gap M1 first flagged. NO NEW VUID type appeared -- specifically, no
+read-before-write hazard on the reservoir ping-pong buffers or the
+light-tree buffer (direct_lighting_desc_gatherer/direct_lighting_gatherer
+show ZERO error-level log lines in this run). This is the key signal for
+the "same-node cross-frame reuse needs no sync slot" design decision
+(reservoir buffers wired Execute-only, mirroring historyImage/
+worldPosHistoryImage's shipped precedent) -- confirmed clean under a real
+live dispatch, not just static review.
+
+Render loop exited cleanly ("Render loop exited: frame limit reached", 0
+EXCEPTION/CRASH lines) in both the reservoirEnabled=0 and =1 runs.
+
+Equal-error vs brute-force reference on an ACTUAL many-light scene -- DONE
+------------------------------------------------------------------------------
+Closed via VIXEN_RESTIR_GATE_DEMO: a live demo-scene env-var (mirroring
+VIXEN_RESIDENCY_GATE_DEMO's shape) that bakes THE SAME >=10^3-emissive-voxel
+gate scene test_light_tree.cpp's BakeEmissiveGateScene uses (n=32, r=10,
+center(16,16,16), spatially-varying emissive intensity), computes the CPU
+light-tree cut (BuildLightTreeCut, FINE threshold=0.001 -- test_light_
+tree.cpp's own "bounded cut" COARSE threshold=50.0 was tried FIRST and
+found to collapse the whole scene into 1 root node, since the cut decision
+compares against MipSample::value, a per-voxel MEAN intensity ~1-4, not an
+aggregate power; the fine threshold correctly yields the full 64-node cut),
+pushes it to the GPU via LightTreeBufferNode::SetLightTreeCut (world-
+transformed grid->world per TraceWorld.glsl's own p_base=(p_world-worldPos)
+/renderScale convention), and forces reservoirEnabled=1 +
+accumulationConfig.enabled/reprojectionEnabled=1 (the RIS+Combine block in
+DirectLighting.comp is itself gated on reprojectionEnabled, reusing the M2
+worldPos/depth infrastructure -- without this the demo's reservoir never
+accumulates past one frame's M=8 candidates).
+
+METHODOLOGY CORRECTION (found + fixed during this gate, documented for the
+record): the FIRST working version of this gate compared a window-averaged
+GPU estimate against a brute-force reference evaluated at ONE hand-picked
+"canonical" shading point (the sphere's front-pole surface point, assuming
+every center-window pixel shades near there). That gave relativeError=
+0.9888 (~89x undershoot). A DIAG readback recomputing pHat at the assumed
+canonical point for the SAME light-tree node each pixel's reservoir had
+actually chosen, compared directly against the shader's own targetPdf for
+that node, showed ratios varying 28x-71x across different pixels/nodes --
+NOT a constant ratio, which is the signature of a GEOMETRIC mismatch (a
+uniform scale/unit bug gives a constant ratio), not a math or upload bug.
+Root cause: the assumed canonical point does not equal the real per-pixel
+HitRecord.worldPos. FIX: read back hit_record_buffer (ALSO host-visible/
+host-coherent via StorageBufferNode, same pattern as the reservoir
+buffers) and compute the brute-force reference PER-PIXEL at each pixel's
+OWN HitRecord.worldPos (offset 32 in the hand-written std430 layout --
+see HitRecord.glsl's own field-offset comment) over the same world-cut --
+genuinely apples-to-apples, no assumed geometry. This is a real,
+non-hand-waved root-cause-fix, not a tolerance-widening workaround: the
+comparison methodology itself was wrong, not the reservoir math.
+
+RESULT (post-fix, 289-pixel center window, tick 60 = 2x ReservoirConfig.
+temporalCap=32 frames of temporal accumulation on a static camera/scene):
+  validPixels=289
+  gpuEstimateAvg=19.263894           (per-pixel-averaged RIS estimate)
+  bruteForcePerPixelAvg=19.272385    (per-pixel-averaged brute-force Sum_i
+                                       (power_i/dist_i^2) at each pixel's
+                                       OWN real HitRecord.worldPos)
+  relativeError=0.000441             (0.044%)
+
+Tolerance justification: 0.044% is far tighter than the CPU-mirror tests'
+own 1.5-2% tolerance (themselves already generous for 20k-50k-trial Monte-
+Carlo convergence) -- here, 289 independent per-pixel RIS estimates (each
+with up to sampleCount=40 accumulated WRS samples, ReservoirConfig.
+temporalCap=32 + candidateCount=8 fresh draws that frame) average out to a
+very tight match against the SAME quantity computed by a closed-form,
+non-reservoir sum. This is the FIRST actual ReSTIR-rendered numeric result
+in the program, closing the plan's Task 4 gate text verbatim ("equal-error
+vs M3's brute-force reference on a static many-light frame") on real GPU-
+computed reservoirs, not a synthetic/CPU-only proxy.
+
+Scope note: this validates the RIS+temporal-reservoir ESTIMATOR against its
+OWN candidate population (the light-tree cut) at real per-pixel shading
+points -- the plan's Task 4 unbiasedness claim is about the RIS estimator
+relative to its candidate set. It does NOT separately re-validate the
+cut's own fidelity to the raw voxel data (that is M3's own gate, already
+passed via CutAggregatePowerApproximatesBruteForceLeafSum). No visual/PNG
+capture was taken for this specific run (the numeric readback IS the
+gate); a future milestone wanting a rendered-pixel screenshot of ReSTIR
+output can layer VIXEN_EDITOR_CAPTURE_FRAMES on top of this same demo.

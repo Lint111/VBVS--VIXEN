@@ -45,6 +45,8 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
 
 set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/BoolOpNodeConfig.h
+    include/Data/Nodes/BlitNodeConfig.h  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    include/Data/Nodes/BufferSyncGathererNodeConfig.h  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     include/Data/Nodes/CameraNodeConfig.h
     include/Data/Nodes/CommandPoolNodeConfig.h
     include/Data/Nodes/ComputeDispatchNodeConfig.h
@@ -199,6 +201,8 @@ set(RENDERGRAPH_CORE_SOURCES
 
 set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/BoolOpNode.h
+    include/Nodes/BlitNode.h  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    include/Nodes/BufferSyncGathererNode.h  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     include/Nodes/CameraNode.h
     include/Nodes/CommandPoolNode.h
     include/Nodes/ComputeDispatchNode.h
@@ -242,6 +246,8 @@ set(RENDERGRAPH_NODE_HEADERS
 
 set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BoolOpNode.cpp
+    src/Nodes/BlitNode.cpp  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
+    src/Nodes/BufferSyncGathererNode.cpp  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
     src/Nodes/ConstantNode.cpp  # M3: self-registration TU for the header-only Constant node types
     src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
@@ -261,7 +267,10 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/ShadowConfigNode.cpp      # Sampled Lighting Inc1 M4: ShadowConfig upload ring
     src/Nodes/AccumulationConfigNode.cpp  # Sampled Lighting Inc2 M1: AccumulationConfig upload ring
     src/Nodes/AccumulationHistoryNode.cpp # Sampled Lighting Inc2 M1: persistent temporal-accumulation history image
+    src/Nodes/WorldPosHistoryNode.cpp     # Sampled Lighting Inc3 M2: persistent worldPos/depth companion history image (KI-023)
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
+    src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
+    src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
@@ -300,6 +309,68 @@ set(RENDERGRAPH_NODE_SOURCES
                                  # archiving all of RenderGraphNodes (which pulls in every node and
                                  # defeats scoping; see that file's UIRenderNodeType handling).
 )
+
+# ----------------------------------------------------------------------------
+# Source/registration completeness check (Graph-Derived-Node-Linkage-Spec-2026-07
+# §3 foot-gun): a .cpp added under src/Nodes/ but never added to
+# RENDERGRAPH_NODE_SOURCES gets no CMake target at all -- nothing to whole-archive,
+# nothing to link, no build error -- and the only symptom is a confusing runtime
+# "Node type not registered" throw far away from the real cause. Every .cpp
+# currently under src/Nodes/ is a VIXEN_REGISTER_NODE registrar TU (verified against
+# the directory contents when this check was written -- see git history for the
+# audit), so the invariant this enforces is exact: the glob of what's on disk must
+# equal RENDERGRAPH_NODE_SOURCES, in both directions. If a genuinely non-registrar
+# .cpp is ever added to src/Nodes/, it must still be added to
+# RENDERGRAPH_NODE_SOURCES (and will get its own harmless OBJECT lib) rather than
+# carving an exception into this check -- an exclude list here would silently
+# re-open the exact gap this check exists to close.
+file(GLOB _rendergraph_node_srcs_on_disk RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "src/Nodes/*.cpp")
+
+set(_rendergraph_node_srcs_listed "")
+foreach(_node_src IN LISTS RENDERGRAPH_NODE_SOURCES)
+    list(APPEND _rendergraph_node_srcs_listed "${_node_src}")
+endforeach()
+
+set(_rendergraph_missing_from_list "")
+foreach(_disk_src IN LISTS _rendergraph_node_srcs_on_disk)
+    list(FIND _rendergraph_node_srcs_listed "${_disk_src}" _idx)
+    if(_idx EQUAL -1)
+        list(APPEND _rendergraph_missing_from_list "${_disk_src}")
+    endif()
+endforeach()
+
+set(_rendergraph_missing_from_disk "")
+foreach(_listed_src IN LISTS _rendergraph_node_srcs_listed)
+    list(FIND _rendergraph_node_srcs_on_disk "${_listed_src}" _idx)
+    if(_idx EQUAL -1)
+        list(APPEND _rendergraph_missing_from_disk "${_listed_src}")
+    endif()
+endforeach()
+
+if(_rendergraph_missing_from_list OR _rendergraph_missing_from_disk)
+    set(_rendergraph_completeness_msg
+        "RENDERGRAPH_NODE_SOURCES is out of sync with the files actually present under src/Nodes/:")
+    if(_rendergraph_missing_from_list)
+        string(APPEND _rendergraph_completeness_msg
+            "\n  On disk but MISSING from RENDERGRAPH_NODE_SOURCES (libraries/RenderGraph/CMakeLists.txt):")
+        foreach(_f IN LISTS _rendergraph_missing_from_list)
+            string(APPEND _rendergraph_completeness_msg "\n    ${_f}")
+        endforeach()
+        string(APPEND _rendergraph_completeness_msg
+            "\n  These files get NO CMake target, are never compiled, and any VIXEN_REGISTER_NODE "
+            "in them silently never runs -- add each to RENDERGRAPH_NODE_SOURCES.")
+    endif()
+    if(_rendergraph_missing_from_disk)
+        string(APPEND _rendergraph_completeness_msg
+            "\n  Listed in RENDERGRAPH_NODE_SOURCES but MISSING on disk:")
+        foreach(_f IN LISTS _rendergraph_missing_from_disk)
+            string(APPEND _rendergraph_completeness_msg "\n    ${_f}")
+        endforeach()
+        string(APPEND _rendergraph_completeness_msg
+            "\n  Remove each stale entry from RENDERGRAPH_NODE_SOURCES.")
+    endif()
+    message(FATAL_ERROR "${_rendergraph_completeness_msg}")
+endif()
 
 # ============================================================================
 # Debug Infrastructure
@@ -607,6 +678,24 @@ target_link_libraries(RenderGraphNodes
 # just this one node -- the define moves with it.
 target_compile_definitions(RenderGraphNode_UIRenderNode PRIVATE
     VIXEN_UI_ASSET_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+
+# Sampled Lighting Inc3 M1 finding: SkyProjectionNode::ResolveShaderPath() (and any other
+# RenderGraphNodes node compiling its own shaders straight from source) falls back to CWD-relative
+# paths ("shaders", "../shaders") when VIXEN_SHADER_SOURCE_DIR isn't defined -- which it never was
+# for this target (only application/main/CMakeLists.txt defined it, for VixenApp). Pre-existing gap,
+# not introduced by M1; mirrors application/main's own definition exactly so every RenderGraphNodes
+# node gets the same reliable, CWD-independent shader-source resolution VixenApp has always had.
+#
+# Inc3 M7 re-fix: the Graph-Derived Node Linkage epic (merged from origin/main) split
+# RenderGraphNodes from one STATIC library compiling every node's .cpp into a facade over
+# per-node RenderGraphNode_<Name> OBJECT libraries (see the loop above) -- RenderGraphNodes
+# itself no longer compiles SkyProjectionNode.cpp (or any node source), so this define stopped
+# reaching ResolveShaderPath() the moment that split landed, silently regressing SkyProjectionNode
+# back to CWD-relative shader resolution (same class of bug UIRenderNode's own VIXEN_UI_ASSET_
+# SOURCE_DIR define above was correctly re-homed for at the same time -- SkyProjectionNode's
+# just got missed). Apply to the actual compiling target instead of the empty facade.
+target_compile_definitions(RenderGraphNode_SkyProjectionNode PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
 
 # ============================================================================
 # Install and Properties (both static libs)

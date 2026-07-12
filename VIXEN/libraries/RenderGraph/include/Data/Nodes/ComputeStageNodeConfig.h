@@ -36,30 +36,75 @@ namespace ComputeStageNodeCounts {
  * the swapchain-specific ComputeDispatchNode, this node is configurable for ANY of
  * three roles in the multi-submit fan-in proof:
  *
- *   - PRODUCER: writes a storage buffer (BUFFER_WRITE, ComputeStorageWrite); no
- *     WSI, no fence, no binary handoff — just compute + a timeline SIGNAL of its
+ *   - PRODUCER: writes a set of storage buffers (BUFFER_WRITE_ARRAY, ComputeStorageWrite);
+ *     no WSI, no fence, no binary handoff — just compute + a timeline SIGNAL of its
  *     group's deduped signalEdges.
- *   - CONSUMER: reads storage buffers (BUFFER_READ_A/B, ComputeStorageRead) and
- *     writes the swapchain image (SWAPCHAIN_INFO, ComputeStorageWrite); waits the
+ *   - CONSUMER: reads a set of storage buffers (BUFFER_READ_ARRAY, ComputeStorageRead)
+ *     and writes the swapchain image (SWAPCHAIN_INFO, ComputeStorageWrite); waits the
  *     binary imageAvailable (WSI acquire) + per-edge timeline WAITS, signals the
  *     binary renderComplete (for Present), owns the in-flight fence, and transitions
  *     the swapchain image GENERAL→PRESENT_SRC.
  *
  * The producer→consumer ordering is SOLELY the baked timeline edges — there is NO
  * binary semaphore between producers and the consumer. The scheduler bakes one
- * SyncEdge per (writer-group → reader-group) hazard on a shared buffer Resource*:
- * wiring a StorageBufferNode's STORAGE_BUFFER output into a producer's BUFFER_WRITE
- * (ComputeStorageWrite) AND the consumer's BUFFER_READ_x (ComputeStorageRead) makes
- * both nodes' bundles reference the SAME Resource*, so the tracker records a
- * write-then-read on it and bakes the edge. Two such buffers → 2 waitEdges on the
- * consumer → the genuine 2-wait timeline fan-in.
+ * SyncEdge per (writer-group → reader-group) hazard on a shared array-typed buffer
+ * Resource*: wiring a BufferSyncGathererNode's BUFFER_ARRAY output into BOTH a
+ * producer's BUFFER_WRITE_ARRAY (ComputeStorageWrite) AND a consumer's
+ * BUFFER_READ_ARRAY (ComputeStorageRead) makes both nodes' bundles reference the
+ * SAME Resource* (the gathered array VALUE, not any one buffer inside it), so the
+ * tracker records a write-then-read on it and bakes the edge.
+ *
+ * SAMPLED LIGHTING INC3 M5 — GENERALIZED FROM FIXED NAMED SLOTS: this replaces the
+ * PRE-M5 shape (three fixed named slots — BUFFER_WRITE/BUFFER_READ_A/BUFFER_READ_B,
+ * one Resource* per physical buffer) with TWO array-typed slots (BUFFER_WRITE_ARRAY/
+ * BUFFER_READ_ARRAY, each carrying std::vector<VkBuffer>). WHY: a fixed named slot
+ * per buffer does not scale — every new multi-buffer hazard shape (the original 2-wait
+ * fan-in proof's A/B pair; later, a reservoir ping-pong pair) meant adding MORE named
+ * slots to this shared, load-bearing config. The array shape means an arbitrary
+ * buffer COUNT (the fan-in demo's 2 producers -> 1 two-buffer-reading consumer; a
+ * future N-buffer hazard) needs NO new named slots here, ever again — only a
+ * BufferSyncGathererNode instance (see BufferSyngGathererNode.h) pre-registered with
+ * the right count, upstream of whichever ComputeStageNode(s) need the hazard
+ * declared. Each connecting side (producer vs consumer) uses its OWN
+ * BufferSyncGathererNode instance (one gathers the write-side buffer(s), a SEPARATE
+ * one gathers the read-side buffer(s)) — the SAME underlying StorageBufferNode
+ * Resource* must reach BOTH gatherers so their respective array Resource*s end up
+ * wired into the SAME producer-write-array/consumer-read-array Resource* pairing
+ * the scheduler correlates on (mirrors the pre-M5 "same StorageBufferNode output
+ * feeds both a WRITE and a READ slot" identity, just via an array now).
  *
  * The buffer sync slots here are the DECLARATION of intent for the scheduler; the
- * actual descriptor binding still flows through the DescriptorResourceGathererNode.
- * Both reference the same StorageBufferNode output, so they stay consistent.
+ * actual descriptor binding still flows through the DescriptorResourceGathererNode
+ * (a SEPARATE, older gatherer for shader descriptor sets — not to be confused with
+ * BufferSyncGathererNode, which exists purely to feed THESE sync slots).
  *
  * Role is selected by PARAM_IS_CONSUMER (default false ⇒ producer) plus which slots
  * are wired (a producer leaves the buffer-read + swapchain slots unconnected).
+ *
+ * IMAGE_WRITE (Sampled Lighting Inc3 M1) stays a SEPARATE, still-single (non-array)
+ * slot — deliberately NOT generalized into the same array shape as the buffer slots
+ * (M5 decision): images and buffers are genuinely different resource kinds with
+ * different consumer needs (IMAGE_WRITE's own entry/exit barrier logic in
+ * ComputeStageNode::RecordComputeCommands is per-IRenderTarget*, not something an
+ * arbitrary-count array would simplify — every image-producing pass this codebase
+ * has needed so far writes exactly ONE non-swapchain image, unlike buffers where
+ * 2+ simultaneous ping-pong/fan-in buffers are the established multi-buffer case).
+ * If a genuine multi-image-write need arises later, generalize IMAGE_WRITE THEN,
+ * with its own concrete use case driving the design — not preemptively here. This
+ * is the image-typed sibling of BUFFER_WRITE_ARRAY: transitions the wired
+ * IRenderTarget*'s CURRENT image to GENERAL before dispatch (reusing
+ * SwapchainBarriers::TransitionImageToGeneralBarrier2, the same generic-over-any-
+ * VkImage helper SWAPCHAIN_INFO's consumer path already uses) and hazard-tracks the
+ * write (ComputeStorageWrite), so a downstream reader/blit bakes a real SyncEdge.
+ * Deliberately kept SEPARATE from SWAPCHAIN_INFO, not merged into it or gated by
+ * PARAM_IS_CONSUMER: SWAPCHAIN_INFO OWNS the WSI contract (binary acquire-wait,
+ * renderComplete-signal, fence ownership, PRESENT_SRC transition) — real semantics
+ * that only apply to the actual swapchain image. IMAGE_WRITE NEVER touches WSI and
+ * NEVER forces PRESENT_SRC; it leaves the image in GENERAL and lets whatever reads
+ * it next (another IMAGE_WRITE producer, or a presentation-only blit) decide the
+ * next transition. A future reader must not fold these two slots together — that
+ * would silently reintroduce WSI coupling into every non-swapchain image-producing
+ * pass.
  */
 CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
                       ComputeStageNodeCounts::INPUTS,
@@ -89,7 +134,11 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static constexpr const char* PARAM_PC_WIDTH  = "pcWidth";
     static constexpr const char* PARAM_PC_HEIGHT = "pcHeight";
 
-    // ===== INPUTS (19) =====
+    // ===== INPUTS (19, indices 0-18 — Sampled Lighting Inc3 M5 collapsed the old 3
+    // fixed buffer slots [14,15,16] into 2 array slots [14,15], renumbering every slot
+    // after it down by one to keep the index space contiguous — RenderGraph::Validate
+    // walks every index up to INPUTS treating a gap as an undeclared-and-thus-
+    // non-nullable slot, so a hole is not a legal way to "retire" an index) =====
 
     /** @brief Vulkan device for command-buffer allocation. */
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
@@ -196,12 +245,17 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotScope::NodeLevel);
 
     /**
-     * @brief Storage buffer this stage WRITES (producer role).
-     * Auto-sync: ComputeStorageWrite — makes the scheduler record this node as a
-     * writer of the buffer Resource* so a downstream reader bakes a SyncEdge.
-     * Optional: the consumer leaves this unconnected.
+     * @brief Set of storage buffers this stage WRITES (producer role) — Sampled
+     * Lighting Inc3 M5: generalized from the old fixed BUFFER_WRITE single-buffer
+     * slot into an array. Fed by a BufferSyncGathererNode's BUFFER_ARRAY output
+     * (see that node's own file header). Auto-sync: ComputeStorageWrite — makes the
+     * scheduler record this node as a writer of the array Resource* so a downstream
+     * reader (another ComputeStageNode's BUFFER_READ_ARRAY wired to the SAME
+     * gathered-array Resource*) bakes a SyncEdge. Optional: the consumer leaves this
+     * unconnected. An empty/unconnected array is a legitimate "writes nothing"
+     * producer (e.g. a pass whose only hazard is an IMAGE_WRITE).
      */
-    INPUT_SLOT_SYNC(BUFFER_WRITE, VkBuffer, 14,
+    INPUT_SLOT_SYNC(BUFFER_WRITE_ARRAY, std::vector<VkBuffer>, 14,
         SlotNullability::Optional,
         SlotRole::Execute,
         SlotMutability::ReadWrite,
@@ -209,26 +263,20 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
     /**
-     * @brief First storage buffer this stage READS (consumer role).
-     * Auto-sync: ComputeStorageRead — paired with a producer's ComputeStorageWrite
-     * on the SAME buffer Resource*, this bakes the first fan-in SyncEdge.
-     * Optional: a producer leaves this unconnected.
+     * @brief Set of storage buffers this stage READS (consumer role) — Sampled
+     * Lighting Inc3 M5: generalized from the old fixed BUFFER_READ_A/BUFFER_READ_B
+     * two-slot pair into ONE array of arbitrary count. Fed by a
+     * BufferSyncGathererNode's BUFFER_ARRAY output. Auto-sync: ComputeStorageRead —
+     * paired with a producer's ComputeStorageWrite on the SAME array Resource*
+     * (i.e. the SAME BufferSyncGathererNode's own output, or a separate producer-
+     * side/consumer-side gatherer pair both fed from the SAME upstream buffer
+     * nodes — see this config's own class doc for the two-gatherer-instances shape).
+     * The fan-in demo's own "2 distinct read buffers -> 2 waitEdges" case is now
+     * expressed as one 2-entry array rather than two named slots; N entries -> N
+     * waitEdges generalizes with NO further slot additions. Optional: a producer
+     * leaves this unconnected.
      */
-    INPUT_SLOT_SYNC(BUFFER_READ_A, VkBuffer, 15,
-        SlotNullability::Optional,
-        SlotRole::Execute,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel,
-        ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
-
-    /**
-     * @brief Second storage buffer this stage READS (consumer role).
-     * Auto-sync: ComputeStorageRead — the SECOND fan-in edge. Two distinct read
-     * buffers, each written by a distinct producer group, give the consumer group
-     * 2 waitEdges → the genuine 2-wait timeline fan-in.
-     * Optional: a producer leaves this unconnected.
-     */
-    INPUT_SLOT_SYNC(BUFFER_READ_B, VkBuffer, 16,
+    INPUT_SLOT_SYNC(BUFFER_READ_ARRAY, std::vector<VkBuffer>, 15,
         SlotNullability::Optional,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -239,7 +287,7 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
      * @brief Timeline semaphore from FrameSyncNode (P5b). vkQueueSubmit2 signals
      * (producer) / waits (consumer) absolute timeline values for the baked edges.
      */
-    INPUT_SLOT(TIMELINE_SEMAPHORE_IN, VkSemaphore, 17,
+    INPUT_SLOT(TIMELINE_SEMAPHORE_IN, VkSemaphore, 16,
         SlotNullability::Optional,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -249,11 +297,28 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
      * @brief Per-frame timeline base offset from FrameSyncNode (P5b). Added to each
      * SyncEdge::timelineOffset to form the absolute signal/wait value.
      */
-    INPUT_SLOT(TIMELINE_FRAME_BASE_IN, uint64_t, 18,
+    INPUT_SLOT(TIMELINE_FRAME_BASE_IN, uint64_t, 17,
         SlotNullability::Optional,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
+
+    /**
+     * @brief Non-swapchain image this stage WRITES (image-producer middle-pass role).
+     * Auto-sync: ComputeStorageWrite — the image-typed sibling of BUFFER_WRITE. Makes
+     * the scheduler record this node as a writer of the wired IRenderTarget*'s
+     * Resource* so a downstream reader (another IMAGE_WRITE consumer, or a
+     * presentation blit node) bakes a SyncEdge. Transitions the image to GENERAL
+     * before dispatch; leaves it in GENERAL after (no WSI, no PRESENT_SRC — see the
+     * IMAGE_WRITE vs SWAPCHAIN_INFO doc note above the class comment). Optional: a
+     * pass with no non-swapchain image output leaves this unconnected.
+     */
+    INPUT_SLOT_SYNC(IMAGE_WRITE, Vixen::Vulkan::Resources::IRenderTarget*, 18,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
     // ===== OUTPUTS (3) =====
 
@@ -268,14 +333,17 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotMutability::WriteOnly);
 
     /**
-     * @brief Pass-through of the VkBuffer this stage WROTE (producer role).
-     * Re-publishes the BUFFER_WRITE handle VALUE so a downstream consumer can bind it
-     * via its descriptor gatherer AND so the connection establishes a topological
-     * producer→consumer ordering (the scheduler indexes groups by execution order, so
-     * a producer must sort before the consumer for the baked edge to point the right
-     * way). The hazard edge itself is baked off the SHARED StorageBufferNode Resource*
-     * wired into both stages' buffer sync slots — this passthrough only carries the
-     * handle value + the ordering edge, never a tracked-Resource identity.
+     * @brief Pass-through of the FIRST VkBuffer this stage WROTE (producer role).
+     * Re-publishes element 0 of BUFFER_WRITE_ARRAY's handle VALUE so a downstream
+     * consumer can bind it via its descriptor gatherer AND so the connection
+     * establishes a topological producer→consumer ordering (the scheduler indexes
+     * groups by execution order, so a producer must sort before the consumer for the
+     * baked edge to point the right way). Sampled Lighting Inc3 M5: kept single-buffer
+     * (not generalized to an array output) — its only consumer (BuildFanInDemoGraph.cpp)
+     * always wires each producer stage with exactly ONE buffer in its write array. The
+     * hazard edge itself is baked off the SHARED array Resource*'s per-entry
+     * constituents (see Resource::hazardConstituents_) — this passthrough only carries
+     * the handle value + the ordering edge, never a tracked-Resource identity.
      */
     OUTPUT_SLOT(BUFFER_OUT, VkBuffer, 2,
         SlotNullability::Optional,
@@ -322,12 +390,17 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         HandleDescriptor pushConstRangesDesc{"std::vector<VkPushConstantRange>"};
         INIT_INPUT_DESC(PUSH_CONSTANT_RANGES, "push_constant_ranges", ResourceLifetime::Transient, pushConstRangesDesc);
 
-        // Buffer sync slots — VkBuffer handles (their Resource* identity is what the
-        // scheduler bakes edges on; Persistent so the buffer reference survives recompile).
-        HandleDescriptor bufferDesc{"VkBuffer"};
-        INIT_INPUT_DESC(BUFFER_WRITE, "buffer_write", ResourceLifetime::Persistent, bufferDesc);
-        INIT_INPUT_DESC(BUFFER_READ_A, "buffer_read_a", ResourceLifetime::Persistent, bufferDesc);
-        INIT_INPUT_DESC(BUFFER_READ_B, "buffer_read_b", ResourceLifetime::Persistent, bufferDesc);
+        // Buffer sync slots — Sampled Lighting Inc3 M5: array-typed (std::vector<VkBuffer>),
+        // fed by a BufferSyncGathererNode; the array Resource*'s IDENTITY (shared between a
+        // producer's write-array and a consumer's read-array output) is what the scheduler
+        // bakes edges on. Transient (a value type, like PUSH_CONSTANT_DATA/DESCRIPTOR_SETS
+        // above — not a pointer/reference, so Persistent is compile-time-disallowed by
+        // SlotValidator's own CanBePersistent check; the array VALUE is re-gathered fresh
+        // by BufferSyncGathererNode::ExecuteImpl every frame anyway, so Transient is also
+        // the semantically correct lifetime here, matching every other array-VALUE slot).
+        HandleDescriptor bufferArrayDesc{"std::vector<VkBuffer>"};
+        INIT_INPUT_DESC(BUFFER_WRITE_ARRAY, "buffer_write_array", ResourceLifetime::Transient, bufferArrayDesc);
+        INIT_INPUT_DESC(BUFFER_READ_ARRAY, "buffer_read_array", ResourceLifetime::Transient, bufferArrayDesc);
 
         // Timeline primitives from FrameSyncNode.
         HandleDescriptor timelineSemDesc{"VkSemaphore"};
@@ -335,6 +408,12 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
 
         HandleDescriptor frameBaseDesc{"uint64_t"};
         INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in", ResourceLifetime::Transient, frameBaseDesc);
+
+        // Image-write sync slot — same IRenderTarget* handle shape as SWAPCHAIN_INFO
+        // (reuses swapchainDesc), but a DISTINCT slot/Resource* identity so the
+        // scheduler tracks it as its own hazard, independent of any SWAPCHAIN_INFO
+        // wiring on this or any other node.
+        INIT_INPUT_DESC(IMAGE_WRITE, "image_write", ResourceLifetime::Persistent, swapchainDesc);
 
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
@@ -354,13 +433,14 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE_IN must not be nullable");
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<BUFFER_WRITE_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<BUFFER_READ_A_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<BUFFER_READ_B_Slot::Type, VkBuffer>);
-    static_assert(BUFFER_WRITE_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
-    static_assert(BUFFER_READ_A_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
-    static_assert(BUFFER_READ_B_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
+    static_assert(std::is_same_v<BUFFER_WRITE_ARRAY_Slot::Type, std::vector<VkBuffer>>);
+    static_assert(std::is_same_v<BUFFER_READ_ARRAY_Slot::Type, std::vector<VkBuffer>>);
+    static_assert(BUFFER_WRITE_ARRAY_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+    static_assert(BUFFER_READ_ARRAY_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
     static_assert(SWAPCHAIN_INFO_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+    static_assert(IMAGE_WRITE_Slot::index == 18, "IMAGE_WRITE must be at index 18 (Sampled Lighting Inc3 M5: renumbered down by one after collapsing the 3 fixed buffer slots into 2 array slots)");
+    static_assert(std::is_same_v<IMAGE_WRITE_Slot::Type, Vixen::Vulkan::Resources::IRenderTarget*>);
+    static_assert(IMAGE_WRITE_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 };
 
 } // namespace Vixen::RenderGraph

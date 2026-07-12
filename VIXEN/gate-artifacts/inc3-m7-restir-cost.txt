@@ -1,0 +1,128 @@
+Sampled Lighting Inc3 M7 -- ReSTIR cost measurement
+=====================================================
+Date: 2026-07-12. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan backend
+-- no lavapipe/Dozen, per KI-008 / "live-verification-authoritative-for-gpu-work").
+Binary: VIXEN.exe (application/main), built from a genuine from-scratch rebuild
+of this worktree's FINAL merged tree (commit 023aabb8, post Tiered-ESVO
+reconciliation + origin/main merge + the SkyProjectionNode shader-path fix).
+
+METHOD
+------
+Same CPU FrameTimer A/B substitute as Inc1 M5 and Inc2 M5 -- KI-019
+(GPUQueryManager's isolated-dispatch timing) is STILL open, not re-investigated
+here per the plan's explicit instruction to go straight to the substitute.
+VulkanApplicationBase's CPU-side FrameTimer (RunOptions.enableFrameTimer=true,
+always-on for VIXEN.exe), logging avg/p99 wall-clock frame time every 120
+frames. Full-frame delta (CPU submit + GPU work + present/vsync), NOT an
+isolated GPU dispatch -- same caveat as Inc1/Inc2: absolute numbers carry
+CPU/present overhead the intended method would have excluded; the A/B lever
+isolates the ReSTIR delta since everything else (scene, camera, resolution,
+window) is held constant between paired runs.
+
+Lever: ReservoirConfigNode's VIXEN_RESERVOIR_CONFIG_ENABLED env var
+(reservoirEnabled 1|0), mirroring VIXEN_SHADOW_CONFIG_ENABLED/
+VIXEN_ACCUMULATION_ENABLED's convention exactly.
+
+Scene: VIXEN_RESTIR_GATE_DEMO=1 for BOTH configs (unlike a bare on/off toggle,
+this pins the SAME >=10^3-emissive-voxel gate scene -- n=32/r=10 Stored-SDF
+sphere with spatially-varying emissive intensity, the same scene M3-M6's own
+equal-error gates used) under both configs, so the delta isolates RIS/temporal/
+spatial reservoir shading cost specifically, not "scene present vs absent."
+VIXEN_RESERVOIR_CONFIG_ENABLED is a SEPARATE lever from VIXEN_RESTIR_GATE_DEMO
+(confirmed by source read of ReservoirConfigNode.cpp: the demo only implies
+enabled=1 if the explicit env var is unset -- setting it explicitly always wins).
+
+Runs: VIXEN_EXIT_AFTER_FRAMES=1500, VIXEN_WINDOW_WIDTH=1920,
+VIXEN_WINDOW_HEIGHT=1080. Each of the 2 configs (reservoirEnabled=0/1) run
+TWICE (Inc2 M5's lesson: run-to-run drift can be large enough that a single
+run misleads) -- 1500/120=12 windows/run, window 1 (frames 0-120) discarded
+as pipeline/shader warm-up, 11 stable windows/run, 22 pooled windows/config.
+Raw logs: gate-artifacts/ (not copied -- reproducible via the env vars above;
+this file's numbers are the authoritative record).
+
+RAW RESULTS (mean of 11 stable 120-frame windows per run, frames 120-1440)
+----------------------------------------------------------------------------
+  reservoirEnabled=0 run 1: avg 53.783 ms/frame (range 50.351-59.328, stdev 3.331)
+  reservoirEnabled=0 run 2: avg 58.443 ms/frame (range 57.382-60.113, stdev 0.787)
+  reservoirEnabled=0 pooled (22 windows): mean 56.113 ms, stdev 3.360
+
+  reservoirEnabled=1 run 1: avg 58.357 ms/frame (range 56.231-64.082, stdev 2.327)
+  reservoirEnabled=1 run 2: avg 64.734 ms/frame (range 64.125-65.477, stdev 0.437)
+  reservoirEnabled=1 pooled (22 windows): mean 61.545 ms, stdev 3.602
+
+SIGNAL QUALITY (honest assessment)
+------------------------------------
+delta (pooled 22 vs 22 windows) = +5.432 ms/frame.
+Signal = delta / avg-of-both-pooled-stdevs = 5.432 / 3.481 = 1.56 -- MODERATE,
+weaker than Inc1's "clean" bar (5.64) and somewhat weaker than Inc2's own
+"moderate" bar (2.34). Directionally consistent: reservoirEnabled=1 >
+reservoirEnabled=0 in BOTH of its own repeat runs (58.4/64.7 vs 53.8/58.4) --
+the delta is real, not a sign-flip artifact. run 1 of BOTH configs measured
+noticeably lower than run 2 (a shared ~4-6ms upward drift between run 1 and
+run 2 pairs, same direction in both configs) -- consistent with background
+load on the shared machine increasing between the run-1 and run-2 pairs
+(confirmed independently: multiple sibling agents were actively building/
+running on this machine during this measurement window, per team-lead status
+checks during this same session) rather than a ReSTIR-specific effect (a
+scene/feature-specific artifact would not move both configs the same
+direction by a similar magnitude). This machine-load caveat, on top of the
+already-CPU-full-frame-delta-inclusive method, means this number should be
+read as order-of-magnitude, not a tight budget figure -- consistent with
+Inc1/Inc2's own explicit caution.
+
+HIT-PIXEL CONTEXT (different app/resolution -- NOT the timing runs' own
+denominator; reported for scene-density context only, same caveat pattern
+Inc2 M5 used)
+--------------------------------------------------------------------------
+Captured via vixen_editor.exe (its own default 500x500 window, NOT VIXEN.exe's
+1920x1080 -- the two apps default to different resolutions, so this hit-pixel
+count cannot be combined with the 1920x1080 FrameTimer numbers above for a
+strict per-ray/per-hit-pixel figure the way Inc1's single-app methodology
+allowed). VIXEN_RESTIR_GATE_DEMO=1, VIXEN_EDITOR_CAPTURE_FRAMES=5, sky-color-
+formula exclusion per Inc1's method (+/-4/255 tolerance): 1024/250000 px hit
+(0.41%) -- a small sphere against mostly sky, similar sparsity class to
+Inc1's own 0.24%-hit scene despite this scene's >=10^3 emissive voxel count
+(the emissive voxels are densely packed WITHIN the sphere's small screen
+footprint, not spread across the frame). Reported as scene-density context
+only; NOT used to derive a per-ray number for the headline below (would
+require re-deriving hit-pixel count at 1920x1080 on VIXEN.exe itself, which
+this session's environment made unreliable to capture -- see gotcha below).
+
+GOTCHA found + fixed en route (not part of the ReSTIR cost result itself,
+but blocked dispatching these very runs): VIXEN.exe and vixen_editor.exe both
+failed to boot ("[SkyProjectionNode] SkyProjection.vert not found in shader
+search paths") on the fresh post-merge binary. Root-caused to the just-merged
+Graph-Derived Node Linkage epic splitting RenderGraphNodes from one STATIC lib
+compiling every node's .cpp into per-node RenderGraphNode_<Name> OBJECT libs --
+M1's own VIXEN_SHADER_SOURCE_DIR compile definition (applied to the now-empty
+RenderGraphNodes facade) silently stopped reaching SkyProjectionNode::
+ResolveShaderPath() the moment that split landed. Fixed by re-homing the
+define onto RenderGraphNode_SkyProjectionNode directly (commit 023aabb8),
+mirroring UIRenderNode's own analogous define, which the same restructuring
+HAD correctly re-homed (SkyProjectionNode's was simply missed). Verified fix:
+fresh rebuild all-green, vixen_editor.exe boots clean, byte-identity
+fde9c268... still holds. All measurement runs above are POST this fix.
+
+HEADLINE NUMBER (use this one, with the stated caveats)
+----------------------------------------------------------------------
+ReSTIR (RIS + temporal + spatial reservoir reuse, DirectLighting.comp +
+SpatialReuseShade.comp combined -- this measurement does not separate the two
+dispatches) full-frame cost on a >=10^3-emissive-voxel scene:
+  ~5.4 ms/frame @ 1920x1080 (pooled A/B delta, signal 1.56 -- moderate, not
+  clean; treat as an order-of-magnitude anchor, not a precise budget figure --
+  weaker signal than Inc1/Inc2's own numbers, plausibly due to shared-machine
+  background load during this measurement window, see Signal Quality above).
+Anchored against Inc1's ~240 ns/shadow-ray (a single shadow ray per hit pixel)
+and Inc2's ~1.2 ms/frame temporal-accumulation cost: ReSTIR's ~5.4 ms/frame is
+roughly 4.5x Inc2's accumulation cost and represents substantially more
+per-hit-pixel work than a single shadow ray (RIS draws candidateCount=8
+samples from the light-tree cut PLUS a full shadow-ray visibility test per
+selected sample PLUS temporal reservoir combine PLUS spatialCount=4 neighbor
+combines with their own shadow-ray-equivalent target-pdf re-evaluation) --
+qualitatively consistent with "many-samples-per-pixel" being meaningfully
+more expensive than "one shadow ray per pixel," though this measurement
+cannot isolate a clean per-ray figure the way Inc1's could (different
+hit-pixel-counting resolution, weaker A/B signal, RIS+temporal+spatial cost
+is not cleanly separable into a single "cost per ray" the way one shadow ray
+per light was). Re-derive with the isolated-dispatch method once KI-019 is
+fixed, and against a less-loaded machine, before finalizing any hard budget.

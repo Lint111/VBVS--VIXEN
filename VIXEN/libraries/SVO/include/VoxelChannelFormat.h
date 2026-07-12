@@ -11,8 +11,12 @@ enum SemanticId : uint32_t {
 // How a SCALAR field is integrated by the renderer (declared by the data, not inferred).
 enum FieldKind : uint32_t { FK_NONE = 0, FK_DISTANCE = 1, FK_DENSITY = 2 };
 // Component count per voxel for a channel's element type.
+// SEM_EMISSION is SCALAR intensity (Sampled Lighting Inc3 M3) — phenomenological
+// RGB emissive color is deferred to the spectral fast-follow (Inc3b/M8+, see
+// Sampled-Lighting-Inc3-Plan-2026-07.md Task 3's forward-compat note); a 3-
+// component emissive tint is NOT what this channel stores.
 inline uint32_t SemanticElemCount(SemanticId s) {
-    return (s == SEM_COLOR || s == SEM_NORMAL || s == SEM_EMISSION) ? 3u : 1u;
+    return (s == SEM_COLOR || s == SEM_NORMAL) ? 3u : 1u;
 }
 constexpr uint32_t kVoxelsPerBrick = 512u;          // 8^3, no apron (Inc2 as-built)
 constexpr uint32_t kMaxChannels    = 8u;            // fits the OctreeConfig tail (<= ~12)
