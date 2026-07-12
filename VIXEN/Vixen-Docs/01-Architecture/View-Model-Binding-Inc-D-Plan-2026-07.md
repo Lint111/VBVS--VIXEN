@@ -172,6 +172,13 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
   (Split from Milestone 1 because undo-over-a-set is explicitly the increment's real correctness weight
   per the design doc — it gets its own validator pass rather than being folded into the forward-mutation
   milestone's review.)
+- [ ] **Milestone 3 (Task 5, NEW — user-flagged 2026-07-12): lossy vs. non-lossy undo policy.** See
+  "Task 5" below. Scoped AFTER Milestone 2's Opus validation, does not reopen or modify M1/M2's shipped
+  behavior for the true-dead-entity case (which stays correctly lossy — an entity that no longer exists
+  cannot have a component restored into it). Addresses a DIFFERENT, previously-unproven case: an entity
+  that is still LIVE but had its bound component removed between dispatch and undo — today's skip
+  condition doesn't distinguish this from true entity death, so it silently drops a recoverable delta
+  instead of restoring it. One Sonnet implementer + one Opus validator, same as M1/M2.
 
 ## Progress Log
 
@@ -296,6 +303,51 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
     before invoking its `build.bat`, and prefer the untargeted `build.bat build` (full graph) over a
     `--target`-scoped one if a scoped build ever reports an unknown-target error against a target that
     demonstrably exists in `build.ninja`.
+
+### Task 5 — Lossy vs. non-lossy undo policy (Milestone 3, NEW)
+
+**The gap (user-flagged 2026-07-12, during Milestone 2's post-implementation review):** Milestone 1/2's
+dead-entity skip is keyed ONLY to `world.valid(entity)` — it treats "entity destroyed" and "entity alive
+but its bound component was separately removed" identically: both silently skip the restore, with no
+delta preserved. The first case is correctly, unavoidably lossy (there is no entity to write a component
+value into). The second case is NOT the same thing — the entity still exists; restoring its captured
+prior value is a well-defined, recoverable operation, but today's code takes the same "skip and forget"
+path for it as for a genuinely dead entity, because `GaiaLayerViewDataProvider::WriteU32`'s underlying
+`setComponent` already no-ops silently if the component isn't present (this was itself relied upon,
+correctly, for the ALREADY-shipped "no component at dispatch time" skip case in Milestone 1's
+`DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsserted` test — but that test only proves the
+DISPATCH-time skip is safe, it says nothing about whether an undo/redo-time "component removed but entity
+alive" case should behave the same way).
+
+**Scope:**
+- Add an explicit `enum class UndoLossPolicy { SkipMissingData, RestoreMissingData }` parameter to
+  `DispatchSetMutation()` (default `SkipMissingData`, i.e. Milestone 1/2's existing shipped behavior is
+  UNCHANGED unless a caller opts in) — or propose a better mechanism if Task 1-equivalent research turns
+  up a cleaner shape; report and justify before building, per this plan's own established discipline.
+- `SkipMissingData` (default): current behavior, unchanged — both "entity dead" and "entity alive, no
+  component" skip the restore, observable via the existing `SetMutationSkipCounters`. Do NOT change this
+  path's behavior; M1/M2 are already built, tested, and validated against it.
+- `RestoreMissingData`: distinguish the two cases explicitly —
+  - Entity dead (`!world.valid(entity)`) → ALWAYS skip (this case is unavoidably lossy regardless of
+    policy — there is no entity to write into; do not attempt to "resurrect" it).
+  - Entity alive but the bound component is absent → **re-add the component** via Gaia's structural
+    add-path (not `setComponent`'s silent no-op) with the captured prior value, so the delta is NOT lost.
+    This is a structural change (add), so it must go through whatever safe-add mechanism the codebase uses
+    elsewhere for a live entity (mirror how `Selected`/other tag/value components are added elsewhere in
+    this codebase — do not invent a new pattern).
+- **Proof vehicle:** extend `test_set_mutation_dispatch.cpp` (or a new file — your call) with a test that
+  dispatches over a selection, removes the bound component (not the entity) from one touched entity between
+  dispatch and undo (while leaving the entity itself alive), and asserts: under `SkipMissingData`, the
+  restore is skipped and observable (today's behavior, unchanged); under `RestoreMissingData`, the
+  component is re-added with the EXACT captured prior value and this is distinguishable from the
+  true-dead-entity skip path (e.g. a separate counter, or the same counter with a documented note that the
+  two cases are now handled differently under this policy).
+- **Do NOT touch:** the true-dead-entity path's behavior (must remain lossy under BOTH policies — this is
+  physically unavoidable, not a policy choice); Milestone 1/2's default (`SkipMissingData`) behavior for
+  any existing caller that doesn't opt into the new policy; Inc-Ovr's projection syntax (this is closer to
+  a dispatch-time POLICY flag than a per-binding projection, but if Task 1-equivalent research finds
+  Inc-Ovr's mechanism is actually the right home for this, propose that instead of forcing it into
+  `SetMutationDispatch.h` — flag the question, don't just build it into one file).
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
