@@ -93,11 +93,17 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
         commandBuffers_.MarkDirty(i);
     }
 
-    // Producer role: re-publish the written buffer handle so a downstream consumer can
-    // bind it (descriptor) and so the connection topologically orders producer→consumer.
-    // The hazard edge is baked off the shared StorageBufferNode Resource* (the sync
-    // slots), not this passthrough — this only carries the handle value + ordering edge.
-    VkBuffer writtenBuffer = ctx.In(ComputeStageNodeConfig::BUFFER_WRITE);
+    // Producer role: re-publish the FIRST written buffer handle so a downstream consumer
+    // can bind it (descriptor) and so the connection topologically orders producer->
+    // consumer. Sampled Lighting Inc3 M5: BUFFER_WRITE_ARRAY generalizes the old single-
+    // buffer BUFFER_WRITE into an array; BUFFER_OUT stays a single-handle passthrough
+    // (its only consumer, BuildFanInDemoGraph.cpp, wires each producer stage with
+    // exactly ONE buffer in its write array) — element 0 is the whole array for every
+    // existing/expected caller. The hazard edge itself is baked off the shared array
+    // Resource*'s per-entry constituents (see Resource::hazardConstituents_), not this
+    // passthrough — this only carries the handle value + ordering edge.
+    std::vector<VkBuffer> writtenBuffers = ctx.In(ComputeStageNodeConfig::BUFFER_WRITE_ARRAY);
+    VkBuffer writtenBuffer = writtenBuffers.empty() ? VK_NULL_HANDLE : writtenBuffers[0];
     ctx.Out(ComputeStageNodeConfig::BUFFER_OUT, writtenBuffer);
     ctx.Out(ComputeStageNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 

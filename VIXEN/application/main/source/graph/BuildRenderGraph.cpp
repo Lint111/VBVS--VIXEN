@@ -26,6 +26,7 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Data/Nodes/ComputePipelineNodeConfig.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"  // Sampled Lighting Inc3 M1: DirectLightingNode
+#include "Data/Nodes/BufferSyncGathererNodeConfig.h"  // Sampled Lighting Inc3 M5: array-hazard buffer gatherer
 #include "Data/Nodes/ConstantNodeConfig.h"
 #include "Data/Nodes/DebugBufferReaderNodeConfig.h"
 #include "Data/Nodes/DepthBufferNodeConfig.h"
@@ -75,6 +76,7 @@
 #include "Nodes/ComputeDispatchNode.h"
 #include "Nodes/ComputePipelineNode.h"
 #include "Nodes/ComputeStageNode.h"  // Sampled Lighting Inc3 M1: DirectLightingNode
+#include "Nodes/BufferSyncGathererNode.h"  // Sampled Lighting Inc3 M5: array-hazard buffer gatherer
 #include "Nodes/ConstantNodeType.h"
 #include "Nodes/DebugBufferReaderNode.h"
 #include "Nodes/DepthBufferNode.h"
@@ -237,6 +239,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle directLightingDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("direct_lighting_descriptors");
     NodeHandle directLightingPipeline = renderGraph->AddNode<ComputePipelineNodeType>("direct_lighting_pipeline");
     NodeHandle directLightingNode = renderGraph->AddNode<ComputeStageNodeType>("direct_lighting");
+
+    // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherer for DirectLightingNode's
+    // HitRecord read (generalized from the old fixed BUFFER_READ_A slot — see
+    // ComputeStageNodeConfig.h's own class doc). One entry: HitRecord.
+    NodeHandle directLightingReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("direct_lighting_read_gatherer");
 
     // Sampled Lighting Inc3 M1: presentation-only blit of the offscreen render target to the
     // swapchain (extracted from ComputeDispatchNode's M4 render-target blit — same
@@ -635,6 +642,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+    // Sampled Lighting Inc3 M5: pre-register the HitRecord read-gatherer's single slot
+    // (fixed count, no shader reflection needed).
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
     // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
@@ -3038,12 +3049,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   directLightingNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
 
     // --- Sync slots: the hazard-correlation identity. ---
-    // HitRecord: march's new BUFFER_WRITE slot <-> DirectLighting's BUFFER_READ_A, same
-    // hitRecordBufferNode::STORAGE_BUFFER Resource* on both — bakes the march->DirectLighting edge.
+    // HitRecord: march's ComputeDispatchNodeConfig::BUFFER_WRITE slot (unaffected by
+    // M5 — a DIFFERENT config, not migrated) <-> DirectLighting's BUFFER_READ_ARRAY (M5:
+    // generalized from the old fixed BUFFER_READ_A slot via directLightingReadGatherer).
+    // Same hitRecordBufferNode::STORAGE_BUFFER Resource* feeds both the march's write
+    // slot AND the gatherer's single variadic entry, whose preserved constituent
+    // identity (BufferSyncGathererNode::hazardConstituents_) is what lets
+    // ResourceAccessTracker::AddNode correlate DirectLighting's read against the SAME
+    // Resource* the march wrote — bakes the march->DirectLighting edge exactly as
+    // before.
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   computeDispatch, ComputeDispatchNodeConfig::BUFFER_WRITE, SlotRoleModifier(SlotRole::Execute));
+    // execDep (Dependency|Execute), not Execute-only: VariadicConnectionRule only
+    // populates a variadic slot's actual Resource* via a PostCompile hook when the
+    // connection carries SlotRole::Dependency — see BuildFanInDemoGraph.cpp's own
+    // identical fix + comment for the full mechanism.
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                  directLightingNode, ComputeStageNodeConfig::BUFFER_READ_A, SlotRoleModifier(SlotRole::Execute));
+                  directLightingReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(directLightingReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  directLightingNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
     // Render target: DirectLighting's IMAGE_WRITE <-> BlitNode's IMAGE_READ (wired below), same
     // renderTargetNode::RENDER_TARGET Resource* on both — bakes the DirectLighting->BlitNode edge.
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
