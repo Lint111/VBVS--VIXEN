@@ -81,6 +81,86 @@ Before writing any code, verified directly (not assumed) that `Resource::hazardC
 
 **Regression gates (real GPU, `VIXEN_VULKAN_VALIDATION=1`):** RenderGraph test suite all green (`test_buffer_sync_gatherer_node`, `test_barrier_types`, `test_frame_sync_node`+`_timeline`, `test_frame_sync_scheduler`, `test_pass_group_node_smoke`/`schedule`, `test_compute_dispatch_node`, `test_hitrecord_sdi_parity`). `VIXEN_RESTIR_GATE_DEMO` live run: steady ~100 FPS, only pre-existing documented KI-024 noise (unrelated `test_dispatch` demo pipeline — confirmed zero pixel impact, not touched by this change). `VIXEN_FANIN_DEMO` live run: ~10k frames, zero errors, zero VUIDs, stable ~1000 FPS — confirms no regression on the multi-submit fan-in sync topology this generalization sits directly alongside. Full `build.bat all`: 0 failures. Commit `4007c6ca`.
 
+## M3 Findings (2026-07-12, implementer pass)
+
+**DONE.** New standalone `shaders/ProbeUpdate.comp` (`ComputeStageNode` "probe_update",
+commit `f9453b76`), wired but NOT added to the default-live path beyond `ProbeGridConfig`'s
+own `probeGridEnabled` gate (same discipline M2 used for its own scaffolding).
+
+**Ray sample pattern:** spherical Fibonacci lattice (Keinert et al. 2015's closed-form
+mapping) — chosen over a stratified/QMC scheme because it needs no per-tick RNG state to stay
+deterministic (required for hysteresis to converge against a STABLE sample set rather than
+chasing fresh per-tick noise) while still being near-uniform for the realistic raysPerProbe
+range (tens to low hundreds).
+
+**Shading reuse:** does NOT pull in `DirectLighting.comp`'s RIS/reservoir machinery
+(`ReservoirCombine.glsl`'s `reservoirUpdate`/`reservoirCombine`) — the plan's own Task 3 scopes
+probe rays to a single deterministic sample, not spatiotemporal reuse. Instead reuses the SAME
+light-tree SSBO (binding 24) + `TraceWorldShadow` `SceneBindings.glsl` gives every consumer,
+via a single-candidate WRS draw (the M=1 degenerate case of `DirectLighting.comp`'s own
+`reservoirBuildFromLightTree` inner loop, re-derived locally rather than instantiating a full
+`ReservoirRecord` state machine for a one-shot pick). `pcgHash`/`rngNextFloat` are re-declared
+locally (mirroring `ReservoirCombine.glsl`'s own copy) rather than including that file, since
+none of its reservoir-update/-combine primitives are needed here.
+
+**Atlas-write correctness (the real risk this milestone flagged):** the plan's per-(probe,ray)
+naive shape would have every ray invocation racing to write the SAME probe's atlas texel block
+concurrently. Resolved architecturally: ONE WORKGROUP PER PROBE (`gl_WorkGroupID.x` = probe
+index, `gl_LocalInvocationID.x` = ray index, `local_size_x` = a fixed
+`PROBE_UPDATE_MAX_RAYS_PER_PROBE=256` ceiling — comfortably inside the core-spec-guaranteed
+1024-invocation minimum), workgroup-shared-memory tree reduction sums all raysPerProbe samples,
+and ONLY invocation 0 performs the hysteresis blend + atlas write for that probe. Matches
+standard DDGI's batch-then-blend update shape exactly, not an approximation. Atlas texel-block
+indexing (`texelsPerProbe = imageSize(atlas).x / (countX*countY)`) is derived from
+`imageSize()` at runtime rather than duplicating M2's `kProbeIrradianceTexelsPerProbe`/
+`kProbeVisibilityTexelsPerProbe` constants as a second source of truth — confirmed against
+`BuildRenderGraph.cpp`'s own atlas-layout comment (columns sweep X then Y, rows tile Z) rather
+than re-deriving independently.
+
+**Gate results (real GPU, Windows-native, `VIXEN_VULKAN_VALIDATION=1`):**
+- `VIXEN_PROBE_GRID_CONFIG_ENABLED=1` + `VIXEN_RESTIR_GATE_DEMO=1` (emissive scene, so the
+  light-tree cut is non-empty and probe rays have something to sample): 13,370 frames, steady
+  ~125 FPS, clean shutdown via `taskkill`. VUID census: the same 8 pre-existing documented
+  types (vkUpdateDescriptorSets-03047, vkResetFences-01123, vkQueueSubmit2-03868/03875,
+  vkCmdDraw-09600, vkCmdDispatch-08114, vkBeginCommandBuffer-00049,
+  vkAcquireNextImageKHR-01779, PresentInfoKHR-MissingAcquireWait) at the same
+  duplicated-message-limit-of-10-per-type ceiling — zero NEW VUID types introduced by the new
+  pass.
+- Default (`probeGridEnabled=0`, no env vars): boots, renders, closes clean; same VUID
+  baseline. `ProbeGridConfigNode`'s own `probeGridEnabled=0` escape hatch (checked first in
+  `main()`) makes the new pass a no-op dispatch when disabled.
+- RenderGraph auto-sync regression suite (`test_buffer_sync_gatherer_node`,
+  `test_barrier_types`, `test_frame_sync_node`, `test_frame_sync_scheduler`,
+  `test_pass_group_schedule`, `test_hitrecord_sdi_parity`): all green, re-run post-change.
+- Re-ran one of the 7 codegen `*_check` drift-guard targets that failed mid-`build.bat all`
+  (`reservoirconfig_check`) standalone and it passed clean — confirmed those 7 failures were the
+  known parallel-`dotnet run`-vs-shared-`CodegenTool~`-output-directory file-lock race (multiple
+  `*_check` targets building the SAME shared Yeroket tool concurrently under `ninja -k 0`'s
+  full-parallelism default), not a regression from this milestone's changes — none of the 7
+  failed structs (`LightingConfig`/`ReservoirConfig`/`ReservoirRecord`/`OctreeConfig`/
+  `Callables`/`ViewHud`/`ViewHudMarkup`) is `ProbeGridConfig`, which this milestone did not
+  touch.
+
+**Sync-hazard verification:** structural, not scheduler-trace-instrumented (this app has no
+default-enabled SyncEdge-dump logging path at runtime — that level of introspection lives in
+the RenderGraph unit tests, which already cover the array-hazard-expansion mechanism this pass
+relies on via `FrameSyncArrayHazard.*`). `probeUpdateGatherer`'s descriptor bindings never touch
+HitRecord, the reservoir ping-pong buffers, or the render-target images — only the same
+read-only scene SSBOs + light-tree cut every other pass already reads (read-after-read is not a
+hazard, the established precedent throughout this program) plus its own atlas
+`IMAGE_WRITE_ARRAY`. No connection exists between `probeUpdateNode` and
+`directLightingNode`/`spatialReuseNode`'s sync slots, so no edge can be baked between them by
+construction.
+
+**Deviations from the plan:** did not attempt a true octahedral per-ray-direction texel mapping
+within a probe's atlas block this milestone (M3 writes one averaged value uniformly across the
+whole texel block per probe) — flagged in-shader as M4/M5's own scope (per-direction gather is
+what the block's texel resolution anticipates, not needed for M3's "probes visibly light a
+scene" gate). The visibility atlas write is explicitly basic/placeholder (depth, depth² moments,
+no Chebyshev test applied yet) per the plan's own "your call, don't force it" M3 note — chose to
+write it since the same ray-cast pass already has the hit distance in hand at zero extra
+ray-cast cost.
+
 ## Self-Review
 
 - **Why the TraceWorld-reusability prereq first?** Every prior increment's own prereq milestone (Inc1 KI-018, Inc3 KI-023) isolated a structural blocker on a byte-identical gate before the increment's actual novel logic — Inc4's structural blocker is that no standalone (non-march) compute shader can currently pull in the scene-binding chain `TraceWorld` needs. Isolating it first means the probe-ray-casting logic (M3) lands on a proven scaffold, not tangled with a plumbing bug.
