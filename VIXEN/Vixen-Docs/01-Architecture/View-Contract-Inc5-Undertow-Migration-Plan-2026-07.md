@@ -343,9 +343,30 @@ but DO re-verify file:line if code has moved)
     (3/3), `test_view_blob_file` (3/3), `test_blob_view` (2/2), `test_view_hud_golden` (3/3) —
     all green, no regressions across the View Contract test family.
   - No blockers. Ready for Milestone 3.
+  - **Opus validator (independent re-verification across both repos):** confirmed the SoA emit
+    algorithm's writer/reader byte-layout consistency BY CONSTRUCTION (traced both sides' code,
+    not just "the test happens to pass"); hand-verified the byte-golden's arithmetic against real
+    UTF-8 lengths ("Reds"=4/""=0/"Greens"=6 → offsets [0,4,4,10]; "war"=3/"truce"=5 → [0,3,8]);
+    confirmed the C++ reader's monotonicity check provably prevents any OOB slice regardless of
+    malformed-but-monotonic input; constructed concrete hypothetical bugs (swapped column order,
+    off-by-one row indexing) and confirmed the round-trip test's distinct per-row/per-column
+    values would actually catch them; confirmed the AoS diff is exactly a one-line dispatch
+    addition with the pre-existing row-major emit untouched. Independently re-ran the Yeroket
+    suite (43/43) and both C++ round-trip binaries (3/3 SoA, 3/3 AoS) from the already-built
+    binaries. Confirmed the reported `shadowconfig_check` failure did NOT recur on validator's own
+    run either — consistent with the known concurrent-build CodegenTool race, not a real defect.
+    **One carry-forward flagged for Milestone 4/Task 4 (not a blocker now):** `ViewWireReader.cpp`
+    and `ViewWireReaderSoa.cpp` duplicate their `Cursor` struct (magic check, version guard,
+    trailing-byte check) verbatim across two files — sound today since both are independently
+    correct, but a natural refactor point once `ViewFieldDesc` gains a real per-field layout flag
+    and the two readers can fold back into one. **APPROVED, Milestone 3 can build on this.**
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
+- **`ViewWireReader`/`ViewWireReaderSoa` `Cursor` duplication** (flagged by Milestone 2's Opus validator):
+  the two C++ readers duplicate their bounds-checked `Cursor` struct (magic check, version guard,
+  trailing-byte check) verbatim. Sound today; fold back into one shared cursor once `ViewFieldDesc` gains
+  a real per-field layout flag (likely a natural side effect of Milestone 4's schema work).
 - Migrating undertow's OTHER ~30 `Undertow.Authoring.Codegen` emitter files (save codecs, patch parsers,
   authored-kind builders, effect/action/param/system registration, merge logic) — a separate, larger epic;
   this plan touches only the view-contract slice.
