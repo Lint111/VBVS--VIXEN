@@ -11,6 +11,38 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-025 — Frame-1 accumulation artifact: a small patch renders sky-colored for ~5 frames before self-converging
+
+**Discovered:** 2026-07-11, during Sampled Lighting Inc3 M2 (geometric reprojection reject) gate testing — surfaced incidentally, not caused by M2's change.
+
+**Symptom:** with `VIXEN_ACCUMULATION_ENABLED=1` (independent of reprojection on/off — identical either way), a ~32×32px patch renders sky-colored on frame 1 instead of the correct body color, then self-converges to the correct color over ~5 frames.
+
+**Root cause (not yet bisected):** confirmed PRE-EXISTING, not introduced by M2 — `git diff shaders/DirectLighting.comp` shows the `alpha>=1.0` guard and the plain non-reproject accumulation branch are byte-for-byte untouched by M2's change, and the artifact reproduces identically with reprojection entirely unset. Likely lives in Inc2 M1-M3's original accumulation/history-image initialization path (the persistent `historyImage` starts undefined; something in the frame-1/`alpha>=1.0` handling may still read a stale or uninitialized texel for that specific patch before the guard fully takes effect). Not yet isolated further.
+
+**Impact:** does not affect Inc3 M1's or M2's own gates (M1's byte-identical check uses `enabled=0`; M2's reprojection-quality check samples ticks 2+ frames past any reset, past the self-convergence window). A user watching frame 1 with accumulation enabled would see a brief, self-healing visual glitch — cosmetic, not a correctness/crash issue.
+
+**Fix options:** bisect the frame-1 accumulation/history-image initialization path (Inc2 M1's `AccumulationHistoryNode` + the `alpha>=1.0` shader guard) to find why THIS specific patch reads as sky-colored before converging; likely an uninitialized-read edge case narrower than the guard currently covers.
+
+**Severity:** low (cosmetic, self-converging, doesn't affect M1/M2 gates) · **Status:** OPEN · not a Sampled Lighting Inc3 M1/M2 defect — pre-existing Inc2 accumulation-path behavior, surfaced by M2's gate testing.
+
+---
+
+## KI-024 — `compute_desc_gatherer`'s resource array never grew to cover bindings 18-21, breaking the `test_dispatch` demo pipeline
+
+**Discovered:** 2026-07-11, during Sampled Lighting Inc3 M1's live gate (byte-identical + syncval capture) — surfaced as a side effect, not something M1's own code touches.
+
+**Symptom:** running the default capture with validation live produces repeated `[compute_desc_gatherer] ERROR: Binding 21 out of range (resourceArray_.size()=18)`, correlated with `VUID-vkCmdDraw-None-09600` (image layout UNDEFINED/TRANSFER_SRC vs GENERAL) and `VUID-vkUpdateDescriptorSets-None-03047`/`-03868` — all on the `test_dispatch` generic demo `ComputeDispatchNode` (`BuildRenderGraph.cpp` ~:168-172), a pipeline SEPARATE from the march/DirectLighting/BlitNode chain. Confirmed live-reproduced by an independent Opus validator (20 occurrences at default scale).
+
+**Root cause (not yet fully bisected):** `compute_desc_gatherer`'s `resourceArray_` is sized 18, but Inc2 (AccumulationConfig@19, historyImage@20, PrevCameraConfig@21) and Inc1 (HitRecord@17, ShadowConfig@18) added bindings that pushed the live scene past that size — this specific demo gatherer's array was never grown to track those additions, unlike the march's own gatherer which was updated each increment.
+
+**Impact:** ZERO pixel impact on the real render path — Inc3 M1's byte-identical gate passed exactly (`fde9c268…`) despite these errors being present, confirming the demo pipeline's failure is fully isolated from the march/DirectLighting/Blit chain. Only affects whoever exercises `test_dispatch`'s demo path directly.
+
+**Fix options:** grow `compute_desc_gatherer`'s `resourceArray_` to track the current binding count (mirror whatever mechanism keeps the march's own gatherer in sync as bindings are added), or make the demo pipeline binding-count-agnostic if it's meant to be a generic smoke-test rather than track the live scene's binding layout.
+
+**Severity:** low (isolated demo/test pipeline, zero effect on the shipped render path) · **Status:** OPEN · not a Sampled Lighting defect — surfaced by Inc3 M1's live gate exercising validation more thoroughly than prior milestones, not caused by it.
+
+---
+
 ## KI-020 — Two pre-existing MSVC-portability compile failures break the all-targets Windows build (`build.bat build`)
 
 **Discovered:** 2026-07-10, by the `validate-gaia-sync` Opus validator during the Gaia v0.9.2 sync (both files are byte-identical to base `ab40cb97`; unrelated to that sync — pre-existing app-rot). Surfaced because the validator ran a full `build.bat build`, which halts with `ninja: build stopped` on these two.
@@ -108,7 +140,7 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 **Fix options:** (a) extend `ComputeStageNode`'s hazard-slot capacity beyond 3 to cover the ~9 scene SSBOs a shared-scene lighting pass needs; (b) migrate the march pass (and its future siblings) from `ComputeDispatchNode` onto `ComputeStageNode`/`PassGroupNode`'s producer/consumer wiring so passes can be chained with auto-baked barriers instead of hand-run in one dispatch. Either is a RenderGraph library change, not a Sampled Lighting shader/node change — scoped to Inc3 planning.
 
-**Severity:** low for Inc1/Inc2 (no functional loss — shadows work correctly inline); becomes a hard blocker at Inc3 · **Status:** OPEN, tracked prerequisite for Inc3 · not a defect in the shipped Inc1 work, a scoped-out architecture item.
+**Severity:** low for Inc1/Inc2 (no functional loss — shadows work correctly inline); becomes a hard blocker at Inc3 · **Status:** ✅ RESOLVED 2026-07-11, Sampled Lighting Inc3 M1. The reframing that unblocked it: the "3-slot cap" was misdiagnosed above — those are AUTO-SYNC hazard-tracking slots, not descriptor bindings (the march already binds ~21 buffers via a separate `DescriptorResourceGathererNode`, decoupled from sync slots entirely); scene SSBOs are read-only in both passes so need NO hazard slot at all. The real fix (option b, migrate off `ComputeDispatchNode`'s non-chaining model) exploded into 4 RenderGraph changes once actually wired end-to-end: a standalone `BlitNode` (presentation split out of `ComputeDispatchNode`), a generic `IMAGE_WRITE` sync slot on `ComputeStageNode` (WSI-free image-write hazard tracking — it could already chain buffers but not images), a `BUFFER_WRITE` slot on `ComputeDispatchNode` (closing a genuine silent HitRecord read-before-write race across the new cross-submit boundary), and a `PARAM_WRITES_NO_IMAGE` flag (for a dispatch that manages no presentable image at all). All 4 landed byte-identical + live-syncval-clean (zero hazards on both the HitRecord and swapchain-layout checks), independently re-derived by an Opus validator from a fresh build. `DirectLighting.comp` now runs as a genuinely separate `ComputeStageNode` pass consuming `HitRecord`. Full detail: `Sampled-Lighting-Inc3-Plan-2026-07.md` M1 decision blocks + `gate-artifacts/inc3-m1-hashes.txt`.
 
 ---
 
@@ -127,6 +159,14 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 **Workaround used:** build/run the affected SVO test targets via the WSL/GCC path (`build/wsl` preset) instead, where GCC has no such macro-pollution issue — confirmed this compiles and passes cleanly (`test_gpu_parity` 4/4, `test_tier_crossing_construction` 5/5, etc.) on the same source.
 
 **Severity:** low-medium (does not block the live app or any Windows-side production build; blocks a subset of SVO test targets from being buildable/runnable on Windows/MSVC specifically, forcing a WSL fallback for those tests) · **Status:** OPEN · not a Tiered-ESVO Inc2 defect (pre-existing, surfaced by this milestone's Windows-build attempt).
+
+**Re-confirmed 2026-07-11 (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 15 full sweep):** independently re-discovered the identical failure signature (`SdfRecipes.h:100` `std::max`/`glm::max`, cascading into `SdfCoreKernels.g.hpp`) doing a from-scratch full-solution `vixen-ninja` build, expanding the known-affected-target list — `test_octree_config_sdi_parity`, `test_soa_sdf_serialize`, `test_soa_mip_serialize`, `test_tier_ref_table`, `test_tier_crossing_construction`, `test_tier_crossing_mirror_parity`, `test_channel_format`, `test_mip_sample_bake`, `test_stored_sdf_march_mirror`, `test_shell_derive`, `test_sdf_bake`, `test_recipe_bake`, `test_recipe_bake_center`, `test_octree_pool`, `test_generation_cost_benchmark`, `test_recipe_boot_ingest`, `test_recipe_baker`, `test_residency_default`, `test_gpu_parity`, `test_shell_octree_gpu` — 20 SVO test targets total, all via the same transitive `SdfRecipes.h`/`SdfBake.h` chain. Tried fix option (a) scoped to `SdfRecipes.h` alone (a `glm::max` swap + a local `NOMINMAX` guard) — insufficient, because in several of these TUs `<windows.h>` is already poisoned by an EARLIER header (often via `gtest.h`'s own transitive includes) before `SdfRecipes.h` is even reached, so a guard local to that one file can't help; **fix option (c) (global `NOMINMAX`) is the only fix that can work for every affected TU**, confirming the original note's assessment. Left unfixed this session (out of M6's scope; a build-system-wide change deserves its own verification pass, not a drive-by inside an unrelated milestone). **Also this session: could NOT re-confirm "`VIXEN.exe` itself builds fine"** — the attempted full-solution build ran the local disk (`C:`, 931GB) to 0 bytes free partway through (a SEPARATE, unrelated capacity issue — see the disk-note added to this doc's own section below) before reaching `VIXEN.exe`'s own compile step, so that specific claim is UNVERIFIED as of this note, not falsified.
+
+---
+
+## Disk capacity note (2026-07-11, observed during Inc0 M6 Task 15's full sweep)
+
+Not a code defect — recording because it silently corrupted 21 test binaries (0-byte `.exe` files from linker writes that ran out of disk mid-write) and could mislead a future sweep into reporting false compile/link failures. The `lazy-baseline-inc0` worktree's OWN `build/ninja` directory alone is ~56GB; the shared `C:` drive (931GB total) was at 930GB used / <1GB free when a from-scratch `cmake --build --preset vixen-ninja` (no target filter — every target across ~15 sibling worktrees' worth of accumulated build output sharing the same physical drive) was attempted. Symptoms if this recurs: `LINK : fatal error LNK1116: cannot grow ilk file` (mid-link disk-full) and `LINK : fatal error LNK1140: limit exceeded for program database` (a 4GB PDB size cap, hit by `VIXEN.exe`/`vixen_editor.exe`'s large debug PDBs specifically, independent of free space). **Recovery:** `find <build-dir> -iname "*.exe" -type f -printf "%s %p\n" | awk '$1==0{print $2}'` finds the 0-byte casualties; delete them so `ctest -N`'s `gtest_discover_tests` probe (which otherwise hard-errors on the FIRST corrupt binary it tries to list, blocking test discovery for the ENTIRE suite) can proceed — the removed binaries correctly show as `<name>_NOT_BUILT` placeholders in the resulting test list, an honest reflection of "never successfully linked this run," not a new failure category. No fix suggested here (freeing disk across sibling worktrees is a cross-agent/user decision, not a single milestone's call) — just the recovery recipe and the failure signature, so the next person who hits `LNK1116`/`LNK1140` mid-sweep checks `df -h` before assuming a code regression.
 
 ---
 
