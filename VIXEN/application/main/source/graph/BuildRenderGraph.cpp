@@ -330,6 +330,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle reservoirBufferA = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_a");
     NodeHandle reservoirBufferB = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_b");
 
+    // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
+    // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
+    // registers (reservoirBufferA/B are readonly that pass); this buffer gives the M6
+    // full-stack gate a GPU-visible post-spatial-combine reservoir to read back, closing the
+    // gap M5's own Progress Log flagged (M4/M5's equal-error gate only ever read
+    // DirectLightingNode's PRE-spatial buffer). Same ReservoirRecord/16B-per-pixel layout and
+    // extent-follow sizing as reservoirBufferA/B (see PARAM_BYTES_PER_PIXEL below).
+    NodeHandle spatialReservoirDebugBuffer = renderGraph->AddNode<StorageBufferNodeType>("spatial_reservoir_debug_buffer");
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -487,6 +496,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     reservoirBufferAInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
     auto* reservoirBufferBInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(reservoirBufferB));
     reservoirBufferBInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
+
+    // Sampled Lighting Inc3 M6: same extent-follow sizing as reservoirBufferA/B above.
+    auto* spatialReservoirDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(spatialReservoirDebugBuffer));
+    spatialReservoirDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -2540,6 +2553,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   reservoirBufferB, StorageBufferNodeConfig::SWAPCHAIN_INFO);
 
+    // Sampled Lighting Inc3 M6: spatial-combine debug buffer — same device + extent-driven
+    // sizing pattern as reservoirBufferA/B immediately above.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  spatialReservoirDebugBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                  spatialReservoirDebugBuffer, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -3260,6 +3280,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
                           spatialReuseGatherer, 26,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 27 (spatial-combine debug buffer): Sampled Lighting Inc3 M6 — SpatialReuseNode
+    // is the SOLE writer (debug/gate-only, never read by any shader), read back host-side by
+    // the M6 gate after vkDeviceWaitIdle (same as reservoirBufferA/B's own gate-readback
+    // precedent) — Execute-only wiring, no sync-slot/hazard declaration needed (no other GPU
+    // consumer exists to race against).
+    batch.Connect(spatialReservoirDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 27,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 0 (outputImage): SpatialReuseNode is the genuine writer now (M5 — moved from

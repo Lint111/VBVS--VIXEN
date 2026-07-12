@@ -640,6 +640,110 @@ void VulkanGraphApplication::Update() {
                     mainLogger->Warning("[RestirGateDemo] tick " + std::to_string(restirGateTick) +
                                          ": reservoir/hit-record buffers, device, or the world-cut stash not found -- readback skipped");
                 }
+
+                // Sampled Lighting Inc3 M6: SAME equal-error identity, now read from the
+                // POST-SPATIAL-COMBINE debug buffer (binding 27, SpatialReuseShade.comp's
+                // `spatialReservoirDebug` -- see that shader's own header) instead of
+                // DirectLightingNode's pre-spatial buffer above. This is the gap M5's own
+                // Progress Log explicitly flagged: M4/M5's gate re-ran the SAME pre-spatial
+                // estimator unchanged and deferred "validate the rest of the stack" to M6.
+                // Independent block (does not touch/replace the M4/M5 measurement above) so
+                // both numbers are visible side-by-side in one gate run.
+                {
+                    auto* spatialDebugBuf = static_cast<StorageBufferNode*>(
+                        renderGraph->GetInstanceByName("spatial_reservoir_debug_buffer"));
+                    auto* hitRecordBuf2 = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+                    auto* deviceInst2 = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+                    auto* renderTargetInst2 = renderGraph->GetInstanceByName("compute_render_target");
+                    if (spatialDebugBuf && hitRecordBuf2 && deviceInst2 && deviceInst2->GetVulkanDevice() &&
+                        renderTargetInst2 && g_restirGateWorldCut) {
+                        auto* device2 = deviceInst2->GetVulkanDevice();
+                        vkDeviceWaitIdle(device2->device);
+
+                        Resource* widthRes2  = renderTargetInst2->GetOutput(2, 0);
+                        Resource* heightRes2 = renderTargetInst2->GetOutput(3, 0);
+                        const uint32_t imgWidth2  = widthRes2  ? widthRes2->GetHandle<uint32_t>()  : 0u;
+                        const uint32_t imgHeight2 = heightRes2 ? heightRes2->GetHandle<uint32_t>() : 0u;
+
+                        double gpuEstimateSum2 = 0.0;
+                        double bruteForceSum2 = 0.0;
+                        uint64_t validPixels2 = 0;
+                        if (imgWidth2 > 0 && imgHeight2 > 0) {
+                            void* mapped2 = spatialDebugBuf->MapForReadback(device2);
+                            void* hitMapped2 = hitRecordBuf2->MapForReadback(device2);
+                            if (mapped2 && hitMapped2) {
+                                const auto* records2 = reinterpret_cast<const Vixen::Gpu::ReservoirRecord*>(mapped2);
+                                const size_t count2 = static_cast<size_t>(spatialDebugBuf->GetSizeBytes()) / sizeof(Vixen::Gpu::ReservoirRecord);
+                                const uint8_t* hitBytes2 = reinterpret_cast<const uint8_t*>(hitMapped2);
+                                constexpr size_t kHitRecordStride2 = 64;
+                                constexpr size_t kHitRecordWorldPosOffset2 = 32;
+                                const uint32_t centerX2 = imgWidth2 / 2u, centerY2 = imgHeight2 / 2u;
+                                constexpr uint32_t kWindowHalf2 = 8u;
+                                for (size_t i = 0; i < count2 && i < static_cast<size_t>(imgWidth2) * imgHeight2; ++i) {
+                                    const uint32_t px = static_cast<uint32_t>(i % imgWidth2);
+                                    const uint32_t py = static_cast<uint32_t>(i / imgWidth2);
+                                    if (px + kWindowHalf2 < centerX2 || px > centerX2 + kWindowHalf2 ||
+                                        py + kWindowHalf2 < centerY2 || py > centerY2 + kWindowHalf2) continue;
+
+                                    const Vixen::Gpu::ReservoirRecord& r = records2[i];
+                                    // A pixel this frame's SpatialReuseShade.comp never entered the
+                                    // ReSTIR block for (reservoirEnabled==0 or !anyHitRT) never wrote
+                                    // this buffer -- its content is whatever a PRIOR frame's dispatch
+                                    // left there (or uninitialized on frame 1). Guard identically to
+                                    // the pre-spatial block: skip anything that doesn't look like a
+                                    // genuinely valid THIS-frame reservoir.
+                                    if (r.y == 0xFFFFFFFFu || r.sampleCount == 0u || r.targetPdf <= 0.0f) continue;
+                                    if (r.y >= g_restirGateWorldCut->size()) continue;
+
+                                    const double W = (1.0 / static_cast<double>(r.targetPdf)) *
+                                                      (static_cast<double>(r.weightSum) / static_cast<double>(r.sampleCount));
+                                    gpuEstimateSum2 += static_cast<double>(r.targetPdf) * W;
+
+                                    float hitWorldPos2[3];
+                                    std::memcpy(hitWorldPos2, hitBytes2 + i * kHitRecordStride2 + kHitRecordWorldPosOffset2, sizeof(hitWorldPos2));
+                                    const glm::vec3 shadingPos2(hitWorldPos2[0], hitWorldPos2[1], hitWorldPos2[2]);
+
+                                    double pixelBruteForce2 = 0.0;
+                                    for (const auto& node : *g_restirGateWorldCut) {
+                                        const glm::vec3 toLight = node.worldPos - shadingPos2;
+                                        const double dist2 = std::max(static_cast<double>(glm::dot(toLight, toLight)), 1e-4);
+                                        const double nodePower = static_cast<double>(node.intensity) * static_cast<double>(node.coverage) *
+                                            std::pow(static_cast<double>(node.worldExtent), 3.0);
+                                        pixelBruteForce2 += nodePower / dist2;
+                                    }
+                                    bruteForceSum2 += pixelBruteForce2;
+
+                                    ++validPixels2;
+                                }
+                                spatialDebugBuf->UnmapReadback(device2);
+                                hitRecordBuf2->UnmapReadback(device2);
+                            } else {
+                                if (mapped2) spatialDebugBuf->UnmapReadback(device2);
+                                if (hitMapped2) hitRecordBuf2->UnmapReadback(device2);
+                            }
+                        }
+                        const double gpuEstimateAvg2 = validPixels2 > 0 ? gpuEstimateSum2 / static_cast<double>(validPixels2) : 0.0;
+                        const double bruteForceAvg2 = validPixels2 > 0 ? bruteForceSum2 / static_cast<double>(validPixels2) : 0.0;
+
+                        if (mainLogger) {
+                            if (bruteForceAvg2 > 0.0 && validPixels2 > 0) {
+                                const double relError2 = std::fabs(gpuEstimateAvg2 - bruteForceAvg2) / bruteForceAvg2;
+                                mainLogger->Info("[RestirGateDemoM6PostSpatial] tick " + std::to_string(restirGateTick) +
+                                                  ": validPixels=" + std::to_string(validPixels2) +
+                                                  " gpuEstimateAvg=" + std::to_string(gpuEstimateAvg2) +
+                                                  " bruteForcePerPixelAvg=" + std::to_string(bruteForceAvg2) +
+                                                  " relativeError=" + std::to_string(relError2));
+                            } else {
+                                mainLogger->Warning("[RestirGateDemoM6PostSpatial] tick " + std::to_string(restirGateTick) +
+                                                     ": no comparable data (bruteForceAvg=" + std::to_string(bruteForceAvg2) +
+                                                     ", validPixels=" + std::to_string(validPixels2) + ")");
+                            }
+                        }
+                    } else if (mainLogger) {
+                        mainLogger->Warning("[RestirGateDemoM6PostSpatial] tick " + std::to_string(restirGateTick) +
+                                             ": spatial-debug/hit-record buffers, device, or the world-cut stash not found -- readback skipped");
+                    }
+                }
             }
         }
 

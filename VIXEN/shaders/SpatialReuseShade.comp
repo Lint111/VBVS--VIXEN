@@ -128,6 +128,25 @@ layout(std430, binding = 26) readonly buffer ReservoirBufferB {
 };
 
 // ============================================================================
+// SPATIAL-COMBINE DEBUG READBACK (binding 27) — Sampled Lighting Inc3 M6
+// ============================================================================
+// The spatially-combined `current` reservoir (post-neighbor-fold, pre-shade) lives
+// only in registers -- reservoirRecordsA/B above are readonly this pass, so the
+// M4/M5 gate's own reservoir-buffer readback mechanism (VulkanGraphApplication.cpp's
+// VIXEN_RESTIR_GATE_DEMO tick-60 mapping) has no GPU-visible post-spatial-combine
+// state to observe (M5's own Progress Log flagged exactly this gap: its equal-error
+// gate re-ran M4's PRE-spatial estimator unchanged, "M6's full-stack gate should
+// cover the rest"). This debug-only buffer closes that gap with the SAME
+// ReservoirRecord layout (16B, matches reservoirBufferA/B exactly) so the existing
+// CPU readback path needs no new struct -- write the post-combine `current` here,
+// once per pixel, unconditionally (write cost is the same O(1)/pixel as the existing
+// ping-pong write; no new hazard since this pass is the sole writer and the gate's
+// own readback already vkDeviceWaitIdle()s before mapping, same as reservoirBufferA/B).
+layout(std430, binding = 27) writeonly buffer SpatialReservoirDebugBuffer {
+    ReservoirRecord spatialReservoirDebug[];
+};
+
+// ============================================================================
 // RESERVOIR MATH (shared primitive — see ReservoirCombine.glsl's own header)
 // ============================================================================
 #include "ReservoirCombine.glsl"
@@ -293,6 +312,12 @@ void main() {
                 reservoirCombine(current, neighborReservoir, pHatAtNeighborY, rngNextFloat(rngState));
             }
         }
+
+        // Sampled Lighting Inc3 M6: publish the spatially-combined reservoir (post-neighbor-
+        // fold, pre-shade) to the debug readback buffer -- the M6 full-stack gate reads this
+        // back to verify unbiasedness SURVIVES spatial reuse, not just DirectLighting.comp's
+        // own pre-spatial estimator (M5's own flagged gap, see binding-27's header comment).
+        spatialReservoirDebug[reservoirIdx] = current;
 
         // Shade with the SPATIALLY-COMBINED reservoir's ONE chosen sample: one shadow
         // ray (visibility applied here, ONCE), weighted by the unbiased contribution
