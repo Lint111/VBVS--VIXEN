@@ -159,7 +159,7 @@ but DO re-verify file:line if code has moved)
   round-trip (write via the new SoA emitter → read via the new reader → values match) mirroring Inc-3's
   own AoS round-trip proof pattern (`test_view_wire_roundtrip.cpp`).
 
-### Task 4 — Declare undertow's real schema + regenerate + prove WIRE-BYTE identical (RESCOPED 2026-07-12)
+### Task 4 — Declare undertow's real schema + regenerate + prove DECODED-VALUE identical (RESCOPED 2026-07-12, TWICE)
 
 **Rescoped after a real architectural gap was found during Milestone 3 (see Progress Log entry below):**
 undertow's live `vixen/app/src/main.cpp` consumes a TYPED, per-section C++ accessor class
@@ -168,31 +168,51 @@ undertow's live `vixen/app/src/main.cpp` consumes a TYPED, per-section C++ acces
 Milestone 2) only emits a GENERIC reflection blob (`ViewBlob`/`ViewFieldDesc`, consumed by name/index at
 runtime via `BlobView`/`ViewStore`) — architecturally a different consumption model, not a drop-in
 replacement for `view_contract.h`'s typed-accessor shape. There is no emitter anywhere in Yeroket that
-produces a `view_contract.h`-shaped file. **Task 4 is therefore rescoped to prove WIRE-BYTE identity only**
-(the schema-driven SoA emitter produces the same `UTVW` wire bytes undertow's current hand-rolled
-`ViewWriter.WriteView` produces today, for a real reference frame) — NOT byte-identical `view_contract.h`
-TEXT, which is not achievable by the shipped mechanism without new emitter work (see Follow-ups: "typed
-C++ accessor header from ViewBlob" is now its own explicitly out-of-scope, unscoped future increment).
+produces a `view_contract.h`-shaped file. Task 4 was first rescoped to prove WIRE-BYTE identity only, but a
+SECOND rescope was needed after discovering undertow's real `UTVW` wire (magic + per-section TOC +
+per-column TOC + 16-byte alignment, byte-offset column lookup — `ViewBufferBuilder.cs`) is a
+STRUCTURALLY DIFFERENT binary protocol from Yeroket's generated `UTVA`/SoA wire (no TOC, no alignment,
+flat declared-field-order stream — `ViewWireFormat.cs`). These are two independently-designed wire
+formats (different magic bytes even) — a byte-diff between them can never match regardless of schema
+correctness, so "wire-byte identical" was never an achievable bar either. **Task 4 is therefore rescoped a
+second time to prove DECODED-VALUE identity**: decode undertow's real `UTVW` bytes via undertow's own
+reader/accessor logic, decode the schema-driven `UTVA`/SoA bytes via `ViewWireReaderSoa` (Milestone 2), and
+assert the SAME logical values come out for the SAME reference frame (same body count, positions, faction
+names, etc.) — this is the achievable, meaningful realization of "prove a real already-shipped behavior is
+reproduced through the new mechanism," mirroring Milestone 2's own round-trip proof discipline, just
+cross-validated against undertow's real writer's decoded output instead of a hand-built expected buffer.
+NOT wire-byte identity, NOT `view_contract.h` TEXT identity — see Follow-ups for both deferred gaps.
 - Declare the 5 real sections (`Bodies`/`Hud`/`HudFactions`/`HudEvents`/`HudInspect`) as `[View]`/
-  `[ViewSection(Layout=Soa)]` schemas, using `[Projected]` for every non-identity `Source` expression
-  found in Milestone 1's categorization (the ~3-4 real callables, plus a name-binding mechanism for the 3
-  name-mismatch columns `Mass`/`TopRelSig`/`Cause`).
-- Regenerate the C# writer output via the SoA mechanism (Milestone 2), and prove the WIRE BYTES it
-  produces are byte-identical to undertow's current hand-rolled `ViewWriter.WriteView` output for the SAME
-  logical reference frame (extend/capture a frame that exercises populated Str/ListVec3f columns, per the
-  proof-fixture gap both prior milestones' validators flagged) — this is the mandatory, non-negotiable
-  gate before Task 5. Do NOT attempt to regenerate or diff `view_contract.h` itself this task — that
-  artifact's generation is out of scope until the follow-on typed-accessor-emitter increment exists.
+  `[ViewSection(Layout=Soa)]` schemas. **Gap #2 (found + resolved before writing schemas):** `[Projected]`
+  is consumed ONLY by `RmlDataModelEmitter.cs` (the RmlUi/View-Model-Binding C++ face) — `ViewWireFormat`'s
+  `ToBuffer()` generator never reads `f.Projection`, so declaring `[Projected]` fields would compile but
+  NOT transform anything in the writer path. **Resolution (confirmed by controller):** do the transform in
+  hand-written adapter code (SimFrame → the generated `<Name>ViewWriter`'s already-transformed fields),
+  matching the existing `Hud.cs`/`EditorLayers.cs` precedent of plain pre-transformed struct fields;
+  `[Projected]` stays attached to the 3 name-mismatch/transform fields as documentation/traceability only
+  for this proof, not a functioning mechanism — inventing new C#-side callable-dispatch emitter machinery
+  is explicitly out of scope for this milestone (Follow-ups).
+- Regenerate the C# writer output via the SoA mechanism (Milestone 2), and prove DECODED VALUES read back
+  (via `ViewWireReaderSoa` on the schema-driven side, undertow's own reader on the real side) match for the
+  SAME logical reference frame (extend/capture a frame that exercises populated Str/ListVec3f columns, per
+  the proof-fixture gap both prior milestones' validators flagged) — this is the mandatory, non-negotiable
+  gate before Task 5. Do NOT attempt to regenerate or diff `view_contract.h` itself this task, and do NOT
+  attempt a raw wire-byte diff — both are out of scope/unachievable as established above.
 
 ### Task 5 — Retire the hand-rolled undertow WRITER generator only (RESCOPED 2026-07-12 — see Task 4)
 
 **Rescoped alongside Task 4**: since Yeroket has no `view_contract.h`-shaped emitter, Task 5 can ONLY retire
 the WRITER side (`ViewWriterGenerator.cs`/`EmitViewWriter.cs` + `ViewSchema.cs`'s hand-declared
-`FormatVersion`) once Task 4's wire-byte proof holds. **`EmitViewContractHeader.cs` and `view_contract.h`
-generation are NOT retired by this plan** — `main.cpp`'s typed accessor consumption stays on the existing
-hand-rolled header generator until the follow-on typed-accessor-emitter increment (see Follow-ups) exists
-and is proven. This is a genuine, deliberate scope reduction from the original Task 5, not a shortcut.
-- ONLY after Task 4's wire-byte-identical proof: switch the WRITER half of `Undertow.View.csproj`'s
+`FormatVersion`) once Task 4's DECODED-VALUE proof holds (not wire-byte identity — see Task 4's second
+rescope: the wire formats are structurally different protocols, so retiring the hand-rolled writer means
+undertow's C++ reader side must also switch from `view_contract.h`'s `UTVW`-TOC reader to `ViewWireReaderSoa`'s
+`UTVA`/SoA reader — a bigger coupled change than Task 5 originally assumed; flagged for Task 5's own
+implementer to re-scope when it starts, not resolved here). **`EmitViewContractHeader.cs` and
+`view_contract.h` generation are NOT retired by this plan** — `main.cpp`'s typed accessor consumption stays
+on the existing hand-rolled header generator until the follow-on typed-accessor-emitter increment (see
+Follow-ups) exists and is proven. This is a genuine, deliberate scope reduction from the original Task 5,
+not a shortcut.
+- ONLY after Task 4's decoded-value-identical proof: switch the WRITER half of `Undertow.View.csproj`'s
   `Analyzer` reference (or equivalent build wiring) from `Undertow.Authoring.Codegen`'s
   `ViewWriterGenerator.cs`/`EmitViewWriter.cs` to the Yeroket kernel-framework CLI's generated writer
   output. Retire those two files and `ViewSchema.cs`'s hand-declared `FormatVersion`/intro-version
@@ -413,9 +433,60 @@ and is proven. This is a genuine, deliberate scope reduction from the original T
     understanding itself.
   - No commits made during this blocked attempt (worktree/branch unchanged at pre-Milestone-3 HEAD).
     Milestone 3 restarts fresh against the rescoped Task 4/5 text above.
+  - **Gap #2 found before writing any schema code (same session, before the second rescope below):**
+    traced every consumer of `ViewField.Projection` across the whole Yeroket kernel-framework tree — the
+    ONLY consumer is `RmlDataModelEmitter.cs` (the RmlUi/View-Model-Binding C++ data-model face). Confirmed
+    by reading `ViewWireFormat.cs` in full that `ViewWriterEmitter`'s `ToBuffer()` generator NEVER reads
+    `f.Projection` — `EmitScalar` always serializes the field's raw value verbatim. So declaring
+    `[Projected]` fields as the (first) rescoped Task 4 text described would compile but silently NOT
+    transform anything in the generated writer. **Resolution (user-confirmed, verified independently):**
+    do the transform in hand-written adapter code producing already-transformed field values BEFORE they
+    reach the `[View]`-declared struct — matches the existing `Hud.cs`/`EditorLayers.cs` precedent (already
+    pre-transformed plain fields; `EditorLayers.cs`'s `isChecked` IS declared `[Projected]`, but that
+    schema is consumed via the RmlUi face, where Projection is real — the two schemas are NOT contradictory
+    once you know which consumer reads which). `[Projected]` stays attached to the transform/name-mismatch
+    fields in the new schemas as documentation/traceability only for this proof; inventing new C#-side
+    callable-dispatch emitter machinery is explicitly out of scope for this milestone (see Follow-ups).
+  - **Gap #3 found before writing any schema code (second rescope, same session):** traced undertow's REAL
+    `UTVW` wire via the actual compiled `ViewWriter.g.cs` + `ViewBufferBuilder.cs` — magic(`UTVW`) +
+    formatVersion + sectionCount, then a per-section TOC (id/byteOffset/byteLength), then per-section
+    rowCount+columnCount + a per-column TOC (id/byteOffsetWithinSection), with every column and section
+    16-byte aligned; columns are found by ID LOOKUP at read time. Yeroket's generated `ToBuffer()` wire
+    (`ViewWireFormat.cs`, what Milestone 2 built) is magic(`UTVA`) + SchemaVersion + fieldCount, then fields
+    written POSITIONALLY in declared order with NO TOC, no per-section/per-column offsets, no alignment —
+    even its SoA `StructArray` body is a flat rowCount+columns stream, no column TOC. These are two
+    independently-designed, structurally different binary protocols (different magic bytes on purpose) — a
+    raw byte-diff between them can NEVER match regardless of schema/callable/adapter correctness; it is not
+    a fixable content bug. "Undertow's UTVW wire is already columnar/SoA" (Milestone 1's own framing) was
+    true only at a vague conceptual level (per-column contiguous data), not at the byte level the
+    wire-byte-identical proof needed. **Resolution (user-confirmed, independently re-verified via
+    `ViewBufferBuilder.cs`): rescope the proof a second time to DECODED-VALUE identity** — decode
+    undertow's real `UTVW` bytes via undertow's own reader, decode the schema-driven `UTVA`/SoA bytes via
+    `ViewWireReaderSoa` (Milestone 2), and assert the same logical values for the same reference frame. This
+    is the achievable, meaningful realization of the proof discipline (re-derive an already-shipped
+    behavior through the new mechanism and prove it matches), consistent with Milestone 2's own round-trip
+    tests, just cross-validated against a real undertow-produced buffer instead of a hand-built one. Task 4
+    and Task 5's text above have been rewritten a second time to reflect this — see both sections' "RESCOPED
+    (TWICE)"/"second rescope" markers. No commits made during any of these three holds; Milestone 3 now
+    proceeds under the final DECODED-VALUE proof target.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
+- **A C#-side `[Projected]`-dispatch extension to `ViewWireFormat`/`ViewWriterEmitter`** (gap #2, discovered
+  during Milestone 3, 2026-07-12): today `[Projected]` only affects the RmlUi `RmlDataModelEmitter.cs` C++
+  face; the View Contract C# writer (`ViewWireFormat.EmitScalar`) never dispatches to a callable. If a
+  future schema genuinely needs the writer itself to invoke a transform (rather than pre-transforming in a
+  hand adapter, as Milestone 3 does), this would mean emitting a call to a C#-side
+  `Vixen.Views.Generated.<Method>(access)` before serializing — new, undesigned emitter work, deliberately
+  not built under Milestone 3's time pressure.
+- **Unifying (or bridging) undertow's real `UTVW` wire protocol and Yeroket's generated `UTVA`/SoA wire
+  protocol** (gap #3, discovered during Milestone 3, 2026-07-12): the two are structurally different binary
+  formats (TOC+16-byte-alignment+ID-lookup vs flat declared-order stream) — Milestone 3 worked around this
+  by proving DECODED-VALUE identity instead of wire-byte identity, but a real writer-generator retirement
+  (Task 5) means undertow's C++ reader side must eventually also move off `view_contract.h`'s `UTVW`-TOC
+  reader onto `ViewWireReaderSoa`'s `UTVA`/SoA reader (or Yeroket's emitter must learn to speak `UTVW`'s
+  exact wire dialect) — neither is designed yet; Task 5's own implementer must scope this explicitly rather
+  than assuming "switch the Analyzer reference" is a small mechanical step.
 - **A typed C++ accessor header emitter from `ViewBlob`** (discovered as a genuine gap during Milestone 3,
   2026-07-12): Yeroket's shipped `[View]` pipeline has no emitter producing a `view_contract.h`-equivalent
   file (named per-section accessor classes with cached column pointers and typed methods like
