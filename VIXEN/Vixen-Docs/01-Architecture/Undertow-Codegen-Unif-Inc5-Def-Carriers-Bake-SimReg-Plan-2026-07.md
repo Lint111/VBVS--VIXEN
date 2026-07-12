@@ -146,7 +146,7 @@ consumes A's generated types).
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** Part A — authored/baked def carriers, build + equivalence proof. One
+- [x] **Milestone 2 (Task 2):** Part A — authored/baked def carriers, build + equivalence proof. One
   Sonnet implementer + one Opus validator.
 - [ ] **Milestone 3 (Task 3):** Part B — parse/bake table + sim registration, build + equivalence proof +
   retire (all 6 cluster files + Increment 1's deferred `EmitRegistrySlots.cs`). One Sonnet implementer +
@@ -191,3 +191,27 @@ consumes A's generated types).
     cited file:line claims directly, confirmed the Yeroket-side `[RegistrySlots]` mechanism's real shape
     on the Inc-4 tip, and confirmed Part B's "genuinely new emitter" claim by surveying all 27 existing
     Yeroket emitters. Cleared to proceed to Milestone 2.
+
+- Milestone 2 (Task 2, Part A — Authored/Baked def carriers): DONE · 2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc5-defcarriers`, off Inc-4 tip, commit `2e61ba3c`): new
+    `DefCarriersEmitter.cs` — a second emitter pass over the existing `RegistrySlotsModel` (no new
+    attribute), porting `EmitDefs.All`/`EmitRecord.Emit`'s field-typing logic (scalar/enum/vocab-key/map/
+    object-list/value-list/custom-codec) line-for-line, including the real `ReadFields!=null` flat-scalar
+    co-gate found in Milestone 1. New `--def-carriers-cs <ClassName>` CLI flag, invoked once per
+    Authored/Baked target.
+  - **Equivalence proof — non-vacuous, PASSED, independently re-derived by the validator from scratch**:
+    real `dotnet build` of undertow regenerated the actual Roslyn `AuthoredDefs.g.cs` (31 kinds)/
+    `BakedDefs.g.cs` (36 kinds); new mechanism run against the same real `schemas.json` produced 31/36;
+    banner-stripped diff IDENTICAL for both sets. `planet` confirmed absent from both (co-gate working).
+    All 7 field-typing paths confirmed present + correctly typed in the byte-identical real output
+    (scalar, real-enum `EdgeKind`, vocab-key `EffectKey`, map/shared-element, object-list
+    `EffectSetEntry`, value-list, custom-codec `ConstraintNode?` on `manifest`).
+  - **No retirement this milestone** (correct, deferred to Milestone 3) — `EmitDefs.cs`/`EmitRecord.cs`/
+    `AuthoredDefGenerator.cs`/`BakedDefGenerator.cs` confirmed still present, unmodified, in the undertow
+    worktree; the worktree itself confirmed completely clean (zero diff vs `master`).
+  - `SDFNodeGenerator.dll` non-deterministic rebuild noise discarded, confirmed not in the commit.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Fully re-derived the equivalence proof
+    from scratch (own build harness, real Roslyn rebuild, real `--def-carriers-cs` run, own diff) rather
+    than trusting the implementer's description; also independently spot-checked the
+    `ReadFields`/`EmitRecord.Emit` port against undertow's real source. Cleared to proceed to Milestone 3.
