@@ -209,7 +209,7 @@ but DO re-verify file:line if code has moved)
 
 ## Milestone Map
 
-- [ ] **Milestone 1 (Task 1):** ground the shape — column categorization, SoA serialization decision,
+- [x] **Milestone 1 (Task 1):** ground the shape — column categorization, SoA serialization decision,
   regeneration/diff proof mechanism, Env-1/Env-2 boundary confirmation (report-back gate, no building
   until confirmed). One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2-3):** SoA wire emit (Yeroket) + SoA-aware C++ reader (VIXEN) + round-trip
@@ -223,7 +223,54 @@ but DO re-verify file:line if code has moved)
 
 ## Progress Log
 
-*(none yet — plan authored, not yet dispatched)*
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-12 · no files modified in any of the three repos
+  - **Column categorization (30 columns, 5 sections):** 22 identity (flat 1:1 bind), 8 transform (7
+    bool→byte/enum-cast ternaries + `OrbitParent`'s nullable-unwrap-with-`-1`-sentinel; `OrbitPath`'s
+    nullable-unwrap-to-null is a borderline 9th case). Full per-column table recorded in this milestone's
+    implementer report (see session transcript) — Milestone 4's implementer must re-derive or request it,
+    not re-categorize from scratch.
+  - **Corrections to this plan's Ground Truth, verified independently by the controller:**
+    1. `EmitViewContractHeader.cs` consumes a `view-schema.json` intermediate
+       (`Undertow.View/ViewSchemaJson.cs`'s `Serialize()`), NOT `ViewSchema.cs` directly — confirmed
+       `ViewSchemaJson.cs` exists at that path.
+    2. Inc-3's "own file" `ViewLayout.cs` was renamed to `ViewWireFormat.cs` during the kernel-unification
+       consolidation — `ViewLayout` now names only the `Aos`/`Soa` enum. Confirmed:
+       `$KF/SourceGenerator~/Transpiler/ViewWireFormat.cs` exists; no `ViewLayout.cs` file exists.
+    3. `SchemaJsonEmitTests.cs`'s actual class (`SchemaJsonFreshnessTests`) pins an unrelated kind-schema
+       artifact — the view-schema-specific test is `ViewSchemaJsonTests.cs`; the byte-golden fixture
+       (needed for Milestone 3's proof) is in a THIRD file, `ViewContractTests.cs`
+       (`ViewBuffer_MatchesGoldenBytes`, diffs against committed `golden/seed7-view.bin`, regeneratable
+       via `UNDERTOW_UPDATE_VIEW_GOLDEN=1`).
+    4. **`[Projected]` requires a real, separately-authored `[KernelCallable]`-hosted C# method per
+       transform column** — confirmed `ProjectedAttribute(Type hostType, string methodName)`'s actual
+       constructor (`GpuStructAttributes.cs:53-58`) takes a host type + method name, NOT a free
+       expression string. Milestone 4 must author 8 real callables (or fewer if some transforms combine),
+       not just apply an attribute — budget real design time, especially for `OrbitParent`/`OrbitPath`'s
+       richer nullable-unwrap shape.
+    5. **Confirmed SoA throw site verbatim** (`ViewWireFormat.cs:36-37`):
+       `if (f.Layout == ViewLayout.Soa) throw new NotSupportedException($"SoA emit is Inc-5+; field
+       '{f.Name}' must use Aos for now")` — thrown eagerly at codegen time, not embedded in generated
+       runtime code. No `WriteSoaBody` method exists yet. `ViewVersionHash.Compute` hashes only
+       name+kind (not layout), so an Aos→Soa flip doesn't change `SchemaVersion` — relevant for
+       Milestone 3's byte-identical proof.
+    6. **SoA serialization decision (Task 2, confirmed):** per-column contiguous arrays + one shared
+       row-count header for fixed-size scalars; `Str`/`ListVec3f` get their OWN
+       `(rowCount+1)`-offsets-array + blob PER COLUMN (not one shared per-row blob as in AoS) — reuse the
+       existing offsets+blob subroutine from `EmitViewWriter.cs`'s current AoS emitter, just move its
+       invocation from "once per row, interleaved" to "once per column, before any row data."
+  - **Env-1/Env-2 boundary, confirmed via actual `.csproj` files:** two unrelated "Undertow.View"s exist —
+    `core/src/Undertow.View/Undertow.View.csproj` (plain `netstandard2.1`, ENV-1 authoritative, where
+    `ViewSchema.cs`/generated writer output live and where this plan's schema/codegen work lands) vs.
+    `unity/Packages/com.undertow.app/Runtime/View/Undertow.View.asmdef` (the actual ENV-2 stub
+    `docs/master-roadmap.md:20` exempts) — same name, different assembly/Env, do not conflate. This
+    plan's work is naturally compliant as long as it stays in `core/src/Undertow.View/`'s csproj graph and
+    consumes Yeroket only at build/codegen time (mirroring how `Undertow.Authoring.Codegen` is consumed
+    today, `Analyzer`-only, never a runtime `PackageReference`).
+  - **Milestone 3's proof-fixture gap flagged:** the existing `seed7-view.bin` golden does NOT exercise
+    non-empty `Str`/`ListVec3f` columns (a neighboring test notes "no factions/events yet") — Milestone 3
+    must extend the golden scenario (or add a second golden) so the SoA offsets+blob path for populated
+    variable-length columns is actually exercised before trusting a byte-identical match as sufficient.
+  - No blockers. Ready for Milestone 2.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
