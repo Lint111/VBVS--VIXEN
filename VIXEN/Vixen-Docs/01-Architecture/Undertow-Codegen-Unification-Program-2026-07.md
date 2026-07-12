@@ -170,7 +170,11 @@ tracked in that increment's own plan doc once started)
   — a different architectural pattern than Inc-1/2, correctly chosen due to a live `CodeModLoader.cs`
   reflection consumer; full retirement, byte-for-byte-diffed equivalence proof in both directions,
   2953/2953 undertow tests pass — see `Undertow-Codegen-Unif-Inc3-Param-Declarations-Plan-2026-07.md`)
-- [ ] Increment 4 — #12 `[Action]` registration
+- [x] Increment 4 — #12 `[Action]` registration (Opus-validated APPROVED both milestones; discovered
+  undertow's real `ActionAttribute` rather than replacing it, same pattern as Inc-3, due to
+  `CodeModLoader.cs`'s live reflection use; full retirement, byte-identical equivalence proof
+  independently re-derived by the validator, 2951/2951 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc4-Action-Registration-Plan-2026-07.md`)
 - [ ] Increment 5 — #1/#2/#3/#7 Authored+Baked def carriers, parse/bake table, sim registration (cluster)
 - [ ] Increment 6 — #10 Test factories, #11 Authoring builders
 - [ ] Increment 7 — #13 `[Effect]` registration
@@ -226,6 +230,25 @@ tracked in that increment's own plan doc once started)
   byte-diffed it against the new mechanism's output in BOTH directions — body byte-identical, only the
   generated-banner comment differs. Full detail:
   `Undertow-Codegen-Unif-Inc3-Param-Declarations-Plan-2026-07.md`.
+
+- **Increment 4 — #12 `[Action]` registration (COMPLETE, both milestones Opus-validated APPROVED).**
+  Survey's `[KernelCallable]`-fit hypothesis was REFUTED: `[Action]` targets CLASSES
+  (`AttributeTargets.Class`) and its generator emits a delegate-wiring dispatch/registration table over
+  4 optional marker interfaces (`IAction`/`IActionGate`/`IActionDecompose`/`IActionLifecycle`), never
+  transpiling a method body — a different codegen kind than `[KernelCallable]`'s method-body transpiler.
+  Also found: `Undertow.Sim.ActionAttribute` is itself a live `CodeModLoader.cs` runtime-reflection
+  target (for code-mod support), the SAME constraint class as Increment 3's `ParamAttribute` — so the
+  mechanism is "discover undertow's real existing attribute" (Inc-3's pattern), not "introduce a new
+  Yeroket-owned attribute" (Inc-1/2's pattern). Confirmed 6 real production `[Action(...)]` sites (survey
+  undercounted at 5). New `--action-cs` CLI path + `CompilationLoader.LoadActionClasses` (discover-by-
+  syntax-name, `sym.AllInterfaces` resolution) + `ActionRegistrationEmitter.cs` (line-for-line port of
+  `EmitRegisterActions.Emit`, all 4 diagnostic paths, `EnumExprHelper` reused for the `Trigger` enum).
+  Full retirement in undertow (`ActionRegistrationGenerator.cs`/`EmitRegisterActions.cs`/
+  `EmitRegisterActionsTests.cs` deleted; `RegisterActions.g.cs` checked in) — `CodeModLoader.cs` confirmed
+  byte-identical pre/post by both the implementer and the Opus validator (who independently re-derived
+  the equivalence proof from scratch: own throwaway worktree, real `dotnet build` against the
+  pre-retirement commit, direct diff/md5 against the checked-in output). 2951/2951 undertow tests pass.
+  Full detail: `Undertow-Codegen-Unif-Inc4-Action-Registration-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
