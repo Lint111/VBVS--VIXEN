@@ -29,13 +29,17 @@ public:
         model_ = c.GetModelHandle();
     }
 
-    // Rebuilds the bound row array from LayerController's mask (design's bit(mask,idx)
-    // projection, same one EditorApplication's ToggleLayer handler already applies — Inc-A2
-    // reuses it as a pure leaf, not a second decomposition). name/op/elementId come from the
-    // document model (LayerController itself carries no names — see EditorDocumentModel).
-    // Dirties "layers" so an already-loaded model picks up the change (initial population calls
-    // this before the document loads, so the dirty is a no-op there; a later re-population, e.g.
-    // after the optional same-frame echo, needs it).
+    // Rebuilds the bound row array from LayerController's mask. Inc-Ovr (View-Model-Binding-
+    // Inc-Ovr-Plan-2026-07.md Task 3): isChecked's bit-decomposition is no longer a hand-written
+    // shift here -- it is the schema-declared Projection on EditorLayerRow.isChecked
+    // (codegen/view-schemas/EditorLayers.cs), generated as
+    // Vixen::Views::ComputeEditorLayerRow_isChecked (Generated/EditorLayers.g.h), which itself
+    // calls the transplanted [KernelCallable] Vixen::AppFlow::Generated::bitAt -- the same
+    // transform EditorApplication's ToggleLayer handler's applyToggle is the write-side inverse
+    // of. name/op/elementId come from the document model (LayerController itself carries no
+    // names — see EditorDocumentModel). Dirties "layers" so an already-loaded model picks up the
+    // change (initial population calls this before the document loads, so the dirty is a no-op
+    // there; a later re-population, e.g. after the optional same-frame echo, needs it).
     void PopulateFromMask(uint32_t mask, uint32_t layerCount,
                           const std::vector<std::string>& names, const std::vector<std::string>& ops) {
         layers_.clear();
@@ -44,7 +48,7 @@ public:
             Vixen::Views::EditorLayerRow row;
             row.name      = i < names.size() ? Rml::String(names[i]) : Rml::String{};
             row.op        = i < ops.size()   ? Rml::String(ops[i])   : Rml::String{};
-            row.isChecked = ((mask >> i) & 1u) != 0u;
+            row.isChecked = Vixen::Views::ComputeEditorLayerRow_isChecked(mask, i);
             row.elementId = "layer-" + std::to_string(i) + "-toggle";
             layers_.push_back(std::move(row));
         }

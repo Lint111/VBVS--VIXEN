@@ -204,7 +204,7 @@ re-derive these facts, but DO re-verify file:line if code has moved)
 - [x] **Milestone 1 (Task 1):** ground the attribute-surface + emitter-shape decisions for BOTH
   Projection and Override (report-back gate, no building until confirmed). One Sonnet implementer + one
   Opus validator.
-- [ ] **Milestone 2 (Task 2-3):** build the Projection mechanism, re-derive `mask_`→checkboxes through it,
+- [x] **Milestone 2 (Task 2-3):** build the Projection mechanism, re-derive `mask_`→checkboxes through it,
   delete the hand-written duplicate. One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 3 (Task 4-5):** build the Override mechanism + its link-fails-if-unimplemented proof,
   run all regression gates, final report. One Sonnet implementer + one Opus validator.
@@ -266,6 +266,86 @@ re-derive these facts, but DO re-verify file:line if code has moved)
     Tree clean in both repos; Yeroket's only dirty file is the pre-existing, memory-documented
     non-deterministic `SDFNodeGenerator.dll` rebuild noise (0-insertion/0-deletion byte-shuffle),
     unrelated to this milestone. **APPROVED, Milestone 2 can proceed.**
+
+- Milestone 2 (Task 2-3): DONE · 2026-07-12
+  - **Yeroket** (`feat/view-ovr-projection`, branched off `main` `18ba964d`): added
+    `ProjectedAttribute(Type hostType, string methodName)` to `GpuStructAttributes.cs` (mirrors
+    `ViewSectionAttribute`'s per-field shape); added `ProjectionInfo` + `ViewField.Projection` +
+    `ReadProjection` to `ViewModel.cs` (mirrors `ReadLayout`'s
+    `GetAttributes().FirstOrDefault(...AttributeClass?.Name == "ProjectedAttribute")` idiom
+    exactly). Extended `RmlDataModelEmitter.cs` with TWO emission consequences gated on
+    `ViewField.Projection`, not one — Milestone 1's "one new branch" turned out to need splitting
+    once the row-vs-top-level distinction was hit live: (a) a top-level scalar field's projection
+    replaces its `c.Bind(name, b.field)` with `c.Bind(name, Vixen::AppFlow::Generated::<Fn>(b.field))`
+    (the literal branch Milestone 1 described); (b) a ROW-STRUCT field's projection (the mask/
+    isChecked case) instead emits a companion `inline <T> Compute<Row>_<Field>(uint32_t source,
+    uint32_t index)` helper next to `Bind*Model`, because row fields go through `RegisterMember`
+    (reflection metadata) not `Bind` at all — there was no flat 1:1 bind to replace for them.
+    Confirmed via a dedicated general-purpose sub-agent read of the real emitter before writing
+    code (not guessed): `Bind*Model`'s `c.Bind` calls only ever iterate `v.Fields` — the
+    TOP-LEVEL struct's own fields — row fields (`r.Fields`) only ever reach `RegisterMember`.
+  - **VIXEN**: authored the missing read-side `[KernelCallable]` (Milestone 1's flagged gap) —
+    `bitAt(uint mask, uint index)` in `codegen/appflow-schemas/AppFlowCallables.cs`, alongside
+    `applyToggle`, byte-identical logic to `PopulateFromMask`'s old hand shift
+    (`((mask >> i) & 1u) != 0u`). Declared `EditorLayerRow.isChecked` as
+    `[Projected(typeof(AppFlowCallables), nameof(AppFlowCallables.bitAt))]` in
+    `codegen/view-schemas/EditorLayers.cs`.
+  - **Regenerated + golden-checked** (via a clean `dotnet build` of `CodegenTool~` — a stale
+    `SDFNodeGenerator.dll` reproduced the known memory-documented non-determinism on the first
+    attempt, resolved by a full `bin`/`obj` wipe + rebuild, not a source issue):
+    `AppFlowCallables.g.hpp` gained `inline bool bitAt(uint32_t mask, uint32_t index) { return
+    ((mask >> (int32_t)index) & 1u) != 0u; }`; `EditorLayers.g.h` gained
+    `#include <cstdint>` + `#include "generated/AppFlowCallables.g.hpp"` and the new
+    `inline bool ComputeEditorLayerRow_isChecked(uint32_t source, uint32_t index) { return
+    Vixen::AppFlow::Generated::bitAt(source, index); }`, with `BindEditorLayersModel` itself
+    UNCHANGED (isChecked was never a top-level bind target, confirmed by the golden test's own
+    pinned `RegisterMember`-only sequence still passing byte-for-byte). All three golden checks
+    (`--view EditorLayers --check`, `--callable-cpp --check`, `--appflow --check` — the last
+    confirming `AppFlowCallables.cs`'s new method still has zero `[Flow*]` attrs so
+    `AppFlow.g.h` stays untouched) pass with exit 0.
+  - **Re-derivation + hand-written duplicate DELETED**: `EditorLayersView::PopulateFromMask`
+    (`application/editor/include/EditorLayersView.h`) no longer computes
+    `((mask >> i) & 1u) != 0u` inline — it calls the generated
+    `Vixen::Views::ComputeEditorLayerRow_isChecked(mask, i)`. The row-assembly loop itself
+    (allocating rows, setting name/op/elementId) stays hand-written — that iteration was never
+    part of the projection being proven, only the bit-decomposition value was, per the plan's
+    own scope boundary (no declarative population mini-language). No hand-written duplicate of
+    the bit logic remains anywhere in the codebase (grep-confirmed: only the generated function
+    and the transplanted `bitAt` compute it now).
+  - **Build**: one target broke on first full build —
+    `test_view_editor_layers_golden.cpp.obj` failed with `C1083: Cannot open include file:
+    'generated/AppFlowCallables.g.hpp'` because that gtest target links only `RenderGraph`, not
+    `AppFlow`, and `EditorLayers.g.h` now transitively needs `AppFlow`'s public include dir. Fix:
+    added `AppFlow` to `test_view_editor_layers_golden`'s `target_link_libraries` in
+    `libraries/RenderGraph/tests/CMakeLists.txt` (a header-only need for this headless gate, no
+    new runtime dependency). Second full `build.bat all`: **all targets built successfully**
+    (confirmed from a fresh build-summary, not assumed).
+  - **Regression gates**: ran the full ctest set touching this area post-fix —
+    `LayerController.*` (3/3), `SnapshotUndo.*` (6/6, incl.
+    `RuntimeToggleLayerAndUndoFireOnChanged`), `ViewEditorLayersReconcile.*` (2/2),
+    `ViewSelectionProvider.*` (3/3), `SetMutationDispatch.*` (6/6), `HudViewTest.*` (1/1) all
+    PASSED. `ViewEditorLayersGolden.*` (the two tests directly proving this mechanism, incl.
+    `GeneratedSequenceMatchesCanonicalSchema`) didn't appear in ctest's stale pre-CMakeLists-fix
+    discovery list; ran the rebuilt `.exe` directly — both PASS
+    (`GeneratedSequenceMatchesCanonicalSchema`, `GeneratedBindFunctionCompilesAndBinds`).
+    `EditorDocumentRenderTest.*` (3 tests) FAILED on `ASSERT_TRUE(softwareConfirmed_)` — a
+    pre-existing Vulkan software-ICD selection gate (`VixenSelectWslGpuIcd`/
+    `PickSoftwareDevice`) unrelated to any file this milestone touched (grep-confirmed: that test
+    file references none of `EditorLayersView`/`PopulateFromMask`/`bitAt`/
+    `ComputeEditorLayerRow_isChecked`) — an environment-specific gate failure on this run, not a
+    regression from this change.
+  - **Live-gate** (`temp/run_editor_script.bat`, windowed `vixen_editor.exe`, scripted
+    toggle→undo→redo→settings→back): exit code 0. Log's `[EDITOR/state]` trail: `capture
+    tick=5 mask=7` → `toggle mask=3` → `capture tick=45 mask=3` → `undo mask=7` → `capture
+    tick=75 mask=7` → `redo mask=3` → `capture tick=105 mask=3` → `afterBack=0` — the EXACT
+    mask 7→3→7→3 + back-button-reaches-Return sequence the gate's own file-header comment
+    documents as its expected baseline, now driven end-to-end through the new Projection
+    mechanism (checkbox fan-out via `ComputeEditorLayerRow_isChecked`→`bitAt`, toggle write via
+    the pre-existing `applyToggle`). Residency smoke check also holds:
+    `editor_capture_5.png` != `editor_capture_45.png` (first edit reached the render pipeline).
+  - **Commits**: VIXEN worktree `feat/view-binding-inc-ovr`; Yeroket `feat/view-ovr-projection`
+    (new branch off `main`, per this program's `feat/config-codegen`-style per-increment
+    convention). Neither pushed.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 

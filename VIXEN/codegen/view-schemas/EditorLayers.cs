@@ -1,4 +1,5 @@
 using Yeroket.Util.KernelFramework;
+using Vixen.AppFlow.Reference;
 
 namespace Vixen.ViewSchemas
 {
@@ -10,6 +11,12 @@ namespace Vixen.ViewSchemas
     public struct EditorLayerRow {
         public string name;
         public string op;
+        // Inc-Ovr (design §5a Projection proof): re-derives EditorLayersView::PopulateFromMask's
+        // hand-written `((mask >> i) & 1u) != 0u` through the schema-declared Projection mechanism
+        // instead of a hand loop -- AppFlowCallables.bitAt is the [KernelCallable] transform body
+        // (transplanted to Vixen::AppFlow::Generated::bitAt by --callable-cpp), this attribute only
+        // marks WHICH field it computes.
+        [Projected(typeof(AppFlowCallables), nameof(AppFlowCallables.bitAt))]
         public bool   isChecked;
         public string elementId;
     }
