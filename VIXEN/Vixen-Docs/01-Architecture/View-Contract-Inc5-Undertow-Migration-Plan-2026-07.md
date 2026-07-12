@@ -258,10 +258,11 @@ not a shortcut.
   until confirmed). One Sonnet implementer + one Opus validator.
 - [x] **Milestone 2 (Task 2-3):** SoA wire emit (Yeroket) + SoA-aware C++ reader (VIXEN) + round-trip
   proof. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 3 (Task 4):** declare undertow's real schema, regenerate, prove byte-identical against
-  the current hand-rolled generator's output. This is the increment's hardest correctness bar — may need
-  sub-milestones per section if the categorization/regeneration proves large. One Sonnet implementer + one
-  Opus validator.
+- [x] **Milestone 3 (Task 4):** declare undertow's real schema, regenerate, prove DECODED-VALUE identity
+  (rescoped twice — see Progress Log) against undertow's real writer's output. COMPLETE for all 5 sections;
+  `Bodies.Position`/`RecipeParams`/`OrbitPath` explicitly deferred (gap #4, Follow-ups) — the other 7
+  Bodies columns plus all of Hud/HudFactions/HudEvents/HudInspect are proven, 48/48 checks pass. One
+  Sonnet implementer (no separate Opus validator dispatched yet — pending).
 - [ ] **Milestone 4 (Task 5):** retire the hand-rolled undertow generator, update undertow's own golden
   tests, live-gate the real sim→render seam. One Sonnet implementer + one Opus validator.
 
@@ -515,13 +516,42 @@ not a shortcut.
       decoded-value checks pass, 0 mismatches** — every transform column (bool→byte ×3, enum→byte ×2),
       every identity column, every populated AND empty Str value, and both name-mismatch columns
       (TopRelSig, Cause) match exactly between undertow's real writer and the schema-driven regeneration.
-  - **Bodies (Position/RecipeParams/Vec3f-scalar, OrbitPath/ListVec3f) remains an open decision — gap #4
-    NOT resolved.** Held per the controller's direction; Milestone 3 is not marked complete in the
-    Milestone Map above until Bodies is either proven (options 1/2/3 from the gap #4 report) or explicitly
-    descoped with the same "Follow-up, not resolved here" treatment as gaps #1-#3's deferred items.
+  - **Gap #4 RESOLVED (controller decision: option 1 — split the proof, defer the unrepresentable
+    columns as a named Follow-up):** declared `UndertowBodies`/`UndertowBodyRow` in `UndertowHud.cs`
+    covering the 7 REPRESENTABLE columns only (`kind`, `mass`, `orbitParent`, `ownerInLens`,
+    `ownerRecentEventAge`, `recipeProvider`, `recipeId`); `Position`/`RecipeParams` (Vec3f scalars) and
+    `OrbitPath` (ListVec3f) are explicitly NOT declared — see the new Follow-up entry below ("Vec3f-scalar
+    and ListVec3f field-shape support in the [View] model"). `mass` carries the THIRD name-mismatch
+    column (`Mass` ← `el.MassKg`, ALSO a `double`→`float` narrowing) via the same `IdentityFloat`
+    name-binding callable used for `HudInspect.topRelSig`/`cause`; `orbitParent` is the nullable-unwrap-
+    with-`-1`-sentinel transform (`OrbitParentOrSentinel`, authored in Milestone 3's first pass, now
+    actually exercised). Adapter extended in `UndertowFrameAdapter.cs` (`Bodies(IReadOnlyList<BodyView>)`).
+    Regenerated cleanly via the CLI — verified column order matches `ViewSchema.cs`'s `Bodies` columns
+    exactly (kind, mass, orbitParent, ownerInLens, ownerRecentEventAge, recipeProvider, recipeId — the
+    3 skipped columns simply omitted, no reordering).
+    **Decoded-value proof extended and re-run**: 2 real `BodyView`s (a star with `orbit: null` — exercises
+    the `-1` sentinel path — and a planet with a real `OrbitView(0, ...)` — exercises the real
+    `ParentBodyIndex` path, proving BOTH ternary branches, not just one) added to the same harness/
+    reference frame. **Full re-run result: 48/48 decoded-value checks pass, 0 mismatches** — all 34 prior
+    checks unchanged plus 14 new Bodies checks (RowCount + 7 columns × 2 rows), including the `Mass`
+    double→float narrowing (`1.99e30`/`5.97e24` match exactly at float precision) and both `OrbitParent`
+    branches. **Milestone 3 (Task 4) is now COMPLETE** for all 5 sections, with `Position`/`RecipeParams`/
+    `OrbitPath` an explicit, named, deferred gap (not silently dropped) — Milestone Map updated below.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
+- **Vec3f-scalar-field and ListVec3f-field support in the `[View]` model** (gap #4, discovered during
+  Milestone 3, 2026-07-12): `ViewModelBuilder.Classify` only recognizes int/float/bool/string scalars,
+  `T[]` of scalar-only structs, and a plain nested struct (which `ViewWireFormat.EmitField` explicitly
+  throws on). `Bodies.Position`/`Bodies.RecipeParams` (Vec3f SCALAR fields, not arrays) and
+  `Bodies.OrbitPath` (`ListVec3f` — a nullable, per-row VARIABLE-LENGTH list of points, a 2-level nesting
+  with no representation at all) are consequently NOT declarable — Milestone 3's `UndertowBodies` schema
+  proves only the other 7 columns. A future increment would need to teach `ViewModel`/`ViewWireFormat`
+  (both AoS and SoA paths) a new Vec3f-scalar field kind (fixed 12-byte triple) and a new variable-length
+  struct-list field kind (reusing the existing offsets+blob machinery, generalized beyond String columns)
+  before `Bodies` can be declared in full — real, undesigned mechanism work, not a workaround
+  (flattening Vec3f to 3 separate floats was considered and rejected: it doesn't generalize to
+  `OrbitPath`, since row count and per-row list length are different cardinalities).
 - **A C#-side `[Projected]`-dispatch extension to `ViewWireFormat`/`ViewWriterEmitter`** (gap #2, discovered
   during Milestone 3, 2026-07-12): today `[Projected]` only affects the RmlUi `RmlDataModelEmitter.cs` C++
   face; the View Contract C# writer (`ViewWireFormat.EmitScalar`) never dispatches to a callable. If a

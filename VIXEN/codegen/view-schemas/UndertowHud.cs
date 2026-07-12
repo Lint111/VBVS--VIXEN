@@ -1,9 +1,14 @@
 // Inc-5 Milestone 3 (Task 4): schema-driven [View] declarations that re-derive undertow's REAL
 // ViewSchema.cs sections (core/src/Undertow.View/ViewSchema.cs) -- Hud, HudFactions, HudEvents,
-// HudInspect. Bodies is explicitly OUT of scope this milestone (see the plan doc's Progress Log,
-// gap #4: Position/RecipeParams are Vec3f SCALARS and OrbitPath is a nullable ListVec3f -- neither
-// shape is representable by the shipped [View] model, which only supports int/float/bool/string
-// scalars and T[] of scalar-only structs).
+// HudInspect, and (PARTIAL) Bodies. Bodies.Position/RecipeParams (Vec3f SCALARS) and
+// Bodies.OrbitPath (a nullable ListVec3f) are explicitly OUT of scope this milestone (gap #4,
+// plan doc Progress Log) -- neither shape is representable by the shipped [View] model, which only
+// supports int/float/bool/string scalars and T[] of scalar-only structs. UndertowBodies below
+// declares only the 7 REPRESENTABLE Bodies columns (Kind, Mass, OrbitParent, OwnerInLens,
+// OwnerRecentEventAge, RecipeProvider, RecipeId) per the controller's option-1 decision -- Vec3f-
+// scalar-field and ListVec3f-field support as new [View] model shapes is real, undesigned Yeroket
+// kernel-framework mechanism work, not something to force via a flatten-to-3-floats workaround
+// (see the Follow-ups entry for this gap).
 //
 // Distinct type names (UndertowHud, not Hud) so this schema does NOT collide with the existing,
 // live, drift-guarded native Hud/HudFaction/HudEvent schema (Hud.cs) that VIXEN's own HUD already
@@ -101,5 +106,34 @@ namespace Vixen.ViewSchemas
         public float topRelSig;        // NAME MISMATCH: source el.TopRelSignificance, no value transform
         [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.IdentityString))]
         public string cause;           // NAME MISMATCH: source el.CauseString, no value transform
+    }
+
+    // --- Bodies row, PARTIAL (ViewSchema.cs SectionBodies, "Bodies") -- gap #4: only the 7
+    // REPRESENTABLE columns are declared. Kind/OwnerInLens/OwnerRecentEventAge/RecipeProvider are
+    // identity U8 (widened to int); Mass is identity F32 but its VIEW-FIELD NAME differs from its
+    // C# source-member name (Mass <- el.MassKg, ALSO hiding a double->float narrowing -- the third
+    // name-mismatch column the Milestone 1 Opus validator flagged, same IdentityFloat name-binding
+    // mechanism as HudInspect.topRelSig/cause above); OrbitParent is the nullable-unwrap-with-
+    // -1-sentinel transform (UndertowViewCallables.OrbitParentOrSentinel); RecipeId is identity U32
+    // (widened to int -- ViewScalar has no uint type either, same widen-and-narrow-back discipline
+    // as every U8 column in this file). Position, RecipeParams (Vec3f scalars) and OrbitPath
+    // (ListVec3f) are NOT declared here -- see the file header and the plan doc's gap #4 entry. ---
+    public struct UndertowBodyRow
+    {
+        public int kind;                // U8, widened to int; source: el.Kind
+        [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.IdentityFloat))]
+        public float mass;              // NAME MISMATCH + narrowing: source (float)el.MassKg (double)
+        [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.OrbitParentOrSentinel))]
+        public int orbitParent;         // source: el.Orbit.HasValue ? el.Orbit.Value.ParentBodyIndex : -1
+        public int ownerInLens;         // U8, widened to int; source: el.OwnerInLens
+        public int ownerRecentEventAge; // U8, widened to int; source: el.OwnerRecentEventAge
+        public int recipeProvider;      // U8, widened to int; source: el.RecipeProvider
+        public int recipeId;            // U32, widened to int; source: el.RecipeId
+    }
+
+    [View]
+    public struct UndertowBodies
+    {
+        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBodyRow[] rows;
     }
 }

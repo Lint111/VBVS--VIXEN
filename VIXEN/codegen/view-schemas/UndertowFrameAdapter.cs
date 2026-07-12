@@ -76,5 +76,27 @@ namespace Vixen.ViewSchemas
             w.cause = UndertowViewCallables.IdentityString(el.CauseString);             // name mismatch only
             return w;
         }
+
+        // PARTIAL (gap #4): only the 7 representable Bodies columns. Position/RecipeParams/OrbitPath
+        // (Vec3f/ListVec3f) are not populated here -- out of scope this milestone.
+        public static UndertowBodiesViewWriter Bodies(IReadOnlyList<BodyView> bodies)
+        {
+            var w = new UndertowBodiesViewWriter();
+            foreach (var el in bodies)
+            {
+                w.rows.Add(new UndertowBodiesViewWriter.UndertowBodyRowRow
+                {
+                    kind = (byte)el.Kind,
+                    mass = UndertowViewCallables.IdentityFloat((float)el.MassKg),   // name mismatch + double->float narrowing
+                    orbitParent = UndertowViewCallables.OrbitParentOrSentinel(
+                        el.Orbit.HasValue, el.Orbit.HasValue ? el.Orbit.Value.ParentBodyIndex : -1),
+                    ownerInLens = el.OwnerInLens,
+                    ownerRecentEventAge = el.OwnerRecentEventAge,
+                    recipeProvider = el.RecipeProvider,
+                    recipeId = (int)el.RecipeId,
+                });
+            }
+            return w;
+        }
     }
 }
