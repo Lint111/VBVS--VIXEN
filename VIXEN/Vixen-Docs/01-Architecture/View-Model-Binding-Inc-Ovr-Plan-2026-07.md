@@ -211,7 +211,46 @@ re-derive these facts, but DO re-verify file:line if code has moved)
 
 ## Progress Log
 
-*(none yet — plan authored, not yet dispatched)*
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-12 · no files modified in either repo
+  - **Attribute-surface decision:** a new PER-FIELD attribute (`[Projected(typeof(X), nameof(X.Fn))]` /
+    `[Overridden]`), NOT new `[ViewSection]` properties. Verified against `GpuStructAttributes.cs:1-44`
+    (confirmed `ViewAttribute` is a bare empty marker at line 27, `ViewSectionAttribute` has exactly one
+    property, `Layout`, at line 39) and `ViewModel.cs`'s `Classify`/`ReadLayout` (lines 44-69) — the
+    existing `ReadLayout` pattern (`GetAttributes().FirstOrDefault(x => x.AttributeClass?.Name == "...")`
+    at line 62) is the established idiom for "an optional per-field attribute alters codegen for that
+    field," confirmed by direct read as the precedent a new `ReadProjection`/`ReadOverride` sibling should
+    mirror. Reasoning: `[ViewSection]` is semantically about wire LAYOUT, an orthogonal concern to
+    projection/override; identity-vs-projection is a per-FIELD distinction (§5a) not a per-view one, so
+    only a field-level attribute can express "this one field is a projection, the others are identity."
+  - **Projection codegen decision:** reuse `--callable-cpp`'s EXACT existing mechanism — a Projection
+    field's attribute names an already-`[KernelCallable]`-discovered method; the `--view` emitter
+    (`RmlDataModelEmitter.cs`) gains one new branch (field has `[Projected]` → emit a call to
+    `Vixen::AppFlow::Generated::<Name>(...)` instead of a flat 1:1 bind) rather than inventing a parallel
+    transplant path. Traced the full C#→C++ path (`AppFlowCallables.cs:13` → CLI `Program.cs:159-193`
+    `--callable-cpp` branch → `BuildCallableCppHeader` → `AppFlowCallables.g.hpp:7-9`) to confirm this is
+    genuinely reusable as-is.
+  - **IMPORTANT finding (verified independently by the controller):** today's `mask_` "projection" is only
+    HALF-transplanted — `applyToggle` (`AppFlowCallables.cs:13`) is the view→model inverse (single-bit
+    flip) and IS a real `[KernelCallable]`; the model→view fan-out (`EditorLayersView::PopulateFromMask`,
+    `EditorLayersView.h:39-52`) is a raw hand-written `for` loop with ZERO `[KernelCallable]` involvement
+    — confirmed by grep, no `[KernelCallable]`/callable references anywhere in that file or
+    `AppFlowCallables.cs` beyond `applyToggle` itself. Task 2/3 must AUTHOR a new callable for the read-side
+    bit-decomposition (e.g. `bool BitAt(uint32_t mask, uint32_t index)`), not just wire up the existing
+    `applyToggle` — Projection is bidirectional per §5a, and only the write direction is transplanted
+    today. This sharpens Task 2/3's workload; it does not disprove any plan premise.
+  - **Override codegen decision:** a plain forward-declaration-only header entry (e.g.
+    `uint32_t ReadLayerMaskOverride(const IViewDataProvider&, ViewNounKey);` with no body) — no new
+    machinery needed; standard C++ ODR/link semantics already give "fails at LINK time if unimplemented,
+    not silently" for free once the generated wiring calls an undefined symbol. Recommended proof
+    binding: a NEW trivial single-scalar field (not `LayerMask`, to avoid the Task 3/Task 4 proofs
+    colliding on the same binding) — a recommendation for Task 4's implementer to confirm or pick a
+    smaller one once inside the code, not a hard mandate.
+  - **`ViewNounId` auto-generation gap:** confirmed still present (`IViewDataProvider.h:14-17`), DEFERRED
+    as a Follow-up per the plan's own "least structural change for THIS milestone" mandate — cross-schema
+    noun-id stability/dedup is a real, separate design question this increment doesn't need to touch.
+  - No contradictions found against the plan doc's assumptions (the half-transplanted-projection finding
+    sharpens rather than disproves the ground truth). Reported inline, no plan-doc commit made by the
+    implementer (controller adds this entry instead).
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
