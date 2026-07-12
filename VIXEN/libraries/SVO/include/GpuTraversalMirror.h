@@ -77,99 +77,217 @@ public:
     // Tiered-ESVO Inc2 M3 sync: register a SECOND octree as this mirror's
     // tier-crossing child, so castRay can genuinely restart across a farBit==1
     // leaf exactly as BodyInstanceRayMarch.comp's traverseOctreeInstanced wrapper
-    // does — one crossing only (M3 scope), no N-tier chaining. `childOctreeIndex`
-    // must match the TierRef entries this mirror's own tree registered (via
-    // MarkLeafAsTierCrossing) so tierCrossRef.childOctreeIndex resolves to THIS
-    // child. Optional: a mirror with no registered child treats any farBit==1
-    // leaf as a miss (matches this file's OWN pre-M3 unguarded-read gap being
-    // closed with the SAME "miss, not misread" discipline SVOTraversal.cpp's M2
-    // guard already established).
+    // does. `childOctreeIndex` must match the TierRef entries this mirror's own
+    // tree registered (via MarkLeafAsTierCrossing) so tierCrossRef.childOctreeIndex
+    // resolves to THIS child. Optional: a mirror with no registered child treats
+    // any farBit==1 leaf as a miss (matches this file's OWN pre-M3 unguarded-read
+    // gap being closed with the SAME "miss, not misread" discipline
+    // SVOTraversal.cpp's M2 guard already established).
+    //
+    // Inc3 M3: generalized to a CHAIN of registered children (one per hop),
+    // mirroring the shader's bounded hop loop. RegisterTierCrossingChild may be
+    // called MULTIPLE times; each call appends one hop's (childOctreeIndex,
+    // config/nodes/bricks) to m_chain. castRay's hop loop below tries m_chain in
+    // REGISTRATION ORDER at each successive crossing — i.e. a caller building a
+    // 3-tree T2->T1->T0 fixture registers T1 first (T0's crossing target), then
+    // T2 (T1's own crossing target), matching the order the chain is actually
+    // walked. A single RegisterTierCrossingChild call (M2's usage) is exactly a
+    // 1-element chain — zero behavior change for every existing M2/M3-single-hop
+    // caller.
     void RegisterTierCrossingChild(uint32_t childOctreeIndex, const SerializedOctree& childSerialized) {
-        m_childOctreeIndex = childOctreeIndex;
-        m_hasChild = true;
-        m_childCfg = childSerialized.config;
-        m_childNodeCount = childSerialized.nodeCount;
-        m_childNodes = reinterpret_cast<const ChildDescriptor*>(childSerialized.nodes.data());
-        m_childBrickCount = childSerialized.brickCount;
-        m_childBrickData = reinterpret_cast<const uint32_t*>(childSerialized.bricks.data());
+        ChildLink link;
+        link.childOctreeIndex = childOctreeIndex;
+        link.cfg = childSerialized.config;
+        link.nodeCount = childSerialized.nodeCount;
+        link.nodes = reinterpret_cast<const ChildDescriptor*>(childSerialized.nodes.data());
+        link.brickCount = childSerialized.brickCount;
+        link.brickData = reinterpret_cast<const uint32_t*>(childSerialized.bricks.data());
+        // This hop's OWN tier-ref-table slice — needed so a FURTHER crossing
+        // leaf inside THIS child (the next hop's crossing) can resolve its
+        // TierRef at all. Omitting this (an earlier version of this loop did)
+        // silently starves every hop beyond the first: castRayOnce's crossing
+        // check gates on `absoluteTierRefIdx < tierRefTable.size()`, so an
+        // always-empty table for hop >= 1 makes EVERY further crossing leaf
+        // fall through to handleLeafHit and misread contourPointer as a brick
+        // index — a real bug this milestone's own chained parity test caught
+        // (verified via instrumentation: a two-hop chain silently degraded to
+        // reporting hop 1's tree as an ordinary brick hit).
+        link.tierRefTable = childSerialized.tierRefs;
+        m_chain.push_back(link);
     }
 
+    // Inc3 M3: one hop's contribution to the composed hitT, exposed so a test
+    // can verify the CHAIN's arithmetic directly (each hop's own worldT and
+    // the cumulative direction-length multiplier applied to it) rather than
+    // re-deriving these quantities externally through the public API, which
+    // cannot reproduce a mid-chain (non-unit-direction, non-normalizing) ray
+    // exactly — castRay()'s own top-level normalize() makes that fundamentally
+    // lossy for any hop beyond the first (see test_tier_crossing_mirror_parity.cpp's
+    // ChainedTwoHopCrossingComposesHitT for the discovery trail).
+    struct HopTrace {
+        float worldT = 0.0f;              // this hop's own tierCross.worldT (or, for the
+                                           // final hop, the terminal Hit::t) — RAW, before
+                                           // the cumulative-length multiply.
+        float cumulativeDirLenBefore = 1.0f;  // the multiplier THIS worldT is scaled by.
+        // Inc3 M4: this hop's own measured crossing point, in the CURRENT tree's local
+        // [1,2) frame (tierCross.parentLocalOrigin — the same quantity a demo-scene
+        // builder needs to compute a k-invariant childOriginLocal placement, per
+        // test_tier_crossing_mirror_parity.cpp's BuildTask3ParentWithScale/
+        // ChainedTwoHopCrossingComposesHitT discovery trail: "measured via direct
+        // instrumentation... not hand-derived"). Zero for the terminal (non-crossing)
+        // hop's entry, since a final hit/miss has no further crossing point to report.
+        glm::vec3 parentLocalOrigin{0.0f};
+    };
+
     // Port of traverseOctreeInstanced(): cast a WORLD-space ray, return the hit.
-    Hit castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn) const {
+    // Inc3 M3: generalized to a bounded hop loop mirroring the shader's own
+    // MAX_TIER_HOPS wrapper — see BodyInstanceRayMarch.comp's function-header
+    // comment for the full derivation (cumulative childRayDirWorld-length
+    // composition, off-boundary tEntryWorld invariant). m_chain[hop] is tried
+    // at the hop'th crossing (registration order == hop order). `trace`, if
+    // non-null, is cleared and appended with one HopTrace per hop actually
+    // taken (including the terminal hit/miss) — diagnostic only, never
+    // consulted by the composition itself.
+    Hit castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn,
+                std::vector<HopTrace>* trace = nullptr) const {
+        if (trace) trace->clear();
         // The shader receives a normalized rayDir from getRayDir(); callers here pass
         // an already-normalized direction (the renderer + parity tests both do) — this
         // explicit normalize() is UNCHANGED from pre-M3 (zero behavior change for the
-        // ordinary single-tree path). Only the INNER (child) castRayOnce call below
+        // ordinary single-tree path). Only an INNER (child) castRayOnce call below
         // deliberately passes a non-unit-length direction (see that call's own comment).
         const glm::vec3 rayDir = glm::normalize(rayDirIn);
 
-        TierCrossOut tierCross;
-        Hit out = castRayOnce(rayOrigin, rayDir, m_cfg, m_nodes, m_nodeCount,
-                              m_brickData, m_brickCount, m_nodeArrayBase, m_brickArrayBase,
-                              m_tierRefTable, tierCross);
-        if (out.hit || !tierCross.hit) {
-            return out;  // ordinary hit or ordinary miss — matches the shader wrapper exactly.
-        }
-        if (!m_hasChild || tierCross.ref.childOctreeIndex != m_childOctreeIndex) {
-            // No registered child (or the TierRef points at a DIFFERENT child than
-            // this mirror was told about) — treat as a miss, same as the real
-            // shader would if tierRefTable/configs[childOctreeIndex] were absent.
-            return out;
+        static constexpr int kMaxTierHops = 5;  // sync: shader's MAX_TIER_HOPS
+
+        glm::vec3 curOrigin = rayOrigin;
+        glm::vec3 curDir    = rayDir;
+        const OctreeConfig* curCfg = &m_cfg;
+        const ChildDescriptor* curNodes = m_nodes;
+        uint32_t curNodeCount = m_nodeCount;
+        const uint32_t* curBrickData = m_brickData;
+        uint32_t curBrickCount = m_brickCount;
+        int curNodeArrayBase = m_nodeArrayBase;
+        int curBrickArrayBase = m_brickArrayBase;
+        const std::vector<TierRef>* curTierRefTable = &m_tierRefTable;
+
+        float cumulativeDirLen = 1.0f;
+        float runningHitT = 0.0f;
+
+        for (int hop = 0; hop < kMaxTierHops; ++hop) {
+            TierCrossOut tierCross;
+            Hit out = castRayOnce(curOrigin, curDir, *curCfg, curNodes, curNodeCount,
+                                  curBrickData, curBrickCount, curNodeArrayBase, curBrickArrayBase,
+                                  *curTierRefTable, tierCross);
+            if (out.hit) {
+                if (trace) trace->push_back(HopTrace{out.t, cumulativeDirLen});
+                out.t = runningHitT + out.t * cumulativeDirLen;
+                out.hitPoint = rayOrigin + rayDir * out.t;
+                return out;
+            }
+            if (!tierCross.hit) {
+                return out;  // ordinary miss — matches the shader wrapper exactly.
+            }
+
+            // Find this hop's registered child link (registration order == hop
+            // order, per RegisterTierCrossingChild's own header comment).
+            if (static_cast<size_t>(hop) >= m_chain.size() ||
+                tierCross.ref.childOctreeIndex != m_chain[hop].childOctreeIndex) {
+                // No registered child at this hop (or the TierRef points at a
+                // DIFFERENT child than this mirror was told about) — treat as a
+                // miss, same as the real shader would if tierRefTable/
+                // configs[childOctreeIndex] were absent.
+                return out;
+            }
+            const ChildLink& link = m_chain[hop];
+
+            // Tiered-ESVO Inc2 M4 Task 10 sync: residency reuse. Behaviorally
+            // equivalent to the shader: a non-resident child is "never cross,"
+            // which this mirror represents as an ordinary miss (out, this hop's
+            // own PARENT-call result) — the same observable outcome the
+            // shader's mip-shaded fallback produces from this mirror's
+            // Hit-struct perspective, even though this mirror does not model
+            // mip-sample shading/color at all (see the class header: this is a
+            // brick-hit-test oracle, not a shading oracle). Task 9's
+            // screen-space LOD gate is NOT ported here — the whole mirror is
+            // used exclusively with raySizeCoef==0 (LOD structurally disabled,
+            // see castRayOnce's own "(LOD disabled in parity...)" comment).
+            // Inc3 M8 Task 23 sync note: the shader's crossing gate is now
+            // camera-anchored and world-unit-correct (tChild projection of
+            // TierRef.childOriginLocal, hop-threaded tWorldBase/tLocalUnitWorld,
+            // RHS childScale*scale_exp2*tLocalUnitWorld — see the Task 23
+            // derivation doc). Still raySizeCoef-gated, so it remains
+            // structurally disabled in this mirror's raySizeCoef==0 domain —
+            // same non-port category as Task 9's original gate. The shader
+            // wrapper ALSO gained a child-miss/hop-exhaustion mip fallback
+            // (shade the deepest parked crossing leaf's own mip sample instead
+            // of a whole-ray miss, design doc §5.3); like the residency case
+            // right below, this mirror represents that outcome as an ordinary
+            // miss (no mip modeling here). The hitT composition — which this
+            // mirror DOES port — is unchanged by Task 23.
+            if (link.cfg.brickResident == 0u) {
+                return out;
+            }
+
+            // --- Tier-crossing restart (mirrors BodyInstanceRayMarch.comp's wrapper) ---
+            glm::vec3 childLocalOrigin, childLocalDir;
+            remapRayIntoChildFrame(tierCross.parentLocalOrigin, tierCross.parentLocalDir, tierCross.ref,
+                                   childLocalOrigin, childLocalDir);
+
+            const glm::mat4 childLocalToWorld = link.cfg.localToWorld;
+            const glm::vec3 childRayOriginWorld = glm::vec3(childLocalToWorld * glm::vec4(childLocalOrigin - glm::vec3(1.0f), 1.0f));
+            const glm::vec3 childRayDirWorld    = glm::mat3(childLocalToWorld) * childLocalDir;
+
+            // hitT NORMALIZATION (Inc3 M1 Task 1, folded into the running
+            // composition per the shader wrapper's header derivation): this
+            // hop's crossing-point world-t is measured in the PREVIOUS hop's
+            // world-t units, so it must be scaled by cumulativeDirLen (still at
+            // its pre-this-hop value here) before being added to the running
+            // total.
+            if (trace) trace->push_back(HopTrace{tierCross.worldT, cumulativeDirLen, tierCross.parentLocalOrigin});
+            runningHitT += tierCross.worldT * cumulativeDirLen;
+            // ASSIGN, not multiply-in: childRayDirWorld's own magnitude ALREADY
+            // reflects the full compounding from every earlier hop, because
+            // childLocalDir is built from parentLocalDir/tierCross.parentLocalDir,
+            // which is itself derived from curDir (the incoming ray for THIS
+            // hop's castRayOnce call) — curDir already carries every prior hop's
+            // scaling. Multiplying the OLD cumulativeDirLen into this new
+            // (already-absolute, already-compounded) length double-counts every
+            // hop beyond the first: a chained 3-hop test caught this exact bug
+            // (hop 2's multiplier measured 8 instead of the correct 4 at
+            // childScale=0.5, i.e. cumulativeDirLen was compounding as
+            // (1/childScale)^(hop+1) instead of the correct (1/childScale)^hop
+            // when child/parent share scale magnitude) — verified by tracing
+            // childRayDirWorld's own absolute length hop-by-hop and confirming
+            // it already equals the fully-compounded value, not a per-hop delta.
+            cumulativeDirLen = glm::length(childRayDirWorld);
+
+            // castRayOnce does NOT renormalize its rayDir parameter (see its own
+            // header comment) — childRayDirWorld is deliberately NOT unit-length
+            // (constructed so that castRayOnce's internal t IS a parametric
+            // distance in units of |childRayDirWorld|, not necessarily world
+            // distance), and renormalizing it here would break that
+            // parametrization exactly as it would in the real shader.
+            curOrigin = childRayOriginWorld;
+            curDir    = childRayDirWorld;
+            curCfg          = &link.cfg;
+            curNodes         = link.nodes;
+            curNodeCount     = link.nodeCount;
+            curBrickData     = link.brickData;
+            curBrickCount    = link.brickCount;
+            curNodeArrayBase = link.cfg.nodeArrayBase;
+            curBrickArrayBase = link.cfg.brickArrayBase;
+            // This hop's OWN tier-ref-table slice (NOT an always-empty
+            // placeholder — see RegisterTierCrossingChild's header comment for
+            // the bug this fixed) so a FURTHER crossing leaf inside this child
+            // can resolve its TierRef on the NEXT loop iteration.
+            curTierRefTable = &link.tierRefTable;
         }
 
-        // Tiered-ESVO Inc2 M4 Task 10 sync: residency reuse. Ported here (in
-        // castRay(), not castRayOnce()) rather than at the shader's exact
-        // insertion point (inside castRayOnce()'s leaf-hit branch, alongside
-        // Task 9's LOD gate) because m_childCfg — the ONLY thing this check
-        // needs — is not available inside castRayOnce() (that function only
-        // ever sees the ONE tree it was explicitly handed); castRay() is where
-        // the child config is first resolved, matching where this mirror
-        // already resolves m_hasChild/childOctreeIndex above. Behaviorally
-        // equivalent to the shader: a non-resident child is "never cross,"
-        // which this mirror represents as an ordinary miss (out, the PARENT
-        // call's own result) — the same observable outcome the shader's
-        // mip-shaded fallback produces from this mirror's Hit-struct
-        // perspective (no child geometry surfaces either way), even though
-        // this mirror does not model mip-sample shading/color at all (see the
-        // class header: this is a brick-hit-test oracle, not a shading
-        // oracle). Task 9's screen-space LOD gate is NOT ported here — the
-        // whole mirror is used exclusively with raySizeCoef==0 (LOD
-        // structurally disabled, see castRayOnce's own "(LOD disabled in
-        // parity...)" comment) and none of castRayOnce's signature carries a
-        // raySizeCoef/scale_exp2 pair a caller could even set — porting Task
-        // 9 would need new plumbing through every call site, not a like-for-
-        // like function port. Flagged for validator: the LOD-gate skip is a
-        // deliberate scope line, not an oversight.
-        if (m_childCfg.brickResident == 0u) {
-            return out;  // non-resident child: parent's own (mip-shaded, in the
-                          // real shader) result stands; never cross.
-        }
-
-        // --- Tier-crossing restart (mirrors BodyInstanceRayMarch.comp's wrapper) ---
-        glm::vec3 childLocalOrigin, childLocalDir;
-        remapRayIntoChildFrame(tierCross.parentLocalOrigin, tierCross.parentLocalDir, tierCross.ref,
-                               childLocalOrigin, childLocalDir);
-
-        const glm::mat4 childLocalToWorld = m_childCfg.localToWorld;
-        const glm::vec3 childRayOriginWorld = glm::vec3(childLocalToWorld * glm::vec4(childLocalOrigin - glm::vec3(1.0f), 1.0f));
-        const glm::vec3 childRayDirWorld    = glm::mat3(childLocalToWorld) * childLocalDir;
-
-        // castRayOnce does NOT renormalize its rayDir parameter (see its own header
-        // comment) — childRayDirWorld is deliberately NOT unit-length (constructed so
-        // that castRayOnce's internal t IS the real-world distance from the crossing
-        // point; see remapRayIntoChildFrame's derivation), and renormalizing it here
-        // would break that s-consistent parametrization exactly as it would in the
-        // real shader.
-        TierCrossOut childTierCross;
-        Hit childOut = castRayOnce(childRayOriginWorld, childRayDirWorld, m_childCfg,
-                                   m_childNodes, m_childNodeCount, m_childBrickData, m_childBrickCount,
-                                   m_childCfg.nodeArrayBase, m_childCfg.brickArrayBase,
-                                   /*tierRefTable=*/{}, childTierCross);
-        if (childOut.hit) {
-            childOut.t = tierCross.worldT + childOut.t;
-            childOut.hitPoint = rayOrigin + rayDir * childOut.t;
-        }
-        return childOut;
+        // Hop budget exhausted — resume as an ordinary miss (same discipline as
+        // the shader's own MAX_TIER_HOPS exhaustion path).
+        Hit exhausted;
+        return exhausted;
     }
 
 private:
@@ -182,6 +300,22 @@ private:
         glm::vec3 parentLocalOrigin{0.0f};
         glm::vec3 parentLocalDir{0.0f};
         float worldT = 0.0f;
+    };
+
+    // Inc3 M3: one hop's registered child tree (config/nodes/bricks) — a chain
+    // of these mirrors the shader's per-hop g_octreeIdx/g_esvoNodeBase/
+    // g_brickArrayBase swap using explicit locals instead of globals (this
+    // class already threads config/nodes/bricks as explicit castRayOnce
+    // parameters, so there is no analogous "restore the globals" step needed
+    // here — every hop's state is 100% local to castRay()'s own stack frame).
+    struct ChildLink {
+        uint32_t childOctreeIndex = 0;
+        OctreeConfig cfg{};
+        const ChildDescriptor* nodes = nullptr;
+        uint32_t nodeCount = 0;
+        const uint32_t* brickData = nullptr;
+        uint32_t brickCount = 0;
+        std::vector<TierRef> tierRefTable;  // this hop's OWN slice — see RegisterTierCrossingChild
     };
 
     // Mathematical inverse of TierDirection.h's SumTail composition — identical to
@@ -261,6 +395,11 @@ private:
                     // reference, NOT a brick — checked BEFORE handleLeafHit's
                     // getContourPointer read (the shader's own insertion point,
                     // BodyInstanceRayMarch.comp's traverseOctreeInstancedOnce).
+                    // Inc3 M8 Task 23 sync: the shader evaluates its (raySizeCoef-
+                    // gated) camera-anchored crossing LOD gate right here and also
+                    // reports tierCrossLeafNodeIndex for the wrapper's child-miss
+                    // mip fallback; both live outside this mirror's raySizeCoef==0
+                    // / no-mip-shading domain (see castRay's Task 23 sync note).
                     const int localChildIdxTc = mirroredToLocalOctant(state.idx, coef.octant_mask);
                     if (localChildIdxTc >= 0 && localChildIdxTc <= 7) {
                         const uint32_t totalInternalTc = static_cast<uint32_t>(std::popcount(validMask & ~leafMask));
@@ -832,17 +971,11 @@ private:
         return false;
     }
 
-    // Tiered-ESVO Inc2 M3 sync: this tree's own tier-ref-table slice, and the
-    // optionally-registered child tree (for a genuine restart, matching the
-    // shader's configs[childOctreeIndex] selection).
+    // Tiered-ESVO Inc2 M3 sync: this tree's own tier-ref-table slice. Inc3 M3:
+    // the (now possibly multi-hop) registered child chain — see ChildLink/
+    // RegisterTierCrossingChild above.
     std::vector<TierRef> m_tierRefTable;
-    bool m_hasChild = false;
-    uint32_t m_childOctreeIndex = 0;
-    OctreeConfig m_childCfg{};
-    const ChildDescriptor* m_childNodes = nullptr;
-    uint32_t m_childNodeCount = 0;
-    const uint32_t* m_childBrickData = nullptr;
-    uint32_t m_childBrickCount = 0;
+    std::vector<ChildLink> m_chain;
 };
 
 }  // namespace Vixen::SVO

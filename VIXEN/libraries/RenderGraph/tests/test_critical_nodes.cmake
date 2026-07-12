@@ -405,7 +405,7 @@ if(TARGET stb)
 else()
     # stb is an INTERFACE header dep; if the target isn't visible here, add its include dir.
     target_include_directories(test_body_instance_raymarch_render PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_body_instance_raymarch_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
@@ -465,7 +465,7 @@ if(TARGET stb)
     target_link_libraries(test_recipe_pool_render PRIVATE stb)
 else()
     target_include_directories(test_recipe_pool_render PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_recipe_pool_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
@@ -495,7 +495,7 @@ if(TARGET stb)
     target_link_libraries(test_mip_fallback_render PRIVATE stb)
 else()
     target_include_directories(test_mip_fallback_render PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_mip_fallback_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
@@ -621,7 +621,7 @@ if(TARGET stb)
     target_link_libraries(test_editor_document_render PRIVATE stb)
 else()
     target_include_directories(test_editor_document_render PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_editor_document_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}"
@@ -656,7 +656,7 @@ if(TARGET stb)
     target_link_libraries(test_appflow_editor_toggle_render PRIVATE stb)
 else()
     target_include_directories(test_appflow_editor_toggle_render PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_appflow_editor_toggle_render PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}"
@@ -687,7 +687,7 @@ if(TARGET stb)
     target_link_libraries(test_recipe_authoring_gate PRIVATE stb)
 else()
     target_include_directories(test_recipe_authoring_gate PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_recipe_authoring_gate PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
@@ -878,7 +878,7 @@ if(TARGET stb)
     target_link_libraries(test_editor_toggle_undo_capture PRIVATE stb)
 else()
     target_include_directories(test_editor_toggle_undo_capture PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 set_target_properties(test_editor_toggle_undo_capture PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_editor_toggle_undo_capture)
@@ -899,7 +899,7 @@ if(TARGET stb)
     target_link_libraries(test_hud_render_capture PRIVATE stb)
 else()
     target_include_directories(test_hud_render_capture PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 set_target_properties(test_hud_render_capture PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_hud_render_capture)
@@ -932,7 +932,7 @@ if(TARGET stb)
     target_link_libraries(test_procedural_recipe_render PRIVATE stb)
 else()
     target_include_directories(test_procedural_recipe_render PRIVATE
-        "${CMAKE_BINARY_DIR}/_deps/stb-src")
+        "${stb_SOURCE_DIR}")
 endif()
 
 # SDF_CORE_KERNELS_HLSL_PATH: same path as used by test_recipe_codegen.

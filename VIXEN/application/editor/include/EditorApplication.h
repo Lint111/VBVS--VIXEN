@@ -20,7 +20,8 @@
 #include "VulkanGraphApplication.h"
 #include "EditorDocumentModel.h"
 #include "AppFlowRuntime.h"
-#include "LayerControllerViewDataProvider.h"
+#include "GaiaLayerViewDataProvider.h"  // Inc-B: Gaia-backed IViewDataProvider (was LayerControllerViewDataProvider)
+#include "ViewReconcileNode.h"         // Inc-B: per-frame .changed<LayerMask>() reconcile
 #include "EditorLayersViewBridge.h"  // Inc-A2: gaia/robin_hood ODR isolation seam -- see its file header
 #include <Logger.h>
 
@@ -105,6 +106,17 @@ private:
     // so one call site here covers toggle, undo, and redo alike).
     void RefreshLayersView();
 
+    // Inc-B (View-Model-Binding-Inc-B-Plan-2026-07.md, design §4/§4a): runs the per-frame
+    // .changed<LayerMask>() reconcile against the Gaia layer entity. Model->view for changes NOT
+    // driven by the editor's own input (the ToggleLayer handler's same-frame echo above already
+    // covers that case) -- e.g. a deterministic external write to gaiaLayerEntity_'s LayerMask
+    // component, bypassing WriteU32 entirely. Called from Update(), AFTER input dispatch, so
+    // cross-view/external propagation lands same-frame where possible (design §4a). Re-syncs
+    // rt_.Layers() (the ToggleLayer handler's own mask source, used for undo snapshots + the
+    // scripted-action state dump) so the Gaia component stays the single source of truth an
+    // external write mutates, not a second copy that would silently diverge.
+    void ReconcileLayersView();
+
 
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
@@ -113,11 +125,31 @@ private:
     // instead of mutating LayerController directly. Layers() exposes the same mask source
     // of truth Inc-2's raw layers_ member used.
     Vixen::AppFlow::AppFlowRuntime rt_{nullptr, /*sender*/0};
-    // Inc-A: the view->model seam's direct-field provider over rt_.Layers() (design
-    // View-Data-Provider-Seam-Design-2026-07.md). ToggleLayer reads/writes LayerMask through this
-    // instead of calling rt_.Layers().Mask()/SetMask() directly -- swapping to a Gaia-backed
-    // provider later (Inc-B) touches this one construction, not the handler body.
-    Vixen::AppFlow::LayerControllerViewDataProvider layerProvider_{rt_.Layers()};
+    // Inc-B: the editor's own Gaia world (Task 1 finding -- vixen_editor previously only pulled
+    // gaia.h TRANSITIVELY via SVO's ShellOctree/LaineKarrasOctree; nothing instantiated a
+    // GaiaVoxelWorld. A live world here is cheap -- GaiaVoxelWorld wraps one gaia::ecs::World
+    // member plus caches, exactly what libraries/GaiaVoxelWorld/tests construct per-test -- so
+    // Inc-B gives the editor a real one rather than reaching for the plan's headless-gtest
+    // fallback (see the Inc-B report for the full Task-1 writeup)). Owns exactly one entity
+    // (gaiaLayerEntity_) carrying the LayerMask component; nothing else in the editor touches
+    // this world.
+    Vixen::GaiaVoxel::GaiaVoxelWorld gaiaWorld_;
+    // A bare entity (no MortonKey/spatial identity -- LayerMask is the only component it carries).
+    // Constructed via a helper (MakeGaiaLayerEntity, EditorApplication.cpp) rather than a default
+    // member initializer referencing gaiaWorld_ -- member initializers run in DECLARATION order
+    // (gaiaWorld_ first, so this is technically safe), but the helper keeps the "what does this
+    // entity look like" logic out of the header, same rationale as layersView_'s bridge factory.
+    Vixen::GaiaVoxel::GaiaVoxelWorld::EntityID gaiaLayerEntity_ = Vixen::App::MakeGaiaLayerEntity(gaiaWorld_);
+    // Inc-A: the view->model seam's provider (design View-Data-Provider-Seam-Design-2026-07.md).
+    // ToggleLayer reads/writes LayerMask through this instead of touching a mask store directly.
+    // Inc-B swaps the direct-field LayerControllerViewDataProvider for this Gaia-backed one --
+    // same seam, same handler body, only this one construction changed (GaiaLayerViewDataProvider.h).
+    // Binds gaiaWorld_/gaiaLayerEntity_, both declared above -- default member initializers run in
+    // declaration order, so both are already constructed here.
+    Vixen::App::GaiaLayerViewDataProvider layerProvider_{gaiaWorld_, gaiaLayerEntity_};
+    // Inc-B: owns the persistent per-frame .changed<LayerMask>() query (design §4/§4b). Binds
+    // gaiaWorld_ (declared above -- same declaration-order argument as layerProvider_).
+    Vixen::App::ViewReconcileNode viewReconcile_{gaiaWorld_};
     // Inc-A2: the editor layer view's data-model host (design View-Model-Binding-Inc-A2-Plan-
     // 2026-07.md). Owned here (mirrors HudView's hudView_ ownership in VulkanGraphApplication --
     // same raw-pointer-via-bridge-factory pattern, same rationale: forward-declared-only type),
