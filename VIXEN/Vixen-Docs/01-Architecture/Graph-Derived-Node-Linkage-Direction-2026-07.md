@@ -3,7 +3,7 @@ title: Graph-Derived Node Linkage — Direction
 aliases: [Selective Node Linking, Graph-Scoped Build]
 tags: [architecture, rendergraph, nodes, build, direction, FUTURE]
 created: 2026-07-11
-status: 🔭 ACTIVE (direction doc, no increments started)
+status: ✅ INC1 SHIPPED (2026-07-12, branch `feat/graph-derived-node-linkage-inc1`, merged to main `09dafd3f`) — see [[Graph-Derived-Node-Linkage-Spec-2026-07]] and [[Graph-Derived-Node-Linkage-Inc1-Plan-2026-07]] for the chosen approach (4a-lite) and full milestone record. Epic continues: `vixen_editor`/headless-binary scoping deferred until such a binary has its own graph builder to prove against (see Spec §5).
 related:
   - "[[RenderGraph-System]]"
   - "[[../04-Development/Worktree-Build-Artifact-Accumulation-Audit-2026-07]]"
