@@ -453,6 +453,15 @@ VOXEL_COMPONENT_SCALAR(Material, "material", uint32_t, 0)
 VOXEL_COMPONENT_SCALAR(EmissionIntensity, "emission_intensity", float, 0.0f)
 VOXEL_COMPONENT_SCALAR(Roughness, "roughness", float, 0.5f)
 
+// View↔Model Binding Inc-B (View-Model-Binding-Inc-B-Plan-2026-07.md): the editor layer-toggle
+// datum, backed as a real Gaia component so IViewDataProvider's ReadU32/WriteU32 land on
+// getComponentValue<LayerMask>/setComponent<LayerMask> -- an ordinary set<T> auto-bumps the
+// component's chunk version AND fires the func_set hook, so the per-frame .changed<LayerMask>()
+// reconcile (ViewReconcileNode-equivalent, see EditorApplication) picks up ANY write, not just
+// ones that went through the ToggleLayer handler. Default all-layers-enabled (mirrors
+// LayerController's own default -- see LayerController.h).
+VOXEL_COMPONENT_SCALAR(LayerMask, "layer_mask", uint32_t, 0xFFFFFFFFu)
+
 // Vec3 attributes with Gaia layout control
 VOXEL_COMPONENT_VEC3(Color, "color", r, g, b, AoS, 1.0f, 1.0f, 1.0f)
 VOXEL_COMPONENT_VEC3(Normal, "normal", x, y, z, AoS, 0.0f, 1.0f, 0.0f)
@@ -493,7 +502,8 @@ enum class ComponentAccessType { Value, Ref };
     APPLY_MACRO(macro, Color) \
     APPLY_MACRO(macro, Normal) \
     APPLY_MACRO(macro, Emission) \
-    APPLY_MACRO(macro, MortonKey)
+    APPLY_MACRO(macro, MortonKey) \
+    APPLY_MACRO(macro, LayerMask)
 
 // Ref-type components: returned by pointer via getComponentRef()
 #define FOR_EACH_REF_COMPONENT(macro) \
