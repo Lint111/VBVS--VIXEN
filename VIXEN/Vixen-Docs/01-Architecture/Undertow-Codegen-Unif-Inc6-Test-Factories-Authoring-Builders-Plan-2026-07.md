@@ -103,7 +103,7 @@ pairs rather than one combined milestone.
 - Watch for the `SDFNodeGenerator.dll` non-deterministic-rebuild gotcha in Yeroket.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism for BOTH features (report-back gate).
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism for BOTH features (report-back gate).
   One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** #10 test factories — build + equivalence proof + retire. One Sonnet
   implementer + one Opus validator.
@@ -112,4 +112,33 @@ pairs rather than one combined milestone.
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only, both features): DONE · 2026-07-13 · no files modified in either
+  repo
+  - **#10: 30 net gated kinds** (31 `data&&codec` kinds minus `manifest`, the sole `customCodec` bearer),
+    listed by name. **496 real `Make.*` call sites across 156 files** — validator flagged this is a
+    loose upper bound (includes some non-factory `Make.*Def(` helpers, e.g. `Make.FactionDef(`); the
+    paren-requiring variant is 494. Note for Milestone 2: don't treat "496" as "496 generated-factory
+    call sites" 1:1.
+  - **#11: `TargetKinds` confirmed unchanged** — `{"material","role","relationship_kind","place"}`
+    (`Emit.cs:20`). Exactly 5 real call sites, all in `GeneratedFlatBuilderTests.cs`. Confirmed
+    `Define.Planet`/`Define.Moon` are hand-written staged builders (`Define.cs`), NOT part of #11's
+    generated scope.
+  - **CRITICAL: ctor-order coupling confirmed to hold exactly, traced concretely (not assumed).**
+    Yeroket `DefCarriersEmitter.cs:76-78` (Increment 5) builds ctor params in plain, unreordered
+    field-array order. Undertow `EmitTestFactory.cs:51` builds the CTOR-CALL args in the same plain
+    unreordered order — the only reordering `EmitTestFactory` does is on the factory METHOD's own
+    declared parameters (required-first, a C# legality requirement), never on the `Baked{K}Def` ctor
+    call itself. Traced `place` and `relationship_kind` end-to-end (implementer + validator
+    independently) — identical ctor-arg order on both sides. This is the single riskiest correctness
+    axis in the increment and it checks out clean today.
+  - **Mechanism confirmed**: #10 extends the existing `RegistrySlotsModel`-based carrier-emitter family
+    (a third emitter pass, same model, same `--def-carriers-cs`-style CLI-flag pattern). #11 is a new
+    standalone emitter (no existing Yeroket mechanism assembles a UTDL-string + staged-interface wizard
+    — confirmed via grep, no prior art).
+  - **`CodeModLoader.cs` confirmed** to reflect only on `[Effect]`/`[System]`/`[Action]`/`[Param]`/
+    `[ModManifest]` — zero reflection on either feature's generated shapes.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently re-derived the kind count
+    via its own Python script, re-traced 2 real kinds' ctor-argument order directly from both emitters'
+    source, and confirmed the mechanism decision by grepping for staged-wizard prior art itself. Cleared
+    to proceed to Milestone 2.
