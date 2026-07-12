@@ -263,8 +263,9 @@ not a shortcut.
   `Bodies.Position`/`RecipeParams`/`OrbitPath` explicitly deferred (gap #4, Follow-ups) — the other 7
   Bodies columns plus all of Hud/HudFactions/HudEvents/HudInspect are proven, 48/48 checks pass. One
   Sonnet implementer (no separate Opus validator dispatched yet — pending).
-- [ ] **Milestone 4 (Task 5):** retire the hand-rolled undertow generator, update undertow's own golden
-  tests, live-gate the real sim→render seam. One Sonnet implementer + one Opus validator.
+- [!] **Milestone 4 (Task 5):** retire the hand-rolled undertow generator, update undertow's own golden
+  tests, live-gate the real sim→render seam. BLOCKED 2026-07-12 — see Progress Log. Not done, not
+  skipped: a genuine structural blocker was confirmed against real source before any code was written.
 
 ## Progress Log
 
@@ -553,6 +554,53 @@ not a shortcut.
     `Mass` narrowing) is genuinely exercised by the described 2-faction/2-event/1-inspect/2-body
     scenario. Confirmed zero build-graph references to the 3 new files (correct — proof-vehicle schema
     declarations, not shipped runtime code). Tree clean. **APPROVED, no defects, no changes made.**
+
+- Milestone 4 (Task 5): BLOCKED · 2026-07-12 · no files modified in any of the three repos
+  - Implementer read Task 5's rescoped text and the full Progress Log (including Gap #3 and its
+    Follow-up) before writing any code, per this program's own precedent of investigating before
+    forcing a match. Verified Gap #3's claim against real source rather than trusting the doc at face
+    value, since Task 5 is the first milestone that would actually write to undertow:
+    - `undertow/vixen/render/view_contract.h`'s per-section accessor classes (`BodiesSection`,
+      `HudSection`, `HudFactionsSection`, `HudEventsSection`, `HudInspectSection`) do raw byte-offset
+      arithmetic hard-wired to the `UTVW` wire's specific shape: per-section TOC (byte-offset/length),
+      per-column TOC, 16-byte alignment, and `(count()+1)*4`-style offsets-array-then-blob addressing
+      for variable-length columns. This is not a format-agnostic reader sitting next to a swappable
+      writer — the typed accessors' arithmetic assumes `UTVW`'s exact byte layout.
+    - Yeroket's generated writer (Milestone 2's `ViewWriterEmitter`/`ToBuffer()`) emits a structurally
+      different protocol: magic `UTVA`, no per-section/per-column TOC, fields positional in declared
+      order, no 16-byte alignment even in the SoA `StructArray` body.
+    - Confirmed `main.cpp:38,186` (`#include "view_contract.h"`, `undertow::view::BodiesSection bs(sec,
+      wire.end())`) is a real, live consumption site, not dead/aspirational code.
+    - Confirmed `core/src/Undertow.View/Undertow.View.csproj`'s Analyzer wiring is a single
+      `ProjectReference` to the WHOLE `Undertow.Authoring.Codegen` project
+      (`OutputItemType="Analyzer"`) — not scoped per-emitter-file. `EmitViewWriter.cs` (produces the
+      `UTVW` bytes) and `EmitViewContractHeader.cs` (produces `view_contract.h`'s reader) are generated
+      from the same source-generator invocation over the same `view-schema.json`, as one co-designed
+      wire+reader pair. There is no existing mechanism to retire only the writer's output shape while
+      leaving the reader's byte-layout assumptions about that shape unchanged.
+  - **Conclusion: swapping the writer (for all 5 sections, or any subset) while `view_contract.h`'s
+    reader stays on `UTVW`-shaped offset arithmetic makes `main.cpp` decode garbage from real sim
+    frames.** This is not the Bodies Vec3f/ListVec3f gap (Gap #4, already resolved in Milestone 3 by a
+    scope-split) — it is Gap #3, and it applies to EVERY section equally, since the incompatibility is
+    at the wire-protocol level, not the column-coverage level. The "conservative" fallback the task brief
+    offered (migrate only the 4 fully-representable sections, leave Bodies on the old writer) does not
+    route around this: whichever sections move to the new writer would still be read by a reader that
+    doesn't know they changed shape.
+  - **Real game/sim data was on the line** (undertow's actual save/render pipeline, not a proof-of-concept)
+    — per this program's own precedent (holding on real gaps rather than guessing), the implementer
+    stopped and reported BLOCKED rather than forcing a partial cutover or inventing new reader-side
+    mechanism under milestone time pressure. Team lead independently re-verified the `.csproj` Analyzer
+    granularity claim and confirmed the blocker is genuine, not overcautious.
+  - **What would need to happen first, per the plan's own Follow-ups (unscoped, not decided here):**
+    either (a) build the not-yet-designed "typed C++ accessor header emitter from `ViewBlob`" (targeting
+    the same generic `ViewBlob`/`BlobView`/`ViewStore` model Milestone 2's `ViewWireReaderSoa` already
+    reads, replacing `view_contract.h`'s hand-rolled offset arithmetic with generated accessors), or (b)
+    migrate `main.cpp` and any other `view_contract.h` consumers directly onto the generic
+    `BlobView`/`ViewStore` API, retiring `view_contract.h` outright. Both are real, unscoped design work
+    — genuinely bigger than a milestone — and deliberately NOT scoped or chosen here; that decision is
+    for the user/team lead, not to be improvised by this milestone's implementer.
+  - No files touched in the undertow worktree (`view-contract-inc5-m4`, left clean at `2c8f25b4`) or in
+    Yeroket. This VIXEN plan-doc update is the only change made to close out Milestone 4.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 
