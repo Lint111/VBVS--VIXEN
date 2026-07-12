@@ -167,7 +167,7 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
 - [x] **Milestone 1 (Tasks 1-2):** ground the `ActionStack` snapshot-shape decision (Task 1 REPORT-BACK,
   no building until this is confirmed) → implement set-mutation dispatch (Task 2). One Sonnet implementer
   + one Opus validator.
-- [ ] **Milestone 2 (Tasks 3-4):** undo/redo over the captured snapshot with dead-entity skip+log (Task 3)
+- [x] **Milestone 2 (Tasks 3-4):** undo/redo over the captured snapshot with dead-entity skip+log (Task 3)
   → full proof suite + all regression gates (Task 4). One Sonnet implementer + one Opus validator.
   (Split from Milestone 1 because undo-over-a-set is explicitly the increment's real correctness weight
   per the design doc — it gets its own validator pass rather than being folded into the forward-mutation
@@ -208,6 +208,94 @@ set is its own milestone with its own adversarial proof, not a corollary of the 
     fresh alongside the undo/redo/dead-entity suite (M1's validator reused pre-commit-adjacent artifacts
     for the two regression binaries, valid here since the commit doesn't touch their code paths, but M2
     should not rely on that assumption).
+
+- Milestone 2 (Tasks 3-4): DONE · 2026-07-12
+  - **Task 3 mechanism:** read `ActionStack.cpp`'s real `Undo()`/`Redo()` directly (not assumed) —
+    `Undo()` pops one `Group`, iterates its `Entry`s in reverse, calls `entry.apply(false)` for
+    inverse-mode entries (no `footprint`); `Redo()` pops from the redo stack and calls `entry.apply(true)`
+    forward. Neither function touches anything but the `Group`'s own captured closures — no reference to
+    `IViewSelectionProvider`, no call to `ids()`, ever. Milestone 1's per-entity `apply(bool)` lambda
+    already re-checked `world.valid(entity)` on every invocation (forward AND inverse) before writing, so
+    the crash-safety half was already solved; Task 3's addition is purely **observability**: a
+    `SetMutationSkipCounters{forwardSkips, undoSkips}` struct, shared via `std::shared_ptr` between every
+    per-entity lambda in one dispatch's group (captured by value alongside `entity`/`priorValue`/
+    `newValue`), incremented on a dead-entity skip inside the lambda itself. `DispatchSetMutation()`
+    returns it embedded in `SetMutationResult::skipCounters`, readable by the caller AFTER calling
+    `stack.Undo()`/`stack.Redo()`. Zero changes to `ActionStack`'s public API or `Entry`/`DispatchResult`
+    shape — `ActionStack` is shared, generic, reversible-action substrate (its own `test_action_stack.cpp`
+    exercises it with a plain `int` flip-lambda unrelated to Gaia/selection) and must not grow a
+    dispatch-mutation-specific return type.
+  - **Live-query-independence, verified two ways:** (1) code inspection — `DispatchSetMutation()` calls
+    `selection.ids(ids)` exactly ONCE, at the top, before building the group; every per-entity `apply`
+    lambda captures the resolved `entity` BY VALUE and holds no reference to `selection`/`ids` at all, so
+    it is structurally impossible for `Undo()`/`Redo()` (which only ever invoke these captured closures)
+    to re-run the live query — confirmed by re-reading `ActionStack::Undo()`/`Redo()` in `ActionStack.cpp`
+    directly, not assumed. (2) a dedicated test
+    (`UndoNeverReRunsTheLiveSelectionQueryAfterSelectionDrifts`) that mutates the `Selected` tag set itself
+    between dispatch and `Undo()` (drops `Selected` from an originally-selected entity, adds it to a
+    previously-unselected one) and asserts `Undo()` still restores the ORIGINAL dispatch-time entities,
+    ignoring the drifted selection entirely.
+  - **Files touched:** `application/editor/include/SetMutationDispatch.h` (added
+    `SetMutationSkipCounters`, wired `skipCounters` into `SetMutationResult` and the per-entity lambda;
+    doc comments extended, no rewrite of Milestone 1's logic) and
+    `libraries/RenderGraph/tests/test_set_mutation_dispatch.cpp` (extended with 3 new tests, existing 2
+    untouched) — Milestone 1's file layout choice (extend the existing test file, not a new one) reused.
+  - **Task 4 proof suite — all 5/5 tests PASS** (`test_set_mutation_dispatch.exe`):
+    1. `WritesExactlyTheSelectedSubsetNotTheWholeWorld` + `DirectListProviderWithoutLayerMaskComponentIsSkippedNotAsserted`
+       (Milestone 1's own 2 tests, unchanged, still pass — set-mutation proof already fully covered, not
+       duplicated).
+    2. `UndoRestoresExactPreDispatchValuesAndRedoReapplies` — undo restores BOTH selected entities to
+       their EXACT pre-dispatch values (byte/value-identical, not just "different from new"), unselected
+       sibling untouched across both undo and redo; redo re-applies the post-dispatch values; zero skips
+       recorded (no dead entities in this scenario).
+    3. `DeadEntityBetweenDispatchAndUndoIsSkippedNotCrashedAndSurvivorRestoresCorrectly` — the
+       increment's hardest correctness bar: dispatch over 2 selected entities, destroy one (`world.del()`,
+       confirmed real Gaia API, same as Milestone 1's Task 1 finding) AFTER dispatch but BEFORE `Undo()`;
+       asserts (a) no crash/assert on `Undo()`, (b) the surviving entity restores correctly, (c) the skip
+       is observable (`skipCounters->undoSkips == 1`), (d) a subsequent `Redo()` on the same group
+       symmetrically skips the dead entity too (`skipCounters->forwardSkips == 1`), doesn't crash, and
+       doesn't resurrect the destroyed entity.
+    4. `UndoNeverReRunsTheLiveSelectionQueryAfterSelectionDrifts` — direct proof of the "never re-run the
+       live query" requirement (design §6, critic item 8): selection drifted between dispatch and undo;
+       `Undo()` still restores based on the captured dispatch-time snapshot, not the drifted selection.
+  - **Regression gates — ALL rebuilt/run FRESH in this worktree** (not reused from any prior artifact,
+    per Milestone 1's validator note):
+    - `test_view_editor_layers_reconcile`: 2/2 PASSED.
+    - `test_view_selection_provider`: 3/3 PASSED (Inc-C's own gate, unaffected).
+    - `test_view_editor_layers_golden`: 2/2 PASSED.
+    - `test_editor_toggle_undo_capture`: 4/4 PASSED (after re-running `temp/run_editor_script.bat` fresh
+      to prime the windowed-capture log/PNGs, staging `vixen_editor.exe`+`assets` into `VIXEN/binaries/`
+      since this worktree's CMakeLists has no `vixen_editor.exe`-mirroring rule — copied straight from
+      `build/ninja/binaries/`, not committed, `binaries/`/`temp/` are gitignored). sha256 of the 4
+      captures, confirmed BYTE-IDENTICAL to Inc-C's recorded values:
+      - `editor_capture_5.png`   = `fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1`
+      - `editor_capture_45.png`  = `e2339aa09f871a0e57f19db22977c0a90aac2303cf4d090100f396553b49b1f8`
+      - `editor_capture_75.png`  = `fde9c268cf5f07f68588b563b908ec84bb9bd134e3bcbc913280152cac6ed8c1`
+      - `editor_capture_105.png` = `e2339aa09f871a0e57f19db22977c0a90aac2303cf4d090100f396553b49b1f8`
+    - AppFlow suite: 42/42, same per-binary breakdown as Inc-B/C's recorded count (`test_appflow_golden`
+      7, `test_action_stack` 4, `test_flow_state_machine` 3, `test_binding_store` 3, `test_appflow_loader`
+      6, `test_layer_controller` 4, `test_snapshot_undo` 6, `test_input_profile` 2, `test_keychord` 3,
+      `test_binding_pattern` 1, `test_flow_return` 2, `test_return_dispatch` 1) — count UNCHANGED.
+    - Gaia wrapper tests: SAME pre-existing failures as documented — `test_gaia_voxel_world` 25/26
+      (`GaiaVoxelWorldTest.GetPosition` fails) and `test_gaia_voxel_world_coverage` 31/32
+      (`GaiaVoxelWorldCoverageTest.CreateVoxelsBatch_AutoParent_ToExistingChunk` fails); the 3 other
+      `GaiaVoxelWorld/tests` binaries (`test_voxeldata_integration` 13/14,
+      `test_voxel_injection_queue` assert-fails, `test_voxel_injector` crashes) confirmed STILL isolated
+      to those same pre-existing conditions, not spread by anything Inc-D touches.
+    - Byte-guards: `AppFlow.g.h` sha256 = `b63b2b35a7cc47fbb9ca35d5f7685d2db8907dada2199ad7a1c82c361eb0710b`,
+      `AppFlowCallables.g.hpp` sha256 = `989b65e4887e8ffdd1ed44495ac6f38e40039ba7de641cc60dae17435f9836fe`
+      — BOTH byte-identical to Inc-C's recorded values, unchanged.
+  - **Build-environment gotcha found (worth flagging for future increments in this worktree layout):**
+    this git worktree (`.claude/worktrees/view-binding-inc-d`) has its OWN `build.bat`/`build/ninja` at
+    its own root, entirely separate from the outer repo root's `build.bat`/`build/ninja` — running
+    `build.bat` from the wrong cwd silently builds a DIFFERENT, unrelated source tree (one with no
+    knowledge of this branch's new files at all) and reports "success" having built nothing relevant; it
+    also explains a reproducible-but-unexplained "ninja: error: unknown target" on a `--target`-scoped
+    build immediately after "Re-checking globbed directories" when invoked against the correct tree mid a
+    concurrent-build race window — always `cd` into the WORKTREE's own root (not the outer repo root)
+    before invoking its `build.bat`, and prefer the untargeted `build.bat build` (full graph) over a
+    `--target`-scoped one if a scoped build ever reports an unknown-target error against a target that
+    demonstrably exists in `build.ninja`.
 
 ## Follow-ups (explicitly out of scope, note for later increments)
 

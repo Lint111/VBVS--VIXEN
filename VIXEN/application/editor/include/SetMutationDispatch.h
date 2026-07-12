@@ -24,14 +24,19 @@
 // whose valid(Entity) is the confirmed liveness check (already used throughout GaiaArchetypes/
 // ArchetypeBuilder.cpp, RelationshipObserver.cpp).
 //
-// DEAD-ENTITY OBSERVABILITY (Task 1 decision): a skipped-count return value on
-// DispatchSetMutation() -- the smallest addition that makes a skip provable, with zero changes to
-// ActionStack's Entry/DispatchResult shape. Undo()/Redo()'s OWN skip-counting (Milestone 2 / Task 3)
-// is a separate, later concern -- this milestone only proves the forward dispatch touches exactly
-// the selected entities via the existing provider chain, wrapped so the group undoes/redoes
-// atomically; it does not implement the inverse/redo restore logic (Task 3) or the dead-entity-at-
-// undo-time proof suite (Task 4) -- those are Milestone 2's scope.
+// DEAD-ENTITY OBSERVABILITY (Task 1 decision, extended Milestone 2 / Task 3): a skipped-count
+// mechanism, with zero changes to ActionStack's Entry/DispatchResult shape -- ActionStack::Undo()/
+// Redo() are reused, generic, reversible-action substrate (test_action_stack.cpp exercises them
+// with a plain int flip-lambda, unrelated to Gaia/selection) and must not grow a return type just
+// for this one caller. Instead: DispatchSetMutation() returns a SetMutationResult holding a
+// std::shared_ptr<SetMutationSkipCounters> -- the SAME counters object every per-entity apply(bool)
+// lambda captures (by shared_ptr, so it outlives DispatchSetMutation's stack frame -- the lambdas
+// live inside ActionStack's Group, called back arbitrarily later by Undo()/Redo()). Each lambda
+// invocation increments undoSkips/redoSkips on a dead-entity skip, forward-skips on a dispatch-time
+// skip. The caller reads result.skipCounters->undoSkips after calling stack.Undo() to prove a skip
+// happened without ActionStack itself knowing anything about entities or Gaia.
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -44,12 +49,31 @@
 
 namespace Vixen::App {
 
+// Shared skip-observability counters for one set-mutation group. Lives as long as any per-entity
+// apply(bool) lambda inside the ActionStack group that references it (shared_ptr, since those
+// lambdas are called back by Undo()/Redo() arbitrarily later, well after DispatchSetMutation()
+// itself has returned).
+struct SetMutationSkipCounters {
+    // Entities skipped because they were already dead when the FORWARD apply(true) ran -- covers
+    // both the initial Dispatch() call and any later Redo() on this group.
+    size_t forwardSkips = 0;
+    // Entities skipped because they were dead when the INVERSE apply(false) ran, i.e. during
+    // Undo(). This is the increment's hardest correctness bar (dead entity destroyed between
+    // dispatch and undo) made observable.
+    size_t undoSkips = 0;
+};
+
 // Result of one set-mutation dispatch: how many of the selection's entities were actually written
 // (dead entities at DISPATCH time are skipped the same way as at undo time -- world.valid() gates
 // the write either way), out of how many the selection provider yielded.
 struct SetMutationResult {
     size_t selectedCount = 0;  // IViewSelectionProvider::ids() count at dispatch time
     size_t writtenCount = 0;   // entities actually written (selectedCount - dead-at-dispatch skips)
+    // Shared with every per-entity apply(bool) lambda recorded in this dispatch's ActionStack
+    // group -- read AFTER calling stack.Undo()/stack.Redo() to observe dead-entity skips at
+    // undo/redo time (never populated by DispatchSetMutation() itself, only by later Undo()/Redo()
+    // calls on the group it created).
+    std::shared_ptr<SetMutationSkipCounters> skipCounters = std::make_shared<SetMutationSkipCounters>();
 };
 
 // Applies one identity write (WriteU32 through GaiaLayerViewDataProvider, unchanged) to every
@@ -64,6 +88,15 @@ struct SetMutationResult {
 // internally; this function's own pre-check exists only so the per-entity ActionStack::Dispatch
 // entry captures a CORRECT prior value (reading a dead entity's "prior value" is meaningless) and so
 // writtenCount is accurate.
+//
+// CRITICAL (Task 3): this function reads IViewSelectionProvider::ids() EXACTLY ONCE, at the top,
+// before the loop that builds the group. Every apply(bool) lambda below captures the resolved
+// `entity` BY VALUE from that one read -- it holds no reference to `selection` at all, so it is
+// STRUCTURALLY impossible for a later stack.Undo()/stack.Redo() call (which only ever invokes these
+// captured closures, per ActionStack::Undo()/Redo() in ActionStack.cpp -- neither touches
+// `selection` or calls ids() again) to observe a re-run of the live query. The captured snapshot
+// IS the (entity, priorValue, newValue) tuple; undo/redo restore from that tuple, never from a
+// fresh selection read.
 inline SetMutationResult DispatchSetMutation(Vixen::AppFlow::ActionStack& stack,
                                               Vixen::GaiaVoxel::GaiaVoxelWorld& world,
                                               const Vixen::AppFlow::IViewSelectionProvider& selection,
@@ -75,7 +108,9 @@ inline SetMutationResult DispatchSetMutation(Vixen::AppFlow::ActionStack& stack,
     SetMutationResult result;
 
     std::vector<Vixen::AppFlow::SelectionEntityID> ids;
-    result.selectedCount = selection.ids(ids);
+    result.selectedCount = selection.ids(ids);  // the ONE live-query read; nothing below re-reads it
+
+    const auto skipCounters = result.skipCounters;  // captured by the lambdas below, not `selection`
 
     stack.BeginGroup(0);
     for (const auto selId : ids) {
@@ -90,13 +125,20 @@ inline SetMutationResult DispatchSetMutation(Vixen::AppFlow::ActionStack& stack,
         }
         const uint32_t priorValue = *priorValueOpt;
 
-        // Captured BY VALUE (entity, priorValue, newValue) -- never a pointer into ECS storage.
-        // Re-checks world.valid(entity) on every invocation (forward AND inverse) because this
-        // same lambda is what Undo()/Redo() call later, when liveness may have changed.
-        auto apply = [&world, entity, priorValue, newValue](bool forward) {
-            if (!world.getWorld().valid(entity)) return;  // dead-entity skip+log is Task 3's full
-                                                            // wiring; this guard is the mechanism
-                                                            // Task 3 builds the observable skip atop.
+        // Captured BY VALUE (entity, priorValue, newValue, skipCounters) -- never a pointer into
+        // ECS storage, never a reference to `selection`/`ids`. Re-checks world.valid(entity) on
+        // every invocation (forward AND inverse) because this same lambda is what Undo()/Redo()
+        // call later, when liveness may have changed -- the ONLY liveness check involved is this
+        // one, against the captured `entity`, never a fresh selection query.
+        auto apply = [&world, entity, priorValue, newValue, skipCounters](bool forward) {
+            if (!world.getWorld().valid(entity)) {
+                // Dead-entity skip, observable via skipCounters (Task 3): forward-mode covers both
+                // the initial Dispatch() call and any later Redo(); inverse-mode is Undo() -- the
+                // increment's hardest correctness bar, made provable without touching ActionStack.
+                if (forward) ++skipCounters->forwardSkips;
+                else ++skipCounters->undoSkips;
+                return;
+            }
             GaiaLayerViewDataProvider provider(world, entity);
             provider.WriteU32(ViewNounKey{ViewNounId::LayerMask, 0}, forward ? newValue : priorValue);
         };
