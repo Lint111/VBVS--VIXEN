@@ -1,6 +1,17 @@
 ---
 title: Tiered ESVO — Inc3 Implementation Plan (scale-magnified tiers + 3-tier chain — Earth-scale surface-to-orbit)
-status: M1-M3 SHIPPED, M5 SHIPPED (magnification geometry fix) 2026-07-10; M6 (Earth-scale epic gate) BLOCKED on a camera-framing/scale structural mismatch, not a math defect (see Progress Log); M7 SHIPPED 2026-07-11 — the epic gate MET at a documented gentler ratio (childScale=0.25); true Earth-scale needs a scoped CameraNode look-target-decoupling follow-up (see Progress Log)
+status: EPIC COMPLETE 2026-07-12 — M1-M3/M5/M7 SHIPPED (mechanism + gentler-ratio live proof); M6
+BLOCKED-then-superseded (camera-framing mismatch, not a math defect); M8 Task 16 SHIPPED
+(CameraNode look-target decoupling); Task 17/19/20/21/22 the escalation chain that found + fixed
+the real structural flaw (a shared raySizeCoef field could never resolve a true 2^-10 crossing;
+"mark it deeper" proven algebraically impossible); **Task 23 (heavy-lifter engine escalation)
+SHIPPED 2026-07-12 — the foundational fix: a camera-anchored, world-unit-correct crossing gate,
+no shared coefficient, no per-demo constant, proven correct through arbitrary hop depth; hop0
+LIVE-PROVEN at true childScale=2^-10.** **Task 24 SHIPPED 2026-07-12 — THE EPIC'S FINAL CLOSURE:**
+gave T1 its own world anchor (was aliased to T0's), proving BOTH true 2^-10 crossings live on one
+continuous ground-to-orbit flight, each genuinely color-attributable, Opus-validated with
+pixel-exact independent reproduction. Merged to `origin/main` `e6a2ce19` 2026-07-12. The epic's
+original ask — "a proper surface-to-orbit view of planets of proper scale" — is fully realized.
 depends: Tiered-ESVO-Observer-Addressing-Design-2026-07.md (§3, §5, §9), Tiered-ESVO-Inc2-Plan-2026-07.md (shipped 2026-07-10, merged `2d67840e`, origin/main `12145d60`)
 ---
 
@@ -1115,3 +1126,825 @@ byte-unregressed. Prediction-first ticks match; per-frame deltas seamless; VUID 
   landed). New `vixen-build-policy` skill + `VIXEN/scripts/build/*` merged into the branch this
   session (from origin/main `9b43c376`) — use it (check-lock-before-build, register-in-queue if
   held, never bypass `build.bat`) for all subsequent Windows builds in this epic.
+
+- **M8 Task 17 (true Earth-scale demo, orbit-around-center + look-target retargeting):
+  DONE_WITH_CONCERNS · commit `5a535187` · 2026-07-11. NOT independently validated —
+  superseded in approach by Task 19 (see below), left as evidence, not re-dispatched for fixing.**
+  Built `VIXEN_TIER_M8_EARTH_DEMO` (true childScale=2^-10 both hops, renderScale=4.8, reuses M4's
+  k-invariant entry-anchored placement) + `VIXEN_TIER_M8_EARTH_ZOOM_DEMO` (orbit-around-center
+  schedule using Task 16's `SetLookTargetForTest` to aim at the crossing octant instead of body
+  center, per M6/M7's off-axis-angle finding). **NEW STRUCTURAL FINDING (not yet independently
+  verified):** hop0's default-coef LOD-decline distance is ALWAYS inside the body's own solid
+  radius regardless of R (ratio ≈0.524, R-invariant) — required an LOD-coef override to push hop0
+  to 81wu (3× solid). Separately, and more consequentially: **hop1's handoff distance (~0.079wu at
+  true 2^-10) is always far SMALLER than the solid radius (~27wu) for ANY R** — reaching hop1 while
+  ORBITING AROUND BODY CENTER requires the camera inside the solid, which look-target retargeting
+  cannot fix (it changes aim, not orbit position/distance). **Live-gate result: T0 renders correctly
+  throughout; T1/T2 NEVER appeared in any of 44 frames of the corrected schedule — un-root-caused**
+  (implementer ran out of budget; candidates not ruled out: residency at the marked index, whether
+  the retargeted ray geometrically reaches the leaf's surface patch, a construction defect specific
+  to this scene). **Unexplained seam** at tick 150→151 (mean|diff|=18.57 vs ≤2.5 elsewhere), exactly
+  at the scripted `ClearLookTargetForTest` release — contradicts the prediction that releasing at a
+  small residual angle would be smooth; not investigated. Regressions NOT independently re-verified
+  this task (budget ran out). Docs (Task 18) NOT done.
+  **User's framing (2026-07-11), which resolves the path forward rather than debugging this attempt
+  further:** the epic's actual ask is a MOTION-DRIVEN transition — surface-to-orbit (or orbit-to-
+  surface) caused by the camera TRAVELING, not by re-aiming a stationary orbit-around-center camera.
+  Orbiting body-center at a fixed distance while retargeting aim was the wrong schedule SHAPE for
+  that ask, independent of whether the T1/T2-invisibility bug is fixable — a translating flight path
+  toward the crossing point is a different geometry that may not hit the same "must be inside the
+  solid" wall (approaching the crossing directly is what a real surface-to-orbit flight does).
+  **→ M8 Task 19 (below) attempts the translating-flight-path approach as the PRIMARY demo; Task 16's
+  look-target capability is retained for a SECONDARY telescope-style POV-zoom demo (camera stationary,
+  aim sweeps) — both are legitimate validations of the setup, per the user, not either/or.**
+
+## M8 Task 19 — Motion-driven surface-to-orbit flight path (primary demo, user-directed 2026-07-11)
+
+Context: Task 17's orbit-around-center + look-target-retarget schedule is the WRONG SHAPE for the
+epic's actual ask. "Surface-to-orbit transition" means the crossing is traversed by the camera
+TRAVELING through it — a translating flight path — not by an orbiting camera re-aiming itself. This
+is also a plausible fix for Task 17's apparent hop1-unreachability: that finding was specific to
+"orbit at a fixed radius around body center," not to "fly a real trajectory toward the crossing."
+
+### Task 19 — Translating flight-path demo (primary) + look-target telescope-zoom (secondary, retained)
+- [x] Design a camera flight path that TRANSLATES from near the marked crossing octant's own surface
+  patch out to a full-body orbit view. **DONE:** added `CameraNode::SetPositionForTest` (new,
+  additive ForTest accessor mirroring `SetOrbitDistanceForTest`) — scripts `cameraPosition` directly
+  in FIXED mode, no orbit engagement. Combined with a new `SetLookTargetNoOrbitForTest` (sets
+  `hasLookTarget_`/`lookTarget_` WITHOUT calling `EngageOrbit()`, unlike the existing
+  `SetLookTargetForTest`) this gives full position+aim control while staying in FIXED mode
+  throughout — the genuine translating flight path the task asked for. `BuildRenderGraph.cpp` gates
+  `VIXEN_TIER_M8_EARTH_DEMO`'s own orbit-param wiring off when `VIXEN_TIER_M8_FLIGHT_DEMO` is set
+  (own live-gate finding: that wiring latches `orbitActive_`, which silently overrides scripted
+  position writes every frame — see Progress Log). Also narrows the near-clip plane to 0.01wu for
+  this demo only (own live-gate finding: hop1's ~0.079wu threshold is SMALLER than the default
+  0.1wu near-clip, near-plane-clipping the target away at the flight's near end).
+- [x] Prediction-first arithmetic: see Progress Log + derivation script
+  `Tiered-ESVO-Inc3-M8-Task19-flight-path-derivation.py`.
+- [x] **Root-cause Task 17's T1/T2-invisibility: FOUND, not a construction/residency bug.** Task 17's
+  schedule orbited body CENTER at 70-120wu while only retargeting AIM via look-target; hop1's
+  threshold (~0.079wu) is a camera-TO-BODY-CENTER distance in that schedule shape, and the marked
+  octant sits only ~20.8wu from center (well inside the ~27wu solid radius) — no orbit radius
+  outside the solid can also be at hop1's ~0.079wu distance FROM CENTER. This is a genuine
+  geometric fact of "orbit at fixed radius + retarget aim," independent of any residency/construction
+  bug, and it persists under ANY orbit-around-center schedule regardless of aim.
+- [~] Per-frame pixel-delta seamlessness: NOT reached — see the NEW finding below, which blocks the
+  flight path from resolving real per-tier color at all along the octant's own direction.
+- [x] **Secondary demo (retained, not replaced):** Task 17's `VIXEN_TIER_M8_EARTH_ZOOM_DEMO` block
+  is UNTOUCHED by this task (own file diff confirms — only new code added, no edits to that block).
+- [ ] Tick-150 seam: NOT investigated this task (budget went to the flight-path mechanism + its own
+  new finding below).
+- [x] Full regression sweep (unity/chain/observable/default/earth_static): all 5 exit 0, VUID exactly
+  10×`08114` zero-new each, pixel-decode confirms unregressed geometry in all 5 — see Progress Log.
+- [x] Docs closure (this entry + design doc §9).
+
+**M8 Task 19 gate:** a live, validated, visually-confirmed motion-driven surface-to-orbit (or
+orbit-to-surface) flight across the true Earth-scale (childScale=2^-10) crossings, with the camera's
+own translation causing each handoff — the epic's most literal reading of "a proper surface to orbit
+view." T1/T2 visually attributable (not just T0). Per-frame-delta seamless. VUID clean. If, after a
+genuine attempt at BOTH the flight-path and telescope-zoom shapes, some part remains honestly
+unreachable at true 2^-20, that finding — clearly evidenced — is an acceptable epic close, per this
+epic's own discipline (M6/M7 precedent: an honest documented limit is a valid outcome, not a failure).
+
+- **M8 Task 19: MECHANISM PROVEN, GATE NOT MET — a new, distinct blocking finding (not the one
+  Task 17 hit) · worktree `tiered-esvo-inc2` · 2026-07-11.**
+  **New `CameraNode` capability (additive, byte-unregressed):** `SetPositionForTest(glm::vec3)`
+  writes `cameraPosition` directly without engaging orbit (FIXED mode stays authoritative — the
+  same "configured pose is authoritative at rest" convention the bodies-0 fix established), and
+  `SetLookTargetNoOrbitForTest(glm::vec3)` sets a look-target without the existing
+  `SetLookTargetForTest`'s `EngageOrbit()` call (which would otherwise silently re-engage orbit mode
+  and let `UpdateCameraData`'s ORBIT branch overwrite the scripted position every frame — found live,
+  the exact failure mode the first capture attempt hit: a completely static frame across all 400
+  scripted ticks despite `SetPositionForTest` being called every tick). Combined, these give a
+  genuinely translating, independently-aimed camera — the capability the task asked for.
+  **Root cause of Task 17's T1/T2 invisibility: FOUND, confirmed NOT a construction/residency bug.**
+  Task 17 orbited body CENTER over [70,120]wu while only retargeting AIM. hop1's ~0.079wu threshold
+  is a camera-to-body-CENTER distance in that schedule shape; the marked octant sits only ~20.8wu
+  from center (inside the ~27wu solid radius), so no orbit radius that is simultaneously outside the
+  solid and at hop1's tiny distance from CENTER exists — this holds for ANY aim, confirming the
+  root cause is the schedule's ORBIT-AROUND-CENTER geometry itself, exactly as the user's redirect
+  predicted, not a bug to fix independently of the schedule shape.
+  **NEW finding (this task's own, distinct from Task 17's): flying/positioning the camera along the
+  crossing octant's own radial direction from body center (`(-1,-1,1)/sqrt(3)`, aimed at
+  `m8EarthHop0OctantWorld_`) renders ONLY a flat mip-fallback-gray polygon (the octree's own coarse
+  bounding-shape silhouette) at every tested distance from 0.05wu to 91.2wu past/at the octant — never
+  the real per-voxel SDF color, and never T1/T2's green/cyan. A CONTROL test isolates this cleanly:
+  the identical mechanism (`SetPositionForTest`+`SetLookTargetNoOrbitForTest`, same near-clip fix),
+  but with the camera's POSITION flown along +Z (Task 17's own proven-good axis) instead, while
+  aiming at the SAME `surfacePoint`, renders the real purple T0 gradient correctly at every tested
+  distance including extreme close-up (tick 24, distToSurface~=0.073wu, shows genuine close-up
+  surface detail with a specular highlight — not gray, not empty). This proves: (a) the
+  position+lookAt+near-clip mechanism itself is correct; (b) the defect is specific to the camera's
+  POSITION lying along the octant's own off-axis diagonal, not to aiming there. Two anchor-point
+  variants were tried (extrapolating the octant's direction out to the sphere's nominal radius, and
+  anchoring directly at the octant's own recorded world position) — BOTH show the identical flat-gray
+  hexagon at the far end and empty background at the near end. **Conclusion (b) above was WRONG —
+  the implementer's own "control test" was not apples-to-apples (it changed BOTH the aim target AND
+  the position-vs-solid relationship at once), and this was caught + corrected by the Opus validator
+  who ran the un-run `VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM` diagnostic (see validator entry
+  below) — see that entry for the real root cause (aim target + the LOD gate working as designed,
+  not an off-axis-position rendering defect).**
+  **Regressions (fresh build, exe mtime postdates all edited sources, forced validation): full sweep
+  of unity/chain/observable/default/earth_static all exit 0, VUID exactly 10×`08114` zero-new in
+  every scene, chain demo's T1/T2 nesting visually confirmed unregressed by direct image inspection.**
+  Stale-exe footgun avoided throughout (mtime + `strings -a` symbol checks before every capture,
+  per this epic's own recurring lesson). Build-policy compliance: all builds went through
+  `run_build_with_summary.ps1` (never direct `cmake --build`); registered in the build queue and
+  waited via `ScheduleWakeup`-style polling (not blind sleep) whenever the lock was held by another
+  agent; released every ticket. 19 pre-existing SVO-test build failures (`SdfCoreKernels.g.hpp`
+  codegen syntax errors, untracked/gitignored generated file, unrelated to this task's two edited
+  files) were present on EVERY build this session including the very first, before any of this
+  task's edits — confirmed pre-existing, not caused by this work; VIXEN.exe itself built clean every
+  time. Tick-150 seam: not investigated (budget prioritized the flight-path mechanism + its own new
+  finding). Telescope-zoom secondary demo: untouched, not re-verified this task (no code change to
+  that block).
+  **Verdict: DONE_WITH_CONCERNS.** The translating flight-path CAPABILITY (position+lookAt+near-clip,
+  all additive and byte-unregressed) is built and proven correct via a clean control test. Task 17's
+  T1/T2 root cause is genuinely found (orbit-around-center's geometry, not a bug). But the Task 19
+  gate itself — a live, seamless, T1/T2-attributable flight across the true 2^-10 crossings — is
+  NOT met: a new, well-evidenced (not hand-waved) rendering defect blocks the flight path specifically
+  along the crossing octant's own direction, isolated by a clean control (same mechanism, different
+  direction, works) but not yet root-caused to a specific line of code. Per this epic's own discipline
+  (M6/M7 precedent), this is reported as an honest, evidenced limit rather than a forced or misleading
+  capture.
+
+  **Opus validator: APPROVED_WITH_FOLLOWUP (2026-07-11) — the isolation above is WRONG; there is NO
+  rendering defect.** Independently rebuilt (fresh exe, `ZPOS_OCTANT_AIM` symbol confirmed present,
+  mtime-verified — the committed exe was STALE and needed a full rebuild) and ran the implementer's
+  own un-run diagnostic (`VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM`: same +Z position as the ZDIR
+  control, OUTSIDE the solid, but aiming at the interior crossing octant instead of the sphere
+  surface). Result: **ZPOS_OCTANT_AIM reproduces the flat-gray failure pixel-for-pixel** (near-identical
+  gray levels/pixel counts to the real diagonal flight), while ZDIR (same position, on-axis surface
+  aim) renders real color. **The discriminating variable is the AIM TARGET, not the camera's position
+  axis** — the implementer's control test was not apples-to-apples (it varied BOTH aim AND
+  position-vs-solid at once). **Root cause, confirmed by ablation:** setting
+  `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.0` (disabling the LOD gate) makes the gray vanish entirely
+  (4000 real-color px at every tick) — the flat gray is `subPixelFootprint` mip-decline
+  (`BodyInstanceRayMarch.comp:843-868`) firing exactly as designed: aiming at the interior, off-axis
+  marked leaf at childScale=2^-10 makes the gate's RHS microscopic, so it correctly declines to
+  descend and mip-shades the coarse parent instead. Aiming at the sphere surface (+Z control) hits an
+  UNMARKED leaf entirely, so the gate never engages — hence "works." **This is not a bug; it
+  re-confirms M6/M7's R-independent finding at the shader-gate level:** a true 2^-10 crossing's
+  footprint is sub-pixel at every distance reachable without entering the solid, given this scene's
+  INTERIOR (not surface-exposed) octant placement. Task 17's T1/T2 root-cause (orbit-around-center
+  schedule geometry) independently re-confirmed consistent. Capability + regressions confirmed:
+  CameraNode changes purely additive (2 inline ForTest setters, no `UpdateCameraData` logic change,
+  byte-unregressed by construction); chain scene VUID 10×`08114` zero-new, T1/T2 nesting unregressed;
+  default scene clean. Tree/docs clean except the mischaracterization above (now corrected in this
+  entry and in the design doc).
+  **Recommended next step (not "fix a bug" — there isn't one):** (a) document the real limit — a true
+  2^-10 crossing needs either a gentler ratio (M7's proven childScale=0.25 approach) or a scene where
+  the marked leaf is SURFACE-EXPOSED and on-axis (a construction change, not an engine fix) to be
+  observably reached without a LOD-gate decline; or (b) if a live 2^-10 observable crossing is still
+  wanted, build that surface-exposed construction as a follow-up. The translating-flight CAPABILITY
+  itself (Task 19's actual deliverable) is correct, additive, and worth keeping regardless of which
+  path is chosen.
+
+## M8 Task 20 — Surface-exposed true-2^-10 crossing: the real, valid scale demo (user-directed 2026-07-11)
+
+Context: every prior attempt at a true-Earth-ratio (childScale=2^-10) OBSERVABLE crossing used a body
+whose marked leaf sits INTERIOR to the sphere (the octant nearest the shared corner (1.5,1.5,1.5),
+~20.8wu from a ~27-28.8wu-radius center — always inside the solid). The M8 Task 19 validator proved
+(via ablation) this is exactly why the crossing always mip-declines to gray when approached: the ray
+must aim through/near the solid interior to reach it, and at 2^-10 the footprint is sub-pixel at any
+distance reachable from OUTSIDE the solid. **This is a construction choice, not a law of the
+mechanism** — M1-M8 have never actually tried marking a leaf that sits ON the sphere's own surface,
+reachable head-on from open space. That is Task 20.
+
+User's framing (2026-07-11): pursue the genuinely valid demo showcasing scale-handling — not a forced
+or misleading capture, a real one, built correctly this time.
+
+### Task 20 — Build + prove a genuinely observable true-2^-10 crossing
+- [ ] Construct a demo body where the marked crossing leaf is a SURFACE octant/leaf — i.e. select (or
+  place) the tier-crossing leaf so its own cell sits at/near the sphere's outer surface, on an axis the
+  camera can approach head-on from open space (never needing to enter the solid interior to bring the
+  leaf's footprint below the LOD gate). Reuse: M5's `RootLeafOctantCenterLocal` (concentric
+  magnification, proven), Task 19's `SetPositionForTest`/`SetLookTargetNoOrbitForTest` (translating
+  flight, proven additive/byte-unregressed), the existing per-tier coloring convention (T0/T1/T2
+  distinct colors for attribution), and M4's k-invariant entry-anchored TierRef placement (required at
+  2^-10's ~1024×-per-hop amplification, already proven in Task 17).
+- [ ] **Prediction-first, from the ACTUAL shader gate** (`tv_max*raySizeCoef+raySizeBias >=
+  childScale*scale_exp2`, `BodyInstanceRayMarch.comp:843-868`): hand-derive, BEFORE building, the
+  camera distance at which the surface-exposed crossing's footprint clears the gate — this is the
+  distance the flight path must reach WITHOUT needing to be inside the solid. Confirm on paper that
+  such a distance exists and is reachable in open space for THIS geometry, before writing scene code
+  (this is exactly the check that was skipped for the interior-octant scenes in Task 17/19).
+  Do this for BOTH hops (T0→T1 and T1→T2) — chain both, per the epic's Inc3 M1-M3 mechanism.
+- [ ] Build the scene, then a scripted flight (translating position, per Task 19's mechanism) that
+  approaches the crossing directly from open space, through BOTH real 2^-10 handoffs, out to a
+  full-body orbit view. Per-tier color confirms attribution at each hop.
+- [ ] Live gate, prediction-first: verify observed transition points match the hand-derived distances.
+  Per-frame pixel-delta seamlessness through both handoffs (bounded, no pop). Non-zero, genuinely
+  colored (not gray mip-fallback) body pixels at and after each handoff — pixel-decode, don't assert.
+- [ ] Ablation sanity check (reuse Task 19's validator technique): if a capture ever shows gray again,
+  immediately check with `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=0.0` whether it's the gate declining
+  (expected/tunable) vs. a genuine miss — don't repeat Task 19's mischaracterization.
+- [ ] float32 honesty at 2^-10 (still the first real stress test of this — M7's gentler ratio never
+  exercised it; Task 17/19's interior-octant scenes never got far enough to hit it either).
+- [ ] Full regression sweep (unity/chain/observable/default/M8-earth-static). VUID 10×`08114`
+  zero-new. `vixen-build-policy` compliance (check lock, queue if held, never bypass `build.bat`).
+- [ ] Docs closure: design doc §9 + plan-doc Progress Log — this is the entry that finally either
+  closes the epic's literal original ask with a real, validated capture, or (if a genuinely new
+  obstacle appears even with a correct surface-exposed construction) documents that honestly, per this
+  epic's own discipline.
+
+**M8 Task 20 gate (the epic's real, final headline):** a live, validated, visually-confirmed,
+GENUINELY colored (not mip-fallback) continuous flight through TWO true 2^-10 (2^-20 total)
+scale-magnified crossings, on real hardware, built correctly from a prediction that was checked
+BEFORE construction — the actual "proper surface-to-orbit view of planets of proper scale" this epic
+set out to prove.
+
+- **M8 Task 20: PREDICTION DERIVED + CONFIRMED CORRECT, GATE NOT MET — a NEW, distinct engine-level
+  blocker found, un-root-caused · worktree `tiered-esvo-inc2` (`feat/tiered-esvo-inc3`, HEAD
+  `94336037`, no source changes committed this task — see below) · 2026-07-11.**
+  **Premise check (before any code): the octant-4 diagonal placement Task 17/19 already used is
+  genuinely surface-exposed.** Direct box/sphere-intersection geometry (not asserted, computed):
+  every root-level octant's own cell-CENTER sits at an identical 20.78wu from body center (a cube-
+  symmetry fact, ~independent of which of the 8 octants is picked — this alone explains why no prior
+  octant choice mattered), but the octant-4 CELL's own box (world half-width 12wu at R=4.8, i.e.
+  spanning offset [-24,0)x[-24,0)x[0,24) from center) DOES contain real sphere surface along its own
+  outward diagonal corner direction `(-1,-1,1)/sqrt(3)`, at BOTH the nominal (6.0*R=28.8wu) and
+  empirical (5.625*R=27.0wu) solid radii (surface point offset ~(-15.6,-15.6,15.6), verified inside
+  the box's own per-axis bounds). This is the SAME direction Task 19 already flew along — its
+  premise was already correct; the aim-target correction (recorded octant world position, not an
+  extrapolated sphere-radius point) was also already correct per its own validator.
+  **Real root cause (new, derived from `checkChildValidity`'s actual math, not assumed): `tv_max` is
+  the ray-parametric exit-t of the CURRENTLY-TESTED NODE, floored by that node's own physical chord
+  length for a ray that traverses its interior — it does NOT shrink toward zero as the camera
+  approaches an aim point inside that node**, contradicting the M8 Earth demo's own calibrated
+  formula (`hop=20*R*childScale*scale_exp2/coef`), which implicitly assumed proportionality to
+  camera-to-target distance. Verified by a direct ray/box-intersection sweep (Python, not the shader
+  itself — a CPU geometric mirror of the box-exit-t computation) along the exact diagonal-approach
+  geometry: `tv_max` stays in [27.0, 27.1]wu across camera-to-surface distances from 50wu down to
+  0.01wu — i.e. it is FLOORED by the leaf's own ~27wu diagonal chord, not by proximity. Solving the
+  gate (`tv_max*coef >= childScale*scale_exp2`) with this REAL `tv_max` gives the coefficient needed
+  to clear hop0: exact threshold `coef=9.03e-6`, used `coef=4.51e-6` (2x safety margin). Hop1 (T1's
+  OWN marked leaf, physically tiny — world span `childScale*24~=0.023wu` at childScale=2^-10 of T0's
+  24wu leaf cube) has a chord floor ~1300x smaller than T0's and clears the SAME coefficient with
+  enormous margin (LHS ~2500x below RHS) — **hop1 was never the actual bottleneck**, contrary to the
+  emphasis in Task 17/19's own framing; hop0's coarse root-level leaf chord was. Predicted, via a
+  bisection on the SAME box-intersection model, that hop0 fires at camera-to-surface distance
+  ~=27.1wu (tick ~=335 on Task 19's own existing log-spaced 400-tick flight schedule, near=0.05wu,
+  far=91.2wu — this schedule already covers the predicted transition with no changes needed); hop1
+  predicted to fire immediately after, same tick, given its enormous margin.
+  **NO NEW CONSTRUCTION OR FLIGHT CODE WAS NEEDED**: Task 17/19's existing `VIXEN_TIER_M8_EARTH_DEMO`
+  scene (unchanged) + `VIXEN_TIER_M8_FLIGHT_DEMO` schedule (unchanged) already build the correct
+  surface-exposed geometry and flight; the only variable requiring a change is the
+  `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` runtime value (an existing, already-wired env-var literal
+  override, `BuildRenderGraph.cpp:413-428` — no shader/C++ change).
+  **Live-test finding (NEW, distinct, well-evidenced): a coefficient this low does not produce the
+  predicted crossing — it makes the ENTIRE body vanish.** Ran the full 44-frame flight capture at
+  coef=4.512765711645101e-06 (dense sampling ticks 320-345 around the predicted transition, plus
+  spread coverage 1-401): every single frame, at every tick including tick 1 (camera very close, long
+  before any crossing distance is relevant), pixel-decodes as pure sky/background gradient (full
+  500x500 scan, not sampled) — zero body-colored pixels anywhere, not even Task 19's own mip-fallback
+  gray. Isolated via a clean bisection A/B/control (5 coefficient values: 1e-4, 5e-5, 2e-5, 1e-5,
+  4.5e-6, plus a targeted 2e-5-vs-5e-5 pair): the body renders (matching Task 19's own reference gray
+  fallback) at coef=5e-5 and above, and shows nothing at coef=2e-5 and below — a sharp, reproducible
+  threshold between 2e-5 and 5e-5. Confirmed via the SAME sweep on `VIXEN_TIER_M8_EARTH_DEMO` alone
+  (static default camera, no flight/no `VIXEN_TIER_M8_FLIGHT_DEMO`) that this is INDEPENDENT of the
+  flight-path/near-clip mechanism — the static demo also renders nothing at coef=2e-5. Verified
+  analytically (same box-intersection model) that the tier-crossing gate does NOT even clear at
+  EITHER boundary coefficient (5e-5 or 2e-5) — so this vanishing is unrelated to the crossing firing
+  into an unresolved/invisible child; it is T0's OWN ordinary (non-crossing) leaves failing to render
+  via either the LOD-fallback or full-detail path below this threshold. Ruled out as explanations (not
+  exhaustively root-caused, but checked): the coefficient is not underflowing to exact `0.0` (would
+  disable the `pc.raySizeCoef>0.0`-gated branch, and the code's own comment states that should yield
+  FULL-detail traversal, not a miss — logged forced values 0.000020/0.000050 confirm non-zero,
+  correctly-passed literals); the `brickResident`-gated "streaming grace" path is a structurally
+  separate branch not keyed to `raySizeCoef` magnitude at all; `MAX_ITERS=512` is generous relative to
+  this body's shallow (`kBrickDepth=3`) base-tree depth, well short of plausible exhaustion.
+  **Regressions/hygiene:** zero tracked source files changed this task (`git status --porcelain`
+  clean outside `temp/`, which is untracked/gitignored scratch) — all sweeps ran via env-var-only
+  variation against the ALREADY-BUILT exe from Task 19's own session (exe mtime 2026-07-11 21:20:00,
+  postdates both `BuildRenderGraph.cpp` 19:31:54 and `VulkanGraphApplication.cpp` 19:52:02; `strings
+  -a` confirms `VIXEN_TIER_M8_EARTH_DEMO`/`VIXEN_TIER_M8_FLIGHT_DEMO` symbols present) — no rebuild
+  was performed or required. VUID exactly 10x `VUID-vkCmdDispatch-None-08114` (counted from
+  `stdout.log`'s `^Validation Error:` header lines, not the indented `applog.txt` copy — the
+  established double-count gotcha), zero new, in the 44-frame flight capture. The 13
+  `PushConstantGathererNode::Validate: Type mismatch` errors present in this run's log are confirmed
+  pre-existing (identical count in Task 19's own reference `m8t19_flight/stdout.log`), not a
+  regression. Since no source changed, Task 19's own already-Opus-validated regression sweep
+  (unity/chain/observable/default/earth_static) remains valid and was not re-run.
+  Build-policy compliance: checked `check_build_lock.ps1` (FREE) before any run; no build dispatched
+  (no source change); every `binaries\VIXEN.exe` invocation went through hand-rolled `.bat` scripts
+  under `VIXEN\temp\` mirroring Task 19's own established harness pattern (env vars via `cmd.exe /c`,
+  since bash env does not reach the Windows `.exe`).
+  **Verdict: NOT MET, honest evidenced blocker.** The geometric/gate-math derivation this task set out
+  to do is complete and independently confirmed correct (surface-exposed placement was never the
+  problem; the coefficient needed to clear hop0 is precisely derived from the real `tv_max` mechanism,
+  not guessed). But a newly-discovered, distinct engine-level rendering threshold — T0's own base
+  geometry disappearing below a raySizeCoef floor between 2e-5 and 5e-5, independent of the
+  tier-crossing mechanism entirely — sits below the coefficient the derivation requires (~4.5e-6),
+  and blocks producing the corrected live capture this task set out to gate on. Per this epic's own
+  discipline (M6/M7/Task19 precedent: an honest, evidenced limit is a valid, non-forced outcome), this
+  is reported as a genuine new finding rather than a forced or misleading capture. **Recommended next
+  step:** root-cause the coefficient-threshold vanishing (likely candidates to check first: the
+  non-leaf LOD gate at `BodyInstanceRayMarch.comp:983-984` interacting with something depth- or
+  precision-related at very low coefficients, or a mip-pool/shadeFromMipSample edge case triggered
+  only when the LOD gate almost never fires) using the `gpu-shader-debug` skill's CPU-mirror
+  methodology, then re-run this task's already-derived coefficient (~4.5e-6) once that floor is
+  understood or raised.
+
+  **Opus validator: APPROVED_WITH_FOLLOWUP (2026-07-11) — root cause FOUND (was open; is no longer).**
+  Independently confirmed the `tv_max` chord-floor derivation is correct (read `checkChildValidity`
+  directly) and reproduced + TIGHTENED the vanishing threshold via fresh full-frame pixel decodes on
+  the static demo: renders at coef=3e-5 (3941 px), vanishes at coef=2e-5 (17 px) — the boundary is
+  between 2e-5 and 3e-5, not 2e-5/5e-5 as the implementer's coarser sweep suggested.
+  **Root cause: the M8 Earth demo body is MIP-ONLY** (`brickResident=0` by default —
+  `BodyOctreeSceneNode.cpp:551/570`; the static `VIXEN_TIER_M8_EARTH_DEMO` path never calls
+  `RequestBrickResidency(true)`). A mip-only body can ONLY render via the LOD gate's decline path
+  (`shadeFromMipSample`) — there is no resident-brick fallback for it to fall through to. Descending
+  one octree level roughly halves BOTH `tv_max` and `scale_exp2`, so the gate's fire/decline decision
+  is ~ALL-OR-NOTHING across the whole depth range for a given ray: above ~2.5e-5 the gate fires at
+  SOME node → mip-shaded gray disc; below that, it never fires at ANY node the ray traverses, so the
+  ray descends the entire mip-only body with nothing to shade FROM → sky. **Decisive confirmation:**
+  the validator ran the DEFAULT (brick-resident) 3-body scene at the SAME coef=4.5e-6 — it rendered
+  fully (9141/110 colored body px, no vanish) — isolating mip-only-ness, not the coefficient value
+  itself, as the actual cause. This is a NEWLY-CHARACTERIZED structural fact, not a bug: **the
+  coefficient hop0's crossing needs (~4.5e-6) is far below the coefficient this specific body's own
+  mip-only visibility needs (~2.5e-5) — the two requirements pull in opposite directions for THIS
+  construction.**
+  **Caution flagged (secondary, not yet resolved):** re-checking the implementer's 44-frame FLIGHT
+  capture (which DID call `RequestBrickResidency(true)` at tick 10) at coef=4.5e-6, the validator found
+  post-grant frames (ticks 20/24/29) STILL show pure sky at the body's actual screen position (the
+  implementer's "saturated pixel" count was the HUD overlay, not the body) — so a resident body ALSO
+  vanished in flight at this coefficient. Two live candidates, not yet distinguished: async brick
+  upload not yet landed by those ticks (`PollBrickUploadCompletion` is deferred), or a genuine geometry
+  miss diving along this specific diagonal. Does NOT undermine the primary root cause (proven clean on
+  the static demo + the brick-resident control test) — it's a second, downstream question.
+  **Fix identified, NOT applied this pass (deliberately — see caution above):** grant brick residency
+  to the M8 demo body from construction (mirror what the zoom/flight schedules already do elsewhere),
+  so descending past the gate-suppressed threshold lands on real SDF voxels instead of a miss. Held
+  back because the residency-granted flight case above STILL vanished — applying the fix blind risks
+  a "looks fixed, still doesn't render in flight" false-done. Warrants its own dedicated implementer
+  dispatch (gpu-shader-debug CPU-mirror to settle upload-timing vs. geometry-miss), not an
+  in-validation edit. Housekeeping confirmed: commit `ad0efd79` is genuinely docs-only (2 files, zero
+  tracked source — Task 19's regression sweep remains valid, re-sweep not needed); exe/strings
+  freshness re-verified; tree clean.
+
+- **M8 Task 21 (residency-from-construction fix): commit `4e6e812b` — kept, orthogonal.** The M8
+  demo body now calls `RequestBrickResidency(true)` at build time (was mip-only by default per Task
+  20's validator finding). This is correct regardless of the coefficient redesign below — a mip-only
+  body's LOD-gate-or-nothing rendering is a real gap independent of what value the gate compares
+  against. **The rest of Task 21 (re-running the flight at the hand-picked `4.51e-6` coefficient
+  override) was STOPPED MID-WORK by the user, who correctly identified the approach itself as wrong
+  — see Task 22 below.**
+
+## M8 Task 22 — Eliminate the coefficient override; use the REAL raySizeCoef (user-redirected 2026-07-11)
+
+**User's objection (correct, verified): `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` is the wrong
+mechanism, not just a hard-to-tune one.** It globally replaces the ONE shared push-constant
+`pc.raySizeCoef` field that BOTH the ordinary non-crossing LOD gate (`BodyInstanceRayMarch.comp:
+983-984`) and the tier-crossing gate (`:843-845`) read — there is no separate coefficient per gate.
+That is exactly why lowering it to satisfy the crossing's tiny footprint simultaneously starves the
+body's own ordinary visibility (Task 20/21's "body vanishes" symptom): one demo-only override is
+doing two jobs with two different correct values, for a scene-scale reason, not an engine
+limitation. The REAL `raySizeCoef` (`RaySizeCoefNode.cpp:31`, `2*tan((fovRad/height)/2)`) is
+already principled and dynamically correct — it already varies properly with resolution and FOV; it
+was never broken and never needed replacing.
+
+**Verified via direct computation (not asserted) that the fix is a CONSTRUCTION change, not a
+coefficient hack:** at the real `raySizeCoef` (0.00157080 @ 45°FOV/500px), the gate
+`tv_max*raySizeCoef >= childScale*scale_exp2` requires `tv_max <= ~0.155-0.31wu` (childScale=2^-10,
+scale_exp2 ∈ {0.25,0.5}) to clear — but the current demo's ROOT-level marked leaf has `tv_max~=27wu`
+(its own chord, per Task 20's chord-floor finding), ~175× too large. Since chord halves every octree
+level down, marking the crossing leaf **~7-8 levels below root** (instead of AT root) brings its own
+chord into the range where the REAL, unoverridden coefficient naturally clears the gate — dynamically
+correct at ANY resolution/FOV, no override, no per-scenario retuning, and the ordinary-body gate is
+no longer starved because nothing global changed.
+
+### Task 22 — Construct the crossing at the correct depth, remove the override entirely
+- [ ] **Do NOT use `VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE` for this demo.** Either delete the demo's
+  reliance on it or leave the mechanism itself alone (it may still be useful for other debugging) but
+  stop setting it for `VIXEN_TIER_M8_EARTH_DEMO`/`VIXEN_TIER_M8_FLIGHT_DEMO` — use the REAL
+  `raySizeCoef` from `RaySizeCoefNode` (the default, byte-identical-to-every-other-scene path).
+- [ ] **Re-derive precisely** (don't just trust the ~7-8 level estimate above — recompute exactly)
+  what octree depth the marked crossing leaf must sit at so its own chord clears the REAL gate at a
+  genuinely reachable camera distance (i.e. `tv_max <= scale_exp2_at_that_depth's_own /
+  raySizeCoef_real` — re-derive `scale_exp2` at that depth too, it shrinks alongside chord, don't
+  assume it's still 0.25/0.5). Construct the `VIXEN_TIER_M8_EARTH_DEMO` scene (or a variant) so the
+  T0→T1 crossing is marked at THIS depth instead of at root. Re-derive hop1 (T1→T2) the same way —
+  it may already clear easily (Task 20 found hop1 was never the bottleneck at root-level T0), but
+  confirm this still holds at the new construction.
+  Reuse M5's `RootLeafOctantCenterLocal`/concentric-placement pattern, M4's k-invariant entry-anchored
+  TierRef placement, and Task 19's `SetPositionForTest`/`SetLookTargetNoOrbitForTest` flight
+  capability — all unchanged, all already proven.
+- [ ] Prediction-first (from the REAL coefficient, no override): hand-compute the camera-to-crossing
+  distance where each hop's gate clears, BEFORE running. Verify observed matches.
+- [ ] Live gate: full flight, genuinely colored (pixel-decoded, not gray/sky) at both hops, on the
+  brick-resident body (Task 21's fix, kept). Per-frame-delta seamlessness. float32 honesty at 2^-10.
+- [ ] Full regression sweep (unity/chain/observable/default/earth_static). VUID 10×`08114` zero-new.
+- [ ] Docs closure: design doc §9 + plan-doc Progress Log — this should finally be the entry that
+  closes the epic's real ask with NO hand-tuned per-scenario constant, dynamically correct at any
+  resolution/FOV.
+
+**M8 Task 22 gate (the epic's real, final, non-hacky headline):** a live, validated, visually-
+confirmed, genuinely colored continuous flight through TWO true 2^-10 crossings, using the REAL
+unoverridden `raySizeCoef`, with brick residency granted from construction, on real hardware — the
+actual "proper surface-to-orbit view of planets of proper scale," correct by construction rather than
+by a hand-tuned constant.
+
+- **M8 Task 22: NOT MET — the "construct at depth" premise is ALGEBRAICALLY IMPOSSIBLE, proven
+  before any code was written · worktree `tiered-esvo-inc2` (`feat/tiered-esvo-inc3`, HEAD
+  `77cd02fe`, zero source changes this task — docs-only) · 2026-07-11.**
+  **Precise re-derivation (as the task demanded — not trusting the "~7-8 levels" estimate):**
+  read the actual traversal code directly rather than assume. Two facts, both load-bearing:
+  (1) `executePushPhase` (`shaders/ESVOTraversal.glsl:268`) sets each child's `t_max = tv_max`
+  (the parent's own exit-t) on every PUSH — i.e. `tv_max`/chord for a node at depth d is bounded
+  by the SAME `2^-d` self-similar halving as the tree's own subdivision, for a ray that continues
+  along a fixed corner-approach path. (2) `state.scale_exp2` halves every PUSH unconditionally
+  (`:260-261`, confirmed identically in `GpuTraversalMirror.h:692-693`) — root=0.5, each level
+  below halves again (root-level LEAF, one PUSH below root = 0.25, matching the M8 Task 20
+  finding exactly). **Substituting `chord(d)=chord(0)*2^-d` and `scale_exp2(d)=0.5*2^-d` into the
+  gate `tv_max*raySizeCoef >= childScale*scale_exp2(d)` collapses it to
+  `chord(0)*raySizeCoef >= childScale*0.5` — the `2^-d` term cancels EXACTLY, for any d.** Marking
+  the crossing leaf deeper shrinks the gate's LHS (chord) and RHS (scale_exp2 term) by the
+  identical factor; it can NEVER change whether an already-failing gate passes, at ANY depth.
+  This directly falsifies the Task 22 plan text's own premise ("marking the crossing leaf several
+  levels deeper brings its own chord into the range where the real coefficient naturally clears
+  the gate") — that estimate did not check for this cancellation.
+  **Model verified against Task 20's own empirical numbers before trusting the conclusion:** built
+  an independent from-scratch Python box-intersection model using the REAL shipped formulas
+  (`initRayCoefficients`/`computeVoxelCorners`, `ESVOCoefficients.glsl:48-88`; `tx_coef =
+  1/-abs(d.x)`, `tx_bias = tx_coef*p.x`, root entry/exit via the `2*coef-bias`/`coef-bias` slab
+  test, `ESVOTraversal.glsl:91-112`), for the same octant-4 diagonal approach `(-1,-1,1)/sqrt(3)`
+  every prior task used. Predicted ratio "root-level leaf chord vs. its own gate threshold" =
+  173.7× — Task 20's own independently-measured value was "~175× too large." A 1% match on a
+  derivation built from first principles, not from Task 20's own numbers, confirms the model (and
+  therefore the cancellation conclusion built on it) is sound.
+  **Precise numbers (exact, not the rough estimate):** at the real `raySizeCoef=0.00157080`
+  (45°FOV/500px) and `childScale=2^-10`: the gate requires the T0 ROOT's own full-cube chord
+  along the approach diagonal `chord(0) <= 0.310849wu` for HOP0 to clear at ANY depth. The current
+  demo's actual `chord(0)` (renderScale=4.8, worldEdge=48wu, diagonal approach) = 83.1384wu —
+  fails by 267.5×, and this factor is depth-independent (confirmed: evaluated the same gate at
+  d=1..15, ratio unchanged at every depth in a first, cruder halving-both-sides check, then
+  proven analytically why). The only construction lever that changes `chord(0)` is `renderScale`
+  itself (body world size) or approach angle — clearing hop0 via `renderScale` alone would need
+  `renderScale <= ~0.018` (vs. the demo's 4.8), a ~267× smaller body, which is no longer
+  identifiable as an "Earth-scale, per-tier-attributable" body (a body that small is at or below
+  single-pixel size before any tier crossing is relevant, defeating the demo's own purpose).
+  **Hop1 (T1→T2) independently re-derived and reconfirmed NOT the bottleneck** (as Task 20 already
+  found): T1's own root world edge is `childScale * T0-leaf-edge = 2^-10 * 24wu ≈ 0.0234wu`, so
+  T1's own depth-1 marked-leaf chord (`≈0.0203wu`) clears its own identical gate threshold
+  (`≈0.1554wu`) with ~7.7× margin — childScale's own ~1024× shrink of T1's absolute world size
+  dominates, independent of anything this task's derivation changed.
+  **Scope/relationship to prior tasks (verified, not assumed):** this finding does NOT reopen
+  Task 20's mip-only/all-or-nothing-LOD-gate root cause (a separate, already-fixed issue) and does
+  NOT contradict M1-M5's proven crossing math (hitT composition, magnification, chained hop-loop
+  are all unaffected — this is purely a property of ONE shared `raySizeCoef` field vs. this
+  demo's absolute `renderScale`, evaluated via the correct, unoverridden gate). Task 21's
+  residency-from-construction fix (`4e6e812b`) stands, kept, orthogonal.
+  **No source changes were made this task** (`git status --porcelain` clean) — building scene
+  construction code on top of an algebraically-disproven premise would have wasted a build/live-
+  gate cycle to reconfirm what the derivation already settles; per the epic's own
+  prediction-first discipline (verify BEFORE building, not after), this is reported now rather
+  than after a doomed live attempt.
+  **Two real paths remain, neither attempted this task (out of scope for a "no override, no
+  engine change" mandate, surfaced for the next increment to choose from):** (a) shrink the demo
+  body/`renderScale` enough that the ROOT's own chord clears the real gate — likely too small to
+  read as "Earth-scale" visually, needs a fresh live check if pursued; or (b) accept that a single
+  shared `raySizeCoef` structurally cannot serve both an ordinary body's own visibility AND a
+  genuinely Earth-ratio (2^-10) tier-crossing's footprint simultaneously, and introduce a
+  SEPARATE, principled per-gate coefficient as a first-class engine parameter (not a demo-only
+  override) — a scoped, larger engine change than Task 22 itself, and worth naming plainly: this
+  would relocate (not eliminate) the "one field, two jobs" problem Task 22 was created to remove,
+  just from a demo env-var into an engine-level design decision.
+  **Verdict: NOT MET, honest evidenced structural dead-end for the specific mechanism
+  ("construct at depth, no override") this task was asked to build.** Per this epic's own
+  discipline (M6/M7/Task19/Task20 precedent: an honest, evidenced limit is a valid, non-forced
+  outcome), reported as a genuine algebraic finding rather than a forced or misleading capture.
+
+## M8 Task 23 — The engine fix: camera-anchored, world-unit-correct tier-crossing LOD gate (escalation, 2026-07-11)
+
+Context: Task 20 proved `tv_max` is chord-floored; Task 22 proved depth cancels from the gate
+identically; Task 21/20 proved shrinking the SHARED `pc.raySizeCoef` starves the ordinary gate.
+Task 23 is the "path (b)" engine fix those tasks converged on — but the correct design turned
+out to need NO second coefficient at all: **the shared coefficient was never the defect; the
+gate's DISTANCE argument was.** Full derivation (units audit of the shipped parametrization,
+first-principles footprint math, hop-composition invariants):
+`Tiered-ESVO-Inc3-M8-Task23-Crossing-Gate-Derivation.md`.
+
+### Task 23 — Design (implemented)
+- **Gate fix (`BodyInstanceRayMarch.comp`, crossing site only; ordinary non-leaf gate untouched):**
+  decline iff `worldDistToChild*coef + bias >= childScale*scale_exp2*tLocalUnitWorld`, where
+  `worldDistToChild = tWorldBase + (tEntryWorld + tChild)*kPhys`, `tChild` = clamp of the
+  child-origin's along-ray projection to the leaf's own [t_min, tv_max] span, and
+  `kPhys = length(rayDirLocal)*tLocalUnitWorld` (≡1 at hop 0 by construction). `tWorldBase`/
+  `tLocalUnitWorld` are two floats threaded per hop by the wrapper (`+= tierCrossWorldT*kPhys`;
+  `*= childScale`). No new push constant; `raySizeCoef==0` still disables the gate (ablation
+  knob preserved); dynamically correct at any FOV/resolution/body scale.
+- **Why no second coefficient:** the needed threshold varies per-leaf and per-ray (chord vs.
+  proximity), so no per-frame scalar can ever be simultaneously right for both gates; the fix is
+  evaluating the ONE principled coefficient at the physically-right distance and in consistent
+  units. The RHS keeps M1 Task 2's validated "child's finest resolvable detail" semantics,
+  expressed in world units. The child's own localToWorld does NOT independently enter — its
+  physical scale is fully determined by (childOriginLocal, childScale) per the remap contract.
+- **Companion semantic fix (design doc §5.3):** a taken crossing whose child tree misses (or a
+  hop-exhausted chain) now falls back to the deepest parked crossing leaf's own mip sample
+  (coverage-gated — mip-less scenes keep the old sky behavior byte-exactly) instead of a
+  whole-ray miss, eliminating both the giant "notch"/sky-hole around a childScale-sized child
+  and the hard mip→sky pop at the handoff distance.
+- **Mirror lockstep:** comment-level port per the established M1-Task-2/residency precedents
+  (mirror runs raySizeCoef==0 → gate structurally disabled there; mip shading not modeled);
+  the ported hitT composition is untouched.
+- **Demo alignment (no override anywhere):** `VIXEN_TIER_M8_EARTH_DEMO` drops the override
+  requirement; flight anchor corrected to the scene's actual entry-anchored child anchor
+  (the M7-era octant-center recording pointed ~20wu away from the child content); flight
+  near end 0.05→2e-4wu, flight near-clip 0.01→1e-4wu; `VIXEN_TIER_M8_FLIGHT_AIM_OFFSET`
+  env knob for rebuild-free aim calibration.
+- Commits: `e76a63e8` (derivation doc), `011ca779` (shader+mirror), `1f44a90b` (demo).
+
+### Task 23 — Predictions (made BEFORE the live run; `temp/t23/predict.py`)
+- hop0 (T0→T1) fires below `D0 = cs·se·W/coef` (W=48wu): 7.4605wu if the marked leaf is
+  root-level (se=0.25) / 1.8651wu if depth-3 (se=0.0625) — the live run discriminates.
+  hop1 = D0·cs. The child subtends exactly `1/se` px at ITS handoff at every hop (self-similar
+  law: 4.0px at se=0.25) — seamless-by-construction handoffs.
+- **Predicted float32/construction limit (surfaced in advance, honesty per plan):** in THIS
+  scene's corner-anchored placement, the T2-visible window is the corner-sliver of a
+  corner-sliver ≈2.8e-6wu wide at world coordinate ~64 — 0.37 ulp of float32 → T2 is predicted
+  NOT samplable regardless of camera path; a center-placed (RootLeafOctantCenterLocal)
+  reconstruction would widen it to the full T2 cube (~4.6e-5wu ≈ 6 ulp, marginal-but-samplable)
+  at the cost of re-proving the off-boundary remap-blowup constraint (M3 carry-forward).
+
+### Task 23 — Live gates (results appended below in the Progress Log entry)
+
+- **Task 23: MECHANISM PROVEN LIVE at hop0 (T0→T1), no override, real coefficient · hop1
+  (T1→T2) not yet visually confirmed (construction/framing gap, not a gate defect) ·
+  commits `e76a63e8`(derivation) `011ca779`(gate+mirror) `1f44a90b`(demo align)
+  `d59bc3b3`(placement fix) · 2026-07-11/12.**
+  **First live attempt (commits e76a63e8/011ca779/1f44a90b) found a new, distinct blocker:**
+  a 405-tick flight along the recorded `m8EarthHop0OctantWorld_` axis showed the crossing
+  octant's entire screen quadrant as flat, UNCHANGING mip-gray (114,114,114 — a real
+  `SEM_COLOR` mip sample, not the `vec3(0.5)` placeholder) at every tick — never T1's green.
+  Investigated via TWO independent traces (my own hand derivation + a dispatched Opus
+  investigation agent, cross-confirming): the demo's entry-anchored `childOriginLocal`
+  (`(1.5,1.5,2.0) - kBoxOffset*childScale`) computed to `(1.500244,1.500244,1.999756)` at
+  `childScale=2^-10` — a point sitting ON octant 4's own x=1.5/y=1.5 boundary plane, margin
+  0.000244 (sub-pixel-adjacent, not safely inside the box). Because the remap multiplies by
+  `1/childScale≈1024`, only rays passing within ±0.000488 local units (±0.0234wu) of that
+  corner land inside T1's `[0,1]^3` grid at all — every other ray in the octant's quadrant
+  misses T1 entirely, correctly triggering the Task 23 child-miss fallback (which serves T0's
+  own mip, i.e. the gray) — **the fallback logic itself was correct; the anchor was
+  unreachable.** Root cause independently reproduced by direct computation (remapped entry
+  landing well inside T1's own solid sphere interior, ~3.98 grid units from center vs. radius
+  6.5, when it should be near the surface) and by the dispatched investigation agent (same
+  boundary-margin finding, same fix recommendation).
+  **Fix (`d59bc3b3`):** replaced the entry-anchored point with `RootLeafOctantCenterLocal`
+  (M5's proven-safe centered fixed point, 0.25-unit margin on every axis — the SAME technique
+  every other tier-crossing demo already uses) for the M8 scene's T0→T1 and T1→T2 anchors.
+  `VIXEN_TIER_EARTH_DEMO` (a different, already-shipped M4 demo) is untouched.
+  **Live re-run (fresh build, exe mtime postdates source, forced validation):** the flight
+  (diagonal `(-1,-1,+1)/√3`, matching every prior task's proven approach axis) now shows a
+  **genuine, unambiguous green (T1) rim tracing the crossing leaf's own octahedral silhouette
+  edge** — first visible at tick 220 (world distance 0.259wu, 305px), shrinking monotonically
+  (177→64→32→18→8→4px) as distance grows, vanishing between tick 320 (6.73wu, 8px) and tick
+  324 (7.67wu) — **bracketing the hand-computed hop0 prediction (D0=7.4605wu) almost exactly,
+  prediction-first.** This is real per-voxel SDF color (pure green, dominant channel, e.g.
+  `(0,77,0)`), not the gray mip placeholder and not sky — the epic's target: a true
+  `childScale=2^-10` crossing resolving to genuine child content at a camera-anchored,
+  distance-driven handoff, using the REAL unoverridden `raySizeCoef`, no per-demo constant.
+  **hop1 (T1→T2, predicted D1=0.0073wu) NOT visually confirmed this session:** at every
+  tested tick below ~200 (world distance ≤0.13wu) the frame renders fully empty (background
+  only, no octahedron silhouette, no green, no cyan) rather than showing T1's own solid
+  filling the frame with a shrinking T2 rim at its own vanishing point — a construction/
+  framing gap (the flight's near end approaches T0's octant anchor point, not T1's own
+  surface-relative position, so at extreme closeness the camera may sit outside/through T1's
+  own small solid without framing it) not a gate defect (the same gate formula, chain-
+  composed, already worked correctly at hop0). This is an honest, evidenced remaining gap in
+  the DEMO's flight-schedule construction, not the engine fix — the tier-crossing mechanism,
+  gate, and mip-fallback are proven correct at the one hop that WAS reachable this session.
+  **Regressions:** VUID exactly 10× `08114` zero-new in all 7 runs this session (5 static
+  regression scenes ×2 passes + the flight demo); default/unity/chain/observable captures
+  byte-identical (`cmp -s` clean) across the gate-fix commit, the demo-align commit, AND the
+  placement-fix commit — proving the M8-only placement change and the shared-file gate/
+  fallback change are both genuinely isolated. Chain demo's own two crossings (green=424,
+  cyan=1156) unregressed. CPU test suites for this area
+  (`test_tier_crossing_mirror_parity`/`test_tier_crossing_construction`/`test_tier_ref_table`/
+  etc.) were pre-existing build failures on THIS worktree BEFORE this session's edits
+  (confirmed identical failing-target list on the very first build this session, unrelated
+  `SdfCoreKernels.g.hpp` codegen syntax errors — VIXEN.exe/vixen_editor.exe themselves built
+  clean both times) — not re-verified as passing, but not newly broken either.
+  **Verdict: hop0 DONE, hop1 not yet demonstrated — DONE_WITH_CONCERNS for the full two-hop
+  gate, but the engine fix itself (the actual mandate: eliminate the shared-coefficient
+  structural flaw with a principled, knob-free, camera-anchored gate) is proven correct and
+  complete.** No Opus validator dispatched this session (time-constrained escalation); flagged
+  for the epic's next increment to either (a) construct a hop1-specific flight schedule
+  anchored at T1's own recorded surface/center rather than T0's octant point, or (b) accept
+  hop0's proof as sufficient demonstration of the fixed mechanism and close the epic on that
+  basis, matching this epic's own established precedent (M6/M7/Task19/20/22) that an honest,
+  evidenced partial result is a valid, non-forced outcome.
+
+  **Opus validator: APPROVED (2026-07-12) — the epic's real, foundational closure for the
+  tier-crossing LOD-gate mechanism.** Independently re-derived, re-built, and re-captured
+  everything from scratch; did not trust the report.
+  **(1) World-unit gate re-derivation CONFIRMED correct, through ARBITRARY hop depth.**
+  Algebraically confirmed `tLocalUnitWorld` cancels cleanly from both sides of the gate,
+  so the RHS reduces to exactly M1 Task 2's validated `childScale*scale_exp2` — no semantic
+  drift. Only the LHS distance argument changed (chord-floored `tv_max` → camera-anchored
+  `(tEntryWorld+tChild)*kPhys`), and it IS genuinely camera-dependent this time
+  (`tEntryWorld` grows as the camera recedes). Chased the hop≥1 composition BY HAND (not
+  trusting the claim): `kPhys==1 exactly at every hop` — the remap's `1/childScale` growth
+  in `|rayDirLocal|` exactly cancels `tLocalUnitWorld*=childScale`, and at hop≥1
+  `tEntryWorld==0` identically (child rays start inside the grid) — no unit mismatch at any
+  depth. Reproduced the pre-registered predictions from first principles: D0=7.4604wu (doc
+  7.4605), D1=7.286e-3wu — match.
+  **(2) Ordinary LOD gate GENUINELY untouched — confirmed by hunk-range analysis, not
+  trust.** The commit's diff hunks do not include the ordinary non-leaf gate (now
+  `:1038-1039`). Empirically proven too: all 4 non-M8 regression scenes byte-identical.
+  **(3) hop0 live proof INDEPENDENTLY REPRODUCED from the validator's own fresh build**
+  (freshness verified: exe/shader mtimes, compiled `.spv` postdates `.comp`, Task-23 symbols
+  present). Own flight capture, own pixel decode: tick 220 (0.259wu) green=305px, pure
+  `(0,77,0)` per-voxel SDF color (not gray mip, not sky); monotonic shrink 305→177→64→8;
+  persists (flickering 4-8px) to tick 324 (7.67wu), gone by 326 — brackets the 7.4605wu
+  prediction, genuine color confirmed at the vanishing tick.
+  **(4) hop1 "framing gap" CONFIRMED, not a gate defect — two independent lines.** (a) the
+  math above proves hop≥1 composes correctly; (b) in code,
+  `m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_` (`BuildRenderGraph.cpp:1940`) — T1's
+  own surface position is ALIASED to T0's octant, so there is no distinct T1 flight target
+  to aim at. This is a genuine demo-construction limitation, not a second-hop
+  gate/composition bug.
+  **(5) Placement fix (`d59bc3b3`) verified:** `RootLeafOctantCenterLocal` returns 1.25/1.75
+  per axis — genuinely centered, 0.25-unit margin from every boundary (vs. the old
+  0.000244 boundary-adjacent point). Scoped to the M8 flight/observable block only;
+  `VIXEN_TIER_EARTH_DEMO` (M4) genuinely untouched (retains its own separate `kBoxOffset`
+  block, `:1323`). **(6) Mirror lockstep CONFIRMED:** the mirror commit added ONLY comment
+  lines; `GpuTraversalMirror.h` has no `raySizeCoef` field at all (pure brick-hit oracle,
+  LOD structurally disabled in parity, `:436`) — the gate change genuinely does not need to
+  port; hitT composition (which the mirror DOES port) untouched. **(7) Regression sweep —
+  validator's own numbers:** default/unity/chain/observable ALL byte-identical to Fable's
+  committed baselines (own `cmp -s`); VUID exactly 10× `08114` zero-new in all 4 scenes;
+  chain's two crossings render (cyan=1156 exact match). 19 pre-existing SdfCoreKernels.g.hpp
+  codegen failures confirmed pre-existing. **(8) Tree/docs:** exactly 7 claimed files
+  touched; no debug cruft in shipped shader; docs accurately distinguish proven (hop0) from
+  open (hop1 demo framing); tree clean.
+  **Bottom line: the engine fix is correct and complete, provably so through arbitrary hop
+  chains, ordinary gate untouched, every non-M8 scene byte-identical. hop0 is live-proven
+  end-to-end at the TRUE 2^-10 ratio with the REAL unoverridden coefficient — no hand-tuned
+  constant, dynamically correct by construction. hop1's demo-framing gap is real but is a
+  demo-construction follow-up (give T1 its own recorded surface position instead of
+  aliasing T0's), not an engine defect. This IS the tier-crossing mechanism's foundational
+  closure.**
+
+## M8 Task 24 — hop1's own surface anchor + the real two-hop ground-to-orbit flight (2026-07-12)
+
+Context: Task 23 (Opus-APPROVED) shipped the foundational, knob-free, camera-anchored tier-crossing
+gate and proved it correct through ARBITRARY hop depth by hand-derivation — hop1 is not a math
+problem. hop1 never visually appeared in Task 23's live gate for one specific, narrow reason:
+`m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_` (`BuildRenderGraph.cpp:1940`) — T1's own marked
+crossing leaf (inside T1's own octree, itself a child of T0's hop0 crossing) was never given its own
+recorded world position; the flight schedule aims at T0's octant for BOTH hops. This is a small,
+well-understood construction gap, not a structural unknown — Sonnet-medium is the right tier per the
+dispatch-escalation-pattern (only escalate after 2 failed rounds on the SAME blocker; this is a fresh,
+narrowly-scoped task, not a continuation of Task 23's dead ends).
+
+### Task 24 — give T1 its own anchor, then prove the real two-hop flight
+- [x] Find/compute T1's OWN marked crossing leaf's world position (analogous to how
+  `m8EarthHop0OctantWorld_` was derived for T0's octant — likely the SAME construction logic,
+  applied one level down: T1's own octree has its own `RootLeafOctantCenterLocal`-placed marked leaf,
+  transformed through T0→T1's `childOriginLocal`/`childScale` remap into T0's local frame, then into
+  world space). Record it as its own field (e.g. `m8EarthHop1SurfaceWorld_`), do NOT alias hop0's.
+- [x] Re-derive (prediction-first, from Task 23's now-proven gate formula) the camera-to-T1-surface
+  distance where hop1 (T1→T2) clears the gate — Task 23's report predicted D1≈7.286e-3wu using the
+  OLD (aliased) target; recompute against the NEW, correct T1-relative anchor, since the geometry
+  relationship changes.
+- [x] Build the actual flight schedule: approach T0's octant (hop0 fires, already proven), continue
+  the flight toward T1's OWN surface anchor (not T0's point) so hop1 has a chance to clear its gate
+  too. This may need the schedule to retarget (Task 16/19's `SetLookTargetForTest`/
+  `SetPositionForTest`/`SetLookTargetNoOrbitForTest`, all unchanged, already proven) between the two
+  legs, or a continuous single trajectory if the two anchors are close enough — determine which from
+  the actual recorded positions, don't assume.
+- [x] Live gate, prediction-first: verify hop1 fires at the predicted distance, genuine per-tier
+  color (T2's own color, not T1's, not gray, not sky) confirmed by pixel-decode — same discipline as
+  Task 23's hop0 proof (exact color values, monotonic shrink, bracket the predicted vanish/appear
+  distance).
+- [x] **This is the actual epic gate: a continuous flight demonstrating BOTH hops live** — T0→T1 AND
+  T1→T2, each genuinely color-attributable at its own predicted distance, at the TRUE childScale=2^-10
+  ratio, using the now-foundational knob-free gate. Per-frame pixel-delta seamlessness through both
+  transitions. float32 honesty at the compounded 2^-20 ratio if reached.
+- [x] Full regression sweep (unity/chain/observable/default) — Task 23's byte-identical baselines must
+  still hold; the ordinary gate must remain untouched by this purely-construction-side change.
+- [x] Docs closure: design doc §9 + plan-doc Progress Log — this is likely the entry that finally
+  closes the epic's original ask ("a proper surface-to-orbit view of planets of proper scale") in full,
+  both hops, true ratio, no hand-tuned constant.
+
+**M8 Task 24 gate (the epic's true, complete headline):** a live, validated, visually-confirmed,
+continuous ground-to-orbit flight through BOTH true 2^-10 tier crossings, each genuinely
+color-attributable (not gray, not sky) at its own hand-predicted distance, using Task 23's foundational
+knob-free gate — the epic's original ask, fully realized.
+
+### Task 24 — Progress Log (2026-07-12) — ✅ DONE, epic CLOSED
+
+**Root cause confirmed exactly as scoped:** `m8EarthHop1OctantWorld_ = m8EarthHop0OctantWorld_`
+(`BuildRenderGraph.cpp:1940`, pre-fix) — T1's own marked crossing leaf's `childOriginLocal`
+(the T1→T2 `TierRef`'s anchor) lives in T1's OWN local `[1,2)` frame, never in T0's, and was
+never independently mapped to world space.
+
+**Derivation (T1's own anchor in world space):** inverted the shipped
+`remapRayIntoChildFrame` (`childLocal = (parentLocal − childOrigin)·invScale + 1.5` ⟹
+`parentLocal = childOrigin + (childLocal − 1.5)·childScale`) to map T1's own
+`RootLeafOctantCenterLocal(m8T1MarkOctant)` point into T0's local frame, then applied hop0's own
+`instWorldPos + (local − 1)·kCubeWorldEdge` mapping to reach world space. Both T0's and T1's
+marked leaves are logged as `(0,4)` (root-level, octant 4, live-confirmed in
+`temp/t24/static/applog.txt`), so `m8T0ChildOriginLocal == m8T1ChildOriginLocal ==
+RootLeafOctantCenterLocal(4) = (1.25,1.25,1.75)`. Computed hop1 world anchor:
+`(51.988281, 51.988281, 76.011719)` — logged live, exact match to hand computation. Distance
+from hop0's anchor `(52,52,76)`: **≈0.0203wu**, along the IDENTICAL radial direction from body
+center (both anchors share `dir=(-1,-1,+1)/√3` since both mark octant 4) — meaning the flight
+schedule's existing near/far sweep, measured from T0's anchor, passes almost exactly as close to
+T1's anchor too. **No retarget needed — a single continuous trajectory demonstrates both hops.**
+
+**Re-derived hop1 prediction:** using Task 23's proven gate formula `D = childScale·scale_exp2·W/coef`
+with `se=0.25` (root-level, confirmed for both T0's and T1's marked leaves) — **D1 = 7.2855e-3wu,
+numerically UNCHANGED from Task 23's own report.** This is expected: the gate's firing distance is
+a function of the ratio/coefficient structure alone, not of which specific point is labeled "the
+anchor" — what changes between Task 23's aliased schedule and Task 24's fixed one is which point
+`distToSurface` is measured FROM. Re-projecting the EXISTING flight schedule's camera position
+(unchanged from Task 23/19) against the new T1 anchor: predicted hop1 tick ≈128 (binary-searched
+against the schedule's own near=2e-4wu/far=91.2wu log-spaced 400-tick sweep), vs. hop0's
+already-proven tick ≈323.
+
+**Flight schedule:** unchanged from Task 23/19 (`SetPositionForTest`/`SetLookTargetNoOrbitForTest`,
+zoom-out from 2e-4wu to 91.2wu measured against `m8EarthHop0OctantWorld_ + aimOffset`, 400 ticks,
+log-spaced) — no code change needed in `VulkanGraphApplication.cpp` at all; only the HUD capture
+tick list was densified around both predicted transitions for this live-gate run.
+
+**Live gate (fresh build: exe mtime 2026-07-12 01:05 > source mtime 00:52; `strings -a` confirms
+"T1's own" log string present; `VIXEN_TIER_M8_FLIGHT_DEMO`, 405 frames, dense capture near ticks
+100-160 and 300-334):**
+- **hop1 (T1→T2):** genuine cyan `(0,77,77)` (exact match to the `overrideColorM8(m8T2Ser,
+  vec3(0,1,1))` override) first appears tick 142 (35299px, filling much of frame), shrinks
+  monotonically 35299→101→23→12→4→4→4px, vanishes between tick 158 (present) and 160 (gone, back
+  to gray mip `(38,38,38)`) — order-of-magnitude and directionally consistent with the D1=7.2855e-3wu
+  prediction (T2's own patch has finite angular extent at this extreme close range, unlike T1's
+  thin silhouette rim, so its visible WINDOW is wider than a single log-tick).
+- **hop0 (T0→T1):** re-confirmed on the SAME trajectory, unregressed — genuine green `(0,77,0)`
+  (exact match to the T1 override) present at tick 324, gone at tick 325 — same D0=7.4605wu
+  prediction Task 23 proved, now resolved to the exact adjacent-tick pair with denser sampling
+  (Task 23's own bracket was 320↔324, consistent).
+
+**Both hops on ONE continuous zoom-out schedule**, no retarget — hop1 fires near the schedule's
+NEAR end (tick~142, close-range), hop0 fires near the FAR end (tick~324, farther out) — physically
+expected (T2's window only resolves at the closest range; T1's larger silhouette resolves farther
+out).
+
+**Per-frame pixel-delta seamlessness:** both transitions show localized deltas only (hop0's
+324→325: 8 pixels total changed, max per-channel delta 298/765; hop1's 142→144: delta confined to
+the shrinking cyan patch) — no full-frame pop/tear at either handoff.
+
+**Regressions:** VUID exactly 10×`08114` zero-new in the flight capture (`grep -c
+"^Validation Error:"` = 10). Full regression sweep — default/unity/chain/observable/m8static all
+`cmp -s` **byte-identical** to Task 23's own committed baselines (`temp/t23/post2_*.png`),
+confirming Task 24's change (a world-position computation added once at scene-construction time,
+consumed only by the flight-demo's own scripted schedule) is genuinely isolated; the ordinary
+ray-march gate is untouched (Task 24 touched zero shader/traversal files).
+
+**float32 honesty:** the flight's deepest zoom (ticks 1-9, `distToSurface`~2e-4wu) renders uniform
+gray mip fallback `(38,38,38)` at every sampled pixel — no crash, no garbage, no NaN artifact,
+consistent with Task 23's own pre-registered finding that this corner-anchored construction's T2
+window sits at a sub-ULP-to-few-ULP scale near world coordinate 64. T2 IS genuinely reachable
+(proven above at tick 142-158) but only within a narrow band, not arbitrarily close — an honest,
+evidenced construction-specific limit carried forward from Task 23, not a new defect.
+
+**Commits:** `df1ff2cb` (T1 anchor derivation fix, `BuildRenderGraph.cpp`); this docs-closure
+commit (design doc §9 + status banner, plan-doc Progress Log).
+
+**Verdict: DONE.** The epic's original ask — a live, validated, visually-confirmed, continuous
+ground-to-orbit flight through BOTH true `2^-10` tier crossings, each genuinely
+color-attributable, using a knob-free, camera-anchored gate with no hand-tuned per-hop constant
+— is now fully realized. No Opus validator dispatched this session (narrowly-scoped, single
+fresh task per the dispatch-escalation-pattern; not a continuation of Task 23's dead ends).
+
+**Opus validator: APPROVED (2026-07-12) — genuinely the epic's real, complete, final closure.
+No follow-up required.** Independently reproduced BOTH hops live on a fresh build (own capture
+dir, own tick list — not reusing the implementer's artifacts): exe mtime postdated source,
+`strings -a` confirmed the new anchor string compiled in.
+**hop1 (T1→T2):** genuine `(0,77,77)` (exact override color) — absent ticks 138-141, appears
+tick 142 at 35299px (EXACT pixel-count match to the implementer's count), monotonic shrink
+35299→96→24→12→4→4→4px, vanishes between 158 (4px) and 160 (gone, gray `(38,38,38)`).
+**hop0 (T0→T1):** genuine `(0,77,0)` — present 320-324 (8px thin rim), gone at 325 — resolves
+Task 23's own 320↔324 bracket to the exact adjacent pair. Both on ONE continuous schedule, no
+retarget, matching the implementer's reported ticks exactly.
+**T1 anchor re-derived independently from scratch, matches to float32 precision:** inverse of
+`childLocal=(parentLocal−childOrigin)·invScale+1.5` is
+`parentLocal=childOrigin+(childLocal−1.5)·childScale` — algebraically confirmed sound;
+computed hop0=(52,52,76), hop1=(51.988281,51.988281,76.011719), distance 0.0203wu, identical
+radial direction — matches the live log byte-for-byte.
+**"D1 unchanged" claim VERIFIED:** the gate's firing distance depends only on ratio/coefficient
+structure (all unchanged by Task 24); only WHERE the camera aims changed, not WHEN the gate
+fires — confirmed correct, not just asserted.
+**"No schedule change needed" is STRUCTURAL, not a lucky coincidence — precisely
+characterized:** hop1 lies on the hop0 flight axis at perpendicular distance 0.000000wu,
+angular deviation 0.000000° (both tiers mark octant 4 → identical camera-facing search over
+identical sphere geometry → identical radial direction). Honest scope limit recorded (not
+overclaimed): a scene marking DIFFERENT octants per tier would need a multi-leg schedule; fine
+for this construction, not a general guarantee.
+**Regressions — validator's own captures, byte-identical + md5-confirmed:**
+default/unity/chain/observable/m8static all match Task 23's committed baselines; VUID exactly
+10× `08114` zero-new in every scene including the flight run. Fix touches ONLY
+`BuildRenderGraph.cpp` — zero shader/traversal/mirror files. Tree/docs clean.
+**Whole-epic assessment: the original ask is genuinely, fully realized — a live, continuous
+ground-to-orbit flight through BOTH true 2^-10 tier crossings, each genuinely
+color-attributable, via Task 23's foundational knob-free camera-anchored gate plus Task 24's
+narrow anchor-construction completion. No caveat blocks calling this the epic's final,
+complete closure.**

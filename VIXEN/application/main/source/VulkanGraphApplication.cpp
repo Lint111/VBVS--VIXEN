@@ -5,6 +5,7 @@
 #include <algorithm>   // std::min for the Tiered-ESVO Inc2 M5 scripted zoom clamp
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
+#include <cstdio>      // std::sscanf for VIXEN_TIER_M8_FLIGHT_AIM_OFFSET (M8 Task 23)
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
@@ -1031,6 +1032,260 @@ void VulkanGraphApplication::Update() {
             }
             if (obsZoomTick % 20 == 0 && mainLogger) {
                 mainLogger->Info("[TierObservableZoomDemo] tick " + std::to_string(obsZoomTick));
+            }
+        }
+
+        // Tiered-ESVO Inc3 M8 Task 17 (the epic's literal headline): the TRUE Earth-scale
+        // (childScale=2^-10/hop) surface-to-orbit transition, using Task 16's CameraNode
+        // look-target decoupling to keep the marked crossing octant framed through its
+        // handoff -- the capability M6/M7 proved is REQUIRED for the off-axis problem (their
+        // own R-invariance findings: a camera that always looks at body center cannot frame
+        // an octant sitting far off-axis at 2^-10's near/mid-field distances). Run alongside
+        // VIXEN_TIER_M8_EARTH_DEMO=1 (+ VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE=2.8935e-4, see
+        // that demo's own comment) + VIXEN_TIER_M8_EARTH_ZOOM_DEMO=1 (or _ZOOM_SCRIPT=1 to
+        // skip residency).
+        //
+        // TWO INDEPENDENT CONSTRAINTS AT TRUE 2^-10 (both hand-derived BEFORE writing this
+        // schedule, the SECOND one found only after a first live-capture attempt failed --
+        // see the M8 Progress Log for the full derivation and the failed attempt's own
+        // captures):
+        //  (1) OFF-AXIS ANGLE (M6/M7's finding): the marked octant sits at a FIXED world
+        //      offset (-2.5R,-2.5R,+2.5R) from body center, independent of orbit distance --
+        //      a camera that always looks at body center sees it far outside the 22.5deg
+        //      half-FOV cone through most of a near/mid-field orbit. FIXED by look-target
+        //      retargeting (this task's new capability): aim at the octant's own recorded
+        //      world position (m8EarthHop0OctantWorld_) instead of body center.
+        //  (2) SOLID-RADIUS/HOP-DISTANCE COUPLING (a SECOND, independent constraint this
+        //      task discovered live, NOT solved by retargeting): the calibrated LOD-gate
+        //      formula (hop0=20*R*childScale*scale_exp2/raySizeCoef, hop1=hop0*childScale)
+        //      predicts hop0~=81.0wu (with the LOD-coef override) and hop1~=0.0791wu -- but
+        //      hop1, as a camera-to-body-center WORLD distance, is far SMALLER than the
+        //      body's own solid surface radius (~27wu at R=4.8). A body-center-orbit
+        //      schedule literally cannot place the camera at hop1's distance without
+        //      embedding it INSIDE T0's own solid volume (a degenerate ray-origin-inside-
+        //      geometry case, independently confirmed live: a first schedule attempt with
+        //      near=0.02wu produced T0/magenta fill at every near/mid tick and NEVER any
+        //      green/cyan T1/T2 pixels anywhere in a 500-tick run). This holds for ANY
+        //      raySizeCoef override that also keeps hop0 outside the solid (hop1=hop0*cs is
+        //      always 1024x smaller than hop0), so it is NOT a schedule-tuning problem --
+        //      it is the SAME 1024x-hop-gap structural fact M6/M7 found in FOV-angle terms,
+        //      re-appearing as a raw-distance constraint that look-target retargeting does
+        //      NOT solve (retargeting fixes WHERE the camera looks, not the fact that
+        //      reaching hop1's threshold via a body-center orbit requires standing inside
+        //      the body's own solid).
+        //
+        // CORRECTED SCHEDULE: sweeps ONLY from just outside the solid (near=30.0wu,
+        // comfortably clear of the ~27wu solid radius) out through hop0 (T0->T1, ~81.0wu) to
+        // the orbit ceiling (120.0wu) over kM8Phase1End=400 ticks -- this demonstrates the
+        // ONE crossing (hop0) that IS genuinely reachable-and-outside-solid at true 2^-10,
+        // with look-target retargeting fixing hop0's own off-axis angle (43deg at the near
+        // end without retargeting, dropping under the 22.5deg half-FOV on its own by
+        // ~tick 200 anyway -- retargeting keeps the octant framed through the WHOLE
+        // near/mid range instead of only after the angle self-resolves). Predicted:
+        //   hop0 tick ~= 287
+        // hop1 (T1->T2) is NOT demonstrated by this schedule -- see the Progress Log for why
+        // it is structurally unreachable via ANY body-center-orbit schedule at true 2^-10, a
+        // genuine finding surfaced honestly rather than hidden or silently re-scoped.
+        if (renderGraph && std::getenv("VIXEN_TIER_M8_EARTH_DEMO") &&
+            (std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_SCRIPT"))) {
+            static long m8ZoomTick = 0;
+            ++m8ZoomTick;
+            // SECOND correction (found after the near=30wu attempt rendered near-total
+            // mip-fallback grey with no T0/T1 attribution at all): near=30wu is too close
+            // for the look-target retarget to keep the BODY itself in frame. At that
+            // distance the body's own angular half-radius (atan-style, ~64deg) vastly
+            // exceeds the 22.5deg half-FOV, so with `forward` aimed 43deg off the
+            // body-center direction (toward the octant), the ray marcher's actual view cone
+            // misses the body's silhouette entirely -- background/mip-placeholder, not a
+            // crossing miss. A python sweep of (body's own angular half-radius, octant's
+            // angular offset from the body-center direction) vs. orbit distance shows both
+            // only drop under the 22.5deg half-FOV simultaneously around distance ~=70wu
+            // (body half-angle ~=22.7deg, octant offset ~=16.3deg) -- i.e. the usable
+            // "both body AND octant in frame while retargeted" band is much narrower than
+            // assumed, and sits just BELOW hop0's own predicted distance (81wu). CORRECTED
+            // AGAIN: near=70.0wu (just below hop0, where both fit), far=120.0wu (ceiling),
+            // over a shorter kM8Phase1End=200-tick window -- predicts hop0 fires at
+            // tick ~=54.
+            constexpr long  kM8ResidencyFlipTick     = 10;   // well before hop0's own predicted tick (~54)
+            constexpr long  kM8LookTargetReleaseTick = 150;  // well after hop0 (~54), comfortably stable
+            constexpr long  kM8Phase1End             = 200;
+            constexpr double kM8NearDist             = 70.0;   // where body+octant both fit in frame while retargeted
+            constexpr double kM8FarDist              = 120.0;  // full orbit ceiling
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const double t = std::min(1.0, static_cast<double>(m8ZoomTick) / static_cast<double>(kM8Phase1End));
+                const double logNear = std::log10(kM8NearDist);
+                const double logFar  = std::log10(kM8FarDist);
+                const double dist    = std::pow(10.0, logNear + t * (logFar - logNear));
+                camera->SetOrbitDistanceForTest(static_cast<float>(dist));
+
+                if (m8ZoomTick < kM8LookTargetReleaseTick) {
+                    camera->SetLookTargetForTest(m8EarthHop0OctantWorld_);
+                } else if (m8ZoomTick == kM8LookTargetReleaseTick) {
+                    camera->ClearLookTargetForTest();
+                    if (mainLogger) {
+                        mainLogger->Info("[TierM8EarthZoomDemo] tick " + std::to_string(m8ZoomTick) +
+                                          ": ClearLookTargetForTest() -- releasing to default body-center aim");
+                    }
+                }
+            }
+            if (m8ZoomTick == kM8ResidencyFlipTick && std::getenv("VIXEN_TIER_M8_EARTH_ZOOM_DEMO")) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierM8EarthZoomDemo] tick " + std::to_string(m8ZoomTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (m8ZoomTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierM8EarthZoomDemo] tick " + std::to_string(m8ZoomTick));
+            }
+        }
+
+        // Tiered-ESVO Inc3 M8 Task 19 (primary demo, user-directed 2026-07-11): a genuinely
+        // TRANSLATING flight path toward the true Earth-scale (childScale=2^-10/hop) crossing,
+        // as opposed to Task 17's orbit-around-body-center + look-target-retarget schedule
+        // (kept alive above as the SECONDARY "telescope" demo — camera stationary in its orbit
+        // radius, only its aim sweeps). Task 17 found hop1 (T1->T2, ~0.079wu) structurally
+        // unreachable while orbiting body center at ANY distance outside the ~27wu solid
+        // radius, because hop1 is a camera-TO-BODY-CENTER distance threshold and the crossing
+        // octant itself sits only ~20.8wu from center (deep inside that radius) — no orbit
+        // radius can be simultaneously "outside the solid" (>27) and "at hop1's tiny distance"
+        // (~0.079) from CENTER. The user's redirect: approach the crossing DIRECTLY (translate
+        // camera position toward it) rather than orbiting center and re-aiming.
+        //
+        // THE GEOMETRIC FIX (derivation: Tiered-ESVO-Inc3-M8-Task19-flight-path-derivation.py):
+        // measure distance-to-target from the CROSSING OCTANT'S OWN SPHERE-SURFACE INTERSECTION
+        // POINT, not the octant's cell-center bookkeeping position and not body center. The
+        // marked octant (camera-facing, direction (-1,-1,+1)/sqrt(3) from body center per
+        // BuildRenderGraph.cpp's octantOffsetWorld) is a COARSE root-level leaf cell whose own
+        // geometry (the baked sphere's SDF, radius 6.0*R=28.8wu) is exposed at the sphere's true
+        // outer surface along that same direction — i.e. surfacePoint = bodyCenter + dir*R_sphere.
+        // A camera flying along `dir`, aimed at surfacePoint, has "distance-to-crossing" shrink
+        // from far (orbit view) down to a small margin just outside the sphere shell — the SAME
+        // sense of "outside the solid" Task 13/17 required, but now measured relative to the
+        // ACTUAL rendered surface point the crossing leaf occupies, not body center. This keeps
+        // the camera outside the sphere (dist-from-center > R_sphere) at every tick while still
+        // reaching hop1's ~0.079wu threshold, because hop1 is measured along the ray from the
+        // camera to the point it's looking at (the crossing patch itself), not to body center.
+        //
+        // PREDICTED (derivation script, R_sphere=28.8, dir=(-1,-1,+1)/sqrt3, near=0.05wu past
+        // the shell, far=91.2wu, log-spaced over kM8FlightPhaseEnd=400 ticks):
+        //   hop1 (T1->T2) tick ~= 24.4     hop0 (T0->T1) tick ~= 393.7
+        // Both inside [0,400], well-separated, and (unlike Task 17) BOTH hops are geometrically
+        // reachable by this schedule — the flight path is the fix for Task 17's hop1 wall, not
+        // just a different-shaped camera move.
+        if (renderGraph && std::getenv("VIXEN_TIER_M8_EARTH_DEMO") && std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+            static long m8FlightTick = 0;
+            ++m8FlightTick;
+            constexpr long   kM8FlightResidencyFlipTick = 10;    // well before both Task 23 handoffs
+            constexpr long   kM8FlightPhaseEnd          = 400;
+            constexpr double kM8SphereRadiusWorld       = 28.8;  // 6.0 (baked recipe radius) * renderScale 4.8
+            // M8 Task 23: near end deepened 0.05 -> 2e-4, and the flight anchor is now the
+            // recorded CHILD ANCHOR world position (BuildRenderGraph records the scene's own
+            // entry-anchored childOriginLocal mapped to world, superseding the M7-era
+            // octant-center assumption that pointed ~20wu away from the actual child
+            // content). With the corrected camera-anchored crossing gate at the REAL
+            // raySizeCoef (no override), hop1 (T1->T2) fires only below ~7.3e-3wu
+            // camera-to-child, and T2's own content (childScale^2 of the body) needs a
+            // ~2e-4wu approach to subtend more than a few pixels. The zoom-OUT schedule
+            // shape is unchanged. (Near-clip narrowed to 1e-4 by BuildRenderGraph's
+            // flight-demo block to match.)
+            constexpr double kM8FlightNearDist          = 2e-4;
+            constexpr double kM8FlightFarDist           = 91.2;  // far orbit-equivalent view (120wu radial - 28.8wu shell)
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const glm::vec3 bodyCenterWorld(64.0f, 64.0f, 64.0f);
+                // The crossing octant's own recorded world position (m8EarthHop0OctantWorld_,
+                // set once at scene-build time) gives the RADIAL DIRECTION from body center to
+                // the camera-facing octant — a scale-invariant geometric fact of
+                // RootLeafOctantCenterLocal's own convention (M7 Task 13), unaffected by which
+                // hop's childScale is in play. The true sphere-surface point along that same
+                // direction (not the octant's own coarse cell-center) is what the camera should
+                // fly toward and aim at — see the derivation comment above.
+                // M8 Task 19 own live-gate finding: extending the octant's radial direction OUT
+                // to the sphere's nominal radius (the original approach) put the "surface point"
+                // in genuinely empty/unresolved space -- own control test (VIXEN_TIER_M8_FLIGHT_DEBUG_ZDIR,
+                // flying/aiming straight down +Z, Task 17's own known-good axis) rendered the real
+                // T0 body correctly at every tick, isolating the bug to the octant-direction
+                // extrapolation, not the SetPositionForTest/SetLookTargetNoOrbitForTest mechanism
+                // itself (which is now proven correct). FIX: fly toward the octant's own RECORDED
+                // world position (m8EarthHop0OctantWorld_) directly -- the exact point Task 17
+                // already proved renders real geometry when aimed at from a +Z-anchored camera --
+                // rather than an extrapolated point past it. The camera approaches ALONG the same
+                // line from body center through the octant, but the near/far endpoints are placed
+                // relative to the octant's own position, not a separately-derived sphere radius.
+                const bool debugZDir = std::getenv("VIXEN_TIER_M8_FLIGHT_DEBUG_ZDIR") != nullptr;
+                const bool debugZPosOctantAim = std::getenv("VIXEN_TIER_M8_FLIGHT_DEBUG_ZPOS_OCTANT_AIM") != nullptr;
+                // M8 Task 23: optional rebuild-free aim calibration -- the child's VISIBLE
+                // surface window sits a small, construction-specific offset inside the
+                // marked leaf relative to the recorded child anchor (the anchor itself
+                // straddles the leaf's corner boundary planes; only the in-leaf side is
+                // reachable through the crossing). VIXEN_TIER_M8_FLIGHT_AIM_OFFSET="dx,dy,dz"
+                // (world units) shifts the flight axis/aim point so the live session can
+                // center the window without a rebuild per attempt.
+                glm::vec3 aimOffset(0.0f);
+                if (const char* aimOffsetEnv = std::getenv("VIXEN_TIER_M8_FLIGHT_AIM_OFFSET")) {
+                    float dx = 0.0f, dy = 0.0f, dz = 0.0f;
+                    if (std::sscanf(aimOffsetEnv, "%f,%f,%f", &dx, &dy, &dz) == 3) {
+                        aimOffset = glm::vec3(dx, dy, dz);
+                    }
+                }
+                const glm::vec3 flightAnchor = m8EarthHop0OctantWorld_ + aimOffset;
+                glm::vec3 dir;
+                if (debugZDir || debugZPosOctantAim) {
+                    dir = glm::vec3(0.0f, 0.0f, 1.0f);  // known-good POSITION direction, Task 17's static demo
+                } else {
+                    const glm::vec3 toOctant = flightAnchor - bodyCenterWorld;
+                    const float toOctantLen = glm::length(toOctant);
+                    dir = (toOctantLen > 1e-4f) ? (toOctant / toOctantLen) : glm::vec3(0.0f, 0.0f, 1.0f);
+                }
+                const glm::vec3 surfacePoint = debugZDir
+                    ? (bodyCenterWorld + dir * static_cast<float>(kM8SphereRadiusWorld))
+                    : flightAnchor;  // debugZPosOctantAim ALSO aims here (position +Z, aim at anchor)
+
+                // The radial distance the flight anchors against: the sphere's nominal radius
+                // for the +Z control path, but the octant's OWN recorded radial distance from
+                // center for the real flight path (own live-gate finding above -- flying past
+                // the octant to an extrapolated sphere-radius point lands in unresolved space;
+                // anchoring at the octant's own position, which Task 17 already proved is real,
+                // resolvable geometry, is the fix).
+                const double anchorRadialDist = (debugZDir || debugZPosOctantAim)
+                    ? kM8SphereRadiusWorld
+                    : static_cast<double>(glm::length(flightAnchor - bodyCenterWorld));
+
+                const double t = std::min(1.0, static_cast<double>(m8FlightTick) / static_cast<double>(kM8FlightPhaseEnd));
+                const double logNear = std::log10(kM8FlightNearDist);
+                const double logFar  = std::log10(kM8FlightFarDist);
+                const double distToSurface = std::pow(10.0, logNear + t * (logFar - logNear));
+                const double radialDistFromCenter = anchorRadialDist + distToSurface;
+
+                const glm::vec3 flightPos = bodyCenterWorld + dir * static_cast<float>(radialDistFromCenter);
+                camera->SetPositionForTest(flightPos);
+                camera->SetLookTargetNoOrbitForTest(surfacePoint);
+
+                if (m8FlightTick % 20 == 0 && mainLogger) {
+                    mainLogger->Info("[TierM8FlightDemoDebug] tick " + std::to_string(m8FlightTick) +
+                                      " distToSurface=" + std::to_string(distToSurface) +
+                                      " flightPos=(" + std::to_string(flightPos.x) + "," + std::to_string(flightPos.y) + "," + std::to_string(flightPos.z) + ")" +
+                                      " surfacePoint=(" + std::to_string(surfacePoint.x) + "," + std::to_string(surfacePoint.y) + "," + std::to_string(surfacePoint.z) + ")" +
+                                      " dir=(" + std::to_string(dir.x) + "," + std::to_string(dir.y) + "," + std::to_string(dir.z) + ")");
+                }
+            }
+            if (m8FlightTick == kM8FlightResidencyFlipTick) {
+                if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                        renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                    bodyScene->RequestBrickResidency(true);
+                    if (mainLogger) {
+                        mainLogger->Info("[TierM8FlightDemo] tick " + std::to_string(m8FlightTick) +
+                                          ": RequestBrickResidency(true) -- mid-flight residency grant");
+                    }
+                }
+            }
+            if (m8FlightTick % 20 == 0 && mainLogger) {
+                mainLogger->Info("[TierM8FlightDemo] tick " + std::to_string(m8FlightTick));
             }
         }
 

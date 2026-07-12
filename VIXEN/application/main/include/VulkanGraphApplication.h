@@ -223,6 +223,16 @@ private:
     NodeHandle cameraNode_{};                        // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state lookup for the residency trigger
     NodeHandle skyProjectionNode_{};                 // Tiered ESVO Inc1 M3: address-derived sky-point composite pass (stored for potential live lookup)
 
+    // Tiered-ESVO Inc3 M8 Task 17: world positions of the two tier-crossing octants in the
+    // true Earth-scale (childScale=2^-10/hop) demo (VIXEN_TIER_M8_EARTH_DEMO), set once at
+    // scene-build time in BuildRenderGraph.cpp. The scripted zoom (VulkanGraphApplication.cpp)
+    // reads these to retarget CameraNode::SetLookTargetForTest at the currently-active
+    // crossing, since at 1024x-per-hop the two crossings cannot both be framed by a single
+    // fixed look-at-body-center camera (see M6/M7's R-invariance findings) -- retargeting the
+    // look direction at the crossing itself is the M8 capability this demo exercises.
+    glm::vec3 m8EarthHop0OctantWorld_{0.0f};         // T0's marked leaf world center (T0->T1 crossing)
+    glm::vec3 m8EarthHop1OctantWorld_{0.0f};         // T1's marked leaf world center (T1->T2 crossing)
+
     // Sparse-Mip ESVO LOD Inc1 M4c: last camera state the residency trigger was evaluated
     // against — change-detection only (avoids re-sorting/re-requesting every single frame
     // on a static camera); NOT part of the trigger formula itself (that's stateless, per

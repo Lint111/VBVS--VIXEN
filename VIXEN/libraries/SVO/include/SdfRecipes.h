@@ -10,13 +10,14 @@
 #include <cstdint>
 #include <cmath>
 
-// MSVC's <windows.h> defines min/max as function-like macros, colliding with
-// this file's own std::min/std::max calls below. This header cannot rely on
-// an includer having #undef'd first (windows.h may be pulled in by ANY prior
-// include in the same translation unit, e.g. GaiaVoxelWorld.h/gaia.h) — guard
-// defensively at the actual point of use, same fix as SdfRecipeEval.h.
+// This header uses std::max/glm::length heavily. When included after <windows.h> (pulled in
+// transitively on the Windows build via Vulkan/GTest), the `min`/`max`/`abs` function-like
+// macros mangle every `std::max(`/`glm::min(` into a syntax error. NOMINMAX only helps before
+// windows.h is seen, which a header cannot guarantee, so drop the macros outright — no C++
+// code wants them. Same convention as GpuTraversalMirror.h.
 #undef min
 #undef max
+#undef abs
 
 namespace Vixen::SVO {
 

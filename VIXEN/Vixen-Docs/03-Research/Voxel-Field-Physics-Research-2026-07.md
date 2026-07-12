@@ -6,6 +6,7 @@ created: 2026-07-10
 status: research direction
 related:
   - "[[../01-Architecture/Lazy-Procedural-Delta-Baseline-Design-2026-07]]"
+  - "[[../01-Architecture/Kernel-Physics-Dispatch-Contract-Spec-2026-07]]"
   - "[[../01-Architecture/Voxel-Content-Format-Contract-Design-2026-06]]"
   - "[[../01-Architecture/Destructible-Body-Rendering-Direction-2026-06]]"
   - "[[../05-Progress/Production-Roadmap-2026]]"
@@ -51,16 +52,18 @@ base dependencies.
    job. Heat in a ship corridor should not allocate heat data for every voxel in the ship.
 4. **Multi-resolution by design.** Fluids, gases, weather, integrity, and rigid-body behavior all need
    independent spatial and temporal resolution policies.
-5. **Predictive refinement.** Sparse mip summaries and temporal deltas should identify likely
+5. **Mip-scale semantic awareness.** Each simulation family must define what it means at each
+   mip/scale level; a local ocean hover solve is not the same model as an orbital ocean summary.
+6. **Predictive refinement.** Sparse mip summaries and temporal deltas should identify likely
    high-detail events before full-resolution simulation is allocated.
-6. **Dispatch-native execution.** Physics should push VIXEN toward explicit CPU job, GPU dispatch,
+7. **Dispatch-native execution.** Physics should push VIXEN toward explicit CPU job, GPU dispatch,
    multi-queue, and cross-GPU orchestration instead of ad-hoc frame-local work.
-7. **Field interaction first.** Heat, pressure, kinetic impulse, gravity, material state, density,
+8. **Field interaction first.** Heat, pressure, kinetic impulse, gravity, material state, density,
    strain, damage, and phase transitions should be fields or sparse overlays, not permanent payload
    on every voxel.
-8. **Delta-native destruction.** Mining, explosions, blowtorch cutting, hull breaches, and ship
+9. **Delta-native destruction.** Mining, explosions, blowtorch cutting, hull breaches, and ship
    splitting must produce recipe-deltas when expressible and materialized deltas when not.
-9. **Backend-optional solving.** A solver like Jolt may integrate conventional rigid bodies and
+10. **Backend-optional solving.** A solver like Jolt may integrate conventional rigid bodies and
    constraints, but VIXEN owns field queries, material response, voxel integrity, and delta writes.
 
 ## 3. External Approaches
@@ -134,6 +137,7 @@ Simulation should be a set of jobs that declare:
 | input fields | Example: density + pressure + velocity, or temperature + material |
 | output fields | Example: pressure delta, heat delta, fracture event, material phase change |
 | resolution policy | Full, brick, mip, adaptive, or analytic |
+| scale semantics | What the job means at local, regional, planetary, and orbital mip levels |
 | cadence | Every frame, N-frame cadence, event-driven, or background |
 | budget class | Critical, interactive, background, or offline |
 
@@ -432,6 +436,66 @@ Important rule: fluid simulation resolution is independent from render voxel res
 rendered turbulence may be procedural at high visual detail while simulation tracks only coarse
 energy, density, magnetic/weather bands, or gameplay-relevant fields.
 
+Fluid jobs must also be **mip-scale aware**. The solver used when hovering over an ocean is a
+different semantic object than the solver used when viewing the planet from orbit:
+
+| Scale | Ocean/water meaning | Likely simulation/render contract |
+|---|---|---|
+| Local interaction | Waves, spray, buoyancy, hull contact, wake, foam, local arbitrary-gravity flow | Local high-resolution fluid or surface solver with collision/contact feedback. |
+| Regional surface | Currents, wind response, tides, shoreline interaction, storm fronts | Coarse vector/scalar fields, wave spectra, shallow-water or procedural advection. |
+| Planetary/weather | Ocean temperature bands, depth influence, cloud coupling, sunlight exposure, albedo/color gradients | Low-frequency fields derived from depth, latitude, weather, cloud cover, and light exposure. |
+| Orbital view | Planet-scale color, reflectance, atmosphere/cloud shadowing, sun and secondary light contribution | Mostly render-facing summary fields; no detailed water dynamics unless an event is strategically relevant. |
+
+This should not be treated as one fluid solver with bigger cells. At high mips, the "fluid" may be
+only a conserved or visual summary: ocean depth gradients, temperature/color bands, cloud shadow
+coverage, sunlight and secondary illumination, or weather-state parameters. At low mips near the
+player, the same region can refine into interactive water with collision, buoyancy, spray, and local
+surface response.
+
+The contract should allow simulation families to declare a scale ladder:
+
+```text
+ScalePolicy = semantic + mip range + representation + solver + conservation rules + refinement path + transition rules
+```
+
+Required behavior:
+
+- A job must state which mip ranges it is valid for.
+- Refinement from coarse to fine must preserve important totals where applicable: mass, energy,
+  momentum, heat, damage, pressure, or weather state.
+- Coarsening from fine to coarse must summarize persistent outcomes back into stable fields.
+- Render-facing fields are allowed at coarse mips when no gameplay-grade solve is required.
+- Player proximity, visibility, interaction, and strategic relevance decide when to move between
+  scale policies.
+
+Mip transitions must be smooth enough that the player does not notice the representation swap, or
+notices it only as a subtle increase in detail. The transition itself should be part of the policy,
+not an afterthought hidden in rendering code:
+
+```text
+ScaleTransition = fromMip + toMip + distanceBand + hysteresis + blendFields + promotionRules
+```
+
+Transition requirements:
+
+- Use distance bands rather than a single threshold, so two adjacent mip policies overlap.
+- Add hysteresis so camera/player movement near the boundary does not repeatedly promote/demote the
+  same region.
+- Cross-fade render-facing fields such as color, foam, wave spectra, cloud shadowing, heat glow, and
+  surface normals where possible.
+- Blend or reconcile simulation state through conserved summaries rather than directly lerping
+  invalid physics state.
+- Allow prefetch/prewarm of finer mips before the player reaches the transition band.
+- Prefer gradual injection of local detail: wake patterns, wave normals, spray particles, fracture
+  debris, heat shimmer, or smoke should appear over a short band rather than popping in one frame.
+- Keep debug overlays for active mip level, transition weight, source fields, and promoted/demoted
+  regions.
+
+For the ocean example, orbital water may start as depth-derived color and cloud/sun lighting. As the
+player descends, the renderer can blend in regional current/wave spectra, then local surface normals,
+then only near interaction distance activate expensive buoyancy, wake, spray, and collision feedback.
+The visible transition should read as natural sharpening, not as a switch to a different ocean.
+
 ### 5.5 Sparse Field System
 
 Field storage should be a first-class subsystem:
@@ -618,18 +682,20 @@ field-generated contacts and VIXEN-owned body/region identity without cooked mes
 3. **Kernel-framework spike.** Test generated contracts for field layers, job inputs, slot manifests,
    consumer-authored job injection, and a minimal dispatch-chain adapter while keeping VIXEN runtime
    scheduling authoritative.
-4. **Mip delta predictor.** Maintain field summaries, temporal deltas, scale deltas, hotspot
+4. **Mip-scale policy prototype.** Define scale ladders for at least ocean/water, atmosphere, and
+   integrity so each family has explicit local, regional, planetary, and orbital meanings.
+5. **Mip delta predictor.** Maintain field summaries, temporal deltas, scale deltas, hotspot
    predicates, `RefinementRequest`s, and offscreen `HistoryDelta`s.
-5. **Collision/query prototype.** Primitive-vs-SDF and body-vs-field contact generation over
+6. **Collision/query prototype.** Primitive-vs-SDF and body-vs-field contact generation over
    analytic and materialized providers.
-6. **Sparse field layers.** Local heat/pressure/impulse fields with independent resolution and
+7. **Sparse field layers.** Local heat/pressure/impulse fields with independent resolution and
    event-driven lifetimes.
-7. **Integrity MVP.** Region connectivity, bond breaking, explosion damage, and body splitting.
-8. **Rigid voxel body adapter.** Body transforms, mass properties, broadphase/midphase, optional
+8. **Integrity MVP.** Region connectivity, bond breaking, explosion damage, and body splitting.
+9. **Rigid voxel body adapter.** Body transforms, mass properties, broadphase/midphase, optional
    Jolt adapter experiment.
-9. **Fluid/gas pilot.** Ship atmosphere and water under arbitrary gravity before planetary-scale
+10. **Fluid/gas pilot.** Ship atmosphere and water under arbitrary gravity before planetary-scale
    weather.
-10. **Soft/deformable body pilot.** Revisit archived Gram-Schmidt/dual-representation model under
+11. **Soft/deformable body pilot.** Revisit archived Gram-Schmidt/dual-representation model under
    the new substrate.
 
 ## 9. Open Questions
@@ -665,6 +731,12 @@ field-generated contacts and VIXEN-owned body/region identity without cooked mes
     unification contract rather than remaining physics-specific?
 19. What is the minimum stable artifact ABI that would let non-C# frontends generate native VIXEN
     physics jobs without depending on a C# runtime?
+20. What is the required scale ladder for each major simulation family, and which mip levels are
+    simulation-authoritative versus render-summary-only?
+21. How should orbital/coarse ocean summaries refine into local interactive water without visible or
+    gameplay-breaking discontinuities?
+22. What transition bands, hysteresis rules, and cross-fade fields are required so render and
+    simulation mip changes stay subtle during player movement?
 
 ## 10. References
 
@@ -681,6 +753,7 @@ field-generated contacts and VIXEN-owned body/region identity without cooked mes
 ## Related VIXEN Docs
 
 - [[../01-Architecture/Lazy-Procedural-Delta-Baseline-Design-2026-07]]
+- [[../01-Architecture/Kernel-Physics-Dispatch-Contract-Spec-2026-07]]
 - [[../01-Architecture/Voxel-Content-Format-Contract-Design-2026-06]]
 - [[../01-Architecture/Destructible-Body-Rendering-Direction-2026-06]]
 - [[../05-Progress/Production-Roadmap-2026]]

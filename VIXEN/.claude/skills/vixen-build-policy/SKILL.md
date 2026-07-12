@@ -83,7 +83,15 @@ fair ordering + visibility instead of a blind synchronous wait.
 
 ```powershell
 # 1. Register — cheap, instant, non-blocking. Prints your TicketId and queue position.
-powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register -AgentId "<your-agent-id>" -Note "<why you're building>"
+# De-duplicated by the COMBINATION of (AgentId, Source, BuildTarget) — not AgentId alone. A
+# retry/duplicate dispatch of the SAME agent registering the SAME source+target again gets
+# back the SAME existing ticket, not a second one. But the same agent building a DIFFERENT
+# target, or from a DIFFERENT worktree/source, is a distinct, valid request and gets its own
+# new ticket — appended at the BACK of the queue behind everyone already waiting, never ahead.
+# Pass -Source as something stable per requester (e.g. your worktree name) and -BuildTarget as
+# whatever you'll pass to build.bat's target arg (omit for a full/default build) so de-dup can
+# actually distinguish your requests correctly.
+powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register -AgentId "<your-agent-id>" -Source "<your-worktree-name>" -BuildTarget "<target-or-omit-for-full-build>" -Note "<why you're building>"
 
 # 2. Poll -Status actively every ~20s (see below) until YOUR_TURN. Do NOT hand the wait off to
 #    ScheduleWakeup or a background Monitor task and go idle — those have repeatedly failed to
@@ -152,11 +160,66 @@ already known to run long (Fix 8: real builds run 1-3+ minutes even mostly-cache
 agent is deliberately doing other useful work in parallel between checks — the default,
 un-supervised wait is always the ~20s active loop.
 
-**Ticket hygiene**: tickets are files under `%TEMP%\vixen_build_queue\`, not tied to a process
-lifetime the way the Mutex is — a crashed/killed agent's ticket does NOT auto-release. Every
-queue command opportunistically reaps tickets older than 60 minutes
-(`-StaleMinutes`), so an abandoned ticket doesn't block the queue forever, but always call
-`-Release` yourself rather than relying on the timeout.
+**Ticket hygiene — liveness-based reaping (fixed 2026-07-11), not just age.** Tickets are files
+under `%TEMP%\vixen_build_queue\`, not tied to a process lifetime the way the Mutex is — a
+crashed/killed agent's ticket does NOT auto-release. Every ticket has a `LastSeenUtc` field,
+refreshed on every `-Register` (dedup-hit) and `-Status` call for that ticket — i.e. every time
+its owner actually checks in. Reaping compares `LastSeenUtc`, NOT registration age: a
+genuinely active waiter polling `-Status` every ~20s (per the active-polling rule above) never
+goes stale no matter how long it legitimately waits, while an abandoned ticket (agent crashed,
+shut down without releasing, or a one-off registration that was never followed by a build or
+any `-Status` poll) goes stale within `-StaleMinutes` (default **15**, down from an earlier 60)
+of its last real check-in. **`-Status` also opportunistically reaps its own blocking ticket
+inline** the moment it discovers it's stuck behind a stale one — not just on the next periodic
+sweep — so a real waiter is never stuck behind an abandoned ticket for the full stale window.
+This closes a real incident (2026-07-11): a validator agent self-registered a ticket for an
+ad-hoc verification build (outside the `build.bat`-auto-release path — see below), then shut
+down without releasing it, stranding a sibling agent's real build behind it until manually
+released. **Still always call `-Release` yourself when you're truly done** rather than relying
+on staleness reaping — reaping is the backstop for abandonment, not the primary release path.
+
+## Auto-dispatch — recommended default for the queue path (2026-07-12)
+
+Liveness reaping (above) stops an abandoned ticket from blocking the queue forever, but it
+doesn't make the WANTED build actually happen — if you register, then stall (context
+exhaustion, a stuck subagent, anything short of a clean shutdown) before your ticket reaches
+the front and you personally call `build.bat`, your build never runs; your ticket just
+eventually goes stale and gets reaped, same outcome as if you'd never registered at all.
+
+**Fix: pass `-BuildScript` at `-Register` time and the queue dispatches your build FOR you —
+you don't have to be present or responsive when your turn comes.**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File VIXEN\scripts\build\build_queue.ps1 -Register `
+    -AgentId "<your-agent-id>" -Source "<your-worktree-name>" -BuildTarget "<target-or-omit>" `
+    -BuildScript "C:\cpp\VBVS--VIXEN\.claude\worktrees\<your-worktree>\build.bat" `
+    -BuildAction all -BuildPreset vixen-ninja -Note "<why you're building>"
+```
+
+`-BuildScript` MUST be the full absolute Windows path to YOUR worktree's own `build.bat` (same
+"always use the absolute path" rule as everywhere else in this skill — get it via `wslpath -w
+"$(pwd)/build.bat"`). `-BuildAction`/`-BuildPreset` default to `all`/`vixen-ninja` if omitted.
+
+Once registered this way, **any agent's routine `-Status` or `-ListQueue` call** — not just
+yours — will notice when your ticket reaches position 1 with the lock free, and run your build
+right there before returning, then release your ticket automatically. This piggybacks on
+polling traffic that's already happening across the whole agent fleet (per the active-polling
+rule), so your build fires as soon as ANY other agent's normal, unrelated queue check touches
+the queue, even if you yourself never poll again. No new persistent watcher process — nothing
+new to babysit or that can itself silently die.
+
+Your own `-Status -TicketId <id>` call will report one of two NEW outcomes once dispatch
+happens:
+- `AUTO_DISPATCHED` (exit 0) — your build ran (possibly as part of this very `-Status` call, or
+  earlier via someone else's) and succeeded. Ticket already released, nothing more to do.
+- `AUTO_DISPATCH_FAILED` (exit 4) — your build ran and failed (non-zero exit). Ticket is STILL
+  released (a failed turn is still a completed turn, not a reason to keep blocking everyone
+  behind it) — check your own build log (same log path/BuildId system as always) for what went
+  wrong, same as a manually-dispatched failure always required.
+
+**This is now the recommended default for the queue path** — omit `-BuildScript` only when you
+genuinely want to reserve a position without handing off unattended execution (e.g. a validator
+just checking whether the lock will be free soon, not actually planning to build).
 
 ## Why parallelism is capped, not maximized (Fix 10)
 
@@ -215,6 +278,82 @@ any build, sanity-check the logged `source:` line** (`run_build_with_summary.ps1
 meant to build, the whole result (including a "target now builds!" fix-verification) is
 meaningless, silently.
 
+## Known gotcha: `VIXEN/binaries/VIXEN.exe` was a stale, unlinked copy (FIXED 2026-07-11)
+
+`VIXEN/binaries/` (source-tree, gitignored) and `CMAKE_BINARY_DIR/binaries` (the REAL build
+output, e.g. `build/ninja/binaries/`) are two different directories, and CMake never copied
+between them before 2026-07-11 — a `POST_BUILD` step (`VIXEN/application/main/CMakeLists.txt`)
+now mirrors the fresh `VIXEN.exe` into `VIXEN/binaries/` on every build, alongside the existing
+TBB-DLL copy. **Before this fix**, every hand-rolled capture `.bat` script that ran the relative
+path `binaries\VIXEN.exe` from `VIXEN_ROOT` (the established pattern across this repo's demo/gate
+scripts) was silently reading whichever copy was last placed there by hand — independent of
+whether the actual build was fresh. This produced at least one false "byte-identical" capture
+result (Inc3 M8 Task 21, 2026-07-11) before being caught. If you're on a checkout from before this
+fix landed, or writing a NEW capture script, don't assume `VIXEN\binaries\VIXEN.exe` is current —
+either confirm this `POST_BUILD` step exists in the CMakeLists you're building against, or run
+directly from `$<TARGET_FILE_DIR:VIXEN>` (the real build output dir) instead of the source-tree
+copy.
+
+## Known gotcha: concurrent CONFIGURE steps raced on the shared FetchContent cache (FIXED 2026-07-12)
+
+The machine-wide build lock (`Global\VixenBuildLock`) only ever wrapped the BUILD step. `build.bat`'s
+`configure`/`all` actions called `cmake --preset <name>` directly, with NO lock at all — but CMake's
+`FetchContent_Populate` (clone/update/"recompaction" — an internal stamp-file rewrite) runs during
+CONFIGURE, and `FETCHCONTENT_BASE_DIR` is deliberately ONE shared directory
+(`C:/vixen-fetchcontent-cache`) across every worktree on this machine (see `VIXEN/CMakeLists.txt`'s
+"share FetchContent's clone+build output across all worktrees" block). Two worktrees configuring at
+the same moment could both write into the SAME shared subbuild (e.g. `glm-build`, `nlohmann_json-src`)
+unserialized — CMake's own stamp-file rewrite isn't safe against two concurrent writers, so whichever
+process lost the race got a raw Windows **"Permission denied"** (the other process still had the file
+open/mid-rename). It appeared to move between different dependencies build-to-build (glm, then
+nlohmann_json, ...) because it was whichever two configures happened to overlap on that PARTICULAR
+sub-project at that moment — not a defect in any one library. Observed live 2026-07-12: 3 concurrent
+agents (`view-binding-inc-c`, `ki-020-017-fix`, `lazy-baseline-inc0`) each hit this on different
+FetchContent subbuilds within the same ~15-minute window, each burning a retry.
+
+**Fixed:** a SEPARATE, narrower machine-wide Mutex, `Global\VixenConfigureLock`
+(`VIXEN/scripts/build/run_configure_locked.ps1`), now wraps the `cmake --preset` call for BOTH
+`build.bat configure` and `build.bat all` — same auto-release-on-process-death guarantee as the build
+lock, same `VIXEN_BUILD_LOCK_TIMEOUT`/`VIXEN_SKIP_BUILD_LOCK` env vars (one pair of knobs governs both
+locks). **Deliberately a separate lock from the build one**, not folded into it: configure (fast, often
+just seconds once FetchContent is already populated) must not queue behind another worktree's
+multi-minute BUILD, and the two phases contend on genuinely different resources (the shared `_deps`
+directory vs. CPU/IO during compile/link) — sharing one lock would only cost concurrency for no safety
+gain. The two locks are never held simultaneously by one process (configure lock is released before the
+build lock is ever acquired), so this cannot deadlock. Verified live: two simultaneous `run_configure_
+locked.ps1` invocations against the SAME checkout — the first acquired immediately, the second logged
+"waiting for the machine-wide configure lock" and acquired only after the first released, no overlap.
+
+**Practical implication:** if you ever see a raw `Permission denied` failure during a CMake CONFIGURE
+step (not a compile/link `FAILED:` target) on a FetchContent subbuild, and it's NOT reproducible on a
+clean re-run alone, suspect a concurrent configure on another worktree — check whether this fix is
+present in the checkout you're building (pre-2026-07-12 checkouts still call `cmake --preset` unlocked
+from `build.bat`).
+
+## Known gotcha: an invalid `-Target`/`-BuildTarget` used to silently report success (FIXED 2026-07-12)
+
+Before this fix, `run_build_with_summary.ps1` inferred success/failure from the background job's
+`JobStateInfo.State` (`'Failed'` vs `'Completed'`) — but that only reflects a terminating
+PowerShell-level error inside the job, not the actual exit code of the `cmake`/`ninja` process it
+ran. An invalid target name (`ninja: error: unknown target 'foo'`) makes `cmake --build` exit
+non-zero immediately, with **zero** per-target `FAILED:` lines in the log (nothing was ever
+attempted) — so both success checks (`State`, and `$failedTargets.Count -gt 0`) came back clean,
+and the script printed **"All targets built successfully."** with exit 0, even though nothing
+built. This bit a real case: a `-BuildTarget` value meant only as a descriptive queue-registration
+label (not an actual CMake target) was passed straight through to `--target`, and the auto-dispatch
+path reported `AUTO_DISPATCHED`/success on a build that never compiled anything.
+
+**Fixed:** the job scriptblock now returns `$LASTEXITCODE` (the real `cmake`/`ninja` exit code) as
+its result; the script reads that via `Receive-Job` instead of trusting `JobStateInfo.State` alone.
+A non-zero exit with no per-target `FAILED:` lines is now reported distinctly — **"BUILD INVOCATION
+FAILED (exit N) BEFORE any target's compile/link was attempted"** — instead of being folded into
+the "all clean" case. Verified against three cases: a bogus target (now correctly reports
+invocation-failure + exit 1), a real scoped-target success (still exit 0), and a real per-target
+compile failure (still reports the `FAILED:` list + exit 1, unaffected by this fix).
+
+**Practical implication:** `-BuildTarget`/`-Target` must be a real CMake target name, never a
+free-text label — if you want to describe *why* you're building, use `-Note`, not `-BuildTarget`.
+
 ## Known gotcha: the shared status file is machine-wide, not per-build (mitigated by BuildId)
 
 `%TEMP%\vixen_build_status.txt` (`run_build_with_summary.ps1`'s live-status file) is a SINGLE
@@ -258,3 +397,34 @@ output) remains the authoritative source for full output/failures, same as befor
   again is harmless (idempotent — "already released") but unnecessary. DO still call `-Release`
   yourself if you registered a ticket and decided not to build at all — nothing else will ever
   release that one.
+- **Three separate release paths now exist — know which one applies to your ticket.** (1)
+  Auto-dispatch (`-BuildScript` passed at `-Register`): the queue itself runs your build and
+  releases the ticket, no action from you ever needed. (2) `VIXEN_QUEUE_TICKET_ID` passed to a
+  manually-invoked `build.bat`: `run_build_with_summary.ps1` releases it when that build
+  finishes. (3) Neither of the above (a bare reservation ticket): YOU must call `-Release`
+  yourself, or rely on liveness-staleness reaping as the last-resort backstop. Don't assume (1)
+  or (2) apply to a ticket you registered as a bare reservation — check which flags you actually
+  passed at `-Register` time.
+- **`build.bat build` does NOT reconfigure — it never re-runs `cmake --preset`.** Only
+  `build.bat all`/`configure` does. If you ADD A NEW SOURCE FILE to a `CMakeLists.txt` (a new
+  `.cpp`/`.h` registered in a target's source list) and then call `build.bat build`, ninja's
+  existing `build.ninja` has no idea the new file exists — it silently rebuilds/relinks whatever
+  it already knew about and calls it done, exit 0, no error. The resulting binary does NOT
+  contain your new file, and any gate/capture run against it is a **false pass** — it "succeeds"
+  precisely because none of your new code is in the binary being tested. This bit a real gate
+  (Sampled-Lighting Inc3 M2, 2026-07-11): an Opus validator caught it via build-graph forensics —
+  the new file's `.obj` didn't exist, the target `.lib`/`.exe` timestamps predated the source
+  edit by tens of minutes, and a `grep` for the new symbol found zero occurrences in the built
+  artifacts, even though the gate had reported byte-identical/clean results. **Rule: whenever
+  your milestone adds or removes a source file from any `CMakeLists.txt`, run `build.bat all`
+  (or `configure` then `build`) at least once before trusting any gate capture — `build.bat
+  build` alone is only safe for iterating on EXISTING files.** When validating someone else's
+  gate, spot-check this yourself: compare the new/changed source file's mtime against the
+  target binary's mtime, and grep the binary (or its `.lib`) for a symbol/string unique to the
+  new code — don't just trust that "the build succeeded."
+- **Always invoke the WORKTREE's own `build.bat`, not the repo-root/main-checkout's.** Each git
+  worktree has its own copy of `build.bat` at its own root — if you `cd` or path-reference the
+  wrong one (e.g. accidentally the main checkout's `/mnt/c/cpp/VBVS--VIXEN/build.bat` while
+  meaning to build a worktree's source), you silently build/gate the WRONG tree's code. This
+  also bit the same M2 validation session. Double-check the absolute path you invoke resolves
+  inside the worktree you actually intend to build.

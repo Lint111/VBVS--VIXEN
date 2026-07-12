@@ -14,6 +14,8 @@ set(APPFLOW_HEADERS
     include/InputProfile.h
     include/IViewDataProvider.h
     include/LayerControllerViewDataProvider.h
+    include/IViewSelectionProvider.h
+    include/DirectListViewSelectionProvider.h
 )
 set(APPFLOW_SOURCES
     src/AppFlowLoader.cpp

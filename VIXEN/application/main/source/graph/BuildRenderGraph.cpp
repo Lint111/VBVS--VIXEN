@@ -536,6 +536,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Tiered-ESVO Inc2 M4 Task 9 live-gate knob (see tierCrossingLodCoefOverrideConstant's own
     // declaration comment above for why a direct literal, not an FOV bump, is the correct lever).
+    // Tiered-ESVO Inc3 M8 Task 17 reuses this SAME generic ConstantNode-bypass knob (it is not
+    // demo-specific -- "bypass RaySizeCoefNode with a direct literal raySizeCoef") for
+    // VIXEN_TIER_M8_EARTH_DEMO's own hop0/solid-radius fix (see that demo block's own comment
+    // for the derivation of ~2.8935e-4, the value that clears the solid with a 3x margin).
     bool tierCrossingLodCoefOverrideActive = false;
     {
         auto* lodOverrideConst = static_cast<ConstantNode*>(renderGraph->GetInstance(tierCrossingLodCoefOverrideConstant));
@@ -773,6 +777,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, kRaymarchCameraFovDegrees);  // shared with raySizeCoef
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
+    // Tiered-ESVO Inc3 M8 Task 19: the translating flight-path demo needs the camera to
+    // approach as close as ~0.05 world units from the crossing-octant's own surface point (to
+    // clear hop1's predicted ~0.079wu handoff threshold) -- own live-gate finding: the default
+    // 0.1wu near-clip plane is LARGER than hop1's own threshold, so the target geometry was
+    // being near-plane-clipped away entirely at every near-field tick (empty/background
+    // frames, not a tier-crossing or aim bug). Widen near-clip for this demo only, the same
+    // "widen the bound, own justified commit" precedent CameraNode.h's kOrbitDistanceMin
+    // widening already established for an analogous too-coarse-default problem.
+    if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+        // M8 Task 23: with the corrected (camera-anchored) crossing gate at the REAL
+        // unoverridden raySizeCoef, hop1 (T1->T2) fires only below ~7.3e-3wu camera-to-child
+        // and T2's own content needs an approach to ~2e-4wu to subtend more than a few
+        // pixels (childScale^2 = 2^-20 of the body) -- narrow near-clip accordingly
+        // (was 0.01wu for the Task-19-era override-based schedule).
+        camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.0001f);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: near-clip plane "
+                          "narrowed to 1e-4wu (M8 Task 23: true-2^-10 hop1 fires below "
+                          "~7.3e-3wu and T2 needs a ~2e-4wu approach to be attributable)");
+    }
     // Camera presets for Cornell box (grid spans [0,128], center at 64,64,64)
     // Uncomment one preset below:
 
@@ -840,6 +863,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, obsDistance);
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: orbitCenter set to "
                           "demo body's world center (64,64,64), orbitDistance=" + std::to_string(obsDistance));
+    }
+    // Tiered-ESVO Inc3 M8 Task 17: SAME orbitCenter gotcha applies to the true Earth-scale
+    // demo (also built at world center (64,64,64), M4's own established convention).
+    //
+    // M8 Task 19: this wiring is SKIPPED when VIXEN_TIER_M8_FLIGHT_DEMO is also set. Setting
+    // any PARAM_ORBIT_* here latches CameraNode::orbitActive_ = true (SetupImpl's own
+    // "explicit orbit param = orbit-mode intent" convention), which makes UpdateCameraData's
+    // ORBIT MODE branch recompute cameraPosition from orbitCenter/orbitDistance/yaw/pitch EVERY
+    // frame -- silently overriding a scripted CameraNode::SetPositionForTest() write from the
+    // Task 19 flight-path demo (own live-gate finding: the very first capture attempt rendered
+    // a completely static, unchanging frame across all 400 ticks despite SetPositionForTest
+    // being called every tick, because this orbit-param wiring had already engaged orbit mode
+    // at scene-build time). The flight-path demo needs FIXED mode (cameraPosition authoritative
+    // at rest, per the "bodies-0" convention) so its own scripted position writes are what
+    // actually drives the camera.
+    if (std::getenv("VIXEN_TIER_M8_EARTH_DEMO") && !std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 236.0f);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: orbitCenter set to demo "
+                          "body's world center (64,64,64) so the scripted zoom actually orbits the body");
+    } else if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+        mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: skipping orbit-param "
+                          "wiring -- camera stays in FIXED mode so the Task 19 scripted "
+                          "SetPositionForTest flight path is authoritative, not overridden by "
+                          "an orbit-mode recompute every frame");
     }
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
@@ -1991,6 +2041,301 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 inst.recipeId     = 0u;
                 bodyScene->SetInstances({inst});
                 mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: seeded 1 Stored-SDF body instance");
+            }
+        } else if (std::getenv("VIXEN_TIER_M8_EARTH_DEMO")) {
+            // Tiered-ESVO Inc3 M8 Task 17: the TRUE Earth-scale (childScale=2^-10 at BOTH
+            // hops) observable surface-to-orbit demo -- the epic's literal original ask,
+            // finally attempted with a genuinely controllable camera (Task 16's look-target
+            // decoupling). Originally reused the M4 VIXEN_TIER_EARTH_DEMO block's k-invariant
+            // entry-anchored childOriginLocal placement; M8 Task 23 replaced that placement
+            // (below, this block only -- VIXEN_TIER_EARTH_DEMO above is UNCHANGED/out of
+            // scope) with RootLeafOctantCenterLocal after a live-gate investigation found the
+            // entry-anchored point sat on the leaf's own boundary plane, making the child
+            // unreachable off-axis -- see this block's own construction comment for the full
+            // derivation. Same renderScale=4.8 (48-world-unit body diameter). ONE deliberate
+            // difference from M4/M6's attempt (historical, superseded by Task 23 below): the
+            // LOD ray-cone coefficient is overridden (VIXEN_TIER_M8_EARTH_LOD_COEF_OVERRIDE,
+            // wired below alongside VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE's existing
+            // ConstantNode-bypass mechanism) so hop0 (T0->T1) lands OUTSIDE the body's own
+            // ~27-world-unit solid surface radius with real margin, not (as M4/M6's default-
+            // raySizeCoef attempt found) buried ~1.8x INSIDE it.
+            //
+            // THE FINDING THIS FIXES (verified analytically before writing this scene, python
+            // trace against M4/M6's own reported numbers): the calibrated LOD-gate formula
+            // (M7 Task 13, validator re-derived from the actual shader gate)
+            //   hop0 = 20*R*childScale*scale_exp2/raySizeCoef,  solidRadius = 5.625*R
+            // gives a ratio hop0/solidRadius = 20*childScale*scale_exp2/(raySizeCoef*5.625)
+            // that is INDEPENDENT OF R (R cancels) -- at childScale=2^-10, scale_exp2=0.25
+            // (a root-level leaf, this fixture's marked octant is always a direct child of
+            // root) and the DEFAULT raySizeCoef=0.0015708 (45deg FOV / 500px height), this
+            // ratio is a fixed ~0.524 < 1: hop0 is ALWAYS inside the solid at the default
+            // coefficient, for ANY renderScale. This is a stronger, previously-uncharacterized
+            // fact than the M6/M7 off-axis-angle finding: M4's original Earth demo (R=4.8)
+            // already had hop0=14.92wu strictly inside its own solid radius (~27wu) -- the
+            // "camera dives inside the solid, noisy render" symptom M4 attributed only to its
+            // near-end zoom schedule (kNearDist=1e-5) was ALSO, independently, a structural
+            // property of hop0 itself at the default coefficient.
+            // FIX (construction/render-parameter only, no shader/traversal change):
+            // raySizeCoef is already a demo-overridable literal via the existing
+            // VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE ConstantNode-bypass mechanism (see that
+            // constant's own declaration comment above for why a direct literal, not an FOV
+            // bump, is the correct/only-effective lever -- FOV only grows raySizeCoef
+            // linearly and cannot cross the needed order of magnitude). Solving
+            // hop0 = 3*solidRadius (a 3x safety margin, clear of the solid with room for a
+            // real near-orbit approach) for raySizeCoef at R=4.8:
+            //   raySizeCoef_override = 20*R*childScale*scale_exp2/(3*5.625*R)
+            //                        = 20*childScale*scale_exp2/(3*5.625)  (R cancels again)
+            //                        ~= 2.8935e-4
+            // giving hop0 = 3*27.0 = 81.0 world units (comfortably < the 120wu orbit ceiling)
+            // and hop1 = hop0*childScale = 81.0 * 2^-10 ~= 0.0791016 world units.
+            // M8 Task 23 supersedes the override plan above: the corrected (camera-anchored,
+            // world-unit-correct) crossing gate makes the crossing a genuine distance-driven
+            // handoff at the REAL unoverridden raySizeCoef — no coefficient override is
+            // needed or wanted for this demo any more (the historical derivation above is
+            // kept for the record; VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE remains a generic
+            // debugging/ablation knob only).
+            mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: building TRUE "
+                              "Earth-scale (childScale=2^-10/hop) three-tree chained "
+                              "tier-crossing scene -- M8 Task 23 gate: crossing fires by "
+                              "camera-to-child distance at the REAL raySizeCoef (no override)");
+
+            constexpr int   kN          = 16;
+            constexpr int   kBrickDepth = 3;
+            const glm::vec3 kCenter(8.0f, 8.0f, 8.0f);
+            constexpr float kChildScale = 0.0009765625f;  // 2^-10, the real per-hop tier ratio
+
+            auto bakeSphereTreeM8 = [&](float radius) {
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius = radius;
+                Vixen::SVO::SdfBakeResult baked =
+                    Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, kCenter, rp, kN, 2.0f);
+                return Vixen::SVO::BuildSdfBodyOctree(baked, kBrickDepth);
+            };
+
+            Vixen::SVO::SdfBodyOctree m8T0Body = bakeSphereTreeM8(6.0f);
+            Vixen::SVO::SdfBodyOctree m8T1Body = bakeSphereTreeM8(6.5f);
+            Vixen::SVO::SdfBodyOctree m8T2Body = bakeSphereTreeM8(7.2f);
+
+            Vixen::SVO::SerializedOctree m8T0Ser = Vixen::SVO::SerializeSdf(m8T0Body);
+            Vixen::SVO::SerializedOctree m8T1Ser = Vixen::SVO::SerializeSdf(m8T1Body);
+            Vixen::SVO::SerializedOctree m8T2Ser = Vixen::SVO::SerializeSdf(m8T2Body);
+
+            auto overrideColorM8 = [&](Vixen::SVO::SerializedOctree& ser, glm::vec3 rgb, const char* label) {
+                const uint32_t colorBase = ser.channelBaseFloats(Vixen::SVO::SEM_COLOR);
+                if (colorBase == 0xFFFFFFFFu) {
+                    mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: ") + label
+                                      + " has no SEM_COLOR channel — color override skipped");
+                    return;
+                }
+                float* pool = reinterpret_cast<float*>(ser.channelPool.data());
+                const size_t poolFloats = ser.channelPool.size() / sizeof(float);
+                for (uint32_t brick = 0; brick < ser.brickCount; ++brick) {
+                    for (uint32_t comp = 0; comp < 3; ++comp) {
+                        const float c = rgb[static_cast<int>(comp)];
+                        for (uint32_t voxel = 0; voxel < Vixen::SVO::SerializedOctree::kVoxelsPerBrick; ++voxel) {
+                            const size_t idx = static_cast<size_t>(brick) * ser.brickStrideFloats
+                                             + colorBase + comp * Vixen::SVO::SerializedOctree::kVoxelsPerBrick + voxel;
+                            if (idx < poolFloats) pool[idx] = c;
+                        }
+                    }
+                }
+            };
+            // Per-tier color: T0 default cosine-gradient (purple/magenta-adjacent), T1
+            // solid green (region tier), T2 solid cyan (bedrock tier) -- IDENTICAL
+            // convention to VIXEN_TIER_CHAIN_DEMO/VIXEN_TIER_EARTH_DEMO/VIXEN_TIER_OBSERVABLE_DEMO.
+            overrideColorM8(m8T1Ser, glm::vec3(0.0f, 1.0f, 0.0f), "T1");
+            overrideColorM8(m8T2Ser, glm::vec3(0.0f, 1.0f, 1.0f), "T2");
+
+            if (const Vixen::SVO::Octree* oct0 = m8T0Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct0, m8T0Ser);
+            if (const Vixen::SVO::Octree* oct1 = m8T1Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct1, m8T1Ser);
+            if (const Vixen::SVO::Octree* oct2 = m8T2Body.octree->getOctree()) Vixen::SVO::BakeAndAttachMipPool(*oct2, m8T2Ser);
+
+            auto findCameraFacingLeafM8 = [](const Vixen::SVO::Octree* oct, uint32_t& outDescIdx, int& outOctant) {
+                outOctant = -1;
+                if (oct == nullptr) return;
+                const auto& descs = oct->root->childDescriptors;
+                for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                    const Vixen::SVO::ChildDescriptor& d = descs[i];
+                    for (int o = 4; o < 8; ++o) {
+                        if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                    }
+                }
+                if (outOctant < 0) {
+                    for (uint32_t i = 0; i < descs.size() && outOctant < 0; ++i) {
+                        const Vixen::SVO::ChildDescriptor& d = descs[i];
+                        for (int o = 0; o < 8; ++o) {
+                            if (d.hasChild(o) && d.isLeaf(o)) { outDescIdx = i; outOctant = o; break; }
+                        }
+                    }
+                }
+            };
+
+            uint32_t m8T0MarkDescIdx = 0; int m8T0MarkOctant = -1;
+            findCameraFacingLeafM8(m8T0Body.octree->getOctree(), m8T0MarkDescIdx, m8T0MarkOctant);
+            uint32_t m8T1MarkDescIdx = 0; int m8T1MarkOctant = -1;
+            findCameraFacingLeafM8(m8T1Body.octree->getOctree(), m8T1MarkDescIdx, m8T1MarkOctant);
+
+            if (m8T0MarkOctant >= 0 && m8T1MarkOctant >= 0) {
+                // M8 Task 23 CORRECTION: the previous entry-anchored placement
+                // (childOriginLocal = (1.5,1.5,2.0) - kBoxOffset*childScale) put the anchor
+                // ON octant 4's own x=1.5/y=1.5 boundary plane (margin 0.000244 at cs=2^-10 --
+                // sub-ULP-adjacent), not safely INSIDE its box. A live-gate investigation (two
+                // independent traces, this session) found EVERY ray except a sub-pixel bullseye
+                // around that corner missed the remapped child's [0,1]^3 grid entirely --
+                // explaining the flight capture's flat, unchanging mip-gray quadrant (the
+                // child-miss fallback correctly serving T0's own mip, because T1 was
+                // structurally unreachable, not because of any Task 23 gate/fallback bug).
+                // FIX: use RootLeafOctantCenterLocal (M5's proven-safe fixed point, margin 0.25
+                // on every axis -- the SAME technique VIXEN_TIER_CROSSING_DEMO/CHAIN_DEMO/
+                // OBSERVABLE_DEMO already use successfully) instead of a corner-adjacent entry
+                // point. This does NOT reopen the tEntryWorld/off-boundary constraint (M1/M3
+                // carry-forward): a CENTERED anchor is MORE robust to off-boundary entry than a
+                // corner-anchored one, since the safe margin is 0.25 local units either way,
+                // independent of childScale (the amplification only affects how far a given
+                // WORLD deviation reaches in child-local units, not the parent-local anchor
+                // point itself).
+                const glm::vec3 m8T0ChildOriginLocal = Vixen::SVO::RootLeafOctantCenterLocal(m8T0MarkOctant);
+
+                Vixen::SVO::TierRef m8RefT0ToT1{};
+                m8RefT0ToT1.childOctreeIndex = 1u;
+                m8RefT0ToT1.childOriginLocal[0] = m8T0ChildOriginLocal.x;
+                m8RefT0ToT1.childOriginLocal[1] = m8T0ChildOriginLocal.y;
+                m8RefT0ToT1.childOriginLocal[2] = m8T0ChildOriginLocal.z;
+                m8RefT0ToT1.childScale = kChildScale;
+                Vixen::SVO::MarkLeafAsTierCrossing(m8T0Ser, m8T0MarkDescIdx, m8T0MarkOctant, m8RefT0ToT1, 22);
+
+                const glm::vec3 m8T1ChildOriginLocal = Vixen::SVO::RootLeafOctantCenterLocal(m8T1MarkOctant);
+
+                Vixen::SVO::TierRef m8RefT1ToT2{};
+                m8RefT1ToT2.childOctreeIndex = 2u;
+                m8RefT1ToT2.childOriginLocal[0] = m8T1ChildOriginLocal.x;
+                m8RefT1ToT2.childOriginLocal[1] = m8T1ChildOriginLocal.y;
+                m8RefT1ToT2.childOriginLocal[2] = m8T1ChildOriginLocal.z;
+                m8RefT1ToT2.childScale = kChildScale;
+                Vixen::SVO::MarkLeafAsTierCrossing(m8T1Ser, m8T1MarkDescIdx, m8T1MarkOctant, m8RefT1ToT2, 22);
+
+                Vixen::SVO::ConcatenatedOctrees m8Cat;
+                m8Cat.count = 3;
+                m8Cat.configs.resize(3);
+                m8Cat.nodeCounts.resize(3);
+                m8Cat.brickCounts.resize(3);
+                m8Cat.tierRefCounts.resize(3);
+
+                Vixen::SVO::SerializedOctree* m8Octs[3] = {&m8T0Ser, &m8T1Ser, &m8T2Ser};
+                uint32_t m8NodeBase = 0, m8BrickBase = 0, m8PoolBase = 0, m8TierRefBase = 0, m8MipPoolBase = 0;
+                for (int k = 0; k < 3; ++k) {
+                    Vixen::SVO::SerializedOctree& s = *m8Octs[k];
+                    s.config.nodeArrayBase  = static_cast<int32_t>(m8NodeBase);
+                    s.config.brickArrayBase = static_cast<int32_t>(m8BrickBase);
+                    Vixen::SVO::setSdfBrickArrayBase(s.config, m8PoolBase);
+                    Vixen::SVO::setTierRefTableBase(s.config, m8TierRefBase);
+                    Vixen::SVO::setMipPoolBase(s.config, m8MipPoolBase);
+
+                    m8Cat.configs[k]       = s.config;
+                    m8Cat.nodeCounts[k]    = s.nodeCount;
+                    m8Cat.brickCounts[k]   = s.brickCount;
+                    m8Cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+
+                    m8Cat.nodes.insert(m8Cat.nodes.end(), s.nodes.begin(), s.nodes.end());
+                    m8Cat.bricks.insert(m8Cat.bricks.end(), s.bricks.begin(), s.bricks.end());
+                    m8Cat.channelPool.insert(m8Cat.channelPool.end(), s.channelPool.begin(), s.channelPool.end());
+                    m8Cat.brickGridLookup.insert(m8Cat.brickGridLookup.end(), s.brickGridLookup.begin(), s.brickGridLookup.end());
+                    m8Cat.tierRefTable.insert(m8Cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+                    m8Cat.mipPool.insert(m8Cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+
+                    if (m8Cat.materials.empty()) {
+                        m8Cat.materials = s.materials;
+                    }
+
+                    m8NodeBase    += s.nodeCount;
+                    m8BrickBase   += s.brickCount;
+                    m8PoolBase    += s.brickCount * s.brickStrideFloats;
+                    m8TierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+                    m8MipPoolBase += s.nodeCount * s.channelCount;
+                }
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(m8Cat));
+                    // M8 Task 21: grant brick residency FROM CONSTRUCTION (not mid-flight).
+                    // Task 20's validator found this scene otherwise stays mip-only
+                    // (streaming-only), and a mip-only body can ONLY render via the LOD
+                    // gate's decline-to-mip path -- there is no resident-brick fallback for
+                    // it to fall through to below the coefficient hop0's crossing needs.
+                    // Explicit call (rather than relying on residencyRequested_'s default)
+                    // so this scene's residency state is unambiguous regardless of the
+                    // node's default.
+                    bodyScene->RequestBrickResidency(true);
+
+                    constexpr float kRenderScale = 4.8f;
+                    constexpr float kHalf = 5.0f * kRenderScale;
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.worldPos[0]  = 64.0f - kHalf;
+                    inst.worldPos[1]  = 64.0f - kHalf;
+                    inst.worldPos[2]  = 64.0f - kHalf;
+                    inst.renderScale  = kRenderScale;
+                    inst.color[0]     = 1.0f;
+                    inst.color[1]     = 1.0f;
+                    inst.color[2]     = 1.0f;
+                    inst.octreeIndex  = 0u;
+                    inst.providerKind = 0u;
+                    inst.recipeId     = 0u;
+
+                    bodyScene->SetInstances({inst});
+
+                    // Record the two crossing octants' world positions for the scripted
+                    // look-target retargeting (VulkanGraphApplication.cpp). Both hops use the
+                    // SAME deterministic camera-facing selection (octant 4, bit pattern
+                    // x=0,y=0,z=1), so the world offset from body center is the established
+                    // (-2.5R,-2.5R,+2.5R) constant (M7 Task 13, validator-confirmed
+                    // R-proportional fact of RootLeafOctantCenterLocal's own convention) --
+                    // IDENTICAL for hop0 and hop1 since renderScale is fixed at every tier
+                    // (only the child octree's own internal scale shrinks via childScale;
+                    // the crossing octant's own WORLD position is a property of the PARENT
+                    // tree's instance placement, unaffected by what childScale the crossing
+                    // leads into).
+                    const glm::vec3 bodyCenterWorld(64.0f, 64.0f, 64.0f);
+                    // M8 Task 23: record the ACTUAL child anchor's world position (now
+                    // RootLeafOctantCenterLocal(4), the proven-safe centered fixed point — see
+                    // this scene's own construction comment above for why the prior
+                    // corner-adjacent entry point was replaced) so the flight schedule
+                    // approaches/aims at genuinely reachable child content, not a boundary
+                    // point ~1024x too small a target to hit off-axis. World mapping: the
+                    // [1,2) local cube spans 10*renderScale world units anchored at
+                    // inst.worldPos (kHalf = 5R puts local 1.5 at body center 64, verified:
+                    // worldPos + 0.5*10R = 40 + 24 = 64).
+                    const float kCubeWorldEdge = 10.0f * kRenderScale;  // 48wu
+                    const glm::vec3 instWorldPos(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf);
+                    m8EarthHop0OctantWorld_ = instWorldPos
+                        + (m8T0ChildOriginLocal - glm::vec3(1.0f)) * kCubeWorldEdge;
+                    // M8 Task 24: T1's own marked crossing leaf (m8T1ChildOriginLocal, T1->T2's
+                    // childOriginLocal) lives in T1's OWN local [1,2) frame, NOT T0's -- it must
+                    // NOT be aliased to hop0's world position (the Task 23 bug: both hops aimed at
+                    // the SAME point, so hop1 never got its own distinct flight target). Map it
+                    // into T0's local frame first via the INVERSE of remapRayIntoChildFrame
+                    // (GpuTraversalMirror.h/BodyInstanceRayMarch.comp's own forward remap is
+                    // childLocal = (parentLocal - childOrigin)*invScale + 1.5, so the inverse is
+                    // parentLocal = childOrigin + (childLocal - 1.5)*childScale), then apply the
+                    // SAME instWorldPos/kCubeWorldEdge mapping hop0 uses to reach world space.
+                    const glm::vec3 m8T1AnchorInT0Local = m8T0ChildOriginLocal
+                        + (m8T1ChildOriginLocal - glm::vec3(1.5f)) * kChildScale;
+                    m8EarthHop1OctantWorld_ = instWorldPos
+                        + (m8T1AnchorInT0Local - glm::vec3(1.0f)) * kCubeWorldEdge;
+
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: T0 leaf ("
+                                  + std::to_string(m8T0MarkDescIdx) + "," + std::to_string(m8T0MarkOctant)
+                                  + ") -> T1 octree1 (childScale=2^-10); T1 leaf (" + std::to_string(m8T1MarkDescIdx) + ","
+                                  + std::to_string(m8T1MarkOctant) + ") -> T2 octree2 (childScale=2^-10); "
+                                  "hop0 crossing octant world pos ("
+                                  + std::to_string(m8EarthHop0OctantWorld_.x) + ","
+                                  + std::to_string(m8EarthHop0OctantWorld_.y) + ","
+                                  + std::to_string(m8EarthHop0OctantWorld_.z) + "); "
+                                  "hop1 (T1's own) crossing world pos ("
+                                  + std::to_string(m8EarthHop1OctantWorld_.x) + ","
+                                  + std::to_string(m8EarthHop1OctantWorld_.y) + ","
+                                  + std::to_string(m8EarthHop1OctantWorld_.z) + ")");
+                }
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
         } else if (std::getenv("VIXEN_SHADOW_DEMO")) {
             // VIXEN_SHADOW_DEMO — Sampled Lighting Inc1 M4 live gate: two Procedural

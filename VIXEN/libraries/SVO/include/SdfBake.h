@@ -21,6 +21,15 @@
 #include <vector>
 #include <functional>
 
+// This header (and SdfRecipes.h it includes) uses std::max/glm::min/glm::max heavily. When
+// included after <windows.h> (pulled in transitively on the Windows build via Vulkan/GTest),
+// the `min`/`max`/`abs` function-like macros mangle every `std::max(`/`glm::min(` into a
+// syntax error. NOMINMAX only helps before windows.h is seen, which a header cannot guarantee,
+// so drop the macros outright — no C++ code wants them. Same convention as GpuTraversalMirror.h.
+#undef min
+#undef max
+#undef abs
+
 namespace Vixen::SVO {
 
 // ---------------------------------------------------------------------------

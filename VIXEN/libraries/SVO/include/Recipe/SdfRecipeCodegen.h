@@ -5,6 +5,15 @@
 #include <string>
 #include <vector>
 
+// This header uses std::abs. When included after <windows.h> (pulled in transitively on the
+// Windows build via Vulkan/GTest), the `min`/`max`/`abs` function-like macros mangle unqualified
+// calls into a syntax error. NOMINMAX only helps before windows.h is seen, which a header cannot
+// guarantee, so drop the macros outright — no C++ code wants them. Same convention as
+// GpuTraversalMirror.h.
+#undef min
+#undef max
+#undef abs
+
 namespace Vixen::SVO::Recipe {
 
 // Fixed trace-main template — concatenated after sdfCoreHlsl + sdfRecipe.

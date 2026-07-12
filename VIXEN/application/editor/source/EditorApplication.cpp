@@ -16,7 +16,7 @@
 #include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
 #include "generated/AppFlowCallables.g.hpp"   // Inc-4 R5c: transplanted applyToggle(mask,index)
-#include "LayerControllerViewDataProvider.h"  // Inc-A: view->model seam, direct-field provider
+#include "GaiaLayerViewDataProvider.h"        // Inc-B: view->model seam, Gaia-backed provider
 #include <Logger.h>
 
 #include <cstdlib>
@@ -145,6 +145,29 @@ void EditorApplication::RefreshLayersView() {
     Vixen::App::RefreshEditorLayersView(*layersView_, rt_.Layers().Mask(), doc_.LayerCount(), names, ops);
 }
 
+void EditorApplication::ReconcileLayersView() {
+    // Inc-B (design §4): the per-frame .changed<LayerMask>() reconcile. Returns nullopt on a
+    // frame with no external change (the common case -- nothing to do); a value means
+    // gaiaLayerEntity_'s LayerMask chunk was marked changed since the last call, and this IS the
+    // current (already value-pushed) mask.
+    const std::optional<uint32_t> reconciled = viewReconcile_.Reconcile(gaiaLayerEntity_);
+    if (!reconciled.has_value()) return;
+
+    // Keep rt_.Layers() mirrored (see the ToggleLayer handler's own comment on why) so an
+    // EXTERNAL write -- one that bypassed layerProvider_.WriteU32 entirely, e.g. a direct
+    // gaiaWorld_.setComponent<LayerMask> call -- is reflected in the state-dump log and undo's
+    // read-modify-write base the same way an input-driven toggle already is.
+    rt_.Layers().SetMask(*reconciled);
+    // Re-flatten/re-upload on the next dirty tail (Update()'s existing pattern) -- an external
+    // mask change must reach the render, exactly like an input-driven toggle does.
+    dirty_ = true;
+    // VALUE-PUSH into the bound view (design §4) -- RefreshEditorLayersView's own DirtyVariable
+    // call (EditorLayersView::PopulateFromMask) is the "forward into RmlUi's own dirty tracking"
+    // half of the loop. Harmless if this races the same-frame echo above (idempotent re-push,
+    // DirtyVariable coalesces) -- see ViewReconcileNode.h's file header.
+    RefreshLayersView();
+}
+
 bool EditorApplication::LoadDocument(const std::string& path) {
     if (!doc_.Load(path, lastEditorError_)) {
         return false;
@@ -152,6 +175,17 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     documentPath_ = path;
     rt_.Load();  // load the AppFlow reference vocab (state/action tables)
     rt_.Layers().SetLayerCount(doc_.LayerCount());  // (re)sync the mask to the freshly loaded doc
+
+    // Inc-B: re-seed the Gaia layer entity to the freshly loaded document's real mask (all layers
+    // enabled -- SetLayerCount's own default, mirrored above). WriteU32 (not a bare setComponent
+    // call) so this goes through the exact same provider path as every other model->view write --
+    // gaiaLayerEntity_'s LayerMask component is the seam's single source of truth from here on,
+    // not a second copy that could silently diverge from rt_.Layers().
+    {
+        using Vixen::AppFlow::ViewNounKey;
+        using Vixen::AppFlow::ViewNounId;
+        layerProvider_.WriteU32(ViewNounKey{ViewNounId::LayerMask}, rt_.Layers().Mask());
+    }
 
     // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
     // reflects the ACTUAL mask/names/ops of the freshly loaded document (was static markup with 3
@@ -178,13 +212,30 @@ bool EditorApplication::LoadDocument(const std::string& path) {
                 using Vixen::AppFlow::ViewNounId;
                 const ViewNounKey key{ViewNounId::LayerMask};
                 uint32_t mask = 0;
-                layerProvider_.ReadU32(key, mask);
+                // Inc-B fix (Inc-A carry -- ReadU32 is genuinely fallible now that the provider is
+                // Gaia-backed: gaiaLayerEntity_'s LayerMask component could in principle be absent,
+                // e.g. destroyed out from under the provider). A silent false-read used to fall
+                // through into applyToggle(0, idx) -- toggling bit idx of a WRONG all-zero mask and
+                // WRITING that back, corrupting the real mask instead of leaving it alone. Skip the
+                // whole toggle (no write, no dirty, no echo) and log instead.
+                if (!layerProvider_.ReadU32(key, mask)) {
+                    logger_->Error("[EditorApplication] ToggleLayer: LayerMask read failed "
+                                    "(provider/entity/component absent) -- toggle for layerIndex=" +
+                                    std::to_string(idx) + " skipped, mask left unchanged");
+                    return;
+                }
                 // THE TRANSPLANTED PROJECTION, LIVE (R5c, design §5a exemplar projection):
                 // applyToggle is kernel-generated C++ from the same C# body the design's D12
                 // walking skeleton proves transplants identically. Self-inverse
                 // (mask ^ (1<<idx)) -- byte-identical to the old LayerController::Toggle(idx)
                 // for any idx within the valid layer range. A pure leaf function, no wiring.
-                layerProvider_.WriteU32(key, Vixen::AppFlow::Generated::applyToggle(mask, idx));
+                const uint32_t newMask = Vixen::AppFlow::Generated::applyToggle(mask, idx);
+                layerProvider_.WriteU32(key, newMask);
+                // Inc-B: rt_.Layers() is no longer the mask's storage (gaiaLayerEntity_'s
+                // LayerMask component is, via layerProvider_ above) -- but the state-dump log
+                // lines (PreTick's scripted-action trail) and RefreshLayersView() below still read
+                // rt_.Layers().Mask(), so keep it mirrored rather than rewriting both call sites.
+                rt_.Layers().SetMask(newMask);
                 dirty_ = true;
                 // Same-frame echo (design §4a), landed now that the editor layer view is
                 // data-model-bound (Inc-A2 -- was deferred by Inc-A's report, which found the view
@@ -550,6 +601,13 @@ void EditorApplication::Update() {
         if (escDown && !escWasDown_) rt_.DispatchByKey({KeyId::Escape, KeyMod::None});
         escWasDown_ = escDown;
     }
+
+    // Inc-B (design §4a): the per-frame .changed<LayerMask>() reconcile, placed AFTER all input
+    // dispatch above (UI click + keybindings) so an EXTERNAL write picked up this frame lands in
+    // the same dirty_ re-flatten tail below as an input-driven toggle would. The input path's own
+    // same-frame echo (inside the ToggleLayer handler) already covers the self case; this call is
+    // what makes a non-input Gaia write reach the view at all.
+    ReconcileLayersView();
 
     // Re-flatten + re-upload on the next tick after a toggle (dirty-flag pattern — no
     // MarkNeedsRecompile; SetRecipePool inside ApplyDocumentToScene already sets the

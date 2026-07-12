@@ -1,16 +1,17 @@
 #pragma once
 #include "Recipe/SdfInstruction.h"
-// MSVC's <windows.h> (pulled in transitively by callers that include
-// GaiaVoxelWorld.h/gaia.h BEFORE this header — see SdfBake.h's include order)
-// defines min/max as function macros, which collide with SdfCoreKernels.g.hpp's
-// glm::min/glm::max calls below. #undef defensively at this header's own point
-// of use rather than relying on every includer to have done it first (a
-// generated header's #include, not the includer's own use of glm, is what
-// breaks — see test_soa_sdf_serialize.cpp's own top-of-file #undef, which does
-// NOT protect this because GaiaVoxelWorld.h's windows.h re-pollutes downstream
-// of it in the SAME translation unit).
+
+// The generated kernel header below uses bare glm::min/glm::max/glm::abs heavily. When this
+// header is reached after <windows.h> (pulled in transitively on the Windows build via
+// Vulkan/GTest), the `min`/`max`/`abs` function-like macros mangle those calls into a syntax
+// error (KI-017/KI-020 #2). NOMINMAX only helps before windows.h is seen, which a header cannot
+// guarantee, so drop the macros outright right before the generated include — no C++ code wants
+// them. Same convention as GpuTraversalMirror.h. Must precede the include below, not just
+// follow this header's own includes, since the generated header is pulled in immediately here.
 #undef min
 #undef max
+#undef abs
+
 #include "Recipe/generated/SdfCoreKernels.g.hpp"   // Yeroket::Sdf::Generated::SdfCore_*
 #include <glm/glm.hpp>
 #include <cassert>
