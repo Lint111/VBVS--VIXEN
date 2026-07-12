@@ -175,7 +175,11 @@ tracked in that increment's own plan doc once started)
   `CodeModLoader.cs`'s live reflection use; full retirement, byte-identical equivalence proof
   independently re-derived by the validator, 2951/2951 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc4-Action-Registration-Plan-2026-07.md`)
-- [ ] Increment 5 — #1/#2/#3/#7 Authored+Baked def carriers, parse/bake table, sim registration (cluster)
+- [x] Increment 5 — #1/#2/#3/#7 Authored+Baked def carriers, parse/bake table, sim registration (cluster)
+  (Opus-validated APPROVED all 3 milestones; largest/riskiest increment yet — 10 files retired incl.
+  Increment 1's long-deferred `EmitRegistrySlots.cs`, 22 tests surgically trimmed with method-level
+  precision, full equivalence loop closed, 2933/2933 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc5-Def-Carriers-Bake-SimReg-Plan-2026-07.md`)
 - [ ] Increment 6 — #10 Test factories, #11 Authoring builders
 - [ ] Increment 7 — #13 `[Effect]` registration
 - [ ] Increment 8 — #15 `[System]` schedule solver
@@ -249,6 +253,34 @@ tracked in that increment's own plan doc once started)
   the equivalence proof from scratch: own throwaway worktree, real `dotnet build` against the
   pre-retirement commit, direct diff/md5 against the checked-in output). 2951/2951 undertow tests pass.
   Full detail: `Undertow-Codegen-Unif-Inc4-Action-Registration-Plan-2026-07.md`.
+
+- **Increment 5 — #1/#2/#3/#7 Authored+Baked def carriers, parse/bake table, sim registration cluster
+  (COMPLETE, all 3 milestones Opus-validated APPROVED).** The largest and riskiest increment in the
+  program to date — bundled 4 features sharing one JSON source (`schemas.json`, 38 kinds; per-feature
+  real counts 31/36/28/32, three independent gates `data`/`codec`/`simRegister` plus a `ReadFields!=null`
+  flat-scalar co-gate that excludes `planet`). Sequenced internally as Part A (Milestone 2: Authored/
+  Baked def carrier POCOs, extending Increment 1's `[RegistrySlots]` emitter family — same attribute
+  model, a second emitter pass, no new attribute) then Part B (Milestone 3: the bake-table/sim-
+  registration method-tables, genuinely new emitters since no existing Yeroket mechanism emits an
+  array-of-closures table) — a hard ordering dependency, since Part B's generated code references Part
+  A's generated types by name. Confirmed via direct source read: NO CodeModLoader-style runtime-
+  reflection constraint applies to this cluster (pure compile-time codegen-to-codegen consumption).
+  **This increment finally executed Increment 1's long-deferred `EmitRegistrySlots.cs` retirement** — the
+  real dependent migration Increment 1 was waiting on, confirmed via a concrete load-bearing dependency
+  chain (`ContentBaker.cs:37`, `ContentLoader.cs:57,66`, `AuthoringModel.cs:192`, `UndertowSim.cs:159`
+  all directly consume `[RegistrySlots]`-generated slot properties/`OverridableIds()`). Full retirement:
+  10 source files deleted total (all 8 of the #1/#2/#3/#7 cluster's originals + Increment 1's
+  `EmitRegistrySlots.cs`/`RegistrySlotGenerator.cs`), 6 generated `.g.cs` files checked in, 3 test files
+  fully deleted + 13 surgically trimmed (removed only the retired-generator-calling method, preserved
+  each file's still-live `EmitCodec` coverage) — exactly 22 test methods removed net, independently
+  recounted method-by-method by the Opus validator via real diffs, not trusted from the implementer's
+  report. Equivalence proof fully closed the loop (new-emitter output == checked-in file == old Roslyn
+  generator's real build output, all independently re-derived from scratch by the validator), covering
+  every real gate combination including nested object-list Bake-lambda conversion
+  (`hook`/`personality`/`effect_set`/`rule`) and the `RuntimeCarrier` conversion path
+  (`character`/`faction`/`timeline`). 2933/2933 undertow tests pass post-retirement, independently
+  re-run by the validator from a fresh state. Full detail:
+  `Undertow-Codegen-Unif-Inc5-Def-Carriers-Bake-SimReg-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
