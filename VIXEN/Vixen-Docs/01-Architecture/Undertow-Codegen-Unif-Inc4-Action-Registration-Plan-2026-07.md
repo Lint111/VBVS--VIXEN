@@ -122,8 +122,8 @@ attribute BEFORE Increment 7 (`[Effect]`) stresses it further with a dual ctor-s
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
-  validator.
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. DONE + Opus-validated APPROVED,
+  2026-07-13. **INCREMENT 4 COMPLETE.**
 
 ## Progress Log
 
@@ -152,3 +152,44 @@ attribute BEFORE Increment 7 (`[Effect]`) stresses it further with a dual ctor-s
     source, including independently checking Yeroket's `--param-cs`/`LoadParamFields` analog is real and
     extendable (not hand-waved). No scope violations — both worktrees clean, no Inc-4 implementation
     commits yet. Cleared to proceed to Milestone 2.
+
+- Milestone 2 (Task 2, build + equivalence + retire): DONE · 2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc4-action`, off Inc-3 tip `91a297d6`, commit `6fe6cca7`):
+    `CompilationLoader.LoadActionClasses` (discover-by-syntax-name, filtered `INamedTypeSymbol` list per
+    `[Action]` class — like `LoadRegistrySlotsClasses`'s shape, not `LoadParamFields`'s whole-Compilation
+    shape, since discovery needs each class's `sym.AllInterfaces`); `ActionRegistrationEmitter.cs` (line
+    -for-line port of `EmitRegisterActions.Emit`, same diagnostics/sort/wiring, `EnumExprHelper` reused for
+    `Trigger`); `--action-cs` CLI branch in `Program.cs` mirroring `--param-cs`.
+  - **Equivalence proof — non-vacuous, PASSED:** ran `--action-cs` against the real, full
+    `Undertow.Sim` source tree (not a curated subset) and diffed against the OLD Roslyn
+    `ActionRegistrationGenerator`'s ACTUAL build output (`obj/.../RegisterActions.g.cs`, produced by a
+    real `dotnet build` of `core/Undertow.sln` before retirement) — **byte-identical body** (banner line
+    excluded by design, same precedent as Inc-3). Covers all 6 real production classes
+    (`BuildIndustryAction`, `EvictAction`, `ExpandExtractionAction`, `MoveHaulAction`,
+    `RefineToGoodsAction`, `ResearchAction`).
+  - **All 4 diagnostic paths exercised** with deliberately-malformed synthetic classes (duplicate id,
+    no-behavior-interface, `Chosen` without `IAction`, `RuleFired` without `IActionLifecycle`) — all 4
+    fired, exact string match against the ported diagnostic messages (verified line-for-line against
+    `EmitRegisterActions.cs`'s literals too).
+  - **Retired** (undertow worktree, commit `22dcc85d`): deleted
+    `ActionRegistrationGenerator.cs`/`EmitRegisterActions.cs` + `EmitRegisterActionsTests.cs`; checked in
+    `core/src/Undertow.Sim/RegisterActions.g.cs` (regenerated via `--action-cs` against the real tree,
+    same byte-identical body proven above), mirroring Inc-3's checked-in-file pattern (this worktree
+    predates Inc-3's own retirement landing on `master`, confirmed by absence of `DeclareParams.g.cs`).
+    Also removed `CapabilityFlagTests.UnlockedFalse_EmitsALockedFlag`, which unit-tested the retired
+    `EmitRegisterActions.Emit` directly — coverage subsumed by the equivalence proof above.
+  - **`CodeModLoader.cs` confirmed byte-identical pre/post** (md5 + diff, both clean).
+  - **Full build + full test, post-retirement:** `dotnet build core/Undertow.sln` — 0 errors, 0 warnings.
+    `dotnet test` — **2951 pass, 0 failures** (2930 `Undertow.Core.Tests` + 21
+    `Undertow.Vixen.Host.Tests`).
+  - `SDFNodeGenerator.dll` non-deterministic rebuild artifact appeared once in Yeroket during dev
+    iteration; discarded via `git checkout --` before the Yeroket commit (confirmed clean at commit time).
+  - No blockers. Increment 4 (`[Action]` registration) COMPLETE in both repos, not yet merged to either
+    main/master, not pushed (per gate).
+  - **Opus validator (independent re-verification):** APPROVED. Re-derived the byte-identical
+    equivalence proof from scratch (own throwaway worktree at the pre-retirement commit, real
+    `dotnet build`, direct diff/md5 against the checked-in output — zero diff), independently confirmed
+    all 4 diagnostic paths' verbatim strings, confirmed `CodeModLoader.cs` zero-diff, independently
+    re-ran the full test suite from a fresh state (2951/2951 pass, matching), confirmed the extra test
+    deletion was genuinely necessary (referenced deleted types, coverage subsumed), and confirmed
+    `SDFNodeGenerator.dll` was not committed. No issues found.
