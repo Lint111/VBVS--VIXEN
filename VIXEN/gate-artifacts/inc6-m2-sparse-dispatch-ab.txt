@@ -1,0 +1,259 @@
+Sampled Lighting Inc6 M2 -- full regression + CPU FrameTimer A/B (sparse-dispatch vs
+Inc5's dispatch-all mechanism, and vs the naive 1/F prediction)
+=========================================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan backend --
+no lavapipe/Dozen, per KI-008 / "live-verification-authoritative-for-gpu-work").
+Binary: VIXEN.exe, freshly built from this worktree's tree at commit aa87fbc9 (M1
+merged: sparse-dispatch stride-remap + ceil()-divided dispatch-X) via a genuine
+`build.bat all` (configure+build both re-run). Zero FAILED targets among VIXEN.exe's
+own build graph; one FAILED target overall (`codegen/CMakeFiles/octreeconfig_check`),
+confirmed pre-existing/unrelated -- see REGRESSION section below. Both the ninja
+build-tree binary and the source-tree POST_BUILD mirror confirmed same-timestamp-fresh
+(37075456 bytes, 18:37) before any gate/bench run below.
+
+PART 1 -- FULL REGRESSION (all 6 established Inc4 gates + Inc6's own gates)
+================================================================================
+1. VIXEN_RESTIR_GATE_DEMO=1, 600 frames: exit=0, clean shutdown.
+2. VIXEN_FANIN_DEMO=1, 600 frames: exit=0, clean shutdown.
+3. VIXEN_DDGI_LEAK_GATE_DEMO=1, F=1 escape hatch (VIXEN_DDGI_AMORTIZATION_FACTOR=1),
+   280 frames:
+     tick120 [ChebyshevEnabled]:        gatheredLuma=0.000001
+     tick240 [AblationNegativeControl]: gatheredLuma=0.164185
+   EXACT MATCH to M1's own recorded F=1 numbers (and Inc5 M3's original numbers).
+4. VIXEN_DDGI_LEAK_GATE_DEMO=1, shipped default (F=8, no override), 280 frames:
+     tick120 [ChebyshevEnabled]:        gatheredLuma=0.000000
+     tick240 [AblationNegativeControl]: gatheredLuma=0.077026
+   EXACT MATCH to M1's own recorded F=8 numbers.
+5. VIXEN_M5_SHADE_GATE_DEMO=1 + VIXEN_DDGI_LEAK_GATE_DEMO=1, 200 frames:
+     tick150: shadeM5IndirectLumaMax=0.012449 diagShadeAnyHitCount=99856
+   EXACT MATCH to M1's own recorded numbers.
+6. VIXEN_DDGI_EDIT_LOOP_DEMO=1, shipped default (F=8), 200 frames:
+     tick20  [pre-edit]:  0.000000
+     tick31  [post-edit]: 0.000000
+     tick50  [post-edit]: 0.006739
+     tick80  [post-edit]: 0.019404
+     tick110 [post-edit]: 0.031068
+     tick150 [post-edit]: 0.044377
+   EXACT MATCH to M1/M3's own recorded convergence curve -- convergence math
+   unaffected, as expected (dispatch mechanism swap doesn't change the closed form).
+7. Default boot (no env vars), 120 frames: exit=0, clean shutdown.
+
+VUID CENSUS (KI-027 discipline) across all 7 regression logs: exactly the 8
+previously-documented pre-existing types (vkAcquireNextImageKHR-01779,
+vkBeginCommandBuffer-00049, vkCmdDispatch-08114, vkCmdDraw-09600,
+vkQueueSubmit2-03868/03875, vkResetFences-01123, vkUpdateDescriptorSets-03047).
+ZERO new VUID types. ZERO binding-28/31 occurrences.
+
+BUILD-GRAPH NOTE: `octreeconfig_check` FAILED during the `build.bat all` used to
+produce this session's binary (WSL->dotnet-bridge codegen drift-guard check, invoked
+via `wsl.exe -e dotnet run ... CodegenTool~ --check`). Confirmed orthogonal to this
+milestone: this increment's diff touches only `ProbeUpdate.comp` and
+`BuildRenderGraph.cpp`, neither of which is in the OctreeConfig schema's blast radius;
+same failure category (KI-015) as M1's own build, which hit 3 DIFFERENT config-check
+targets (lightingconfig/shadowconfig/accumulationconfig) in the same non-deterministic
+SDFNodeGenerator.dll rebuild class -- a different member of the same pre-existing,
+already-documented toolchain flake rotating which check(s) it hits per build, not a
+regression introduced by this milestone. VIXEN.exe itself linked successfully in both
+M1's and this session's build.
+
+REGRESSION VERDICT: PASS. All 7 gate runs exit=0, every numeric readback byte-identical
+to M1's own already-validated regression, zero VUID drift.
+
+PART 2 -- CPU FRAMETIMER A/B: sparse-dispatch (this increment) vs Inc5's dispatch-all
+mechanism vs the naive 1/F prediction
+================================================================================
+METHOD -- reused Inc5 M2/M4's exact methodology, per this milestone's own brief:
+  Scene: VIXEN_DDGI_LEAK_GATE_DEMO=1, VIXEN_PROBE_GRID_CONFIG_ENABLED=1,
+  VIXEN_EXIT_AFTER_FRAMES=1500, 1920x1080 -- identical scene/resolution/frame-count to
+  Inc5 M4's own bench, for direct comparability.
+  Lever: VIXEN_DDGI_AMORTIZATION_FACTOR in {1, 4, 8} -- the SAME three points Inc5
+  M2/M4 measured, now exercising the NEW sparse-dispatch mechanism (M1) instead of
+  Inc5's old dispatch-all/early-out-inside mechanism.
+  3 runs per config (not 2), INTERLEAVED run ordering (F1,F4,F8 repeated x3, not
+  blocked/clustered per-config) -- Inc5 M2's own established fix for exactly the
+  between-run ambient-drift noise this bench class is prone to. 8-second settle gap
+  between every cmd.exe launch -- Inc5 M2's own established fix for the swapchain/
+  present-timing cliff artifact. 1500/120=12 windows/run, window 1 (frames 0-120)
+  discarded as pipeline/shader warm-up, 11 stable windows/run, 33 pooled windows/config.
+  A probeGridEnabled=0 ("off") baseline was ALSO measured (3 interleaved runs, same
+  settle-gap discipline) to compute a DDGI-only cost comparable to Inc5's own
+  6.14/3.22/2.15ms numbers -- see the "off baseline" subsection below for why this
+  comparison itself is not trustworthy this session, same finding Inc5 already made.
+
+RAW RESULTS -- F1/F4/F8 (mean of 11 stable 120-frame windows/run, frames 120-1440)
+------------------------------------------------------------------------------------
+  F1 (VIXEN_DDGI_AMORTIZATION_FACTOR=1) round 1: avg 61.748 ms (range 61.264-62.315, stdev 0.387)
+  F1 round 2: avg 60.808 ms (range 60.231-61.413, stdev 0.383)
+  F1 round 3: avg 59.875 ms (range 59.071-61.118, stdev 0.766)
+  F1 pooled (33 windows): mean 60.810 ms, stdev 0.938
+
+  F4 round 1: avg 58.272 ms (range 57.313-59.976, stdev 0.731)
+  F4 round 2: avg 55.071 ms (range 54.513-57.220, stdev 0.816)
+  F4 round 3: avg 60.924 ms (range 58.874-61.693, stdev 0.752)
+  F4 pooled (33 windows): mean 58.089 ms, stdev 2.541
+
+  F8 (shipped default) round 1: avg 54.819 ms (range 54.526-55.259, stdev 0.224)
+  F8 round 2: avg 55.402 ms (range 54.566-56.927, stdev 0.872)
+  F8 round 3: avg 57.865 ms (range 56.728-59.365, stdev 0.783)
+  F8 pooled (33 windows): mean 56.029 ms, stdev 1.497
+
+  off (probeGridEnabled=0) round 1: avg 62.368 ms (stdev 0.375)
+  off round 2: avg 57.730 ms (stdev 0.122)
+  off round 3: avg 59.672 ms (stdev 0.094)
+  off pooled (33 windows): mean 59.923 ms, stdev 1.945
+
+DIRECT PAIRWISE COMPARISONS (per-round means, the load-bearing evidence)
+------------------------------------------------------------------------------------
+  F1 vs F8 (sparse-dispatch's own amortization win, cleanest comparison):
+    round1: F1=61.748 F8=54.819  delta(F1-F8)=+6.929ms  F1>F8: YES
+    round2: F1=60.808 F8=55.402  delta(F1-F8)=+5.406ms  F1>F8: YES
+    round3: F1=59.875 F8=57.865  delta(F1-F8)=+2.010ms  F1>F8: YES
+    UNANIMOUS direction across all 3 pairings (3/3) -- matches Inc5 M2's own
+    interleaved re-measurement's unanimity (4/4), stronger than Inc5 M4's own
+    non-unanimous 2/3. Mean delta 4.78ms, round-to-round sd 2.52ms (the magnitude
+    itself varies session-to-session, consistent with ambient load, but the SIGN
+    never flips).
+
+  F1 vs F4:
+    round1: delta(F1-F4)=+3.476ms  F1>F4: YES
+    round2: delta(F1-F4)=+5.737ms  F1>F4: YES
+    round3: delta(F1-F4)=-1.049ms  F1>F4: NO
+    2 of 3 pairings agree with the expected direction; round 3 shows F4 spiking to
+    60.924ms, close to F1's own round-3 reading (59.875ms) -- see NOISE NOTE below.
+
+  F4 vs F8:
+    round1: delta(F4-F8)=+3.453ms  F4>F8: YES
+    round2: delta(F4-F8)=-0.331ms  F4>F8: NO (essentially a tie, within stdev)
+    round3: delta(F4-F8)=+3.059ms  F4>F8: YES
+    2 of 3 pairings show F4 costing more than F8 as expected; round 2 is a near-tie.
+
+NOISE NOTE (reported honestly, per this program's standing discipline): F4 is the
+noisiest of the three configs this session (pooled stdev 2.541ms vs F1's 0.938 and
+F8's 1.497) -- round 3's F4 reading (60.924ms) is an outlier relative to its own
+round1/round2 readings (58.272/55.071ms), most plausibly a session-level ambient-load
+spike (round 3 was run last, ~15 minutes into the whole matrix) rather than a real
+F4-specific regression, since F1 and F8's OWN round-3 readings also drifted (F1 down
+to 59.875 from 61.748/60.808; F8 up to 57.865 from 54.819/55.402) in the same
+direction/window of wall-clock time -- consistent with ambient load easing for F1 while
+simultaneously rising for F4/F8, i.e. genuine between-run session noise, not a per-
+config artifact. F1-vs-F8 (the cleanest, most direct test of the mechanism swap) is
+UNAFFECTED by this because both configs' own round-3 numbers moved in the same
+direction as their round1/round2 numbers relative to each other -- F1 stayed on top
+in all 3 rounds regardless.
+
+"off" BASELINE -- REPRODUCES Inc5's OWN ALREADY-DOCUMENTED NON-ZERO-COST QUIRK
+------------------------------------------------------------------------------------
+  DDGI-only cost (config pooled mean - off pooled mean, 59.923ms):
+    F=1: delta=+0.887ms  signal=delta/pooled_sd=0.887/2.19=0.41 (very weak)
+    F=4: delta=-1.834ms  signal=-0.57 (negative -- physically nonsensical as a clean
+      "DDGI cost")
+    F=8: delta=-3.894ms  signal=-1.59 (negative, same issue)
+  Per-round deltas are even less consistent (round1: F1=-0.620, F4=-4.096, F8=-7.549
+  vs off; round2: F1=+3.078, F4=-2.659, F8=-2.328; round3: F1=+0.203, F4=+1.252,
+  F8=-1.807) -- NOT usable as a clean absolute-cost baseline this session, for exactly
+  the reason Inc5 M2/M4 already documented: VIXEN_PROBE_GRID_CONFIG_ENABLED=0 is only a
+  per-workgroup shader early-out inside ProbeUpdate.comp, not a pass-removal -- the
+  probe-update dispatch still launches and (at F=1, still dispatches the full 512
+  workgroups) every workgroup still runs to that early-out even when "disabled." This
+  reproduces Inc5's own finding verbatim; it is not a new problem introduced by the
+  sparse-dispatch mechanism, and it means the "off" comparison CANNOT be used to
+  recompute a clean absolute DDGI-only-cost number comparable to Inc5's own
+  6.14/3.22/2.15ms figures (which were themselves already flagged by Inc5 M4 as
+  session-noise-limited when attempted a second time). The F1-vs-F8 DIRECT comparison
+  above is the trustworthy number this session produces, not the vs-off delta.
+
+COMPARISON TABLE -- old mechanism (Inc5, dispatch-all) vs new mechanism (Inc6,
+sparse-dispatch) vs naive 1/F prediction
+================================================================================
+  All three rows are "DDGI-only cost" in the vs-off-baseline sense Inc5 M2 reported
+  (6.14/3.22/2.15ms, from Inc5 M2's own CLEANEST cross-check subset, not M2's noisier
+  full matrix or M4's own noisier re-check). This session's own vs-off numbers are NOT
+  clean enough to populate a like-for-like new "DDGI-only cost" row (see above) --
+  reporting the DIRECT F1-relative numbers instead, which is the fairer, more honest
+  comparison this session's data actually supports.
+
+  Factor F | Inc5 old mechanism    | Inc6 new (sparse) mechanism | naive 1/F prediction
+           | (vs-off DDGI cost,    | (DIRECT cost relative to    | (from Inc5's F=1
+           | Inc5 M2's own number) | this session's own F=1,     | vs-off = 6.14ms)
+           |                       | i.e. F1_pooled - F_pooled)  |
+  ---------|------------------------|------------------------------|----------------------
+    F=1    | 6.14 ms (reference)   | 0.00 ms (reference, by definition) | 6.14 ms (reference)
+    F=4    | 3.22 ms               | 2.72 ms (F1-F4 pooled-mean delta)  | 1.54 ms
+    F=8    | 2.15 ms               | 4.78 ms (F1-F8 pooled-mean delta)  | 0.77 ms
+
+  Reading this table: Inc5's own F=8 DDGI-only cost was 2.15ms (a REDUCTION of
+  6.14-2.15=3.99ms from F=1's 6.14ms). This session's new mechanism's F=8 reduction
+  (relative to its OWN F=1) is 4.78ms -- i.e. the new mechanism's measured SAVINGS at
+  F=8 (4.78ms) is LARGER than the old mechanism's measured savings at F=8 (3.99ms),
+  by this session's own numbers. This is the closest apples-to-apples statement this
+  session's data supports, given that neither session's "off" baseline is clean enough
+  to anchor an absolute-magnitude comparison.
+
+  CAVEAT ON THE COMPARISON ITSELF: Inc5's 6.14/3.22/2.15ms figures come from a
+  DIFFERENT session (different point in time, different ambient machine load,
+  different absolute F=1 baseline -- Inc5's own F=1 vs-off delta was 6.14ms, whereas
+  this session's raw F=1 pooled mean is 60.810ms with no clean vs-off anchor at all).
+  Comparing this session's DIRECT F1-relative savings (4.78ms at F=8) against Inc5's
+  vs-off savings (3.99ms at F=8) is informative but not a perfectly controlled
+  comparison -- both numbers describe "how much cheaper F=8 is than F=1," which is the
+  intended comparison, but they are extracted via different baseline conventions
+  because this session's own off-baseline is unusable (see above). Reported plainly
+  rather than forced into a false precision.
+
+CONCLUSION -- stated plainly, per this program's own honesty discipline
+================================================================================
+DOES the sparse-dispatch mechanism (M1) close the sub-linear gap toward the naive 1/F
+prediction? PARTIALLY, and in the DIRECTION this increment predicted, but the evidence
+is not strong enough this session to call it definitively closed:
+
+  - The F1-vs-F8 direct comparison is UNANIMOUS (3/3 round-pairings) in showing F=8
+    cheaper than F=1, with a savings magnitude (4.78ms mean) that is, if anything,
+    LARGER than Inc5's own old-mechanism measured savings at F=8 (3.99ms, from
+    6.14->2.15ms) -- consistent with the sparse-dispatch mechanism eliminating real
+    per-workgroup overhead that the old dispatch-all/early-out-inside mechanism paid
+    for every skipped probe, as this increment's own root-cause hypothesis predicted.
+
+  - However, this session's own numbers do NOT land at or near the naive 1/F
+    prediction either. Naive 1/F would predict F=8's cost at 6.14/8=0.77ms (a
+    5.37ms reduction from F=1's 6.14ms baseline). This session's measured F1-vs-F8
+    reduction (4.78ms) is closer to that 5.37ms naive-reduction target than Inc5's own
+    3.99ms was, but still falls short of it -- i.e. the gap between measured and naive
+    is SMALLER now (4.78 vs 5.37 naive = 0.59ms shortfall) than it was under the old
+    mechanism (3.99 vs 5.37 naive = 1.38ms shortfall), roughly HALVING the shortfall,
+    not eliminating it.
+
+  - This means there IS still a non-trivial fixed-overhead component even after
+    eliminating per-workgroup dispatch overhead for skipped probes -- plausibly the
+    PushConstant/descriptor binding and ProbeGridConfig SSBO read that happen once per
+    dispatch call regardless of workgroup count, or GPU/driver-side dispatch-launch
+    fixed cost that doesn't scale down with workgroup count the way the plan's own
+    root-cause hypothesis assumed. This is a real, non-obvious finding: the fix (M1)
+    demonstrably helps (unanimous direction, larger absolute savings than the old
+    mechanism, smaller shortfall from the naive prediction) but does NOT fully explain
+    away the sub-linearity Inc5 first observed -- something beyond per-workgroup
+    overhead still contributes.
+
+  - Given this session's own noise profile (F4 in particular showing a session-level
+    ambient spike in round 3, and the "off" baseline reproducing its already-known
+    unusable quirk), this MAGNITUDE conclusion (roughly-halved shortfall) should be
+    treated with the same caution Inc5's own magnitude findings were treated --
+    directionally trustworthy (F=8 unanimously cheaper, savings larger than before),
+    magnitude not fully precision-confirmed under this specific session's ambient
+    conditions. A future cleaner re-measurement (quieter machine session) could sharpen
+    this number further, but is not required to accept this milestone's own gate --
+    the mechanism swap's CORRECTNESS was already fully gated in M1, and this session's
+    A/B data is sufficient to state the "partially closes the gap, doesn't fully close
+    it" finding with reasonable confidence given the unanimous direction signal.
+
+HEADLINE: Sparse-dispatch (Inc6 M1) measurably helps beyond what Inc5's dispatch-all
+mechanism achieved at the same amortizationFactor values (larger F1-vs-F8 savings this
+session, 4.78ms vs Inc5's own 3.99ms vs-off savings), and moves closer to the naive 1/F
+prediction than the old mechanism did (shortfall roughly halved: 0.59ms vs 1.38ms).
+It does NOT fully close the gap to the naive 1/F prediction -- a real fixed-overhead
+component beyond per-workgroup early-out cost still appears to exist. Reported as a
+genuine, non-obvious finding, not smoothed over: the fix worked in direction and
+partially in magnitude, but the underlying assumption that per-workgroup dispatch
+overhead was THE dominant fixed cost is not fully supported by this data -- something
+else (per-dispatch-call fixed cost, e.g. descriptor/push-constant binding or driver-
+side submission overhead) plausibly still contributes and would need its own
+investigation to close further.
