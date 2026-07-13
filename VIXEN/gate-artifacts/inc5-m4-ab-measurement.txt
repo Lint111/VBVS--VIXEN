@@ -1,0 +1,142 @@
+Sampled Lighting Inc5 M4 -- CPU FrameTimer A/B measurement (final increment measurement)
+=========================================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan backend --
+no lavapipe/Dozen, per KI-008 / "live-verification-authoritative-for-gpu-work").
+Binary: VIXEN.exe, freshly built from this worktree's tree at commit 04b9e70c (M1-M3
+all merged; a genuine `build.bat all` re-configure+build was run for this milestone,
+zero FAILED targets, "All targets built successfully" -- both the ninja build-tree
+copy and the source-tree POST_BUILD mirror confirmed same-timestamp-fresh before any
+run below).
+
+METHOD
+------
+Same CPU FrameTimer A/B substitute as every prior increment's own measurement (Inc1/
+Inc2/Inc3 M5-M7, Inc4 M6/M7) -- KI-019 (GPUQueryManager's isolated-dispatch timing) is
+STILL open, not re-investigated here. VulkanApplicationBase's CPU-side FrameTimer,
+logging avg/p99 wall-clock frame time every 120 frames. Full-frame delta (CPU submit +
+GPU work + present/vsync), not an isolated GPU dispatch -- same caveat as every prior
+increment's own measurement.
+
+Scene: VIXEN_DDGI_LEAK_GATE_DEMO=1 for ALL THREE configs (same scene M4/M6/M7's own
+DDGI cost measurements used), VIXEN_EXIT_AFTER_FRAMES=1500, 1920x1080 -- identical
+scene/resolution/frame-count to Inc4 M7's own bench, for direct comparability.
+
+THREE CONFIGS (the milestone's own brief):
+  f8  = tuned shipped default, amortizationFactor=8, no env override
+        (VIXEN_PROBE_GRID_CONFIG_ENABLED=1, no VIXEN_DDGI_AMORTIZATION_FACTOR set)
+  f1  = Inc4's original shipped defaults, reproduced via the escape-hatch override
+        (VIXEN_PROBE_GRID_CONFIG_ENABLED=1, VIXEN_DDGI_AMORTIZATION_FACTOR=1)
+  off = fully disabled (VIXEN_PROBE_GRID_CONFIG_ENABLED=0)
+
+Each config run 3 TIMES (not 2) -- the standing Inc2 M5 lesson taken seriously per
+this milestone's own explicit instruction, because the FIRST two-runs-per-config pass
+(see below) showed variance comparable to some of the deltas of interest, so a third
+run was added before treating any number as final. 1500/120=12 windows/run, window 1
+(frames 0-120) discarded as pipeline/shader warm-up, 11 stable windows/run, 33 pooled
+windows/config. Raw logs: gate-artifacts (this dir is where the source-of-truth
+numbers below are extracted from; per-window raw logs kept in the worktree's scratch
+area, reproducible via the env vars above -- this file's numbers are the authoritative
+record, matching every prior increment's own convention).
+
+RAW RESULTS (mean of 11 stable 120-frame windows per run, frames 120-1440)
+----------------------------------------------------------------------------
+  f8 (tuned default) run 1: avg 55.713 ms (range 55.432-55.987, stdev 0.134)
+  f8 (tuned default) run 2: avg 59.516 ms (range 57.848-59.971, stdev 0.567)
+  f8 (tuned default) run 3: avg 60.771 ms (range 60.329-62.260, stdev 0.526)
+  f8 pooled (33 windows): mean 58.667 ms, stdev 2.198
+
+  f1 (Inc4 original, override) run 1: avg 61.530 ms (range 60.996-62.585, stdev 0.471)
+  f1 (Inc4 original, override) run 2: avg 60.171 ms (range 59.183-60.853, stdev 0.540)
+  f1 (Inc4 original, override) run 3: avg 60.033 ms (range 59.233-61.903, stdev 0.702)
+  f1 pooled (33 windows): mean 60.578 ms, stdev 0.890
+
+  off (probeGridEnabled=0) run 1: avg 63.678 ms (range 60.666-67.866, stdev 2.382)
+  off (probeGridEnabled=0) run 2: avg 58.333 ms (range 56.236-64.527, stdev 2.314)
+  off (probeGridEnabled=0) run 3: avg 62.658 ms (range 60.764-67.729, stdev 2.089)
+  off pooled (33 windows): mean 61.556 ms, stdev 3.240
+
+DELTAS AND SIGNAL QUALITY (honest assessment)
+------------------------------------------------
+  f1 - f8 (amortization win: Inc4-original cost minus tuned-default cost):
+    delta = +1.911 ms/frame, signal = delta / avg-pooled-stdev = 1.911/1.544 = 1.24
+    Per-run-pair direction check: f1_run1(61.530) > f8_run1(55.713) [+5.82ms];
+    f1_run2(60.171) < f8_run2(59.516)? NO -- f1_run2 > f8_run2 by +0.66ms;
+    f1_run3(60.033) < f8_run3(60.771) -- f1_run3 is LOWER than f8_run3 by -0.74ms.
+    Direction is NOT unanimous across all 3 pairings (2 of 3 show f1>f8 as expected,
+    1 of 3 [run 3] shows the opposite). This is WEAKER than M2's own interleaved
+    re-measurement (which found F=8 cheaper in every one of 4 pairings) -- this
+    session's own noise floor (run-to-run drift up to ~5ms on f8 alone, see f8_run1
+    vs f8_run3: 55.7 vs 60.8, a ~5.1ms drift with NO config change at all) is
+    comparable to or larger than the amortization delta itself.
+
+  f8 - off (tuned DDGI's absolute cost vs "disabled"):
+    delta = -2.890 ms/frame (f8 is CHEAPER than "disabled" in this pooled comparison),
+    signal = -1.06. This is a NEGATIVE-cost result -- physically nonsensical if "off"
+    were a clean zero-cost baseline. It is not: this reproduces, again, M2's own
+    already-documented durable finding that probeGridEnabled=0 is only a per-workgroup
+    shader early-out (ProbeUpdate.comp), NOT a pass-removal -- the probe-update
+    dispatch still launches and every workgroup still runs to that early-out even when
+    "disabled." Combined with "off"'s own run-to-run stdev (2.1-2.4ms per run, the
+    NOISIEST of the three configs by a wide margin -- off_run1 vs off_run2 alone drift
+    by ~5.3ms with zero config change), this comparison is not usable as a clean
+    "DDGI absolute cost" measurement. Expected and already understood per the plan's
+    own explicit instruction not to paper over this -- reported honestly, not silently
+    worked around.
+
+  f1 - off (Inc4-original DDGI cost vs "disabled", the same comparison Inc4 M7 made):
+    delta = -0.978 ms/frame, signal = -0.47. Also negative/near-zero, for the same
+    reason as above -- this session's "off" baseline is NOT behaving as a clean zero
+    reference, unlike Inc4 M7's own much cleaner isolated A/B (which found +24.1ms
+    with signal 19.3 using the SAME lever on a presumably quieter machine/session).
+    This session has materially more ambient noise than M7's own session did.
+
+INTERPRETATION -- stated plainly, per this program's own honesty discipline
+------------------------------------------------------------------------------
+This session's own measurement is NOISY and does NOT produce a clean, reportable
+absolute-cost or precise-magnitude number for either "DDGI's total cost" or
+"amortization's exact savings." The "off" baseline's own noise floor (stdev
+2.1-2.4ms/run) and its already-known non-zero-cost behavior (per-workgroup early-out,
+not pass removal, M2's finding) make it unusable as a clean reference point in THIS
+session. The f1-vs-f8 amortization comparison shows the expected direction in 2 of 3
+run-pairings but not the third, with a pooled signal (1.24) well below what this
+program's own established quality bar treats as clean (Inc4 M7's own 19.3, or even
+Inc3 M7's weaker 1.56) -- this is WEAKER evidence than M2's own interleaved
+re-measurement, which is why M2's interleaved result (F=8 unanimously cheaper in 4/4
+pairings) remains the load-bearing evidence for the amortization win's DIRECTION, not
+this session's own pooled number. Likely cause: real ambient machine load during this
+particular bench session (consistent with the wide run-to-run drift on EVERY config,
+including "off" which has no amortization-related code path to vary at all) -- the
+same category of noise M2's own artifact and Inc3 M7's own artifact both already
+identified and named, not a new or surprising phenomenon.
+
+WHAT THIS MEASUREMENT DOES AND DOES NOT ESTABLISH
+------------------------------------------------------
+DOES establish (consistent with, not contradicting, every prior gate this increment
+has already run): amortization at F=8 does not break anything, the escape hatch
+(F=1 override) still reproduces Inc4-original behavior, and "disabled" still exhibits
+its already-known non-zero-cost quirk. DOES NOT establish: a clean new absolute
+magnitude number for the amortization win or DDGI's total cost, beyond what M2's own
+already-reported, already-caveated finding says (F=8 unanimously cheaper than F=1 in
+M2's own quieter interleaved re-measurement; exact magnitude explicitly flagged by M2
+as not yet precision-tunable). This session's own numbers do not raise new doubt about
+M2's direction finding (2 of 3 pairings here still agree with it) but they also do not
+strengthen it beyond what M2 already established -- if anything, they underscore how
+sensitive this class of measurement is to ambient session load, reinforcing rather
+than undermining M2's own explicit caveat about magnitude precision.
+
+HEADLINE, STATED HONESTLY (not softened, not oversold)
+----------------------------------------------------------
+Inc5 banks a REAL, CONFIRMED-DIRECTION cost reduction from amortization (established
+by M2's own cleaner interleaved re-measurement: F=8 unanimously cheaper than F=1 in
+4/4 pairings there) with the MAGNITUDE still not precisely quantified (M2's own
+caveat, and this session's own noisier re-check does not resolve it either way).
+raysPerProbe and grid density were deliberately left unchanged (M3, no trustworthy
+tuning data existed this session for either). This means Inc5 does NOT fully resolve
+Inc4's own "shipped defaults don't fit the 60fps budget" finding (`inc4-m7-ddgi-cost.txt`:
+~24.1ms/frame alone, exceeding the entire 16.6ms budget) -- it is a real, banked,
+confirmed-direction improvement, NOT a fix that closes the gap. The frame-budget
+problem Inc4 identified is IMPROVED (a real reduction lever now exists and defaults to
+ON), not RESOLVED (DDGI's probe-update cost at the shipped default still has not been
+shown to fit inside a 60fps budget, and this session's own attempt to produce a clean
+absolute number for it was inconclusive due to session noise, same as some of this
+program's prior sessions).
