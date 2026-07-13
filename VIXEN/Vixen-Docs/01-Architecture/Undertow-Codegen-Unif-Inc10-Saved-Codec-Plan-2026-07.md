@@ -116,7 +116,7 @@ content), small but genuinely exercised in production.
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
   validator.
 
 ## Progress Log
@@ -150,3 +150,77 @@ content), small but genuinely exercised in production.
   - **Opus validator (independent re-verification):** APPROVED. Independently confirmed all 6 findings
     against real source at the cited lines, including directly checking `EmitSaveCodec.cs`'s actual
     imports to confirm the "pure C#" claim. Cleared to proceed to Milestone 2.
+
+- Milestone 2 (Task 2, build + equivalence proof + retire): DONE · 2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc10-saved`, branched off `feat/codegen-unif-inc9-codec`,
+    commit `4a73f956`): `SaveCodecEmitter.cs` (ports `EmitSaveCodec.cs`'s 223 lines line-for-line,
+    including `SaveFieldKind`/`SaveFieldInfo`/`SavedTypeInfo` IR, `SaveCodecDiscovery.Extract`/
+    `ClassifyType` mirroring `SaveCodecGenerator.cs`'s own `IFieldSymbol` walk, all diagnostics);
+    `CompilationLoader.LoadSavedClasses` (discovers `Undertow.Sim.Systems.SavedAttribute` by syntax
+    name, matching struct/class/record, same pattern as `LoadActionClasses`/`LoadEffectClasses`/
+    `LoadSystemClasses`); `Program.cs --save-codec-cs` CLI flag.
+  - **Gotcha found + fixed**: MSBuild's SDK-style implicit glob orders `@(Compile)` alphabetically by
+    PROJECT-RELATIVE path (confirmed via `dotnet msbuild -getItem:Compile`: `Ai/GrowthTrend.cs` <
+    `EconomicProfile.cs` < `Saves/_SaveGenProbe.cs`) — this differs from `.NET`'s
+    `Directory.GetFiles(..., AllDirectories)` native OS-enumeration order (a directory's own files
+    listed before descending into subdirectories). Since `SaveCodecEmitter.Emit` preserves discovery
+    order verbatim (matching the real Roslyn `ForAttributeWithMetadataName().Collect()` order), the
+    CLI had to explicitly re-sort the file list by relative path before building the Compilation, or
+    generated member order silently diverged from the real Roslyn output despite byte-identical
+    per-member content. `--schema` for this flag must point at `Undertow.Sim`'s own project dir
+    specifically (not `core/src`); `EntityId`/`NamespacedId` field-type resolution pulls in sibling
+    `Undertow.Substrate`/`Undertow.Modding` sources as reference-only trees appended AFTER the
+    primary schema files (so they cannot perturb discovery order).
+  - **Equivalence proof (all non-vacuous, real byte round-trip)**:
+    1. Real `dotnet build` of the undertow worktree captured the actual Roslyn-generated
+       `SaveCodec.g.cs` BEFORE retirement (confirmed order: `TrendCell`, `FactionPlaceKey`,
+       `_SaveGenProbe`).
+    2. CLI run against real undertow source produced output BYTE-IDENTICAL (including the BOM) to
+       the real Roslyn output — `diff` returned zero differences.
+    3. A real byte round-trip (write via generated `Save.<Type>`, read back via generated
+       `Load.<Type>` through reflection, assert field values) was proven Yeroket-side
+       (`SaveCodecEmitterTests.cs`, 7 NUnit tests) for TrendCell's 3-double object-initializer shape
+       and FactionPlaceKey's ctor-construct + multi-field-comparer shape (EntityId itself isn't
+       reproducible without `Undertow.Substrate.dll`, so a structurally-equivalent ulong stand-in
+       proved the ctor-construct/comparer SHAPE; the real EntityId classification/emission for the
+       actual type is separately covered by the CLI's direct byte-diff in step 2).
+    4. `_SaveGenProbe`'s gate/skip/custom coverage exercised explicitly: gated-field-present
+       (`loadedVersion=99 >= Intro=99`) round-trips the real value; gated-field-absent
+       (`loadedVersion=1 < Intro=99`, an old-format writer that never emits the gated bytes) proves
+       the field defaults to `0`, not stale/misaligned bytes — the version-gate DEFAULT path, not
+       just the happy path.
+    5. Both diagnostics (`UTSAVE001` unsupported field type, `UTSAVE002` gated-before-ungated)
+       exercised with deliberately malformed synthetic IR, plus a test proving one bad type's
+       diagnostics don't block a well-formed sibling type's emission.
+    - Full Yeroket `CodegenTool.Tests` suite: 76/76 passing (was 69 before this milestone).
+  - **Retired** (undertow worktree `.claude/worktrees/codegen-unif-inc10-saved`, commit `31f11a10`):
+    deleted `SaveCodecGenerator.cs` + `EmitSaveCodec.cs`. Grep confirmed no test file directly
+    references either class by name — no internals-only test file existed to delete. Checked in the
+    generated `SaveCodec.g.cs` at `core/src/Undertow.Sim/SaveCodec.g.cs` (banner byte-identical to
+    the original Roslyn `<auto-generated/>` header including the BOM — verified via direct `diff`,
+    same retirement precedent as Increment 8's `GeneratedSystems.g.cs`). `UndertowSim.cs`'s campaign
+    save/load orchestration and `CodeModLoader.cs` confirmed BYTE-IDENTICAL pre/post (empty
+    `git diff`, neither file touched — only their generated `Save.{Type}`/`Load.{Type}` callees
+    changed source, per the SaveCodec.g.cs swap alone).
+  - **Full build + test**: `core/Undertow.sln` builds 0 errors both pre- and post-retirement.
+    Full test run: 2934/2934 (`Undertow.Core.Tests`) + 21/21 (`Undertow.Vixen.Host.Tests`) = 2955
+    total, 0 failures — including all 6 real save-related test files (both distinct
+    `GrowthTrendSaveTests.cs` files in `Systems/` and `Saves/`, correctly disambiguated per
+    Milestone 1's finding, plus `EconomicProfileSaveTests.cs`, `QuestSaveTests.cs`,
+    `CampaignSaveTests.cs`, `PlayerSaveRoundTripTests.cs`, `SaveCodecGenTests.cs` — 37 targeted tests
+    isolated and re-run explicitly, 0 failures).
+  - No blockers.
+  - **Opus validator (independent re-verification, final gate of the whole program):** APPROVED.
+    Independently rebuilt undertow at the pre-retirement commit to re-derive the byte-identical
+    equivalence proof (matching sha256 including BOM/banner/member order), independently confirmed
+    the MSBuild-glob-ordering gotcha is real by reading the CLI's actual re-sort logic
+    (`Program.cs:757-759`, `OrderBy(relativePath, StringComparer.Ordinal)`), independently read
+    `SaveCodecEmitterTests.cs` and confirmed the round-trip/probe/diagnostic tests are genuinely
+    non-vacuous (real reflection-invoked field-value assertions), confirmed the retirement's
+    no-test-deletion claim via its own grep, confirmed `UndertowSim.cs`/`CodeModLoader.cs`
+    byte-identical, and independently re-ran the full test suite from a fresh state (2955/2955
+    matching exactly). One minor non-blocking doc-phrasing nit noted (the CLI's own writer doesn't
+    emit a BOM; the checked-in file's BOM comes from the original Roslyn output, not the CLI —
+    content is exact either way, the `--check` drift-guard functions correctly).
+  - **THIS IS THE FINAL MILESTONE OF THE FINAL INCREMENT (10/10) OF THE UNDERTOW CODEGEN
+    UNIFICATION PROGRAM.** Program doc updated to reflect whole-program completion.

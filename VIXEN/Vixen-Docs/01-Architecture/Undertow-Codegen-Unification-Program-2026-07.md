@@ -206,7 +206,12 @@ tracked in that increment's own plan doc once started)
   system, full retirement of all 6 generator files + 33 obsolete Roslyn-internal test cases,
   2922/2922 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc9-Content-Pack-Codec-Plan-2026-07.md`)
-- [ ] Increment 10 — #16 `[Saved]` codec (pending project-owner confirmation it's in scope at all)
+- [x] Increment 10 — #16 `[Saved]` codec (Opus-validated APPROVED Milestone 1; Milestone 2 build +
+  equivalence proof + retirement — user confirmed proceeding 2026-07-13, correcting the survey's
+  "unproven/not load-bearing" characterization; new standalone `--save-codec-cs` mechanism,
+  FULL RETIREMENT, 2934/2934 + 21/21 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc10-Saved-Codec-Plan-2026-07.md`. **THIS IS THE FINAL INCREMENT — the
+  Undertow Codegen Unification program is COMPLETE, 10/10.**
 
 ## Progress Log
 
@@ -401,10 +406,61 @@ tracked in that increment's own plan doc once started)
   independently re-run by the validator from a completely fresh state at every sub-milestone. Full
   detail: `Undertow-Codegen-Unif-Inc9-Content-Pack-Codec-Plan-2026-07.md`.
 
+- **Increment 10 — #16 `[Saved]` campaign-save codec (COMPLETE, both milestones Opus-validated
+  APPROVED). THE FINAL INCREMENT OF THE PROGRAM.** Milestone 1's research CORRECTED the survey's own
+  "unproven/not load-bearing" characterization: `[Saved]` is a real, live, tested campaign-save-game
+  codec with 2 real production types (`TrendCell`, `FactionPlaceKey`) wired into `UndertowSim.cs`'s
+  actual campaign save/load loop (`"UNDERTOW_CAMPAIGN 37"` header, `LoadedCampaignVersion` gating),
+  distinct from Increment 9's content-pack codec (a different wire format for a different concern —
+  live sim state vs. authored/baked static content; the two mechanisms were deliberately NOT unified
+  beyond their superficial `BinaryWriter`/`BinaryReader` similarity). No `CodeModLoader.cs` reflection
+  constraint applies (confirmed directly) — a genuinely new standalone emitter was correct, since the
+  field model (`[Saved]`/`[SaveField(Intro=N)]`/`[SaveSkip]`/`[SaveCustom]`) needed its own small IR
+  (`SavedTypeInfo`/`SaveFieldInfo`), not a shared IR from any prior increment. Milestone 2 ported
+  `EmitSaveCodec.cs`'s 223 lines line-for-line (`SaveCodecEmitter.cs`) plus a CLI-side
+  `SaveCodecDiscovery.Extract`/`ClassifyType` mirroring `SaveCodecGenerator.cs`'s own `IFieldSymbol`
+  walk (`CompilationLoader.LoadSavedClasses`, same discover-by-syntax-name pattern as
+  `[Action]`/`[Effect]`/`[System]`). A real gotcha surfaced and was fixed during equivalence proving:
+  MSBuild's SDK-style implicit glob orders `@(Compile)` alphabetically by PROJECT-RELATIVE path
+  (confirmed via `dotnet msbuild -getItem:Compile`), which differs from `Directory.GetFiles`'
+  native OS-enumeration order (a directory's own files before its subdirectories) — the CLI had to
+  explicitly re-sort file discovery to match, or generated member order silently diverged from the
+  real Roslyn output despite byte-identical per-member content. Equivalence proof: the CLI's output
+  against real undertow source was BYTE-IDENTICAL (including the BOM) to the real Roslyn-generated
+  `SaveCodec.g.cs` for all 3 real `[Saved]` types (`TrendCell`, `FactionPlaceKey`,
+  `_SaveGenProbe`); a genuine byte round-trip (write via generated `Save.<Type>`, read back via
+  generated `Load.<Type>`, assert field values) was proven Yeroket-side for both real production
+  type shapes; `_SaveGenProbe`'s gate/skip/custom coverage was exercised explicitly for BOTH the
+  gated-field-present and gated-field-absent (old-format stream) cases, proving the version-gate
+  default path, not just the happy path; both diagnostics (`UTSAVE001`/`UTSAVE002`) were exercised
+  with deliberately malformed synthetic IR. Full retirement (`SaveCodecGenerator.cs`/
+  `EmitSaveCodec.cs` deleted; no dedicated internals-only test file existed to delete; the checked-in
+  `SaveCodec.g.cs` follows Increment 8's exact retirement precedent, banner byte-identical to the
+  original Roslyn header) — `UndertowSim.cs`'s campaign orchestration and `CodeModLoader.cs`
+  confirmed byte-identical pre/post (empty git diff, neither file touched). All 6 real save-related
+  test files kept passing against the newly-generated checked-in code, including BOTH distinct
+  `GrowthTrendSaveTests.cs` files (`Systems/` and `Saves/`, correctly disambiguated per Milestone 1's
+  finding). 2934/2934 (`Undertow.Core.Tests`) + 21/21 (`Undertow.Vixen.Host.Tests`) = 2955 total
+  undertow tests pass, 0 failures. Full detail:
+  `Undertow-Codegen-Unif-Inc10-Saved-Codec-Plan-2026-07.md`.
+
+## PROGRAM COMPLETE — 10/10 increments (2026-07-13)
+
+Every one of the 17 features from the original survey has now been evaluated and migrated (or
+explicitly merged into an existing mechanism) into the Yeroket kernel-framework's CodegenTool. Final
+mechanism count: `[RegistrySlots]`, `[SharedMapElements]`, `--param-cs`, `--action-cs`, the def-carrier/
+bake-table/sim-registration cluster, `--test-factories-cs`, `--authoring-builders-cs`, `--effect-cs`,
+`--system-cs`, the content-pack codec cluster (`--codec-cs`/`--merge-cs`/`--patch-parser-cs`), and
+`--save-codec-cs` — a coherent, minimal-decomposition set covering every real codegen need undertow's
+original 17-generator Roslyn analyzer assembly served, per the program's own stated success metric (see
+the Note below). Every increment's equivalence proof was non-vacuous and independently re-derived by an
+Opus validator; every retirement left the full undertow test suite green. No feature was force-fit —
+Increment 1's `EmitRegistrySlots.cs` retirement was correctly deferred until Increment 5 provided the
+real dependent migration, and Increment 10's own risk label ("unproven/not load-bearing") was corrected
+by its own research before building, the same discipline applied throughout.
+
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
-- Whether #16 (`[Saved]` codec) belongs in this program at all, given it's unproven/not load-bearing —
-  ask before Increment 10 starts, don't assume.
 - View Contract Inc-5's Milestone 4 (writer/reader wire-coupling blocker) is a SEPARATE, already-scoped
   increment (typed-accessor emitter from `ViewBlob`, or migrate `main.cpp` onto `BlobView`/`ViewStore`
   directly) — not folded into this program, but its lessons directly inform Increment 9's approach here.
