@@ -4095,7 +4095,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // SpatialReuseNode READS ONLY (probeUpdateNode is the sole writer). Same CURRENT_VIEW
     // precedent as probeUpdateGatherer's own bindings 29/30 (raw VkImageView, not the
     // IRenderTarget* PROBE_ATLAS output — see ProbeAtlasNodeConfig::CURRENT_VIEW's own doc
-    // comment on why IRenderTarget* can never populate a descriptor slot, KI-027's
+    // comment on why IRenderTarget* can never populate a descriptor slot, KI-028's
     // established discipline). The genuine cross-dispatch READ hazard against
     // probeUpdateNode's write is declared separately via IMAGE_READ_ARRAY above (same split
     // IMAGE_WRITE_ARRAY/descriptor-binding already uses) — these bindings are Execute-only.

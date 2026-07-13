@@ -520,7 +520,7 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 
 ---
 
-### KI-027 — `IRenderTarget*` silently fails to populate a descriptor when routed into a descriptor-binding slot (only valid for hazard/sync slots)
+### KI-028 — `IRenderTarget*` silently fails to populate a descriptor when routed into a descriptor-binding slot (only valid for hazard/sync slots)
 
 **Discovered:** 2026-07-13, during Sampled Lighting Inc4 M3 (DDGI probe-update pass) — a live-syncval-only bug, invisible to compile-time checks and to an aggregate VUID-type census.
 
@@ -536,7 +536,7 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 
 ---
 
-### KI-028 — `probeUpdatePushConstantGatherer` never wired `instanceCount`: every probe ray was a guaranteed miss since M3 shipped
+### KI-029 — `probeUpdatePushConstantGatherer` never wired `instanceCount`: every probe ray was a guaranteed miss since M3 shipped
 
 **Discovered:** 2026-07-13, during Sampled Lighting Inc4 M4's leak-test gate (`VIXEN_DDGI_LEAK_GATE_DEMO`) — the gate's own `diagNearProbeHitCount` debug readback initially read 0 for a scene the march visibly renders, isolating the gap. Retroactive to M3 (commit `f9453b76`), NOT an M4 defect.
 
@@ -552,9 +552,9 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 
 ---
 
-### KI-029 — DDGI visibility moment poisoned by miss-sentinel depth, making the Chebyshev visibility test structurally unable to reject occlusion
+### KI-030 — DDGI visibility moment poisoned by miss-sentinel depth, making the Chebyshev visibility test structurally unable to reject occlusion
 
-**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M4's leak-test gate, immediately after KI-028's fix restored real ray hits — the Chebyshev-enabled and ablation-disabled gather readbacks were nearly identical (0.1249 vs 0.1351), meaning the leak-test scene wasn't discriminating despite hits now being real. Retroactive to M3 (commit `f9453b76`), NOT an M4 defect.
+**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M4's leak-test gate, immediately after KI-029's fix restored real ray hits — the Chebyshev-enabled and ablation-disabled gather readbacks were nearly identical (0.1249 vs 0.1351), meaning the leak-test scene wasn't discriminating despite hits now being real. Retroactive to M3 (commit `f9453b76`), NOT an M4 defect.
 
 **Symptom:** `chebyshevVisibility(mean, mean2, d)`'s `d <= mean` early-out (return fully-visible) was true for essentially any realistic test distance, regardless of actual nearby occluder geometry — the Chebyshev test could never reject a shading point as occluded.
 
@@ -570,7 +570,7 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 
 ---
 
-### KI-030 — `probe_update_push_constant_gatherer` logs a constant "Type mismatch" internal-validation line at every graph-validate, regardless of `probeGridEnabled`
+### KI-031 — `probe_update_push_constant_gatherer` logs a constant "Type mismatch" internal-validation line at every graph-validate, regardless of `probeGridEnabled`
 
 **Discovered:** 2026-07-13, during Sampled Lighting Inc4 M6's live gates — a "Type mismatch" internal validation log line fires 11× at graph-validate time on every run, independent of `VIXEN_PROBE_GRID_CONFIG_ENABLED`. Present since M3 (`f9453b76`) shipped the `probeUpdatePushConstantGatherer`, unrelated to M6's own work.
 

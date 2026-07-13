@@ -181,7 +181,7 @@ worker's job was verification + clean commit-splitting + the live gate, not re-i
 
 **TWO retroactive M3 bugs found via this milestone's own leak-test gate** (both fixed in the
 uncommitted work found on disk, verified correct, and committed as clearly-labeled retroactive
-fixes — see KI-028/KI-029 in Known-Issues.md for full detail):
+fixes — see KI-029/KI-030 in Known-Issues.md for full detail):
 
 1. **`probeUpdatePushConstantGatherer` never wired `instanceCount`** (commit `f4ce2e4e`,
    separate commit from the M4 feature) — `TraceWorld`/`TraceWorldShadow` bound their
@@ -210,7 +210,7 @@ fixes — see KI-028/KI-029 in Known-Issues.md for full detail):
 - **Tick 240 (ablation, Chebyshev test forced to visibility=1): `gatheredLuma=0.135071`** — ~8.5×
   higher, matching the unweighted `diagNearProbeAvgRadianceLuma=0.139617` (near-full leak-through
   once the mechanism under test is bypassed). DIAG fields confirm the near probe is genuinely
-  hitting geometry post-KI-028-fix: `diagNearProbeHitCount=41` (of 64 rays), sane
+  hitting geometry post-KI-029-fix: `diagNearProbeHitCount=41` (of 64 rays), sane
   `diagNearProbeAvgDepth=1.346902`/`avgDepth2=2.889341` (not sentinel-poisoned).
 - **Assessment: genuine, correctly-directioned leak rejection** — not just "the two readings
   differ," but low/near-zero when protected and high/leaking when the mechanism is disabled, in
@@ -218,7 +218,7 @@ fixes — see KI-028/KI-029 in Known-Issues.md for full detail):
 - VUID census: 4 types (`vkCmdDispatch-08114`, `vkCmdDraw-09600`, `vkQueueSubmit2-03868`,
   `vkResetFences-01123`) at 10 each (the per-type message-limit ceiling). Zero occurrences of
   binding 31 (the new debug SSBO) anywhere in the log — confirmed via instance-level grep, not
-  just an aggregate-type count (per KI-027's own established discipline). The `compute_desc_gatherer`
+  just an aggregate-type count (per KI-028's own established discipline). The `compute_desc_gatherer`
   binding-18/19/20/21-out-of-range errors present (260 occurrences each, one per frame) are the
   pre-existing KI-024 gap (a different, unrelated demo pipeline) — unchanged in kind from prior
   milestones' own gate runs.
@@ -236,7 +236,7 @@ cleanly hunk-split out of the M4 Chebyshev feature commit — the fix and the fe
 diagnostic instrumentation (`sampleHit`/`sharedHitCount` plumbing) are woven through the same
 ray-loop and shared-memory-reduction code, and a mechanical hunk split risked landing a
 non-compiling intermediate commit. Chose one clearly-labeled feature commit (with the fix
-explicitly called out in the commit message and cross-referenced in KI-029) over a
+explicitly called out in the commit message and cross-referenced in KI-030) over a
 bisectability guarantee that would have required hand-editing shader control flow — the
 push-constant fix (#1), which WAS cleanly separable, is its own dedicated commit.
 
