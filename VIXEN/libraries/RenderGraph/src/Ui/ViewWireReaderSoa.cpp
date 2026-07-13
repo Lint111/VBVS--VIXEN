@@ -85,6 +85,13 @@ bool ViewWireReaderSoa::Apply(std::span<const std::byte> wire, ViewStore& store)
             case ViewKind::Float:  { float v = c.F32(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::F(v)); break; }
             case ViewKind::Bool:   { bool v = c.Bool(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::B(v)); break; }
             case ViewKind::String: { std::string v = c.Str(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::S(std::move(v))); break; }
+            case ViewKind::Vector: {
+                // 3 consecutive F32s (x,y,z), declared field order -- the wire's own field-loop
+                // structure carries no special Vector framing beyond "read 3 floats instead of 1".
+                Vec3f v; v.x = c.F32(); if (!c.ok) break; v.y = c.F32(); if (!c.ok) break; v.z = c.F32(); if (!c.ok) break;
+                store.SetScalar(f.name, ViewValue::Vec(v));
+                break;
+            }
             case ViewKind::ArrayOfStruct: {
                 uint32_t rows = c.U32();
                 if (!c.ok) break;

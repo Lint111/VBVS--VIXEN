@@ -9,8 +9,11 @@
 namespace Vixen::RenderGraph {
 
 // One fixed-layout cell per element field; BlobView binds a ScalarDefinition to the active member
-// by the field's kind. Only the member matching the field kind is ever read.
-struct ViewCell { int i = 0; float f = 0.0f; bool b = false; Rml::String s; };
+// by the field's kind. Only the member matching the field kind is ever read. `vec` is a Vector-kind
+// cell (3 floats); struct-array elements can't declare a Vector-kind column today (only top-level
+// Vector fields are wired -- View Contract Inc-5b Milestone 2.4 scope), but the member lives here
+// alongside i/f/b/s so ViewRow's per-element cell layout stays uniform across all ViewKinds.
+struct ViewCell { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; };
 
 struct ViewRow {
     std::vector<ViewCell> cells;
@@ -41,7 +44,7 @@ public:
     void* ArraySlotPtr(size_t fieldIndex) { return &Array(fieldIndex); }
 
 private:
-    struct ScalarSlot { int i = 0; float f = 0.0f; bool b = false; Rml::String s; };
+    struct ScalarSlot { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; };
     int FindField(std::string_view name) const;      // -1 if absent
     int FindElemField(size_t fieldIndex, std::string_view name) const;
 

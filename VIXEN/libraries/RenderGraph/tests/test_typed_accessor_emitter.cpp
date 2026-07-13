@@ -2,6 +2,8 @@
 #include "Ui/ViewStore.h"
 #include "Generated/Hud.blob.g.h"           // Vixen::Views::kHudBlob (version 0x55D27B8C)
 #include "Generated/HudTypedAccessor.g.h"   // Vixen::Views::HudSection (View Contract Inc-5b Milestone A)
+#include "Generated/VectorProof.blob.g.h"   // Vixen::Views::kVectorProofBlob (Milestone 2.4b Vector proof)
+#include "Generated/VectorProof.typed.g.h"  // Vixen::Views::VectorProofSection
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <cstring>
@@ -109,4 +111,43 @@ TEST(TypedAccessorEmitter, GeneratedAccessorsMatchRawStoreDecodedValues) {
     EXPECT_EQ(hud.events_tick(0), 40);
     EXPECT_EQ(hud.events_kind(1), "truce");
     EXPECT_EQ(hud.events_tick(1), 99);
+}
+
+namespace {
+
+// Wire bytes for a single-field VectorProof model: header (UTVA + version + fieldCount=1) then 3
+// consecutive F32s (x,y,z) for the one Vector-kind field -- byte-for-byte what
+// ViewWireReaderSoa.cpp's ViewKind::Vector case (and the C# ViewWriterEmitter/ViewWireFormat's
+// EmitVector) both produce/expect. Non-trivial, non-zero-in-every-component value (1.5, -2.25, 3.0)
+// so a wrong-component/mis-swapped-axis bug shows up as a wrong VALUE, not just "it didn't crash".
+std::vector<std::byte> VectorProofWire(uint32_t version, float x, float y, float z) {
+    WB w;
+    w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
+    w.u32(version);
+    w.u32(1);           // top-field count
+    w.f32(x); w.f32(y); w.f32(z);
+    return w.b;
+}
+
+}  // namespace
+
+// Milestone 2.4b proof (View Contract Inc-5b): full round-trip for a genuine ViewKind::Vector
+// field -- decode via ViewWireReaderSoa::Apply (the new Vector decode case) into a ViewStore, then
+// read back via the NEW GENERATED Vixen::Views::VectorProofSection accessor (TypedAccessorEmitter's
+// new Vector-field getter, returning the header-local Vec3f). Proves the two new C++ decode/read
+// halves (ViewBlob.h's ViewKind::Vector + ViewStore's Vector-kind ScalarSlot + the reader's Vector
+// case + the emitted accessor) agree end-to-end on a non-trivial, non-zero-in-every-component value.
+TEST(TypedAccessorEmitter, VectorFieldRoundTripsExactly) {
+    const auto& blob = Vixen::Views::kVectorProofBlob;
+    ViewStore store(blob, blob.version);
+    auto wire = VectorProofWire(blob.version, 1.5f, -2.25f, 3.0f);
+
+    ASSERT_TRUE(ViewWireReaderSoa::Apply(wire, store));
+
+    Vixen::Views::VectorProofSection proof(store);
+    Vixen::Views::Vec3f v = proof.position();
+
+    EXPECT_FLOAT_EQ(v.x, 1.5f);
+    EXPECT_FLOAT_EQ(v.y, -2.25f);
+    EXPECT_FLOAT_EQ(v.z, 3.0f);
 }
