@@ -161,6 +161,85 @@ no Chebyshev test applied yet) per the plan's own "your call, don't force it" M3
 write it since the same ray-cast pass already has the hit distance in hand at zero extra
 ray-cast cost.
 
+## M4 Findings (2026-07-13, implementer pass — resumed after a dropped worker)
+
+**DONE.** Chebyshev's-inequality visibility test (`chebyshevVisibility`) + a minimal
+standalone self-test gather (`gatherProbeIrradianceLuma`) added to `shaders/ProbeUpdate.comp`,
+gated behind a new `ddgi_leak_gate_debug_buffer` SSBO (binding 31). New
+`VIXEN_DDGI_LEAK_GATE_DEMO` scene in `BuildRenderGraph.cpp`: an emissive-sphere source + a
+hand-authored thin-wall box SDF occluder, with a near (unoccluded) probe and a far (occluded)
+shading point picked to land inside `ProbeGridConfigNode`'s default grid coverage. Readback
+hook in `VulkanGraphApplication.cpp` seeds per-tick params and reads `gatheredLuma` at tick 120
+(Chebyshev test enabled) and tick 240 (ablation: force visibility=1) — commit `54d59dc8`.
+
+**Session handoff note:** this milestone's implementer session dropped mid-work without
+committing; a second implementer resumed from the 541 uncommitted lines left on disk, verified
+each claimed piece against the actual diff (rather than trusting the dropped worker's own
+self-report), and completed the milestone from there. Both retroactive M3 fixes described below
+were already present, correctly implemented, in the uncommitted working tree — the resuming
+worker's job was verification + clean commit-splitting + the live gate, not re-implementation.
+
+**TWO retroactive M3 bugs found via this milestone's own leak-test gate** (both fixed in the
+uncommitted work found on disk, verified correct, and committed as clearly-labeled retroactive
+fixes — see KI-028/KI-029 in Known-Issues.md for full detail):
+
+1. **`probeUpdatePushConstantGatherer` never wired `instanceCount`** (commit `f4ce2e4e`,
+   separate commit from the M4 feature) — `TraceWorld`/`TraceWorldShadow` bound their
+   scene-instance loop by `pc.instanceCount`, unconnected since M3 shipped, meaning EVERY probe
+   ray was a guaranteed miss for every scene. M3's own gate never caught this because it only
+   checked "probes visibly light a scene" qualitatively — a render happens either way, zero
+   ray-hit contribution just reads as dim rather than obviously broken. Fixed by wiring
+   `BodyOctreeSceneNode::INSTANCE_COUNT` to binding 10, mirroring `DirectLightingNode`'s own
+   identical wiring exactly.
+2. **Visibility moment poisoned by an unconditional miss-sentinel depth** (bundled in the M4
+   feature commit `54d59dc8`, clearly labeled in that commit's message as a retroactive M3 fix)
+   — M3 mixed a large miss-sentinel depth (1e4/1e8) into the SAME scalar depth/depth² average
+   used for real hit distances, structurally guaranteeing `chebyshevVisibility`'s `d <= mean`
+   early-out was always true (fully visible) for any probe with a normal miss fraction. Fixed by
+   excluding misses entirely from the visibility-moment accumulation (new `sampleHit`/
+   `sharedHitCount` tracking, hit-count-weighted averaging) — the irradiance accumulation's own
+   miss handling was unchanged (already correct).
+
+**Live-gate results (real GPU, Windows-native, `VIXEN_VULKAN_VALIDATION=1`,
+`VIXEN_DDGI_LEAK_GATE_DEMO=1` + `VIXEN_PROBE_GRID_CONFIG_ENABLED=1`, 260 frames):**
+- Scene build: `nearProbeIndex=218 farProbeIndex=219 farShadingPos=(12,12,12)` — near probe
+  before the wall (unoccluded from the source), far probe/shading point past the wall's far face
+  (occluded).
+- **Tick 120 (Chebyshev test enabled): `gatheredLuma=0.015836`** — low, correctly rejecting the
+  occluded far shading point when gathered from the near probe's atlas entry.
+- **Tick 240 (ablation, Chebyshev test forced to visibility=1): `gatheredLuma=0.135071`** — ~8.5×
+  higher, matching the unweighted `diagNearProbeAvgRadianceLuma=0.139617` (near-full leak-through
+  once the mechanism under test is bypassed). DIAG fields confirm the near probe is genuinely
+  hitting geometry post-KI-028-fix: `diagNearProbeHitCount=41` (of 64 rays), sane
+  `diagNearProbeAvgDepth=1.346902`/`avgDepth2=2.889341` (not sentinel-poisoned).
+- **Assessment: genuine, correctly-directioned leak rejection** — not just "the two readings
+  differ," but low/near-zero when protected and high/leaking when the mechanism is disabled, in
+  the direction the design's own leak-test gate requirement demands.
+- VUID census: 4 types (`vkCmdDispatch-08114`, `vkCmdDraw-09600`, `vkQueueSubmit2-03868`,
+  `vkResetFences-01123`) at 10 each (the per-type message-limit ceiling). Zero occurrences of
+  binding 31 (the new debug SSBO) anywhere in the log — confirmed via instance-level grep, not
+  just an aggregate-type count (per KI-027's own established discipline). The `compute_desc_gatherer`
+  binding-18/19/20/21-out-of-range errors present (260 occurrences each, one per frame) are the
+  pre-existing KI-024 gap (a different, unrelated demo pipeline) — unchanged in kind from prior
+  milestones' own gate runs.
+
+**Regression gates, re-run clean:**
+- `VIXEN_RESTIR_GATE_DEMO=1` + `VIXEN_PROBE_GRID_CONFIG_ENABLED=1`, 400 frames: clean exit
+  (EXITCODE=0), 9 pre-existing VUID types at 10 each, clean deinit.
+- `VIXEN_FANIN_DEMO=1`, 200 frames: clean exit, **zero validation errors**.
+- Default boot (no env vars), 120 frames: clean exit, 7 pre-existing VUID types at 10 each —
+  matches the established default-path baseline (`ProbeGridConfig.enabled=0` byte-identity
+  escape hatch, no DDGI atlas traffic on this path).
+
+**Deviation from the plan's own M4 note:** the miss-exclusion fix (#2 above) could not be
+cleanly hunk-split out of the M4 Chebyshev feature commit — the fix and the feature's own
+diagnostic instrumentation (`sampleHit`/`sharedHitCount` plumbing) are woven through the same
+ray-loop and shared-memory-reduction code, and a mechanical hunk split risked landing a
+non-compiling intermediate commit. Chose one clearly-labeled feature commit (with the fix
+explicitly called out in the commit message and cross-referenced in KI-029) over a
+bisectability guarantee that would have required hand-editing shader control flow — the
+push-constant fix (#1), which WAS cleanly separable, is its own dedicated commit.
+
 ## Self-Review
 
 - **Why the TraceWorld-reusability prereq first?** Every prior increment's own prereq milestone (Inc1 KI-018, Inc3 KI-023) isolated a structural blocker on a byte-identical gate before the increment's actual novel logic — Inc4's structural blocker is that no standalone (non-march) compute shader can currently pull in the scene-binding chain `TraceWorld` needs. Isolating it first means the probe-ray-casting logic (M3) lands on a proven scaffold, not tangled with a plumbing bug.
