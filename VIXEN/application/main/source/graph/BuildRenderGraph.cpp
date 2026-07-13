@@ -16,6 +16,7 @@
 #include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
 #include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
+#include "graph/CornellBoxSceneDefinition.h"  // Sampled Lighting Cornell Box Demo M1: shared scene-definition constants (M1+M2 both read this verbatim)
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
@@ -1145,6 +1146,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           "wiring -- camera stays in FIXED mode so the Task 19 scripted "
                           "SetPositionForTest flight path is authoritative, not overridden by "
                           "an orbit-mode recompute every frame");
+    }
+    // Sampled Lighting Cornell Box Demo M1: shared camera preset (ONE source, both
+    // VIXEN_DDGI_CORNELL_BAKED_DEMO and M2's VIXEN_DDGI_CORNELL_VIRTUAL_DEMO read the SAME
+    // CornellBoxSceneDefinition.h constants). BuildRenderGraph.cpp's own stale "Camera presets
+    // for Cornell box" comment above (PRESET 1, world grid [0,128] / center (64,64,64)) is the
+    // LEGACY VoxelGridNode/CashSystem "cornell" scene type (BuildRenderGraph.cpp's own
+    // PARAM_SCENE_TYPE default, wired at VIXEN_SCENE below) -- confirmed unrelated to
+    // BodyOctreeSceneNode/DDGI (DDGI's pipeline never reads VoxelGridNode's scene type at all,
+    // per this program's own plan doc "Grounding from codebase investigation"), NOT reused here.
+    // Orbit mode, yaw=0 (CameraNode.cpp's own convention: yaw=0 -> cameraPosition = orbitCenter
+    // + (0,0,orbitDistance), camera on the +Z side looking toward -Z/orbitCenter) -- the box's
+    // +Z face is the deliberately-open one (CornellBoxSceneDefinition.h's own wall layout), so
+    // a yaw=0 camera sits just outside that open face looking straight in, no yaw override
+    // needed (CameraNodeConfig::PARAM_YAW already defaults to 0 from SetupImpl above).
+    if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") || std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO")) {
+        using namespace Vixen::App::CornellBox;
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, kCameraOrbitCenter.x);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, kCameraOrbitCenter.y);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, kCameraOrbitCenter.z);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, kCameraOrbitDistance);
+        camera->SetParameter(CameraNodeConfig::PARAM_FOV, kCameraFovDegrees);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_*_DEMO: orbitCenter set to shared "
+                          "Cornell box center, framed straight into the open +Z face");
     }
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
@@ -2830,6 +2854,255 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
             }
+        } else if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
+            // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).
+            // Plan: Vixen-Docs/01-Architecture/Sampled-Lighting-Cornell-Box-Demo-Plan-2026-07.md
+            //
+            // Geometry/color/camera/probe-grid numbers all come from ONE shared source
+            // (application/main/include/graph/CornellBoxSceneDefinition.h) — M2's virtual
+            // variant reads the SAME header verbatim, so "ideally visually identical" is
+            // enforced by construction (see that header's own file comment).
+            //
+            // M1 recipe-VM investigation findings (load-bearing for M2, documented here so
+            // the answer lives beside its first real use):
+            //   (a) Box primitive: RoundedBox (opcode 12, data[0..2]=halfExtents, data[3]=
+            //       rounding, data[4..6]=position) already exists in the generated SdfOpCode
+            //       catalogue (SdfOpCodes.g.h) and is whitelisted for occupancy-grid/bound
+            //       derivation (RecipeBounds.h/RecipeOccupancy.h) — used here for every wall/
+            //       light/box-object instead of plain Box (opcode 1, no position field, needs
+            //       an extra Transform wrapper that would drop out of the whitelist). No new
+            //       opcode needed — the plan's own "no RECIPE_BOX exists" note referred to the
+            //       OLD SdfRecipes.h RecipeId enum (Inc1's RECIPE_SPHERE/RECIPE_DISPLACED_SPHERE),
+            //       a separate, simpler, now-superseded system from this real recipe-VM.
+            //   (b) Emission: NO emission opcode or per-recipe material tag exists anywhere in
+            //       the recipe-VM (SdfOpCode catalogue, RecipeRegistry::RecipeEntry) — emission
+            //       is purely a CPU-side BAKE-TIME concept (SdfBake.h's EmitFn lambda writing
+            //       the SEM_EMISSION voxel channel), entirely independent of the geometry
+            //       recipe's own bytecode. This milestone added
+            //       BakeRecipeInstructionsToSdfWorldWithEmission (SdfBake.h) — the same EmitFn
+            //       overload BakeRecipeToSdfWorldWithEmission already had for the OLD analytic
+            //       RecipeId path, now also available for real SdfInstruction[] programs — so
+            //       the ceiling light body can be both a real recipe program (satisfying M2's
+            //       virtual-path requirement) AND carry emission (for the light-tree feed). M2
+            //       registers the SAME light recipe via RecipeRegistry for the virtual path,
+            //       but since RecipeEntry carries no emission field, M2's light-tree-equivalent
+            //       behavior (if any) must be handled as a separate per-instance mechanism, not
+            //       via the recipe program.
+            //
+            // Multi-body assembly mirrors VIXEN_DDGI_LEAK_GATE_DEMO's own established shape
+            // (this file, above): bake each body separately (BakeRecipeInstructionsToSdfWorld
+            // / …WithEmission), BuildSdfBodyOctree per body, ConcatenateSdfWithMips across all
+            // bodies, BuildLightTreeCut over the emissive body only, SetRecipePool +
+            // SetInstances. 8 bodies here (5 walls + 1 light + 2 objects) vs. the leak-gate
+            // scene's 2 — same mechanism, more bodies.
+            using namespace Vixen::App::CornellBox;
+            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: building the Cornell "
+                              "box GI reference scene (baked/octree variant)");
+
+            constexpr int   kN    = 64;
+            constexpr float kBand = 2.0f;
+            // SerializeSdf/ShellOctreeGpu's localToWorld ALWAYS scales an octree's local [0,1]
+            // (== bake-grid [0,kN)) to a FIXED world span of kWorldGridSize=10 before renderScale
+            // is applied (ShellOctreeGpu.h:484 "constexpr float kWorldGridSize = 10.0f" -- the
+            // SAME fixed constant VIXEN_DDGI_LEAK_GATE_DEMO's own rescale comment documents,
+            // this file ~line 3153). This means grid coordinate g maps to world coordinate
+            // worldPos + (g/kN)*kWorldGridSize*renderScale, REGARDLESS of what units the recipe
+            // program itself was authored in -- a recipe authored directly in "world-looking"
+            // numbers (e.g. box half-extent 10.0) does NOT render at that true world scale
+            // unless renderScale compensates for the fixed 10-unit squash. This bit an earlier
+            // draft of this block (an M1 self-review before the live gate): recipes were
+            // authored at CornellBoxSceneDefinition.h's own world-unit numbers with
+            // renderScale=1, which would have squashed the whole ~26-unit box into a 10-unit
+            // world footprint.
+            constexpr float kWorldGridSize = 10.0f;  // ShellOctreeGpu.h's fixed octree-local->world span
+
+            // Fix: choose renderScale = kN/kWorldGridSize so grid coordinate g maps back to
+            // world coordinate g EXACTLY (world = (g/kN)*kWorldGridSize*(kN/kWorldGridSize) = g)
+            // -- an identity map. This lets every body's recipe program be authored directly
+            // using CornellBoxSceneDefinition.h's own WORLD-unit numbers (kBoxCenter,
+            // kBoxHalfExtent, kLightCenter, etc.) with NO unit conversion, as long as kN is large
+            // enough to cover the whole scene's world-space extent as grid coordinates (kN=64
+            // covers grid/world [0,64) on every axis -- the box sits at [6,26], comfortably
+            // inside with margin for the narrow band).
+            const float kRenderScale = static_cast<float>(kN) / kWorldGridSize;  // = 6.4
+            const glm::vec3 kInstanceWorldPos(0.0f, 0.0f, 0.0f);
+
+            // bakeCenter: BakeRecipeInstructionsToSdfWorld/…WithEmission evaluate
+            // evalRecipe(prog, count, p - center) where p is the ABSOLUTE grid sample point in
+            // [0,kN) -- passing center=(0,0,0) means p reaches evalRecipe UNCHANGED, so every
+            // recipe program below (authored at CornellBoxSceneDefinition.h's own absolute
+            // world-unit coordinates, e.g. kBoxCenter=(16,16,16)) is evaluated at that SAME
+            // absolute grid coordinate -- exactly the identity this block's renderScale fix
+            // above depends on.
+            const glm::vec3 kBakeCenter(0.0f, 0.0f, 0.0f);
+
+            auto bakeWallOrObject = [&](const std::vector<Vixen::SVO::Recipe::SdfInstruction>& prog) {
+                Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeInstructionsToSdfWorld(
+                    prog.data(), static_cast<uint32_t>(prog.size()), kBakeCenter, kN, kBand);
+                return Vixen::SVO::BuildSdfBodyOctree(baked, 3);
+            };
+
+            auto roundedBoxAt = [](glm::vec3 c, glm::vec3 he, float rounding) {
+                Vixen::SVO::Recipe::SdfInstruction in{};
+                in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::RoundedBox);
+                in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z; in.data[3] = rounding;
+                in.data[4] = c.x;  in.data[5] = c.y;  in.data[6] = c.z;
+                return in;
+            };
+            auto sphereAt = [](glm::vec3 c, float r) {
+                Vixen::SVO::Recipe::SdfInstruction in{};
+                in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+                in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+                return in;
+            };
+
+            constexpr float kRounding = 0.15f;
+            const float kb = kBoxHalfExtent;  // interior half-extent, shared-definition constant
+
+            // 5 walls, each a thin RoundedBox slab flush against one face of the box interior,
+            // recessed by kWallThickness so the interior remains exactly [kBoxCenter +/- kb].
+            // Left (-X, red), Right (+X, green), Back (-Z), Floor (-Y), Ceiling (+Y) — the +Z
+            // face is deliberately OPEN (no wall) so the camera can see into the box.
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> leftWallProg = {
+                roundedBoxAt(glm::vec3(kBoxCenter.x - kb - kWallThickness, kBoxCenter.y, kBoxCenter.z),
+                             glm::vec3(kWallThickness, kb, kb), kRounding)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> rightWallProg = {
+                roundedBoxAt(glm::vec3(kBoxCenter.x + kb + kWallThickness, kBoxCenter.y, kBoxCenter.z),
+                             glm::vec3(kWallThickness, kb, kb), kRounding)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> backWallProg = {
+                roundedBoxAt(glm::vec3(kBoxCenter.x, kBoxCenter.y, kBoxCenter.z - kb - kWallThickness),
+                             glm::vec3(kb, kb, kWallThickness), kRounding)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> floorProg = {
+                roundedBoxAt(glm::vec3(kBoxCenter.x, kBoxCenter.y - kb - kWallThickness, kBoxCenter.z),
+                             glm::vec3(kb, kWallThickness, kb), kRounding)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> ceilingProg = {
+                roundedBoxAt(glm::vec3(kBoxCenter.x, kBoxCenter.y + kb + kWallThickness, kBoxCenter.z),
+                             glm::vec3(kb, kWallThickness, kb), kRounding)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> sphereObjProg = {
+                sphereAt(kSphereObjectCenter, kSphereObjectRadius)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> boxObjProg = {
+                roundedBoxAt(kBoxObjectCenter, kBoxObjectHalfExtent, kRounding)
+            };
+            std::vector<Vixen::SVO::Recipe::SdfInstruction> lightProg = {
+                roundedBoxAt(kLightCenter, kLightHalfExtent, 0.05f)
+            };
+
+            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeWallOrObject(leftWallProg);
+            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeWallOrObject(rightWallProg);
+            Vixen::SVO::SdfBodyOctree backWallBody   = bakeWallOrObject(backWallProg);
+            Vixen::SVO::SdfBodyOctree floorBody      = bakeWallOrObject(floorProg);
+            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeWallOrObject(ceilingProg);
+            Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeWallOrObject(sphereObjProg);
+            Vixen::SVO::SdfBodyOctree boxObjBody     = bakeWallOrObject(boxObjProg);
+
+            // Light body: baked WITH emission (constant intensity across its whole volume —
+            // the ceiling-recessed box IS the emitter, no separate "emissive surface only"
+            // distinction at this milestone's fidelity).
+            Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeRecipeInstructionsToSdfWorldWithEmission(
+                lightProg.data(), static_cast<uint32_t>(lightProg.size()), kBakeCenter, kN, kBand,
+                [](const glm::vec3&) { return kLightEmissionIntensity; });
+            Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
+
+            const Vixen::SVO::Octree* lightOct = lightBody.octree->getOctree();
+            if (lightOct == nullptr) {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: light body octree is null -- scene not built");
+            } else {
+                Vixen::SVO::SerializedOctree lightSer = Vixen::SVO::SerializeSdf(lightBody);
+                Vixen::SVO::BakeAndAttachMipPool(*lightOct, lightSer);
+                Vixen::SVO::MipPool lightMipPool = Vixen::SVO::BakeMipPool(*lightOct, lightSer);
+
+                Vixen::SVO::LightTreeCutParams cutParams;
+                cutParams.powerThreshold = 0.001f;  // same fine-cut rationale as VIXEN_DDGI_LEAK_GATE_DEMO
+                std::vector<Vixen::SVO::LightTreeNode> cut =
+                    Vixen::SVO::BuildLightTreeCut(*lightOct, lightSer, lightMipPool, kN, cutParams);
+
+                // Grid->world transform for the light-tree cut, mirroring the SAME formula
+                // this block's own header comment derives for body geometry (world =
+                // worldPos + (grid/kN)*kWorldGridSize*renderScale) -- the light-tree cut's own
+                // worldPos/worldExtent fields are in the light body's bake-grid frame and need
+                // the IDENTICAL transform the light body's own BodyInstanceGpu (worldPos=(0,0,0),
+                // renderScale=kN/kWorldGridSize) applies, or the light-tree's stashed cut
+                // (read by ProbeUpdate.comp for shading) would disagree with where the light
+                // BODY geometry actually renders -- the exact class of bug
+                // VIXEN_DDGI_LEAK_GATE_DEMO's own header comment warns about (an unrescaled cut
+                // silently lands outside the probe grid's [0,32) coverage).
+                std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                worldCut.reserve(cut.size());
+                for (const auto& node : cut) {
+                    Vixen::SVO::LightTreeNode w = node;
+                    w.worldPos = kInstanceWorldPos + (node.worldPos / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
+                    w.worldExtent = (node.worldExtent / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
+                    worldCut.push_back(w);
+                }
+
+                if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
+                    lightTreeInst->SetLightTreeCut(worldCut);
+                }
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: light-tree cut=" +
+                                  std::to_string(cut.size()) + " nodes");
+
+                std::vector<const Vixen::SVO::SdfBodyOctree*> octreesForCat = {
+                    &leftWallBody, &rightWallBody, &backWallBody, &floorBody, &ceilingBody,
+                    &lightBody, &sphereObjBody, &boxObjBody,
+                };
+                Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+
+                auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color) {
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.worldPos[0] = kInstanceWorldPos.x;
+                    inst.worldPos[1] = kInstanceWorldPos.y;
+                    inst.worldPos[2] = kInstanceWorldPos.z;
+                    inst.renderScale = kRenderScale;
+                    inst.color[0] = color.x; inst.color[1] = color.y; inst.color[2] = color.z;
+                    inst.octreeIndex = octreeIdx;
+                    inst.providerKind = 0u;  // PROVIDER_STORED
+                    inst.recipeId = 0u;
+                    return inst;
+                };
+                std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+                    makeInstance(0u, kLeftWallColor),
+                    makeInstance(1u, kRightWallColor),
+                    makeInstance(2u, kNeutralWallColor),   // back
+                    makeInstance(3u, kNeutralWallColor),   // floor
+                    makeInstance(4u, kNeutralWallColor),   // ceiling
+                    makeInstance(5u, kLightColor),
+                    makeInstance(6u, kSphereObjectColor),
+                    makeInstance(7u, kBoxObjectColor),
+                };
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(cat));
+                    bodyScene->SetInstances(std::move(instances));
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: seeded 8 body "
+                                      "instances (5 walls + 1 ceiling light + 2 objects)");
+                }
+            }
+            // Force-enable the DDGI probe grid for this demo -- ProbeGridConfigNode.cpp's own
+            // MakeDefaultProbeGridConfig defaults probeGridEnabled=0 and only reads
+            // VIXEN_PROBE_GRID_CONFIG_ENABLED independently later in the SAME process (its own
+            // SetupImpl, not called from here) -- setting it here means this demo's whole point
+            // (visually inspect DDGI GI quality) works from ONE env var, without the operator
+            // needing to separately remember VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (an easy miss that
+            // would silently render the box with probeGridEnabled=0 -- no bounce lighting at all,
+            // a false-negative-looking "it doesn't work" report). Mirrors
+            // VIXEN_DDGI_LEAK_GATE_DEMO's own reliance on that lever (that gate's own comment,
+            // this file ~line 3016, documents the SAME dependency but relies on the operator
+            // setting it manually since that gate is a numeric/CPU-readback proof, not a live
+            // visual demo). _putenv_s (not setenv) for MSVC CRT portability.
+#if defined(_WIN32)
+            _putenv_s("VIXEN_PROBE_GRID_CONFIG_ENABLED", "1");
+#else
+            setenv("VIXEN_PROBE_GRID_CONFIG_ENABLED", "1", 1);
+#endif
+            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: force-enabled "
+                              "VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (probe grid must be on for this "
+                              "demo's own point -- visible bounce lighting -- to be visible at all)");
         } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO") || std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
             // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
             // near/far indices) for the edit-loop responsiveness gate when
