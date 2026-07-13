@@ -192,7 +192,13 @@ tracked in that increment's own plan doc once started)
   namespace-vs-directory bucket-discrimination bug during build; both real call sites
   + `CodeModLoader.cs` confirmed untouched, 2950/2950 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc7-Effect-Registration-Plan-2026-07.md`)
-- [ ] Increment 8 — #15 `[System]` schedule solver
+- [x] Increment 8 — #15 `[System]` schedule solver (Opus-validated APPROVED both milestones; the
+  program's own "novel algorithm" risk label was corrected — `SystemScheduleSolver` is textbook
+  Kahn's topological sort, verbatim-ported; 37 real sites (not the estimated 34); byte-identical
+  equivalence + all 5 diagnostics + a synthetic `Before`-only test (real data was 100% `After`);
+  `CodeModLoader.cs`'s Order/Before-After mod-load asymmetry confirmed unchanged, not silently
+  fixed; 2942/2942 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc8-System-Scheduler-Plan-2026-07.md`)
 - [ ] Increment 9 — #4/#5/#6 Content-pack codec + Merge + Patch-parser (cluster)
 - [ ] Increment 10 — #16 `[Saved]` codec (pending project-owner confirmation it's in scope at all)
 
@@ -337,6 +343,31 @@ tracked in that increment's own plan doc once started)
   the WorldGraph-only half) confirmed byte-identical pre/post, along with `CodeModLoader.cs`.
   2950/2950 undertow tests pass, independently re-run by the validator from a clean state. Full detail:
   `Undertow-Codegen-Unif-Inc7-Effect-Registration-Plan-2026-07.md`.
+
+- **Increment 8 — #15 `[System]` schedule solver (COMPLETE, both milestones Opus-validated APPROVED).**
+  This program's own risk label for the increment — "novel algorithm, no Yeroket analog" — was CORRECTED
+  by research before any building began: `SystemScheduleSolver.cs` is a textbook stable Kahn's-algorithm
+  topological sort, phase-bucketed with `(Order, Id)`-sorted deterministic tiebreaking, already
+  Roslyn-independent and unit-tested standalone — mechanically portable, not a hard algorithmic problem.
+  The real difficulty was that Yeroket had no phase-bucketed scheduling CAPABILITY at all (net-new, not
+  a hard port). Confirmed 37 real `[System(...)]` sites (not the survey/plan's estimated 34 — one file,
+  `CoarseHistoryResolverSystems.cs`, holds 4 classes), forming 3 independent linear dependency chains
+  with ZERO cycles or diamonds — and the 11 real `Before`/`After` edges are 100% `After`, 0% `Before`,
+  so the equivalence proof needed a deliberately-added SYNTHETIC `Before`-only test to cover a codepath
+  real data never exercises. Extended Increment 4/7's `CompilationLoader`/dispatch-table-emitter pattern
+  with a verbatim standalone port of the solver (including its `PhaseRank` KEEP-IN-SYNC duplication) and
+  all 5 diagnostics (`UTSYS002`-`UTSYS006`). **Found and deliberately did NOT touch a genuine pre-existing
+  design gap**: `CodeModLoader.cs`'s mod-load path registers systems with raw declared `Order` only,
+  never calling the solver or reading `Before`/`After` at all — an asymmetry between first-party
+  (solved) and mod-loaded (unsolved) system ordering that predates this increment and was explicitly
+  scoped OUT (documented, not silently "fixed," since fixing it would be a real behavior change beyond
+  equivalence). Full retirement (`SystemRegistrationGenerator.cs`/`EmitRegisterSystems.cs`/
+  `SystemScheduleSolver.cs` deleted; their tests PORTED to Yeroket rather than dropped, since a solver
+  this load-bearing warranted keeping its own unit tests alongside the port) — byte-identical
+  equivalence for all 37 real sites (validator independently re-derived via its own fresh Roslyn
+  rebuild), `CodeModLoader.cs` confirmed zero-diff including the asymmetry's exact unchanged behavior.
+  2942/2942 undertow tests pass. Full detail:
+  `Undertow-Codegen-Unif-Inc8-System-Scheduler-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
