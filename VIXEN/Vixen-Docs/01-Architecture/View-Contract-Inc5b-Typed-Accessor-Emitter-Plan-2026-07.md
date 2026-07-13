@@ -127,7 +127,7 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
   actually emits.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide the emission template (report-back gate). One
+- [x] **Milestone 1 (Task 1):** ground the shape, decide the emission template (report-back gate). One
   Sonnet implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2, = "Milestone A" above):** build + prove the typed accessor emitter,
   Yeroket/VIXEN in-tree only, no undertow changes. One Sonnet implementer + one Opus validator.
@@ -136,4 +136,46 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in any of the three
+  repos
+  - **`view_contract.h` shape re-confirmed** (316 lines, 5 section classes: `BodiesSection`/
+    `HudSection`/`HudFactionsSection`/`HudEventsSection`/`HudInspectSection`) — ctor caches columns via
+    `s_.column(kColumnId, end_, len_out)`, `count()` returns `s_.row_count()`, one bounds-checked typed
+    getter per column, offsets-array-then-blob for variable-length columns.
+  - **NEW finding: `hud_view.h`'s `ReadHudView()` (~line 58-126) is a SECOND real, live consumer**
+    beyond `main.cpp` — constructs all 4 Hud-family section classes, called from `main.cpp:39,785`.
+    Milestone 3 must satisfy both consumers, not just `main.cpp`. Additionally found `test_hud_view.cpp`
+    and `test_view_contract.cpp` as further real (test-only) consumers to account for.
+  - **CRITICAL API correction to this plan's own assumed emission template**: `ViewStore.h`'s
+    `ViewCell` members are `.i`/`.f`/`.b`/`.s` (NOT `.f32`/`.i32` as originally assumed).
+    `ViewStore::Array(fieldIndex)` is PUBLIC. `FindField`/`FindElemField` are PRIVATE — a generated
+    accessor CANNOT do runtime name lookup; it MUST bake field/elem indices as compile-time integer
+    literals (codegen knows the declared field order, so this is trivial, just a real constraint to
+    respect). `ScalarSlotPtr(fieldIndex)` returns `void*`, cast per the field's known-at-codegen-time
+    kind. Both implementer and validator independently confirmed this against real `ViewStore.h`/
+    `ViewStore.cpp` — Milestone 2's emitter is buildable on this API as corrected.
+  - **`ViewWireReaderSoa::Apply(std::span<const std::byte> wire, ViewStore& store)` signature
+    confirmed exactly.**
+  - **`ViewBlobEmitter.cs` (92 lines, real path
+    `Packages/com.yeroket.utility.kernel-framework/...`) read in full as the pattern-match template** —
+    `KindEnum`, `StructArrayDeps`+`NestedCollect.DepthFirst`, `GeneratedBanner.Line`,
+    `ViewVersionHash.Compute` all confirmed reusable.
+  - **IMPORTANT: the parent Inc-5 plan's "48/48 decoded-value proof" harness was NEVER actually
+    committed anywhere** — confirmed by both implementer and validator via independent `git log --all`
+    searches across all three repos (the parent plan doc's own line 551 admits "harness uncommitted,
+    can't re-run" — this was trusted-from-report at the time, not re-derivable). Milestone 2 must
+    RECREATE the proof, not reuse an existing harness.
+  - **Proof harness decision**: reuse `libraries/RenderGraph/tests/test_view_wire_soa_roundtrip.cpp`'s
+    existing canonical-wire-bytes fixture + `kHudBlob` (confirmed real, 3/3 passing, CMake-registered)
+    — build the NEW generated accessor class over the SAME `ViewStore` after `Apply()` and assert the
+    same decoded values the raw API test already proves, rather than attempting to resurrect the lost
+    undertow-real-writer cross-check (that belongs to Milestone 3 anyway, where it's unavoidable).
+  - **Confirmed no analog needed for `kSectionBodies`/`kBodiesPosition`-style enum constants** in the
+    new `ViewStore`-position-indexed read path — those constants only served the OLD `SectionView::
+    column(id,...)` TOC-lookup API being replaced, not reused.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently re-verified all 8
+    findings against real source in all three repos, including the load-bearing `ViewStore` API
+    correction (most rigorously) and the missing-proof-harness claim via its own search rather than
+    trusting the implementer. Flagged 2 additional real consumer files for Milestone 3
+    (`test_hud_view.cpp`/`test_view_contract.cpp`). Cleared to proceed to Milestone 2.
