@@ -1018,6 +1018,34 @@ void VulkanGraphApplication::Update() {
                 // not a production hot loop -- same "blocking is fine for an unattended capture
                 // harness" precedent RenderTargetReadback.h's own helpers already use).
                 vkDeviceWaitIdle(deviceDdgi->device);
+
+                // Sampled Lighting Inc5 M1 live-gate lever (opt-in, VIXEN_DDGI_AMORTIZATION_
+                // PROBE_LOG=1): read back BEFORE re-seeding, at the START of this Update() call --
+                // this function runs in Update(), which executes BEFORE this tick's Render()
+                // dispatches ProbeUpdate.comp (see this block's own header comment above), so at
+                // this point in the loop the buffer still holds whatever the PREVIOUS tick's
+                // dispatch (or this tick's amortization early-out) left behind. Reading here (tick
+                // N observes tick N-1's dispatch result) is the correct place to distinguish "the
+                // probe's own workgroup ran last tick" (diagNearProbeHitCount overwritten, != the
+                // sentinel below) from "amortized away last tick" (still the sentinel from N-1's
+                // own seed) -- reading AFTER the seed-reset below would only ever see the sentinel
+                // THIS call just wrote, never the prior dispatch's result (a bug caught before
+                // trusting this diagnostic's output).
+                if (std::getenv("VIXEN_DDGI_AMORTIZATION_PROBE_LOG") && ddgiGateTick >= 2 && ddgiGateTick <= 17) {
+                    void* probeLogMapped = debugBuf->MapForReadback(deviceDdgi);
+                    if (probeLogMapped) {
+                        const auto* rec = reinterpret_cast<const DDGILeakGateDebugHost*>(probeLogMapped);
+                        bool updatedLastTick = (rec->diagNearProbeHitCount != 0xFFFFFFFFu);
+                        if (mainLogger) {
+                            mainLogger->Info(std::string("[DdgiAmortizationProbeLog] tick ") + std::to_string(ddgiGateTick - 1) +
+                                              " nearProbeIndex=" + std::to_string(ddgiLeakGateNearProbeIndex_) +
+                                              " updatedThisTick=" + (updatedLastTick ? std::string("1") : std::string("0")) +
+                                              " diagNearProbeHitCount=" + std::to_string(rec->diagNearProbeHitCount));
+                        }
+                        debugBuf->UnmapReadback(deviceDdgi);
+                    }
+                }
+
                 void* seedMapped = debugBuf->MapForReadback(deviceDdgi);
                 if (seedMapped) {
                     auto* rec = reinterpret_cast<DDGILeakGateDebugHost*>(seedMapped);
@@ -1036,6 +1064,15 @@ void VulkanGraphApplication::Update() {
                     // a single deterministic (non-atomic) write, not an accumulating max.
                     rec->shadeM5IndirectLumaBits = 0u;
                     rec->diagShadeAnyHitCount = 0u;  // DIAG (temporary, M5 debugging): reset each tick too
+                    // Reset diagNearProbeHitCount to a sentinel BEFORE this tick's dispatch runs
+                    // (see the read block above this one for the full amortization-proof rationale;
+                    // this write is what NEXT tick's read call will check). Only fires when the new
+                    // env var is set; ordinary diagNearProbeHitCount reads (the existing
+                    // kChebyshevReadTick/kAblationReadTick gate below) are unaffected -- by then the
+                    // field has long since been overwritten by real dispatches either way.
+                    if (std::getenv("VIXEN_DDGI_AMORTIZATION_PROBE_LOG")) {
+                        rec->diagNearProbeHitCount = 0xFFFFFFFFu;  // sentinel: "not touched this tick"
+                    }
                     debugBuf->UnmapReadback(deviceDdgi);
                 }
 
