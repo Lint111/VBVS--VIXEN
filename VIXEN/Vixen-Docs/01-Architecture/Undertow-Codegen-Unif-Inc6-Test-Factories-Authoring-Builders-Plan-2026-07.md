@@ -105,7 +105,7 @@ pairs rather than one combined milestone.
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism for BOTH features (report-back gate).
   One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** #10 test factories — build + equivalence proof + retire. One Sonnet
+- [x] **Milestone 2 (Task 2):** #10 test factories — build + equivalence proof + retire. One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 3 (Task 3):** #11 authoring builders — build + equivalence proof + retire. One Sonnet
   implementer + one Opus validator.
@@ -142,3 +142,46 @@ pairs rather than one combined milestone.
     via its own Python script, re-traced 2 real kinds' ctor-argument order directly from both emitters'
     source, and confirmed the mechanism decision by grepping for staged-wizard prior art itself. Cleared
     to proceed to Milestone 2.
+
+- Milestone 2 (Task 2, #10 test factories — build + equivalence proof + retire): DONE · 2026-07-13
+  - Yeroket `TestFactoryEmitter.cs` (`Packages/com.yeroket.utility.kernel-framework/SourceGenerator~/
+    Transpiler/`) ports `EmitTestFactory.cs` line-for-line, extending the `RegistrySlotsModel`-based
+    carrier-emitter family (reuses `DefCarriersEmitter`'s `DefField`/`ReadFields`/`ReadElementFields`, no
+    new field model) — takes `schemas.json` directly (fixed-target shape, mirroring
+    `AuthoredKindsEmitter`, since there is no `[RegistrySlots]`-attributed class for this emitter to
+    resolve). `--test-factories-cs` wired into `CodegenTool~/Program.cs` mirroring `--authored-kinds-cs`.
+    Yeroket branch `feat/codegen-unif-inc6-factories` (off `feat/codegen-unif-inc5-defcarriers`), commit
+    `e6c78eef`.
+  - **Equivalence proof:** real `dotnet build` in the undertow worktree captured the actual Roslyn
+    `Make.g.cs` (159 lines, 30 kinds). Ran the new Yeroket CLI mechanism against the same real
+    `schemas.json`; byte-diffed bodies (banner excluded — the two families use intentionally different
+    banner text, as already established for the other ported emitters) are **IDENTICAL (0 diff lines)**
+    across all 30 real gated kinds.
+  - **Field-value positional-correctness proof** (the critical extra check beyond the byte-diff):
+    added `MakeFactoryPositionalOrderTests.cs` (`core/tests/Undertow.Core.Tests/TestKit/`) constructing
+    `Place` (id/name/kind/body — two same-typed neighbor string fields), `RelationshipKind`
+    (id/edge/tag/mutual/rate — two same-typed neighbor string fields + bool/float neighbors), and
+    `Resource` (id/name/category/density/conservation — exercises the real-enum path,
+    `Undertow.Substrate.Conservation`) with distinct non-default values in every argument position;
+    asserted each value lands on its correctly-named property. All 3 tests passed against the
+    then-still-live Roslyn-generated `Make.g.cs` before retirement (proving the test harness itself is
+    valid), and continued to pass after retirement against the checked-in Yeroket-generated `Make.g.cs`.
+  - **Retirement:** deleted `TestFactoryGenerator.cs`/`EmitTestFactory.cs`. Also had to delete
+    `TestFactoryCodegenTests.cs` (a unit-test file directly exercising `EmitTestFactory.All` with
+    synthetic schemas — not itself a `Make.*` call site, but it could not compile once the emitter was
+    deleted; not called out explicitly in the plan but a necessary consequence of the retirement).
+    Checked in the Yeroket-generated `Make.g.cs` as an ordinary compiled file under
+    `core/tests/Undertow.Content.TestKit/`. Full `dotnet build core/Undertow.sln`: 0 errors. Full
+    `dotnet test core/Undertow.sln`: **2949 passed, 0 failed, 0 skipped** (2928 in
+    `Undertow.Core.Tests` — includes the ~494 real `Make.*` factory call sites as a large-scale
+    regression check — + 21 in `Undertow.Vixen.Host.Tests`). No ordering drift surfaced. Undertow
+    worktree `.claude/worktrees/codegen-unif-inc6-factories`, branch `feat/codegen-unif-inc6-factories`,
+    commit `4773daf7`.
+  - No blockers. Not pushed (per gate).
+  - **Opus validator (independent re-verification):** APPROVED. Rebuilt the pre-retirement parent
+    commit from scratch to regenerate the real Roslyn `Make.g.cs` and confirmed byte-identical bodies
+    independently; independently read `MakeFactoryPositionalOrderTests.cs`'s actual assertions and
+    confirmed each uses genuinely discriminating (non-default, distinct-per-adjacent-same-type) values
+    that would catch a transposition bug, not values that would pass vacuously; independently re-ran the
+    full build+test suite from a clean state (2949/2949, matching); confirmed #11's files untouched by
+    this milestone's diff. Cleared to proceed to Milestone 3.
