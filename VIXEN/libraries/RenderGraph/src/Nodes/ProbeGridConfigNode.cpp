@@ -19,6 +19,22 @@ using namespace Vixen::Vulkan::Resources;
 // Ring size = frames-in-flight (the value CURRENT_FRAME_INDEX cycles through).
 const uint32_t ProbeGridConfigNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
+// Sampled Lighting Inc6 M1: single-source-of-truth for the DDGI amortization
+// factor (see the header's own doc comment) -- MakeDefaultProbeGridConfig
+// below and BuildRenderGraph.cpp's probeUpdateNode dispatch-X computation
+// both call this instead of each reading VIXEN_DDGI_AMORTIZATION_FACTOR
+// separately, so the two can never drift out of sync.
+uint32_t ResolveDdgiAmortizationFactor() {
+    uint32_t factor = 8u;  // Inc5 M3 shipped default -- see MakeDefaultProbeGridConfig's own comment
+    if (const char* amortEnv = std::getenv("VIXEN_DDGI_AMORTIZATION_FACTOR")) {
+        long v = std::strtol(amortEnv, nullptr, 10);
+        if (v > 0) {
+            factor = static_cast<uint32_t>(v);
+        }
+    }
+    return factor;
+}
+
 namespace {
 
 // Default content: probeGridEnabled=0 (M2 ships scaffolding only — no probe-update/
@@ -99,18 +115,16 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
     }
 
     // Inc5 M1 bench lever: VIXEN_DDGI_AMORTIZATION_FACTOR=<n> overrides the fixed
-    // amortizationFactor=1 default so M2's real-GPU cost matrix can be measured
+    // amortizationFactor default so M2's real-GPU cost matrix can be measured
     // across multiple values from the SAME binary, no rebuild — exact same
     // convention as VIXEN_PROBE_RAYS_PER_PROBE above. No upper clamp beyond
     // fitting in uint32_t: any factor >= probeCount degenerates to "one probe
     // updates per N frames," a valid (if extreme) point on the curve, not an
     // error — the shader's modulo math handles it without special-casing.
-    if (const char* amortEnv = std::getenv("VIXEN_DDGI_AMORTIZATION_FACTOR")) {
-        long v = std::strtol(amortEnv, nullptr, 10);
-        if (v > 0) {
-            cfg.amortizationFactor = static_cast<uint32_t>(v);
-        }
-    }
+    // Inc6 M1: reads via ResolveDdgiAmortizationFactor() (this file, above) —
+    // the SAME accessor BuildRenderGraph.cpp's dispatch-X computation calls —
+    // instead of re-reading the env var here directly.
+    cfg.amortizationFactor = ResolveDdgiAmortizationFactor();
     return cfg;
 }
 

@@ -9,6 +9,20 @@
 namespace Vixen::RenderGraph {
 
 /**
+ * @brief Resolves the DDGI probe-update amortization factor: the shipped
+ * default (8u) overridden by VIXEN_DDGI_AMORTIZATION_FACTOR if set (same
+ * env var/precedence ProbeGridConfigNode's own MakeDefaultProbeGridConfig
+ * uses to fill ProbeGridConfig::amortizationFactor).
+ *
+ * Sampled Lighting Inc6 M1: single-source-of-truth accessor so
+ * BuildRenderGraph.cpp's build-time probeUpdateNode dispatch-X computation
+ * (probeCount/amortizationFactor, ceil-divided) and ProbeGridConfigNode's
+ * own per-frame GPU-side config upload agree on the SAME value without
+ * duplicating the env-var-read/default logic in two places.
+ */
+uint32_t ResolveDdgiAmortizationFactor();
+
+/**
  * @brief Node type for ProbeGridConfigNode.
  */
 class ProbeGridConfigNodeType : public TypedNodeType<ProbeGridConfigNodeConfig> {
