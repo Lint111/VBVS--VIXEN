@@ -42,6 +42,7 @@
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
+#include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
 #include "LightTree.h"                        // Sampled Lighting Inc3 M4: Vixen::SVO::LightTreeNode for the DIAG readback recomputation
 
@@ -52,6 +53,14 @@
 // (process-lifetime-scoped, matching every other VIXEN_*_DEMO env-gated block's own static
 // state in this file) -- not a general mechanism, a one-shot gate wire.
 std::vector<Vixen::SVO::LightTreeNode>* g_restirGateWorldCut = nullptr;
+
+// Sampled Lighting Inc4 M6: the DDGI edit-loop demo's "real" (source-on) world-transformed
+// light-tree cut, stashed by BuildRenderGraph.cpp's VIXEN_DDGI_EDIT_LOOP_DEMO scene block
+// (same one-shot-global convention as g_restirGateWorldCut above). The scene starts with an
+// EMPTY cut on LightTreeBufferNode (source "off"); this file's readback hook flips the real
+// cut in at a chosen tick via LightTreeBufferNode::SetLightTreeCut, exercising a genuine live
+// content edit and reading diagNearProbeAvgRadianceLuma's hysteresis convergence afterward.
+std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
@@ -962,8 +971,13 @@ void VulkanGraphApplication::Update() {
                     // struct doc comment) -- CPU zeroes this each tick before readback.
                     uint32_t shadeM5IndirectLumaBits;
                     uint32_t diagShadeAnyHitCount;  // DIAG (temporary, M5 debugging)
+                    // M6 ADDITION: post-hysteresis-blend atlas luma for nearProbeIndex -- see
+                    // ProbeUpdate.comp's own DDGILeakGateDebug struct doc comment for why this
+                    // is distinct from diagNearProbeAvgRadianceLuma above (that field is the
+                    // RAW pre-blend per-tick value, not the EWMA-converging one).
+                    float    diagNearProbeBlendedAtlasLuma;
                 };
-                static_assert(sizeof(DDGILeakGateDebugHost) == 56, "must match ProbeUpdate.comp's DDGILeakGateDebug std430 layout (56B, M5 added shadeM5IndirectLuma + diagShadeAnyHitCount)");
+                static_assert(sizeof(DDGILeakGateDebugHost) == 60, "must match ProbeUpdate.comp's DDGILeakGateDebug std430 layout (60B, M6 added diagNearProbeBlendedAtlasLuma)");
 
                 // vkDeviceWaitIdle before EVERY seed write, not just the two readback ticks:
                 // this buffer is a single fixed allocation (no per-frame-in-flight ring, unlike
@@ -1022,6 +1036,116 @@ void VulkanGraphApplication::Update() {
                 }
             } else if (mainLogger && ddgiGateTick == 1) {
                 mainLogger->Warning("[DdgiLeakGateDemo] debug buffer or device not found -- gate readback skipped");
+            }
+        }
+
+        // Sampled Lighting Inc4 M6: edit-loop responsiveness gate (VIXEN_DDGI_EDIT_LOOP_DEMO=1).
+        // Reuses VIXEN_DDGI_LEAK_GATE_DEMO's own scene/near-probe/DDGILeakGateDebug plumbing
+        // (BuildRenderGraph.cpp's isEditLoopMode branch built the SAME geometry but started
+        // LightTreeBufferNode with an EMPTY cut -- source "off"). This hook flips in the real,
+        // stashed cut (g_ddgiEditLoopWorldCut) at kContentAddTick -- a genuine live scene-
+        // content edit, not a restart -- then samples diagNearProbeAvgRadianceLuma (the near
+        // probe's own post-hysteresis-blend irradiance, already written every tick regardless
+        // of ddgiLeakGateEnabled's near/far-gather fields) at several ticks before/after to
+        // show BOUNDED convergence within the hysteresis window, per the plan's own explicit
+        // "not instant, but bounded" gate requirement.
+        if (renderGraph && std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+            static long editLoopTick = 0;
+            ++editLoopTick;
+
+            // kConvergeTicks mirrors the leak-gate's own >>1/hysteresisRate(0.02)=50-tick
+            // derivation. kContentAddTick: content starts OFF, giving several ticks of a
+            // genuine steady-zero baseline before the edit. Sample ticks span before the edit,
+            // immediately after (still converging), and past kConvergeTicks ticks after
+            // (expected converged) -- enough points to show the convergence CURVE, not just
+            // two endpoints.
+            constexpr long kConvergeTicks   = 120;
+            constexpr long kContentAddTick  = 30;
+            constexpr long kSampleTicks[]   = {20, 31, 50, 80, 110, 150, 30 + kConvergeTicks};
+
+            auto* debugBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("ddgi_leak_gate_debug_buffer"));
+            auto* deviceInstEditLoop = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+
+            if (debugBuf && deviceInstEditLoop && deviceInstEditLoop->GetVulkanDevice()) {
+                auto* deviceEditLoop = deviceInstEditLoop->GetVulkanDevice();
+
+                // The live content edit itself: flip LightTreeBufferNode from empty to the
+                // stashed real cut exactly once, at kContentAddTick. SetLightTreeCut only
+                // stashes the vector (uploaded next ExecuteImpl) -- same "host calls a setter,
+                // node picks it up next frame" seam SetInstances uses (see
+                // BodyOctreeSceneNode.h's own doc comment), so this is a genuine mid-run
+                // content mutation, not a scene rebuild.
+                if (!ddgiEditLoopContentAdded_ && editLoopTick >= kContentAddTick && g_ddgiEditLoopWorldCut) {
+                    if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstanceByName("light_tree_buffer"))) {
+                        lightTreeInst->SetLightTreeCut(*g_ddgiEditLoopWorldCut);
+                        ddgiEditLoopContentAdded_ = true;
+                        if (mainLogger) {
+                            mainLogger->Info("[DdgiEditLoopDemo] tick " + std::to_string(editLoopTick) +
+                                              ": flipped light-tree cut from empty to real (" +
+                                              std::to_string(g_ddgiEditLoopWorldCut->size()) +
+                                              " nodes) -- source now ON");
+                        }
+                    }
+                }
+
+                // Same DDGILeakGateDebugHost layout the leak-gate hook above uses -- only
+                // ddgiLeakGateEnabled + the near-probe DIAG fields matter here (near/far-
+                // gather/Chebyshev fields are irrelevant to a single-probe convergence read,
+                // left at their seeded defaults).
+                struct DDGILeakGateDebugHost {
+                    uint32_t ddgiLeakGateEnabled;
+                    uint32_t chebyshevTestEnabled;
+                    uint32_t nearProbeIndex;
+                    uint32_t farProbeIndex;
+                    float    farShadingPosX, farShadingPosY, farShadingPosZ;
+                    float    gatheredLuma;
+                    uint32_t diagNearProbeHitCount;
+                    float    diagNearProbeAvgRadianceLuma;
+                    float    diagNearProbeAvgDepth;
+                    float    diagNearProbeAvgDepth2;
+                    uint32_t shadeM5IndirectLumaBits;
+                    uint32_t diagShadeAnyHitCount;
+                    float    diagNearProbeBlendedAtlasLuma;  // M6: the field this gate actually needs
+                };
+                static_assert(sizeof(DDGILeakGateDebugHost) == 60, "must match ProbeUpdate.comp's DDGILeakGateDebug std430 layout");
+
+                vkDeviceWaitIdle(deviceEditLoop->device);
+                void* seedMapped = debugBuf->MapForReadback(deviceEditLoop);
+                if (seedMapped) {
+                    auto* rec = reinterpret_cast<DDGILeakGateDebugHost*>(seedMapped);
+                    rec->ddgiLeakGateEnabled  = 1u;
+                    rec->chebyshevTestEnabled = 1u;
+                    rec->nearProbeIndex       = ddgiLeakGateNearProbeIndex_;
+                    rec->farProbeIndex        = ddgiLeakGateFarProbeIndex_;
+                    rec->farShadingPosX       = ddgiLeakGateFarShadingPos_.x;
+                    rec->farShadingPosY       = ddgiLeakGateFarShadingPos_.y;
+                    rec->farShadingPosZ       = ddgiLeakGateFarShadingPos_.z;
+                    rec->shadeM5IndirectLumaBits = 0u;
+                    rec->diagShadeAnyHitCount    = 0u;
+                    debugBuf->UnmapReadback(deviceEditLoop);
+                }
+
+                for (long sampleTick : kSampleTicks) {
+                    if (editLoopTick == sampleTick) {
+                        vkDeviceWaitIdle(deviceEditLoop->device);
+                        void* readMapped = debugBuf->MapForReadback(deviceEditLoop);
+                        if (readMapped) {
+                            const auto* rec = reinterpret_cast<const DDGILeakGateDebugHost*>(readMapped);
+                            if (mainLogger) {
+                                mainLogger->Info(std::string("[DdgiEditLoopDemo] tick ") + std::to_string(editLoopTick) +
+                                                  (editLoopTick < kContentAddTick ? " [pre-edit]" : " [post-edit]") +
+                                                  ": diagNearProbeBlendedAtlasLuma=" + std::to_string(rec->diagNearProbeBlendedAtlasLuma) +
+                                                  " diagNearProbeAvgRadianceLuma(rawThisTick)=" + std::to_string(rec->diagNearProbeAvgRadianceLuma) +
+                                                  " diagNearProbeHitCount=" + std::to_string(rec->diagNearProbeHitCount) +
+                                                  " diagNearProbeAvgDepth=" + std::to_string(rec->diagNearProbeAvgDepth));
+                            }
+                            debugBuf->UnmapReadback(deviceEditLoop);
+                        }
+                        break;
+                    }
+                }
+            } else if (mainLogger && editLoopTick == 1) {
+                mainLogger->Warning("[DdgiEditLoopDemo] debug buffer or device not found -- gate readback skipped");
             }
         }
 

@@ -242,6 +242,11 @@ private:
     uint32_t  ddgiLeakGateFarProbeIndex_  = 0;   // flat probe index of the occluded/far probe (performs the gather)
     glm::vec3 ddgiLeakGateFarShadingPos_{0.0f};  // world-space point on the far/occluded side the gather shades
 
+    // Sampled Lighting Inc4 M6: edit-loop responsiveness gate (VIXEN_DDGI_EDIT_LOOP_DEMO) --
+    // one-shot flag so the light-tree cut is flipped from empty (source "off") to the real,
+    // stashed cut (g_ddgiEditLoopWorldCut) exactly once, at the configured tick.
+    bool      ddgiEditLoopContentAdded_ = false;
+
     // Sparse-Mip ESVO LOD Inc1 M4c: last camera state the residency trigger was evaluated
     // against — change-detection only (avoids re-sorting/re-requesting every single frame
     // on a static camera); NOT part of the trigger formula itself (that's stateless, per

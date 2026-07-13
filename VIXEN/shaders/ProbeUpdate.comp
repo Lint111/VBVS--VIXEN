@@ -132,6 +132,15 @@ struct DDGILeakGateDebug {
     // nothing" from "pixels see zero indirect irradiance" while shadeM5IndirectLumaBits
     // stays 0.
     uint diagShadeAnyHitCount;
+    // M6 ADDITION (edit-loop responsiveness gate): the ACTUAL post-hysteresis-blend atlas
+    // luma for nearProbeIndex, read back right after this tick's imageStore (see the write
+    // site below) -- distinct from diagNearProbeAvgRadianceLuma above, which is the RAW
+    // pre-blend per-tick radiance and therefore cannot show the EWMA convergence curve
+    // (mix(oldIrradiance, avgRadiance, hysteresisRate) is what actually lands in the atlas
+    // gather sees). A live-gate run using diagNearProbeAvgRadianceLuma for this purpose found
+    // it jumps to its final value in one tick, which is correct FOR THAT FIELD (it is not
+    // hysteresis-blended) but proved the wrong signal for a convergence gate.
+    float diagNearProbeBlendedAtlasLuma;
 };
 
 layout(std430, binding = 31) buffer DDGILeakGateDebugSSBO {
@@ -458,6 +467,14 @@ void main() {
 
     vec4 oldIrradiance = imageLoad(probeIrradianceAtlas, irradianceBlockOrigin);
     vec3 newIrradianceRgb = mix(oldIrradiance.rgb, avgRadiance, hysteresisRate);
+
+    // M6: report the ACTUAL post-blend atlas value for nearProbeIndex (see this field's own
+    // doc comment on the struct) -- same gate/probe-index condition as the pre-blend DIAG
+    // write above, computed after the blend so it reflects what the atlas will actually hold.
+    if (ddgiLeakGateDebug.ddgiLeakGateEnabled != 0u && probeIndex == ddgiLeakGateDebug.nearProbeIndex) {
+        ddgiLeakGateDebug.diagNearProbeBlendedAtlasLuma = dot(newIrradianceRgb, vec3(0.2126, 0.7152, 0.0722));
+    }
+
     for (uint ty = 0u; ty < irradianceTexelsPerProbe; ++ty) {
         for (uint tx = 0u; tx < irradianceTexelsPerProbe; ++tx) {
             imageStore(probeIrradianceAtlas, irradianceBlockOrigin + ivec2(int(tx), int(ty)), vec4(newIrradianceRgb, 1.0));

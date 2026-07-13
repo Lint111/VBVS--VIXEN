@@ -617,9 +617,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // uint (20B) + 7x float (28B) = 48B, no padding (all members are 4-byte scalars).
     // (DIAG temporary fields, see ProbeUpdate.comp's own struct.) M5 added two more uints
     // (shadeM5IndirectLumaBits + diagShadeAnyHitCount, both written by SpatialReuseShade.comp)
-    // -> 56B.
+    // -> 56B. M6 added one more float (diagNearProbeBlendedAtlasLuma, the edit-loop gate's
+    // post-hysteresis-blend atlas readback) -> 60B.
     auto* ddgiLeakGateDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(ddgiLeakGateDebugBuffer));
-    ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 56u);
+    ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 60u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -2585,7 +2586,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
             }
-        } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+        } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO") || std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+            // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
+            // near/far indices) for the edit-loop responsiveness gate when
+            // VIXEN_DDGI_EDIT_LOOP_DEMO=1 -- same "don't invent a new mechanism" discipline
+            // M4's own gate used relative to VIXEN_RESTIR_GATE_DEMO. The only behavioral
+            // difference (isEditLoopMode below): the light-tree cut is built EMPTY at scene-
+            // construction time (the source starts "off") and the REAL cut is stashed via
+            // g_ddgiEditLoopWorldCut for VulkanGraphApplication.cpp's readback hook to flip in
+            // live at a chosen tick -- a genuine mid-run scene-content edit, not a restart.
+            const bool isEditLoopMode = std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO") != nullptr;
+
             // Sampled Lighting Inc4 M4 live gate: the leak-test scene the plan's Task 4
             // requires -- thin-wall occluder geometry between an emissive source and a
             // probe/observation point, proving the Chebyshev-tested gather does NOT leak
@@ -2619,8 +2630,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
             //     toward the wall is much closer than the near-probe-to-far-point test
             //     distance), while the ablation (test forced to 1) must NOT reject it, proving
             //     the scene leaks without the mechanism.
-            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: building the M4 "
-                              "thin-wall leak-test gate scene");
+            mainLogger->Info(std::string("[BuildRenderGraph] ") +
+                              (isEditLoopMode ? "VIXEN_DDGI_EDIT_LOOP_DEMO: building the M6 "
+                                                "edit-loop scene (source starts OFF)"
+                                              : "VIXEN_DDGI_LEAK_GATE_DEMO: building the M4 "
+                                                "thin-wall leak-test gate scene"));
 
             constexpr int   kN    = 32;
             constexpr float kBand = 2.0f;
@@ -2692,7 +2706,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
 
                 if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
-                    lightTreeInst->SetLightTreeCut(worldCut);
+                    // Edit-loop mode: start with an EMPTY cut (source "off" -- zero light-tree
+                    // content for the probe-update pass to sample) and stash the REAL cut for
+                    // VulkanGraphApplication.cpp's readback hook to flip in live at a chosen
+                    // tick. Leak-gate mode (default): apply the real cut immediately, unchanged
+                    // from M4.
+                    if (isEditLoopMode) {
+                        lightTreeInst->SetLightTreeCut({});
+                        extern std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut;
+                        static std::vector<Vixen::SVO::LightTreeNode> editLoopCutStash = worldCut;
+                        g_ddgiEditLoopWorldCut = &editLoopCutStash;
+                    } else {
+                        lightTreeInst->SetLightTreeCut(worldCut);
+                    }
                 }
                 mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: cut=" + std::to_string(cut.size()) + " nodes");
                 for (size_t di = 0; di < worldCut.size() && di < 5; ++di) {
