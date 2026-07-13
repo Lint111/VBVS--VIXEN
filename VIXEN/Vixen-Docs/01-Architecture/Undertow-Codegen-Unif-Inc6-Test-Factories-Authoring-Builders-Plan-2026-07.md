@@ -107,8 +107,8 @@ pairs rather than one combined milestone.
   One Sonnet implementer + one Opus validator.
 - [x] **Milestone 2 (Task 2):** #10 test factories — build + equivalence proof + retire. One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 3 (Task 3):** #11 authoring builders — build + equivalence proof + retire. One Sonnet
-  implementer + one Opus validator.
+- [x] **Milestone 3 (Task 3):** #11 authoring builders — build + equivalence proof + retire. DONE +
+  Opus-validated APPROVED, 2026-07-13. **INCREMENT 6 COMPLETE.**
 
 ## Progress Log
 
@@ -185,3 +185,64 @@ pairs rather than one combined milestone.
     that would catch a transposition bug, not values that would pass vacuously; independently re-ran the
     full build+test suite from a clean state (2949/2949, matching); confirmed #11's files untouched by
     this milestone's diff. Cleared to proceed to Milestone 3.
+
+- Milestone 3 (Task 3, #11 authoring builders — build + equivalence proof + retire): DONE · 2026-07-13
+  - Yeroket `AuthoringBuilderEmitter.cs` (`Packages/com.yeroket.utility.kernel-framework/
+    SourceGenerator~/Transpiler/`) is a new standalone emitter porting `Emit.Builders`/
+    `BuilderGenerator.cs` line-for-line — hardcoded `TargetKinds = {"material","role",
+    "relationship_kind","place"}` (verbatim, NOT schema-driven), staged fluent wizard
+    (`Define.{K}()` → chained required-field marker interfaces → `IReady.Build()`), and the
+    UTDL-assembly-then-reparse `Build()` body (`AuthoringProject.LoadContent`, never constructs
+    `Authored{K}Def`/`Baked{K}Def` directly). Also emits `CodegenMarker.g.cs` verbatim. Uses its own
+    minimal `Field` shape (not `DefCarriersEmitter`'s `DefField`) since `TargetKinds` is flat-scalar-only
+    by design — but had to port `Emit.ReadFields`'s enum-collapses-to-scalar behavior (an `enum` field's
+    CLR shape = its `backing` scalar): `place.kind` and `role.preference` are both `enum`-kind (not
+    `scalar`-kind) in the real schemas.json, and without this collapse both kinds were silently dropped
+    during equivalence testing (only `relationship_kind` emitted) — caught and fixed before the proof
+    passed. `--authoring-builders-cs` (+ optional `--out-marker-cs`) wired into `CodegenTool~/Program.cs`
+    mirroring `--test-factories-cs`. Yeroket branch `feat/codegen-unif-inc6-factories`, commit `53c6ccbc`.
+  - **Ground-truth correction vs Milestone 1's count:** `material` is no longer present in the real
+    `schemas.json` (removed upstream of this increment) — `TargetKinds` still lists it, and both the
+    original Roslyn `Emit.Builders` and the ported emitter silently skip a `TryGetValue` miss. Real
+    generated set today = **3 kinds** (`role`, `relationship_kind`, `place`), not 4; `TargetKinds` itself
+    is still the 4-name array Milestone 1 confirmed — this is a data-drift fact about schemas.json, not a
+    mechanism error.
+  - **Equivalence proof:** real `dotnet build` in the undertow worktree captured the actual Roslyn
+    `Builders.g.cs` (from `obj/.../generated/...BuilderGenerator/`) + `CodegenMarker.g.cs`. Ran the new
+    Yeroket CLI mechanism against the same real `schemas.json`; byte-diffed bodies (banner excluded, same
+    convention as prior ported emitters) are **IDENTICAL (0 diff lines)** for all 3 real kinds. The one
+    other observed byte difference — Roslyn's `AddSource` emits a UTF-8 BOM on `CodegenMarker.g.cs` that
+    plain `File.WriteAllText` does not — is a pre-existing, harmless artifact (confirmed by stripping the
+    BOM before diffing: 0 diff lines) and does not affect compiled behavior. CLI `--check` mode against
+    the checked-in output returned exit 0 (green).
+  - **Real-call-site proof:** the 5 real call sites in `GeneratedFlatBuilderTests.cs`
+    (`Role_GeneratedBuilder_RoundTrips`, `RelationshipKind_GeneratedBuilder_RoundTrips`,
+    `Place_GeneratedBuilder_RoundTrips`, `Place_RequiredOnly_BodyDefaultsToDeepSpace`,
+    `RelationshipKind_RequiredOnly_OmitsOptionals`) all pass unchanged against the checked-in
+    Yeroket-generated `Builders.g.cs`, proving the staged-wizard + UTDL-reparse round-trip is correct
+    end-to-end (not just text-shape equivalent).
+  - **Retirement:** deleted `BuilderGenerator.cs` and only the `Emit.Builders`-specific region of
+    `Emit.cs` (`TargetKinds`, `Builders`, `EmitBuilder`, `EmitSupport`, `Render`, `ParamType`,
+    `BackingType`) — confirmed via grep that `Emit.cs`'s shared field-model helpers (`ReadFields`,
+    `Pascal`, `Camel`, `OptsIntoData`/`OptsIntoCodec`, `Clr`, etc.) are still used by 11 other live
+    generator files and left untouched. Checked in the Yeroket-generated `Builders.g.cs`/
+    `CodegenMarker.g.cs` as ordinary compiled files under `core/src/Undertow.Authoring/` (SDK-style
+    project auto-globs `*.cs`; no `.csproj` edit needed, and the project's existing
+    `Undertow.Authoring.Codegen` analyzer reference stays — 11 other live `[Generator]` classes still
+    target `Undertow.Authoring`, matching Milestone 2's precedent of leaving now-partially-unused
+    analyzer wiring in place rather than touching it). Confirmed hand-written staged builders for
+    `planet`/`moon`/`composition_profile` (`Define.cs`) have **zero diff** — completely untouched, as
+    required (out of `TargetKinds` scope by design). Full `dotnet build core/Undertow.sln`: 0 errors, 0
+    warnings. Full `dotnet test`: **2949 passed, 0 failed, 0 skipped** (2928 in `Undertow.Core.Tests` +
+    21 in `Undertow.Vixen.Host.Tests`) — identical pass count to Milestone 2's baseline, confirming no
+    regression. Undertow worktree `.claude/worktrees/codegen-unif-inc6-factories`, branch
+    `feat/codegen-unif-inc6-factories`, commit `f46db9ed`.
+  - No blockers. Not pushed (per gate).
+  - **Opus validator (independent re-verification):** APPROVED. Independently confirmed the `material`
+    data-drift finding by grepping the real `schemas.json` itself, independently confirmed the
+    enum-collapse bug/fix by reading `Emit.cs`'s real logic and the raw schema entries for
+    `place.kind`/`role.preference`, rebuilt the pre-retirement commit from scratch to re-derive the
+    byte-identical equivalence proof, confirmed the `Emit.cs` surgical removal by diffing and spot-
+    checking 2 other still-live generator files, confirmed `Define.cs` zero-diff, and independently
+    re-ran the full test suite from a clean state (2949/2949, matching, no regression). **Increment 6
+    (#10 test factories + #11 authoring builders) COMPLETE.**
