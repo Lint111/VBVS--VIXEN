@@ -352,6 +352,66 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
   (`ViewContractTests.cs:14-16,33-35`) is real, already-exercised production sim-projection data — no
   new sim-bootstrapping code needed, directly reusable for Milestone 2.5's round-trip proof.
 
+## Milestone 3's own Task 1 (grounding pass) — DONE, findings + decisions recorded here
+
+- **Consumer list re-confirmed, unchanged**: `main.cpp`, `hud_view.h`, `test_hud_view.cpp`,
+  `test_view_contract.cpp`.
+- **CRITICAL, FORCED (not merely narrowed) scope finding, independently confirmed by the Opus
+  validator**: `main.cpp:189/193`'s `ReadBodies()` genuinely calls `.position(i)`/`.recipe_params(i)`.
+  The generated `UndertowBodiesSection` has NO such methods (7-of-9 columns, per Milestone 2.5's
+  finding). `HostSession.cs` (Milestone 2.5, `73fa909e`) has NO old-format fallback — `ViewBuffer`
+  UNCONDITIONALLY emits the new `UTVC` container now. This means `ReadBodies()` cannot be cut over
+  mechanically; a real decision on its post-cutover shape is required, not optional.
+- **DECISION (2026-07-13)**: keep `ReadBodies()`'s 7 representable fields; leave `position`/
+  `recipe_params` as an EXPLICIT zero/default. Symmetric with the writer-side precedent
+  (`ViewWriterAdapter.cs:81-82`'s own comment: "PARTIAL (gap #4...) only the 7 representable Bodies
+  columns. Position/RecipeParams (Vec3f) are NOT populated here.") and the original Inc-5 Milestone
+  3's own 7-of-9/10-column Bodies declaration — a symmetric, honest partial contract, not a fudge.
+  **Refined per the Opus validator's explicit strengthening**: the comment/log must be LOUD, not a
+  bare code comment — emit a one-line WARN log on first decode naming the Vec3f struct-array-element
+  emitter gap by name (the same gap Milestone 2.5 found: `ViewWriterEmitter.cs`/`TypedAccessorEmitter.cs`
+  NPE on `rf.Scalar` for a Vector-kind row field), so the gap is discoverable at runtime, not folklore
+  in a doc.
+- **CRITICAL live-gate acceptance-criteria correction (must be respected, do NOT silently ignore)**:
+  with `Position` defaulted to zero, every body renders at the origin — **this is EXPECTED, not a
+  regression to chase.** The live-gate must NOT be judged on "bodies appear in the correct world
+  position" (unmeetable until the Vec3f struct-array-element gap closes). Gate instead on: correct
+  body COUNT, correct `mass`/`kind`/`recipeId`/`recipeProvider` per body (the 7 representable
+  columns), and the 4 Hud sections decoding identically to before — i.e. gate on "the wire swap
+  didn't break decode," not on "the render looks the same as before" for Bodies specifically.
+- **`hud_view.h` mapping confirmed clean but with real mechanical churn**: 1:1 field mapping onto the
+  4 generated accessors, BUT single-row scalar sections change ARITY (`hs.tick(0)` in old code vs. the
+  generated `tick()` taking no index) — real, necessary call-site rewriting, not literally
+  find-replace. `perp_name`/`victim_name` confirmed genuinely UNUSED by the real `HudEvent` struct
+  (only `kind`/`tick`) — present-but-unused on the generated side, not a gap.
+- **`UTVC` unwrap confirmed trivial, no copy needed**: each TOC `(offset,length)` pair is directly a
+  valid `std::span<const std::byte>` window landing exactly on a sub-buffer's `UTVA` magic byte 0 —
+  confirmed against `ViewWireReaderSoa::Apply`'s real header-parse (which hard-errors on trailing
+  bytes, confirming per-section unwrap really is mandatory, not skippable).
+- **Fixed section order confirmed**: `HostSession.cs:159-173` writes sections in a fixed order (hud,
+  hudFactions, hudEvents, hudInspect, bodies) — index-by-position unwrap is valid, no id-based lookup
+  needed for the new reader-side helper.
+- **Live-gate mechanism confirmed real and existing**: `vixen/app/build.sh`/`CMakeLists.txt` builds a
+  WSL/Linux-native `undertow_host` binary that PRIVATE-links the real `VixenApp` + Vulkan + `nethost`
+  (the `build.sh` header comment calling this a "no-Vulkan walking skeleton" is STALE, corrected by
+  the validator — it's a genuine renderer link, not a stub), with real `--capture <path> --frames <N>`
+  headless snapshot support (`main.cpp:236-256`). This IS the minimal real sim→render seam artifact —
+  no new live-gate infrastructure needed, just run it against a real campaign (default seed 7).
+- **Test-file migration decision**: update `test_hud_view.cpp`/`test_view_contract.cpp` IN PLACE
+  (both are standalone g++-built binaries, not gtest/CMake-registered) — preserve their real
+  correctness properties (bounds-safety/truncation-rejection sweep in particular) by re-deriving them
+  against the new `UTVC`+`ViewWireReaderSoa`+typed-accessor path, not deleting or leaving them stale.
+- No blockers on the grounding pass itself (the forced Bodies decision is now made, above).
+- **Opus validator (independent re-verification):** APPROVED. Independently confirmed the load-bearing
+  forced-scope finding (real `.position()`/`.recipe_params()` calls, real absence of both the
+  generated methods and any writer-side fallback) most rigorously, confirmed the UTVC/ViewWireReaderSoa
+  byte-slice mechanics end-to-end, corrected a stale claim about `build.sh`'s own header comment (the
+  live-gate conclusion still holds), and — critically — supplied the live-gate acceptance-criteria
+  correction above (do not judge Bodies' world-position; gate on decode correctness instead). Endorsed
+  the zero-default+loud-comment Bodies decision as architecturally clean, matching the user's
+  standing prefer-pure-solutions rule better than a rushed partial Vec3f emitter fix under time
+  pressure. Cleared to proceed to the build milestone.
+
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide the emission template (report-back gate). One
   Sonnet implementer + one Opus validator.
@@ -370,9 +430,12 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
   2026-07-13. Bodies stays at 7-of-9 columns (Position/RecipeParams need struct-array-element Vector
   support, a genuine new gap found this milestone — deferred as a named prerequisite for whichever
   future increment renders those 2 columns, not a blocker on Milestone 3).
-- [ ] **Milestone 3 (Task 3, = "Milestone B" above):** cut undertow's real C++ reader over (must land
-  TOGETHER with Milestone 2.5, not independently) + live-gate the real sim→render seam. One Sonnet
-  implementer + one Opus validator.
+- [x] **Milestone 3a (Task 3 grounding pass):** ground the reader-cutover shape, decide the forced
+  Bodies `Position`/`RecipeParams` question, decide the live-gate acceptance criteria (report-back
+  gate). One Sonnet implementer + one Opus validator.
+- [ ] **Milestone 3b (Task 3 build, = "Milestone B" above):** cut undertow's real C++ reader over
+  (must land TOGETHER with Milestone 2.5, not independently) + live-gate the real sim→render seam per
+  Milestone 3a's corrected acceptance criteria. One Sonnet implementer + one Opus validator.
 
 ## Progress Log
 
