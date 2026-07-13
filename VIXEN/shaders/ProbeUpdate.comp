@@ -330,7 +330,27 @@ void main() {
     if (probeGridConfig.probeGridEnabled == 0u) return;  // byte-identity escape hatch
 
     uint probeCount = probeGridConfig.countX * probeGridConfig.countY * probeGridConfig.countZ;
-    uint probeIndex = gl_WorkGroupID.x;
+
+    // Sampled Lighting Inc6 M1 (sparse-dispatch amortization, mechanism B): the CPU now
+    // dispatches ONLY ceil(probeCount/amortizationFactor) workgroups (BuildRenderGraph.cpp's
+    // probeUpdateNode dispatch-X wiring), not probeCount-every-frame -- this stride-remap
+    // recovers which probe THIS workgroup is responsible for this tick. At F=1 (the
+    // byte-identical escape hatch), this degenerates exactly to the old direct mapping:
+    // probeIndex = gl_WorkGroupID.x * 1 + (frameCounter % 1) = gl_WorkGroupID.x + 0.
+    // `max(amortizationFactor, 1u)` guards divide/mod-by-zero defensively -- upstream
+    // (ProbeGridConfigNode's MakeDefaultProbeGridConfig / ResolveDdgiAmortizationFactor)
+    // never produces 0 (default 8u, env override only applied when > 0), but the shader
+    // makes no assumption about upstream CPU code it cannot see at compile time.
+    uint amortizationFactor = max(probeGridConfig.amortizationFactor, 1u);
+    uint probeIndex = gl_WorkGroupID.x * amortizationFactor +
+                       (probeGridConfig.frameCounter % amortizationFactor);
+
+    // Bound-check: with a NON-divisible probeCount/amortizationFactor, dispatch-X is
+    // ceil-divided (BuildRenderGraph.cpp), so the last rotation slot's dispatch can produce
+    // a probeIndex >= probeCount for its highest workgroup(s) -- this early-out discards
+    // that harmless over-dispatch. (Previously this guarded the flat gl_WorkGroupID.x
+    // mapping against an oversized dispatch; it now serves the ceil() coverage case
+    // instead, not the old purpose.)
     if (probeIndex >= probeCount) return;
 
     // M4 leak-test self-test gather: MUST run before any atlas write below (see the
@@ -346,22 +366,17 @@ void main() {
             ddgiLeakGateDebug.nearProbeIndex, farShadingPos, forceVisibilityOne);
     }
 
-    // Sampled Lighting Inc5 M1: amortized update schedule -- a THIRD early-out in
-    // the same family as the two above (probeGridEnabled/probeCount), gating ONLY
-    // the ray-cast + atlas-write logic below. Deliberately placed AFTER the leak-
-    // gate self-test gather block above: that gather reads PREVIOUS-frame atlas
-    // content (gatherProbeIrradianceLuma samples the atlas, it does not write this
-    // probe's own update), so it must keep running every frame regardless of
-    // whether THIS probe's update is amortized away this tick -- an amortized-away
-    // near/far probe should not silently blind the leak-test gate.
-    // amortizationFactor=1 (default) makes (probeIndex % 1) != (frameCounter % 1)
-    // always evaluate to (0 != 0) = false, i.e. this condition can never trigger
-    // -- byte-identical to Inc4's every-probe-every-frame behavior.
-    if (probeGridConfig.amortizationFactor > 1u &&
-        (probeIndex % probeGridConfig.amortizationFactor) !=
-        (probeGridConfig.frameCounter % probeGridConfig.amortizationFactor)) {
-        return;
-    }
+    // Sampled Lighting Inc6 M1: Inc5 M1's amortization early-out (gating the ray-cast +
+    // atlas-write logic below by `probeIndex % F != frameCounter % F`) is REMOVED here --
+    // it is now structurally dead code. The dispatch itself (BuildRenderGraph.cpp's
+    // ceil(probeCount/F) workgroup count + this file's own stride-remap above) only ever
+    // PRODUCES active-slot probeIndex values for the current tick's rotation slot, so that
+    // condition could never evaluate true for any workgroup that actually runs. Leaving a
+    // conditional in place that can structurally never fire would misread as "still doing
+    // something" to a future maintainer -- see this increment's plan doc Self-Review.
+    // (The leak-gate self-test gather block above is unaffected: it already runs before
+    // this point regardless, per its own comment on why it must not be gated by
+    // amortization.)
 
     uint raysPerProbe = clamp(probeGridConfig.raysPerProbe, 1u, PROBE_UPDATE_MAX_RAYS_PER_PROBE);
     uint rayIndex = gl_LocalInvocationID.x;

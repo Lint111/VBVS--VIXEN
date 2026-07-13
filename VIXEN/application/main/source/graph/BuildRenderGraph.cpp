@@ -983,11 +983,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (wired below), so no live extent to derive dims from the way DirectLighting/
     // SpatialReuse do; explicit dispatch dims are the correct shape here (mirrors
     // ComputeDispatchNode's own static width/height-derived dispatch for the march).
+    //
+    // Sampled Lighting Inc6 M1 (sparse-dispatch amortization): dispatch X is now
+    // ceil(probeCount/amortizationFactor), not the flat probeCount — ProbeUpdate.comp's
+    // gl_WorkGroupID.x is stride-remapped into the active-slot probe index (see that
+    // shader's own main() comment), so only the ACTIVE probeCount/F workgroups are
+    // dispatched at all, eliminating per-workgroup dispatch/scheduling overhead for
+    // skipped probes entirely (vs. Inc5's dispatch-all-early-out-inside mechanism).
+    // amortizationFactor is read via ResolveDdgiAmortizationFactor() (ProbeGridConfigNode.h) —
+    // the SAME accessor ProbeGridConfigNode's own MakeDefaultProbeGridConfig uses to fill
+    // ProbeGridConfig::amortizationFactor — so this build-time dispatch-X computation and the
+    // GPU-side config upload can never disagree on the value, without duplicating the
+    // env-var-read/default logic in a second place. CEIL division (not truncating) so a
+    // probeCount not evenly divisible by amortizationFactor still dispatches enough
+    // workgroups to reach every probe across a full F-tick rotation (see ProbeUpdate.comp's
+    // `probeIndex >= probeCount` bound-check, which now guards the harmless occasional
+    // over-dispatch this produces).
     constexpr uint32_t kProbeUpdateDefaultProbeCount =
         kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeGridDefaultCountZ;
+    const uint32_t kDdgiAmortizationFactor = ResolveDdgiAmortizationFactor();
+    const uint32_t kProbeUpdateDispatchX =
+        (kProbeUpdateDefaultProbeCount + kDdgiAmortizationFactor - 1u) / kDdgiAmortizationFactor;
+    mainLogger->Info("[BuildRenderGraph] ProbeUpdate sparse dispatch (Inc6 M1): probeCount=" +
+                      std::to_string(kProbeUpdateDefaultProbeCount) + " amortizationFactor=" +
+                      std::to_string(kDdgiAmortizationFactor) + " -> dispatchX=" +
+                      std::to_string(kProbeUpdateDispatchX));
     auto* probeUpdate = static_cast<ComputeStageNode*>(renderGraph->GetInstance(probeUpdateNode));
     probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDefaultProbeCount);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDispatchX);
     probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
     probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 

@@ -1,0 +1,120 @@
+Sampled Lighting Inc6 M1 -- sparse-dispatch amortization (mechanism B) gate
+=============================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan
+backend). Binary: VIXEN.exe, freshly built from this worktree's tree
+(commit ea5224aa on feat/sampled-lighting-inc6) -- source path confirmed
+via build.bat's own printed `source:` line
+(C:\cpp\VBVS--VIXEN\.claude\worktrees\sampled-lighting-inc6\VIXEN).
+Scoped builds (`build.bat build vixen-ninja VIXEN`), all targets built
+successfully. (A separate full `build.bat all` run this session also
+surfaced 3 PRE-EXISTING, UNRELATED codegen drift-guard check failures --
+lightingconfig_check/shadowconfig_check/accumulationconfig_check, a WSL/
+dotnet-bridge environment issue on structs this milestone never touched;
+probegridconfig_check itself passed cleanly. VIXEN.exe itself always
+linked successfully.)
+
+MECHANISM CHANGE
+-----------------
+CPU (BuildRenderGraph.cpp): probeUpdateNode's PARAM_DISPATCH_X changed from
+the flat probeCount (512) to ceil(probeCount/amortizationFactor), reading
+amortizationFactor via the new ResolveDdgiAmortizationFactor() (
+ProbeGridConfigNode.h/.cpp) -- the SAME accessor MakeDefaultProbeGridConfig
+uses for the GPU-side config upload, so the two values can never disagree
+without duplicating the env-var-read logic.
+
+Shader (ProbeUpdate.comp): probeIndex is now a stride-remap of
+gl_WorkGroupID.x (`w*F + frameCounter%F`) instead of a direct 1:1 mapping.
+Inc5 M1's early-out (`probeIndex%F != frameCounter%F -> return`) is REMOVED
+as structurally dead code -- the sparse dispatch itself only ever produces
+active-slot indices, so that condition could never fire for any workgroup
+that actually runs. The pre-existing `probeIndex >= probeCount` bound-check
+is KEPT, now serving the ceil()-driven over-dispatch guard for non-divisible
+probeCount/F instead of its old purpose.
+
+GATE RESULTS -- all runs exit=0, all fresh off the same rebuilt binary
+------------------------------------------------------------------------
+1. Byte-identical escape hatch (VIXEN_DDGI_AMORTIZATION_FACTOR=1):
+   VIXEN_DDGI_LEAK_GATE_DEMO=1 + VIXEN_PROBE_GRID_CONFIG_ENABLED=1, 280
+   frames:
+     tick120 [ChebyshevEnabled]:        gatheredLuma=0.000001
+     tick240 [AblationNegativeControl]: gatheredLuma=0.164185
+   EXACT MATCH to Inc5 M3's own recorded F=1-override numbers. Confirms the
+   stride-remap degenerates to gl_WorkGroupID.x + 0 at F=1, dispatched at
+   the full probeCount (512), byte-identical to pre-Inc6 behavior.
+
+2. Shipped default (F=8, no override), same demo, 280 frames:
+     tick120 [ChebyshevEnabled]:        gatheredLuma=0.000000
+     tick240 [AblationNegativeControl]: gatheredLuma=0.077026
+   EXACT MATCH to Inc5 M3's own recorded F=8 numbers. Leak-rejection
+   direction and magnitude both unaffected by the dispatch-mechanism swap.
+
+3. Dispatch-X directly observed (new one-time build-log line in
+   BuildRenderGraph.cpp), VIXEN_EXIT_AFTER_FRAMES=60, VIXEN_PROBE_GRID_
+   CONFIG_ENABLED=1:
+     F=1 (override): probeCount=512 amortizationFactor=1 -> dispatchX=512
+     F=8 (default):   probeCount=512 amortizationFactor=8 -> dispatchX=64
+     F=7 (override, NON-divisible, 512/7=73.14): probeCount=512
+       amortizationFactor=7 -> dispatchX=74 (ceil, not truncated 73)
+   Proves the actual vkCmdDispatch workgroup count genuinely shrinks at
+   F=8 (64 vs. the old flat 512), and that the ceil() fix is live (74, not
+   the truncating 73 that would silently under-cover 4 probes' worth of
+   the highest indices).
+
+4. Non-divisible coverage correctness (the plan's own flagged "biggest
+   risk"), F=7:
+   a. Live probe-log diagnostic (VIXEN_DDGI_AMORTIZATION_PROBE_LOG=1),
+      probe 218 (218 = 31*7+1, an ordinary in-range index): updates at
+      tick 2, 9, 16 -- exactly every 7 ticks, no gaps/duplicates.
+   b. Exhaustive verification of the boundary case (Python mirror of the
+      exact CPU/shader arithmetic: dispatchX=ceil(512/7)=74, probeIndex=
+      w*7+s for s in [0,7), w in [0,74), discard idx>=512): ALL 512
+      probes covered, ZERO missing, ZERO duplicated indices across one
+      full 7-tick rotation. This is the highest-risk boundary case (probe
+      511, the last valid index) and it is correctly reached exactly once
+      (w=73, s=0 -> 73*7+0=511) with no overlap.
+
+5. Edit-loop convergence regression (VIXEN_DDGI_EDIT_LOOP_DEMO=1 +
+   VIXEN_PROBE_GRID_CONFIG_ENABLED=1, shipped default, 200 frames):
+     tick20  [pre-edit]:  diagNearProbeBlendedAtlasLuma=0.000000
+     tick31  [post-edit]: diagNearProbeBlendedAtlasLuma=0.000000
+     tick50  [post-edit]: diagNearProbeBlendedAtlasLuma=0.006739
+     tick80  [post-edit]: diagNearProbeBlendedAtlasLuma=0.019404
+     tick110 [post-edit]: diagNearProbeBlendedAtlasLuma=0.031068
+     tick150 [post-edit]: diagNearProbeBlendedAtlasLuma=0.044377
+   EXACT MATCH to Inc5 M3's own recorded values at every sample point --
+   the convergence MATH (a probe gets a real update once every F ticks) is
+   completely unaffected by the dispatch-mechanism swap, as predicted.
+
+6. VIXEN_RESTIR_GATE_DEMO=1, 600 frames: exit=0, clean shutdown.
+7. VIXEN_FANIN_DEMO=1, 600 frames: exit=0, clean shutdown.
+8. VIXEN_M5_SHADE_GATE_DEMO=1 + VIXEN_DDGI_LEAK_GATE_DEMO=1 +
+   VIXEN_PROBE_GRID_CONFIG_ENABLED=1, 200 frames:
+     tick150: shadeM5IndirectLumaMax=0.012449 diagShadeAnyHitCount=99856
+   Production 8-probe trilinear gather still receives real nonzero
+   irradiance at the new sparse-dispatch default.
+9. Default boot (no env vars), 120 frames: exit=0, clean shutdown.
+
+Pre-existing PushConstantGathererNode::Validate "Type mismatch" debug-log
+noise: 50 occurrences in every run that exercises the march/direct-lighting
+push-constant path (same count as Inc5 M3's own established baseline) --
+confirmed pre-existing harmless debug validation noise, not a regression.
+
+INSTANCE-LEVEL VUID CHECK (KI-027 discipline)
+------------------------------------------------
+Grep for "binding 28"/"binding 31" (ProbeGridConfig/DDGILeakGateDebug
+bindings) across all gate logs this session: ZERO occurrences.
+VUID type census: only the 8 previously-documented pre-existing types
+appeared (vkResetFences-01123, vkQueueSubmit2-03868/03875, vkCmdDraw-09600,
+vkCmdDispatch-08114, vkUpdateDescriptorSets-03047, vkBeginCommandBuffer-
+00049, vkAcquireNextImageKHR-01779). ZERO new VUID types introduced by
+this milestone's change.
+
+GATE VERDICT: PASS. Sparse dispatch ships correctly: F=1 escape hatch and
+F=8 shipped default both byte-identical to Inc5's own recorded numbers,
+dispatch-X genuinely shrinks at F=8 (64 workgroups vs. flat 512),
+non-divisible-probeCount coverage is provably gap-free and duplicate-free
+(both live-observed for an in-range probe and exhaustively verified for
+the highest-risk boundary index), edit-loop convergence math unchanged,
+all 6 established Inc4 gates + Inc5's own edit-loop gate re-run clean,
+zero binding-28/31 VUID occurrences, zero new VUID types. Ready for M2's
+A/B cost measurement (the actual point of this increment).
