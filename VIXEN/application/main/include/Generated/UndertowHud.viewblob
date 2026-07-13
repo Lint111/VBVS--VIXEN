@@ -1,0 +1,7 @@
+# viewblob v1
+model undertowhud
+version 0x2EEF0434
+field tick int
+field bodyCount int
+field activeLens int
+field activeLensCount int

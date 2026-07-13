@@ -117,7 +117,25 @@ namespace Vixen.ViewSchemas
     // -1-sentinel transform (UndertowViewCallables.OrbitParentOrSentinel); RecipeId is identity U32
     // (widened to int -- ViewScalar has no uint type either, same widen-and-narrow-back discipline
     // as every U8 column in this file). Position, RecipeParams (Vec3f scalars) and OrbitPath
-    // (ListVec3f) are NOT declared here -- see the file header and the plan doc's gap #4 entry. ---
+    // (ListVec3f) are NOT declared here -- see the file header and the plan doc's gap #4 entry.
+    //
+    // BLOCKED (Milestone 2.5, 2026-07-13): Position/RecipeParams CANNOT be added as columns of this
+    // row struct today. Bodies.rows is a [ViewSection(Layout = ViewLayout.Soa)] struct-ARRAY, so
+    // Position/RecipeParams would have to be STRUCT-ARRAY-ELEMENT fields (per-row columns), not
+    // top-level scalar fields on UndertowBodies. Milestone 2.4 only wired ViewFieldKind.Vector
+    // support for TOP-LEVEL scalar fields (proven via the top-level-only VectorProof.cs schema) --
+    // its own Scope boundary explicitly named the struct-array-element case as an "ALSO-flagged-
+    // but-unreachable-today NPE landmine", deliberately left unfixed. Confirmed BY ACTUALLY RUNNING
+    // the CLI with Position/RecipeParams added as UndertowBodyRow columns: --view-writer crashes
+    // with an unhandled `System.InvalidOperationException: Nullable object must have a value` at
+    // ViewWriterEmitter.cs:62 (`CsType(rf.Scalar.Value)` -- rf.Scalar is null for a Vector-kind row
+    // field, per ViewModel.cs's Classify). --typed-accessor-cpp's struct-array element loop
+    // (TypedAccessorEmitter.cs:159, `CppType(ef.Scalar.Value)`) has the identical latent NPE on the
+    // read side, not yet independently confirmed by running it (the writer crash already blocks).
+    // This is a genuine, previously-unaddressed emitter gap -- NOT decided/worked around here, per
+    // this milestone's "report a genuine design gap rather than silently deciding something
+    // material" instruction. Bodies.Position/RecipeParams stay OUT OF SCOPE this milestone; the 4
+    // Hud-family sections are unaffected (no Vector fields, no struct-array-element Vector case). ---
     public struct UndertowBodyRow
     {
         public int kind;                // U8, widened to int; source: el.Kind
