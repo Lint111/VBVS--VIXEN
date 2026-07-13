@@ -132,6 +132,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp" _out_callables_hdr_run)
+        # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHud.readmodel.g.h" _out_undertowhud_readmodel_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h" _out_undertowhudfactions_readmodel_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h" _out_undertowhudevents_readmodel_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h" _out_undertowhudinspect_readmodel_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -162,6 +167,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_appflow_run "${_cg}/appflow-schemas")
         set(_out_appflow_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h")
         set(_out_callables_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp")
+        # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
+        set(_out_undertowhud_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHud.readmodel.g.h")
+        set(_out_undertowhudfactions_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h")
+        set(_out_undertowhudevents_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h")
+        set(_out_undertowhudinspect_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -428,10 +438,70 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
         COMMENT "[codegen] regenerate AppFlowCallables.g.hpp"
         VERBATIM)
+
+    # --- View Read-Model Codegen Milestone 5 (R6): --readmodel-cpp DTO headers for the 4
+    # undertow Hud-family [View] schemas (UndertowHud/HudFactions/HudEvents/HudInspect).
+    # Mirrors view_hud_check/view_hud_regen's pattern exactly -- these are the same undertow
+    # view-schemas dir (_schema_view_run) the existing UndertowHud*.typed.g.h accessors are
+    # generated from (that CLI invocation is currently run manually, not CMake-driven, per
+    # Milestone 5's research; this is the first CMake-wired drift guard for the Undertow* Hud
+    # schemas). A schema edit that isn't regenerated now fails the build, same as every other
+    # generated artifact here.
+    set(_readmodel_undertowhud_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHud
+        --out-header "${_out_undertowhud_readmodel_run}")
+    add_custom_target(readmodel_undertowhud_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args} --check
+        COMMENT "[codegen] golden check: UndertowHud.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhud_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args}
+        COMMENT "[codegen] regenerate UndertowHud.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowhudfactions_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudFactions
+        --out-header "${_out_undertowhudfactions_readmodel_run}")
+    add_custom_target(readmodel_undertowhudfactions_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args} --check
+        COMMENT "[codegen] golden check: UndertowHudFactions.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhudfactions_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args}
+        COMMENT "[codegen] regenerate UndertowHudFactions.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowhudevents_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudEvents
+        --out-header "${_out_undertowhudevents_readmodel_run}")
+    add_custom_target(readmodel_undertowhudevents_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args} --check
+        COMMENT "[codegen] golden check: UndertowHudEvents.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhudevents_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args}
+        COMMENT "[codegen] regenerate UndertowHudEvents.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowhudinspect_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudInspect
+        --out-header "${_out_undertowhudinspect_readmodel_run}")
+    add_custom_target(readmodel_undertowhudinspect_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args} --check
+        COMMENT "[codegen] golden check: UndertowHudInspect.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhudinspect_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args}
+        COMMENT "[codegen] regenerate UndertowHudInspect.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/UndertowHud-readmodel golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h, UndertowHud/HudFactions/HudEvents/HudInspect.readmodel.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")
