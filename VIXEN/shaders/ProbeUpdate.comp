@@ -111,9 +111,11 @@ struct DDGILeakGateDebug {
     uint  farProbeIndex;         // CPU-set: flat probe index of the OCCLUDED probe (its workgroup performs the gather + write)
     float farShadingPosX, farShadingPosY, farShadingPosZ;  // CPU-set: world-space point on the far/occluded side the gather shades
     float gatheredLuma;          // OUTPUT: Chebyshev-tested (or ablated) luma gathered from nearProbeIndex's atlas entry at farShadingPos
-    // DIAG (temporary, M4 debugging -- remove before final commit): raw per-tick stats from
-    // nearProbeIndex's OWN ray-cast update this dispatch, written unconditionally by that
-    // probe's own workgroup so the CPU can see whether TraceWorld is hitting anything at all.
+    // GATE INFRASTRUCTURE (M4, permanent -- read by the VIXEN_DDGI_LEAK_GATE_DEMO readback
+    // hook): raw per-tick stats from nearProbeIndex's OWN ray-cast update this dispatch,
+    // written unconditionally by that probe's own workgroup so the CPU can see whether
+    // TraceWorld is hitting anything at all. Load-bearing for the leak-test gate's own
+    // diagnostics; not scaffolding to remove.
     uint  diagNearProbeHitCount;
     float diagNearProbeAvgRadianceLuma;
     float diagNearProbeAvgDepth;
@@ -127,10 +129,10 @@ struct DDGILeakGateDebug {
     // contributes bounce lighting. CPU-zeroed each tick before SpatialReuseShade.comp's
     // dispatch (atomicMax needs a per-tick-fresh floor, not an ever-growing running max).
     uint shadeM5IndirectLumaBits;
-    // DIAG (temporary, M5 debugging -- remove before final commit): SpatialReuseShade.comp's
-    // own atomicAdd count of anyHitRT pixels this dispatch, disambiguating "camera sees
-    // nothing" from "pixels see zero indirect irradiance" while shadeM5IndirectLumaBits
-    // stays 0.
+    // GATE INFRASTRUCTURE (M5, permanent -- read by the M5 shade-pass numeric gate):
+    // SpatialReuseShade.comp's own atomicAdd count of anyHitRT pixels this dispatch,
+    // disambiguating "camera sees nothing" from "pixels see zero indirect irradiance" while
+    // shadeM5IndirectLumaBits stays 0. Load-bearing; not scaffolding to remove.
     uint diagShadeAnyHitCount;
     // M6 ADDITION (edit-loop responsiveness gate): the ACTUAL post-hysteresis-blend atlas
     // luma for nearProbeIndex, read back right after this tick's imageStore (see the write
@@ -152,7 +154,7 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugSSBO {
 shared vec3  sharedRadiance[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
 shared float sharedDepth[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
 shared float sharedDepth2[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
-shared uint  sharedHitCount[PROBE_UPDATE_MAX_RAYS_PER_PROBE];  // DIAG (temporary, M4 debugging)
+shared uint  sharedHitCount[PROBE_UPDATE_MAX_RAYS_PER_PROBE];  // per-lane hit flag, reduced below (gate infrastructure, permanent)
 
 // Small self-contained PCG-style hash RNG — mirrors ReservoirCombine.glsl's own
 // pcgHash/rngNextFloat exactly (that file is DirectLighting/SpatialReuseShade's
@@ -363,7 +365,7 @@ void main() {
     float sampleDepth = 0.0;
     float sampleDepth2 = 0.0;
     float sampleWeight = 0.0;  // 1.0 if this invocation cast a real ray, else 0.0 (idle lanes)
-    uint sampleHit = 0u;  // DIAG (temporary, M4 debugging)
+    uint sampleHit = 0u;  // 1 if this ray hit geometry (used to exclude misses from the visibility moment, see below)
 
     if (rayIndex < raysPerProbe) {
         vec3 rayDir = sphericalFibonacci(rayIndex, raysPerProbe);
@@ -416,7 +418,7 @@ void main() {
             sharedRadiance[rayIndex] += sharedRadiance[rayIndex + stride];
             sharedDepth[rayIndex]    += sharedDepth[rayIndex + stride];
             sharedDepth2[rayIndex]   += sharedDepth2[rayIndex + stride];
-            sharedHitCount[rayIndex] += sharedHitCount[rayIndex + stride];  // DIAG (temporary, M4 debugging)
+            sharedHitCount[rayIndex] += sharedHitCount[rayIndex + stride];
         }
         barrier();
     }
@@ -436,9 +438,10 @@ void main() {
     float avgDepth  = sharedDepth[0]  * invHitCount;
     float avgDepth2 = sharedDepth2[0] * invHitCount;
 
-    // DIAG (temporary, M4 debugging -- remove before final commit): nearProbeIndex's own
-    // workgroup reports its raw per-tick hit count + radiance luma BEFORE hysteresis blending,
-    // so the CPU readback can see whether TraceWorld is hitting anything at all from this probe.
+    // GATE INFRASTRUCTURE (M4, permanent): nearProbeIndex's own workgroup reports its raw
+    // per-tick hit count + radiance luma BEFORE hysteresis blending, so the CPU readback can
+    // see whether TraceWorld is hitting anything at all from this probe. Load-bearing for the
+    // leak-test gate's own diagnostics; not scaffolding to remove.
     if (ddgiLeakGateDebug.ddgiLeakGateEnabled != 0u && probeIndex == ddgiLeakGateDebug.nearProbeIndex) {
         ddgiLeakGateDebug.diagNearProbeHitCount = sharedHitCount[0];
         ddgiLeakGateDebug.diagNearProbeAvgRadianceLuma = dot(avgRadiance, vec3(0.2126, 0.7152, 0.0722));

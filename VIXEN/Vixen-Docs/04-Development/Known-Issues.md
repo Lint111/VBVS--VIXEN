@@ -567,3 +567,15 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 **How to catch this class of bug going forward:** any moment/statistic meant to bound or reject based on distance (Chebyshev, variance shadow maps, etc.) must be checked for what a "no data" sample (a miss, an out-of-range read, etc.) contributes to the SAME accumulator used for real samples — mixing an arbitrary large/small sentinel into a shared scalar statistic can silently make the statistic's own decision boundary vacuous for realistic inputs. An ablation gate (per the recipe-epic's "vary exactly one factor" discipline, reused here) is what actually surfaces this: a milestone gate that only checks "the value changed" without checking DIRECTION and MAGNITUDE against a known-should-differ negative control would have missed this exact bug (the pre-fix Chebyshev-vs-ablation readings DID differ, just not by nearly enough, and not obviously in the wrong direction without doing the ablation comparison at all).
 
 **Severity:** High while undiscovered (the DDGI leak-mitigation mechanism was the entire point of the milestone, and was silently non-functional) but the fix itself is small/contained · **Status:** RESOLVED (Inc4 M4, commit `54d59dc8`, retroactive M3 fix bundled with the M4 Chebyshev feature commit — see that commit's message for why it wasn't split further).
+
+---
+
+### KI-030 — `probe_update_push_constant_gatherer` logs a constant "Type mismatch" internal-validation line at every graph-validate, regardless of `probeGridEnabled`
+
+**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M6's live gates — a "Type mismatch" internal validation log line fires 11× at graph-validate time on every run, independent of `VIXEN_PROBE_GRID_CONFIG_ENABLED`. Present since M3 (`f9453b76`) shipped the `probeUpdatePushConstantGatherer`, unrelated to M6's own work.
+
+**Symptom:** the log line is emitted every run (including the default no-DDGI boot path) but is NOT a Vulkan VUID, does not affect rendering, and is not a regression — it has been present, unchanged in kind, across every Inc4 milestone's own gate runs (M3 through M7).
+
+**Root cause:** not yet investigated — flagged for whoever next touches `probeUpdatePushConstantGatherer` or the push-constant gatherer's internal type-checking path to root-cause and either fix or explain why it is expected. Deliberately NOT investigated as part of M7's docs-only close-out scope (would require RenderGraph library source changes, out of scope for a measurement+docs milestone).
+
+**Severity:** Low (cosmetic log noise, no functional/behavioral impact observed across 4 milestones of live gating) · **Status:** OPEN, tracked, not blocking.

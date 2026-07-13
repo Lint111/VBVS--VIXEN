@@ -359,9 +359,10 @@ void main() {
     float bestRoughness  = recReadback.roughness;
     vec3  bestWorldPos   = recReadback.worldPos;
 
-    // DIAG (temporary, M5 debugging -- remove before final commit): unconditional
-    // (not gated by probeGridEnabled) anyHitRT pixel count, disambiguating "camera sees
-    // nothing" from "sees geometry but zero indirect irradiance".
+    // GATE INFRASTRUCTURE (M5, permanent -- read by the M5 shade-pass numeric gate):
+    // unconditional (not gated by probeGridEnabled) anyHitRT pixel count, disambiguating
+    // "camera sees nothing" from "sees geometry but zero indirect irradiance". Load-bearing;
+    // not scaffolding to remove.
     if (ddgiLeakGateDebugShade.ddgiLeakGateEnabled != 0u && anyHitRT) {
         atomicAdd(ddgiLeakGateDebugShade.diagShadeAnyHitCount, 1u);
     }

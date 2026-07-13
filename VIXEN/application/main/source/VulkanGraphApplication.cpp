@@ -960,8 +960,10 @@ void VulkanGraphApplication::Update() {
                     uint32_t farProbeIndex;
                     float    farShadingPosX, farShadingPosY, farShadingPosZ;
                     float    gatheredLuma;
-                    // DIAG (temporary, M4 debugging -- remove before final commit): see
-                    // ProbeUpdate.comp's own DDGILeakGateDebug struct for what these carry.
+                    // GATE INFRASTRUCTURE (M4, permanent): see ProbeUpdate.comp's own
+                    // DDGILeakGateDebug struct for what these carry. Must stay byte-identical
+                    // to that shader struct (see the static_assert below); not scaffolding to
+                    // remove.
                     uint32_t diagNearProbeHitCount;
                     float    diagNearProbeAvgRadianceLuma;
                     float    diagNearProbeAvgDepth;
@@ -970,7 +972,7 @@ void VulkanGraphApplication::Update() {
                     // gather luma, atomicMax bit-cast (see ProbeUpdate.comp's DDGILeakGateDebug
                     // struct doc comment) -- CPU zeroes this each tick before readback.
                     uint32_t shadeM5IndirectLumaBits;
-                    uint32_t diagShadeAnyHitCount;  // DIAG (temporary, M5 debugging)
+                    uint32_t diagShadeAnyHitCount;  // gate infrastructure (M5, permanent) -- see SpatialReuseShade.comp
                     // M6 ADDITION: post-hysteresis-blend atlas luma for nearProbeIndex -- see
                     // ProbeUpdate.comp's own DDGILeakGateDebug struct doc comment for why this
                     // is distinct from diagNearProbeAvgRadianceLuma above (that field is the
