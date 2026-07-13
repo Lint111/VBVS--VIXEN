@@ -1008,6 +1008,31 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-5b Milestone A: TypedAccessorEmitter equivalence proof
+# ===========================================================================
+# Fills a ViewStore via ViewWireReaderSoa::Apply (same canonical wire + kHudBlob fixture as
+# test_view_wire_soa_roundtrip.cpp) then wraps the SAME store in the NEW GENERATED
+# Vixen::Views::HudSection accessor class (TypedAccessorEmitter.cs, --typed-accessor-cpp) and
+# asserts the decoded values match exactly -- proving the generated typed accessors reproduce what
+# the raw ViewStore API already proves correct.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_typed_accessor_emitter test_typed_accessor_emitter.cpp)
+    target_link_libraries(test_typed_accessor_emitter PRIVATE GTest::gtest_main RenderGraph)
+
+    # HudTypedAccessor.g.h / Hud.blob.g.h are CONSUMER artifacts (application/main) -- needs the
+    # app's include dir to resolve "Generated/..." (mirrors test_view_wire_soa_roundtrip's identical
+    # include dir).
+    target_include_directories(test_typed_accessor_emitter PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set_target_properties(test_typed_accessor_emitter PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_typed_accessor_emitter DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)")
+else()
+    message(STATUS "⊗ test_typed_accessor_emitter skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping
