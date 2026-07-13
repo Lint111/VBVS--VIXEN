@@ -575,3 +575,16 @@ rejected in writing.
   - No blockers. Next: Milestone 2.5 (writer-side wiring for the 4 Hud-family sections; Bodies now
     includable per this milestone's unblock, per the Milestone Map's own note) or Milestone 3
     (undertow reader cutover + live-gate), per whichever the controller sequences next.
+  - **Opus validator (independent re-verification):** APPROVED. Read all 6 changed files in full and
+    confirmed every claimed change is real. Mechanically traced the full round-trip against real
+    source (cast target matches the actual stored type, baked field index correctly resolves via the
+    public `ScalarSlotPtr`, no runtime name lookup introduced) AND independently regenerated all 3
+    `VectorProof` headers via the real CLI, confirming byte-identical to the committed files —
+    stronger than just reading assertions. Independently re-ran Yeroket's test suite (79/79) and
+    confirmed the regression/expected-failure-then-fix story is genuine (the old throw-test's own
+    comment named this exact milestone as its intended closer; the new test is strengthened, not
+    weakened). Confirmed the `KindTag`/`ViewBlobFile.cpp` scope-boundary decision is sound and
+    genuinely outside the named 6-file scope. Confirmed Bodies remains undeclared, no dll noise.
+    Flagged one forward-note (not a blocker): `Mat4` also maps to `Vector` but `ViewValue::Vec` is
+    fixed at 3 floats — already documented in `ViewBlob.h`'s own comment as needing a future distinct
+    `ViewKind` for non-3-component vector shapes. Cleared to proceed to Milestone 2.5/3.
