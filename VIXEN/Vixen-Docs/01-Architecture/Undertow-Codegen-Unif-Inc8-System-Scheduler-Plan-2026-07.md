@@ -119,11 +119,34 @@ must decide how to handle (see below). Risk label corrected to "novel capability
   side effect of the port.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
   validator.
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in either repo
+  - **Corrected site count: 37, not 34** — `Diplomacy/CoarseHistoryResolverSystems.cs` holds 4 system
+    classes in one file. A 38th `[System(` hit is test-fixture scaffolding
+    (`Undertow.Tests.CodeModFixture/Fixture.cs:36`), correctly excluded from the real count.
+  - **Dependency-graph shape confirmed, with a key refinement**: 3 independent linear chains
+    (Knowledge/Integrate/Observe phases), no cycles, no diamonds — but the 11 real edges are **100%
+    `After`, ZERO `Before`** anywhere in real data (not "~10 mixed" as the plan estimated). Milestone 2
+    must add a SYNTHETIC `Before`-only test since real data never exercises that codepath.
+  - **`CodeModLoader.cs` asymmetry confirmed exactly**: `RegisterAssemblySeams`'s SYSTEMS block (lines
+    106-120) registers mod-loaded systems with raw `a.Order` straight into `SystemDescriptor`, never
+    calling `SystemScheduleSolver`, never reading `a.Before`/`a.After` at all. Reported only, per scope —
+    not flagged as something to fix in this increment.
+  - **Mechanism confirmed**: extend `CompilationLoader` (Yeroket, `feat/codegen-unif-inc7-effect` tip
+    `c4691435`, which already has `LoadActionClasses`/`LoadEffectClasses` precedent) with a new
+    `LoadSystemClasses`, PLUS a verbatim standalone port of `SystemScheduleSolver.cs`/
+    `EmitRegisterSystems.cs` — both confirmed Roslyn-independent (zero `Microsoft.CodeAnalysis` imports)
+    — only `SystemRegistrationGenerator.cs`'s Roslyn-attribute-extraction shell gets replaced.
+  - **Retirement safety confirmed**: `CodeModLoader.cs` has zero references to the generator/emitter/
+    solver being retired.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently re-grepped the site count
+    and edge direction/count itself, confirmed the `CodeModLoader.cs` asymmetry by direct line read,
+    confirmed both `SystemScheduleSolver.cs`/`EmitRegisterSystems.cs`'s Roslyn-independence and the
+    Yeroket branch tip's real precedent state. Cleared to proceed to Milestone 2.
