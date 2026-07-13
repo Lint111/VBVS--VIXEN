@@ -313,6 +313,45 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
   Milestone 3 also lands — until then this is dead-code-in-waiting, deliberately, to avoid a half-swap
   that breaks the real seam.
 
+### Milestone 2.5's own Task 1 (grounding pass) — DONE, findings + decision recorded here
+
+- **Confirmed all 9 real `BodyView` fields map 1:1 to `UndertowBodyRow`'s columns** (7 already-declared
+  + `Position`/`RecipeParams` newly includable). `Label`/`TypeLabel`/`Composition` never in scope.
+- **Confirmed the Vec3(double)→Vec3f(float) conversion is a plain per-component narrowing cast**, no
+  unit/axis conversion — precedented by the OLD hand-rolled writer's own identical cast
+  (`PutF32(pos, i*12+0, (float)__p.X)`). Milestone 2's Progress Log already precedent-checked exact
+  narrowing-precision safety for `Mass`; the round-trip proof should do the same cheap sanity check for
+  Position/RecipeParams' AU-scale range.
+- **Confirmed `OrbitPath` handling**: simply OMITTED from the `[View]` schema entirely — the exact
+  precedent from the original Inc-5 Milestone 3's own "Gap #4 RESOLVED" resolution (which originally
+  omitted Position/RecipeParams/OrbitPath all three; only OrbitPath remains omitted now).
+- **CRITICAL finding, independently confirmed rigorously by the Opus validator**: the new Yeroket wire
+  has NO multi-section container. The OLD `ViewBufferBuilder`/`EmitViewWriter.All()` combines all 5
+  sections into ONE TOC-based buffer (magic+version+3-field-per-section TOC+16-byte-aligned bodies).
+  The NEW `<Model>ViewWriter.ToBuffer()` is one independent, self-branded `UTVA` blob PER SCHEMA CLASS
+  (5 separate classes) — no combiner exists anywhere. `ViewWireReaderSoa::Apply` is confirmed to be a
+  single-schema, non-TOC decoder that hard-errors on trailing bytes — it cannot consume 5 concatenated
+  blobs without a per-section unwrap step first. This is a genuine, previously-unaddressed design gap,
+  not simple glue — correctly NOT silently decided by the implementer.
+- **DECISION (2026-07-13, made here after independent Opus validation of both options)**: adopt
+  **option (b)** — build a NEW, minimal multi-section container with its OWN distinct magic (`UTVC`,
+  per the validator's own guardrail suggestion, so a stray single-schema `UTVA` blob can never be
+  mistaken for a container) wrapping the 5 self-describing `UTVA` sub-buffers (magic + count + a
+  simple offset/length TOC + concatenated sub-buffers). Rejected option (a) — exposing 5 separate
+  buffers from `HostSession`'s public API — because it would force a new multi-pointer/count ABI
+  across the C#↔C++ FFI seam (today `HostSession.ViewBuffer` is ONE `byte[]`, pinned via one
+  `GCHandle`, handed to C++ as one `ut_view` pointer), pulling `HostAbi`/`main.cpp`/`hud_view.h` FFI
+  plumbing into a milestone scoped as "writer-side wiring," and entangling Milestone 2.5/3 more
+  tightly than the plan's own "must land together" already requires. Option (b) instead: preserves
+  `HostSession.ViewBuffer`'s existing single-`byte[]` shape unchanged; directly mirrors the retiring
+  `ViewBufferBuilder`'s own envelope shape (a well-understood pattern, not novel); and confines all new
+  wire-consumption risk to ONE new outer-container-unwrap step in Milestone 3's C++ reader cutover
+  (read count+TOC, hand each sub-span to `ViewWireReaderSoa::Apply` in a loop) — additive and
+  localized, rather than reshaping the FFI pointer-passing convention itself.
+- **Confirmed real-data proof source**: `new UndertowSim(); sim.NewCampaign(7); sim.ProjectObserverFrame()`
+  (`ViewContractTests.cs:14-16,33-35`) is real, already-exercised production sim-projection data — no
+  new sim-bootstrapping code needed, directly reusable for Milestone 2.5's round-trip proof.
+
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide the emission template (report-back gate). One
   Sonnet implementer + one Opus validator.
