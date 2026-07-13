@@ -1,0 +1,42 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// ProbeUpdateSmokeTest.comp - Sampled Lighting Inc4 M1 reusability proof
+// ============================================================================
+// Throwaway compile-only smoke test (not wired into any RenderGraph pass).
+// Proves SceneBindings.glsl's scene-binding chain + TraceWorld/TraceWorldShadow
+// are genuinely reusable from a FOURTH call site distinct from
+// BodyInstanceRayMarch.comp / DirectLighting.comp / SpatialReuseShade.comp —
+// i.e. that no further extraction work is needed for the future M3 probe-update
+// pass to pull in the same chain. See test_probe_update_smoke.cpp, which
+// compiles this file through the real ShaderBundleBuilder/glslang pipeline
+// (with #include resolution) as its only assertion.
+// ============================================================================
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+#include "SceneBindings.glsl"
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize      = imageSize(outputImage);
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+
+    // Arbitrary probe-ray-shaped origin/direction (NOT the camera ray) — proves
+    // TraceWorld() is genuinely callable with non-camera rays from this call site.
+    vec3 probeOrigin = vec3(0.0, 1.0, 0.0);
+    vec3 probeDir     = normalize(vec3(1.0, 0.0, 0.0));
+
+    WorldHit hit;
+    bool anyHit = TraceWorld(probeOrigin, probeDir, 0.0, 1e30, hit);
+
+    bool shadowed = TraceWorldShadow(probeOrigin, probeDir, 0.001, 1e30);
+
+    vec3 result = anyHit ? hit.color : vec3(0.0);
+    if (shadowed) result *= 0.5;
+
+    imageStore(outputImage, pixelCoords, vec4(result, 1.0));
+}

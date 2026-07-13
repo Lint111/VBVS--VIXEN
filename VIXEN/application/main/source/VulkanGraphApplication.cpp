@@ -7,6 +7,9 @@
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
 #include <cstdio>      // std::sscanf for VIXEN_TIER_M8_FLIGHT_AIM_OFFSET (M8 Task 23)
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
+#include <cstring>     // std::memcpy for M5's shadeM5IndirectLumaBits float reinterpretation
+#include <unordered_map>  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES groupId->name lookup
+#include "Core/FrameSyncSchedule.h"  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -42,6 +45,7 @@
 #include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
+#include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
 #include "LightTree.h"                        // Sampled Lighting Inc3 M4: Vixen::SVO::LightTreeNode for the DIAG readback recomputation
 
@@ -52,6 +56,14 @@
 // (process-lifetime-scoped, matching every other VIXEN_*_DEMO env-gated block's own static
 // state in this file) -- not a general mechanism, a one-shot gate wire.
 std::vector<Vixen::SVO::LightTreeNode>* g_restirGateWorldCut = nullptr;
+
+// Sampled Lighting Inc4 M6: the DDGI edit-loop demo's "real" (source-on) world-transformed
+// light-tree cut, stashed by BuildRenderGraph.cpp's VIXEN_DDGI_EDIT_LOOP_DEMO scene block
+// (same one-shot-global convention as g_restirGateWorldCut above). The scene starts with an
+// EMPTY cut on LightTreeBufferNode (source "off"); this file's readback hook flips the real
+// cut in at a chosen tick via LightTreeBufferNode::SetLightTreeCut, exercising a genuine live
+// content edit and reading diagNearProbeAvgRadianceLuma's hysteresis convergence afterward.
+std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 
 // Sparse-Mip ESVO LOD Inc1 M4c: the combined residency trigger (M4a resolvability + M4b
 // frustum, factored out as a pure/testable function — see ResidencyTrigger.h).
@@ -774,6 +786,397 @@ void VulkanGraphApplication::Update() {
                                              ": spatial-debug/hit-record buffers, device, or the world-cut stash not found -- readback skipped");
                     }
                 }
+            }
+        }
+
+        // Sampled Lighting Inc4 M4 live gate (VIXEN_DDGI_LEAK_GATE_DEMO=1): every tick, seed
+        // ddgi_leak_gate_debug_buffer (ProbeUpdate.comp binding 31) with the near/far probe
+        // indices + far shading point BuildRenderGraph.cpp's scene-build block computed
+        // (ddgiLeakGateNearProbeIndex_/ddgiLeakGateFarProbeIndex_/ddgiLeakGateFarShadingPos_),
+        // BEFORE this tick's Render() dispatches ProbeUpdate.comp (Update() runs before
+        // Render() every loop iteration -- VulkanApplicationBase's own PreTick->Update->
+        // Render->PostTick order, see that header's own Tick() doc comment), so the shader
+        // reads THIS tick's values. chebyshevTestEnabled starts 1 (the real leak-test) for
+        // enough ticks to let the irradiance/visibility atlases converge past
+        // ProbeGridConfig's own hysteresisRate (default 0.02 -- mirrors AccumulationConfig's
+        // own slow-EWMA convergence budget, needing dozens of ticks), reads back
+        // gatheredLuma, THEN flips to 0 (the ablation negative control: force
+        // visibility=1, bypassing the Chebyshev test) for the SAME re-convergence budget
+        // again, and reads back a second time — proving the SAME scene leaks without the
+        // mechanism under test (the recipe-epic's own "vary exactly one factor" ablation
+        // discipline, per the plan's Task 4).
+        // Sampled Lighting Inc4 M5 live-gate instrumentation (VIXEN_M5_SHADE_GATE_DEMO=1,
+        // paired with VIXEN_DDGI_LEAK_GATE_DEMO=1): a live-gate finding this milestone made
+        // trying two other combinations first -- (1) the DDGI scene alone: its geometry
+        // (~world (5-9,8,8)) is inside the probe grid's [0,32) coverage but NOT framed by the
+        // default camera orbit (center (64,64,64)), so anyHitRT never fires and the atomicMax
+        // stays at its zero floor; (2) VIXEN_RESTIR_GATE_DEMO's own emissive scene: IS
+        // camera-framed (its body sits at world ~(40,88), centered on the default orbit) but
+        // OUTSIDE the probe grid's [0,32) coverage, so every gatherIndirectDiffuse() sample
+        // clamps to boundary probes that never received irradiance -- also zero. The fix:
+        // reuse the DDGI scene's OWN probe-grid-aligned geometry (already proven to receive
+        // real irradiance via M4's own gatheredLuma=0.015836/0.135071 non-zero readings) and
+        // SCRIPT the camera to actually look at it (SetPositionForTest, mirroring the
+        // residency gate's own established live-camera-override pattern), rather than
+        // reworking either scene's geometry or the shared default orbit other gates depend on.
+        if (renderGraph && std::getenv("VIXEN_M5_SHADE_GATE_DEMO") && std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+            if (auto* m5Camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                // FIRST ATTEMPT (superseded): SetPositionForTest + SetLookTargetNoOrbitForTest
+                // (the FIXED-mode combo CameraNode.h documents for Task 19's flight path) --
+                // live-gate finding: this scene's own graph-build-time SetupImpl already
+                // configures PARAM_ORBIT_CENTER_* (every scene does, BuildRenderGraph.cpp's
+                // shared camera setup), which per SetPositionForTest's OWN doc comment latches
+                // orbitActive_ -- UpdateCameraData's ORBIT MODE branch then recomputes
+                // cameraPosition = orbitCenter + orbitOffset every frame, silently overriding a
+                // FIXED-mode position write (shadeM5IndirectLumaMax stayed 0 through this
+                // attempt, confirming the override). FIX: stay in orbit mode and solve for
+                // yaw/pitch/orbitDistance such that orbitCenter(64,64,64) + orbitOffset lands at
+                // the scripted position (-10,8,8) -- SetOrbitDistanceForTest/SetYawForTest/
+                // SetPitchForTest are all read live every ExecuteImpl (unlike the FIXED-mode
+                // setters, which conflict with an already-engaged orbit), and SetLookTargetForTest
+                // decouples the AIM from orbitCenter while leaving orbitCenter itself as the
+                // (irrelevant, since only used for position) pivot.
+                // CORRECTED (3rd pass): this scene never configures PARAM_ORBIT_CENTER_* (only
+                // VIXEN_TIER_ZOOM_DEMO-style scenes opt into that), so orbit is NEVER engaged by
+                // scene setup for THIS demo -- orbitActive_ starts false and stays false unless
+                // something calls EngageOrbit(). The 1st attempt's premise (orbit already
+                // engaged, so use FIXED-mode setters and get silently overridden) was itself
+                // wrong for this specific scene; the 2nd attempt's orbit-mode math still read 0
+                // hits, unverifiable without a camera-position getter (none exists, and adding
+                // one to this widely-used node for a one-off debug check was reconsidered as too
+                // invasive). Reverting to attempt 1's FIXED-mode approach (SetPositionForTest +
+                // SetLookTargetNoOrbitForTest, which does NOT call EngageOrbit -- see that
+                // setter's own doc comment) is therefore actually correct for this scene: no
+                // orbit engagement happens anywhere in this call chain, so FIXED mode's own
+                // branch (UpdateCameraData's else-branch, honoring hasLookTarget_) applies
+                // cleanly with no override risk.
+                // CORRECTED (5th pass): every hand-derived grid->world transform attempt (5.1,8,8
+                // then 5.125,13,13) was wrong. Used the AUTHORITATIVE value instead --
+                // BuildRenderGraph.cpp's own "DIAG cutNode[0] worldPos=" log line (printed by the
+                // VIXEN_DDGI_LEAK_GATE_DEMO scene-build block itself, from the ACTUAL LightTreeCut
+                // node after its real grid->world transform) reads worldPos=(10.75,16.75,16.75) --
+                // ground truth, not re-derived by hand. Camera placed a few units back along -X,
+                // aimed directly at this logged position.
+                m5Camera->SetPositionForTest(glm::vec3(0.0f, 16.75f, 16.75f));
+                m5Camera->SetLookTargetNoOrbitForTest(glm::vec3(10.75f, 16.75f, 16.75f));
+
+                static bool loggedOnce = false;
+                if (!loggedOnce && mainLogger) {
+                    glm::vec3 p = m5Camera->GetCameraPositionForTest();
+                    glm::vec3 oc = m5Camera->GetOrbitCenterForTest();
+                    mainLogger->Info("[M5ShadeGateDemo] DIAG camera pose after script: pos=(" +
+                                      std::to_string(p.x) + "," + std::to_string(p.y) + "," + std::to_string(p.z) +
+                                      ") orbitActive=" + std::to_string(m5Camera->GetOrbitActiveForTest()) +
+                                      " orbitCenter=(" + std::to_string(oc.x) + "," + std::to_string(oc.y) + "," + std::to_string(oc.z) + ")");
+                    loggedOnce = true;
+                }
+            }
+        }
+
+        if (renderGraph && std::getenv("VIXEN_M5_SHADE_GATE_DEMO")) {
+            static long m5ShadeGateTick = 0;
+            ++m5ShadeGateTick;
+            constexpr long kM5ShadeReadTick = 150;  // well past hysteresis convergence (>>1/0.02=50)
+
+            auto* shadeGateBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("ddgi_leak_gate_debug_buffer"));
+            auto* shadeGateDevInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+            if (shadeGateBuf && shadeGateDevInst && shadeGateDevInst->GetVulkanDevice()) {
+                auto* shadeGateDev = shadeGateDevInst->GetVulkanDevice();
+
+                // BUG FOUND live-gating this very check: resetting shadeM5IndirectLumaBits/
+                // diagShadeAnyHitCount on tick N and then reading them back in the SAME
+                // Update() call (before tick N's OWN Render() has run) captures this tick's
+                // just-written zero, not the GPU's prior write -- every earlier attempt's
+                // "shadeM5IndirectLumaMax=0.000000 diagShadeAnyHitCount=0" was this bug, not a
+                // real camera/geometry problem (confirmed via the CPU-side HitRecord scan
+                // below finding 99856/250000 real hits once camera framing was ALSO fixed).
+                // Fix: skip the reset on the read tick itself -- read back what the PRIOR
+                // tick's reset+dispatch produced, then reset for the tick after.
+                if (m5ShadeGateTick != kM5ShadeReadTick) {
+                    vkDeviceWaitIdle(shadeGateDev->device);
+                    void* m = shadeGateBuf->MapForReadback(shadeGateDev);
+                    if (m) {
+                        // Only the two leading uint fields matter here (ddgiLeakGateEnabled,
+                        // chebyshevTestEnabled) -- the rest of the record (probe indices/
+                        // farShadingPos) is irrelevant to this flag-only check and left as
+                        // whatever zero-init the buffer already has.
+                        auto* flags = reinterpret_cast<uint32_t*>(m);
+                        flags[0] = 1u;  // ddgiLeakGateEnabled
+                        flags[12] = 0u;  // shadeM5IndirectLumaBits (index 12)
+                        flags[13] = 0u;  // diagShadeAnyHitCount (index 13, DIAG temporary)
+                        shadeGateBuf->UnmapReadback(shadeGateDev);
+                    }
+                } else {
+                    // Read tick: still need ddgiLeakGateEnabled=1 seeded (harmless -- it was
+                    // already 1 from the prior tick's write above), but do NOT touch
+                    // flags[12]/[13] here -- that would clobber the very value being read below.
+                    vkDeviceWaitIdle(shadeGateDev->device);
+                    void* m = shadeGateBuf->MapForReadback(shadeGateDev);
+                    if (m) {
+                        auto* flags = reinterpret_cast<uint32_t*>(m);
+                        flags[0] = 1u;
+                        shadeGateBuf->UnmapReadback(shadeGateDev);
+                    }
+                }
+
+                if (m5ShadeGateTick == kM5ShadeReadTick) {
+                    vkDeviceWaitIdle(shadeGateDev->device);
+                    void* rm = shadeGateBuf->MapForReadback(shadeGateDev);
+                    if (rm) {
+                        const auto* bits = reinterpret_cast<const uint32_t*>(rm);
+                        float luma;
+                        std::memcpy(&luma, &bits[12], sizeof(float));
+                        if (mainLogger) {
+                            mainLogger->Info("[M5ShadeGateDemo] tick " + std::to_string(m5ShadeGateTick) +
+                                              ": shadeM5IndirectLumaMax=" + std::to_string(luma) +
+                                              " diagShadeAnyHitCount=" + std::to_string(bits[13]));
+                        }
+                        shadeGateBuf->UnmapReadback(shadeGateDev);
+                    }
+
+                    // DIAG (temporary, M5 debugging): direct CPU-side HitRecord scan,
+                    // bypassing SpatialReuseShade.comp's own atomic counter entirely --
+                    // disambiguates "the shader's atomic never ran/never saw ddgiLeakGateEnabled"
+                    // from "the march genuinely has zero HITRECORD_FLAG_HIT pixels this scene".
+                    auto* hrBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+                    if (hrBuf) {
+                        void* hrMapped = hrBuf->MapForReadback(shadeGateDev);
+                        if (hrMapped) {
+                            const size_t byteSize = static_cast<size_t>(hrBuf->GetSizeBytes());
+                            constexpr size_t kHitRecordStride = 64;  // sizeof(HitRecord), see HitRecord.glsl
+                            constexpr size_t kFlagsOffset = 44;      // HitRecord.glsl's own std430 layout comment
+                            const auto* bytes = reinterpret_cast<const uint8_t*>(hrMapped);
+                            size_t hitCount = 0;
+                            const size_t recordCount = byteSize / kHitRecordStride;
+                            for (size_t i = 0; i < recordCount; ++i) {
+                                uint32_t flagsField;
+                                std::memcpy(&flagsField, bytes + i * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                if (flagsField & 0x1u) ++hitCount;  // HITRECORD_FLAG_HIT
+                            }
+                            if (mainLogger) {
+                                mainLogger->Info("[M5ShadeGateDemo] DIAG CPU-side HitRecord scan: " +
+                                                  std::to_string(hitCount) + "/" + std::to_string(recordCount) + " pixels hit");
+                            }
+                            hrBuf->UnmapReadback(shadeGateDev);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (renderGraph && std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+            static long ddgiGateTick = 0;
+            ++ddgiGateTick;
+
+            constexpr long kConvergeTicks       = 120;  // >> 1/hysteresisRate(0.02)=50 ticks to steady-state
+            constexpr long kChebyshevReadTick   = kConvergeTicks;
+            constexpr long kAblationReadTick    = 2 * kConvergeTicks;
+
+            auto* debugBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("ddgi_leak_gate_debug_buffer"));
+            auto* deviceInstDdgi = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+
+            if (debugBuf && deviceInstDdgi && deviceInstDdgi->GetVulkanDevice()) {
+                auto* deviceDdgi = deviceInstDdgi->GetVulkanDevice();
+
+                // Seed this tick's params EVERY tick (mirrors ProbeGridConfigNode::ExecuteImpl's
+                // own per-frame re-upload — cheap, keeps the buffer ready with no separate
+                // "only write once" bookkeeping). chebyshevTestEnabled: 1 through
+                // kChebyshevReadTick (inclusive), then 0 (the ablation phase) thereafter.
+                struct DDGILeakGateDebugHost {
+                    uint32_t ddgiLeakGateEnabled;
+                    uint32_t chebyshevTestEnabled;
+                    uint32_t nearProbeIndex;
+                    uint32_t farProbeIndex;
+                    float    farShadingPosX, farShadingPosY, farShadingPosZ;
+                    float    gatheredLuma;
+                    // GATE INFRASTRUCTURE (M4, permanent): see ProbeUpdate.comp's own
+                    // DDGILeakGateDebug struct for what these carry. Must stay byte-identical
+                    // to that shader struct (see the static_assert below); not scaffolding to
+                    // remove.
+                    uint32_t diagNearProbeHitCount;
+                    float    diagNearProbeAvgRadianceLuma;
+                    float    diagNearProbeAvgDepth;
+                    float    diagNearProbeAvgDepth2;
+                    // M5 ADDITION: SpatialReuseShade.comp's own production 8-probe trilinear
+                    // gather luma, atomicMax bit-cast (see ProbeUpdate.comp's DDGILeakGateDebug
+                    // struct doc comment) -- CPU zeroes this each tick before readback.
+                    uint32_t shadeM5IndirectLumaBits;
+                    uint32_t diagShadeAnyHitCount;  // gate infrastructure (M5, permanent) -- see SpatialReuseShade.comp
+                    // M6 ADDITION: post-hysteresis-blend atlas luma for nearProbeIndex -- see
+                    // ProbeUpdate.comp's own DDGILeakGateDebug struct doc comment for why this
+                    // is distinct from diagNearProbeAvgRadianceLuma above (that field is the
+                    // RAW pre-blend per-tick value, not the EWMA-converging one).
+                    float    diagNearProbeBlendedAtlasLuma;
+                };
+                static_assert(sizeof(DDGILeakGateDebugHost) == 60, "must match ProbeUpdate.comp's DDGILeakGateDebug std430 layout (60B, M6 added diagNearProbeBlendedAtlasLuma)");
+
+                // vkDeviceWaitIdle before EVERY seed write, not just the two readback ticks:
+                // this buffer is a single fixed allocation (no per-frame-in-flight ring, unlike
+                // ProbeGridConfigNode's own upload ring), so a host write racing a still-in-
+                // flight dispatch's read of the SAME memory would be a genuine data race under
+                // Vulkan's external-synchronization model. Acceptable here (gate/demo-only path,
+                // not a production hot loop -- same "blocking is fine for an unattended capture
+                // harness" precedent RenderTargetReadback.h's own helpers already use).
+                vkDeviceWaitIdle(deviceDdgi->device);
+                void* seedMapped = debugBuf->MapForReadback(deviceDdgi);
+                if (seedMapped) {
+                    auto* rec = reinterpret_cast<DDGILeakGateDebugHost*>(seedMapped);
+                    rec->ddgiLeakGateEnabled   = 1u;
+                    rec->chebyshevTestEnabled  = (ddgiGateTick <= kChebyshevReadTick) ? 1u : 0u;
+                    rec->nearProbeIndex        = ddgiLeakGateNearProbeIndex_;
+                    rec->farProbeIndex         = ddgiLeakGateFarProbeIndex_;
+                    rec->farShadingPosX        = ddgiLeakGateFarShadingPos_.x;
+                    rec->farShadingPosY        = ddgiLeakGateFarShadingPos_.y;
+                    rec->farShadingPosZ        = ddgiLeakGateFarShadingPos_.z;
+                    // gatheredLuma left as whatever the GPU last wrote — it's an OUTPUT field,
+                    // overwriting it here would just be clobbered by the shader's own write anyway.
+                    // shadeM5IndirectLumaBits IS zeroed every tick: atomicMax needs a per-tick-
+                    // fresh floor (0 == floatBitsToUint(0.0), the correct "no contribution yet"
+                    // sentinel for a non-negative luma value), unlike gatheredLuma above which is
+                    // a single deterministic (non-atomic) write, not an accumulating max.
+                    rec->shadeM5IndirectLumaBits = 0u;
+                    rec->diagShadeAnyHitCount = 0u;  // DIAG (temporary, M5 debugging): reset each tick too
+                    debugBuf->UnmapReadback(deviceDdgi);
+                }
+
+                if (ddgiGateTick == kChebyshevReadTick || ddgiGateTick == kAblationReadTick) {
+                    // Ensure this tick's dispatch (which wrote gatheredLuma using the params just
+                    // seeded above) has fully retired before reading it back — same
+                    // vkDeviceWaitIdle discipline the RESTIR gate's own readback uses.
+                    vkDeviceWaitIdle(deviceDdgi->device);
+                    void* readMapped = debugBuf->MapForReadback(deviceDdgi);
+                    if (readMapped) {
+                        const auto* rec = reinterpret_cast<const DDGILeakGateDebugHost*>(readMapped);
+                        const char* label = (ddgiGateTick == kChebyshevReadTick) ? "ChebyshevEnabled" : "AblationNegativeControl";
+                        float shadeM5IndirectLuma;
+                        std::memcpy(&shadeM5IndirectLuma, &rec->shadeM5IndirectLumaBits, sizeof(float));
+                        if (mainLogger) {
+                            mainLogger->Info(std::string("[DdgiLeakGateDemo] tick ") + std::to_string(ddgiGateTick) +
+                                              " [" + label + "]: nearProbeIndex=" + std::to_string(rec->nearProbeIndex) +
+                                              " farProbeIndex=" + std::to_string(rec->farProbeIndex) +
+                                              " gatheredLuma=" + std::to_string(rec->gatheredLuma) +
+                                              " shadeM5IndirectLumaMax=" + std::to_string(shadeM5IndirectLuma) +
+                                              " DIAG diagNearProbeHitCount=" + std::to_string(rec->diagNearProbeHitCount) +
+                                              " diagNearProbeAvgRadianceLuma=" + std::to_string(rec->diagNearProbeAvgRadianceLuma) +
+                                              " diagNearProbeAvgDepth=" + std::to_string(rec->diagNearProbeAvgDepth) +
+                                              " diagNearProbeAvgDepth2=" + std::to_string(rec->diagNearProbeAvgDepth2) +
+                                              " diagShadeAnyHitCount=" + std::to_string(rec->diagShadeAnyHitCount));
+                        }
+                        debugBuf->UnmapReadback(deviceDdgi);
+                    }
+                }
+            } else if (mainLogger && ddgiGateTick == 1) {
+                mainLogger->Warning("[DdgiLeakGateDemo] debug buffer or device not found -- gate readback skipped");
+            }
+        }
+
+        // Sampled Lighting Inc4 M6: edit-loop responsiveness gate (VIXEN_DDGI_EDIT_LOOP_DEMO=1).
+        // Reuses VIXEN_DDGI_LEAK_GATE_DEMO's own scene/near-probe/DDGILeakGateDebug plumbing
+        // (BuildRenderGraph.cpp's isEditLoopMode branch built the SAME geometry but started
+        // LightTreeBufferNode with an EMPTY cut -- source "off"). This hook flips in the real,
+        // stashed cut (g_ddgiEditLoopWorldCut) at kContentAddTick -- a genuine live scene-
+        // content edit, not a restart -- then samples diagNearProbeAvgRadianceLuma (the near
+        // probe's own post-hysteresis-blend irradiance, already written every tick regardless
+        // of ddgiLeakGateEnabled's near/far-gather fields) at several ticks before/after to
+        // show BOUNDED convergence within the hysteresis window, per the plan's own explicit
+        // "not instant, but bounded" gate requirement.
+        if (renderGraph && std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+            static long editLoopTick = 0;
+            ++editLoopTick;
+
+            // kConvergeTicks mirrors the leak-gate's own >>1/hysteresisRate(0.02)=50-tick
+            // derivation. kContentAddTick: content starts OFF, giving several ticks of a
+            // genuine steady-zero baseline before the edit. Sample ticks span before the edit,
+            // immediately after (still converging), and past kConvergeTicks ticks after
+            // (expected converged) -- enough points to show the convergence CURVE, not just
+            // two endpoints.
+            constexpr long kConvergeTicks   = 120;
+            constexpr long kContentAddTick  = 30;
+            constexpr long kSampleTicks[]   = {20, 31, 50, 80, 110, 150, 30 + kConvergeTicks};
+
+            auto* debugBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("ddgi_leak_gate_debug_buffer"));
+            auto* deviceInstEditLoop = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+
+            if (debugBuf && deviceInstEditLoop && deviceInstEditLoop->GetVulkanDevice()) {
+                auto* deviceEditLoop = deviceInstEditLoop->GetVulkanDevice();
+
+                // The live content edit itself: flip LightTreeBufferNode from empty to the
+                // stashed real cut exactly once, at kContentAddTick. SetLightTreeCut only
+                // stashes the vector (uploaded next ExecuteImpl) -- same "host calls a setter,
+                // node picks it up next frame" seam SetInstances uses (see
+                // BodyOctreeSceneNode.h's own doc comment), so this is a genuine mid-run
+                // content mutation, not a scene rebuild.
+                if (!ddgiEditLoopContentAdded_ && editLoopTick >= kContentAddTick && g_ddgiEditLoopWorldCut) {
+                    if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstanceByName("light_tree_buffer"))) {
+                        lightTreeInst->SetLightTreeCut(*g_ddgiEditLoopWorldCut);
+                        ddgiEditLoopContentAdded_ = true;
+                        if (mainLogger) {
+                            mainLogger->Info("[DdgiEditLoopDemo] tick " + std::to_string(editLoopTick) +
+                                              ": flipped light-tree cut from empty to real (" +
+                                              std::to_string(g_ddgiEditLoopWorldCut->size()) +
+                                              " nodes) -- source now ON");
+                        }
+                    }
+                }
+
+                // Same DDGILeakGateDebugHost layout the leak-gate hook above uses -- only
+                // ddgiLeakGateEnabled + the near-probe DIAG fields matter here (near/far-
+                // gather/Chebyshev fields are irrelevant to a single-probe convergence read,
+                // left at their seeded defaults).
+                struct DDGILeakGateDebugHost {
+                    uint32_t ddgiLeakGateEnabled;
+                    uint32_t chebyshevTestEnabled;
+                    uint32_t nearProbeIndex;
+                    uint32_t farProbeIndex;
+                    float    farShadingPosX, farShadingPosY, farShadingPosZ;
+                    float    gatheredLuma;
+                    uint32_t diagNearProbeHitCount;
+                    float    diagNearProbeAvgRadianceLuma;
+                    float    diagNearProbeAvgDepth;
+                    float    diagNearProbeAvgDepth2;
+                    uint32_t shadeM5IndirectLumaBits;
+                    uint32_t diagShadeAnyHitCount;
+                    float    diagNearProbeBlendedAtlasLuma;  // M6: the field this gate actually needs
+                };
+                static_assert(sizeof(DDGILeakGateDebugHost) == 60, "must match ProbeUpdate.comp's DDGILeakGateDebug std430 layout");
+
+                vkDeviceWaitIdle(deviceEditLoop->device);
+                void* seedMapped = debugBuf->MapForReadback(deviceEditLoop);
+                if (seedMapped) {
+                    auto* rec = reinterpret_cast<DDGILeakGateDebugHost*>(seedMapped);
+                    rec->ddgiLeakGateEnabled  = 1u;
+                    rec->chebyshevTestEnabled = 1u;
+                    rec->nearProbeIndex       = ddgiLeakGateNearProbeIndex_;
+                    rec->farProbeIndex        = ddgiLeakGateFarProbeIndex_;
+                    rec->farShadingPosX       = ddgiLeakGateFarShadingPos_.x;
+                    rec->farShadingPosY       = ddgiLeakGateFarShadingPos_.y;
+                    rec->farShadingPosZ       = ddgiLeakGateFarShadingPos_.z;
+                    rec->shadeM5IndirectLumaBits = 0u;
+                    rec->diagShadeAnyHitCount    = 0u;
+                    debugBuf->UnmapReadback(deviceEditLoop);
+                }
+
+                for (long sampleTick : kSampleTicks) {
+                    if (editLoopTick == sampleTick) {
+                        vkDeviceWaitIdle(deviceEditLoop->device);
+                        void* readMapped = debugBuf->MapForReadback(deviceEditLoop);
+                        if (readMapped) {
+                            const auto* rec = reinterpret_cast<const DDGILeakGateDebugHost*>(readMapped);
+                            if (mainLogger) {
+                                mainLogger->Info(std::string("[DdgiEditLoopDemo] tick ") + std::to_string(editLoopTick) +
+                                                  (editLoopTick < kContentAddTick ? " [pre-edit]" : " [post-edit]") +
+                                                  ": diagNearProbeBlendedAtlasLuma=" + std::to_string(rec->diagNearProbeBlendedAtlasLuma) +
+                                                  " diagNearProbeAvgRadianceLuma(rawThisTick)=" + std::to_string(rec->diagNearProbeAvgRadianceLuma) +
+                                                  " diagNearProbeHitCount=" + std::to_string(rec->diagNearProbeHitCount) +
+                                                  " diagNearProbeAvgDepth=" + std::to_string(rec->diagNearProbeAvgDepth));
+                            }
+                            debugBuf->UnmapReadback(deviceEditLoop);
+                        }
+                        break;
+                    }
+                }
+            } else if (mainLogger && editLoopTick == 1) {
+                mainLogger->Warning("[DdgiEditLoopDemo] debug buffer or device not found -- gate readback skipped");
             }
         }
 
@@ -1579,6 +1982,41 @@ void VulkanGraphApplication::CompileRenderGraph() {
     mainLogger->Info("Render graph compiled and validated successfully");
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[CompileRenderGraph] Complete - " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
+    }
+
+    // Sampled Lighting Inc4 M5 live-gate instrumentation (VIXEN_DUMP_SYNC_EDGES=1): one-shot
+    // dump of the actual baked FrameSyncSchedule edges touching probe_update, direct_lighting,
+    // and spatial_reuse_shade — the plan's own instruction to inspect the scheduler's REAL
+    // output (not infer it from "it renders correctly"), mirroring Inc3 M5's own fan-in-demo
+    // edge-topology verification rigor. Reports, per named node, which OTHER named node (if
+    // any) it has a direct SyncEdge to/from, so a barrier between probe_update and either
+    // direct_lighting or spatial_reuse_shade is a concrete, grep-able finding rather than an
+    // assumption.
+    if (std::getenv("VIXEN_DUMP_SYNC_EDGES")) {
+        const Vixen::RenderGraph::FrameSyncSchedule& sched = renderGraph->GetFrameSyncSchedule();
+        std::vector<std::string> watchNames = {"probe_update", "direct_lighting", "spatial_reuse"};
+        std::unordered_map<uint32_t, std::string> groupIdToName;
+        for (const auto& group : sched.groups) {
+            if (!group.node) continue;
+            const std::string& name = group.node->GetInstanceName();
+            for (const auto& watch : watchNames) {
+                if (name == watch) { groupIdToName[group.groupId] = name; break; }
+            }
+        }
+        mainLogger->Info("[SyncEdgeDump] " + std::to_string(sched.edges.size()) + " total baked edges; "
+                         + std::to_string(groupIdToName.size()) + "/" + std::to_string(watchNames.size())
+                         + " watched nodes found in schedule");
+        bool foundAny = false;
+        for (const auto& edge : sched.edges) {
+            auto fromIt = groupIdToName.find(edge.fromGroup);
+            auto toIt = groupIdToName.find(edge.toGroup);
+            if (fromIt == groupIdToName.end() && toIt == groupIdToName.end()) continue;
+            std::string fromName = fromIt != groupIdToName.end() ? fromIt->second : ("group" + std::to_string(edge.fromGroup));
+            std::string toName = toIt != groupIdToName.end() ? toIt->second : ("group" + std::to_string(edge.toGroup));
+            mainLogger->Info("[SyncEdgeDump] EDGE " + fromName + " -> " + toName);
+            if (fromIt != groupIdToName.end() && toIt != groupIdToName.end()) foundAny = true;
+        }
+        mainLogger->Info(std::string("[SyncEdgeDump] direct edge between watched nodes: ") + (foundAny ? "YES" : "NO"));
     }
 }
 

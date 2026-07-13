@@ -58,6 +58,9 @@
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ReservoirConfigNodeConfig.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Data/Nodes/LightTreeBufferNodeConfig.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Data/Nodes/ProbeGridConfigNodeConfig.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
+#include "Data/Nodes/ProbeAtlasNodeConfig.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Data/Nodes/ImageSyncGathererNodeConfig.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Data/Nodes/StorageBufferNodeConfig.h"        // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
@@ -101,6 +104,9 @@
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/ReservoirConfigNode.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
+#include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
 #include "Nodes/PresentNode.h"
@@ -335,6 +341,74 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle reservoirBufferA = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_a");
     NodeHandle reservoirBufferB = renderGraph->AddNode<StorageBufferNodeType>("reservoir_buffer_b");
 
+    // Sampled Lighting Inc4 M2: ProbeGridConfig data (binding 28) -- DDGI probe-grid placement +
+    // compute budget as drift-guarded data. Same per-frame ring upload pattern as
+    // reservoirConfigNode above. M2 scaffolding only: probeGridEnabled=0 by default and nothing
+    // reads this buffer yet (M3+ wires the probe-update pass that consumes it); this milestone's
+    // render must stay byte-identical to Inc3.
+    NodeHandle probeGridConfigNode = renderGraph->AddNode<ProbeGridConfigNodeType>("probe_grid_config");
+
+    // Sampled Lighting Inc4 M2: persistent DDGI probe atlas images -- TWO separate ProbeAtlasNode
+    // instances (irradiance + Chebyshev-visibility), per M1's own resolved finding
+    // (ImageSyncGathererNodeConfig.h's file header) that real DDGI atlas layouts use DIFFERENT
+    // per-probe texel resolutions for the two and cannot channel-pack into one image.
+    //
+    // Atlas layout: the 3D probe grid (countX*countY*countZ, default 8x8x8=512 probes from
+    // ProbeGridConfigNode's own default) packs into a 2D texture using the standard DDGI/RTXGI
+    // atlas convention (Majercik et al. JCGT 2019 sec 3; RTXGI SDK reference layout): columns
+    // sweep the grid's X axis, rows sweep Y, and Z-slices tile across the texture width --
+    // atlasWidth = countX * countY * texelsPerProbe, atlasHeight = countZ * texelsPerProbe. With
+    // the default 8x8x8 grid: irradiance 8x8 texels/probe (incl. 1px border, low-frequency
+    // hemispherical data, RTXGI's own irradiance-probe default) -> 8*8*8=512 x 8*8=64 =
+    // 512x64; visibility 16x16 texels/probe (incl. border -- Chebyshev's inequality needs finer
+    // angular sampling than irradiance because occlusion/leak-prevention accuracy is the whole
+    // mechanism DDGI's reputation risk depends on, per Majercik et al. sec 3.3) -> 8*16*8=1024 x
+    // 8*16=128 = 1024x128. Both are placeholder-but-cited numbers for M2's plumbing-only scope;
+    // M6's real-GPU probe-ray-budget bench is the design's own flagged pass-2 decision point for
+    // finalizing grid density (and therefore these atlas dimensions), not this milestone.
+    constexpr uint32_t kProbeIrradianceTexelsPerProbe = 8;
+    constexpr uint32_t kProbeVisibilityTexelsPerProbe  = 16;
+    constexpr uint32_t kProbeGridDefaultCountX = 8, kProbeGridDefaultCountY = 8, kProbeGridDefaultCountZ = 8;
+    constexpr uint32_t kProbeIrradianceAtlasWidth  = kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeIrradianceTexelsPerProbe;
+    constexpr uint32_t kProbeIrradianceAtlasHeight = kProbeGridDefaultCountZ * kProbeIrradianceTexelsPerProbe;
+    constexpr uint32_t kProbeVisibilityAtlasWidth   = kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeVisibilityTexelsPerProbe;
+    constexpr uint32_t kProbeVisibilityAtlasHeight  = kProbeGridDefaultCountZ * kProbeVisibilityTexelsPerProbe;
+
+    NodeHandle probeIrradianceAtlasNode = renderGraph->AddNode<ProbeAtlasNodeType>("probe_irradiance_atlas");
+    NodeHandle probeVisibilityAtlasNode = renderGraph->AddNode<ProbeAtlasNodeType>("probe_visibility_atlas");
+
+    // Sampled Lighting Inc4 M2: variadic image-array sync gatherer for the future probe-update
+    // pass's IMAGE_WRITE_ARRAY slot (Inc4 M1) -- gathers BOTH atlas IRenderTarget* handles into
+    // one array-typed input. No consuming ComputeStageNode exists yet this milestone (that's
+    // M3); the gatherer is wired now so M3 only needs to add the compute pass itself, not this
+    // plumbing.
+    NodeHandle probeAtlasGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("probe_atlas_gatherer");
+
+    // Sampled Lighting Inc4 M5: a SECOND ImageSyncGathererNode instance, fed from the SAME
+    // two ProbeAtlasNode outputs, gathering the atlas IRenderTarget* handles for the READ
+    // side (SpatialReuseShade.comp's shade-pass gather) — mirrors the established
+    // BUFFER_WRITE_ARRAY/BUFFER_READ_ARRAY "two gatherer instances, same underlying source,
+    // one feeds the writer's array slot, a separate one feeds the reader's array slot" shape
+    // (see spatialReuseReservoirReadGatherer's own precedent). This is what lets the
+    // scheduler bake a real probeUpdateNode(write)->spatialReuseNode(read) SyncEdge on each
+    // atlas's own constituent Resource*.
+    NodeHandle spatialReuseProbeAtlasReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("spatial_reuse_probe_atlas_read_gatherer");
+
+    // Sampled Lighting Inc4 M3: ProbeUpdateNode — the probe-update compute pass itself
+    // (ProbeUpdate.comp). Own shaderLib/gatherer/pushConstantGatherer/descSet/pipeline
+    // quintet, mirroring directLighting*'s own "second compiled shader needs its own
+    // instances" rationale (see that block's comment above) — this is a THIRD compiled
+    // program (march / DirectLighting+SpatialReuse / ProbeUpdate), each with its own
+    // reflected descriptor/push-constant layout. NOT swapchain-adjacent (isConsumer=false,
+    // like DirectLightingNode) — this pass writes only the probe atlases via
+    // IMAGE_WRITE_ARRAY (Inc4 M1), never the swapchain-derived render target.
+    NodeHandle probeUpdateShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("probe_update_shader_lib");
+    NodeHandle probeUpdateGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("probe_update_desc_gatherer");
+    NodeHandle probeUpdatePushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("probe_update_push_constant_gatherer");
+    NodeHandle probeUpdateDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("probe_update_descriptors");
+    NodeHandle probeUpdatePipeline = renderGraph->AddNode<ComputePipelineNodeType>("probe_update_pipeline");
+    NodeHandle probeUpdateNode = renderGraph->AddNode<ComputeStageNodeType>("probe_update");
+
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
     // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
     // registers (reservoirBufferA/B are readonly that pass); this buffer gives the M6
@@ -343,6 +417,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // DirectLightingNode's PRE-spatial buffer). Same ReservoirRecord/16B-per-pixel layout and
     // extent-follow sizing as reservoirBufferA/B (see PARAM_BYTES_PER_PIXEL below).
     NodeHandle spatialReservoirDebugBuffer = renderGraph->AddNode<StorageBufferNodeType>("spatial_reservoir_debug_buffer");
+
+    // Sampled Lighting Inc4 M4: DDGI leak-test gate debug SSBO (binding 31) -- a SINGLE
+    // fixed-size DDGILeakGateDebug record (see ProbeUpdate.comp's own struct), NOT
+    // extent-driven (no SWAPCHAIN_INFO connection below, unlike reservoirBufferA/B/
+    // spatialReservoirDebugBuffer above) -- PARAM_SIZE_BYTES is used instead, mirroring
+    // StorageBufferNodeConfig's own documented size-resolution priority ("2. Else
+    // PARAM_SIZE_BYTES"). Host-visible/coherent by construction (StorageBufferNodeConfig's
+    // own STORAGE_BUFFER output descriptor), so VulkanGraphApplication's readback hook can
+    // MapForReadback/UnmapReadback it exactly like reservoirBufferA/B already do.
+    NodeHandle ddgiLeakGateDebugBuffer = renderGraph->AddNode<StorageBufferNodeType>("ddgi_leak_gate_debug_buffer");
 
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
@@ -487,6 +571,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
     }
 
+    // Sampled Lighting Inc4 M2: DDGI probe atlas dimensions/formats -- see kProbeIrradianceAtlas*/
+    // kProbeVisibilityAtlas* constants above (PHASE 1) for the layout derivation + citations.
+    // Irradiance wants HDR color (RGBA16F is the RTXGI-reference default for low-frequency
+    // hemispherical irradiance); visibility wants two float moments (depth, depth^2) for
+    // Chebyshev's inequality -- RG16F is the RTXGI-reference default and sufficient precision for
+    // this milestone's plumbing-only scope (M4's leak-test gate is the numeric-sensitivity check
+    // that would motivate RG32F if RG16F proves insufficient; not assumed here).
+    auto* probeIrradianceAtlas = static_cast<ProbeAtlasNode*>(renderGraph->GetInstance(probeIrradianceAtlasNode));
+    probeIrradianceAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_WIDTH,  kProbeIrradianceAtlasWidth);
+    probeIrradianceAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, kProbeIrradianceAtlasHeight);
+    probeIrradianceAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
+        static_cast<uint32_t>(VK_FORMAT_R16G16B16A16_SFLOAT));
+
+    auto* probeVisibilityAtlas = static_cast<ProbeAtlasNode*>(renderGraph->GetInstance(probeVisibilityAtlasNode));
+    probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_WIDTH,  kProbeVisibilityAtlasWidth);
+    probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, kProbeVisibilityAtlasHeight);
+    probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
+        static_cast<uint32_t>(VK_FORMAT_R16G16_SFLOAT));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] DDGI probe atlases: irradiance " +
+                         std::to_string(kProbeIrradianceAtlasWidth) + "x" + std::to_string(kProbeIrradianceAtlasHeight) +
+                         " RGBA16F, visibility " +
+                         std::to_string(kProbeVisibilityAtlasWidth) + "x" + std::to_string(kProbeVisibilityAtlasHeight) +
+                         " RG16F (default 8x8x8 probe grid)");
+    }
+
     // Sampled Lighting Inc1 M3: HitRecord SSBO sized to sizeof(HitRecord) (64 B, see
     // shaders/HitRecord.glsl) bytes per pixel of the offscreen render target it is wired to
     // below (SWAPCHAIN_INFO <- renderTargetNode's RENDER_TARGET), so it always matches
@@ -505,6 +616,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc3 M6: same extent-follow sizing as reservoirBufferA/B above.
     auto* spatialReservoirDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(spatialReservoirDebugBuffer));
     spatialReservoirDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
+
+    // Sampled Lighting Inc4 M4: DDGILeakGateDebug is a SINGLE fixed-size record, not
+    // extent-driven -- PARAM_SIZE_BYTES, not PARAM_BYTES_PER_PIXEL. std430 layout: 5x
+    // uint (20B) + 7x float (28B) = 48B, no padding (all members are 4-byte scalars).
+    // (DIAG temporary fields, see ProbeUpdate.comp's own struct.) M5 added two more uints
+    // (shadeM5IndirectLumaBits + diagShadeAnyHitCount, both written by SpatialReuseShade.comp)
+    // -> 56B. M6 added one more float (diagNearProbeBlendedAtlasLuma, the edit-loop gate's
+    // post-hysteresis-blend atlas readback) -> 60B.
+    auto* ddgiLeakGateDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(ddgiLeakGateDebugBuffer));
+    ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 60u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -760,6 +881,41 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return builder;
     });
 
+    // Sampled Lighting Inc4 M3: ProbeUpdate.comp shader registration. Same search-path
+    // pattern as DirectLighting.comp/SpatialReuseShade.comp above.
+    auto* probeUpdateShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(probeUpdateShaderLib));
+    probeUpdateShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+        constexpr const char* shaderName = "ProbeUpdate.comp";
+        constexpr const char* programName = "ProbeUpdate";
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) { compPath = path; break; }
+        }
+        if (compPath.empty()) {
+            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
+        }
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+        return builder;
+    });
+
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
     // PRESENT_SRC). Sampled Lighting Inc3 M5: this pass no longer owns IMAGE_WRITE (moved to
     // SpatialReuseNode below — DirectLighting.comp is now a pure buffer producer, see that
@@ -805,6 +961,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReservoirReadGatherer))->PreRegisterBufferSlots(2);
+
+    // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
+    // visibility atlas, see probeAtlasGatherer's own declaration comment above).
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(probeAtlasGatherer))->PreRegisterImageSlots(2);
+
+    // Sampled Lighting Inc4 M5: read-side atlas gatherer -- same 2 entries, feeding
+    // spatialReuseNode's IMAGE_READ_ARRAY (see spatialReuseProbeAtlasReadGatherer's own
+    // declaration comment above).
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(2);
+
+    // Sampled Lighting Inc4 M3: ProbeUpdateNode dispatch — ONE WORKGROUP PER PROBE
+    // (ProbeUpdate.comp's local_size_x=PROBE_UPDATE_MAX_RAYS_PER_PROBE=256 covers every
+    // ray in a probe's raysPerProbe budget within a single workgroup — see that shader's
+    // own file header for the one-workgroup-per-probe reduction rationale). Dispatch X =
+    // probeCount = countX*countY*countZ from ProbeGridConfigNode's own default (M2's
+    // MakeDefaultProbeGridConfig — the only content this milestone; no live authoring
+    // exists yet, so this dispatch dimension is a build-time constant, not a live
+    // per-frame-varying quantity, matching the atlas dimensions' own build-time-derived
+    // precedent above). NOT swapchain-adjacent — no IMAGE_WRITE, only IMAGE_WRITE_ARRAY
+    // (wired below), so no live extent to derive dims from the way DirectLighting/
+    // SpatialReuse do; explicit dispatch dims are the correct shape here (mirrors
+    // ComputeDispatchNode's own static width/height-derived dispatch for the march).
+    constexpr uint32_t kProbeUpdateDefaultProbeCount =
+        kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeGridDefaultCountZ;
+    auto* probeUpdate = static_cast<ComputeStageNode*>(renderGraph->GetInstance(probeUpdateNode));
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDefaultProbeCount);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
     // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
@@ -2622,6 +2807,228 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
             }
+        } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO") || std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+            // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
+            // near/far indices) for the edit-loop responsiveness gate when
+            // VIXEN_DDGI_EDIT_LOOP_DEMO=1 -- same "don't invent a new mechanism" discipline
+            // M4's own gate used relative to VIXEN_RESTIR_GATE_DEMO. The only behavioral
+            // difference (isEditLoopMode below): the light-tree cut is built EMPTY at scene-
+            // construction time (the source starts "off") and the REAL cut is stashed via
+            // g_ddgiEditLoopWorldCut for VulkanGraphApplication.cpp's readback hook to flip in
+            // live at a chosen tick -- a genuine mid-run scene-content edit, not a restart.
+            const bool isEditLoopMode = std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO") != nullptr;
+
+            // Sampled Lighting Inc4 M4 live gate: the leak-test scene the plan's Task 4
+            // requires -- thin-wall occluder geometry between an emissive source and a
+            // probe/observation point, proving the Chebyshev-tested gather does NOT leak
+            // light through the wall while an ablation (Chebyshev test disabled) DOES.
+            // Mirrors VIXEN_RESTIR_GATE_DEMO's own shape (emissive body -> light-tree cut
+            // -> world-transform -> stash for the CPU readback hook) but ALSO bakes a
+            // second, non-emissive body (the thin wall) and configures ProbeGridConfig +
+            // the DDGILeakGateDebug SSBO so ProbeUpdate.comp's M4 self-test gather has a
+            // concrete near/far probe pair + shading point to exercise.
+            //
+            // Geometry (world space) -- MUST live inside ProbeGridConfigNode's own default
+            // grid coverage: origin (0,0,0), spacing 4, count 8x8x8 -> world [0,32) on every
+            // axis (ProbeGridConfigNode has no live setter this milestone, see below). A first
+            // attempt at this scene placed the bodies at the default camera's (64,64,64)
+            // framing (VIXEN_RESTIR_GATE_DEMO's own convention) -- a live-gate run caught that
+            // this put the near/far probes OUTSIDE the grid's [0,32) coverage entirely
+            // (silently producing a probeIndex >= probeCount workgroup no-op, both readbacks
+            // reading zero with no way to tell "correctly rejected" from "never ran" -- a false
+            // negative-control result). Rescaled below (kRenderScale=1.0, not 4.8) so both
+            // bodies AND the near/far probes/shading point land inside [0,32):
+            //   emissive source: a small emissive sphere at grid (10,16,16) -> world X~=5.1.
+            //   thin wall: a box occluder at grid (22,16,16) -> world X~=8.9, spanning world
+            //     X~=[8.56,9.19] (thin -- 1 grid-unit half-extent -> ~0.31 world units either
+            //     side), full Y/Z span (a real wall, not a small block seen around).
+            //   near probe: grid (1,4,4) -> world (4,16,16) -- before the source (world X~=5.1),
+            //     no occluder between it and the source.
+            //   far probe / shading point: grid (3,4,4) -> world (12,16,16) -- past the wall's
+            //     far face (world X~=9.19), occluded from the source. The gather samples the
+            //     NEAR probe's atlas entry AT this far shading point -- Chebyshev-tested
+            //     visibility must reject it (the near probe's own stored ray-hit distance
+            //     toward the wall is much closer than the near-probe-to-far-point test
+            //     distance), while the ablation (test forced to 1) must NOT reject it, proving
+            //     the scene leaks without the mechanism.
+            mainLogger->Info(std::string("[BuildRenderGraph] ") +
+                              (isEditLoopMode ? "VIXEN_DDGI_EDIT_LOOP_DEMO: building the M6 "
+                                                "edit-loop scene (source starts OFF)"
+                                              : "VIXEN_DDGI_LEAK_GATE_DEMO: building the M4 "
+                                                "thin-wall leak-test gate scene"));
+
+            constexpr int   kN    = 32;
+            constexpr float kBand = 2.0f;
+            const glm::vec3 kSourceCenter(10.0f, 16.0f, 16.0f);   // grid-space center (kN=32 grid), world-mapped below
+            constexpr float kSourceRadius = 8.0f;  // sized comparably to VIXEN_RESTIR_GATE_DEMO's own proven r=10/n=32 scene
+
+            Vixen::SVO::RecipeParams sourceParams{kSourceRadius, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+            Vixen::SVO::SdfBakeResult sourceBaked = Vixen::SVO::BakeRecipeToSdfWorldWithEmission(
+                Vixen::SVO::RECIPE_SPHERE, kSourceCenter, sourceParams, kN, kBand,
+                [](const glm::vec3&) { return 4.0f; });  // uniform emissive intensity
+            Vixen::SVO::SdfBodyOctree sourceBody = Vixen::SVO::BuildSdfBodyOctree(sourceBaked, 3);
+
+            // Thin wall: a genuine box SDF (no RECIPE_BOX exists in SdfRecipes.h -- BakeSdfWorld's
+            // templated `eval` accepts ANY lambda, so a box distance function is authored directly
+            // here rather than approximating one out of RECIPE_SPHERE/RECIPE_DISPLACED_SPHERE).
+            // Grid-space half-extents: thin along X (2 grid units -> genuinely thin at this bake's
+            // world scale below), full-span along Y/Z (a real wall, not a small block the source
+            // could simply be seen around).
+            const glm::vec3 kWallCenter(22.0f, 16.0f, 16.0f);
+            const glm::vec3 kWallHalfExtent(1.0f, 15.0f, 15.0f);
+            auto wallSdf = [&](const glm::vec3& p) {
+                glm::vec3 q = glm::abs(p - kWallCenter) - kWallHalfExtent;
+                glm::vec3 qPos = glm::max(q, glm::vec3(0.0f));
+                float outside = glm::length(qPos);
+                float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+                return outside + inside;
+            };
+            Vixen::SVO::SdfBakeResult wallBaked = Vixen::SVO::BakeSdfWorld(wallSdf, kWallCenter, kN, kBand, 3);
+            Vixen::SVO::SdfBodyOctree wallBody = Vixen::SVO::BuildSdfBodyOctree(wallBaked, 3);
+
+            const Vixen::SVO::Octree* sourceOct = sourceBody.octree->getOctree();
+            if (sourceOct != nullptr) {
+                Vixen::SVO::SerializedOctree sourceSer = Vixen::SVO::SerializeSdf(sourceBody);
+                Vixen::SVO::BakeAndAttachMipPool(*sourceOct, sourceSer);
+                Vixen::SVO::MipPool sourceMipPool = Vixen::SVO::BakeMipPool(*sourceOct, sourceSer);
+
+                Vixen::SVO::LightTreeCutParams cutParams;
+                cutParams.powerThreshold = 0.001f;  // fine cut -- same rationale as VIXEN_RESTIR_GATE_DEMO
+                std::vector<Vixen::SVO::LightTreeNode> cut =
+                    Vixen::SVO::BuildLightTreeCut(*sourceOct, sourceSer, sourceMipPool, kN, cutParams);
+                for (size_t di = 0; di < cut.size() && di < 5; ++di) {
+                    const auto& n = cut[di];
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: DIAG rawGridCutNode[" + std::to_string(di) +
+                                      "] gridPos=(" + std::to_string(n.worldPos.x) + "," + std::to_string(n.worldPos.y) + "," + std::to_string(n.worldPos.z) +
+                                      ") gridExtent=" + std::to_string(n.worldExtent));
+                }
+
+                // Body-placement/world-transform: SAME shape as VIXEN_RESTIR_GATE_DEMO's own
+                // gate scene (renderScale + world-grid-size + a fixed worldPos origin), but
+                // renderScale=1.0 (NOT 4.8) -- the whole point of this rescale is keeping both
+                // bodies AND the near/far probes inside ProbeGridConfigNode's default [0,32)
+                // grid coverage (see this block's own header comment on why the first attempt's
+                // renderScale=4.8/world-center placement put the probes outside the grid
+                // entirely). World diameter = kWorldGridSize*kRenderScale = 10; sourceWorldPos
+                // chosen so grid (0,0,0) maps to world (2,8,8) -- keeps the whole 10-unit body
+                // span + the near/far probes' Y/Z=16 comfortably inside [0,32) on every axis.
+                constexpr float kRenderScale = 1.0f;
+                constexpr float kWorldGridSize = 10.0f;
+                const glm::vec3 sourceWorldPos(2.0f, 8.0f, 8.0f);
+
+                std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                worldCut.reserve(cut.size());
+                for (const auto& node : cut) {
+                    Vixen::SVO::LightTreeNode w = node;
+                    const glm::vec3 pBase = (node.worldPos / static_cast<float>(kN)) * kWorldGridSize;
+                    w.worldPos = pBase * kRenderScale + sourceWorldPos;
+                    w.worldExtent = (node.worldExtent / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
+                    worldCut.push_back(w);
+                }
+
+                if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
+                    // Edit-loop mode: start with an EMPTY cut (source "off" -- zero light-tree
+                    // content for the probe-update pass to sample) and stash the REAL cut for
+                    // VulkanGraphApplication.cpp's readback hook to flip in live at a chosen
+                    // tick. Leak-gate mode (default): apply the real cut immediately, unchanged
+                    // from M4.
+                    if (isEditLoopMode) {
+                        lightTreeInst->SetLightTreeCut({});
+                        extern std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut;
+                        static std::vector<Vixen::SVO::LightTreeNode> editLoopCutStash = worldCut;
+                        g_ddgiEditLoopWorldCut = &editLoopCutStash;
+                    } else {
+                        lightTreeInst->SetLightTreeCut(worldCut);
+                    }
+                }
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: cut=" + std::to_string(cut.size()) + " nodes");
+                for (size_t di = 0; di < worldCut.size() && di < 5; ++di) {
+                    const auto& n = worldCut[di];
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: DIAG cutNode[" + std::to_string(di) +
+                                      "] worldPos=(" + std::to_string(n.worldPos.x) + "," + std::to_string(n.worldPos.y) + "," + std::to_string(n.worldPos.z) +
+                                      ") worldExtent=" + std::to_string(n.worldExtent) +
+                                      " intensity=" + std::to_string(n.intensity) + " coverage=" + std::to_string(n.coverage));
+                }
+
+                // Instance placement: source body + wall body, both mapped via the SAME
+                // grid->world transform (kRenderScale/kWorldGridSize/sourceWorldPos above) so
+                // both bodies' grid-space centers/extents land at consistent world positions
+                // relative to each other -- source at grid (10,16,16) -> world X~=5.1, wall at
+                // grid (22,16,16) -> world X~=8.9 (see this block's own header comment for the
+                // full derivation). Both bodies share ONE octree pool slot each (octreeIndex
+                // 0/1) via
+                // ConcatenateSdfWithMips below, same multi-body pattern VIXEN_TIER_OBSERVABLE_DEMO
+                // uses (BAKE separate octrees, concatenate, place with distinct BodyInstanceGpu
+                // entries).
+                std::vector<const Vixen::SVO::SdfBodyOctree*> octreesForCat = {&sourceBody, &wallBody};
+                Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    Vixen::SVO::BodyInstanceGpu sourceInst{};
+                    sourceInst.worldPos[0]  = sourceWorldPos.x;
+                    sourceInst.worldPos[1]  = sourceWorldPos.y;
+                    sourceInst.worldPos[2]  = sourceWorldPos.z;
+                    sourceInst.renderScale  = kRenderScale;
+                    sourceInst.color[0]     = 1.0f; sourceInst.color[1] = 1.0f; sourceInst.color[2] = 1.0f;
+                    sourceInst.octreeIndex  = 0u;
+                    sourceInst.providerKind = 0u;  // PROVIDER_STORED
+                    sourceInst.recipeId     = 0u;
+
+                    Vixen::SVO::BodyInstanceGpu wallInst{};
+                    wallInst.worldPos[0]  = sourceWorldPos.x;  // SAME grid->world transform as sourceInst
+                    wallInst.worldPos[1]  = sourceWorldPos.y;
+                    wallInst.worldPos[2]  = sourceWorldPos.z;
+                    wallInst.renderScale  = kRenderScale;
+                    wallInst.color[0]     = 0.7f; wallInst.color[1] = 0.7f; wallInst.color[2] = 0.7f;
+                    wallInst.octreeIndex  = 1u;
+                    wallInst.providerKind = 0u;  // PROVIDER_STORED
+                    wallInst.recipeId     = 0u;
+
+                    bodyScene->SetRecipePool(std::move(cat));
+                    bodyScene->SetInstances({sourceInst, wallInst});
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: seeded emissive-source + thin-wall body instances");
+                }
+
+                // ProbeGridConfig: ProbeGridConfigNode has no live setter this milestone
+                // (MakeDefaultProbeGridConfig is a file-local default, flipped on via
+                // VIXEN_PROBE_GRID_CONFIG_ENABLED=1 -- see that file) -- the gate reuses that
+                // SAME default grid (origin (0,0,0), spacing 4, count 8x8x8, world coverage
+                // [0,32) on every axis -- MUST match this block's own geometry, hence the
+                // kRenderScale=1.0/sourceWorldPos=(2,8,8) rescale above) and picks near/far
+                // probe INDICES that land at valid, in-range grid nodes near the source/wall/
+                // far-point positions, avoiding a new live setter for a one-off gate (mirrors
+                // VIXEN_RESTIR_GATE_DEMO's own "reuse existing plumbing, don't add a new
+                // mechanism" discipline). World position of probe (px,py,pz) = (px*4,py*4,pz*4).
+                // Near probe at grid (2,3,3) -> world (8,12,12): distance ~3.2 from the source's
+                // own world center/radius (5.125,13,13)/2.5 -- outside the source's own solid
+                // geometry (a probe placed INSIDE the emissive sphere's solid volume gave a
+                // degenerate all-zero TraceWorld result, a live-gate finding from an earlier
+                // pass with a smaller kSourceRadius=3 where the near probe sat inside the
+                // sphere -- kSourceRadius was widened to 8 AND the near probe moved outside it),
+                // and before the wall's near face (world X~=8.56), no occluder in the way. Far
+                // probe/shading point at grid (3,3,3) -> world (12,12,12): past the wall's far
+                // face (world X~=9.19), occluded from the source. Both indices are well inside
+                // [0, countX*countY*countZ=512) -- an EARLIER live-gate bug this geometry
+                // rescale also fixed was an out-of-range index silently no-op'ing the gather
+                // workgroup (see this block's own header comment).
+                constexpr uint32_t kNearProbeX = 2u, kFarProbeX = 3u, kProbeY = 3u, kProbeZ = 3u;
+                constexpr uint32_t kDefaultCountX = 8u, kDefaultCountY = 8u;
+                const uint32_t nearProbeIndex = kNearProbeX + kProbeY * kDefaultCountX + kProbeZ * kDefaultCountX * kDefaultCountY;
+                const uint32_t farProbeIndex  = kFarProbeX  + kProbeY * kDefaultCountX + kProbeZ * kDefaultCountX * kDefaultCountY;
+                const glm::vec3 farShadingPos(static_cast<float>(kFarProbeX) * 4.0f,
+                                               static_cast<float>(kProbeY) * 4.0f,
+                                               static_cast<float>(kProbeZ) * 4.0f);
+
+                ddgiLeakGateNearProbeIndex_ = nearProbeIndex;
+                ddgiLeakGateFarProbeIndex_  = farProbeIndex;
+                ddgiLeakGateFarShadingPos_  = farShadingPos;
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: nearProbeIndex=" +
+                                  std::to_string(nearProbeIndex) + " farProbeIndex=" + std::to_string(farProbeIndex) +
+                                  " farShadingPos=(" + std::to_string(farShadingPos.x) + "," +
+                                  std::to_string(farShadingPos.y) + "," + std::to_string(farShadingPos.z) + ")");
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: source body octree is null -- gate scene not built");
+            }
         } else if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
@@ -3105,6 +3512,49 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   lightTreeBufferNode, LightTreeBufferNodeConfig::CURRENT_FRAME_INDEX);
 
+    // Sampled Lighting Inc4 M2: probe grid config node connections (same ring pattern as
+    // reservoirConfigNode above). M2 scaffolding only -- no shader consumes this buffer yet.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeGridConfigNode, ProbeGridConfigNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  probeGridConfigNode, ProbeGridConfigNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Sampled Lighting Inc4 M2: probe atlas image connections -- device + command pool drive
+    // allocation + the one-shot UNDEFINED->GENERAL transition, mirroring accumulationHistoryNode's
+    // own wiring above. Extent/format are Setup PARAMETERS (already set in PHASE 2), not graph
+    // inputs -- see ProbeAtlasNodeConfig.h's own scope note on why atlas dims don't follow a
+    // live extent-cascade like the render target does.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeIrradianceAtlasNode, ProbeAtlasNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  probeIrradianceAtlasNode, ProbeAtlasNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeVisibilityAtlasNode, ProbeAtlasNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  probeVisibilityAtlasNode, ProbeAtlasNodeConfig::COMMAND_POOL);
+
+    // Sampled Lighting Inc4 M2: gather both atlas IRenderTarget* handles into one
+    // IMAGE_WRITE_ARRAY-shaped array (Inc4 M1's ImageSyncGathererNode). No ComputeStageNode
+    // consumes IMAGE_ARRAY yet this milestone (that's M3's probe-update pass) -- these
+    // connections exist purely so the atlas Resource*s are wired through the sync-gathering
+    // mechanism the way M3 will need, proven correct now rather than discovered at M3.
+    // execDep (Dependency|Execute): VariadicConnectionRule only populates a variadic slot's
+    // actual Resource* via a PostCompile hook when the connection carries SlotRole::Dependency
+    // (mirrors directLightingReadGatherer's own identical connections above).
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  probeAtlasGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  probeAtlasGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Sampled Lighting Inc4 M5: the SAME two ProbeAtlasNode outputs, gathered a SECOND time
+    // into spatialReuseProbeAtlasReadGatherer (the read-side instance) -- same source
+    // Resource*s as probeAtlasGatherer above, so the constituent expansion pairs correctly
+    // against probeUpdateNode's IMAGE_WRITE_ARRAY writer on those SAME atlas Resource*s.
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  spatialReuseProbeAtlasReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  spatialReuseProbeAtlasReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs — device +
     // extent-driven sizing from renderTargetNode's own RENDER_TARGET output, same
     // pattern as hitRecordBufferNode (one Vixen::Gpu::ReservoirRecord per pixel of the
@@ -3125,6 +3575,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   spatialReservoirDebugBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
          .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReservoirDebugBuffer, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
+    // Sampled Lighting Inc4 M4: DDGI leak-test gate debug buffer — device only, NO
+    // SWAPCHAIN_INFO connection (fixed PARAM_SIZE_BYTES sizing set above, not extent-driven).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
@@ -3870,6 +4325,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           spatialReuseGatherer, 27,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
+    // Bindings 32/33/34 (Sampled Lighting Inc4 M5): DDGI probe atlases + ProbeGridConfig —
+    // SpatialReuseNode READS ONLY (probeUpdateNode is the sole writer). Same CURRENT_VIEW
+    // precedent as probeUpdateGatherer's own bindings 29/30 (raw VkImageView, not the
+    // IRenderTarget* PROBE_ATLAS output — see ProbeAtlasNodeConfig::CURRENT_VIEW's own doc
+    // comment on why IRenderTarget* can never populate a descriptor slot, KI-028's
+    // established discipline). The genuine cross-dispatch READ hazard against
+    // probeUpdateNode's write is declared separately via IMAGE_READ_ARRAY above (same split
+    // IMAGE_WRITE_ARRAY/descriptor-binding already uses) — these bindings are Execute-only.
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                          spatialReuseGatherer, 32,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                          spatialReuseGatherer, 33,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(probeGridConfigNode, ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                          spatialReuseGatherer, 34,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 31 (M5 live-gate instrumentation): the SAME ddgi_leak_gate_debug_buffer
+    // ProbeUpdate.comp's gatherer already binds at 31 -- SpatialReuseShade.comp additionally
+    // writes shadeM5IndirectLuma into it (see DDGILeakGateDebugShade's own doc comment).
+    // Read-write, same role shape as probeUpdateGatherer's own binding-31 connection.
+    batch.Connect(ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 31,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     // Binding 0 (outputImage): SpatialReuseNode is the genuine writer now (M5 — moved from
     // DirectLightingNode). Same renderTargetNode::CURRENT_VIEW source.
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
@@ -4010,6 +4491,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
 
+    // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeUpdateNode's
+    // IMAGE_WRITE_ARRAY (wired further below), same two ProbeAtlasNode Resource*s on both
+    // sides (via each side's own ImageSyncGathererNode instance) — bakes the genuine
+    // probeUpdateNode(write)->spatialReuseNode(read) cross-dispatch SyncEdge this milestone's
+    // gate must independently confirm. This is the FIRST real IMAGE_READ_ARRAY consumer.
+    batch.Connect(spatialReuseProbeAtlasReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
     // No separate ordering-only connection is needed for DirectLighting-before-SpatialReuse: the
     // reservoir BUFFER_WRITE_ARRAY (DirectLightingNode) <-> BUFFER_READ_ARRAY (SpatialReuseNode)
     // sync-slot connections above are themselves graph dependency edges on the SAME two
@@ -4017,6 +4506,173 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // topological sort to place DirectLightingNode before SpatialReuseNode (mirrors the
     // march->DirectLightingNode pair above, which also has no separate ordering connection
     // beyond its own HitRecord sync slots).
+
+    // ===================================================================
+    // Sampled Lighting Inc4 M3: ProbeUpdateNode wiring — the DDGI probe-update pass
+    // (ProbeUpdate.comp). Genuinely DISJOINT from DirectLighting/SpatialReuse (§5's
+    // fan-out shape): reads the SAME resident scene (scene SSBOs, light-tree cut) but
+    // writes ONLY the probe atlases via IMAGE_WRITE_ARRAY — never HitRecord, never
+    // outputImage/historyImage/reservoirs. No sync-slot edge exists between this pass
+    // and DirectLighting/SpatialReuse; auto-sync therefore bakes NO barrier between
+    // them (verified at the gate below via the scheduler's actual baked SyncEdges, per
+    // the plan's own "don't just trust it looks disjoint" instruction).
+    // ===================================================================
+
+    // ProbeUpdate's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdateShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdatePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdateGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(probeUpdateGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdatePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  probeUpdatePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
+    // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no
+    // camera ray, no per-pixel debug target — this pass is probe-indexed, not
+    // screen-indexed) -- BUT it DOES need instanceCount (binding 10): TraceWorld/
+    // TraceWorldShadow (TraceWorld.glsl) both bound their scene-instance iteration loop by
+    // `pc.instanceCount` (`numInstances = clamp(pc.instanceCount, 0, 3*64)`), so an
+    // unconnected/zero instanceCount makes EVERY probe ray a guaranteed miss regardless of
+    // scene content -- an M4 live-gate finding (VIXEN_DDGI_LEAK_GATE_DEMO's own leak-test
+    // gate initially read diagNearProbeHitCount=0 for a scene the march visibly renders,
+    // isolating this exact gap) that the file header's PRIOR claim ("reads NONE of its
+    // fields") missed; not previously caught because M3's own gate only checked "probes
+    // visibly light a scene" qualitatively (a render happened), never a numeric hit count.
+    batch.Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          probeUpdatePushConstantGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // ProbeUpdate's descriptor bindings: the scene SSBOs (read-only, same as DirectLighting/
+    // SpatialReuse's own gatherer bindings — read-read is not a hazard) + ProbeGridConfig
+    // (binding 28) + the light-tree cut (binding 24, read-only, same buffer DirectLighting.comp
+    // samples for RIS). NO HitRecord/reservoir/outputImage bindings — this pass never touches
+    // those resources, the structural basis for its disjointness from the direct/ReSTIR pass.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
+                          probeUpdateGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
+                          probeUpdateGatherer, VoxelRayMarch::brickData::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
+                          probeUpdateGatherer, VoxelRayMarch::materials::BINDING,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                          probeUpdateGatherer, 5,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                          probeUpdateGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
+                          probeUpdateGatherer, 11,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
+                          probeUpdateGatherer, 12,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
+                          probeUpdateGatherer, 13,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
+                          probeUpdateGatherer, 15,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
+                          probeUpdateGatherer, 24,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeGridConfigNode, ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                          probeUpdateGatherer, 28,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Bindings 29/30 (probe atlases): descriptor binding here (plain gatherer, CURRENT_VIEW
+    // handles) + the genuine write hazard declared via IMAGE_WRITE_ARRAY below (Inc4 M1's
+    // mechanism — this pass writes BOTH atlases in the SAME dispatch, mirroring how
+    // DirectLightingNode's reservoir write-array covers 2 buffers in one BUFFER_WRITE_ARRAY).
+    //
+    // Validator-found fix: MUST connect ProbeAtlasNodeConfig::CURRENT_VIEW (raw VkImageView), NOT
+    // PROBE_ATLAS (IRenderTarget*) — IRenderTarget has no `conversion_type` (only an `operator
+    // VkImageView()`), so a Resource holding an IRenderTarget* is typed PassThroughStorage and
+    // GetDescriptorHandle() can never produce a VkImageView from it; vkUpdateDescriptorSets was
+    // never actually called for these bindings (VUID-vkCmdDispatch-None-08114 on both). Same
+    // precedent + role shape as DirectLighting/SpatialReuseShade's own binding-0 connection just
+    // above (renderTargetNode's CURRENT_VIEW, not RENDER_TARGET, Execute-only — the hazard side is
+    // declared separately via IMAGE_WRITE_ARRAY/probeAtlasGatherer below, same split those passes
+    // use between their descriptor-binding Connect and their IMAGE_WRITE sync-slot Connect).
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                          probeUpdateGatherer, 29,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                          probeUpdateGatherer, 30,
+                          SlotRoleModifier(SlotRole::Execute));
+
+    // Binding 31 (Sampled Lighting Inc4 M4): DDGI leak-test gate debug SSBO — read-write
+    // (the shader reads ddgiLeakGateEnabled/chebyshevTestEnabled/near-far probe indices +
+    // farShadingPos the CPU sets, and writes gatheredLuma back), same Dependency|Execute
+    // role shape every other read-then-write SSBO binding on this gatherer uses (e.g.
+    // binding 28's ProbeGridConfig, also CPU-written then GPU-read every frame).
+    batch.Connect(ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          probeUpdateGatherer, 31,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // --- ProbeUpdateNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
+    // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
+    // IMAGE_WRITE_ARRAY carries the atlas writes instead (below), not the single-slot
+    // IMAGE_WRITE DirectLighting/SpatialReuse use. ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeUpdateNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  probeUpdateNode, ComputeStageNodeConfig::COMMAND_POOL)
+         .Connect(probeUpdatePipeline, ComputePipelineNodeConfig::PIPELINE,
+                  probeUpdateNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+         .Connect(probeUpdatePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  probeUpdateNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+         .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  probeUpdateNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  probeUpdateNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  probeUpdateNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  probeUpdateNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  probeUpdateNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  probeUpdateNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
+         .Connect(probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  probeUpdateNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                  probeUpdateNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                  probeUpdateNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+    // Sync slot: IMAGE_WRITE_ARRAY — the genuine write hazard on the persistent probe
+    // atlases (this frame's ProbeUpdateNode write must be visible before any future
+    // consumer, e.g. M5's shade-pass gather, reads it; also guards against overlapping
+    // this pass's own writes across frames on the SAME persistent image, the identical
+    // "hysteresis needs the prior write visible" shape AccumulationHistoryNode's own
+    // historyImage sync already relies on). Fed via probeAtlasGatherer (Inc4 M2's own
+    // gathering wiring above) rather than re-gathering here — one gatherer instance,
+    // reused for both PreRegisterImageSlots(2)'s hazard-array shape and this pass's
+    // actual consuming connection.
+    batch.Connect(probeAtlasGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // --- BlitNode: presentation-only blit of the render target to the swapchain. ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

@@ -549,3 +549,65 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 **Fix direction (not applied — out of scope for the AppFlow work that found it):** move `enable_testing()` (and the `include(GoogleTest)`/`FetchContent` gtest setup it depends on) ABOVE `add_subdirectory(libraries)` in `VIXEN/CMakeLists.txt`, gated by `if(BUILD_TESTS)`. Then `ctest --test-dir <build>` would discover all library tests. Low-risk, mechanical, but touches the top-level build ordering — worth its own small verified change so the full suite is CI-runnable via one `ctest` invocation.
 
 **Severity:** Low (tests run fine directly; only the aggregate `ctest` runner is affected) · **Status:** OPEN
+
+---
+
+### KI-028 — `IRenderTarget*` silently fails to populate a descriptor when routed into a descriptor-binding slot (only valid for hazard/sync slots)
+
+**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M3 (DDGI probe-update pass) — a live-syncval-only bug, invisible to compile-time checks and to an aggregate VUID-type census.
+
+**Symptom:** a new node's storage-image `imageStore` writes silently target an unpopulated descriptor. Live validation reports `VUID-vkCmdDispatch-None-08114` ("the descriptor is being used in dispatch but has never been updated via vkUpdateDescriptorSets()") for the affected binding(s) — but ONLY if inspected at the instance/binding level; the AGGREGATE VUID-type count can look completely unchanged (same type, same overall count) since `08114` is already a pre-existing VUID type in this codebase's baseline noise (from the unrelated `test_dispatch` demo pipeline gap, KI-024) — a new instance on a NEW binding hides inside an old type's existing count unless you actually read the per-line binding/resource-name detail.
+
+**Root cause:** `Resource::SetHandle<T>()`'s `descriptorExtractor_` capture (`CompileTimeResourceSystem.h`) only fires for types declaring a `conversion_type` typedef. `IRenderTarget` has no such typedef — only an `operator VkImageView()` conversion operator, which the descriptor-extraction machinery does not use. A `Resource` holding a raw `IRenderTarget*` gets typed `ResourceType::PassThroughStorage`; `GetDescriptorHandle()`'s type-dispatch switch has no case that lets a `PassThroughStorage` resource yield a `VkImageView`, so `GetHandle<VkImageView>()` on it always returns `VK_NULL_HANDLE`. **`IRenderTarget*` is correct and sufficient for HAZARD/SYNC-TRACKING slots** (e.g. `ImageSyncGathererNode::PreRegisterImageSlots`, `IMAGE_WRITE`/`IMAGE_WRITE_ARRAY` — these want the pointer identity for the auto-sync scheduler, not a Vulkan handle) — **but it can NEVER populate a descriptor-binding slot** (a `DescriptorResourceGathererNode` connection). The type system accepts the wiring silently; only a live GPU run with validation layers surfaces the failure.
+
+**Fix pattern (the established, working precedent — `RenderTargetNode` already does this correctly)**: any node that owns a storage image and needs BOTH (a) hazard/sync tracking AND (b) a real descriptor binding for shader access must publish TWO separate output slots — the existing `IRenderTarget*`-typed slot for sync/hazard consumers, PLUS a dedicated `CURRENT_VIEW` (`VkImageView`) output slot (mirroring `RenderTargetNodeConfig::CURRENT_VIEW`) for descriptor consumers. Connect the `IRenderTarget*` slot into sync-hazard-tracking nodes (`ImageSyncGathererNode`, etc.) and the `CURRENT_VIEW` slot into `DescriptorResourceGathererNode` connections — never route the same `IRenderTarget*` output into both. `ProbeAtlasNode` (Inc4 M3, commit `084fe603`) applies this fix by adding its own `CURRENT_VIEW` slot alongside its existing `PROBE_ATLAS` (`IRenderTarget*`) slot.
+
+**How to catch this class of bug going forward:** when validating ANY milestone that adds a new descriptor-bound storage-image producer, inspect live syncval output at the INSTANCE/binding level, not just the aggregate VUID-type census — a new `08114` (or similar) instance on a new binding can hide inside an unchanged overall count if that VUID type already exists in the baseline for an unrelated reason (as `08114` does here, via KI-024).
+
+**Severity:** Medium (silent at compile time and at the aggregate-gate level; only caught by instance-level live syncval inspection — but easy to fix once identified, and the fix pattern is now established) · **Status:** RESOLVED (Inc4 M3, commit `084fe603`) — recorded here as a durable pattern for any FUTURE node needing the same shape, not because the specific M3 instance is still open.
+
+---
+
+### KI-029 — `probeUpdatePushConstantGatherer` never wired `instanceCount`: every probe ray was a guaranteed miss since M3 shipped
+
+**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M4's leak-test gate (`VIXEN_DDGI_LEAK_GATE_DEMO`) — the gate's own `diagNearProbeHitCount` debug readback initially read 0 for a scene the march visibly renders, isolating the gap. Retroactive to M3 (commit `f9453b76`), NOT an M4 defect.
+
+**Symptom:** `TraceWorld`/`TraceWorldShadow` (`TraceWorld.glsl`) both bound their scene-instance iteration loop by `pc.instanceCount` (`numInstances = clamp(pc.instanceCount, 0, 3*64)`). `ProbeUpdate.comp`'s push-constant gatherer (`probeUpdatePushConstantGatherer`, `BuildRenderGraph.cpp`) never connected `BodyOctreeSceneNode::INSTANCE_COUNT` to binding 10 — so every dispatch read `instanceCount=0`, making `numInstances` clamp to 0 and every probe ray a guaranteed miss regardless of scene content, for every scene, since M3 shipped.
+
+**Root cause:** M3's own file-header comment claimed ProbeUpdate.comp "reads NONE of" the PushConstants block's fields (true for camera ray / per-pixel debug target, since the pass is probe-indexed not screen-indexed) — but this claim missed that `TraceWorld`'s OWN internal instance-loop bound also lives in that same push-constant block, and IS read regardless of the pass's own screen-vs-probe indexing. Not caught by M3's own gate, which only checked "probes visibly light a scene" qualitatively (a render happened, with zero hits contributing zero radiance — visually indistinguishable from "dim but working" without a numeric hit-count check).
+
+**Fix:** wire `BodyOctreeSceneNode::INSTANCE_COUNT` into `probeUpdatePushConstantGatherer` binding 10, mirroring `DirectLightingNode`'s own identical wiring (`BuildRenderGraph.cpp:3756-3757`) exactly.
+
+**How to catch this class of bug going forward:** any NEW standalone (non-march) compute shader pulling in `SceneBindings.glsl`/`TraceWorld.glsl` needs `instanceCount` wired even if the pass's own screen/probe-indexed logic reads none of the OTHER push-constant fields — the scene-traversal helpers themselves have their own field dependencies, separate from the calling shader's own field usage. A milestone gate that only checks "did it render something" cannot distinguish "0 rays hit, 0 contribution, still renders (dimly)" from "working correctly" — a numeric hit-count/ray-cast diagnostic (as this milestone's own leak-test debug SSBO added) is needed to actually verify ray-casting correctness, not just qualitative visual presence.
+
+**Severity:** High while undiscovered (every M3 probe-update dispatch was a silent no-op on the ray-casting side — irradiance/visibility atlases were never meaningfully populated) but trivial to fix once identified · **Status:** RESOLVED (Inc4 M4, commit `f4ce2e4e`, retroactive M3 fix).
+
+---
+
+### KI-030 — DDGI visibility moment poisoned by miss-sentinel depth, making the Chebyshev visibility test structurally unable to reject occlusion
+
+**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M4's leak-test gate, immediately after KI-029's fix restored real ray hits — the Chebyshev-enabled and ablation-disabled gather readbacks were nearly identical (0.1249 vs 0.1351), meaning the leak-test scene wasn't discriminating despite hits now being real. Retroactive to M3 (commit `f9453b76`), NOT an M4 defect.
+
+**Symptom:** `chebyshevVisibility(mean, mean2, d)`'s `d <= mean` early-out (return fully-visible) was true for essentially any realistic test distance, regardless of actual nearby occluder geometry — the Chebyshev test could never reject a shading point as occluded.
+
+**Root cause:** M3's ray loop wrote a miss-sentinel depth (`1e4`) and depth² (`1e8`) for rays that hit nothing, and mixed this sentinel into the SAME scalar depth/depth² moment average used for real hit distances (weighted by `sampleWeight`, which was 1.0 for both hits and misses). An omnidirectional probe normally has a non-trivial miss fraction (open-sky directions) — even a modest miss count (e.g. 23/64 observed) drags the mean/variance up by orders of magnitude (observed `avgDepth≈3594.6` against real nearby-occluder distances of a few units), making `d <= mean` trivially true for any test point actually worth checking.
+
+**Fix (option (a), the one the controller selected over alternatives):** exclude ray misses entirely from the depth/depth² moment accumulation — new `sampleHit`/`sharedHitCount` tracking, hit-count-weighted averaging (`avgDepth = sharedDepth[0] / hitCountThisTick`, falling back to a (0,0) moment — "no occlusion data, don't spuriously reject" — when a probe has zero hits this tick) instead of the old `sampleWeight`-weighted (always-1.0) averaging. The IRRADIANCE accumulation's own miss handling (divide by the full `raysPerProbe`, contributing zero radiance per miss) is UNCHANGED and was already correct — this is a VISIBILITY-moment-only fix. Rationale: a ray miss means "no occluder found in that direction," a different fact from "occluder found very far away" — RTXGI's own reference treatment does not conflate the two via an arbitrary large sentinel in an omnidirectional scalar moment.
+
+**Live-gate-verified divergence (Inc4 M4's own leak-test gate, post-fix):** Chebyshev-enabled `gatheredLuma=0.015836` (correctly low/rejecting) vs. ablation-negative-control (Chebyshev test bypassed) `gatheredLuma=0.135071` (~8.5x higher, matching the unweighted `diagNearProbeAvgRadianceLuma=0.139617` — i.e. leaking through with the mechanism disabled) — a genuine, correctly-directioned ablation result, not just "both readings differ."
+
+**How to catch this class of bug going forward:** any moment/statistic meant to bound or reject based on distance (Chebyshev, variance shadow maps, etc.) must be checked for what a "no data" sample (a miss, an out-of-range read, etc.) contributes to the SAME accumulator used for real samples — mixing an arbitrary large/small sentinel into a shared scalar statistic can silently make the statistic's own decision boundary vacuous for realistic inputs. An ablation gate (per the recipe-epic's "vary exactly one factor" discipline, reused here) is what actually surfaces this: a milestone gate that only checks "the value changed" without checking DIRECTION and MAGNITUDE against a known-should-differ negative control would have missed this exact bug (the pre-fix Chebyshev-vs-ablation readings DID differ, just not by nearly enough, and not obviously in the wrong direction without doing the ablation comparison at all).
+
+**Severity:** High while undiscovered (the DDGI leak-mitigation mechanism was the entire point of the milestone, and was silently non-functional) but the fix itself is small/contained · **Status:** RESOLVED (Inc4 M4, commit `54d59dc8`, retroactive M3 fix bundled with the M4 Chebyshev feature commit — see that commit's message for why it wasn't split further).
+
+---
+
+### KI-031 — `probe_update_push_constant_gatherer` logs a constant "Type mismatch" internal-validation line at every graph-validate, regardless of `probeGridEnabled`
+
+**Discovered:** 2026-07-13, during Sampled Lighting Inc4 M6's live gates — a "Type mismatch" internal validation log line fires 11× at graph-validate time on every run, independent of `VIXEN_PROBE_GRID_CONFIG_ENABLED`. Present since M3 (`f9453b76`) shipped the `probeUpdatePushConstantGatherer`, unrelated to M6's own work.
+
+**Symptom:** the log line is emitted every run (including the default no-DDGI boot path) but is NOT a Vulkan VUID, does not affect rendering, and is not a regression — it has been present, unchanged in kind, across every Inc4 milestone's own gate runs (M3 through M7).
+
+**Root cause:** not yet investigated — flagged for whoever next touches `probeUpdatePushConstantGatherer` or the push-constant gatherer's internal type-checking path to root-cause and either fix or explain why it is expected. Deliberately NOT investigated as part of M7's docs-only close-out scope (would require RenderGraph library source changes, out of scope for a measurement+docs milestone).
+
+**Severity:** Low (cosmetic log noise, no functional/behavioral impact observed across 4 milestones of live gating) · **Status:** OPEN, tracked, not blocking.

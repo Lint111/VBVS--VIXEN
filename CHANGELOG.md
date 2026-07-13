@@ -118,6 +118,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   app boot. Spectral (temperature→blackbody) emission, biased-mode ReSTIR, and the denoiser all
   remain deliberate, tracked fast-follows. See
   `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc3-Plan}-2026-07.md`.
+- **Sampled Lighting, Inc4 (DDGI probe volume)** — a uniform-grid dynamic diffuse global
+  illumination probe volume (`ProbeGridConfig`, 8×8×8=512 probes default) providing the indirect
+  bounce-lighting term that sums with Inc3's ReSTIR direct term. A new standalone
+  `ProbeUpdate.comp` compute pass casts `raysPerProbe` (64 default) rays per probe through
+  `TraceWorld`, one workgroup per probe with a shared-memory tree reduction avoiding per-ray
+  atlas-write races; each probe samples a single light-tree candidate for direct-lit radiance
+  (not full RIS — a deliberate M3 scope decision) via a spherical-Fibonacci deterministic ray
+  set, chosen so hysteresis converges against a stable sample set rather than chasing per-tick
+  noise. Persistent irradiance + Chebyshev-visibility (depth/depth² moment) atlas images
+  (`ProbeAtlasNode`, survives across frames like `AccumulationHistoryNode`) required a new
+  RenderGraph-library generalization — `IMAGE_WRITE_ARRAY`/`IMAGE_READ_ARRAY` slots, mirroring
+  Inc3's own buffer-array-hazard surgery for the image case (two atlases updated by the same
+  pass, more than M1's original single-`IMAGE_WRITE`-slot precedent supported). The shade pass
+  gathers indirect diffuse via trilinear interpolation across the 8 nearest probes, each
+  Chebyshev-weighted for leak rejection (standard DDGI variance-shadow-map-style visibility
+  test). **Confirmed the pipeline's first genuinely parallel sibling pass**: a live
+  `VIXEN_DUMP_SYNC_EDGES=1` capture independently verified auto-sync bakes a real
+  `probe_update→spatial_reuse` read-hazard edge but zero edge to/from `direct_lighting` — the
+  disjoint-output fan-out/fan-in shape the design doc's §5 predicted is genuinely realized by the
+  scheduler, not hand-parallelized. A dedicated leak-test gate scene (thin-wall SDF occluder)
+  ablation-verified genuine leak rejection (Chebyshev-enabled gather ~8.5× dimmer than the same
+  gather with the test disabled) — this gate caught and fixed two retroactive M3 bugs invisible
+  to M3's own qualitative-only gate: an unwired `instanceCount` push constant that made every
+  probe ray a guaranteed miss, and a miss-sentinel depth poisoning the visibility moment so the
+  Chebyshev test could structurally never reject occlusion. A live edit-loop gate confirmed probe
+  irradiance converges to newly-added scene content within the hysteresis window, matching a
+  closed-form EWMA curve byte-identically. `ProbeGridConfig.enabled=0` reproduces the pre-DDGI
+  render byte-identically, held through every milestone. **Measured cost: ~24.1 ms/frame
+  full-frame delta at 1920×1080 at the shipped default (raysPerProbe=64), signal 19.3 — the
+  cleanest A/B signal of any measurement in this program, cross-validated by an independent bench
+  session** (method, caveats, and the frame-budget finding in `gate-artifacts/inc4-m7-ddgi-cost.txt`).
+  **The shipped defaults do NOT fit a 60fps (16.6ms) frame budget** — the probe-update pass alone
+  exceeds it, a real, twice-independently-measured cost finding (not a correctness defect; the
+  architecture, leak rejection, and convergence are all independently verified sound) that leaves
+  grid-density reduction, ray-budget reduction, and/or an async/amortized update schedule as open
+  decisions for a future increment. Octree-anchored/cascaded probe placement remains deliberately
+  deferred (uniform grid only this increment), per the design doc's own open-decision #2. See
+  `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc4-Plan}-2026-07.md`.
 
 ### Fixed
 - **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the

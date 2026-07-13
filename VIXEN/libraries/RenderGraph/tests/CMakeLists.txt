@@ -1151,6 +1151,25 @@ else()
 endif()
 
 # ===========================================================================
+# ProbeGridConfig drift-guard (Sampled Lighting Inc4 M2) — pure C++ struct-
+# layout test, no shader reflection yet (see test_probegridconfig_layout.cpp's
+# own file header for why). Mirrors test_buffer_sync_gatherer_node's own
+# "register the executable directly" shape above.
+if(TARGET GTest::gtest_main)
+    add_executable(test_probegridconfig_layout Nodes/test_probegridconfig_layout.cpp)
+    if(TARGET RenderGraph)
+        target_link_libraries(test_probegridconfig_layout PRIVATE GTest::gtest_main RenderGraph)
+    else()
+        target_link_libraries(test_probegridconfig_layout PRIVATE GTest::gtest_main)
+    endif()
+    set_target_properties(test_probegridconfig_layout PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_probegridconfig_layout)
+    message(STATUS "✓ test_probegridconfig_layout configured (Sampled Lighting Inc4 M2)")
+else()
+    message(STATUS "⊗ test_probegridconfig_layout skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # CompileTimeResourceSystem Tests
 # ===========================================================================
 # Test suite for compile-time type system validation, caching, and traits.

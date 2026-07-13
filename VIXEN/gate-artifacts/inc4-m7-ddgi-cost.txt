@@ -1,0 +1,110 @@
+Sampled Lighting Inc4 M7 -- DDGI probe-volume cost measurement (shipped default)
+=================================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan backend
+-- no lavapipe/Dozen, per KI-008 / "live-verification-authoritative-for-gpu-work").
+Binary: VIXEN.exe, built from a genuine from-scratch-triggered rebuild of this
+worktree's tree at commit 8165271f (M1-M6 all merged + M7's own diagnostic-
+scaffolding-cleanup commit; only VulkanGraphApplication.cpp needed recompilation
+since only that file + two shaders changed since M6's own dd009be1).
+
+METHOD
+------
+Same CPU FrameTimer A/B substitute as Inc1/Inc2/Inc3 M5/M7 and Inc4 M6's own
+bench -- KI-019 (GPUQueryManager's isolated-dispatch timing) is STILL open, not
+re-investigated here, per the plan's explicit instruction to go straight to the
+substitute. VulkanApplicationBase's CPU-side FrameTimer (RunOptions.
+enableFrameTimer=true, always-on for VIXEN.exe), logging avg/p99 wall-clock
+frame time every 120 frames. Full-frame delta (CPU submit + GPU work +
+present/vsync), NOT an isolated GPU dispatch -- same caveat as every prior
+increment's own measurement.
+
+Lever: ProbeGridConfigNode's VIXEN_PROBE_GRID_CONFIG_ENABLED env var
+(probeGridEnabled 1|0), mirroring VIXEN_SHADOW_CONFIG_ENABLED/
+VIXEN_ACCUMULATION_ENABLED/VIXEN_RESERVOIR_CONFIG_ENABLED's convention exactly.
+UNLIKE M6's own per-ray-budget bench script (run_probe_bench.bat), this run
+does NOT set VIXEN_PROBE_RAYS_PER_PROBE -- raysPerProbe is left at its shipped
+C++ default (64, ProbeGridConfigNode.cpp:45), so this measurement answers the
+specific question M7's own brief calls for: "enabled=1 at the SHIPPED default
+vs enabled=0," not a swept bench point.
+
+Scene: VIXEN_DDGI_LEAK_GATE_DEMO=1 for BOTH configs (same scene M4's own
+leak-test gate and M6's own ray-budget bench used -- an emissive-sphere source
++ a thin-wall box SDF occluder, sized to land inside the default 8x8x8 grid's
+coverage), so the delta isolates probe-update-pass cost specifically, not
+"scene present vs absent." This is the SAME scene M6's bench used (not
+VIXEN_RESTIR_GATE_DEMO, which Inc3 M7 used) -- carried forward for direct
+comparability against M6's own already-published bench-point data.
+
+Runs: VIXEN_EXIT_AFTER_FRAMES=1500, VIXEN_WINDOW_WIDTH=1920,
+VIXEN_WINDOW_HEIGHT=1080. Each of the 2 configs (probeGridEnabled=0/1) run
+TWICE (the standing Inc2 M5 lesson: run-to-run drift can be large enough that
+a single run misleads) -- 1500/120=12 windows/run, window 1 (frames 0-120)
+discarded as pipeline/shader warm-up, 11 stable windows/run, 22 pooled
+windows/config. Raw logs: temp/m7_cost_{on,off}_run{1,2}.log in this worktree
+(not copied into gate-artifacts/ -- reproducible via the env vars above; this
+file's numbers are the authoritative record, matching every prior increment's
+own convention).
+
+RAW RESULTS (mean of 11 stable 120-frame windows per run, frames 120-1440)
+----------------------------------------------------------------------------
+  probeGridEnabled=0 run 1: avg 54.720 ms/frame (range 53.906-55.958, stdev 0.732)
+  probeGridEnabled=0 run 2: avg 55.314 ms/frame (range 55.136-55.634, stdev 0.149)
+  probeGridEnabled=0 pooled (22 windows): mean 55.017 ms, stdev 0.599
+
+  probeGridEnabled=1 run 1: avg 80.808 ms/frame (range 80.016-83.156, stdev 0.975)
+  probeGridEnabled=1 run 2: avg 77.501 ms/frame (range 76.849-79.469, stdev 0.772)
+  probeGridEnabled=1 pooled (22 windows): mean 79.155 ms, stdev 1.898
+
+SIGNAL QUALITY (honest assessment)
+------------------------------------
+delta (pooled 22 vs 22 windows) = +24.138 ms/frame.
+Signal = delta / avg-of-both-pooled-stdevs = 24.138 / 1.249 = 19.3 -- VERY
+CLEAN, by a wide margin the strongest signal of any Sampled Lighting increment's
+own A/B measurement to date (Inc1 5.64, Inc2 2.34, Inc3 1.56). Directionally
+consistent: probeGridEnabled=1 > probeGridEnabled=0 in BOTH of its own repeat
+runs (80.8/77.5 vs 54.7/55.3) -- the delta is large relative to run-to-run
+noise on both sides, unambiguous. Run-to-run drift exists (on_run1 80.8 vs
+on_run2 77.5, a real ~3ms difference, larger than off's own ~0.6ms drift) but
+is small relative to the 24ms delta itself and does not threaten the
+direction/magnitude conclusion the way Inc3 M7's shared-machine-load caveat
+did for its own weaker signal.
+
+CROSS-CHECK against M6's own ray-budget bench extrapolation
+----------------------------------------------------------------------------
+M6's own bench (different scene note: M6 used the SAME VIXEN_DDGI_LEAK_GATE_DEMO
+scene, VIXEN_EXIT_AFTER_FRAMES=600, 2 runs/point) measured raysPerProbe=64 at
++28.4ms over a ~13ms baseline (M6's own reported baseline for its shorter
+600-frame runs). This M7 measurement (1500-frame runs, same raysPerProbe=64
+shipped default, same scene) finds +24.1ms over a ~55.0ms baseline -- the
+baseline itself is markedly higher here than M6's own ~13ms figure (window
+count / GPU-driver-state / shared-machine-load differences between sessions
+are the likely explanation, consistent with the order-of-magnitude-not-precise
+caution every increment's own measurement carries) but the PROBE-UPDATE DELTA
+itself (+24.1ms here vs +28.4ms in M6) is in the same ballpark, cross-validating
+that the ~20-28ms cost at the shipped default is real and repeatable across two
+independent measurement sessions, not a one-off artifact of either run.
+
+HEADLINE NUMBER (use this one, with the stated caveats)
+----------------------------------------------------------------------
+DDGI probe-update pass (ProbeUpdate.comp, raysPerProbe=64, 8x8x8=512-probe
+grid -- the SHIPPED default) full-frame cost on the DDGI leak-gate demo scene:
+  ~24.1 ms/frame @ 1920x1080 (pooled A/B delta, signal 19.3 -- the cleanest
+  signal of any increment's own measurement in this program to date).
+
+FRAME-BUDGET FINDING -- STATED PLAINLY, NOT SOFTENED
+----------------------------------------------------------------------
+At the 60fps (16.6ms) frame budget, this cost ALONE (~24.1ms, this
+measurement) exceeds the ENTIRE budget by itself, consistent with and
+reinforcing M6's own independent finding (~20-21ms via a different bench
+methodology). The two measurements do not need to agree to the millisecond to
+both support the same conclusion: THE SHIPPED DEFAULTS (raysPerProbe=64,
+8x8x8=512-probe grid) DO NOT FIT A 60FPS FRAME BUDGET. This is not a "known
+minor limitation" -- it is a real, twice-independently-measured, unambiguous
+finding that the current defaults need to change (grid-density reduction,
+ray-budget reduction, and/or an async/amortized per-probe update schedule,
+per M6's own Progress Log) before any production use at these settings. The
+architecture and correctness of the DDGI implementation (leak rejection,
+edit-loop convergence, fan-out/fan-in sync shape) are all independently
+verified sound (M3-M6 gates) -- the open problem is COST, not correctness,
+and is squarely a sizing/scheduling decision for a future increment, not a
+silent footnote.

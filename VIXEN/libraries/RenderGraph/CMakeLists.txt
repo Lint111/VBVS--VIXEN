@@ -65,6 +65,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/FramebufferNodeConfig.h
     include/Data/Nodes/GeometryRenderNodeConfig.h
     include/Data/Nodes/GraphicsPipelineNodeConfig.h
+    include/Data/Nodes/ImageSyncGathererNodeConfig.h  # Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
     include/Data/Nodes/InstanceNodeConfig.h
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
@@ -223,6 +224,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/FramebufferNode.h
     include/Nodes/GeometryRenderNode.h
     include/Nodes/GraphicsPipelineNode.h
+    include/Nodes/ImageSyncGathererNode.h  # Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
     include/Nodes/InputNode.h
     include/Nodes/InstanceNode.h
     include/Nodes/LoopBridgeNode.h
@@ -271,6 +273,8 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
     src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
     src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
+    src/Nodes/ProbeGridConfigNode.cpp     # Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
+    src/Nodes/ProbeAtlasNode.cpp          # Sampled Lighting Inc4 M2: persistent DDGI probe atlas image (irradiance/visibility)
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp
@@ -279,6 +283,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/FramebufferNode.cpp
     src/Nodes/GeometryRenderNode.cpp
     src/Nodes/GraphicsPipelineNode.cpp
+    src/Nodes/ImageSyncGathererNode.cpp  # Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
     src/Nodes/InputNode.cpp
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp

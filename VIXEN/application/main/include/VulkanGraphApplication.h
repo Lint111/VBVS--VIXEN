@@ -246,6 +246,20 @@ private:
     glm::vec3 m8EarthHop0OctantWorld_{0.0f};         // T0's marked leaf world center (T0->T1 crossing)
     glm::vec3 m8EarthHop1OctantWorld_{0.0f};         // T1's marked leaf world center (T1->T2 crossing)
 
+    // Sampled Lighting Inc4 M4: DDGI leak-test gate (VIXEN_DDGI_LEAK_GATE_DEMO) scene
+    // parameters set once at scene-build time in BuildRenderGraph.cpp, read every tick by
+    // VulkanGraphApplication.cpp's readback hook to populate the DDGILeakGateDebug SSBO
+    // (ProbeUpdate.comp binding 31) before each dispatch and to interpret the GPU-written
+    // gatheredLuma result after readback.
+    uint32_t  ddgiLeakGateNearProbeIndex_ = 0;   // flat probe index of the lit/near probe (irradiance source)
+    uint32_t  ddgiLeakGateFarProbeIndex_  = 0;   // flat probe index of the occluded/far probe (performs the gather)
+    glm::vec3 ddgiLeakGateFarShadingPos_{0.0f};  // world-space point on the far/occluded side the gather shades
+
+    // Sampled Lighting Inc4 M6: edit-loop responsiveness gate (VIXEN_DDGI_EDIT_LOOP_DEMO) --
+    // one-shot flag so the light-tree cut is flipped from empty (source "off") to the real,
+    // stashed cut (g_ddgiEditLoopWorldCut) exactly once, at the configured tick.
+    bool      ddgiEditLoopContentAdded_ = false;
+
     // Sparse-Mip ESVO LOD Inc1 M4c: last camera state the residency trigger was evaluated
     // against — change-detection only (avoids re-sorting/re-requesting every single frame
     // on a static camera); NOT part of the trigger formula itself (that's stateless, per
