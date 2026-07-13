@@ -53,6 +53,20 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
     if (const char* enabledEnv = std::getenv("VIXEN_PROBE_GRID_CONFIG_ENABLED")) {
         cfg.probeGridEnabled = (enabledEnv[0] == '1') ? 1u : 0u;
     }
+
+    // M6 bench lever: VIXEN_PROBE_RAYS_PER_PROBE=<n> overrides the fixed raysPerProbe=64
+    // default so the design's own flagged pass-2 open question (real-GPU cost vs ray
+    // budget) can be measured across multiple values from the SAME binary, no rebuild —
+    // same convention as VIXEN_PROBE_GRID_CONFIG_ENABLED above. Clamped to
+    // PROBE_UPDATE_MAX_RAYS_PER_PROBE (256, ProbeUpdate.comp's workgroup-size ceiling —
+    // see M3's atlas-write-correctness note) so a bad env value can't request more
+    // invocations than the shader's fixed local_size_x provides.
+    if (const char* raysEnv = std::getenv("VIXEN_PROBE_RAYS_PER_PROBE")) {
+        long v = std::strtol(raysEnv, nullptr, 10);
+        if (v > 0 && v <= 256) {
+            cfg.raysPerProbe = static_cast<uint32_t>(v);
+        }
+    }
     return cfg;
 }
 
