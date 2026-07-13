@@ -145,8 +145,12 @@ fixture and must be regenerated/verified before any porting work starts.
 ## Milestone Map
 - [x] **Milestone 1 (Task 0 + Task 1):** resolve the golden-bytes fixture question, ground the shape,
   decide mechanism (report-back gate). One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire (may split into 2a/2b/2c if too
-  large). One or more Sonnet implementers + Opus validator(s).
+- **Milestone 2 SPLIT into three sub-milestones per the plan's own guidance (too large for one dispatch):**
+  - [x] **Milestone 2a (#4 codec — build + equivalence proof, no retirement yet):** DONE + Opus-validated
+    APPROVED, 2026-07-13.
+  - [ ] **Milestone 2b (#5 merge — build + equivalence proof, no retirement yet).**
+  - [ ] **Milestone 2c (#6 patch-parser — build + equivalence proof + FULL RETIREMENT of all 6 generator
+    files across #4/#5/#6).**
 
 ## Progress Log
 
@@ -185,3 +189,39 @@ fixture and must be regenerated/verified before any porting work starts.
     by direct source reads, and independently spot-checked all 4 version boundaries against the real
     schema. Recommends heeding the plan's own guidance to split Milestone 2 into 2a/2b/2c given the
     increment's size. Cleared to proceed to Milestone 2.
+
+- Milestone 2a (#4 codec — build + equivalence proof, NO retirement yet): DONE · 2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc9-codec`, off Inc-8 tip, commit `ec100e67`): new
+    `CodecEmitter.cs` porting undertow's `EmitCodec.cs` (556 lines) line-for-line — both `EmitPair`
+    (def-table codec) and `EmitPatchPair` (patch side-table codec). Additive `DefField` members
+    (`IntroVersion`/`MapKeyName`/`MapValueName`/`VocabMethod`) added to the shared field model. New
+    `--codec-cs` CLI flag mirroring `--authored-kinds-cs`.
+  - **Equivalence proof — the crux of the whole increment, non-vacuous, independently re-derived from
+    scratch by the validator.** Generated-text sanity: the emitted `Codec.g.cs`-equivalent body is
+    byte-identical (2829 lines, only banner/BOM differs) to the real Roslyn build output. **Binary-blob
+    byte-diff (the real proof)**: reproduced `CodecGoldenBytesTests`'s exact 10-kind synthetic
+    `AuthoringProject`, baked it through the unmodified real Roslyn codec (confirmed matches
+    `codec-golden.b64`), then temporarily swapped the Yeroket-generated text into the live
+    `CodecGenerator`'s `AddSource` call (a `const string` holder file, since Roslyn analyzers can't do
+    file I/O), rebuilt, re-baked the SAME synthetic project — the resulting `.pack` blob is
+    BYTE-IDENTICAL (confirmed via direct `sha256`/`cmp` by both the implementer and, independently, the
+    validator who redid the entire swap-and-rebuild themselves rather than trusting reported hashes).
+  - **Full undertow test suite re-run with the swap live**: 2934-2935 Core + 21 Vixen.Host pass, 0
+    failures (includes every existing `Baked{Kind}CodecTests.cs` round-trip test, satisfying the
+    round-trip field-value verification requirement far beyond "a few kinds").
+  - **All 3 real version boundaries verified** (v40 `manifest.dependencies`/`requires`; v68
+    `contract`/`offer` `dest_body`/`dest_kind`; v77 `character.relationships`/`playable`) — confirmed
+    correct in/out gating in both the def AND patch tables, by both the implementer and the validator
+    independently tracing the generated `Read` logic against real `schemas.json` values.
+  - **Cleanup confirmed**: all temporary undertow-worktree edits (the swap, the holder file, temp
+    tests) fully reverted — worktree confirmed completely clean, zero commits, by both the implementer
+    and the validator. No retirement performed (correct, deferred to Milestone 2c). All 6 generator
+    files (`EmitCodec.cs`/`CodecGenerator.cs`/`EmitMerge.cs`/`MergeGenerator.cs`/`EmitPatchParser.cs`/
+    `PatchParserGenerator.cs`) confirmed present and unmodified.
+  - `SDFNodeGenerator.dll` non-deterministic rebuild noise (triggered by the validator's own build)
+    confirmed reverted, not committed.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. This is the load-bearing proof for the
+    hardest increment in the program — the validator did not trust reported hashes, instead
+    independently redoing the entire swap-and-rebuild approach from scratch to produce its own binary
+    `.pack` blob and diff it directly. Cleared to proceed to Milestone 2b.
