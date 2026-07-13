@@ -232,4 +232,14 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
   - No blockers. Milestone B (undertow cutover + live-gate) is next; Bodies'
     `Position`/`RecipeParams`/`OrbitPath` remain the explicitly out-of-scope gap per this plan's
     own scope boundary.
+  - **Opus validator (independent re-verification):** APPROVED. Confirmed the multi-array gap/fix is
+    real by reading `Hud.cs`'s actual declaration (2 struct-array fields) and the emitter's current
+    logic. Confirmed all index-baking + `.i`/`.f`/`.b`/`.s` cell-member claims directly against the
+    generated header output. Could not rebuild from this WSL worktree (Windows MSVC toolchain), so
+    verified the equivalence proof via a rigorous side-by-side read of both test files' assertions —
+    confirmed the baked indices provably match the blob's declared field/elem order, making the
+    agreement genuine, not tautological. Confirmed the pre-existing roundtrip test is byte-unmodified,
+    undertow is completely untouched, Yeroket's own test suite (43/43) is unbroken, no
+    `SDFNodeGenerator.dll` noise, and no `kSectionBodies`-style enum constants anywhere in the
+    generated output. Cleared to proceed to Milestone 3.
   - **Opus validator:** pending.
