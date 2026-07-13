@@ -126,13 +126,81 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
   cross-repo push here is worse than usual, since undertow's build wiring couples to what Yeroket
   actually emits.
 
+## Milestone 2.5 — writer-side wiring (discovered 2026-07-13, inserted before Milestone 3)
+
+Milestone 3's first dispatch correctly reported BLOCKED (see Progress Log below) on a real gap this
+plan's own Ground Truth got wrong: it assumed undertow's real writer was "already wired... from the
+original Inc-5's Milestones 2-3." It was NOT. `HostSession.cs:148`
+(`_viewBuffer ??= ViewWriter.WriteView(Frame)`) still calls undertow's OWN in-tree
+`EmitViewWriter.cs`-generated writer, producing the OLD `UTVW`-TOC wire — Yeroket's actual new-wire
+producer (`<Model>ViewWriter.ToBuffer()`, emitting `UTVA`) is NEVER invoked anywhere in undertow
+(confirmed zero references, zero `UTVA` bytes anywhere in the repo). User decision (2026-07-13):
+extend this plan with a new Milestone 2.5 to build this writer-side wiring, rather than holding or
+partial-scoping to Hud-only.
+
+**Ground truth (researched 2026-07-13):**
+- **`Frame`'s real type**: a private cached `SimFrame` (`core/src/Undertow.Sim/SimFrame.cs:353`),
+  populated by `_sim.ProjectFrame()` each tick — real production sim-projection data, not a fixture.
+  Holds `IReadOnlyList<T>` collections named after the 5 view sections: `.Bodies`/`.Hud`/
+  `.HudFactions`/`.HudEvents`/`.HudInspect` (plus others unused by these sections).
+- **Current writer** (`EmitViewWriter.cs:35-150`) generates `ViewWriter.WriteView(SimFrame frame)`:
+  per section, `IReadOnlyList<T> items = frame.{Collection}`, per column a loop evaluating a verbatim
+  `Source` C# expression string per element (e.g. `el.Tick`), packed via `ViewBufferBuilder` into the
+  old `UTVW` wire.
+- **Yeroket's `<Model>ViewWriter.ToBuffer()` shape** (`ViewWriterEmitter.cs:24-70`): a plain data-holder
+  class — public fields matching the `[View]`-declared struct 1:1 (scalars + `List<RowStruct>` for
+  struct-arrays), NO ctor takes external input. `ToBuffer()` reads `this.<field>` and serializes to
+  `UTVA`. It expects the CALLER to have already populated an instance before calling `ToBuffer()` — it
+  has zero knowledge of `SimFrame`.
+- **The gap is a mapping/glue problem, NOT structural, for the 4 Hud-family sections.**
+  `SimFrame.Hud/HudFactions/HudEvents/HudInspect` already have a near-identical field shape to
+  `UndertowHud.cs`'s schema classes (real, already declared+proved in the original Inc-5's Milestone 3,
+  not a stub). The needed new code is mechanical: `new <Model>ViewWriter { Tick = frame.Hud[0].Tick,
+  ... }.ToBuffer()`, replacing `ViewWriter.WriteView(Frame)` at `HostSession.cs:148`. No structural
+  mismatch found.
+- **Bodies' Vec3f-scalar gap (`Position`/`RecipeParams`) is confirmed blocked SYMMETRICALLY on the
+  writer side too.** `ViewModelBuilder.Classify` (`ViewModel.cs:58-72`) only recognizes int/float/
+  bool/string scalars; a Vec3f-shaped scalar field either misclassifies or throws. `ViewWireFormat.
+  EmitField` explicitly throws for any plain `Struct`-kind field. Bodies MUST stay explicitly deferred
+  on the writer side too — only the 4 Hud-family sections are in scope for Milestone 2.5, mirroring
+  the reader-side (Milestone 2) precedent exactly, not a new decision.
+- **Scope split recommended and adopted**: Milestone 2.5a (build the adapter classes for the 4
+  Hud-family sections + swap `HostSession.ViewBuffer`, prove round-trip via a C# unit test — pure C#,
+  no live-gate needed yet) is separable from actually landing it, because a writer-only change with
+  the OLD C++ reader still in place would silently break `main.cpp`/`hud_view.h` (both still expect
+  `UTVW`-TOC) — a strictly worse state than today's (currently-correct) `UTVW` end-to-end path. **The
+  writer (Milestone 2.5) and the reader cutover (Milestone 3) must land and be live-gated TOGETHER as
+  one real sim→render proof, not the writer alone.**
+
+**Scope boundary (Milestone 2.5)**
+- **IS**: build the 4 Hud-family adapter/writer classes (`<Model>ViewWriter`-populating glue reading
+  real `SimFrame.Hud/HudFactions/HudEvents/HudInspect` fields), replace `HostSession.cs:148`'s call
+  site to produce `UTVA` bytes for these 4 sections. Prove a real round-trip: populate from a REAL
+  captured `SimFrame` (not just Milestone 2's synthetic Hud fixture), call `ToBuffer()`, decode via
+  `ViewWireReaderSoa::Apply`+the Milestone-2-generated typed accessors, and confirm decoded values
+  match the real `SimFrame`'s real values exactly.
+- **IS NOT**: cutting the real C++ reader over yet (that's Milestone 3, which must land together with
+  this milestone before either is considered "done" for the real seam) — Milestone 2.5 alone leaves
+  `HostSession.ViewBuffer` producing a NEW wire that the OLD C++ reader can't read; this milestone's
+  own proof must be a C#-side/isolated round-trip only, NOT a claim that the real seam works yet.
+- **IS NOT**: touching Bodies' `Position`/`RecipeParams`/`OrbitPath` — same explicit, symmetric
+  deferral as the reader side.
+- **IS NOT**: making `HostSession.ViewBuffer`'s new output live/consumed by anything real until
+  Milestone 3 also lands — until then this is dead-code-in-waiting, deliberately, to avoid a half-swap
+  that breaks the real seam.
+
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide the emission template (report-back gate). One
   Sonnet implementer + one Opus validator.
 - [x] **Milestone 2 (Task 2, = "Milestone A" above):** build + prove the typed accessor emitter,
   Yeroket/VIXEN in-tree only, no undertow changes. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 3 (Task 3, = "Milestone B" above):** cut undertow's real reader over + live-gate the
-  real sim→render seam. One Sonnet implementer + one Opus validator.
+- [ ] **Milestone 2.5 (writer-side wiring, inserted 2026-07-13):** build the 4 Hud-family writer/
+  adapter classes reading real `SimFrame` data, swap `HostSession.ViewBuffer`'s call site, prove a
+  real round-trip in isolation (C#-side only, not yet live). One Sonnet implementer + one Opus
+  validator.
+- [ ] **Milestone 3 (Task 3, = "Milestone B" above):** cut undertow's real C++ reader over (must land
+  TOGETHER with Milestone 2.5, not independently) + live-gate the real sim→render seam. One Sonnet
+  implementer + one Opus validator.
 
 ## Progress Log
 
@@ -242,4 +310,35 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
     undertow is completely untouched, Yeroket's own test suite (43/43) is unbroken, no
     `SDFNodeGenerator.dll` noise, and no `kSectionBodies`-style enum constants anywhere in the
     generated output. Cleared to proceed to Milestone 3.
-  - **Opus validator:** pending.
+  - **Opus validator (independent re-verification):** APPROVED. Confirmed the multi-array gap/fix,
+    all index-baking + cell-member claims, and the non-tautological equivalence proof (baked indices
+    provably match the blob's declared order). Confirmed no regression, undertow untouched, Yeroket's
+    own suite unbroken, no dll noise, no `kSectionBodies`-style enums. Cleared to proceed to
+    Milestone 3.
+
+- Milestone 3 (Task 3, first attempt): BLOCKED, then RESCOPED · 2026-07-13 · no files modified in any
+  of the three repos
+  - Implementer re-confirmed the consumer list (`main.cpp`, `hud_view.h`, `test_hud_view.cpp`,
+    `test_view_contract.cpp` — matches Milestone 1 exactly, no new consumers found) then, per this
+    program's own "investigate and report BLOCKED, don't force a match" instruction, traced the
+    writer side before touching any reader code, since the plan's own Ground Truth claimed the
+    writer was "already wired... from the original Inc-5's Milestones 2-3."
+  - **That claim was WRONG — a real gap in this plan's own scoping, not the implementer's error.**
+    `HostSession.cs:148` (`_viewBuffer ??= ViewWriter.WriteView(Frame)`) still calls undertow's own
+    in-tree `EmitViewWriter.cs`-generated writer, producing the OLD `UTVW`-TOC wire. Yeroket's actual
+    new-wire producer (`<Model>ViewWriter.ToBuffer()`, emitting `UTVA`) is never invoked anywhere in
+    undertow — confirmed via grep (zero references) by both the implementer and the controller
+    independently. Switching the C++ reader today would decode garbage from a wire that's still
+    old-format.
+  - **Secondary, independent blocker also confirmed**: the Milestone-2-generated `UndertowBodiesSection`
+    accessor is missing `position()`/`recipeParams()` (the deferred Vec3f-scalar gap) — but `main.cpp`'s
+    real `ReadBodies()` actually reads both. Bodies cannot be mechanically cut over regardless of the
+    writer-side blocker; the 4 Hud-family sections have no such gap.
+  - Correctly made ZERO changes/commits anywhere rather than force a live-gate against a known-wrong
+    wire, which would prove nothing.
+  - **User decision (2026-07-13): extend this plan with a new Milestone 2.5** (writer-side wiring for
+    the 4 Hud-family sections, real `SimFrame` data, C#-only round-trip proof — see the Milestone 2.5
+    section above) rather than holding or partial-scoping to Hud-only immediately. Milestone 2.5 and
+    Milestone 3 (reader cutover) must land and be live-gated TOGETHER, per the research's own finding
+    that a writer-only change would silently break the currently-correct `UTVW` end-to-end path.
+  - No blockers on the rescope itself — proceeding to Milestone 2.5.
