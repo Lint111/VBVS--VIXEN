@@ -143,11 +143,45 @@ fixture and must be regenerated/verified before any porting work starts.
   oversized/under-verified dispatch; report back and let the controller re-segment.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 0 + Task 1):** resolve the golden-bytes fixture question, ground the shape,
+- [x] **Milestone 1 (Task 0 + Task 1):** resolve the golden-bytes fixture question, ground the shape,
   decide mechanism (report-back gate). One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire (may split into 2a/2b/2c if too
   large). One or more Sonnet implementers + Opus validator(s).
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 0 + Task 1, research + pre-flight): DONE · 2026-07-13 · no source files modified in
+  either repo
+  - **CRITICAL Task 0 finding: the plan's "0-byte golden fixture" premise was STALE, specific to a
+    different checkout.** In the fresh Increment 9 worktree, `codec-golden.b64` is 1384 bytes, has 69
+    commits (most recent matching `Version=81`), and `CodecGoldenBytesTests.Codec_ProducesGoldenBytes`
+    genuinely passes (independently re-run by both the implementer and the Opus validator: 1 passed, 0
+    failed). The documented `UNDERTOW_UPDATE_GOLDEN=1` self-regen mechanism exists but was not needed.
+    **Milestone 2 has a working, non-vacuous automated equivalence oracle from the start — no blocking
+    gap.**
+  - **Wire layout confirmed**: magic `0x5554424B` ('UTBK'), `Version` int (81), `MinSupportedVersion`
+    (3), 5 hand-written inline tables (TagRows/Relations/Storylines/Fragments/DialoguePatterns), a
+    `CodecKind[]` dispatch array (55 rows, not exactly ~57 — minor, within tolerance), trailing FNV-1a
+    hash (whole-blob, after-the-fact integrity only).
+  - **Ctor-order coupling confirmed, with a naming refinement**: the real shared emitter is
+    `EmitRecord.cs` (called from `BakedDefGenerator.cs`) — there is no file literally named
+    "DefCarriersEmitter" in undertow (that's Yeroket's name for the ported concept). `EmitCodec.cs`'s
+    `Read{Plural}` independently iterates the same `fields` list positionally, with zero structural
+    cross-check against the ctor it's calling — confirming the central invariant Milestone 2 must
+    preserve.
+  - **`CodeModLoader.cs` re-confirmed**: zero reflection dependency on this cluster (only
+    `[Effect]`/`[System]`/`[Action]`/`[Param]`).
+  - **Mechanism confirmed**: extend Increment 5's carrier-emitter family (same `Field` IR, a further
+    emitter pass) for `EmitCodec`/`EmitMerge`/`EmitPatchParser` — all three are dispatch tables over
+    the shared IR, no novel algorithm, confirmed via full fresh reads (556+298+412 lines).
+  - **Real historical `IntroVersion` boundaries reported for Milestone 2**: v40 (objectList +
+    customCodec together), v68 (cross-kind, same version — `contract`/`offer` `dest_body`/`dest_kind`),
+    v77 (multi-field, same-kind-same-version), plus the current v81 tip — spot-checked and confirmed
+    present in real `schemas.json` by both the implementer and the validator.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently confirmed the golden-bytes
+    finding by checking file size/git log AND actually re-running the test itself (not trusting the
+    implementer's run), independently confirmed the wire layout/ctor-order coupling/mechanism decision
+    by direct source reads, and independently spot-checked all 4 version boundaries against the real
+    schema. Recommends heeding the plan's own guidance to split Milestone 2 into 2a/2b/2c given the
+    increment's size. Cleared to proceed to Milestone 2.
