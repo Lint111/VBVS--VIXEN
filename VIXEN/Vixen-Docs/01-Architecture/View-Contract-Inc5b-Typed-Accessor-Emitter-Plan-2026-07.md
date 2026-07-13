@@ -364,11 +364,12 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
   `.cpp`, `ViewWireReaderSoa.cpp`, `ViewBlobEmitter.cs`, `TypedAccessorEmitter.cs`,
   `ViewWireFormat.cs`/`ViewWriterEmitter.cs`) + prove a full round-trip on the new `VectorProof.cs`
   schema, Yeroket/VIXEN in-tree only. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2.5 (writer-side wiring, inserted 2026-07-13):** build the 5-section writer/adapter
-  classes reading real `SimFrame` data (Bodies now includable per Milestone 2.4's unblock, if it lands
-  first — otherwise Hud-family only, Bodies deferred), swap `HostSession.ViewBuffer`'s call site,
-  prove a real round-trip in isolation (C#-side only, not yet live). One Sonnet implementer + one
-  Opus validator.
+- [x] **Milestone 2.5 (writer-side wiring, inserted 2026-07-13):** build the 5-section writer/adapter
+  classes + new `UTVC` multi-section container, swap `HostSession.ViewBuffer`'s call site, prove a
+  real round-trip in isolation (C#-side + C++-side, not yet live). DONE + Opus-validated APPROVED,
+  2026-07-13. Bodies stays at 7-of-9 columns (Position/RecipeParams need struct-array-element Vector
+  support, a genuine new gap found this milestone — deferred as a named prerequisite for whichever
+  future increment renders those 2 columns, not a blocker on Milestone 3).
 - [ ] **Milestone 3 (Task 3, = "Milestone B" above):** cut undertow's real C++ reader over (must land
   TOGETHER with Milestone 2.5, not independently) + live-gate the real sim→render seam. One Sonnet
   implementer + one Opus validator.
@@ -646,3 +647,59 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
     Flagged one forward-note (not a blocker): `Mat4` also maps to `Vector` but `ViewValue::Vec` is
     fixed at 3 floats — already documented in `ViewBlob.h`'s own comment as needing a future distinct
     `ViewKind` for non-3-component vector shapes. Cleared to proceed to Milestone 2.5/3.
+
+- Milestone 2.5 (build the 5-section writer wiring + `UTVC` multi-section container): DONE ·
+  2026-07-13
+  - **Built** (undertow `feat/view-contract-inc5-m4`, commit `73fa909e`): new
+    `core/src/Undertow.View/ViewWriterAdapter.cs` (populates all 5 `<Model>ViewWriter` instances from
+    a real `SimFrame`); new `core/src/Undertow.View/ViewContainerBuilder.cs` (the `UTVC` container —
+    magic + count(u32) + offset/length TOC + concatenated self-describing `UTVA` sub-buffers, no
+    padding, per the Task 1 decision); 5 checked-in Yeroket-generated `<Model>ViewWriter.g.cs` files;
+    `HostSession.cs:148`'s call site swapped to build all 5 sections + wrap via the new container,
+    preserving `ViewBuffer`'s public single-`byte[]` shape.
+  - **Built** (VIXEN `feat/view-contract-inc5`, commit `8d4f2328`): generated the missing
+    `--view-blob` headers/datafiles for all 5 Undertow schemas (needed for `ViewStore` construction,
+    didn't exist yet — only `.typed.g.h` existed from Milestone 2).
+  - **Real round-trip proof, non-vacuous, independently re-derived by the validator from scratch**:
+    used `new UndertowSim(); sim.NewCampaign(7); sim.ProjectObserverFrame()` (real, already-exercised
+    production sim data). C# tests assert the built `UTVC` container's structure/TOC. A new C++ gtest
+    embeds the VERBATIM 2409 real bytes produced by the actual C# writer path, manually unwraps
+    `UTVC`, decodes all 5 sections via `ViewWireReaderSoa::Apply` + the generated typed accessors, and
+    asserts exact real values for Hud/HudFactions(4 rows)/HudEvents(38 rows, spot-checked)/HudInspect/
+    Bodies(7 rows at 7-of-9 columns) — the validator independently rebuilt on real MSVC, reproduced
+    all 6 gtests passing, and manually decoded one section by hand to confirm the unwrap logic is
+    genuinely symmetric with the builder (not just plausible).
+  - **CRITICAL genuine gap found, correctly reported rather than silently worked around**: the earlier
+    grounding pass's premise ("Position/RecipeParams newly includable") was subtly wrong — Milestone
+    2.4 only wired `ViewFieldKind.Vector` for TOP-LEVEL scalar fields, proven only via a top-level-only
+    proof schema. `Bodies.Position`/`RecipeParams` are struct-array-ELEMENT fields (per-row columns of
+    `UndertowBodyRow`) — a genuinely different, unwired case. Confirmed by actually adding the fields
+    to the real schema and running the CLI: `--view-writer` crashes
+    (`System.InvalidOperationException: Nullable object must have a value`, `ViewWriterEmitter.cs:62`)
+    — the validator independently REPRODUCED this exact crash with their own throwaway schema, not
+    just trusting the stack trace. `TypedAccessorEmitter.cs`'s struct-array element loop has an
+    identical latent NPE (Milestone 2.4's own previously-"unreachable" landmine, now made reachable).
+    The schema edit was reverted rather than silently extending emitter code without design sign-off —
+    Bodies stays at 7-of-9 columns, matching the original Inc-5 Milestone 3's count exactly.
+  - **Both implementer and validator judged this gap does NOT need its own follow-up milestone before
+    the program advances** — it's orthogonal to the writer-wiring/container work this milestone
+    delivers (which is complete and proven), only blocks the already-explicitly-deferred
+    Position/RecipeParams columns, and should be a named prerequisite folded into whichever future
+    increment actually needs those 2 columns rendered (a small emitter fix null-guarding `rf.Scalar`
+    for Vector-kind row fields in both emitters), not a blocker on Milestone 3's reader cutover.
+  - **Regression**: `dotnet test Undertow.sln` 2958/2958 pass (independently re-run by the validator
+    from a fresh state). One EXPECTED/INTENTIONAL test update (`HostAbiTests.
+    Abi_View_ReturnsAUtvwBufferForSeed7` → `Abi_View_ReturnsAUtvcContainerForSeed7`, now asserts `UTVC`
+    magic + 5-section count — a genuine strengthening, not a weakening, confirmed by the validator).
+    All 6 VIXEN gtests pass (1 new container test + Milestone 2's 2 + the pre-existing 3), rebuilt
+    from a fresh state.
+  - `SDFNodeGenerator.dll` noise confirmed reverted, not committed.
+  - No blockers. Next: Milestone 3 (undertow's real C++ reader cutover + live-gate) — must land
+    TOGETHER with this milestone's writer output before either is considered "done" for the real seam.
+  - **Opus validator (independent re-verification):** APPROVED. Reproduced the critical crash finding
+    with their own throwaway schema rather than trusting the stack trace, independently rebuilt on
+    real MSVC and manually decoded a section by hand to confirm the UTVC unwrap logic is genuinely
+    symmetric, confirmed byte-identity of all 5 committed generated writer files against fresh CLI
+    output, and independently re-ran the full C# suite from a clean state. Explicitly judged the
+    struct-array-element Vector gap as correctly deferred, not a blocker. Cleared to proceed to
+    Milestone 3.
