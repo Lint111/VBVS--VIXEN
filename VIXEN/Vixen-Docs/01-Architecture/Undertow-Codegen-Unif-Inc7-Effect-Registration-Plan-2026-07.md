@@ -117,8 +117,8 @@ generalizes to a data-driven branch rather than a single uniform shape.
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
-  validator.
+- [x] **Milestone 2 (Task 2):** build + equivalence proof + retire. DONE + Opus-validated APPROVED,
+  2026-07-13. **INCREMENT 7 COMPLETE.**
 
 ## Progress Log
 
@@ -150,3 +150,53 @@ generalizes to a data-driven branch rather than a single uniform shape.
     the mechanism decision by checking out the real Yeroket Inc-4 commit via `git show` (kept Yeroket's
     working tree untouched), and confirmed `CodeModLoader.cs`'s retirement safety. Cleared to proceed to
     Milestone 2.
+
+- Milestone 2 (Task 2, build + equivalence proof + retire): DONE · 2026-07-13
+  - Yeroket `feat/codegen-unif-inc7-effect` (off `feat/codegen-unif-inc6-factories`), commit `c4691435`:
+    `CompilationLoader.LoadEffectClasses` (mirrors `LoadActionClasses`), new
+    `EffectRegistrationEmitter.cs` (`EmitWorldGraph`/`EmitSim`, ported line-for-line from undertow's
+    `EmitRegisterEffects`/`EmitRegisterSimEffects`), `--effect-cs` CLI flag (`--out-cs` + `--out-sim-cs`
+    in one invocation — both buckets come from one discovery pass).
+  - **Gotcha found + fixed during build:** bucket discrimination CANNOT use C# namespace string —
+    several real sim-ctor classes (`StoreFlowEffect`, `RunRecipeEffect`, `KnowledgeModifierEffect`,
+    `TransmitFlowEffect`) are declared `namespace Undertow.Sim` directly rather than
+    `Undertow.Sim.Systems.*`, which misclassified them into Bucket A under a namespace heuristic. Fixed
+    by discriminating on the schema file's on-disk project directory (`.../Undertow.Effects/**` vs
+    `.../Undertow.Sim/**`), 1:1 with the real Roslyn generator's `assemblyName` branch since the CLI has
+    no assembly boundary of its own.
+  - **Equivalence proof (non-vacuous): PASS.** Ran a real `dotnet build` of `core/Undertow.sln` in the
+    undertow worktree, extracted the actual Roslyn generator output
+    (`RegisterEffects.g.cs`/`RegisterSimEffects.g.cs` from `obj/.../generated/...`), ran the new Yeroket
+    `--effect-cs` mechanism against the same real source tree, byte-diffed both bodies (banner excluded,
+    same convention as Inc-4) — **IDENTICAL** for all real sites (15 Bucket A + 33 Bucket B, confirmed by
+    direct recount matching Milestone 1's number exactly).
+  - **All 3 diagnostics exercised with synthetic malformed scenarios, all fired correctly (exit 1):**
+    `UTFX001` (two Bucket-A classes sharing an id), `UTFX002` (Bucket-A class missing `IEffect`),
+    `UTFX003` (Bucket-B class with a parameterless ctor instead of `UndertowSim`). A well-formed
+    synthetic sim-ctor class also verified the happy path (exit 0, correct `new {Fq}(this)` emission).
+  - **Both real call sites verified preserved**: `UndertowSim.cs:446-450` (calls both
+    `GeneratedEffects.RegisterAll` and `RegisterGeneratedSimEffects`) and `HistorySim.cs:79`
+    (`BuiltinRegistry()` calls only `GeneratedEffects.RegisterAll`) — both files byte-identical
+    (MD5-verified + empty `git diff`) pre/post retirement, since only their generated callees changed.
+  - **Retirement DONE**: deleted `EffectRegistrationGenerator.cs`, `EmitRegisterEffects.cs`,
+    `EmitRegisterEffectsTests.cs` (confirmed the sole test file — no separate
+    `EffectRegistrationGeneratorTests.cs` exists). Checked in the real captured Roslyn output as ordinary
+    compiled files: `Undertow.Effects/GeneratedEffects.g.cs`, `Undertow.Sim/GeneratedSimEffects.g.cs`.
+    `CodeModLoader.cs` confirmed byte-identical pre/post (MD5 unchanged, empty diff) — its
+    `InstantiateEffect` dual-ctor-shape mirror untouched.
+  - **Full build + test on `core/Undertow.sln`, post-retirement: 0 errors, 0 warnings; 2950/2950 tests
+    pass** (21 `Undertow.Vixen.Host.Tests` + 2929 `Undertow.Core.Tests`, 0 failures/skips).
+  - Undertow worktree `.claude/worktrees/codegen-unif-inc7-effect`, branch
+    `feat/codegen-unif-inc7-effect`, commit `8e8a27e1`. Not pushed (per gate).
+  - Watched for and hit the `SDFNodeGenerator.dll` non-deterministic-rebuild gotcha in Yeroket
+    (size 478720→536576 bytes on an unrelated rebuild) — reverted via `git checkout --` before
+    committing, per the documented gotcha.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently confirmed the
+    namespace-vs-directory bug/fix by grepping the real declarations of all 4 affected classes, rebuilt
+    undertow at the pre-retirement commit from scratch to re-derive the byte-identical equivalence proof
+    for both generated files, independently confirmed all 3 diagnostic message strings against the
+    deleted original generator, confirmed zero diff on both real call sites and on `CodeModLoader.cs`,
+    and independently re-ran the full test suite from a clean state — correctly polling past a premature
+    background-completion notice until the full 2929-test `Undertow.Core.Tests` run actually finished
+    (2950/2950 confirmed). **Increment 7 (`[Effect]` registration) COMPLETE.**
