@@ -16,8 +16,10 @@ struct ProbeGridConfig {
     uint32_t countZ;
     uint32_t raysPerProbe;
     float hysteresisRate;
+    uint32_t amortizationFactor;
+    uint32_t frameCounter;
 };
-static_assert(sizeof(ProbeGridConfig) == 48, "ProbeGridConfig std430 size");
+static_assert(sizeof(ProbeGridConfig) == 56, "ProbeGridConfig std430 size");
 static_assert(offsetof(ProbeGridConfig, probeGridEnabled) == 0, "probeGridEnabled@0");
 static_assert(offsetof(ProbeGridConfig, originX) == 4, "originX@4");
 static_assert(offsetof(ProbeGridConfig, originY) == 8, "originY@8");
@@ -30,4 +32,6 @@ static_assert(offsetof(ProbeGridConfig, countY) == 32, "countY@32");
 static_assert(offsetof(ProbeGridConfig, countZ) == 36, "countZ@36");
 static_assert(offsetof(ProbeGridConfig, raysPerProbe) == 40, "raysPerProbe@40");
 static_assert(offsetof(ProbeGridConfig, hysteresisRate) == 44, "hysteresisRate@44");
+static_assert(offsetof(ProbeGridConfig, amortizationFactor) == 48, "amortizationFactor@48");
+static_assert(offsetof(ProbeGridConfig, frameCounter) == 52, "frameCounter@52");
 } // namespace Vixen::Gpu

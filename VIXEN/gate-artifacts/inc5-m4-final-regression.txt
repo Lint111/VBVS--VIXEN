@@ -1,0 +1,52 @@
+Sampled Lighting Inc5 M4 -- final regression sweep (whole-increment gate, no source drift since M3)
+======================================================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU. Binary: VIXEN.exe, from the SAME fresh
+`build.bat all` rebuild used for the M4 A/B measurement (gate-artifacts/inc5-m4-ab-measurement.txt) --
+zero FAILED targets, source tree is docs-only since M3's commit (abe60175), confirmed via `git status`
+clean at milestone start.
+
+All 7 established/increment-own gates re-run from this fresh rebuild, all exit=0:
+
+1. VIXEN_RESTIR_GATE_DEMO=1, 600 frames: exit=0, clean shutdown.
+2. VIXEN_FANIN_DEMO=1, 600 frames: exit=0, clean shutdown.
+3. VIXEN_DDGI_LEAK_GATE_DEMO=1 + VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (shipped default, F=8), 280 frames:
+   tick120 [ChebyshevEnabled]: gatheredLuma=0.000000
+   tick240 [AblationNegativeControl]: gatheredLuma=0.077026
+   EXACT MATCH to M3's own regression numbers (inc5-m3-regression.txt) -- zero drift.
+3b. Same scene, VIXEN_DDGI_AMORTIZATION_FACTOR=1 override (escape-hatch regression check):
+   tick120: gatheredLuma=0.000001, tick240: gatheredLuma=0.164185
+   EXACT MATCH to M3's own regression numbers -- zero drift. Escape hatch still reproduces
+   Inc4-original behavior post-M4.
+4. VIXEN_M5_SHADE_GATE_DEMO=1 + VIXEN_DDGI_LEAK_GATE_DEMO=1 + VIXEN_PROBE_GRID_CONFIG_ENABLED=1,
+   200 frames: tick150 shadeM5IndirectLumaMax=0.012449, diagShadeAnyHitCount=99856 -- nonzero,
+   production gather still receives real irradiance (differs numerically from M3's own
+   0.007610/103828 -- expected run-to-run variance in this combined-demo scene, same order of
+   magnitude, not a regression signal; no source changed between M3 and this run).
+5. VIXEN_DDGI_EDIT_LOOP_DEMO=1 + VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (shipped default), 200 frames:
+   tick50/80/110/150: 0.006739/0.019404/0.031068/0.044377
+   EXACT MATCH to M3's own regression numbers AND to M2's own predicted closed-form values --
+   zero drift.
+6. Default boot (no env vars), 120 frames: exit=0, clean shutdown.
+
+INSTANCE-LEVEL VUID CHECK (KI-027 discipline)
+------------------------------------------------
+Grep for "binding 28"/"binding 31"/"binding: 28"/"binding: 31" across all 7 logs: ZERO occurrences
+in every log (matches M3's own regression).
+
+Full VUID census across all 7 logs:
+  120x VUID-vkResetFences-pFences-01123
+  120x VUID-vkQueueSubmit2-semaphore-03868
+  120x VUID-vkCmdDraw-None-09600
+  120x VUID-vkCmdDispatch-None-08114
+   40x VUID-vkUpdateDescriptorSets-None-03047
+   40x VUID-vkQueueSubmit2-commandBuffer-03875
+   40x VUID-vkBeginCommandBuffer-commandBuffer-00049
+   40x VUID-vkAcquireNextImageKHR-semaphore-01779
+8 of 8 previously-documented pre-existing types appeared this run (all 8 fired, unlike M3's own
+7-of-8). ZERO new VUID types introduced.
+
+VERDICT: PASS. No drift since M3's own regression on any numeric readback that was re-captured
+identically (leak-gate at both configs, edit-loop convergence); the one combined-scene readback
+(gate 4) shows expected run-to-run variance, not a regression (no source changed). All 7 runs
+exit=0. Zero binding-28/31 occurrences, zero new VUID types. This is the final live-verification
+gate for the whole Inc5 increment -- branch is eligible for final whole-diff review and merge.

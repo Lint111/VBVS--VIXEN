@@ -42,8 +42,38 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
     cfg.countX           = 8u;      // 8x8x8 = 512 probes
     cfg.countY           = 8u;
     cfg.countZ           = 8u;
-    cfg.raysPerProbe     = 64u;     // M3 fixed-sample-set default (spherical Fibonacci count)
+    cfg.raysPerProbe     = 64u;     // M3 fixed-sample-set default (spherical Fibonacci count).
+                                     // Inc5 M3: left UNCHANGED -- M2's own joint bench had this
+                                     // lever's raysPerProbe=16/32 columns backwards (a session-
+                                     // load artifact, see gate-artifacts/inc5-m2-amortization-
+                                     // bench.txt), and no separately-clean raw per-value table
+                                     // from Inc4 M6 is available in-tree to justify a specific
+                                     // new value (M6's own bench log was never committed; only a
+                                     // single secondhand data point at raysPerProbe=64 survives,
+                                     // in this same M2 artifact's cross-reference paragraph).
+                                     // Changing this now would be tuning from noise, not data.
     cfg.hysteresisRate   = 0.02f;   // EWMA blend rate, mirrors AccumulationConfig.alpha's role
+    cfg.amortizationFactor = 8u;    // Inc5 M3 shipped default (was 1, Inc5 M1's byte-identical
+                                     // starting point). M2's live re-measurement confirmed F=8
+                                     // is unanimously cheaper than F=1 across every re-run
+                                     // pairing (direction solid), and the edit-loop convergence
+                                     // gate proved F=8 still converges correctly (just ~8x slower
+                                     // wall-clock, a bounded/expected EWMA-window stretch, not
+                                     // staleness) -- see gate-artifacts/inc5-m2-amortization-
+                                     // bench.txt Part 1. F=8 chosen over a more conservative F=4
+                                     // (also gate-proven) because M2's own cross-check subset
+                                     // showed cost still monotonically decreasing at F=8 with no
+                                     // sign of having hit the fixed-overhead floor yet (6.14ms
+                                     // @F=1 -> 3.22ms @F=4 -> 2.15ms @F=8), and because the plan's
+                                     // own examples name 4 and 8 as the tested points -- F=8 banks
+                                     // more of the confirmed-real reduction without extrapolating
+                                     // beyond what was actually measured (e.g. F=16+). The exact
+                                     // magnitude is sub-linear vs naive 1/F (fixed per-frame
+                                     // dispatch/early-out overhead, M2's own finding) so this is
+                                     // NOT expected to fully close Inc4's ~24ms gap alone --
+                                     // M4's A/B measurement quantifies the real remaining number.
+                                     // amortizationFactor=1 remains reachable via
+                                     // VIXEN_DDGI_AMORTIZATION_FACTOR=1 for regression comparability.
 
     // M2 gate lever: VIXEN_PROBE_GRID_CONFIG_ENABLED=1 forces the enable path so a
     // future live gate can capture both states from the SAME binary, no rebuild —
@@ -65,6 +95,20 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
         long v = std::strtol(raysEnv, nullptr, 10);
         if (v > 0 && v <= 256) {
             cfg.raysPerProbe = static_cast<uint32_t>(v);
+        }
+    }
+
+    // Inc5 M1 bench lever: VIXEN_DDGI_AMORTIZATION_FACTOR=<n> overrides the fixed
+    // amortizationFactor=1 default so M2's real-GPU cost matrix can be measured
+    // across multiple values from the SAME binary, no rebuild — exact same
+    // convention as VIXEN_PROBE_RAYS_PER_PROBE above. No upper clamp beyond
+    // fitting in uint32_t: any factor >= probeCount degenerates to "one probe
+    // updates per N frames," a valid (if extreme) point on the curve, not an
+    // error — the shader's modulo math handles it without special-casing.
+    if (const char* amortEnv = std::getenv("VIXEN_DDGI_AMORTIZATION_FACTOR")) {
+        long v = std::strtol(amortEnv, nullptr, 10);
+        if (v > 0) {
+            cfg.amortizationFactor = static_cast<uint32_t>(v);
         }
     }
     return cfg;
@@ -124,9 +168,17 @@ void ProbeGridConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t frameIndex = ctx.In(ProbeGridConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
     // Static default content (no UI/authoring this milestone). Re-uploaded every
-    // frame anyway: 48 B is negligible and this keeps the node ready for a future
+    // frame anyway: 56 B is negligible and this keeps the node ready for a future
     // SetProbeGridConfig() with no rewiring.
     Vixen::Gpu::ProbeGridConfig cfg = MakeDefaultProbeGridConfig();
+
+    // Inc5 M1: monotonic per-Execute counter driving amortizationFactor's
+    // round-robin subset selection in ProbeUpdate.comp -- increments
+    // unconditionally every Execute, mirroring ReservoirConfigNode's
+    // frameParityCounter_ precedent (deliberately NOT pc.accumFrameCount,
+    // which resets on camera motion and would repeat the same active-probe
+    // subset on every reset instead of continuing the rotation).
+    cfg.frameCounter = amortizationFrameCounter_++;
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

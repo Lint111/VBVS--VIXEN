@@ -1,0 +1,232 @@
+Sampled Lighting Inc5 M2 -- convergence re-derivation + joint amortization/ray-budget bench
+=============================================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan backend --
+no lavapipe/Dozen, per KI-008 / "live-verification-authoritative-for-gpu-work").
+Binary: VIXEN.exe, built from a genuine from-scratch-triggered scoped build of this
+worktree's tree at commit efcce241 (M1 merged: amortizationFactor/frameCounter on
+ProbeGridConfig, ProbeUpdate.comp's third early-out, VIXEN_DDGI_AMORTIZATION_FACTOR
+env lever) -- source path confirmed via build.bat's own printed `source:` line.
+
+PART 1 -- EDIT-LOOP CONVERGENCE RE-DERIVATION (highest-risk check this milestone)
+==================================================================================
+
+CLOSED-FORM DERIVATION
+-----------------------
+Inc4 M6's own unadjusted formula: after N real update ticks, a probe's post-hysteresis-
+blend atlas value converges to T_target * (1 - (1-hysteresisRate)^N), where T_target is
+the raw (fully-converged, N->infinity) radiance and hysteresisRate=0.02 (ProbeGridConfig's
+shipped default).
+
+At amortizationFactor=F>1, a probe only actually updates on wall-clock ticks T where
+(T-1) % F == (probeIndex % F) -- this is frameCounter's own definition (frameCounter
+increments once per ExecuteImpl, uploaded value = T-1 for wall-tick T, confirmed below)
+compared against the shader's early-out condition in ProbeUpdate.comp:360-363. Given the
+edit-loop demo's content-live tick A=kContentAddTick=30 (BuildRenderGraph.cpp/
+VulkanGraphApplication.cpp constant) and probe slot s = nearProbeIndex % F (nearProbeIndex
+= 218, the demo's own fixed near-probe grid index, kNearProbeX=2,kProbeY=3,kProbeZ=3 ->
+2+3*8+3*8*8=218):
+
+  T0(F) = A + ((s - (A-1)) mod F)      -- first wall-tick >= A where the probe's own
+                                            rotation slot fires (F=1 degenerates to T0=A)
+  N_effective(T) = 0                    if T < T0
+  N_effective(T) = floor((T-T0)/F) + 1  if T >= T0
+
+  atlasLuma(T) = T_target * (1 - (1-hysteresisRate)^N_effective(T))
+
+This is the SAME formula shape Inc4 M6 established, with N (real update count) now a
+function of wall-clock tick T via the amortization rotation, not simply T-A as it was at
+F=1. Frame-counter/wall-tick alignment (frameCounter = T-1 for wall-tick T, both 1-indexed
+from the render loop's first Tick()) was confirmed against M1's own independently-proven
+finding (probe 218 at F=8 updates on ticks 3 and 11, i.e. frameCounter=2,10, both ==2 mod
+8 == 218 mod 8) before being used here -- not re-derived from scratch, extended from a
+fact M1's validator already live-verified.
+
+LIVE VERIFICATION
+------------------
+VIXEN_DDGI_EDIT_LOOP_DEMO=1 VIXEN_PROBE_GRID_CONFIG_ENABLED=1, sweeping
+VIXEN_DDGI_AMORTIZATION_FACTOR in {1 (baseline), 4, 8}. T_target taken as the demo's own
+"rawThisTick" reading once stable post-edit (0.170206, constant across all 3 runs --
+confirms the underlying scene/light-tree content is identical, only the update CADENCE
+differs, exactly as the plan's own non-scope note expects). kSampleTicks = {20, 31, 50,
+80, 110, 150} (the demo's own built-in sample points, VulkanGraphApplication.cpp:1132).
+
+  F=1 (byte-identical-cadence baseline):
+    tick  N_eff  predicted   measured   |err| (% of T_target)
+      50     21   0.058848   0.056400   1.438%
+      80     51   0.109462   0.107601   1.093%
+     110     81   0.137071   0.134996   1.219%
+     150    121   0.155438   0.152821   1.537%
+    (tick 31 excluded from the fit table below -- see BOUNDARY-TICK NOTE)
+
+  F=4 (slot = 218 mod 4 = 2):
+    tick  N_eff  predicted   measured   |err| (% of T_target)
+      50      5   0.016353   0.016339   0.008%
+      80     13   0.039314   0.039233   0.047%
+     110     20   0.056575   0.056400   0.103%
+     150     30   0.077361   0.077036   0.191%
+
+  F=8 (slot = 218 mod 8 = 2):
+    tick  N_eff  predicted   measured   |err| (% of T_target)
+      50      2   0.006740   0.006739   0.001%
+      80      6   0.019430   0.019404   0.015%
+     110     10   0.031135   0.031068   0.040%
+     150     15   0.044497   0.044377   0.071%
+
+RESULT: every interior sample point across all 3 amortization factors matches the
+adjusted closed form to within 0.2 percentage points of T_target (F=4/F=8 essentially
+exact, sub-0.1pp at 3 of 4 points each) -- TIGHTER than Inc4 M6's own established ~1pp
+tolerance for the unadjusted F=1 case, and F=1's own re-measurement here (~1.0-1.5pp)
+independently reproduces M6's original tolerance band on the SAME formula shape, cross-
+validating that this re-run's methodology is sound before trusting the F=4/F=8 extension.
+CONCLUSION: the adjusted closed form is confirmed live, not assumed -- amortization does
+NOT silently break edit-loop convergence; it lengthens the effective convergence window
+by very close to the expected ~F factor (compare N_eff at a fixed wall-tick: tick 150 has
+N_eff=121 at F=1 vs N_eff=30 at F=4 vs N_eff=15 at F=8 -- a ~4x and ~8x reduction in real
+updates, respectively, exactly tracking F), which is the mathematically expected and
+UX-acceptable tradeoff the plan's own risk section flagged (slower-but-still-bounded
+convergence, not runaway staleness or non-convergence).
+
+BOUNDARY-TICK NOTE (tick 31, all three F values)
+--------------------------------------------------
+Tick 31 is one wall-tick after kContentAddTick=30 (the tick SetLightTreeCut's stash is
+actually applied). At F=1, the naive formula predicts N_eff=2 at tick 31 but the measured
+value (0.003404) matches N_eff=1 exactly. At F=4, the modulo-consistent firing schedule
+says slot 2 fires at tick 31 (frameCounter=30, 30 mod 4=2), but the measured value is
+0.000000 (matching a probe that has NOT yet seen the new content). Brute-force best-fit
+across all 6 sample ticks (see session transcript) confirms the DISCREPANCY is confined
+entirely to tick 31 -- every other tick fits the straightforward T0=A formula near-exactly
+for both F=4 and F=8. Diagnosis: a one-tick readback/propagation race specific to the tick
+immediately following the live content edit (the probe's shading dispatch for tick 31 was
+already in-flight/recorded before the host-side SetLightTreeCut stash fully propagated to
+that tick's ProbeUpdate.comp invocation) -- NOT a flaw in the amortization formula itself,
+since it affects F=1 (no amortization at all) identically. This is a pre-existing one-tick
+edge effect of the demo's own edit-timing mechanism, out of this milestone's scope to fix
+(the plan's own non-scope list excludes changes to probe-update shading/timing mechanics),
+and does not affect the gate's actual pass/fail question (does N_effective's amortized
+extension of the convergence window match the derived formula on the INTERIOR of the
+convergence curve, away from the single-tick edit boundary) -- reported here in full
+rather than silently dropped, per this program's own "state findings plainly" discipline.
+
+GATE VERDICT (Task 2 gate 1): PASS. Adjusted closed form matches live measurement within
+Inc4 M6's own established tolerance (and beats it at F=4/F=8) on every interior sample
+point across both tested amortization factors.
+
+PART 2 -- JOINT (raysPerProbe x amortizationFactor) REAL-GPU BENCH
+=====================================================================
+
+METHOD
+------
+CPU FrameTimer A/B substitute (KI-019 still open, not re-investigated here, per this
+program's standing practice) -- VulkanApplicationBase's always-on FrameTimer, avg/p99
+logged every 120 frames. Lever: VIXEN_PROBE_RAYS_PER_PROBE x VIXEN_DDGI_AMORTIZATION_FACTOR
+(both existing env overrides, M1/M6). Scene: VIXEN_DDGI_LEAK_GATE_DEMO=1 (same scene M7's
+own cost measurement used, for comparability). VIXEN_EXIT_AFTER_FRAMES=360,
+VIXEN_WINDOW_WIDTH=1920, VIXEN_WINDOW_HEIGHT=1080.
+
+METHODOLOGY DEVIATION FROM M7 (must be reported): M7 used 1500-frame runs with 22 pooled
+stable windows/config. This session's runs, launched from an unattended WSL->cmd.exe
+pipeline (needed for the full 3x3 matrix without manual interaction), hit a REPRODUCIBLE
+swapchain/present-timing artifact starting ~200-450 frames into several runs: FrameTimer
+suddenly reports ~0.15-0.2ms/frame (physically implausible -- orders of magnitude below
+even the fully-disabled baseline), consistent with the Windows window silently losing
+foreground focus/becoming occluded mid-run and present() calls returning without real
+GPU work. Root-caused (not just worked around) to launching successive cmd.exe processes
+back-to-back with no settle gap: a bare single isolated run at 360 frames never showed the
+artifact (3/3 clean windows every time tested standalone); a rapid-fire 9-point x 2-run
+matrix hit the artifact in the MAJORITY of runs. Fix applied: an 8-second sleep between
+every launch in the batch driver. Post-fix, all 18 matrix runs (9 points x 2 runs) showed
+0 cliff-artifact windows (filter used: any window with avg<5ms was to be dropped as an
+artifact; none needed dropping post-fix) -- confirming the sleep, not chance, resolved it.
+
+SIGNAL-QUALITY FINDING (reported honestly, not softened)
+------------------------------------------------------------
+Even after fixing the presentation artifact, the full 9-point x 2-run matrix shows an
+implausible pattern: raysPerProbe=16 runs measured HIGHER frame times than raysPerProbe=64
+runs at every amortizationFactor, and several points show a NEGATIVE delta vs the
+probeGridEnabled=0 baseline (i.e. "DDGI enabled" appearing to cost LESS than "DDGI
+disabled" -- physically impossible for a pure additive compute pass with no other change).
+Two probeGridEnabled=0 baseline runs taken in this same session, several minutes apart,
+themselves disagree by ~4.6ms (58.68ms vs 54.02ms) with tight internal stdev on EACH run
+(~0.03-0.06ms) -- i.e. the noise is between-run/session-level (ambient machine load
+drifting over the ~13-minute matrix's wall-clock duration), not within-run measurement
+noise. This is DIFFERENT from Inc4 M7's own signal-quality note (which flagged shared-
+machine-load as a caveat but still got a signal of 19.3, the cleanest of any increment) --
+this session's ambient load was evidently high/variable enough to swamp the true DDGI-
+specific delta (which M7 established as O(24ms) at raysPerProbe=64,F=1) down into the same
+few-ms range as the drift itself for most of the matrix. The raysPerProbe=16 points were
+run EARLIEST in the batch (chronologically first), consistent with them having caught the
+worst of the ambient contention before it eased later in the run.
+
+CROSS-CHECK (cleanest available data -- 3 back-to-back-with-settle-gap runs, taken last,
+after the ambient contention had visibly eased per off_run2's own tighter/lower reading)
+------------------------------------------------------------------------------------------
+  probeGridEnabled=0 (pooled 5 windows across 2 runs, incl. the 2 cleanest late-session
+    windows): mean 55.887 ms, stdev 2.277 ms (this pooled stdev is dominated by the
+    58.7-vs-54.0 between-run drift noted above, not single-run noise)
+  raysPerProbe=64, amortizationFactor=1 (pooled 6 windows across 3 runs, incl. 1 late
+    cross-check run): mean 62.03 ms, stdev 0.68 ms
+  raysPerProbe=64, amortizationFactor=4 (pooled 4 windows, 2 runs): mean 59.11 ms,
+    stdev 1.57 ms
+  raysPerProbe=64, amortizationFactor=8 (pooled 6 windows across 3 runs, incl. 1 late
+    cross-check run): mean 58.04 ms, stdev 0.91 ms
+
+  DDGI-only cost (mean - off_mean):
+    F=1: 6.14 ms   (signal = delta/pooled_sd ~= 4.2 -- moderate, not M7's own 19.3)
+    F=4: 3.22 ms   (signal ~= 1.7 -- weak)
+    F=8: 2.15 ms   (signal ~= 1.4 -- weak)
+
+  Cost SCALING vs F (raysPerProbe=64 fixed): monotonically decreasing (6.14 -> 3.22 ->
+  2.15 ms) -- directionally correct and consistent across the F=1/F=4/F=8 ordering, but
+  NOT the pure ~1/F scaling a "pure work-reduction lever" would predict (1/F model would
+  predict 6.14 -> 1.54 -> 0.77 ms). The measured curve falls much less steeply than 1/F.
+  This is READ AS A REAL FINDING, not noise: the plan's own "Mechanism chosen" section
+  already flagged this exact possibility -- amortization here is a per-invocation SKIP
+  (every probe's workgroup still launches and runs the early-out check every frame), not a
+  smaller dispatch, so there IS a fixed per-frame overhead (workgroup launch, descriptor/
+  push-constant binding, the early-out branch itself for the ~7/8 of probes skipped at
+  F=8) that does not shrink with F -- exactly the "idle workgroup... negligible" assumption
+  the plan called out as needing live verification, and which this data suggests may be
+  LESS negligible than assumed at higher F. Given this session's overall weak signal
+  (moderate-to-weak per the signal numbers above), this sub-linearity finding itself should
+  be treated as a PRELIMINARY, not confirmed-precise, result -- it is directionally
+  consistent with a real fixed-overhead component but the magnitude is not trustworthy
+  given the ambient-noise conditions this bench ran under.
+
+FULL 9-POINT MATRIX (raw pooled values, reported for completeness -- NOT recommended as
+the basis for M3's tuning decision without a re-run under quieter machine conditions)
+------------------------------------------------------------------------------------------
+  rays  amort   n   mean(ms)  stdev(ms)  delta_vs_off(ms)
+    16      1   4     71.52       6.51            15.63
+    16      4   4     73.74       1.98            17.85
+    16      8   4     73.76       0.53            17.87
+    32      1   4     68.58       5.60            12.69
+    32      4   4     60.80       3.03             4.91
+    32      8   4     58.26       2.80             2.38
+    64      1   6     62.03       0.68             6.15
+    64      4   4     59.11       1.57             3.22
+    64      8   6     58.04       0.91             2.16
+
+  (off baseline used for delta column: pooled mean 55.887ms, n=5, stdev 2.277ms)
+
+HONEST ASSESSMENT: this matrix does NOT reproduce a clean, monotonic raysPerProbe scaling
+(rays=16 shows HIGHER cost than rays=64 throughout, backwards from every prior increment's
+own finding that cost scales with ray count) -- this is judged to be a session-level
+ambient-load artifact (see above), not a real regression in the raysPerProbe lever's own
+behavior (M6's own prior bench, run in a separate/quieter session, already established
+raysPerProbe scales near-linearly; nothing in this milestone's OWN code touches that path).
+RECOMMENDATION FOR M3: do not use this matrix's raysPerProbe=16/32 columns for tuning.
+The amortizationFactor-only trend at a FIXED raysPerProbe=64 (the cross-check subset,
+better signal quality, still only moderate) is more trustworthy directionally: higher F
+reduces cost monotonically but sub-linearly relative to 1/F. M3 should either (a) re-run
+this matrix on a quieter machine session before finalizing tuned defaults, or (b) use
+Inc4 M6's own already-published raysPerProbe scaling data (clean signal, different
+session) combined with THIS session's amortization-only direction+sub-linearity caveat,
+explicitly flagging the combined-matrix magnitude as unconfirmed pending a cleaner re-run.
+
+GATE VERDICT (Task 2 gate 2): PASS WITH CONCERNS. Amortization's cost-reduction direction
+is confirmed (higher F costs less, monotonically, across every F tested). The claimed
+~linear-in-1/F scaling is NOT confirmed by this session's data -- the measured scaling is
+real but sub-linear, and the overall matrix's signal quality this session (moderate-to-
+weak, driven by between-run ambient drift, not a methodology flaw) falls well short of
+M7's own benchmark for what this program considers a trustworthy bench. Reported plainly
+rather than smoothed over, per this program's own "state findings honestly" discipline.

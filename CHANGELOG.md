@@ -156,6 +156,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decisions for a future increment. Octree-anchored/cascaded probe placement remains deliberately
   deferred (uniform grid only this increment), per the design doc's own open-decision #2. See
   `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc4-Plan}-2026-07.md`.
+- **Sampled Lighting, Inc5 (amortized probe update + tuned defaults)** — a response to Inc4's own
+  frame-budget finding above: a modulo-based active-subset early-out
+  (`probeIndex % amortizationFactor == frameCounter % amortizationFactor`) added as a third early-out
+  in `ProbeUpdate.comp`'s already-early-out-heavy `main()`, updating only a rotating fraction of the
+  512-probe grid each frame rather than all of them — zero change to any shading/atlas-write logic.
+  `amortizationFactor` (uint) + `frameCounter` (uint) appended to `ProbeGridConfig` (48→56 bytes, all
+  pre-existing offsets unchanged, drift-guard extended and still green). `amortizationFactor=1` is a
+  byte-identical escape hatch to Inc4's exact original behavior (double-redundantly guarded: both the
+  outer `>1u` check and the modulo arithmetic independently prevent any skip), held through every
+  milestone. Live-proven cadence: probe 218 at `amortizationFactor=8` fires only on ticks 3 and 11,
+  exactly 8 apart. The edit-loop convergence gate's closed-form EWMA math was re-derived for amortized
+  cadence (a probe's effective update count is now a function of wall-clock tick via its own rotation
+  slot, not simply elapsed ticks) and matched live measurement to within 0.2 percentage points of
+  target at F=4 and F=8 — tighter than Inc4's own ~1pp tolerance for the unamortized case, confirming
+  amortization does not silently break the one already-gated behavior most at risk (a probe updating
+  less often has a proportionally longer hysteresis window, but still converges correctly). Shipped
+  default: `amortizationFactor` 1→8, chosen because cost was still monotonically decreasing at F=8
+  with no sign of hitting a fixed-overhead floor (M2's own cross-check), and because F=8 was one of
+  the plan's own two tested points — banking the confirmed reduction without extrapolating past
+  measured data. `raysPerProbe` (64) and grid density (8×8×8) were DELIBERATELY left unchanged — no
+  trustworthy per-value tuning data survived in-tree from either this increment's own bench (a real
+  session-load artifact left the raysPerProbe columns backwards) or Inc4's own M6 bench (never
+  committed to the repo) — changing either now would have been tuning from noise, not data, and is
+  recorded as a deliberate choice, not an oversight. **Also reconfirmed (durable, cross-session
+  finding):** `probeGridEnabled=0` is only a per-workgroup shader early-out, not a pass-removal — the
+  probe-update dispatch still launches every frame even when "disabled," which is why isolating DDGI's
+  absolute cost against a true zero-cost baseline has proven difficult across multiple independent
+  measurement sessions. **Stated plainly, matching this program's own honesty discipline: this
+  increment banks a real, confirmed-direction cost reduction (an interleaved re-measurement found the
+  tuned default unanimously cheaper than the original default across every pairing) but does
+  NOT fully resolve Inc4's own frame-budget shortfall** — the exact magnitude of the win was never
+  precisely quantified across any session this increment ran (a final re-check at close-out came back
+  noisier still, and is reported as such rather than treated as a clean number), and two of the three
+  available tuning levers (`raysPerProbe`, grid density) remain untouched. The probe-update pass's
+  shipped-default cost has not been shown to fit a 60fps budget — IMPROVED, not RESOLVED. See
+  `Vixen-Docs/01-Architecture/Sampled-Lighting-{Design,Inc5-Plan}-2026-07.md`,
+  `gate-artifacts/inc5-m2-amortization-bench.txt`, `gate-artifacts/inc5-m3-regression.txt`,
+  `gate-artifacts/inc5-m4-ab-measurement.txt`.
 
 ### Fixed
 - **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the

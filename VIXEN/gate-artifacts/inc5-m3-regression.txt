@@ -1,0 +1,117 @@
+Sampled Lighting Inc5 M3 -- tuned default (amortizationFactor 1->8) full regression
+=====================================================================================
+Date: 2026-07-13. Machine: Windows-native, real GPU (Windows/D3D12-Vulkan backend --
+no lavapipe/Dozen). Binary: VIXEN.exe, freshly built from this worktree's tree at
+commit abe60175 (M3: raysPerProbe unchanged at 64, amortizationFactor default 1->8,
+grid density unchanged 8x8x8) -- source path confirmed via build.bat's own printed
+`source:` line (C:\cpp\VBVS--VIXEN\.claude\worktrees\sampled-lighting-inc5\VIXEN).
+Scoped build (`build.bat build vixen-ninja VIXEN`), all targets built successfully.
+
+TUNING DECISION
+----------------
+amortizationFactor: 1 -> 8 (shipped default). Reasoning: M2's live re-measurement
+found F=8 unanimously cheaper than F=1 across every re-run pairing (direction
+confirmed real), and the edit-loop convergence gate proved F=8 still converges
+correctly with a bounded ~8x longer wall-clock window, not staleness or
+non-convergence. F=8 chosen over the also-gate-proven F=4 because M2's own
+cross-check subset showed cost still monotonically decreasing at F=8 (6.14ms @F=1
+-> 3.22ms @F=4 -> 2.15ms @F=8) with no sign of having hit the fixed-overhead floor,
+and because F=8 is one of the plan's own two tested points -- banks more of the
+confirmed reduction without extrapolating past what was actually measured (e.g. an
+untested F=16+).
+
+raysPerProbe: UNCHANGED at 64. M2's own joint bench had the raysPerProbe=16/32
+columns backwards (a confirmed session-load artifact, not real regression data,
+per gate-artifacts/inc5-m2-amortization-bench.txt), and no separately-clean raw
+per-raysPerProbe-value table from Inc4 M6 survives in-tree to justify a specific
+new value (M6's own bench log/artifact was never committed to the repo; only a
+single secondhand cross-reference data point at raysPerProbe=64, +28.4ms, survives
+inside the M2 artifact's own text). Changing raysPerProbe now would be tuning from
+noise, not data -- left unchanged per the plan's own explicit permission to do so
+and document it as a deliberate choice.
+
+Grid density (countX/Y/Z): UNCHANGED at 8x8x8=512 probes. No data this increment
+motivated a change; out of scope without a specific finding driving it.
+
+REGRESSION RESULTS -- all 7 runs, all exit=0, all fresh off the same rebuilt binary
+------------------------------------------------------------------------------------
+1. VIXEN_RESTIR_GATE_DEMO=1, 600 frames: exit=0, steady FrameTimer output
+   (~54ms/frame @1080p+validation-layer overhead, expected with
+   VIXEN_VULKAN_VALIDATION=1 on), clean shutdown.
+2. VIXEN_FANIN_DEMO=1, 600 frames: exit=0, multi-submit fan-in timeline demo built
+   and ran clean (~3.5-3.9ms/frame, no validation layer this run), clean shutdown.
+3. VIXEN_DDGI_LEAK_GATE_DEMO=1 + VIXEN_PROBE_GRID_CONFIG_ENABLED=1, NEW SHIPPED
+   DEFAULT (amortizationFactor=8, no env override), 280 frames:
+     tick120 [ChebyshevEnabled]:      gatheredLuma=0.000000
+     tick240 [AblationNegativeControl]: gatheredLuma=0.077026
+   Leak rejection divergence signal: 0.000000 vs 0.077026 -- Chebyshev-enabled
+   correctly suppresses to exactly zero, ablation-disabled correctly leaks a
+   clearly nonzero value. Direction unambiguous (effectively-infinite ratio,
+   since the numerator is exactly zero). Absolute ablation magnitude
+   (0.077026) is naturally lower than the F=1 case below because tick240 at F=8
+   represents only ~15 real probe updates (M2's own N_eff formula), not full
+   EWMA convergence -- this is the EXPECTED amortization tradeoff (slower
+   convergence window), not a weakening of the rejection mechanism itself.
+3b. SAME SCENE, VIXEN_DDGI_AMORTIZATION_FACTOR=1 ENV OVERRIDE (regression check --
+    confirms the override still reproduces Inc4/Inc5-M1's original shipped
+    behavior even though the C++ default changed):
+     tick120 [ChebyshevEnabled]:      gatheredLuma=0.000001
+     tick240 [AblationNegativeControl]: gatheredLuma=0.164185
+   MATCHES M1's validator-confirmed byte-identical numbers exactly (tick120
+   ~0.000001, tick240 ~0.164185) -- the env-var escape hatch still works
+   correctly post-M3, only the DEFAULT changed.
+4. VIXEN_M5_SHADE_GATE_DEMO=1 + VIXEN_DDGI_LEAK_GATE_DEMO=1 +
+   VIXEN_PROBE_GRID_CONFIG_ENABLED=1, NEW SHIPPED DEFAULT, 200 frames:
+     tick150: shadeM5IndirectLumaMax=0.007610, diagShadeAnyHitCount=103828
+     DIAG CPU-side HitRecord scan: 183255/2073600 pixels hit
+   Production 8-probe trilinear gather still receives real (nonzero) irradiance
+   at the new default -- the shade pass is unaffected by update cadence, as the
+   plan predicted (it reads whatever's currently in the atlas).
+5. VIXEN_DDGI_EDIT_LOOP_DEMO=1 + VIXEN_PROBE_GRID_CONFIG_ENABLED=1, NEW SHIPPED
+   DEFAULT (amortizationFactor=8, no override), 200 frames:
+     tick20  [pre-edit]:  diagNearProbeBlendedAtlasLuma=0.000000
+     tick30: flipped light-tree cut empty->real (64 nodes)
+     tick31  [post-edit]: diagNearProbeBlendedAtlasLuma=0.000000
+     tick50  [post-edit]: diagNearProbeBlendedAtlasLuma=0.006739  (M2 predicted 0.006740)
+     tick80  [post-edit]: diagNearProbeBlendedAtlasLuma=0.019404  (M2 predicted 0.019430)
+     tick110 [post-edit]: diagNearProbeBlendedAtlasLuma=0.031068  (M2 predicted 0.031135)
+     tick150 [post-edit]: diagNearProbeBlendedAtlasLuma=0.044377  (M2 predicted 0.044497)
+   Matches M2's own adjusted closed-form prediction for F=8 to within
+   <0.2pp of T_target at every interior sample point -- the SHIPPED DEFAULT
+   reproduces M2's already-gated convergence curve exactly, confirming no
+   drift between M2's gate and M3's actual shipped default.
+6. Default boot (no env vars, probeGridEnabled=0 by default -- amortizationFactor
+   change has zero effect when DDGI itself is disabled), 120 frames: exit=0,
+   clean shutdown. Pre-existing PushConstantGathererNode::Validate "Type
+   mismatch" debug-log lines present (50 occurrences) -- CONFIRMED pre-existing,
+   NOT a regression: identical 50-occurrence pattern also appears verbatim in
+   gate 1 (RESTIR) and gate 3 (leak-gate default) logs, both established/prior
+   gates unrelated to this milestone's change. Harmless compile-time debug
+   validation noise, not a runtime failure (all three runs still exit=0 with
+   correct data).
+
+INSTANCE-LEVEL VUID CHECK (KI-027 discipline)
+------------------------------------------------
+Grep for "binding 28"/"binding 31"/"binding: 28"/"binding: 31" (ProbeGridConfig/
+DDGILeakGateDebug bindings) across all 7 regression logs: ZERO occurrences in
+every log.
+
+Full VUID type census across all 7 logs (aggregate counts, for completeness):
+  120x VUID-vkResetFences-pFences-01123
+  120x VUID-vkQueueSubmit2-semaphore-03868
+  120x VUID-vkCmdDraw-None-09600
+  120x VUID-vkCmdDispatch-None-08114
+   20x VUID-vkUpdateDescriptorSets-None-03047
+   20x VUID-vkQueueSubmit2-commandBuffer-03875
+   20x VUID-vkBeginCommandBuffer-commandBuffer-00049
+7 of the 8 previously-documented pre-existing types appeared this run (the 8th,
+vkAcquireNextImageKHR-01779/PresentInfoKHR-MissingAcquireWait, did not fire --
+consistent with established precedent that not every type fires every run).
+ZERO new VUID types introduced by this milestone's change.
+
+GATE VERDICT: PASS. Tuned default (amortizationFactor=8) ships correctly, all 6
+established Inc4 gates + this increment's own M1/M2 gates re-run clean from a
+fresh rebuild, leak-test divergence direction still unambiguous at the new
+default, edit-loop convergence matches M2's own already-gated prediction exactly,
+env-var override still reproduces the pre-M3 byte-identical behavior, zero
+binding-28/31 VUID occurrences, zero new VUID types.
