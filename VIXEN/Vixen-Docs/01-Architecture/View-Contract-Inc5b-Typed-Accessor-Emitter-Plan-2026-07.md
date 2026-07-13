@@ -433,9 +433,14 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
 - [x] **Milestone 3a (Task 3 grounding pass):** ground the reader-cutover shape, decide the forced
   Bodies `Position`/`RecipeParams` question, decide the live-gate acceptance criteria (report-back
   gate). One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 3b (Task 3 build, = "Milestone B" above):** cut undertow's real C++ reader over
+- [x] **Milestone 3b (Task 3 build, = "Milestone B" above):** cut undertow's real C++ reader over
   (must land TOGETHER with Milestone 2.5, not independently) + live-gate the real sim→render seam per
-  Milestone 3a's corrected acceptance criteria. One Sonnet implementer + one Opus validator.
+  Milestone 3a's corrected acceptance criteria. DONE + Opus-validated, 2026-07-13.
+  **COMPLETE-WITH-KNOWN-GAP**: the reader cutover itself is done and byte-exact-proven; the mandated
+  real `undertow_host --capture` live-gate is DEFERRED on a confirmed pre-existing, unrelated WSL/
+  GCC-13 toolchain blocker (a gaia/RmlUi `robin_hood.h` ODR collision predating this milestone,
+  independently reproduced by the Opus validator). `view_contract.h`/`view_wire.h` successfully
+  RETIRED — the actual architectural payoff of the whole Inc-5b increment.
 
 ## Progress Log
 
@@ -766,3 +771,66 @@ harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, stil
     output, and independently re-ran the full C# suite from a clean state. Explicitly judged the
     struct-array-element Vector gap as correctly deferred, not a blocker. Cleared to proceed to
     Milestone 3.
+
+- Milestone 3b (Task 3 build — cut the real C++ reader over + live-gate): DONE, then FIX-UP · 2026-07-13
+  · **THE FINAL MILESTONE OF THE VIEW CONTRACT INC-5B INCREMENT**
+  - **Built** (undertow `feat/view-contract-inc5-m4`, commit `105a7d11`, later `8e1198d8` after
+    fix-up): new `vixen/render/view_container_reader.h`/`.cpp` (unwraps `UTVC`, indexes 5 sections by
+    fixed position, bounds-checked with widen-before-add overflow protection). Rewrote `main.cpp`'s
+    `ReadBodies()` (7-of-9 columns via the generated `UndertowBodiesSection`; `position`/
+    `recipeParams` explicit zero + a LOUD one-line `fprintf`-to-stderr WARN log naming the
+    struct-array-element Vector emitter gap by name — confirmed genuinely present, not a bare
+    comment). Rewrote `hud_view.h`'s `ReadHudView()` (returns `std::optional<HudView>`, handles the
+    real arity change — single-row scalar getters take no index — and the camelCase renames).
+    Rewrote `test_view_contract.cpp`/`test_hud_view.cpp` IN PLACE (found + fixed a real bool-vs-Int
+    field-kind mismatch mid-work: several "bool-shaped" columns are actually `ViewKind::Int` in the
+    real generated blobs, not `Bool` — both tests initially failed with buffer-overrun errors until
+    corrected), preserving the bounds-safety/truncation-rejection sweep specifically, re-derived
+    against `ViewWireReaderSoa::Apply`'s real `Cursor::Need` bounds-checking.
+  - **`view_contract.h`/`view_wire.h` SUCCESSFULLY RETIRED** — confirmed zero remaining code
+    references anywhere in undertow (excluding the untouched `vixen/engine` submodule), by both the
+    implementer and the validator's own independent grep. This is the actual architectural payoff of
+    the entire Inc-5b increment: undertow's hand-rolled view-contract reader is now fully replaced by
+    the Yeroket-generated one.
+  - **Critical proof, independently re-derived from scratch by the validator**: a standalone g++/ASAN
+    harness run against the REAL verbatim 2409-byte seed-7 `UTVC` fixture (byte-identical to VIXEN's
+    own committed `test_view_container_builder.cpp` fixture, confirmed by the validator) decodes all
+    4 Hud sections and Bodies' 7-of-9 columns to the EXACT real values, matching VIXEN's own
+    already-proven decode exactly — per the CORRECTED acceptance criteria (body count + the 7
+    representable columns + Hud sections match; body world-position is NOT judged, since it's
+    expected-zero given the known struct-array-element gap, not a regression).
+  - **Live-gate DEFERRED on a confirmed pre-existing, unrelated blocker, independently REPRODUCED by
+    the validator** (not just trusted from the implementer's claim): the real `undertow_host --capture`
+    binary cannot link on this WSL/GCC-13 toolchain due to a gaia/RmlUi `robin_hood.h` ODR collision
+    (gaia vendors its own copy under the identical include guard as RmlUi's, a different version) that
+    predates this milestone entirely — confirmed via `git diff` that this milestone's new includes are
+    gaia-free, that `main.cpp` already had the colliding include before this milestone's changes, and
+    that a prior increment (`dc369750`, `HudViewBridge`) already root-caused and partially fixed this
+    exact ODR class without extending it to the still-colliding `UIRenderNode.h`/`BuildUIGraph.cpp`.
+  - **VALIDATOR-CAUGHT REAL REGRESSION, then fixed**: the Opus validator's own independent full-suite
+    re-run found 2936/2937 (NOT the reported 2937/2937) — `ViewContractHeaderTests.
+    ViewContractHeader_MatchesSchema`, an orphaned drift-guard reading the now-deleted
+    `view_contract.h` from disk, threw `FileNotFoundException`. Confirmed genuinely milestone-caused
+    (passed at the parent commit, broken by this commit's deletion, not pre-existing/flaky). **This is
+    exactly why every "green suite" claim in this program gets independently re-run, not trusted from
+    a report.** Fix-up dispatch: retired the specific orphaned test method (kept its sibling
+    `ViewContractHeader_EmitsFormatVersionConstant`, verified it never touches the deleted file; left
+    `EmitViewContractHeader.cs` itself in place since it's still exercised by the surviving test, not
+    dead code). Broader-orphan check confirmed no other stale references anywhere. Full suite re-run
+    twice from scratch: **2957/2957, 100% green, both runs identical.** Commit `8e1198d8`.
+  - No further blockers. Increment declared **COMPLETE-WITH-KNOWN-GAPS**: the wire-protocol swap is
+    proven decode-correct end-to-end against real sim data; the live-gate is deferred on a confirmed,
+    independently-reproduced, genuinely pre-existing engine-side blocker outside this increment's own
+    scope boundaries (no VIXEN-engine-source changes beyond the named files). Recommend a small
+    follow-up VIXEN-engine ticket to extend `HudViewBridge` to `UIRenderNode.h`/`BuildUIGraph.cpp` so
+    WSL/GCC builds of `undertow_host` become possible again generally — this would unblock the actual
+    live-gate run, independent of anything in this increment.
+  - **Opus validator (independent re-verification, final gate of the whole increment):** initial pass
+    returned ISSUES (the orphaned-test regression above) — correctly did NOT rubber-stamp a
+    misreported green suite. Independently re-derived the critical harness proof from scratch,
+    independently REPRODUCED the ODR blocker via a real build attempt (not just trusting the claim),
+    confirmed the bool-vs-Int bug-find, confirmed the WARN logs are genuinely loud (not comments),
+    confirmed the local-only submodule override doesn't touch `.gitmodules`, and explicitly judged the
+    DONE_WITH_CONCERNS framing (defer live-gate on a confirmed unrelated blocker) as the right call.
+    After the fix-up dispatch closed the regression (2957/2957 confirmed), the increment is
+    COMPLETE-WITH-KNOWN-GAPS.
