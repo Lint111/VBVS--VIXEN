@@ -27,11 +27,13 @@
 using Vixen::Gpu::ProbeGridConfig;
 
 TEST(ProbeGridConfigLayout, StructSizeMatchesStd430) {
-    // 12 fields (7 uint32 + 5 float, std430 scalar packing, all fields
+    // 14 fields (9 uint32 + 5 float, std430 scalar packing, all fields
     // flattened scalars -- no vec/array members needing 16-byte alignment,
-    // mirrors LightTreeBuffer.cs's own Float3-flattening precedent) = 48 bytes.
-    EXPECT_EQ(sizeof(ProbeGridConfig), 48u)
-        << "ProbeGridConfig must be 48 bytes (Inc4 M2 contract: 7x uint32 + 5x float, std430)";
+    // mirrors LightTreeBuffer.cs's own Float3-flattening precedent) = 56 bytes.
+    // Sampled Lighting Inc5 M1: amortizationFactor + frameCounter appended
+    // (additive, byte-identical 48-byte prefix preserved) = 48 -> 56 bytes.
+    EXPECT_EQ(sizeof(ProbeGridConfig), 56u)
+        << "ProbeGridConfig must be 56 bytes (Inc5 M1 contract: 9x uint32 + 5x float, std430)";
 }
 
 TEST(ProbeGridConfigLayout, FieldOffsetsMatchDeclarationOrder) {
@@ -47,6 +49,8 @@ TEST(ProbeGridConfigLayout, FieldOffsetsMatchDeclarationOrder) {
     EXPECT_EQ(offsetof(ProbeGridConfig, countZ),           36u);
     EXPECT_EQ(offsetof(ProbeGridConfig, raysPerProbe),     40u);
     EXPECT_EQ(offsetof(ProbeGridConfig, hysteresisRate),   44u);
+    EXPECT_EQ(offsetof(ProbeGridConfig, amortizationFactor), 48u);
+    EXPECT_EQ(offsetof(ProbeGridConfig, frameCounter),        52u);
 }
 
 // A default-constructed (value-initialized) ProbeGridConfig must be entirely
@@ -72,4 +76,6 @@ TEST(ProbeGridConfigLayout, ValueInitializedIsAllZero) {
     EXPECT_EQ(cfg.countZ, 0u);
     EXPECT_EQ(cfg.raysPerProbe, 0u);
     EXPECT_FLOAT_EQ(cfg.hysteresisRate, 0.0f);
+    EXPECT_EQ(cfg.amortizationFactor, 0u);
+    EXPECT_EQ(cfg.frameCounter, 0u);
 }

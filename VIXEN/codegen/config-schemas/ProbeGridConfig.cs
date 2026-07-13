@@ -31,6 +31,23 @@ using Yeroket.Util.KernelFramework;
 // hysteresisRate: EWMA blend rate for the irradiance/visibility temporal
 // accumulate (0..1), mirrors AccumulationConfig.alpha's role for camera-frame
 // accumulation, applied per-probe instead of per-pixel.
+// amortizationFactor: Sampled Lighting Inc5 M1 -- per-probe update round-robin
+// divisor. 1 (default) = every probe updates every frame, byte-identical to
+// Inc4's shipped behavior (the escape hatch). N>1 = only 1/N of the probes
+// update on any given frame (probeIndex % N == frameCounter % N), the rest
+// keep their previously-written atlas content -- a pure work-reduction lever,
+// see Sampled-Lighting-Inc5-Plan-2026-07.md Task 1.
+// frameCounter: THIS node's own monotonic per-Execute counter (uploaded
+// alongside the rest of this struct, ProbeGridConfigNode::amortizationFrameCounter_).
+// Deliberately carried HERE rather than added to the shared SceneBindings.glsl
+// PushConstants block (the plan's own suggested mechanism): ProbeGridConfig is
+// already probe-update's own per-frame-uploaded SSBO (binding 28, read every
+// invocation), so a frame counter here is zero new plumbing (no new gatherer
+// wiring, no bloating the globally-shared PushConstants struct every OTHER
+// shader in the codebase also reads, for a field only this one pass needs).
+// Mirrors ReservoirConfigNode's own frameParity field placement precedent
+// (also carried on its own per-frame config struct, not the shared push
+// constants, for the identical "deliberately not pc.accumFrameCount" reason).
 [GpuStruct]
 public struct ProbeGridConfig
 {
@@ -46,4 +63,6 @@ public struct ProbeGridConfig
     public uint countZ;
     public uint raysPerProbe;
     public float hysteresisRate;
+    public uint amortizationFactor;
+    public uint frameCounter;
 }

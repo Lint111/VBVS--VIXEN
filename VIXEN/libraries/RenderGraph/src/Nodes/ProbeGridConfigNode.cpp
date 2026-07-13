@@ -44,6 +44,8 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
     cfg.countZ           = 8u;
     cfg.raysPerProbe     = 64u;     // M3 fixed-sample-set default (spherical Fibonacci count)
     cfg.hysteresisRate   = 0.02f;   // EWMA blend rate, mirrors AccumulationConfig.alpha's role
+    cfg.amortizationFactor = 1u;    // Inc5 M1 default: every probe updates every frame (byte-
+                                     // identical escape hatch — see ProbeUpdate.comp's early-out)
 
     // M2 gate lever: VIXEN_PROBE_GRID_CONFIG_ENABLED=1 forces the enable path so a
     // future live gate can capture both states from the SAME binary, no rebuild —
@@ -65,6 +67,20 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
         long v = std::strtol(raysEnv, nullptr, 10);
         if (v > 0 && v <= 256) {
             cfg.raysPerProbe = static_cast<uint32_t>(v);
+        }
+    }
+
+    // Inc5 M1 bench lever: VIXEN_DDGI_AMORTIZATION_FACTOR=<n> overrides the fixed
+    // amortizationFactor=1 default so M2's real-GPU cost matrix can be measured
+    // across multiple values from the SAME binary, no rebuild — exact same
+    // convention as VIXEN_PROBE_RAYS_PER_PROBE above. No upper clamp beyond
+    // fitting in uint32_t: any factor >= probeCount degenerates to "one probe
+    // updates per N frames," a valid (if extreme) point on the curve, not an
+    // error — the shader's modulo math handles it without special-casing.
+    if (const char* amortEnv = std::getenv("VIXEN_DDGI_AMORTIZATION_FACTOR")) {
+        long v = std::strtol(amortEnv, nullptr, 10);
+        if (v > 0) {
+            cfg.amortizationFactor = static_cast<uint32_t>(v);
         }
     }
     return cfg;
@@ -124,9 +140,17 @@ void ProbeGridConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t frameIndex = ctx.In(ProbeGridConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
     // Static default content (no UI/authoring this milestone). Re-uploaded every
-    // frame anyway: 48 B is negligible and this keeps the node ready for a future
+    // frame anyway: 56 B is negligible and this keeps the node ready for a future
     // SetProbeGridConfig() with no rewiring.
     Vixen::Gpu::ProbeGridConfig cfg = MakeDefaultProbeGridConfig();
+
+    // Inc5 M1: monotonic per-Execute counter driving amortizationFactor's
+    // round-robin subset selection in ProbeUpdate.comp -- increments
+    // unconditionally every Execute, mirroring ReservoirConfigNode's
+    // frameParityCounter_ precedent (deliberately NOT pc.accumFrameCount,
+    // which resets on camera motion and would repeat the same active-probe
+    // subset on every reset instead of continuing the rotation).
+    cfg.frameCounter = amortizationFrameCounter_++;
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

@@ -346,6 +346,23 @@ void main() {
             ddgiLeakGateDebug.nearProbeIndex, farShadingPos, forceVisibilityOne);
     }
 
+    // Sampled Lighting Inc5 M1: amortized update schedule -- a THIRD early-out in
+    // the same family as the two above (probeGridEnabled/probeCount), gating ONLY
+    // the ray-cast + atlas-write logic below. Deliberately placed AFTER the leak-
+    // gate self-test gather block above: that gather reads PREVIOUS-frame atlas
+    // content (gatherProbeIrradianceLuma samples the atlas, it does not write this
+    // probe's own update), so it must keep running every frame regardless of
+    // whether THIS probe's update is amortized away this tick -- an amortized-away
+    // near/far probe should not silently blind the leak-test gate.
+    // amortizationFactor=1 (default) makes (probeIndex % 1) != (frameCounter % 1)
+    // always evaluate to (0 != 0) = false, i.e. this condition can never trigger
+    // -- byte-identical to Inc4's every-probe-every-frame behavior.
+    if (probeGridConfig.amortizationFactor > 1u &&
+        (probeIndex % probeGridConfig.amortizationFactor) !=
+        (probeGridConfig.frameCounter % probeGridConfig.amortizationFactor)) {
+        return;
+    }
+
     uint raysPerProbe = clamp(probeGridConfig.raysPerProbe, 1u, PROBE_UPDATE_MAX_RAYS_PER_PROBE);
     uint rayIndex = gl_LocalInvocationID.x;
 

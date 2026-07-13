@@ -38,7 +38,7 @@ public:
  * default — M2 ships the struct + upload plumbing as scaffolding for M3-M6's
  * probe-update pass / Chebyshev visibility / shade-pass gather (this
  * program's Task 3-6); nothing reads this buffer's contents yet. Re-uploaded
- * every Execute (48 B, negligible) so a future milestone can mutate it via
+ * every Execute (56 B, negligible) so a future milestone can mutate it via
  * SetProbeGridConfig() with no graph rewiring — same pattern as every prior
  * *ConfigNode in this program.
  *
@@ -63,6 +63,14 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
+
+    // Sampled Lighting Inc5 M1: THIS node's own monotonic per-Execute counter,
+    // driving amortizationFactor's round-robin subset selection. Deliberately
+    // NOT pc.accumFrameCount (resets on camera motion) -- mirrors
+    // ReservoirConfigNode's frameParityCounter_ precedent exactly (same
+    // rationale: amortization's active-probe subset must keep rotating
+    // regardless of camera motion/accumulation state).
+    uint32_t amortizationFrameCounter_ = 0;
 };
 
 } // namespace Vixen::RenderGraph

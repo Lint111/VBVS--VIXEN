@@ -14,5 +14,7 @@ struct ProbeGridConfig {
     uint countZ;
     uint raysPerProbe;
     float hysteresisRate;
+    uint amortizationFactor;
+    uint frameCounter;
 };
 #endif // PROBEGRIDCONFIG_GLSL
