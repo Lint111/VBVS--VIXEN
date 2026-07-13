@@ -186,7 +186,12 @@ tracked in that increment's own plan doc once started)
   field-value correctness testing, not just text-diffing; #11 caught a real enum-collapse bug during
   proving; 2949/2949 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc6-Test-Factories-Authoring-Builders-Plan-2026-07.md`)
-- [ ] Increment 7 — #13 `[Effect]` registration
+- [x] Increment 7 — #13 `[Effect]` registration (Opus-validated APPROVED both milestones; extended
+  Increment 4's dispatch-table pattern with a dual ctor-shape discriminator — 15 parameterless +
+  33 sim-ctor real sites, over 2x the survey's estimate; caught + fixed a real
+  namespace-vs-directory bucket-discrimination bug during build; both real call sites
+  + `CodeModLoader.cs` confirmed untouched, 2950/2950 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc7-Effect-Registration-Plan-2026-07.md`)
 - [ ] Increment 8 — #15 `[System]` schedule solver
 - [ ] Increment 9 — #4/#5/#6 Content-pack codec + Merge + Patch-parser (cluster)
 - [ ] Increment 10 — #16 `[Saved]` codec (pending project-owner confirmation it's in scope at all)
@@ -308,6 +313,30 @@ tracked in that increment's own plan doc once started)
   `Emit.cs`, leaving 9+ other live generators' shared IR helpers untouched). 2949/2949 undertow tests
   pass throughout, independently re-run from a clean state by the validator at every milestone. Full
   detail: `Undertow-Codegen-Unif-Inc6-Test-Factories-Authoring-Builders-Plan-2026-07.md`.
+
+- **Increment 7 — #13 `[Effect]` registration (COMPLETE, both milestones Opus-validated APPROVED).** The
+  last of the "kernel" attribute-driven cluster after `[Param]` (Inc-3) and `[Action]` (Inc-4), chosen to
+  stress-test whether Inc-4's dispatch-table-builder pattern generalizes to a genuinely data-driven
+  branch. `[Effect]` classes split into two ctor-shape buckets: 15 parameterless WorldGraph-only classes
+  (`Undertow.Effects/Builtins/*`) vs. 33 sim-ctor classes (taking a single `UndertowSim` parameter,
+  `Undertow.Sim/Systems/**`) — 48 real sites total, over 2x the survey's estimate of 21. Confirmed
+  `Undertow.Sim.EffectAttribute` is itself a live `CodeModLoader.cs` reflection target
+  (`InstantiateEffect` mirrors the SAME dual ctor-shape fallback logic for code-mod support) — same
+  discover-don't-replace constraint class as `[Param]`/`[Action]`. Extended Increment 4's
+  `CompilationLoader`/dispatch-table-emitter pattern with an added `HasSimCtor` discriminator (via
+  `sym.InstanceConstructors`) and two emit templates (`new {Fq}()` vs `new {Fq}(this)`), porting both
+  `EmitRegisterEffects.Emit`/`EmitRegisterSimEffects.Emit` plus all 3 diagnostics (`UTFX001` duplicate-id,
+  `UTFX002` missing `IEffect`, `UTFX003` sim-bucket wrong ctor shape). Equivalence proving caught a real
+  bug: bucket discrimination cannot use C# namespace string, since 4 real sim-ctor classes
+  (`StoreFlowEffect`/`RunRecipeEffect`/`KnowledgeModifierEffect`/`TransmitFlowEffect`) are declared
+  directly under `namespace Undertow.Sim` rather than a `.Systems.*` sub-namespace — fixed by
+  discriminating on the schema file's on-disk project directory instead, matching the real Roslyn
+  generator's actual `assemblyName` branch. Full retirement (`EffectRegistrationGenerator.cs`/
+  `EmitRegisterEffects.cs`/`EmitRegisterEffectsTests.cs` deleted; both generated files checked in) — BOTH
+  real call sites (`UndertowSim.cs` AND the previously-unremarked `HistorySim.cs:79`, which consumes only
+  the WorldGraph-only half) confirmed byte-identical pre/post, along with `CodeModLoader.cs`.
+  2950/2950 undertow tests pass, independently re-run by the validator from a clean state. Full detail:
+  `Undertow-Codegen-Unif-Inc7-Effect-Registration-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
