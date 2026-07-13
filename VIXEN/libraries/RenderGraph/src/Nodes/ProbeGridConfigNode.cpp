@@ -42,10 +42,38 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
     cfg.countX           = 8u;      // 8x8x8 = 512 probes
     cfg.countY           = 8u;
     cfg.countZ           = 8u;
-    cfg.raysPerProbe     = 64u;     // M3 fixed-sample-set default (spherical Fibonacci count)
+    cfg.raysPerProbe     = 64u;     // M3 fixed-sample-set default (spherical Fibonacci count).
+                                     // Inc5 M3: left UNCHANGED -- M2's own joint bench had this
+                                     // lever's raysPerProbe=16/32 columns backwards (a session-
+                                     // load artifact, see gate-artifacts/inc5-m2-amortization-
+                                     // bench.txt), and no separately-clean raw per-value table
+                                     // from Inc4 M6 is available in-tree to justify a specific
+                                     // new value (M6's own bench log was never committed; only a
+                                     // single secondhand data point at raysPerProbe=64 survives,
+                                     // in this same M2 artifact's cross-reference paragraph).
+                                     // Changing this now would be tuning from noise, not data.
     cfg.hysteresisRate   = 0.02f;   // EWMA blend rate, mirrors AccumulationConfig.alpha's role
-    cfg.amortizationFactor = 1u;    // Inc5 M1 default: every probe updates every frame (byte-
-                                     // identical escape hatch — see ProbeUpdate.comp's early-out)
+    cfg.amortizationFactor = 8u;    // Inc5 M3 shipped default (was 1, Inc5 M1's byte-identical
+                                     // starting point). M2's live re-measurement confirmed F=8
+                                     // is unanimously cheaper than F=1 across every re-run
+                                     // pairing (direction solid), and the edit-loop convergence
+                                     // gate proved F=8 still converges correctly (just ~8x slower
+                                     // wall-clock, a bounded/expected EWMA-window stretch, not
+                                     // staleness) -- see gate-artifacts/inc5-m2-amortization-
+                                     // bench.txt Part 1. F=8 chosen over a more conservative F=4
+                                     // (also gate-proven) because M2's own cross-check subset
+                                     // showed cost still monotonically decreasing at F=8 with no
+                                     // sign of having hit the fixed-overhead floor yet (6.14ms
+                                     // @F=1 -> 3.22ms @F=4 -> 2.15ms @F=8), and because the plan's
+                                     // own examples name 4 and 8 as the tested points -- F=8 banks
+                                     // more of the confirmed-real reduction without extrapolating
+                                     // beyond what was actually measured (e.g. F=16+). The exact
+                                     // magnitude is sub-linear vs naive 1/F (fixed per-frame
+                                     // dispatch/early-out overhead, M2's own finding) so this is
+                                     // NOT expected to fully close Inc4's ~24ms gap alone --
+                                     // M4's A/B measurement quantifies the real remaining number.
+                                     // amortizationFactor=1 remains reachable via
+                                     // VIXEN_DDGI_AMORTIZATION_FACTOR=1 for regression comparability.
 
     // M2 gate lever: VIXEN_PROBE_GRID_CONFIG_ENABLED=1 forces the enable path so a
     // future live gate can capture both states from the SAME binary, no rebuild —
