@@ -137,6 +137,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h" _out_undertowhudfactions_readmodel_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h" _out_undertowhudevents_readmodel_run)
         _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h" _out_undertowhudinspect_readmodel_run)
+        # View Read-Model Codegen Milestone 6: the umbrella include header for the whole
+        # UndertowHud.cs [View] family -- --schema-file (a single .cs file, not the
+        # directory-scoped --schema) + --out-dir (existence-probe root for each discovered
+        # schema's sibling .blob/.typed/.readmodel.g.h files) + --out-header (the umbrella itself).
+        _codegen_to_wsl_path("${_cg}/view-schemas/UndertowHud.cs" _schema_undertowhud_file_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated" _out_undertowhud_gendir_run)
+        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudFamily.umbrella.g.h" _out_undertowhud_umbrella_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
@@ -172,6 +179,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_undertowhudfactions_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h")
         set(_out_undertowhudevents_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h")
         set(_out_undertowhudinspect_readmodel_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h")
+        # View Read-Model Codegen Milestone 6: umbrella include header (native-path mirror
+        # of the WSL-bridge block above).
+        set(_schema_undertowhud_file_run "${_cg}/view-schemas/UndertowHud.cs")
+        set(_out_undertowhud_gendir_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated")
+        set(_out_undertowhud_umbrella_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/UndertowHudFamily.umbrella.g.h")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -498,10 +510,51 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args}
         COMMENT "[codegen] regenerate UndertowHudInspect.readmodel.g.h (Yeroket tool)"
         VERBATIM)
+
+    # --- View Read-Model Codegen Milestone 6: umbrella include header for the whole
+    # UndertowHud.cs [View] family (UndertowHud/HudFactions/HudEvents/HudInspect/Bodies/
+    # Recipes). --schema-file discovers every [View] type in that ONE .cs file via
+    # CompilationLoader.LoadViews (not the directory-scoped --schema every other target uses
+    # here) -- this is what gives "add a new [View] struct to UndertowHud.cs, next regen picks
+    # it up with zero CMakeLists edits" (Milestone 6 Task 1 research). --out-dir is the
+    # existence-probe root: the umbrella only #includes a schema's .blob/.typed/.readmodel.g.h
+    # sibling if that file actually exists there (UndertowBodies/UndertowRecipes have no
+    # .readmodel.g.h yet -- Milestone 5 was Hud-only scope -- so the umbrella must degrade
+    # gracefully per schema rather than assume all 3 siblings exist for every family member).
+    #
+    # add_dependencies below is the one genuinely new wrinkle vs. every earlier _check/_regen
+    # pair in this file: the umbrella's existence-probe must see a FRESH, consistent set of
+    # sibling files, not stale ones from a previous schema shape, so its check/regen must run
+    # strictly after all 6 family members' own check/regen targets (the individual schema
+    # targets above never needed this -- they have no siblings to depend on).
+    set(_readmodel_umbrella_undertowhud_args
+        run --project "${_yk_tool_run}" -c Release --
+        --readmodel-umbrella-cpp
+        --schema-file "${_schema_undertowhud_file_run}"
+        --out-dir "${_out_undertowhud_gendir_run}"
+        --out-header "${_out_undertowhud_umbrella_run}")
+    add_custom_target(readmodel_umbrella_undertowhud_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_umbrella_undertowhud_args} --check
+        COMMENT "[codegen] golden check: UndertowHudFamily.umbrella.g.h matches canonical [View] schemas in UndertowHud.cs (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_umbrella_undertowhud_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_umbrella_undertowhud_args}
+        COMMENT "[codegen] regenerate UndertowHudFamily.umbrella.g.h (Yeroket tool)"
+        VERBATIM)
+    # Only the 4 Hud-family schemas have their own CMake _check targets today (Milestone 5's
+    # scope; UndertowBodies/UndertowRecipes have no CMake-wired --readmodel-cpp or other
+    # per-schema check target at all -- confirmed by Milestone 6 Task 1's research, "no prior
+    # CMake target existed for any Undertow* schema check before this milestone" -- so those
+    # 2 have nothing to depend on here; the umbrella's own existence-probe still degrades
+    # gracefully for them via --out-dir, it just can't order itself after a target that
+    # doesn't exist).
+    add_dependencies(readmodel_umbrella_undertowhud_check
+        readmodel_undertowhud_check readmodel_undertowhudfactions_check
+        readmodel_undertowhudevents_check readmodel_undertowhudinspect_check)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/UndertowHud-readmodel golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h, UndertowHud/HudFactions/HudEvents/HudInspect.readmodel.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/UndertowHud-readmodel/UndertowHudFamily-umbrella golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h, UndertowHud/HudFactions/HudEvents/HudInspect.readmodel.g.h, UndertowHudFamily.umbrella.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

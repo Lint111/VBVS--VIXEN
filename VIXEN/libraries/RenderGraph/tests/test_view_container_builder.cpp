@@ -1,17 +1,8 @@
 #include "Ui/ViewWireReaderSoa.h"
 #include "Ui/ViewStore.h"
-#include "Generated/UndertowHud.blob.g.h"
-#include "Generated/UndertowHud.typed.g.h"
-#include "Generated/UndertowHudFactions.blob.g.h"
-#include "Generated/UndertowHudFactions.typed.g.h"
-#include "Generated/UndertowHudEvents.blob.g.h"
-#include "Generated/UndertowHudEvents.typed.g.h"
-#include "Generated/UndertowHudInspect.blob.g.h"
-#include "Generated/UndertowHudInspect.typed.g.h"
-#include "Generated/UndertowBodies.blob.g.h"
-#include "Generated/UndertowBodies.typed.g.h"
-#include "Generated/UndertowRecipes.blob.g.h"
-#include "Generated/UndertowRecipes.typed.g.h"
+// Milestone 6 (View Read-Model Codegen): one generated umbrella header instead of hand-picking
+// each schema's .blob/.typed/.readmodel.g.h include -- see ReadModelUmbrellaEmitter.cs.
+#include "Generated/UndertowHudFamily.umbrella.g.h"
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <cstdint>
