@@ -180,7 +180,12 @@ tracked in that increment's own plan doc once started)
   Increment 1's long-deferred `EmitRegistrySlots.cs`, 22 tests surgically trimmed with method-level
   precision, full equivalence loop closed, 2933/2933 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc5-Def-Carriers-Bake-SimReg-Plan-2026-07.md`)
-- [ ] Increment 6 — #10 Test factories, #11 Authoring builders
+- [x] Increment 6 — #10 Test factories, #11 Authoring builders (Opus-validated APPROVED all 3
+  milestones; #10 confirmed a real, load-bearing ctor-order coupling to Increment 5's def carriers
+  (496 real test call sites as the safety net) and its equivalence proof included genuine positional
+  field-value correctness testing, not just text-diffing; #11 caught a real enum-collapse bug during
+  proving; 2949/2949 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc6-Test-Factories-Authoring-Builders-Plan-2026-07.md`)
 - [ ] Increment 7 — #13 `[Effect]` registration
 - [ ] Increment 8 — #15 `[System]` schedule solver
 - [ ] Increment 9 — #4/#5/#6 Content-pack codec + Merge + Patch-parser (cluster)
@@ -281,6 +286,28 @@ tracked in that increment's own plan doc once started)
   (`character`/`faction`/`timeline`). 2933/2933 undertow tests pass post-retirement, independently
   re-run by the validator from a fresh state. Full detail:
   `Undertow-Codegen-Unif-Inc5-Def-Carriers-Bake-SimReg-Plan-2026-07.md`.
+
+- **Increment 6 — #10 Test factories + #11 Authoring builders (COMPLETE, all 3 milestones Opus-validated
+  APPROVED).** The survey's flat "low-risk" tag for both features held structurally (no binary protocol,
+  no novel algorithm) but hid genuinely different dependency profiles — the same pattern that already
+  surfaced in Inc-4/Inc-5. #10 is a real, load-bearing dependent of Increment 5's `DefCarriersEmitter`:
+  its factory methods construct `Baked{K}Def(...)` positionally, so the exact ctor-argument order must
+  match Increment 5's emitter — confirmed to hold exactly by tracing 2 real kinds end-to-end (both
+  implementer and validator, independently), then proven again via a genuine positional field-value
+  correctness test (constructing real defs and asserting each argument lands on the correctly-named
+  property with discriminating, non-default values — not just a text/byte diff) across 3 kinds. 30 real
+  gated kinds (`data&&codec` minus `customCodec`), 496 real `Make.*` call sites in the test suite served
+  as a large-scale regression safety net. #11 is independent (only depends on the shared field IR + the
+  real UTDL parser, not on any Def-carrier type) — its `Build()` assembles a UTDL document string and
+  re-parses it through the real parser rather than constructing objects directly; the equivalence
+  proving process caught a REAL bug (missing the `Emit.ReadFields` enum-collapses-to-scalar behavior
+  silently dropped 2 of 3 real kinds) and a real data-drift fact (`material`, one of `TargetKinds`' 4
+  names, no longer exists in `schemas.json` — both old and new mechanisms already silently skip it).
+  Both features fully retired (`TestFactoryGenerator.cs`/`EmitTestFactory.cs`/
+  `TestFactoryCodegenTests.cs`; `BuilderGenerator.cs` + only the `Emit.Builders`-specific region of
+  `Emit.cs`, leaving 9+ other live generators' shared IR helpers untouched). 2949/2949 undertow tests
+  pass throughout, independently re-run from a clean state by the validator at every milestone. Full
+  detail: `Undertow-Codegen-Unif-Inc6-Test-Factories-Authoring-Builders-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
