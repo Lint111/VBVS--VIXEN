@@ -4002,14 +4002,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   probeUpdatePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
 
     // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
-    // every other scene-binding consumer, but reads NONE of its fields (no camera ray,
-    // no per-pixel debug target — this pass is probe-indexed, not screen-indexed).
-    // glslang's dead-code elimination means this compiled program's reflected push-
-    // constant range is empty/near-empty; still wire the gatherer's SHADER_DATA_BUNDLE
-    // input (required by PushConstantGathererNodeConfig) with no field connections, so
-    // an empty-but-valid PUSH_CONSTANT_DATA/RANGES pair is published.
+    // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no
+    // camera ray, no per-pixel debug target — this pass is probe-indexed, not
+    // screen-indexed) -- BUT it DOES need instanceCount (binding 10): TraceWorld/
+    // TraceWorldShadow (TraceWorld.glsl) both bound their scene-instance iteration loop by
+    // `pc.instanceCount` (`numInstances = clamp(pc.instanceCount, 0, 3*64)`), so an
+    // unconnected/zero instanceCount makes EVERY probe ray a guaranteed miss regardless of
+    // scene content -- an M4 live-gate finding (VIXEN_DDGI_LEAK_GATE_DEMO's own leak-test
+    // gate initially read diagNearProbeHitCount=0 for a scene the march visibly renders,
+    // isolating this exact gap) that the file header's PRIOR claim ("reads NONE of its
+    // fields") missed; not previously caught because M3's own gate only checked "probes
+    // visibly light a scene" qualitatively (a render happened), never a numeric hit count.
     batch.Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          probeUpdatePushConstantGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // ProbeUpdate's descriptor bindings: the scene SSBOs (read-only, same as DirectLighting/
     // SpatialReuse's own gatherer bindings — read-read is not a hazard) + ProbeGridConfig
