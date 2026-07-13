@@ -150,8 +150,8 @@ fixture and must be regenerated/verified before any porting work starts.
     APPROVED, 2026-07-13.
   - [x] **Milestone 2b (#5 merge — build + equivalence proof, no retirement yet):** DONE + Opus-validated
     APPROVED, 2026-07-13.
-  - [ ] **Milestone 2c (#6 patch-parser — build + equivalence proof + FULL RETIREMENT of all 6 generator
-    files across #4/#5/#6).**
+  - [x] **Milestone 2c (#6 patch-parser — build + equivalence proof + FULL RETIREMENT of all 6 generator
+    files across #4/#5/#6):** DONE + Opus-validated APPROVED, 2026-07-13. **INCREMENT 9 COMPLETE.**
 
 ## Progress Log
 
@@ -261,3 +261,50 @@ fixture and must be regenerated/verified before any porting work starts.
     checking the exact comparer set in real output, independently confirmed the object-initializer
     cross-check by direct source read, and independently re-ran the full test suite (2934/2934
     matching). Cleared to proceed to Milestone 2c.
+
+- Milestone 2c (#6 patch-parser — build + equivalence proof + FULL RETIREMENT of #4/#5/#6): DONE ·
+  2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc9-codec`, off Milestone 2b's `5ab8e132`, commit
+    `6a5eaa7a`): new `PatchParserEmitter.cs` porting undertow's `EmitPatchParser.cs` (412 lines)
+    line-for-line — parses a `patch: true` UTDL doc into a `Baked{K}Patch`, matching Milestone 2b's
+    shape field-for-field, including the `+`/`-`/bare-token value-list grammar and the map-authored/
+    keyed/unkeyed object-list patch flavors. Additive `NamespaceOnly` field on the shared `DefField`
+    struct. New `--patch-parser-cs` CLI flag.
+  - **Byte-identical equivalence for ALL THREE generated files, independently re-derived from scratch
+    by the validator**: `Codec.g.cs`, `Patches.g.cs`, AND `PatchParser.g.cs` all confirmed byte-for-byte
+    identical (matching sha256, INCLUDING the restored banner) to a fresh real Roslyn build at the
+    pre-retirement commit.
+  - **Real parsing behavior verified** across 2 historical version boundaries (v40 `manifest.
+    dependencies`'s `namespaceOnly` element field; v77 `character.relationships`'s unkeyed all-Replace
+    grammar) plus the customCodec-skip warning path (`manifest.requires` correctly produces a
+    "not patchable; ignored" warning, not an error).
+  - **End-to-end parse-then-merge proof — the crux, proving #4/#5/#6 cohere as one system,
+    independently re-derived by the validator with real code (not just reading the description)**:
+    parsed a real `faction` patch doc through the checked-in `PatchParser.g.cs` into a `BakedFactionPatch`,
+    folded it via the checked-in `Patches.g.cs`'s `Merge` function onto a real base `BakedFactionDef` —
+    correct final values confirmed for scalar overwrite, map overlay, and the `+`/`-`/bare value-list
+    grammar all folding together correctly.
+  - **Retired all 6 generator files** (`EmitCodec.cs`/`CodecGenerator.cs`, `EmitMerge.cs`/
+    `MergeGenerator.cs`, `EmitPatchParser.cs`/`PatchParserGenerator.cs`) plus 15 Roslyn-internal test
+    files (33 individual test cases — validator independently counted `[Fact]`/`[Theory]` attributes
+    and confirmed the exact 2934→2901 delta) that genuinely only tested the retired generators' internal
+    text output on synthetic schemas, not real baked-object behavior (spot-checked 5 of the 15 files
+    directly). Checked in all 3 generated files as ordinary compiled sources with original Roslyn
+    banners restored. KEPT and confirmed still exercising the new checked-in generated code for real:
+    `CodecGoldenBytesTests.cs`, `MergeGeneratorTests.cs`, `ObjectListPatchMergeTests.cs`,
+    `PatchAuthoringTests.cs`, `ObjectListPatchAuthoringTests.cs`, every `Baked{Kind}CodecTests.cs`.
+  - **`CodeModLoader.cs` confirmed zero diff** pre/post (no reflection constraint applies to this
+    cluster, per Milestone 1's finding — confirmed, not just assumed).
+  - **No stray dependents**: confirmed zero live code references anywhere to any of the 6 retired
+    generator classes (only comment mentions remain).
+  - **Full build + test, post-retirement, independently re-run from a completely fresh state by the
+    validator: 0 errors, 0 warnings. 2901 Core.Tests + 21 Vixen.Host.Tests = 2922/2922, 0 failures** —
+    the single most important number in the whole increment, confirmed exactly.
+  - `SDFNodeGenerator.dll` confirmed not committed with unrelated noise.
+  - No blockers.
+  - **Opus validator (independent re-verification, maximum rigor as the final gate for the hardest
+    increment in the program):** APPROVED. Independently re-derived every claim with fresh builds —
+    all three byte-diffs from scratch, the end-to-end parse-then-merge proof with real code (not just
+    reading the description), the full test suite from a completely clean state, and a direct spot-read
+    of 5 of the 15 deleted test files to confirm they held zero real behavioral coverage. **Increment 9
+    (content-pack codec cluster, the hardest increment in the program) COMPLETE.**
