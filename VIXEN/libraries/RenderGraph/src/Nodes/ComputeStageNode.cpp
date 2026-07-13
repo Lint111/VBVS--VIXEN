@@ -337,6 +337,13 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
             target->GetCurrentImage(), priorLayout);
     }
 
+    // Sampled Lighting Inc4 M5: IMAGE_READ_ARRAY needs no RecordComputeCommands handling —
+    // the hazard is baked from the graph's slot connections (ResourceAccessTracker::AddNode
+    // walks the compiled bundle, not this function), and a producer's IMAGE_WRITE_ARRAY
+    // leaves its images in GENERAL with no exit transition, so a storage-image descriptor
+    // read of the same image needs no further layout transition either. See the slot's own
+    // doc comment on ComputeStageNodeConfig::IMAGE_READ_ARRAY.
+
     BindComputePipeline(cmd, pipeline, layout, descriptorSets[imageIndex]);
     SetPushConstants(ctx, cmd, layout);
     vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);

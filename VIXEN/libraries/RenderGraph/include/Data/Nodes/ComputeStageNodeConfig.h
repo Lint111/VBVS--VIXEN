@@ -19,7 +19,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeStageNodeCounts {
-    static constexpr size_t INPUTS  = 20;
+    static constexpr size_t INPUTS  = 21;
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -127,9 +127,23 @@ namespace ComputeStageNodeCounts {
  * consumers (DirectLighting.comp, SpatialReuseShade.comp via BlitNode) keep using it
  * exactly as before, zero regression risk. IMAGE_WRITE_ARRAY (index 19) is opt-in,
  * wired only where a pass genuinely needs N simultaneous image outputs (M2's
- * ProbeAtlasNode(s) being the first real consumer). No IMAGE_READ_ARRAY yet — no
- * concrete consumer needs it as of M1; add it later the same "concrete use case
- * drives the design" way if one arises, per this class's own established discipline.
+ * ProbeAtlasNode(s) being the first real consumer).
+ *
+ * SAMPLED LIGHTING INC4 M5 -- IMAGE_READ_ARRAY, the concrete consumer arrived: the
+ * shade pass (SpatialReuseShade.comp) needs to READ both DDGI atlases (irradiance +
+ * visibility) written by the sibling probe-update pass. The image-typed sibling of
+ * BUFFER_READ_ARRAY, added the identical way: fed by an ImageSyncGathererNode's
+ * IMAGE_ARRAY output (a SEPARATE gatherer instance from the writer's own -- same
+ * "same underlying node's output feeds both a WRITE-side and a READ-side gatherer"
+ * shape BUFFER_WRITE_ARRAY/BUFFER_READ_ARRAY already established). AccessKind is
+ * ComputeStorageRead so the tracker pairs it against IMAGE_WRITE_ARRAY's
+ * ComputeStorageWrite on the SAME constituent Resource*s (via
+ * Resource::hazardConstituents_) and bakes a real SyncEdge. No layout-transition work
+ * needed in RecordComputeCommands: IMAGE_WRITE_ARRAY targets are left in GENERAL by
+ * their writer (never transitioned on exit), and a storage-image descriptor read
+ * requires no further transition -- this slot exists purely to declare the hazard for
+ * the scheduler, mirroring BUFFER_READ_ARRAY's own "declaration only, the real
+ * descriptor binding flows through DescriptorResourceGathererNode" split.
  */
 CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
                       ComputeStageNodeCounts::INPUTS,
@@ -366,6 +380,23 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotScope::NodeLevel,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
+    /**
+     * @brief Set of non-swapchain images this stage READS (Sampled Lighting Inc4 M5) —
+     * the image-typed sibling of BUFFER_READ_ARRAY, additive alongside IMAGE_WRITE/
+     * IMAGE_WRITE_ARRAY above. Fed by an ImageSyncGathererNode's IMAGE_ARRAY output
+     * (a separate gatherer instance from whichever node's IMAGE_WRITE_ARRAY writes the
+     * SAME images — mirrors BUFFER_READ_ARRAY's own two-gatherer-instances shape).
+     * Auto-sync: ComputeStorageRead — paired with a producer's ComputeStorageWrite on
+     * the SAME constituent Resource*s so the scheduler bakes a real SyncEdge per image.
+     * Optional: a pass that reads no non-swapchain images leaves this unconnected.
+     */
+    INPUT_SLOT_SYNC(IMAGE_READ_ARRAY, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>, 20,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
+
     // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
@@ -468,6 +499,10 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         HandleDescriptor imageArrayDesc{"std::vector<IRenderTarget*>"};
         INIT_INPUT_DESC(IMAGE_WRITE_ARRAY, "image_write_array", ResourceLifetime::Transient, imageArrayDesc);
 
+        // Image-read ARRAY sync slot (Sampled Lighting Inc4 M5) — same Transient
+        // rationale as IMAGE_WRITE_ARRAY (a value type re-gathered fresh every frame).
+        INIT_INPUT_DESC(IMAGE_READ_ARRAY, "image_read_array", ResourceLifetime::Transient, imageArrayDesc);
+
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Transient, semaphoreDesc);
@@ -497,6 +532,9 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static_assert(IMAGE_WRITE_ARRAY_Slot::index == 19, "IMAGE_WRITE_ARRAY must be at index 19 (Sampled Lighting Inc4 M1: purely additive, appended after IMAGE_WRITE)");
     static_assert(std::is_same_v<IMAGE_WRITE_ARRAY_Slot::Type, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>>);
     static_assert(IMAGE_WRITE_ARRAY_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+    static_assert(IMAGE_READ_ARRAY_Slot::index == 20, "IMAGE_READ_ARRAY must be at index 20 (Sampled Lighting Inc4 M5: purely additive, appended after IMAGE_WRITE_ARRAY)");
+    static_assert(std::is_same_v<IMAGE_READ_ARRAY_Slot::Type, std::vector<Vixen::Vulkan::Resources::IRenderTarget*>>);
+    static_assert(IMAGE_READ_ARRAY_Slot::accessKind == ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
 };
 
 } // namespace Vixen::RenderGraph
