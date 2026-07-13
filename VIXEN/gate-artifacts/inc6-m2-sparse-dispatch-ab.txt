@@ -257,3 +257,21 @@ overhead was THE dominant fixed cost is not fully supported by this data -- some
 else (per-dispatch-call fixed cost, e.g. descriptor/push-constant binding or driver-
 side submission overhead) plausibly still contributes and would need its own
 investigation to close further.
+
+VALIDATOR RE-MEASUREMENT NOTE (added post-review): an independent Opus validator
+re-ran the F1-vs-F8 comparison itself, twice, at the same scene/resolution (1920x1080,
+own F1 absolute ~60-61ms matched this artifact's F1 exactly). The validator's own
+sessions confirmed the DIRECTION (F=8 cheaper than F=1, 5 of 7 round-pairings) but
+did NOT reproduce this artifact's specific +4.78ms magnitude or its 3/3 unanimity --
+the validator's own pooled delta was ~0.4ms (noisier sessions, one heavy ambient-load
+round). The validator's own conclusion: "the core empirical finding -- sparse-dispatch
+makes F=8 cheaper than F=1 -- is REAL and reproduces... [but] my independent
+measurement does NOT support that magnitude -- it supports only 'F8 directionally
+cheaper, small/noisy margin.'" Both this artifact's own numbers and the validator's
+are genuine, non-cherry-picked readings from their respective sessions -- the
+DIRECTION is now confirmed across three independent measurement sessions (this
+milestone's own, plus the validator's two re-runs); the MAGNITUDE remains
+session-dependent and should be treated with the same caution Inc5's own magnitude
+findings were treated -- a future cleaner, larger-sample re-measurement (more rounds,
+longer settle gaps, or a quieter machine session) would be needed to pin down a
+production-usable number, not just this artifact's own headline figure.
