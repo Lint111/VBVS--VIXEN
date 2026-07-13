@@ -199,7 +199,13 @@ tracked in that increment's own plan doc once started)
   `CodeModLoader.cs`'s Order/Before-After mod-load asymmetry confirmed unchanged, not silently
   fixed; 2942/2942 undertow tests pass — see
   `Undertow-Codegen-Unif-Inc8-System-Scheduler-Plan-2026-07.md`)
-- [ ] Increment 9 — #4/#5/#6 Content-pack codec + Merge + Patch-parser (cluster)
+- [x] Increment 9 — #4/#5/#6 Content-pack codec + Merge + Patch-parser (cluster) (Opus-validated
+  APPROVED all 3 sub-milestones; the hardest increment in the program — byte-identical equivalence
+  for all 3 generated files (Codec.g.cs/Patches.g.cs/PatchParser.g.cs) independently re-derived from
+  scratch multiple times, an end-to-end parse-then-merge proof confirming #4/#5/#6 cohere as one
+  system, full retirement of all 6 generator files + 33 obsolete Roslyn-internal test cases,
+  2922/2922 undertow tests pass — see
+  `Undertow-Codegen-Unif-Inc9-Content-Pack-Codec-Plan-2026-07.md`)
 - [ ] Increment 10 — #16 `[Saved]` codec (pending project-owner confirmation it's in scope at all)
 
 ## Progress Log
@@ -368,6 +374,32 @@ tracked in that increment's own plan doc once started)
   rebuild), `CodeModLoader.cs` confirmed zero-diff including the asymmetry's exact unchanged behavior.
   2942/2942 undertow tests pass. Full detail:
   `Undertow-Codegen-Unif-Inc8-System-Scheduler-Plan-2026-07.md`.
+
+- **Increment 9 — #4/#5/#6 Content-pack codec + Merge + Patch-parser cluster (COMPLETE, all 3
+  sub-milestones Opus-validated APPROVED).** The hardest increment in the program, correctly flagged as
+  such — but for verification cost, not algorithmic complexity: an 81-version binary content-pack wire
+  format with zero structural self-description within a record (field declaration order IS the byte
+  order, enforced by nothing but code discipline), spanning 3 tightly-coupled features that must move
+  together (#4 the binary codec, #5 conditional-merge patch records, #6 the patch-doc authoring parser).
+  A genuine pre-flight concern — the golden-bytes regression fixture (`codec-golden.b64`) appearing
+  0 bytes in an earlier checkout — turned out to be checkout-specific, not a real gap; the fixture is
+  live, 1384 bytes, actively maintained (69 commits), and the oracle passed cleanly once verified fresh.
+  Sequenced as 3 sub-milestones (2a #4, 2b #5, 2c #6) since the combined scope was too large for one
+  dispatch, each extending Increment 5's carrier-emitter family over the same shared `Field` IR. The
+  load-bearing proof for each sub-milestone was a REAL BINARY BYTE-DIFF, not just generated-text
+  comparison: the implementer(s) built a harness that swapped the new Yeroket-generated code into the
+  live Roslyn generator's `AddSource` call, rebuilt, and byte-diffed the resulting `.pack` blob against
+  the golden fixture and against the original — independently re-derived from scratch by the Opus
+  validator at every sub-milestone (never trusting reported hashes). Milestone 2b's proof caught a real
+  bug (a missing `MapAuthored` guard producing a spurious element comparer) via the byte-diff itself,
+  fixed before reporting done. Milestone 2c's end-to-end parse-then-merge cross-check (parse a real
+  patch doc → merge onto a real def → verify correct final values) is the proof that #4/#5/#6 genuinely
+  cohere as one working system, not three independently-plausible ports. Full retirement of all 6
+  generator files across the cluster plus 33 obsolete Roslyn-internal test cases (spot-checked to hold
+  zero real behavioral coverage) — all golden-bytes/merge/patch-authoring/per-kind codec tests kept and
+  confirmed exercising the newly-generated checked-in code for real. 2922/2922 undertow tests pass,
+  independently re-run by the validator from a completely fresh state at every sub-milestone. Full
+  detail: `Undertow-Codegen-Unif-Inc9-Content-Pack-Codec-Plan-2026-07.md`.
 
 ## Follow-ups / open questions (explicitly not resolved in this doc)
 
