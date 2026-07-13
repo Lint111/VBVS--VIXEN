@@ -115,11 +115,38 @@ generalizes to a data-driven branch rather than a single uniform shape.
 - Watch for the `SDFNodeGenerator.dll` non-deterministic-rebuild gotcha in Yeroket.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
   validator.
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in either repo
+  - **Corrected split: 15/33 = 48 total** (not the plan's 16/32) — `Builtins.cs` has 7 `[Effect(`
+    sites, not 8 (`PairEffects.cs`'s 8 was already correct). Bucket A (parameterless, WorldGraph-only) =
+    15; Bucket B (sim-ctor, `Undertow.Sim/Systems/**`) = 33. Confirmed via independent grep by both the
+    implementer and the Opus validator — no other `[Effect(` sites exist anywhere else.
+  - **`HistorySim.cs:79`'s second call site confirmed real**: `BuiltinRegistry()` calls
+    `GeneratedEffects.RegisterAll(r)` only (never `RegisterGeneratedSimEffects`) — an independent
+    first-party consumer distinct from `UndertowSim.cs:446-450` (which calls both). Must be included in
+    Milestone 2's equivalence proof, not just `UndertowSim.cs`.
+  - **Dual ctor-shape mechanics confirmed**: `HasSimCtor` via `sym.InstanceConstructors` (public,
+    single-param, typed `Undertow.Sim.UndertowSim`). Diagnostics: `UTFX002` (missing `IEffect`, both
+    branches), `UTFX003` (sim-bucket missing the `UndertowSim` ctor, Sim branch only), plus `UTFX001`
+    (duplicate id, both branches) — a bonus finding relevant to Milestone 2's proof.
+  - **Mechanism confirmed**: extend Increment 4's `[Action]`-style pattern. Verified directly against
+    the real Yeroket Inc-4 artifact (`feat/codegen-unif-inc4-action`, commit `6fe6cca7`) —
+    `CompilationLoader`'s existing `LoadActionClasses` already returns `INamedTypeSymbol`, which
+    inherently exposes both `AllInterfaces` and `InstanceConstructors` needed for the `HasSimCtor`
+    discriminator. Straight generalization, no new Roslyn API surface or new mechanism needed.
+  - **Retirement safety confirmed**: `CodeModLoader.cs`'s `InstantiateEffect` (lines ~422-429) is a
+    self-contained hand-written reflection mirror of the same dual-ctor-shape logic, zero code
+    references to the generator/emitter being retired (the one `Undertow.Sim.csproj`→
+    `Undertow.Authoring.Codegen.csproj` reference is Analyzer-only wiring, not a runtime dependency).
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently re-grepped every
+    `[Effect(` site itself, confirmed the 15/33 split and the `HistorySim.cs` second call site, verified
+    the mechanism decision by checking out the real Yeroket Inc-4 commit via `git show` (kept Yeroket's
+    working tree untouched), and confirmed `CodeModLoader.cs`'s retirement safety. Cleared to proceed to
+    Milestone 2.
