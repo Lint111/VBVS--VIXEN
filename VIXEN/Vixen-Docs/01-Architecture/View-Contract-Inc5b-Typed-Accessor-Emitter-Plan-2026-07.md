@@ -126,6 +126,27 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
   cross-repo push here is worse than usual, since undertow's build wiring couples to what Yeroket
   actually emits.
 
+## Update (2026-07-13, later same day): the Vec3f-scalar MODEL-layer gap is now closed
+
+A separate, Yeroket-internal "Type-Shape Recognizer Unification" increment (own plan doc:
+`Type-Shape-Recognizer-Unification-Plan-2026-07.md`, merged+pushed to Yeroket `main` `bb7c0ff4`)
+extracted a shared `FieldShapeRecognizer` consumed by both `[GpuStruct]` and `[View]`, and added a new
+`ViewFieldKind.Vector`/`ViewField.VectorMarkerName` case to `ViewModelBuilder.Classify`. **Confirmed,
+proven end-to-end**: `ViewModelBuilder.Build` no longer throws for a `Float3`-marker-typed SCALAR
+field (matching `Bodies.Position`/`Bodies.RecipeParams`'s real shape exactly) — it now builds to
+`ViewFieldKind.Vector`. This closes the MODEL-layer half of Bodies' Vec3f-scalar gap referenced
+throughout this doc's "Bodies MUST stay explicitly deferred" language below.
+
+**This does NOT yet mean Bodies can be fully declared/emitted.** The EMISSION layer — this doc's own
+Milestone 2's `TypedAccessorEmitter.cs` (C++ reader) and `ViewWireFormat`/`ViewWriterEmitter` (C#
+writer) — has ZERO code handling `ViewFieldKind.Vector` today; it was built before this case existed.
+Confirmed via the type-shape-unification increment's own graceful-failure proof: `ViewWireFormat.
+EmitToBufferBody` genuinely throws `NotSupportedException` naming the field for a Vector-kind field —
+by design, since wiring EMISSION was explicitly left out of that increment's scope, deferred to here.
+
+**New Milestone 2.4 inserted** (before 2.5) to close this emission gap, since without it Bodies stays
+deferred regardless of the model-layer unblock — see below.
+
 ## Milestone 2.5 — writer-side wiring (discovered 2026-07-13, inserted before Milestone 3)
 
 Milestone 3's first dispatch correctly reported BLOCKED (see Progress Log below) on a real gap this
@@ -172,7 +193,62 @@ partial-scoping to Hud-only.
   writer (Milestone 2.5) and the reader cutover (Milestone 3) must land and be live-gated TOGETHER as
   one real sim→render proof, not the writer alone.**
 
-**Scope boundary (Milestone 2.5)**
+## Milestone 2.4 — wire Vector emission through both existing emitters (inserted 2026-07-13)
+
+**Goal**: make `ViewFieldKind.Vector` a genuinely EMITTABLE case in both directions, so Bodies'
+`Position`/`RecipeParams` can finally be declared in full — closing the gap the type-shape-unification
+increment deliberately left open (model-layer recognition only).
+
+**Scope boundary**
+- **IS**: extend `TypedAccessorEmitter.cs` (Milestone 2's reader emitter) to emit a typed getter for a
+  `Vector`-kind field — reading 3 consecutive `float` cells from the `ViewStore` row (matching how
+  `ViewWireReaderSoa`'s decode would need to lay out a Vec3f: 3 sequential `ViewCell.f` slots, or
+  whatever concrete wire shape Task 1 below decides) and returning a `Vec3f`-equivalent C++ value type
+  (confirm/reuse whatever Vec3f type VIXEN's C++ side already uses elsewhere, don't invent a new one).
+  Extend `ViewWireFormat`/`ViewWriterEmitter` (the C# writer side) symmetrically: emit a `Vector`-kind
+  field's `ToBuffer()`/wire-write logic (write 3 floats) and the `<Model>ViewWriter` data-holder's
+  public field shape for a Vector column (likely a small `(float X,float Y,float Z)`-shaped struct or
+  3 discrete floats — decide in Task 1, matching whatever real C# `Float3`-marker type the schema
+  field is declared as).
+- **Prove**: extend Milestone 2's existing gtest (`test_typed_accessor_emitter.cpp`) — or add a
+  sibling test — with a Vector-kind field in the schema (e.g. add `Position` to the native `Hud`
+  proof schema, or declare a new minimal proof schema with just one Vector field) and prove a full
+  round-trip: write a Vec3f value via the writer, read it back via the generated typed accessor,
+  confirm exact value match (including a non-trivial, non-zero-in-every-component test value).
+- **IS NOT**: touching `Bodies.OrbitPath` (`ListVec3f` — a nullable, per-row variable-length list of
+  points, a DIFFERENT and harder gap than the flat Vec3f-scalar case; explicitly stays deferred, its
+  own follow-up).
+- **IS NOT**: declaring undertow's real `Bodies` schema in full yet — that's Milestone 2.5's job (or a
+  Milestone 2.5-adjacent task), once this milestone proves Vector emission works in isolation via a
+  proof schema, mirroring Milestone 2's own "prove in Yeroket/VIXEN in-tree before touching undertow's
+  real schema" discipline.
+
+### Tasks (Milestone 2.4)
+
+**Task 1 — Ground the shape + decide the wire layout (READ + REPORT before building)**
+- Confirm the real C# `Float3` marker type's shape (3 floats, named how — `X`/`Y`/`Z`? read
+  `Runtime/GpuStructAttributes.cs`'s `Float3` marker struct definition, or whatever real Vec3f type
+  undertow's `Bodies.Position`/`RecipeParams` fields are actually declared as in `ViewSchema.cs`/
+  `UndertowBodies.cs` — these may not be the SAME type, confirm and reconcile if not).
+  Confirm what VIXEN's C++ side already has for a Vec3f return type (likely something in `libraries/
+  RenderGraph`'s math/vector utilities) that `TypedAccessorEmitter.cs`'s generated getter should
+  return, rather than inventing a new one.
+- Decide the exact wire layout for a Vector field: 3 consecutive `float` cells in the `ViewStore` row
+  (simplest, matches how a struct-array element's fields are already laid out one-cell-per-member) vs.
+  some other packing — confirm against `ViewWireReaderSoa`'s real decode logic to see what's
+  mechanically simplest to extend.
+- Decide exactly what code `TypedAccessorEmitter.cs`/`ViewWireFormat`/`ViewWriterEmitter` need to gain
+  — report the plan before building.
+
+**Task 2 — Build + prove (both directions)**
+- Extend both emitters per Task 1's decision.
+- Prove the full round-trip (write→read, exact value match) via an extended/new gtest, per the Scope
+  boundary above.
+- Full regression: every existing View test (Milestone 2's `test_typed_accessor_emitter`, the
+  pre-existing `test_view_wire_soa_roundtrip`, and all of Yeroket's `CodegenTool.Tests`) must still
+  pass — this is additive capability, not a redesign of any existing shape's emission.
+
+## Milestone 2.5 (renumbered from the original insertion — see note above) — writer-side wiring
 - **IS**: build the 4 Hud-family adapter/writer classes (`<Model>ViewWriter`-populating glue reading
   real `SimFrame.Hud/HudFactions/HudEvents/HudInspect` fields), replace `HostSession.cs:148`'s call
   site to produce `UTVA` bytes for these 4 sections. Prove a real round-trip: populate from a REAL
@@ -194,10 +270,14 @@ partial-scoping to Hud-only.
   Sonnet implementer + one Opus validator.
 - [x] **Milestone 2 (Task 2, = "Milestone A" above):** build + prove the typed accessor emitter,
   Yeroket/VIXEN in-tree only, no undertow changes. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2.5 (writer-side wiring, inserted 2026-07-13):** build the 4 Hud-family writer/
-  adapter classes reading real `SimFrame` data, swap `HostSession.ViewBuffer`'s call site, prove a
-  real round-trip in isolation (C#-side only, not yet live). One Sonnet implementer + one Opus
-  validator.
+- [ ] **Milestone 2.4 (inserted 2026-07-13):** wire `Vector` emission through `TypedAccessorEmitter.cs`
+  (reader) and `ViewWireFormat`/`ViewWriterEmitter` (writer), Yeroket/VIXEN in-tree only, prove a
+  round-trip on a proof schema. One Sonnet implementer + one Opus validator.
+- [ ] **Milestone 2.5 (writer-side wiring, inserted 2026-07-13):** build the 5-section writer/adapter
+  classes reading real `SimFrame` data (Bodies now includable per Milestone 2.4's unblock, if it lands
+  first — otherwise Hud-family only, Bodies deferred), swap `HostSession.ViewBuffer`'s call site,
+  prove a real round-trip in isolation (C#-side only, not yet live). One Sonnet implementer + one
+  Opus validator.
 - [ ] **Milestone 3 (Task 3, = "Milestone B" above):** cut undertow's real C++ reader over (must land
   TOGETHER with Milestone 2.5, not independently) + live-gate the real sim→render seam. One Sonnet
   implementer + one Opus validator.
