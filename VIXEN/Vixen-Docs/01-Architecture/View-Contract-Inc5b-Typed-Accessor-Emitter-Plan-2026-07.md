@@ -199,22 +199,46 @@ partial-scoping to Hud-only.
 `Position`/`RecipeParams` can finally be declared in full — closing the gap the type-shape-unification
 increment deliberately left open (model-layer recognition only).
 
-**Scope boundary**
+**SCOPE AMENDED 2026-07-13 after Task 1's research + Opus validation**: Task 1 found the original
+scope below (2 C# emitters only) is genuinely too narrow. The C++ runtime types (`ViewBlob.h`'s
+`ViewKind` enum, `ViewValue`/`ViewCell`, `ViewWireReaderSoa`'s decode switch) have NO `Vector` case at
+all today — there is no way to represent 3 floats under one field entry without one. Additionally,
+`ViewBlobEmitter.cs` (not originally named) has a silent-default-arm risk: a `Vector`-kind field
+currently falls through its `KindEnum` switch to `_ => "Int"`, meaning leaving it untouched would
+produce a SILENT MISCOMPILE (wrong blob kind), not a loud failure. Confirmed by the Opus validator
+independently against real source — this is a real, decisively-confirmed gap, not a hypothetical.
+**Design (A) — a genuine, architecturally pure `ViewKind::Vector` end-to-end — is adopted** (per the
+user's own standing "prefer pure/fully-correct solutions" rule) over design (B) — decomposing a
+Vector field into 3 synthetic Float-kind sub-fields at the blob layer — which would make `fieldCount`
+untruthful and is exactly the "flatten to 3 floats" workaround `UndertowHud.cs`'s own header already
+rejected in writing.
+
+**Scope boundary (AMENDED — 6 files now in scope, not 2)**
 - **IS**: extend `TypedAccessorEmitter.cs` (Milestone 2's reader emitter) to emit a typed getter for a
-  `Vector`-kind field — reading 3 consecutive `float` cells from the `ViewStore` row (matching how
-  `ViewWireReaderSoa`'s decode would need to lay out a Vec3f: 3 sequential `ViewCell.f` slots, or
-  whatever concrete wire shape Task 1 below decides) and returning a `Vec3f`-equivalent C++ value type
-  (confirm/reuse whatever Vec3f type VIXEN's C++ side already uses elsewhere, don't invent a new one).
-  Extend `ViewWireFormat`/`ViewWriterEmitter` (the C# writer side) symmetrically: emit a `Vector`-kind
-  field's `ToBuffer()`/wire-write logic (write 3 floats) and the `<Model>ViewWriter` data-holder's
-  public field shape for a Vector column (likely a small `(float X,float Y,float Z)`-shaped struct or
-  3 discrete floats — decide in Task 1, matching whatever real C# `Float3`-marker type the schema
-  field is declared as).
-- **Prove**: extend Milestone 2's existing gtest (`test_typed_accessor_emitter.cpp`) — or add a
-  sibling test — with a Vector-kind field in the schema (e.g. add `Position` to the native `Hud`
-  proof schema, or declare a new minimal proof schema with just one Vector field) and prove a full
-  round-trip: write a Vec3f value via the writer, read it back via the generated typed accessor,
-  confirm exact value match (including a non-trivial, non-zero-in-every-component test value).
+  `Vector`-kind field, returning a NEW local `struct Vec3f { float x,y,z; }` emitted into the generated
+  header's `Vixen::Views` namespace (no reusable Vec3f-equivalent C++ type exists anywhere in VIXEN's
+  own libraries — confirmed by Task 1's research; the only close precedent is undertow's own retiring
+  `EmitViewContractHeader.cs`'s `Vec3f`, wrong repo, not reusable).
+- **IS**: extend `libraries/RenderGraph/include/Ui/ViewBlob.h` — add a real `Vector` case to the
+  `ViewKind` enum (alongside `Int`/`Float`/`Bool`/`String`/`ArrayOfStruct`) and decide `ViewValue`'s
+  Vector payload representation.
+- **IS**: extend `libraries/RenderGraph/include/Ui/ViewStore.h` + `src/Ui/ViewStore.cpp` — `ViewCell`/
+  `ScalarSlot`/`SetScalar`/`ScalarSlotPtr` all need Vector-kind handling (3-float storage/access).
+- **IS**: extend `libraries/RenderGraph/src/Ui/ViewWireReaderSoa.cpp` — a new decode case reading 3
+  consecutive F32s for a Vector-kind field, one `SetScalar`-equivalent call carrying all 3.
+- **IS**: extend `ViewBlobEmitter.cs`'s `KindEnum` to emit `ViewKind::Vector` for a
+  `ViewFieldKind.Vector` field — MANDATORY, not optional; leaving this untouched produces a silent
+  `ViewKind::Int` miscompile, confirmed by Task 1/validator.
+- **IS**: extend `ViewWireFormat.cs`/`ViewWriterEmitter.cs` (the C# writer side) symmetrically: emit a
+  `Vector`-kind field's `ToBuffer()`/wire-write logic (write 3 floats via `WF32` calls) and the
+  `<Model>ViewWriter` data-holder's public field shape for a Vector column (a small local C# struct,
+  e.g. `public struct Vec3 { public float X,Y,Z; }`, since no shared/canonical C# Vec3 was found reused
+  elsewhere in Yeroket — confirm this in Task 2, don't assume).
+- **Prove**: a NEW minimal proof schema (`VectorProof.cs`, a single `[View] struct { Float3 position;
+  }`), NOT modifying the native `Hud` schema (would perturb its version hash / existing 48/48-style
+  proof, per Task 1's recommendation). Prove a full round-trip: write a non-trivial, non-zero-in-every-
+  component Vec3f value via the writer, read it back via the generated typed accessor, confirm exact
+  value match.
 - **IS NOT**: touching `Bodies.OrbitPath` (`ListVec3f` — a nullable, per-row variable-length list of
   points, a DIFFERENT and harder gap than the flat Vec3f-scalar case; explicitly stays deferred, its
   own follow-up).
@@ -222,28 +246,33 @@ increment deliberately left open (model-layer recognition only).
   Milestone 2.5-adjacent task), once this milestone proves Vector emission works in isolation via a
   proof schema, mirroring Milestone 2's own "prove in Yeroket/VIXEN in-tree before touching undertow's
   real schema" discipline.
+- **IS NOT**: fixing the ALSO-flagged-but-unreachable-today NPE landmine in `TypedAccessorEmitter.cs`'s
+  struct-array element loop (`ef.Scalar.Value` on a null `Nullable<ViewScalar>` if a Vector-kind
+  element ever appears in a row) — Bodies' Position/RecipeParams are both top-level scalar fields, not
+  struct-array elements, so this path is unreachable for this milestone's in-scope fields. Noted as a
+  real, undocumented landmine for whoever eventually needs a Vector-kind struct-array element.
 
 ### Tasks (Milestone 2.4)
 
-**Task 1 — Ground the shape + decide the wire layout (READ + REPORT before building)**
-- Confirm the real C# `Float3` marker type's shape (3 floats, named how — `X`/`Y`/`Z`? read
-  `Runtime/GpuStructAttributes.cs`'s `Float3` marker struct definition, or whatever real Vec3f type
-  undertow's `Bodies.Position`/`RecipeParams` fields are actually declared as in `ViewSchema.cs`/
-  `UndertowBodies.cs` — these may not be the SAME type, confirm and reconcile if not).
-  Confirm what VIXEN's C++ side already has for a Vec3f return type (likely something in `libraries/
-  RenderGraph`'s math/vector utilities) that `TypedAccessorEmitter.cs`'s generated getter should
-  return, rather than inventing a new one.
-- Decide the exact wire layout for a Vector field: 3 consecutive `float` cells in the `ViewStore` row
-  (simplest, matches how a struct-array element's fields are already laid out one-cell-per-member) vs.
-  some other packing — confirm against `ViewWireReaderSoa`'s real decode logic to see what's
-  mechanically simplest to extend.
-- Decide exactly what code `TypedAccessorEmitter.cs`/`ViewWireFormat`/`ViewWriterEmitter` need to gain
-  — report the plan before building.
+**Task 1 (Milestone 2.4a) — Ground the shape + decide the wire layout (READ + REPORT before building)**
+- DONE, see Progress Log below. Confirmed `Float3` is a genuinely EMPTY marker struct (recognition by
+  name+namespace only). Confirmed the wire-layout premise ("3 consecutive float cells") doesn't hold
+  at the C++ `ViewBlob`/`ViewStore`/`ViewWireReaderSoa` layer — `ViewKind` has no `Vector` case, so the
+  amended scope (design A, 6 files) is required.
 
-**Task 2 — Build + prove (both directions)**
-- Extend both emitters per Task 1's decision.
-- Prove the full round-trip (write→read, exact value match) via an extended/new gtest, per the Scope
-  boundary above.
+**Task 2 (Milestone 2.4b) — Build + prove (both directions, all 6 amended-scope files)**
+- Extend `ViewBlob.h`'s `ViewKind` enum with a real `Vector` case + decide `ViewValue`'s payload.
+- Extend `ViewStore.h`/`.cpp`'s `ViewCell`/`ScalarSlot`/`SetScalar`/`ScalarSlotPtr` for Vector storage.
+- Extend `ViewWireReaderSoa.cpp`'s decode switch with a new Vector case (3 consecutive F32 reads).
+- Extend `ViewBlobEmitter.cs`'s `KindEnum` to emit `ViewKind::Vector` (mandatory — the silent-Int-
+  miscompile risk Task 1 found).
+- Extend `TypedAccessorEmitter.cs` to emit a typed getter for a Vector field, returning a new local
+  `Vec3f{x,y,z}` C++ struct.
+- Extend `ViewWireFormat.cs`/`ViewWriterEmitter.cs` (C# writer side) symmetrically — `ToBuffer()`
+  writes 3 floats, the `<Model>ViewWriter` data-holder gets a small local C# Vec3 struct for the
+  column.
+- Prove the full round-trip (write→read, exact value match) via the new `VectorProof.cs` schema +
+  gtest, per the Scope boundary above.
 - Full regression: every existing View test (Milestone 2's `test_typed_accessor_emitter`, the
   pre-existing `test_view_wire_soa_roundtrip`, and all of Yeroket's `CodegenTool.Tests`) must still
   pass — this is additive capability, not a redesign of any existing shape's emission.
@@ -270,9 +299,13 @@ increment deliberately left open (model-layer recognition only).
   Sonnet implementer + one Opus validator.
 - [x] **Milestone 2 (Task 2, = "Milestone A" above):** build + prove the typed accessor emitter,
   Yeroket/VIXEN in-tree only, no undertow changes. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2.4 (inserted 2026-07-13):** wire `Vector` emission through `TypedAccessorEmitter.cs`
-  (reader) and `ViewWireFormat`/`ViewWriterEmitter` (writer), Yeroket/VIXEN in-tree only, prove a
-  round-trip on a proof schema. One Sonnet implementer + one Opus validator.
+- [x] **Milestone 2.4a (inserted 2026-07-13, Task 1):** ground the shape, decide the wire layout
+  (report-back gate). Found the original 2-file scope too narrow — amended to 6 files under design
+  (A), a real `ViewKind::Vector`. One Sonnet implementer + one Opus validator.
+- [ ] **Milestone 2.4b (Task 2):** build across all 6 amended-scope files (`ViewBlob.h`, `ViewStore.h`/
+  `.cpp`, `ViewWireReaderSoa.cpp`, `ViewBlobEmitter.cs`, `TypedAccessorEmitter.cs`,
+  `ViewWireFormat.cs`/`ViewWriterEmitter.cs`) + prove a full round-trip on the new `VectorProof.cs`
+  schema, Yeroket/VIXEN in-tree only. One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 2.5 (writer-side wiring, inserted 2026-07-13):** build the 5-section writer/adapter
   classes reading real `SimFrame` data (Bodies now includable per Milestone 2.4's unblock, if it lands
   first — otherwise Hud-family only, Bodies deferred), swap `HostSession.ViewBuffer`'s call site,
@@ -422,3 +455,49 @@ increment deliberately left open (model-layer recognition only).
     Milestone 3 (reader cutover) must land and be live-gated TOGETHER, per the research's own finding
     that a writer-only change would silently break the currently-correct `UTVW` end-to-end path.
   - No blockers on the rescope itself — proceeding to Milestone 2.5.
+
+- Milestone 2.4a (Task 1, research-only, ground shape + decide wire layout for Vector emission): DONE
+  · 2026-07-13 · no files modified in any repo
+  - **Confirmed `Float3` is a genuinely EMPTY marker struct** (`Runtime/GpuStructAttributes.cs`,
+    `public struct Float3 { }`) — recognition is pure name+namespace match, never inspects fields.
+  - **Confirmed a real gap**: undertow's real `Bodies.Position`/`RecipeParams` are backed by
+    `Undertow.Sim.Vec3` (imported from `Undertow.Generation.StarSystem`, `double X/Y/Z`) — a DIFFERENT
+    type than the kernel's `Float3` marker, and uses doubles not floats. Not a recognizer mismatch
+    (recognition applies to the `[View]`-schema declaration type, not `SimFrame`'s internal type), but
+    means Milestone 2.5's writer-glue needs an explicit narrowing `Vec3(double)→Vec3f(float)`
+    conversion, not a 1:1 field copy.
+  - **Confirmed no reusable Vec3f-equivalent C++ type exists anywhere in VIXEN's own libraries** — the
+    only close precedent is undertow's own retiring `EmitViewContractHeader.cs`'s `Vec3f`, wrong repo.
+    Decision: `TypedAccessorEmitter.cs` emits its own local `struct Vec3f{float x,y,z;}`.
+  - **CRITICAL finding, independently confirmed by the Opus validator against real source across the
+    entire C++ decode surface**: the plan's original "3 consecutive float cells" premise does NOT hold
+    at the `ViewBlob`/`ViewStore`/`ViewWireReaderSoa` layer. `ViewKind` (`ViewBlob.h`) has exactly 5
+    values (`Int`/`Float`/`Bool`/`String`/`ArrayOfStruct`) — no `Vector` case. `ViewValue`/`ViewCell`
+    only carry single int/float/bool/string values. `ViewWireReaderSoa::Apply`'s decode loop switches
+    over exactly those 5 kinds, one write per field per row — there is genuinely no way to represent 3
+    floats under one field entry without a new `ViewKind::Vector` case. This means the real mechanism
+    requires touching `ViewBlob.h`/`ViewStore.h`/`.cpp`/`ViewWireReaderSoa.cpp` (C++ engine substrate)
+    PLUS `ViewBlobEmitter.cs` — NONE of which were named in the original 2-file scope.
+  - **`ViewBlobEmitter.cs` is not optional to touch — it's a mandatory fix, not just an addition.** Its
+    `KindEnum` switch currently falls through a Vector-kind field (whose `Scalar` is null) to
+    `_ => "Int"` — a SILENT MISCOMPILE (wrong blob kind emitted), not a loud failure, if left untouched.
+  - **Design decision: adopt (A), a genuine end-to-end `ViewKind::Vector`**, over (B) — decomposing into
+    3 synthetic Float sub-fields at the blob layer — per the user's own standing "prefer pure/fully-
+    correct solutions" rule. (B) would make `fieldCount` untruthful and is exactly the "flatten to 3
+    floats" workaround `UndertowHud.cs`'s own header already rejected in writing. The Opus validator
+    concurred explicitly against this rule.
+  - **Scope boundary AMENDED** (see the section above) to name all 6 required files under design (A),
+    not the original 2.
+  - **Real infrastructure gap found and fixed during this milestone's own validation pass**: the
+    Yeroket worktree (`feat/view-contract-inc5`) was 21 commits behind Yeroket `main` and did NOT
+    contain the type-shape-recognizer-unification merge (`bb7c0ff4`) this whole milestone's premise
+    depends on — `ViewFieldKind.Vector`/`VectorMarkerName`/`FieldShapeRecognizer.cs` did not exist in
+    the worktree at all. Rebased the worktree onto `main` (clean, no conflicts), re-ran the full test
+    suite post-rebase (79/79 pass), confirmed the Vector case now genuinely present.
+  - No blockers remaining (both required actions — scope amendment + worktree rebase — completed).
+  - **Opus validator (independent re-verification):** APPROVED. Independently confirmed the critical
+    `ViewKind`-has-no-Vector-case finding across the ENTIRE C++ decode surface (not just spot-checked),
+    confirmed the `ViewBlobEmitter.cs` silent-miscompile risk as a genuinely mandatory (not optional)
+    fix, and explicitly weighed design (A) vs (B) against the user's own standing pure-solutions rule
+    before concurring with (A). Flagged both required actions (scope amendment + worktree rebase) that
+    have since been completed. Cleared to proceed to Milestone 2.4b.
