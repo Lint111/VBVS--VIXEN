@@ -147,9 +147,136 @@ layout(std430, binding = 27) writeonly buffer SpatialReservoirDebugBuffer {
 };
 
 // ============================================================================
+// DDGI PROBE ATLASES + CONFIG (bindings 32/33/34) — Sampled Lighting Inc4 M5
+// ============================================================================
+// This pass READS ONLY (probeUpdateNode, a genuine sibling pass, is the sole writer —
+// see BuildRenderGraph.cpp's IMAGE_READ_ARRAY/IMAGE_WRITE_ARRAY wiring for the
+// cross-dispatch hazard declaration). Same rgba16f/rg16f formats ProbeAtlasNode was
+// configured with (BuildRenderGraph.cpp PHASE 2).
+layout(rgba16f, binding = 32) uniform readonly image2D probeIrradianceAtlasRead;
+layout(rg16f,   binding = 33) uniform readonly image2D probeVisibilityAtlasRead;
+
+#include "Generated/ProbeGridConfig.glsl"
+
+layout(std430, binding = 34) readonly buffer ProbeGridConfigReadSSBO {
+    ProbeGridConfig probeGridConfig;
+};
+
+// M5 live-gate instrumentation (VIXEN_DDGI_LEAK_GATE_DEMO=1): the SAME binding-31
+// DDGILeakGateDebug SSBO ProbeUpdate.comp writes gatheredLuma/DIAG into -- this pass
+// additionally writes shadeM5IndirectLuma (see that struct's own doc comment) from
+// whichever pixel's worldPos lands nearest the CPU-set farShadingPos, giving an
+// independent live numeric proof that gatherIndirectDiffuse()'s production 8-probe
+// trilinear result actually contributes bounce lighting, distinct from M4's own
+// single-probe self-test gather in ProbeUpdate.comp.
+struct DDGILeakGateDebugShade {
+    uint  ddgiLeakGateEnabled;
+    uint  chebyshevTestEnabled;
+    uint  nearProbeIndex;
+    uint  farProbeIndex;
+    float farShadingPosX, farShadingPosY, farShadingPosZ;
+    float gatheredLuma;
+    uint  diagNearProbeHitCount;
+    float diagNearProbeAvgRadianceLuma;
+    float diagNearProbeAvgDepth;
+    float diagNearProbeAvgDepth2;
+    uint  shadeM5IndirectLumaBits;  // atomicMax target: floatBitsToUint(luma) of the max seen this dispatch
+    uint  diagShadeAnyHitCount;     // DIAG (temporary, M5 debugging): atomicAdd count of anyHitRT pixels
+};
+
+layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
+    DDGILeakGateDebugShade ddgiLeakGateDebugShade;
+};
+
+// ============================================================================
 // RESERVOIR MATH (shared primitive — see ReservoirCombine.glsl's own header)
 // ============================================================================
 #include "ReservoirCombine.glsl"
+
+// ============================================================================
+// DDGI INDIRECT DIFFUSE GATHER (Sampled Lighting Inc4 M5) — trilinear across the 8
+// probes surrounding `shadingPos`, each sample Chebyshev-weighted by
+// ProbeUpdate.comp's own visibility moments (same chebyshevVisibility formula, kept
+// as its own copy here per this codebase's established per-shader-binding-set
+// precedent — see ProbeUpdate.comp's own lightTreeNodePHat/pcgHash comments for why
+// shared math gets re-declared per consumer rather than pulled from a file with
+// unrelated bindings). NOT the M4 self-test's single-probe gatherProbeIrradianceLuma
+// (that was a scaffold for M4's own leak-test gate); this is the real production
+// 8-probe trilinear-weighted RGB gather feeding the shade pass's indirect term.
+// ============================================================================
+
+float chebyshevVisibilityGather(float mean, float mean2, float d) {
+    if (d <= mean) return 1.0;
+    float variance = max(mean2 - mean * mean, 1e-4);
+    float diff = d - mean;
+    return variance / (variance + diff * diff);
+}
+
+// Samples one probe's irradiance + visibility atlas entry (whichever texel block
+// corner-clamped `probeIndex` maps to) and returns its Chebyshev-visibility-weighted
+// RGB contribution at `shadingPos`. Mirrors ProbeUpdate.comp's own
+// gatherProbeIrradianceLuma indexing math, generalized from luma to RGB (the shade
+// pass needs full-color indirect diffuse, not a debug scalar).
+vec3 sampleProbeIrradianceRgb(uint probeIndex, vec3 probeWorldPos, vec3 shadingPos) {
+    uint probesPerRow = max(probeGridConfig.countX * probeGridConfig.countY, 1u);
+    uint px = probeIndex % probeGridConfig.countX;
+    uint py = (probeIndex / probeGridConfig.countX) % probeGridConfig.countY;
+    uint pz = probeIndex / (probeGridConfig.countX * probeGridConfig.countY);
+    uint gridCol = px * probeGridConfig.countY + py;
+
+    ivec2 irradianceAtlasSize = imageSize(probeIrradianceAtlasRead);
+    uint irradianceTexelsPerProbe = max(uint(irradianceAtlasSize.x) / probesPerRow, 1u);
+    ivec2 irradianceBlockOrigin = ivec2(int(gridCol * irradianceTexelsPerProbe),
+                                         int(pz * irradianceTexelsPerProbe));
+    vec3 irradiance = imageLoad(probeIrradianceAtlasRead, irradianceBlockOrigin).rgb;
+
+    ivec2 visibilityAtlasSize = imageSize(probeVisibilityAtlasRead);
+    uint visibilityTexelsPerProbe = max(uint(visibilityAtlasSize.x) / probesPerRow, 1u);
+    ivec2 visibilityBlockOrigin = ivec2(int(gridCol * visibilityTexelsPerProbe),
+                                         int(pz * visibilityTexelsPerProbe));
+    vec2 moments = imageLoad(probeVisibilityAtlasRead, visibilityBlockOrigin).rg;
+
+    float d = length(shadingPos - probeWorldPos);
+    float visibility = chebyshevVisibilityGather(moments.x, moments.y, d);
+    return irradiance * visibility;
+}
+
+// Trilinear gather across the 8 probes surrounding `shadingPos` (standard DDGI
+// indirect-diffuse gather shape, Majercik et al. 2019 sec 4): locate the grid cell
+// containing shadingPos, sample all 8 corner probes (each Chebyshev-visibility-
+// weighted per sampleProbeIrradianceRgb above), and blend by the fractional
+// trilinear weights. Corner indices are clamped to the grid's valid range (edge/
+// corner probes reuse their own value beyond the grid boundary, the standard
+// clamp-to-edge treatment — no wraparound, no extrapolation).
+vec3 gatherIndirectDiffuse(vec3 shadingPos) {
+    vec3 gridOrigin = vec3(probeGridConfig.originX, probeGridConfig.originY, probeGridConfig.originZ);
+    vec3 spacing = vec3(max(probeGridConfig.spacingX, 1e-4),
+                         max(probeGridConfig.spacingY, 1e-4),
+                         max(probeGridConfig.spacingZ, 1e-4));
+    ivec3 gridCount = ivec3(int(probeGridConfig.countX), int(probeGridConfig.countY), int(probeGridConfig.countZ));
+
+    vec3 localPos = (shadingPos - gridOrigin) / spacing;
+    ivec3 baseCell = ivec3(floor(localPos));
+    vec3 frac = clamp(localPos - vec3(baseCell), 0.0, 1.0);
+
+    vec3 result = vec3(0.0);
+    for (uint corner = 0u; corner < 8u; ++corner) {
+        ivec3 offset = ivec3((corner >> 0u) & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
+        ivec3 cell = clamp(baseCell + offset, ivec3(0), gridCount - ivec3(1));
+
+        float weight = mix(1.0 - frac.x, frac.x, float(offset.x)) *
+                       mix(1.0 - frac.y, frac.y, float(offset.y)) *
+                       mix(1.0 - frac.z, frac.z, float(offset.z));
+        if (weight <= 0.0) continue;
+
+        uint probeIndex = uint(cell.x) + uint(cell.y) * probeGridConfig.countX +
+                           uint(cell.z) * probeGridConfig.countX * probeGridConfig.countY;
+        vec3 probeWorldPos = gridOrigin + vec3(cell) * spacing;
+
+        result += sampleProbeIrradianceRgb(probeIndex, probeWorldPos, shadingPos) * weight;
+    }
+    return result;
+}
 
 // Target-function value p_hat(i) for light-tree cut node i (same definition as
 // DirectLighting.comp's own copy — see that shader's comment for the derivation).
@@ -231,6 +358,13 @@ void main() {
     vec3  bestNormal     = recReadback.worldNormal;
     float bestRoughness  = recReadback.roughness;
     vec3  bestWorldPos   = recReadback.worldPos;
+
+    // DIAG (temporary, M5 debugging -- remove before final commit): unconditional
+    // (not gated by probeGridEnabled) anyHitRT pixel count, disambiguating "camera sees
+    // nothing" from "sees geometry but zero indirect irradiance".
+    if (ddgiLeakGateDebugShade.ddgiLeakGateEnabled != 0u && anyHitRT) {
+        atomicAdd(ddgiLeakGateDebugShade.diagShadeAnyHitCount, 1u);
+    }
 
     vec3 outColor;
     if (anyHitRT) {
@@ -341,6 +475,43 @@ void main() {
                 (chosen.worldExtent * chosen.worldExtent * chosen.worldExtent);
             float W = reservoirUnbiasedWeight(current);
             outColor += bestColor * (emittedPower / dist2) * NdotL * shadowFactor * W;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // DDGI indirect diffuse (Sampled Lighting Inc4 M5): trilinear, Chebyshev-weighted
+    // gather across the 8 nearest probes, summed ADDITIVELY with the ReSTIR direct
+    // term above (outColor already holds analytic-lighting + optional ReSTIR direct
+    // by this point). probeGridEnabled==0 (the default) skips this block entirely --
+    // outColor stays EXACTLY the pre-DDGI result, the same byte-identity escape hatch
+    // every milestone in this program has preserved since Inc0.
+    // -----------------------------------------------------------------------
+    if (probeGridConfig.probeGridEnabled != 0u && anyHitRT) {
+        // Lambert diffuse: probe irradiance (incoming radiance) modulated by this
+        // pixel's OWN albedo/pi (energy-normalized BRDF) -- mirrors ProbeUpdate.comp's
+        // identical brdf = hitColor/pi treatment at the ray-cast source; the probe
+        // atlas stores outgoing radiance from ITS hit surface (that surface's own
+        // albedo already applied there), so the destination pixel's BRDF is a
+        // SEPARATE, second application at the gather site, not double-counting.
+        vec3 diffuseBrdf = bestColor / 3.14159265358979323846;
+        vec3 indirectDiffuse = gatherIndirectDiffuse(bestWorldPos);
+        outColor += diffuseBrdf * indirectDiffuse;
+
+        // M5 live-gate instrumentation: publishes the MAXIMUM indirectDiffuse luma seen
+        // by any pixel this dispatch into the shared debug SSBO (see
+        // DDGILeakGateDebugShade's own doc comment) -- an atomicMax over the luma's
+        // bit-cast-to-uint representation (a standard technique: for non-negative
+        // floats, uint(floatBitsToUint(x)) preserves numeric ordering, so
+        // atomicMax on the bit pattern IS atomicMax on the float). Deliberately NOT
+        // tied to a specific farShadingPos/nearest-pixel match (the leak-test scene's
+        // near/far probes have no scripted camera framing them -- this is a screen-
+        // space gather, that gate is a probe-space one) -- "did ANY pixel receive a
+        // non-zero indirect contribution this dispatch" is sufficient to prove the
+        // shade-pass integration actually fires in a real emissive scene (paired with
+        // VIXEN_RESTIR_GATE_DEMO, which DOES have camera-framed emissive geometry).
+        if (ddgiLeakGateDebugShade.ddgiLeakGateEnabled != 0u) {
+            float luma = dot(diffuseBrdf * indirectDiffuse, vec3(0.2126, 0.7152, 0.0722));
+            atomicMax(ddgiLeakGateDebugShade.shadeM5IndirectLumaBits, floatBitsToUint(luma));
         }
     }
 

@@ -118,6 +118,20 @@ struct DDGILeakGateDebug {
     float diagNearProbeAvgRadianceLuma;
     float diagNearProbeAvgDepth;
     float diagNearProbeAvgDepth2;
+    // M5 ADDITION: written by SpatialReuseShade.comp (NOT this shader), the SAME binding-31
+    // SSBO shared across both passes -- an atomicMax (bit-cast, see that shader's own
+    // comment) over the production 8-probe trilinear gather's luma across every pixel this
+    // dispatch, gated by ddgiLeakGateEnabled. Distinct from gatheredLuma above (M4's own
+    // single-probe self-test scaffold): this is gatherIndirectDiffuse()'s real production
+    // result, giving an independent live numeric proof the shade-pass integration actually
+    // contributes bounce lighting. CPU-zeroed each tick before SpatialReuseShade.comp's
+    // dispatch (atomicMax needs a per-tick-fresh floor, not an ever-growing running max).
+    uint shadeM5IndirectLumaBits;
+    // DIAG (temporary, M5 debugging -- remove before final commit): SpatialReuseShade.comp's
+    // own atomicAdd count of anyHitRT pixels this dispatch, disambiguating "camera sees
+    // nothing" from "pixels see zero indirect irradiance" while shadeM5IndirectLumaBits
+    // stays 0.
+    uint diagShadeAnyHitCount;
 };
 
 layout(std430, binding = 31) buffer DDGILeakGateDebugSSBO {

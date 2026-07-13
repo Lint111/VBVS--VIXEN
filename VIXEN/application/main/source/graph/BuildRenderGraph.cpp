@@ -379,6 +379,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // plumbing.
     NodeHandle probeAtlasGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("probe_atlas_gatherer");
 
+    // Sampled Lighting Inc4 M5: a SECOND ImageSyncGathererNode instance, fed from the SAME
+    // two ProbeAtlasNode outputs, gathering the atlas IRenderTarget* handles for the READ
+    // side (SpatialReuseShade.comp's shade-pass gather) — mirrors the established
+    // BUFFER_WRITE_ARRAY/BUFFER_READ_ARRAY "two gatherer instances, same underlying source,
+    // one feeds the writer's array slot, a separate one feeds the reader's array slot" shape
+    // (see spatialReuseReservoirReadGatherer's own precedent). This is what lets the
+    // scheduler bake a real probeUpdateNode(write)->spatialReuseNode(read) SyncEdge on each
+    // atlas's own constituent Resource*.
+    NodeHandle spatialReuseProbeAtlasReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("spatial_reuse_probe_atlas_read_gatherer");
+
     // Sampled Lighting Inc4 M3: ProbeUpdateNode — the probe-update compute pass itself
     // (ProbeUpdate.comp). Own shaderLib/gatherer/pushConstantGatherer/descSet/pipeline
     // quintet, mirroring directLighting*'s own "second compiled shader needs its own
@@ -605,9 +615,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc4 M4: DDGILeakGateDebug is a SINGLE fixed-size record, not
     // extent-driven -- PARAM_SIZE_BYTES, not PARAM_BYTES_PER_PIXEL. std430 layout: 5x
     // uint (20B) + 7x float (28B) = 48B, no padding (all members are 4-byte scalars).
-    // (DIAG temporary fields, see ProbeUpdate.comp's own struct.)
+    // (DIAG temporary fields, see ProbeUpdate.comp's own struct.) M5 added two more uints
+    // (shadeM5IndirectLumaBits + diagShadeAnyHitCount, both written by SpatialReuseShade.comp)
+    // -> 56B.
     auto* ddgiLeakGateDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(ddgiLeakGateDebugBuffer));
-    ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 48u);
+    ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 56u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -905,6 +917,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(probeAtlasGatherer))->PreRegisterImageSlots(2);
+
+    // Sampled Lighting Inc4 M5: read-side atlas gatherer -- same 2 entries, feeding
+    // spatialReuseNode's IMAGE_READ_ARRAY (see spatialReuseProbeAtlasReadGatherer's own
+    // declaration comment above).
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(2);
 
     // Sampled Lighting Inc4 M3: ProbeUpdateNode dispatch — ONE WORKGROUP PER PROBE
     // (ProbeUpdate.comp's local_size_x=PROBE_UPDATE_MAX_RAYS_PER_PROBE=256 covers every
@@ -3282,6 +3299,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
                   probeAtlasGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
+    // Sampled Lighting Inc4 M5: the SAME two ProbeAtlasNode outputs, gathered a SECOND time
+    // into spatialReuseProbeAtlasReadGatherer (the read-side instance) -- same source
+    // Resource*s as probeAtlasGatherer above, so the constituent expansion pairs correctly
+    // against probeUpdateNode's IMAGE_WRITE_ARRAY writer on those SAME atlas Resource*s.
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  spatialReuseProbeAtlasReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                  spatialReuseProbeAtlasReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs — device +
     // extent-driven sizing from renderTargetNode's own RENDER_TARGET output, same
     // pattern as hitRecordBufferNode (one Vixen::Gpu::ReservoirRecord per pixel of the
@@ -4039,6 +4065,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           spatialReuseGatherer, 27,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
+    // Bindings 32/33/34 (Sampled Lighting Inc4 M5): DDGI probe atlases + ProbeGridConfig —
+    // SpatialReuseNode READS ONLY (probeUpdateNode is the sole writer). Same CURRENT_VIEW
+    // precedent as probeUpdateGatherer's own bindings 29/30 (raw VkImageView, not the
+    // IRenderTarget* PROBE_ATLAS output — see ProbeAtlasNodeConfig::CURRENT_VIEW's own doc
+    // comment on why IRenderTarget* can never populate a descriptor slot, KI-027's
+    // established discipline). The genuine cross-dispatch READ hazard against
+    // probeUpdateNode's write is declared separately via IMAGE_READ_ARRAY above (same split
+    // IMAGE_WRITE_ARRAY/descriptor-binding already uses) — these bindings are Execute-only.
+    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                          spatialReuseGatherer, 32,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                          spatialReuseGatherer, 33,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(probeGridConfigNode, ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                          spatialReuseGatherer, 34,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    // Binding 31 (M5 live-gate instrumentation): the SAME ddgi_leak_gate_debug_buffer
+    // ProbeUpdate.comp's gatherer already binds at 31 -- SpatialReuseShade.comp additionally
+    // writes shadeM5IndirectLuma into it (see DDGILeakGateDebugShade's own doc comment).
+    // Read-write, same role shape as probeUpdateGatherer's own binding-31 connection.
+    batch.Connect(ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 31,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
     // Binding 0 (outputImage): SpatialReuseNode is the genuine writer now (M5 — moved from
     // DirectLightingNode). Same renderTargetNode::CURRENT_VIEW source.
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
@@ -4178,6 +4230,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (moved from DirectLightingNode, M5 — SpatialReuseNode is the genuine outputImage writer now).
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+
+    // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeUpdateNode's
+    // IMAGE_WRITE_ARRAY (wired further below), same two ProbeAtlasNode Resource*s on both
+    // sides (via each side's own ImageSyncGathererNode instance) — bakes the genuine
+    // probeUpdateNode(write)->spatialReuseNode(read) cross-dispatch SyncEdge this milestone's
+    // gate must independently confirm. This is the FIRST real IMAGE_READ_ARRAY consumer.
+    batch.Connect(spatialReuseProbeAtlasReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // No separate ordering-only connection is needed for DirectLighting-before-SpatialReuse: the
     // reservoir BUFFER_WRITE_ARRAY (DirectLightingNode) <-> BUFFER_READ_ARRAY (SpatialReuseNode)
