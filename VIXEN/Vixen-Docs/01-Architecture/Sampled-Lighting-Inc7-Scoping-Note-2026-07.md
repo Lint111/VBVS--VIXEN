@@ -1,4 +1,4 @@
-# Sampled Lighting Inc6 — Mip/Tier-Derived Probe Density — Scoping Note (2026-07)
+# Sampled Lighting Inc7 — Mip/Tier-Derived Probe Density — Scoping Note (2026-07)
 
 **Status:** NOT a plan — a scoping note capturing a real idea before it's lost, for a future increment after Inc5 (amortized update + tuned defaults) ships. User-flagged 2026-07-13: "we should also have mip level derived probes, so that we get proper mip capabilities using the efficient space handling for probes."
 
@@ -21,7 +21,7 @@ Mip-derived density is **non-uniform grid addressing** — a materially differen
 ## Why sequence it AFTER Inc5, not instead of it
 
 - Inc5 is the cheap, universal, low-risk fix that helps every machine immediately (per the `DDGI-HWRT-Acceleration-And-MultiQueue-Direction-2026-07.md`'s own sequencing recommendation) — it should not wait on a structurally bigger redesign.
-- Inc6 inherits Inc5's already-tuned per-probe cost (fewer rays, amortized cadence) as ITS OWN starting baseline — the two changes are orthogonal levers (how many probes update, at what density, vs. how many total probes exist and where) and gating them together would make it hard to attribute a measured win to the right lever.
+- Inc7 inherits Inc5's already-tuned per-probe cost (fewer rays, amortized cadence) as ITS OWN starting baseline — the two changes are orthogonal levers (how many probes update, at what density, vs. how many total probes exist and where) and gating them together would make it hard to attribute a measured win to the right lever.
 - Mip-derived density is a genuine research/design question in its own right (how exactly does "tier" map to "probe spacing" — a direct 1:1 with the octree's own tier boundaries? A separate, coarser cascade level count? Does it interact with the direction doc's own deferred HW-RT/multi-queue axes at all?) that deserves its own scoping/design pass before a milestone map is written, the same way Inc4 itself started from a grounding investigation before any Task list existed.
 
 ## Open questions for a future scoping pass (not answered here)
@@ -31,11 +31,11 @@ Mip-derived density is **non-uniform grid addressing** — a materially differen
 3. What is the correct hysteresis behavior for a probe whose effective density/neighbors change as tier residency shifts — reset its history, blend across a tier transition, or something else?
 4. Does this compose with, complicate, or get superseded by the HW-RT acceleration axis (direction doc §3) — e.g. does a non-uniform probe placement change the BLAS/TLAS design for probe rays if/when Tier-1 ray-query lands?
 
-None of this is scheduled. This note exists so the idea isn't lost between now and whenever Inc5 ships and a real Inc6 scoping conversation happens.
+None of this is scheduled. This note exists so the idea isn't lost between now and whenever Inc5 ships and a real Inc7 scoping conversation happens.
 
 ## Related
 
-- `Sampled-Lighting-Inc5-Plan-2026-07.md` — ships first; Inc6 inherits its tuned baseline.
+- `Sampled-Lighting-Inc5-Plan-2026-07.md` — ships first; Inc7 inherits its tuned baseline.
 - `Sampled-Lighting-Design-2026-07.md` §6 open-decision #2 — the original "uniform grid only, revisit later" deferral this note now revisits.
 - `Tiered-ESVO-Observer-Addressing-Design-2026-07.md` — the existing tier/LOD structure this note proposes deriving probe density FROM, rather than inventing a separate cascade scheme.
 - `DDGI-HWRT-Acceleration-And-MultiQueue-Direction-2026-07.md` — the broader sequencing this note's own "why after Inc5" reasoning is drawn from.
