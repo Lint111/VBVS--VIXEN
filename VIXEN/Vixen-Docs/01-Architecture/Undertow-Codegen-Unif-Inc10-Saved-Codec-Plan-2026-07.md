@@ -114,11 +114,39 @@ content), small but genuinely exercised in production.
   doc to reflect the whole program's completion (10/10 increments), not just this increment.
 
 ## Milestone Map
-- [ ] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
+- [x] **Milestone 1 (Task 1):** ground the shape, decide mechanism (report-back gate). One Sonnet
   implementer + one Opus validator.
 - [ ] **Milestone 2 (Task 2):** build + equivalence proof + retire. One Sonnet implementer + one Opus
   validator.
 
 ## Progress Log
 
-(none yet)
+- Milestone 1 (Task 1, research-only): DONE · 2026-07-13 · no files modified in either repo
+  - **All ground truth re-confirmed against real source**: `SavedAttribute`/`SaveFieldAttribute`
+    (`Intro` version-gate)/`SaveSkipAttribute`/`SaveCustomAttribute`/`ISystemSave` in `SystemModel.cs`,
+    exact line numbers confirmed by both implementer and validator.
+  - **The 2 real production `[Saved]` types + consumers re-confirmed with quoted code**: `TrendCell`
+    (`Ai/GrowthTrend.cs`) consumed by `GrowthTrendSystem.Save/Load`; `FactionPlaceKey`
+    (`EconomicProfile.cs`) consumed by `EconomicProfileSystem.Save/Load` — both wired into
+    `UndertowSim.cs`'s real campaign save/load loop under header `"UNDERTOW_CAMPAIGN 37"` and
+    `LoadedCampaignVersion`. The survey's original "unproven/not load-bearing" claim is definitively
+    refuted by this increment's own research.
+  - **`_SaveGenProbe` confirmed intentional test-only scaffolding** (verbatim comment: "Generator
+    coverage ONLY... Not persisted by any slice"), exercising skip/custom/gated paths via
+    `SaveCodecGenTests.cs`.
+  - **No reflection constraint confirmed**: `CodeModLoader.cs` has zero references to `[Saved]`/
+    `Save.`/`Load.` — it only wires `ISystemSave` delegate slots to methods the system class already
+    defines, no runtime field-level reflection.
+  - **Mechanism confirmed**: a new standalone Yeroket emitter (NOT extending Increment 9's content-pack
+    codec — a genuinely distinct wire format/concern). `EmitSaveCodec.cs` confirmed pure C#, zero real
+    Roslyn dependency (only uses `Microsoft.CodeAnalysis.DiagnosticSeverity`/`Location` as diagnostic
+    payload types). `[Saved]`'s field model is discovered via direct `IFieldSymbol` walking on arbitrary
+    sim-state types, the same discovery pattern Increments 3/4 used for `[Param]`/`[Action]` — no
+    shared IR from prior increments genuinely applies, a small purpose-built IR is correct.
+  - **Useful correction surfaced**: two distinct files both named `GrowthTrendSaveTests.cs` exist in
+    different folders (`Saves/` and `Systems/`) — Milestone 2 must disambiguate these in the full-suite
+    gate.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently confirmed all 6 findings
+    against real source at the cited lines, including directly checking `EmitSaveCodec.cs`'s actual
+    imports to confirm the "pure C#" claim. Cleared to proceed to Milestone 2.
