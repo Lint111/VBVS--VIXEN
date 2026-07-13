@@ -129,7 +129,7 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
 ## Milestone Map
 - [x] **Milestone 1 (Task 1):** ground the shape, decide the emission template (report-back gate). One
   Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2, = "Milestone A" above):** build + prove the typed accessor emitter,
+- [x] **Milestone 2 (Task 2, = "Milestone A" above):** build + prove the typed accessor emitter,
   Yeroket/VIXEN in-tree only, no undertow changes. One Sonnet implementer + one Opus validator.
 - [ ] **Milestone 3 (Task 3, = "Milestone B" above):** cut undertow's real reader over + live-gate the
   real sim→render seam. One Sonnet implementer + one Opus validator.
@@ -179,3 +179,57 @@ barely change while the reader becomes generated, not hand-rolled, and matches t
     correction (most rigorously) and the missing-proof-harness claim via its own search rather than
     trusting the implementer. Flagged 2 additional real consumer files for Milestone 3
     (`test_hud_view.cpp`/`test_view_contract.cpp`). Cleared to proceed to Milestone 2.
+
+- Milestone 2 (Task 2, "Milestone A" — build + prove the typed accessor emitter): DONE · 2026-07-13
+  · Yeroket/VIXEN in-tree only, undertow untouched.
+  - **Built `TypedAccessorEmitter.cs`** (Yeroket `Packages/com.yeroket.utility.kernel-framework/
+    SourceGenerator~/Transpiler/TypedAccessorEmitter.cs`, sibling to `ViewBlobEmitter.cs`) per
+    Milestone 1's corrected emission template exactly: one `<Name>Section` class per top-level
+    `ViewStruct`, ctor takes `Vixen::RenderGraph::ViewStore&` stored as a reference member (not
+    cached raw pointers), scalar getters cast `ScalarSlotPtr(kFieldIdx)`, struct-array element
+    getters read `store_.Array(kFieldIdx)[i].Cell(kElemIdx).<i|f|b|s>`, all field/elem indices
+    baked as `static constexpr size_t` literals (no runtime name lookup, since `FindField`/
+    `FindElemField` are private). NO `kSectionBodies`/`kBodiesPosition`-style enum constants
+    emitted, confirmed correct per Milestone 1.
+  - **Handles N struct-array fields per struct**, not just one: a struct with exactly one array
+    field gets a plain `count()`; more than one (discovered live via the native `Hud` schema,
+    which declares BOTH `factions` and `events`) gets `count_<field>()` per array, and per-element
+    getters/index constants are namespaced `<field>_<elem>` to avoid name collisions across two
+    arrays. This wasn't explicitly spelled out in the plan (which described a single-array-per-
+    section shape matching `view_contract.h`) but was a real correctness gap the first draft
+    silently hit (dropped the second array's getters entirely) — fixed before proving.
+  - **Wired `--typed-accessor-cpp` CLI flag** into `CodegenTool~/Program.cs`, mirroring
+    `--view-blob`'s `--schema`/`--out-header`/`--check` pattern exactly.
+  - **Generated headers for all 6 target schemas**: the 5 Undertow-migration schemas named by the
+    plan (`UndertowHud`/`UndertowHudFactions`/`UndertowHudEvents`/`UndertowHudInspect`/
+    `UndertowBodies`, from VIXEN `codegen/view-schemas/UndertowHud.cs`) plus the native `Hud`
+    schema (from `codegen/view-schemas/Hud.cs`) needed for the proof harness below. Checked into
+    VIXEN `application/main/include/Generated/` as `*.typed.g.h` (Undertow schemas) and
+    `HudTypedAccessor.g.h` (native Hud, distinct name from the pre-existing `Hud.g.h` which is
+    `RmlDataModelEmitter`'s unrelated `--view` output).
+  - **Equivalence proof**: new gtest `test_typed_accessor_emitter.cpp` (VIXEN `libraries/
+    RenderGraph/tests/`, wired into that dir's `CMakeLists.txt`) reuses
+    `test_view_wire_soa_roundtrip.cpp`'s EXACT canonical-SoA-wire fixture + `kHudBlob` per
+    Milestone 1's decision — fills a `ViewStore` via `ViewWireReaderSoa::Apply`, then wraps the
+    SAME store in the generated `Vixen::Views::HudSection` and asserts every decoded value
+    (`tick`=7, `bodyCount`=12, `activeLensName`="Ops", `activeLensCount`=4,
+    `factions`=[Reds/0.5/T/T/F/T, ""/0/F/F/F/F, Greens/0.75/F/T/T/F], `events`=[war@40,
+    truce@99]) matches the raw-API test's proven values exactly. **1/1 PASS.**
+    `test_view_wire_soa_roundtrip` re-run alongside: still 3/3 PASS (no regression).
+  - **Build note**: this milestone added a new source file to `tests/CMakeLists.txt`, so
+    `build.bat build` alone would NOT have picked it up (ninja has no idea the new `.cpp` exists) —
+    ran `build.bat all` (full reconfigure + build) per the vixen-build-policy skill's explicit rule
+    for this case. Confirmed the `.obj` for the new test actually exists post-build (not a stale
+    binary false-pass).
+  - **Yeroket-side regression check**: `dotnet test CodegenTool.Tests.csproj` — 43/43 PASS (no
+    existing test broken by the new emitter or the `Program.cs` CLI wiring).
+  - **SDFNodeGenerator.dll gotcha hit and handled correctly**: `dotnet test` rebuilt this DLL
+    non-deterministically (byte diff, no source touched) exactly as the known gotcha predicts —
+    `git checkout --` it before committing rather than committing the incidental rebuild.
+  - Commits: Yeroket `f83fb68c` (`feat/view-contract-inc5`, `TypedAccessorEmitter.cs` +
+    `Program.cs` CLI flag); VIXEN `ae040813` (`feat/view-contract-inc5`, gtest + CMakeLists.txt
+    wiring + 6 generated headers).
+  - No blockers. Milestone B (undertow cutover + live-gate) is next; Bodies'
+    `Position`/`RecipeParams`/`OrbitPath` remain the explicitly out-of-scope gap per this plan's
+    own scope boundary.
+  - **Opus validator:** pending.
