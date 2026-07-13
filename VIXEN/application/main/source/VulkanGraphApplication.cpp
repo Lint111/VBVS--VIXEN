@@ -748,6 +748,106 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Sampled Lighting Inc4 M4 live gate (VIXEN_DDGI_LEAK_GATE_DEMO=1): every tick, seed
+        // ddgi_leak_gate_debug_buffer (ProbeUpdate.comp binding 31) with the near/far probe
+        // indices + far shading point BuildRenderGraph.cpp's scene-build block computed
+        // (ddgiLeakGateNearProbeIndex_/ddgiLeakGateFarProbeIndex_/ddgiLeakGateFarShadingPos_),
+        // BEFORE this tick's Render() dispatches ProbeUpdate.comp (Update() runs before
+        // Render() every loop iteration -- VulkanApplicationBase's own PreTick->Update->
+        // Render->PostTick order, see that header's own Tick() doc comment), so the shader
+        // reads THIS tick's values. chebyshevTestEnabled starts 1 (the real leak-test) for
+        // enough ticks to let the irradiance/visibility atlases converge past
+        // ProbeGridConfig's own hysteresisRate (default 0.02 -- mirrors AccumulationConfig's
+        // own slow-EWMA convergence budget, needing dozens of ticks), reads back
+        // gatheredLuma, THEN flips to 0 (the ablation negative control: force
+        // visibility=1, bypassing the Chebyshev test) for the SAME re-convergence budget
+        // again, and reads back a second time — proving the SAME scene leaks without the
+        // mechanism under test (the recipe-epic's own "vary exactly one factor" ablation
+        // discipline, per the plan's Task 4).
+        if (renderGraph && std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+            static long ddgiGateTick = 0;
+            ++ddgiGateTick;
+
+            constexpr long kConvergeTicks       = 120;  // >> 1/hysteresisRate(0.02)=50 ticks to steady-state
+            constexpr long kChebyshevReadTick   = kConvergeTicks;
+            constexpr long kAblationReadTick    = 2 * kConvergeTicks;
+
+            auto* debugBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("ddgi_leak_gate_debug_buffer"));
+            auto* deviceInstDdgi = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+
+            if (debugBuf && deviceInstDdgi && deviceInstDdgi->GetVulkanDevice()) {
+                auto* deviceDdgi = deviceInstDdgi->GetVulkanDevice();
+
+                // Seed this tick's params EVERY tick (mirrors ProbeGridConfigNode::ExecuteImpl's
+                // own per-frame re-upload — cheap, keeps the buffer ready with no separate
+                // "only write once" bookkeeping). chebyshevTestEnabled: 1 through
+                // kChebyshevReadTick (inclusive), then 0 (the ablation phase) thereafter.
+                struct DDGILeakGateDebugHost {
+                    uint32_t ddgiLeakGateEnabled;
+                    uint32_t chebyshevTestEnabled;
+                    uint32_t nearProbeIndex;
+                    uint32_t farProbeIndex;
+                    float    farShadingPosX, farShadingPosY, farShadingPosZ;
+                    float    gatheredLuma;
+                    // DIAG (temporary, M4 debugging -- remove before final commit): see
+                    // ProbeUpdate.comp's own DDGILeakGateDebug struct for what these carry.
+                    uint32_t diagNearProbeHitCount;
+                    float    diagNearProbeAvgRadianceLuma;
+                    float    diagNearProbeAvgDepth;
+                    float    diagNearProbeAvgDepth2;
+                };
+                static_assert(sizeof(DDGILeakGateDebugHost) == 48, "must match ProbeUpdate.comp's DDGILeakGateDebug std430 layout (48B)");
+
+                // vkDeviceWaitIdle before EVERY seed write, not just the two readback ticks:
+                // this buffer is a single fixed allocation (no per-frame-in-flight ring, unlike
+                // ProbeGridConfigNode's own upload ring), so a host write racing a still-in-
+                // flight dispatch's read of the SAME memory would be a genuine data race under
+                // Vulkan's external-synchronization model. Acceptable here (gate/demo-only path,
+                // not a production hot loop -- same "blocking is fine for an unattended capture
+                // harness" precedent RenderTargetReadback.h's own helpers already use).
+                vkDeviceWaitIdle(deviceDdgi->device);
+                void* seedMapped = debugBuf->MapForReadback(deviceDdgi);
+                if (seedMapped) {
+                    auto* rec = reinterpret_cast<DDGILeakGateDebugHost*>(seedMapped);
+                    rec->ddgiLeakGateEnabled   = 1u;
+                    rec->chebyshevTestEnabled  = (ddgiGateTick <= kChebyshevReadTick) ? 1u : 0u;
+                    rec->nearProbeIndex        = ddgiLeakGateNearProbeIndex_;
+                    rec->farProbeIndex         = ddgiLeakGateFarProbeIndex_;
+                    rec->farShadingPosX        = ddgiLeakGateFarShadingPos_.x;
+                    rec->farShadingPosY        = ddgiLeakGateFarShadingPos_.y;
+                    rec->farShadingPosZ        = ddgiLeakGateFarShadingPos_.z;
+                    // gatheredLuma left as whatever the GPU last wrote — it's an OUTPUT field,
+                    // overwriting it here would just be clobbered by the shader's own write anyway.
+                    debugBuf->UnmapReadback(deviceDdgi);
+                }
+
+                if (ddgiGateTick == kChebyshevReadTick || ddgiGateTick == kAblationReadTick) {
+                    // Ensure this tick's dispatch (which wrote gatheredLuma using the params just
+                    // seeded above) has fully retired before reading it back — same
+                    // vkDeviceWaitIdle discipline the RESTIR gate's own readback uses.
+                    vkDeviceWaitIdle(deviceDdgi->device);
+                    void* readMapped = debugBuf->MapForReadback(deviceDdgi);
+                    if (readMapped) {
+                        const auto* rec = reinterpret_cast<const DDGILeakGateDebugHost*>(readMapped);
+                        const char* label = (ddgiGateTick == kChebyshevReadTick) ? "ChebyshevEnabled" : "AblationNegativeControl";
+                        if (mainLogger) {
+                            mainLogger->Info(std::string("[DdgiLeakGateDemo] tick ") + std::to_string(ddgiGateTick) +
+                                              " [" + label + "]: nearProbeIndex=" + std::to_string(rec->nearProbeIndex) +
+                                              " farProbeIndex=" + std::to_string(rec->farProbeIndex) +
+                                              " gatheredLuma=" + std::to_string(rec->gatheredLuma) +
+                                              " DIAG diagNearProbeHitCount=" + std::to_string(rec->diagNearProbeHitCount) +
+                                              " diagNearProbeAvgRadianceLuma=" + std::to_string(rec->diagNearProbeAvgRadianceLuma) +
+                                              " diagNearProbeAvgDepth=" + std::to_string(rec->diagNearProbeAvgDepth) +
+                                              " diagNearProbeAvgDepth2=" + std::to_string(rec->diagNearProbeAvgDepth2));
+                        }
+                        debugBuf->UnmapReadback(deviceDdgi);
+                    }
+                }
+            } else if (mainLogger && ddgiGateTick == 1) {
+                mainLogger->Warning("[DdgiLeakGateDemo] debug buffer or device not found -- gate readback skipped");
+            }
+        }
+
         // Sparse-Mip ESVO LOD Inc1 M4c live gate: env-gated scripted camera move, unattended
         // (VIXEN_RESIDENCY_GATE_DEMO=1) — mirrors VIXEN_RESIZE_AT_FRAME's "env-var-scripted
         // behavior for an automated run" shape directly above. Sweeps orbitDistance from far

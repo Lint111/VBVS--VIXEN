@@ -403,6 +403,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // extent-follow sizing as reservoirBufferA/B (see PARAM_BYTES_PER_PIXEL below).
     NodeHandle spatialReservoirDebugBuffer = renderGraph->AddNode<StorageBufferNodeType>("spatial_reservoir_debug_buffer");
 
+    // Sampled Lighting Inc4 M4: DDGI leak-test gate debug SSBO (binding 31) -- a SINGLE
+    // fixed-size DDGILeakGateDebug record (see ProbeUpdate.comp's own struct), NOT
+    // extent-driven (no SWAPCHAIN_INFO connection below, unlike reservoirBufferA/B/
+    // spatialReservoirDebugBuffer above) -- PARAM_SIZE_BYTES is used instead, mirroring
+    // StorageBufferNodeConfig's own documented size-resolution priority ("2. Else
+    // PARAM_SIZE_BYTES"). Host-visible/coherent by construction (StorageBufferNodeConfig's
+    // own STORAGE_BUFFER output descriptor), so VulkanGraphApplication's readback hook can
+    // MapForReadback/UnmapReadback it exactly like reservoirBufferA/B already do.
+    NodeHandle ddgiLeakGateDebugBuffer = renderGraph->AddNode<StorageBufferNodeType>("ddgi_leak_gate_debug_buffer");
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -591,6 +601,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc3 M6: same extent-follow sizing as reservoirBufferA/B above.
     auto* spatialReservoirDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(spatialReservoirDebugBuffer));
     spatialReservoirDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 16u);
+
+    // Sampled Lighting Inc4 M4: DDGILeakGateDebug is a SINGLE fixed-size record, not
+    // extent-driven -- PARAM_SIZE_BYTES, not PARAM_BYTES_PER_PIXEL. std430 layout: 5x
+    // uint (20B) + 7x float (28B) = 48B, no padding (all members are 4-byte scalars).
+    // (DIAG temporary fields, see ProbeUpdate.comp's own struct.)
+    auto* ddgiLeakGateDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(ddgiLeakGateDebugBuffer));
+    ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 48u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -2551,6 +2568,203 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
             }
+        } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO")) {
+            // Sampled Lighting Inc4 M4 live gate: the leak-test scene the plan's Task 4
+            // requires -- thin-wall occluder geometry between an emissive source and a
+            // probe/observation point, proving the Chebyshev-tested gather does NOT leak
+            // light through the wall while an ablation (Chebyshev test disabled) DOES.
+            // Mirrors VIXEN_RESTIR_GATE_DEMO's own shape (emissive body -> light-tree cut
+            // -> world-transform -> stash for the CPU readback hook) but ALSO bakes a
+            // second, non-emissive body (the thin wall) and configures ProbeGridConfig +
+            // the DDGILeakGateDebug SSBO so ProbeUpdate.comp's M4 self-test gather has a
+            // concrete near/far probe pair + shading point to exercise.
+            //
+            // Geometry (world space) -- MUST live inside ProbeGridConfigNode's own default
+            // grid coverage: origin (0,0,0), spacing 4, count 8x8x8 -> world [0,32) on every
+            // axis (ProbeGridConfigNode has no live setter this milestone, see below). A first
+            // attempt at this scene placed the bodies at the default camera's (64,64,64)
+            // framing (VIXEN_RESTIR_GATE_DEMO's own convention) -- a live-gate run caught that
+            // this put the near/far probes OUTSIDE the grid's [0,32) coverage entirely
+            // (silently producing a probeIndex >= probeCount workgroup no-op, both readbacks
+            // reading zero with no way to tell "correctly rejected" from "never ran" -- a false
+            // negative-control result). Rescaled below (kRenderScale=1.0, not 4.8) so both
+            // bodies AND the near/far probes/shading point land inside [0,32):
+            //   emissive source: a small emissive sphere at grid (10,16,16) -> world X~=5.1.
+            //   thin wall: a box occluder at grid (22,16,16) -> world X~=8.9, spanning world
+            //     X~=[8.56,9.19] (thin -- 1 grid-unit half-extent -> ~0.31 world units either
+            //     side), full Y/Z span (a real wall, not a small block seen around).
+            //   near probe: grid (1,4,4) -> world (4,16,16) -- before the source (world X~=5.1),
+            //     no occluder between it and the source.
+            //   far probe / shading point: grid (3,4,4) -> world (12,16,16) -- past the wall's
+            //     far face (world X~=9.19), occluded from the source. The gather samples the
+            //     NEAR probe's atlas entry AT this far shading point -- Chebyshev-tested
+            //     visibility must reject it (the near probe's own stored ray-hit distance
+            //     toward the wall is much closer than the near-probe-to-far-point test
+            //     distance), while the ablation (test forced to 1) must NOT reject it, proving
+            //     the scene leaks without the mechanism.
+            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: building the M4 "
+                              "thin-wall leak-test gate scene");
+
+            constexpr int   kN    = 32;
+            constexpr float kBand = 2.0f;
+            const glm::vec3 kSourceCenter(10.0f, 16.0f, 16.0f);   // grid-space center (kN=32 grid), world-mapped below
+            constexpr float kSourceRadius = 8.0f;  // sized comparably to VIXEN_RESTIR_GATE_DEMO's own proven r=10/n=32 scene
+
+            Vixen::SVO::RecipeParams sourceParams{kSourceRadius, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+            Vixen::SVO::SdfBakeResult sourceBaked = Vixen::SVO::BakeRecipeToSdfWorldWithEmission(
+                Vixen::SVO::RECIPE_SPHERE, kSourceCenter, sourceParams, kN, kBand,
+                [](const glm::vec3&) { return 4.0f; });  // uniform emissive intensity
+            Vixen::SVO::SdfBodyOctree sourceBody = Vixen::SVO::BuildSdfBodyOctree(sourceBaked, 3);
+
+            // Thin wall: a genuine box SDF (no RECIPE_BOX exists in SdfRecipes.h -- BakeSdfWorld's
+            // templated `eval` accepts ANY lambda, so a box distance function is authored directly
+            // here rather than approximating one out of RECIPE_SPHERE/RECIPE_DISPLACED_SPHERE).
+            // Grid-space half-extents: thin along X (2 grid units -> genuinely thin at this bake's
+            // world scale below), full-span along Y/Z (a real wall, not a small block the source
+            // could simply be seen around).
+            const glm::vec3 kWallCenter(22.0f, 16.0f, 16.0f);
+            const glm::vec3 kWallHalfExtent(1.0f, 15.0f, 15.0f);
+            auto wallSdf = [&](const glm::vec3& p) {
+                glm::vec3 q = glm::abs(p - kWallCenter) - kWallHalfExtent;
+                glm::vec3 qPos = glm::max(q, glm::vec3(0.0f));
+                float outside = glm::length(qPos);
+                float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+                return outside + inside;
+            };
+            Vixen::SVO::SdfBakeResult wallBaked = Vixen::SVO::BakeSdfWorld(wallSdf, kWallCenter, kN, kBand, 3);
+            Vixen::SVO::SdfBodyOctree wallBody = Vixen::SVO::BuildSdfBodyOctree(wallBaked, 3);
+
+            const Vixen::SVO::Octree* sourceOct = sourceBody.octree->getOctree();
+            if (sourceOct != nullptr) {
+                Vixen::SVO::SerializedOctree sourceSer = Vixen::SVO::SerializeSdf(sourceBody);
+                Vixen::SVO::BakeAndAttachMipPool(*sourceOct, sourceSer);
+                Vixen::SVO::MipPool sourceMipPool = Vixen::SVO::BakeMipPool(*sourceOct, sourceSer);
+
+                Vixen::SVO::LightTreeCutParams cutParams;
+                cutParams.powerThreshold = 0.001f;  // fine cut -- same rationale as VIXEN_RESTIR_GATE_DEMO
+                std::vector<Vixen::SVO::LightTreeNode> cut =
+                    Vixen::SVO::BuildLightTreeCut(*sourceOct, sourceSer, sourceMipPool, kN, cutParams);
+                for (size_t di = 0; di < cut.size() && di < 5; ++di) {
+                    const auto& n = cut[di];
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: DIAG rawGridCutNode[" + std::to_string(di) +
+                                      "] gridPos=(" + std::to_string(n.worldPos.x) + "," + std::to_string(n.worldPos.y) + "," + std::to_string(n.worldPos.z) +
+                                      ") gridExtent=" + std::to_string(n.worldExtent));
+                }
+
+                // Body-placement/world-transform: SAME shape as VIXEN_RESTIR_GATE_DEMO's own
+                // gate scene (renderScale + world-grid-size + a fixed worldPos origin), but
+                // renderScale=1.0 (NOT 4.8) -- the whole point of this rescale is keeping both
+                // bodies AND the near/far probes inside ProbeGridConfigNode's default [0,32)
+                // grid coverage (see this block's own header comment on why the first attempt's
+                // renderScale=4.8/world-center placement put the probes outside the grid
+                // entirely). World diameter = kWorldGridSize*kRenderScale = 10; sourceWorldPos
+                // chosen so grid (0,0,0) maps to world (2,8,8) -- keeps the whole 10-unit body
+                // span + the near/far probes' Y/Z=16 comfortably inside [0,32) on every axis.
+                constexpr float kRenderScale = 1.0f;
+                constexpr float kWorldGridSize = 10.0f;
+                const glm::vec3 sourceWorldPos(2.0f, 8.0f, 8.0f);
+
+                std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                worldCut.reserve(cut.size());
+                for (const auto& node : cut) {
+                    Vixen::SVO::LightTreeNode w = node;
+                    const glm::vec3 pBase = (node.worldPos / static_cast<float>(kN)) * kWorldGridSize;
+                    w.worldPos = pBase * kRenderScale + sourceWorldPos;
+                    w.worldExtent = (node.worldExtent / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
+                    worldCut.push_back(w);
+                }
+
+                if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
+                    lightTreeInst->SetLightTreeCut(worldCut);
+                }
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: cut=" + std::to_string(cut.size()) + " nodes");
+                for (size_t di = 0; di < worldCut.size() && di < 5; ++di) {
+                    const auto& n = worldCut[di];
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: DIAG cutNode[" + std::to_string(di) +
+                                      "] worldPos=(" + std::to_string(n.worldPos.x) + "," + std::to_string(n.worldPos.y) + "," + std::to_string(n.worldPos.z) +
+                                      ") worldExtent=" + std::to_string(n.worldExtent) +
+                                      " intensity=" + std::to_string(n.intensity) + " coverage=" + std::to_string(n.coverage));
+                }
+
+                // Instance placement: source body + wall body, both mapped via the SAME
+                // grid->world transform (kRenderScale/kWorldGridSize/sourceWorldPos above) so
+                // both bodies' grid-space centers/extents land at consistent world positions
+                // relative to each other -- source at grid (10,16,16) -> world X~=5.1, wall at
+                // grid (22,16,16) -> world X~=8.9 (see this block's own header comment for the
+                // full derivation). Both bodies share ONE octree pool slot each (octreeIndex
+                // 0/1) via
+                // ConcatenateSdfWithMips below, same multi-body pattern VIXEN_TIER_OBSERVABLE_DEMO
+                // uses (BAKE separate octrees, concatenate, place with distinct BodyInstanceGpu
+                // entries).
+                std::vector<const Vixen::SVO::SdfBodyOctree*> octreesForCat = {&sourceBody, &wallBody};
+                Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    Vixen::SVO::BodyInstanceGpu sourceInst{};
+                    sourceInst.worldPos[0]  = sourceWorldPos.x;
+                    sourceInst.worldPos[1]  = sourceWorldPos.y;
+                    sourceInst.worldPos[2]  = sourceWorldPos.z;
+                    sourceInst.renderScale  = kRenderScale;
+                    sourceInst.color[0]     = 1.0f; sourceInst.color[1] = 1.0f; sourceInst.color[2] = 1.0f;
+                    sourceInst.octreeIndex  = 0u;
+                    sourceInst.providerKind = 0u;  // PROVIDER_STORED
+                    sourceInst.recipeId     = 0u;
+
+                    Vixen::SVO::BodyInstanceGpu wallInst{};
+                    wallInst.worldPos[0]  = sourceWorldPos.x;  // SAME grid->world transform as sourceInst
+                    wallInst.worldPos[1]  = sourceWorldPos.y;
+                    wallInst.worldPos[2]  = sourceWorldPos.z;
+                    wallInst.renderScale  = kRenderScale;
+                    wallInst.color[0]     = 0.7f; wallInst.color[1] = 0.7f; wallInst.color[2] = 0.7f;
+                    wallInst.octreeIndex  = 1u;
+                    wallInst.providerKind = 0u;  // PROVIDER_STORED
+                    wallInst.recipeId     = 0u;
+
+                    bodyScene->SetRecipePool(std::move(cat));
+                    bodyScene->SetInstances({sourceInst, wallInst});
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: seeded emissive-source + thin-wall body instances");
+                }
+
+                // ProbeGridConfig: ProbeGridConfigNode has no live setter this milestone
+                // (MakeDefaultProbeGridConfig is a file-local default, flipped on via
+                // VIXEN_PROBE_GRID_CONFIG_ENABLED=1 -- see that file) -- the gate reuses that
+                // SAME default grid (origin (0,0,0), spacing 4, count 8x8x8, world coverage
+                // [0,32) on every axis -- MUST match this block's own geometry, hence the
+                // kRenderScale=1.0/sourceWorldPos=(2,8,8) rescale above) and picks near/far
+                // probe INDICES that land at valid, in-range grid nodes near the source/wall/
+                // far-point positions, avoiding a new live setter for a one-off gate (mirrors
+                // VIXEN_RESTIR_GATE_DEMO's own "reuse existing plumbing, don't add a new
+                // mechanism" discipline). World position of probe (px,py,pz) = (px*4,py*4,pz*4).
+                // Near probe at grid (2,3,3) -> world (8,12,12): distance ~3.2 from the source's
+                // own world center/radius (5.125,13,13)/2.5 -- outside the source's own solid
+                // geometry (a probe placed INSIDE the emissive sphere's solid volume gave a
+                // degenerate all-zero TraceWorld result, a live-gate finding from an earlier
+                // pass with a smaller kSourceRadius=3 where the near probe sat inside the
+                // sphere -- kSourceRadius was widened to 8 AND the near probe moved outside it),
+                // and before the wall's near face (world X~=8.56), no occluder in the way. Far
+                // probe/shading point at grid (3,3,3) -> world (12,12,12): past the wall's far
+                // face (world X~=9.19), occluded from the source. Both indices are well inside
+                // [0, countX*countY*countZ=512) -- an EARLIER live-gate bug this geometry
+                // rescale also fixed was an out-of-range index silently no-op'ing the gather
+                // workgroup (see this block's own header comment).
+                constexpr uint32_t kNearProbeX = 2u, kFarProbeX = 3u, kProbeY = 3u, kProbeZ = 3u;
+                constexpr uint32_t kDefaultCountX = 8u, kDefaultCountY = 8u;
+                const uint32_t nearProbeIndex = kNearProbeX + kProbeY * kDefaultCountX + kProbeZ * kDefaultCountX * kDefaultCountY;
+                const uint32_t farProbeIndex  = kFarProbeX  + kProbeY * kDefaultCountX + kProbeZ * kDefaultCountX * kDefaultCountY;
+                const glm::vec3 farShadingPos(static_cast<float>(kFarProbeX) * 4.0f,
+                                               static_cast<float>(kProbeY) * 4.0f,
+                                               static_cast<float>(kProbeZ) * 4.0f);
+
+                ddgiLeakGateNearProbeIndex_ = nearProbeIndex;
+                ddgiLeakGateFarProbeIndex_  = farProbeIndex;
+                ddgiLeakGateFarShadingPos_  = farShadingPos;
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: nearProbeIndex=" +
+                                  std::to_string(nearProbeIndex) + " farProbeIndex=" + std::to_string(farProbeIndex) +
+                                  " farShadingPos=(" + std::to_string(farShadingPos.x) + "," +
+                                  std::to_string(farShadingPos.y) + "," + std::to_string(farShadingPos.z) + ")");
+            } else {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: source body octree is null -- gate scene not built");
+            }
         } else if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
@@ -3088,6 +3302,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   spatialReservoirDebugBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
          .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReservoirDebugBuffer, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
+    // Sampled Lighting Inc4 M4: DDGI leak-test gate debug buffer — device only, NO
+    // SWAPCHAIN_INFO connection (fixed PARAM_SIZE_BYTES sizing set above, not extent-driven).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
@@ -4078,6 +4297,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
                           probeUpdateGatherer, 30,
                           SlotRoleModifier(SlotRole::Execute));
+
+    // Binding 31 (Sampled Lighting Inc4 M4): DDGI leak-test gate debug SSBO — read-write
+    // (the shader reads ddgiLeakGateEnabled/chebyshevTestEnabled/near-far probe indices +
+    // farShadingPos the CPU sets, and writes gatheredLuma back), same Dependency|Execute
+    // role shape every other read-then-write SSBO binding on this gatherer uses (e.g.
+    // binding 28's ProbeGridConfig, also CPU-written then GPU-read every frame).
+    batch.Connect(ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          probeUpdateGatherer, 31,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // --- ProbeUpdateNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
     // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
