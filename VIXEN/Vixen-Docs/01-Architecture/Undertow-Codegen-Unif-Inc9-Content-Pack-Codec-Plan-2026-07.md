@@ -148,7 +148,8 @@ fixture and must be regenerated/verified before any porting work starts.
 - **Milestone 2 SPLIT into three sub-milestones per the plan's own guidance (too large for one dispatch):**
   - [x] **Milestone 2a (#4 codec — build + equivalence proof, no retirement yet):** DONE + Opus-validated
     APPROVED, 2026-07-13.
-  - [ ] **Milestone 2b (#5 merge — build + equivalence proof, no retirement yet).**
+  - [x] **Milestone 2b (#5 merge — build + equivalence proof, no retirement yet):** DONE + Opus-validated
+    APPROVED, 2026-07-13.
   - [ ] **Milestone 2c (#6 patch-parser — build + equivalence proof + FULL RETIREMENT of all 6 generator
     files across #4/#5/#6).**
 
@@ -225,3 +226,38 @@ fixture and must be regenerated/verified before any porting work starts.
     hardest increment in the program — the validator did not trust reported hashes, instead
     independently redoing the entire swap-and-rebuild approach from scratch to produce its own binary
     `.pack` blob and diff it directly. Cleared to proceed to Milestone 2b.
+
+- Milestone 2b (#5 merge — build + equivalence proof, NO retirement yet): DONE · 2026-07-13
+  - **Built** (Yeroket `feat/codegen-unif-inc9-codec`, off Milestone 2a's `ec100e67`, commit
+    `5ab8e132`): new `MergeEmitter.cs` porting undertow's `EmitMerge.cs` (298 lines) line-for-line —
+    `Baked{K}Patch` presence-aware delta record generation + `BakedPatches.Merge(def, patch)` pure-fold
+    functions + element-comparer generation for object-list identity flavors. Additive `DefField`
+    members (`MapAuthored`/`ElementKey`). New `--merge-cs` CLI flag.
+  - **Real bug caught by the byte-diff itself, fixed before reporting done**: an initial pass dropped
+    the `f.MapAuthored ||` guard in element-comparer emission, spuriously generating an extra
+    `ElementsEqual_KnowledgeBudgetEntry` comparer not present in real output (faction's `knowledge`
+    field is map-authored and must be excluded from the unkeyed-comparer set) — caught via the
+    byte-diff, fixed, re-verified byte-identical. Both the implementer and the validator independently
+    confirmed the real output emits exactly 3 unkeyed comparers, none for `knowledge`.
+  - **Equivalence proof, independently re-derived from scratch by the validator**: banner-excluded
+    byte-diff of the generated `Patches.g.cs`-equivalent body is byte-identical (matching sha256) to
+    the real Roslyn output for all real gated kinds.
+  - **Milestone 2a cross-check confirmed** (both implementer and validator, independently): unlike the
+    def-table codec (ctor-order-sensitive), `CodecEmitter.cs`'s `Read{Plural}Patches` constructs
+    `Baked{K}Patch` via an OBJECT INITIALIZER — the load-bearing invariant here is property-name/CLR-type
+    agreement, not declaration order. The full-body byte-diff already proves this holds for every kind.
+  - **Merge-semantics proof, non-vacuous**: a real swap-and-rebuild against the full undertow test
+    suite exercised scalar overwrite, map overlay, value-list Add/Remove/Replace, and all 3 object-list
+    identity flavors (map-authored upsert, keyed upsert/append/remove, unkeyed full-value) across 4 real
+    kinds, plus explicit no-op (`HasF=false`) and full-override (`HasF=true` everywhere) edge cases —
+    2934/2934 tests pass with the swap live, independently re-confirmed by the validator.
+  - **Cleanup confirmed**: all temporary edits fully reverted, undertow worktree completely clean, zero
+    commits. No retirement performed (correct, deferred to Milestone 2c). All 6 generator files
+    confirmed present and unmodified.
+  - `SDFNodeGenerator.dll` non-deterministic rebuild noise confirmed reverted, not committed.
+  - No blockers.
+  - **Opus validator (independent re-verification):** APPROVED. Independently re-derived the byte-diff
+    from a fresh non-incremental Roslyn rebuild, independently confirmed the bug-fix is real by
+    checking the exact comparer set in real output, independently confirmed the object-initializer
+    cross-check by direct source read, and independently re-ran the full test suite (2934/2934
+    matching). Cleared to proceed to Milestone 2c.
