@@ -131,6 +131,16 @@ public:
      */
     void SetLookTargetNoOrbitForTest(glm::vec3 target) { hasLookTarget_ = true; lookTarget_ = target; }
 
+    /**
+     * @brief Read-only introspection of live camera pose state (Sampled Lighting Inc4 M5).
+     * Added for live-gate debugging (confirming a scripted ForTest camera write actually
+     * took effect, rather than being silently overridden by an already-engaged orbit mode
+     * or a subsequent frame's recompute) -- no prior getter existed for any of this state.
+     */
+    glm::vec3 GetCameraPositionForTest() const { return cameraPosition; }
+    bool GetOrbitActiveForTest() const { return orbitActive_; }
+    glm::vec3 GetOrbitCenterForTest() const { return orbitCenter; }
+
 protected:
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
