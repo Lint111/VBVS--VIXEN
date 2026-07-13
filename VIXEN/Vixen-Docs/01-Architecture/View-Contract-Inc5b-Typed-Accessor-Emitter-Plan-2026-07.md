@@ -278,18 +278,37 @@ rejected in writing.
   pass — this is additive capability, not a redesign of any existing shape's emission.
 
 ## Milestone 2.5 (renumbered from the original insertion — see note above) — writer-side wiring
-- **IS**: build the 4 Hud-family adapter/writer classes (`<Model>ViewWriter`-populating glue reading
-  real `SimFrame.Hud/HudFactions/HudEvents/HudInspect` fields), replace `HostSession.cs:148`'s call
-  site to produce `UTVA` bytes for these 4 sections. Prove a real round-trip: populate from a REAL
-  captured `SimFrame` (not just Milestone 2's synthetic Hud fixture), call `ToBuffer()`, decode via
-  `ViewWireReaderSoa::Apply`+the Milestone-2-generated typed accessors, and confirm decoded values
-  match the real `SimFrame`'s real values exactly.
+
+**SCOPE AMENDED 2026-07-13, post-Milestone 2.4**: Milestone 2.4 (a+b) closed the Vector-scalar gap at
+BOTH the model layer (`ViewFieldKind.Vector`) and the emission layer (`ViewKind::Vector` end-to-end,
+both directions, proven on a synthetic `VectorProof` schema). `Bodies.Position`/`RecipeParams` are now
+mechanically declarable and emittable — the "Bodies stays deferred" language below is SUPERSEDED for
+those 2 columns. `Bodies.OrbitPath` (`ListVec3f`, a variable-length list-of-points — a DIFFERENT,
+harder gap than the flat Vec3f-scalar case) remains genuinely out of scope, still deferred.
+
+- **IS**: build ALL 5 sections' adapter/writer classes (`<Model>ViewWriter`-populating glue reading
+  real `SimFrame.Bodies/Hud/HudFactions/HudEvents/HudInspect` fields — Bodies now included, using
+  Milestone 2.4's Vector writer support for `Position`/`RecipeParams`, with the explicit narrowing
+  `Vec3(double)→Vec3f(float)` conversion Milestone 2.4a's research flagged since `SimFrame`'s
+  `Undertow.Sim.Vec3`/`Undertow.Generation.StarSystem.Vec3` is a DIFFERENT, double-precision type than
+  the kernel's `Float3` marker — this is real glue work, not a 1:1 field copy for these 2 columns),
+  replace `HostSession.cs:148`'s call site to produce `UTVA` bytes for all 5 sections EXCEPT
+  `Bodies.OrbitPath` (which stays unrepresented/deferred on this section same as before — confirm
+  whether the real `Bodies` schema declaration needs a 9th column present-but-unbacked or whether
+  `OrbitPath` is simply omitted from the `[View]` schema entirely, matching how the ORIGINAL Inc-5
+  Milestone 3 partial-Bodies declaration already handled this 7-of-10-columns split). Prove a real
+  round-trip: populate from a REAL captured `SimFrame` (not just Milestone 2's synthetic Hud fixture
+  or Milestone 2.4's synthetic `VectorProof` fixture), call `ToBuffer()`, decode via
+  `ViewWireReaderSoa::Apply`+the Milestone-2/2.4-generated typed accessors, and confirm decoded values
+  match the real `SimFrame`'s real values exactly — INCLUDING at least one real Bodies row's
+  `Position`/`RecipeParams` values, proving the Vec3(double)→Vec3f(float) conversion is correct for
+  real sim data, not just the synthetic proof schema's hand-picked test values.
 - **IS NOT**: cutting the real C++ reader over yet (that's Milestone 3, which must land together with
   this milestone before either is considered "done" for the real seam) — Milestone 2.5 alone leaves
   `HostSession.ViewBuffer` producing a NEW wire that the OLD C++ reader can't read; this milestone's
   own proof must be a C#-side/isolated round-trip only, NOT a claim that the real seam works yet.
-- **IS NOT**: touching Bodies' `Position`/`RecipeParams`/`OrbitPath` — same explicit, symmetric
-  deferral as the reader side.
+- **IS NOT**: touching `Bodies.OrbitPath` (`ListVec3f`) — still genuinely deferred, a different and
+  harder gap than the Vec3f-scalar case Milestone 2.4 closed.
 - **IS NOT**: making `HostSession.ViewBuffer`'s new output live/consumed by anything real until
   Milestone 3 also lands — until then this is dead-code-in-waiting, deliberately, to avoid a half-swap
   that breaks the real seam.
