@@ -302,7 +302,7 @@ rejected in writing.
 - [x] **Milestone 2.4a (inserted 2026-07-13, Task 1):** ground the shape, decide the wire layout
   (report-back gate). Found the original 2-file scope too narrow — amended to 6 files under design
   (A), a real `ViewKind::Vector`. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2.4b (Task 2):** build across all 6 amended-scope files (`ViewBlob.h`, `ViewStore.h`/
+- [x] **Milestone 2.4b (Task 2):** build across all 6 amended-scope files (`ViewBlob.h`, `ViewStore.h`/
   `.cpp`, `ViewWireReaderSoa.cpp`, `ViewBlobEmitter.cs`, `TypedAccessorEmitter.cs`,
   `ViewWireFormat.cs`/`ViewWriterEmitter.cs`) + prove a full round-trip on the new `VectorProof.cs`
   schema, Yeroket/VIXEN in-tree only. One Sonnet implementer + one Opus validator.
@@ -501,3 +501,77 @@ rejected in writing.
     fix, and explicitly weighed design (A) vs (B) against the user's own standing pure-solutions rule
     before concurring with (A). Flagged both required actions (scope amendment + worktree rebase) that
     have since been completed. Cleared to proceed to Milestone 2.4b.
+
+- Milestone 2.4b (Task 2, build + prove Vector emission across all 6 amended-scope files): DONE
+  · 2026-07-13 · Yeroket/VIXEN in-tree only, undertow untouched.
+  - **Found substantial WIP already present, uncommitted, in both worktrees** at dispatch time —
+    all 6 amended-scope files' code changes (matching the plan's design exactly) plus the new
+    `VectorProof.cs` schema already existed unstaged. Verified each change against the plan/source
+    before trusting it, then completed the remaining work: generating the actual headers via the
+    CLI, writing the round-trip gtest, running full regression, and committing.
+  - **`ViewBlob.h`**: added `ViewKind::Vector` to the enum, a `Vec3f{x,y,z}` payload struct (no
+    math-library dependency — `ViewBlob.h` stays dependency-free), `ViewValue::Tag::Vector` +
+    `ViewValue::Vec()` factory, `KindAcceptsValue` support.
+  - **`ViewStore.h`/`.cpp`**: `ViewCell`/`ScalarSlot` both gained a `Vec3f vec` member;
+    `SetScalar`/`AssignCell`/`ScalarSlotPtr` all gained a `Vector` case.
+  - **`ViewWireReaderSoa.cpp`**: new decode case reading 3 consecutive F32s (x,y,z) into one
+    `SetScalar` call carrying the assembled `Vec3f`.
+  - **`ViewBlobEmitter.cs`**: `KindEnum` now maps `ViewFieldKind.Vector` to `"Vector"` (was
+    silently falling through to `"Int"` — the mandatory miscompile fix Milestone 2.4a flagged).
+    Left `EmitDataFile`'s `KindTag` helper WITHOUT a Vector case deliberately — confirmed
+    `ViewBlobFile.cpp`'s runtime `.viewblob` text-format parser has no `"vector"` branch either,
+    so emitting a `"vector"` tag there would just move the silent-failure point downstream to an
+    unparseable datafile; that parser is outside this milestone's 6-file scope, so left as a
+    named, explicit gap rather than silently introduced.
+  - **`TypedAccessorEmitter.cs`**: emits a typed `Vec3f position() const` getter for a top-level
+    Vector field, casting `ScalarSlotPtr` to `Vixen::RenderGraph::Vec3f*` and copying into a new,
+    header-local `struct Vec3f { float x, y, z; };` (emitted once per header, only when the schema
+    has a Vector field) — matches the plan's design exactly.
+  - **`ViewWireFormat.cs`/`ViewWriterEmitter.cs`** (C# writer side): `EmitField` dispatches a
+    Vector field to a new `EmitVector` (3 `WF32` calls, `this.<field>.X/Y/Z`); `ViewWriterEmitter`
+    declares a local `public struct Vec3 { public float X, Y, Z; }` once per generated file and
+    uses it as the data-holder's field type for a Vector column.
+  - **`ViewVersionHash.cs`**: also extended (found already touched in the pre-existing WIP,
+    correctly) — hashes a Vector field as `"vector:" + VectorMarkerName`, so the schema version
+    changes if a Vector field's marker type ever changes.
+  - **Generated + verified via the actual CLI** (not hand-written): ran
+    `CodegenTool.dll --schema codegen/view-schemas --typed-accessor-cpp VectorProof --out-header ...`
+    and `--view-blob VectorProof --out-header ... --out-datafile ...` — confirmed the emitted
+    `VectorProofSection::position()` and `kVectorProofBlob` look exactly as designed (inspected
+    output directly), then wrote those same generated files into
+    `application/main/include/Generated/VectorProof.{typed,blob}.g.h` + `.viewblob`.
+  - **Proof**: extended `test_typed_accessor_emitter.cpp` with a new
+    `TEST(TypedAccessorEmitter, VectorFieldRoundTripsExactly)` — hand-built wire bytes (`UTVA` +
+    version + fieldCount=1 + 3 F32s for x/y/z = 1.5, -2.25, 3.0, deliberately non-zero in every
+    component) decoded via `ViewWireReaderSoa::Apply` into a `ViewStore(kVectorProofBlob, ...)`,
+    then read back via the generated `Vixen::Views::VectorProofSection::position()`. **All 3
+    components matched exactly** (`EXPECT_FLOAT_EQ`). Built via the scoped
+    `build.bat build vixen-ninja test_typed_accessor_emitter` (existing source file extended, no
+    new `.cpp` registered in CMakeLists, so the scoped incremental build is valid per the
+    build-policy skill's "new source file" caveat — only new *files*, not new *includes* in an
+    existing file, require `build.bat all`).
+  - **Regression, all green**:
+    - `test_typed_accessor_emitter.exe`: **2/2 PASS** (Milestone 2's
+      `GeneratedAccessorsMatchRawStoreDecodedValues` unchanged + the new Vector test).
+    - `test_view_wire_soa_roundtrip.exe`: **3/3 PASS**, unchanged (rebuilt+rerun explicitly to
+      confirm, not merely assumed unaffected).
+    - Yeroket `CodegenTool.Tests`: **first run 78/79 — one real, expected, non-regression
+      failure**: `ViewModelTests.EmitToBufferBody_ThrowsForVectorField_FailsLoudNotSilently`
+      (from the type-shape-recognizer-unification increment) asserted the OLD graceful-failure
+      behavior (Vector emission throws `NotSupportedException`) — that test's OWN comment named
+      this exact milestone as the intended follow-up that would close the gap. Updated it (renamed
+      to `EmitToBufferBody_EmitsThreeFloatsForVectorField_DoesNotThrow`) to assert the NEW correct
+      behavior (`Assert.DoesNotThrow` + asserts the emitted body contains the 3 `WF32(b,
+      this.position.X/Y/Z)` calls). Re-ran: **79/79 PASS**, zero other failures.
+  - **`SDFNodeGenerator.dll` non-deterministic-rebuild gotcha hit again** (as documented) —
+    `git checkout --` it before committing, confirmed clean before the commit.
+  - Design ambiguity resolved without new guidance needed: none — the pre-existing WIP + the
+    plan's own Milestone 2.4a research fully specified the API shape (`Vec3f` payload,
+    `ScalarSlotPtr` cast target, wire layout); no further judgment calls were required beyond the
+    `KindTag`/`.viewblob`-parser scope boundary noted above (documented, not silently decided).
+  - Commits: Yeroket `f4739f93` (`feat/view-contract-inc5`, 6 emitter files + updated
+    `ViewModelTests.cs`); VIXEN `691d7a0e` (`feat/view-contract-inc5`, 4 C++ engine files +
+    extended gtest + 4 new generated/schema files).
+  - No blockers. Next: Milestone 2.5 (writer-side wiring for the 4 Hud-family sections; Bodies now
+    includable per this milestone's unblock, per the Milestone Map's own note) or Milestone 3
+    (undertow reader cutover + live-gate), per whichever the controller sequences next.
