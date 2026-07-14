@@ -1284,7 +1284,6 @@ void VulkanGraphApplication::Update() {
                                               std::to_string(minWorld[0]) + "," + std::to_string(minWorld[1]) + "," + std::to_string(minWorld[2]) +
                                               ") max=(" + std::to_string(maxWorld[0]) + "," + std::to_string(maxWorld[1]) + "," + std::to_string(maxWorld[2]) + ")");
                         }
-                        constexpr size_t kPad0Offset = 48;  // HitRecord._pad0[0]: winning instIdx (TEMP diag)
                         auto dumpPixel = [&](int px, int py) {
                             const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
                             if (idx >= recordCount) return;
@@ -1294,13 +1293,10 @@ void VulkanGraphApplication::Update() {
                             std::memcpy(worldPos, bytes + idx * kHitRecordStride + kWorldPosOffset, sizeof(worldPos));
                             float hitT;
                             std::memcpy(&hitT, bytes + idx * kHitRecordStride + kHitTOffset, sizeof(float));
-                            uint32_t winnerInstIdx;
-                            std::memcpy(&winnerInstIdx, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
                             if (mainLogger) {
                                 mainLogger->Info("[CornellDiag] pixel(" + std::to_string(px) + "," + std::to_string(py) +
                                                   ") hit=" + std::to_string(flagsField & 0x1u) +
                                                   " hitT=" + std::to_string(hitT) +
-                                                  " instIdx=" + std::to_string(winnerInstIdx) +
                                                   " worldPos=(" + std::to_string(worldPos[0]) + "," +
                                                   std::to_string(worldPos[1]) + "," + std::to_string(worldPos[2]) + ")");
                             }

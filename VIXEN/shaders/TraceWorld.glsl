@@ -161,7 +161,6 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
                 anyHit         = true;
-                g_cornellDiagWinnerInstIdx = instIdx;  // TEMP diag, see SceneBindings.glsl
             }
             continue;  // procedural body fully handled; skip the ESVO path
         }
@@ -325,7 +324,6 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
             anyHit          = true;
-            g_cornellDiagWinnerInstIdx = instIdx;  // TEMP diag, see SceneBindings.glsl
         }
     }
 
@@ -476,6 +474,7 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
+        hitT *= inst.renderScale;  // parameter-along-instDir -> true world distance (see TraceWorld's identical fix)
 
         if (instHit && hitT >= tmin && hitT <= tmax) {
             return true;  // any-hit: confirmed occluder, stop immediately
