@@ -108,34 +108,31 @@ namespace Vixen.ViewSchemas
         public string cause;           // NAME MISMATCH: source el.CauseString, no value transform
     }
 
-    // --- Bodies row, PARTIAL (ViewSchema.cs SectionBodies, "Bodies") -- gap #4: only the 7
-    // REPRESENTABLE columns are declared. Kind/OwnerInLens/OwnerRecentEventAge/RecipeProvider are
-    // identity U8 (widened to int); Mass is identity F32 but its VIEW-FIELD NAME differs from its
-    // C# source-member name (Mass <- el.MassKg, ALSO hiding a double->float narrowing -- the third
-    // name-mismatch column the Milestone 1 Opus validator flagged, same IdentityFloat name-binding
+    // --- Bodies row (ViewSchema.cs SectionBodies, "Bodies") -- Milestone 0 recipe-split
+    // (View-ReadModel-Codegen-Plan-2026-07.md): Kind/OwnerInLens/OwnerRecentEventAge are identity
+    // U8 (widened to int); Mass is identity F32 but its VIEW-FIELD NAME differs from its C# source-
+    // member name (Mass <- el.MassKg, ALSO hiding a double->float narrowing -- the third name-
+    // mismatch column the Milestone 1 Opus validator flagged, same IdentityFloat name-binding
     // mechanism as HudInspect.topRelSig/cause above); OrbitParent is the nullable-unwrap-with-
     // -1-sentinel transform (UndertowViewCallables.OrbitParentOrSentinel); RecipeId is identity U32
     // (widened to int -- ViewScalar has no uint type either, same widen-and-narrow-back discipline
-    // as every U8 column in this file). Position, RecipeParams (Vec3f scalars) and OrbitPath
-    // (ListVec3f) are NOT declared here -- see the file header and the plan doc's gap #4 entry.
+    // as every U8 column in this file). RadiusAu is the per-BODY radius_AU component of the old
+    // Vec3f RecipeParams, decomposed to a plain float column (see UndertowRecipes below for the
+    // per-RECIPE relAmp/relCycles components + provider). RecipeProvider MOVED to UndertowRecipeRow
+    // (it is a per-recipe attribute, not a per-body override -- confirmed: main.cpp's
+    // ToBodyInstanceGpu reads provider per body but the sim (UndertowSim.ResolveRecipe) sets it per
+    // matched recipe, never per-instance). Position (Vec3f) is NOT declared here -- it is genuinely
+    // per-body and remains blocked on the struct-array-element Vector emitter gap (a separate
+    // increment); see the file header and body_view.cpp's WarnBodiesPositionUnbackedOnce.
     //
-    // BLOCKED (Milestone 2.5, 2026-07-13): Position/RecipeParams CANNOT be added as columns of this
-    // row struct today. Bodies.rows is a [ViewSection(Layout = ViewLayout.Soa)] struct-ARRAY, so
-    // Position/RecipeParams would have to be STRUCT-ARRAY-ELEMENT fields (per-row columns), not
-    // top-level scalar fields on UndertowBodies. Milestone 2.4 only wired ViewFieldKind.Vector
-    // support for TOP-LEVEL scalar fields (proven via the top-level-only VectorProof.cs schema) --
-    // its own Scope boundary explicitly named the struct-array-element case as an "ALSO-flagged-
-    // but-unreachable-today NPE landmine", deliberately left unfixed. Confirmed BY ACTUALLY RUNNING
-    // the CLI with Position/RecipeParams added as UndertowBodyRow columns: --view-writer crashes
-    // with an unhandled `System.InvalidOperationException: Nullable object must have a value` at
-    // ViewWriterEmitter.cs:62 (`CsType(rf.Scalar.Value)` -- rf.Scalar is null for a Vector-kind row
-    // field, per ViewModel.cs's Classify). --typed-accessor-cpp's struct-array element loop
-    // (TypedAccessorEmitter.cs:159, `CppType(ef.Scalar.Value)`) has the identical latent NPE on the
-    // read side, not yet independently confirmed by running it (the writer crash already blocks).
-    // This is a genuine, previously-unaddressed emitter gap -- NOT decided/worked around here, per
-    // this milestone's "report a genuine design gap rather than silently deciding something
-    // material" instruction. Bodies.Position/RecipeParams stay OUT OF SCOPE this milestone; the 4
-    // Hud-family sections are unaffected (no Vector fields, no struct-array-element Vector case). ---
+    // Milestone 0 finding (verified by reading TypedAccessorEmitter.cs/ViewWriterEmitter.cs): the
+    // "top-level array Vector already works" premise does NOT extend to struct-array ELEMENT
+    // fields -- ViewWriterEmitter.cs:62 (`CsType(rf.Scalar.Value)`) and TypedAccessorEmitter.cs:159
+    // (`CppType(ef.Scalar.Value)`) both unconditionally deref a null `Scalar` for a Vector-kind
+    // element field. The genuine sidestep is decomposing radius_AU/relAmp/relCycles into plain
+    // `float` element columns (this row's `radiusAu`, `UndertowRecipeRow`'s `relAmp`/`relCycles`) --
+    // every column below is a plain scalar (int/float), so this schema needs the emitter gap fixed
+    // NOWHERE. ---
     public struct UndertowBodyRow
     {
         public int kind;                // U8, widened to int; source: el.Kind
@@ -145,13 +142,34 @@ namespace Vixen.ViewSchemas
         public int orbitParent;         // source: el.Orbit.HasValue ? el.Orbit.Value.ParentBodyIndex : -1
         public int ownerInLens;         // U8, widened to int; source: el.OwnerInLens
         public int ownerRecentEventAge; // U8, widened to int; source: el.OwnerRecentEventAge
-        public int recipeProvider;      // U8, widened to int; source: el.RecipeProvider
         public int recipeId;            // U32, widened to int; source: el.RecipeId
+        public float radiusAu;          // per-BODY: source el.RecipeParams.X (radius_AU); decomposed Vec3f component
     }
 
     [View]
     public struct UndertowBodies
     {
         [ViewSection(Layout = ViewLayout.Soa)] public UndertowBodyRow[] rows;
+    }
+
+    // --- Recipes (Milestone 0, View-ReadModel-Codegen-Plan-2026-07.md, D0): normalizes the
+    // per-recipe portion of the old per-body RecipeParams Vec3f -- one row per DISTINCT recipeId
+    // actually in use in a frame (N bodies sharing M recipes send recipe params once per recipe, not
+    // once per body). provider/relAmp/relCycles are per-recipe (set by UndertowSim.ResolveRecipe
+    // from the matched render-recipe definition, never per-body-instance); recipeId is the join key
+    // back to UndertowBodyRow.recipeId. All columns are plain scalars (no Vec3f) -- same emitter-gap
+    // sidestep as UndertowBodyRow.radiusAu above. ---
+    public struct UndertowRecipeRow
+    {
+        public int recipeId;    // U32, widened to int; join key -> UndertowBodyRow.recipeId
+        public int provider;    // U8, widened to int; source: el.RecipeProvider (0=stored, 1=procedural)
+        public float relAmp;    // per-recipe: source el.RecipeParams.Y (relAmp); decomposed Vec3f component
+        public float relCycles; // per-recipe: source el.RecipeParams.Z (relCycles); decomposed Vec3f component
+    }
+
+    [View]
+    public struct UndertowRecipes
+    {
+        [ViewSection(Layout = ViewLayout.Soa)] public UndertowRecipeRow[] rows;
     }
 }

@@ -38,13 +38,13 @@ public:
     int ownerRecentEventAge(uint32_t i) const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_ownerRecentEventAge).i;
     }
-    static constexpr size_t kElem_recipeProvider = 5;
-    int recipeProvider(uint32_t i) const {
-        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_recipeProvider).i;
-    }
-    static constexpr size_t kElem_recipeId = 6;
+    static constexpr size_t kElem_recipeId = 5;
     int recipeId(uint32_t i) const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_recipeId).i;
+    }
+    static constexpr size_t kElem_radiusAu = 6;
+    float radiusAu(uint32_t i) const {
+        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_radiusAu).f;
     }
 
 private:

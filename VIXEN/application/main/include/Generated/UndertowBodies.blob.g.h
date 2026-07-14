@@ -10,14 +10,14 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowBodyRow_fields[] = {
     {"orbitParent", Vixen::RenderGraph::ViewKind::Int, {}},
     {"ownerInLens", Vixen::RenderGraph::ViewKind::Int, {}},
     {"ownerRecentEventAge", Vixen::RenderGraph::ViewKind::Int, {}},
-    {"recipeProvider", Vixen::RenderGraph::ViewKind::Int, {}},
     {"recipeId", Vixen::RenderGraph::ViewKind::Int, {}},
+    {"radiusAu", Vixen::RenderGraph::ViewKind::Float, {}},
 };
 inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowBodies_fields[] = {
     {"rows", Vixen::RenderGraph::ViewKind::ArrayOfStruct, kUndertowBodyRow_fields},
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowBodiesBlob = {
-    "undertowbodies", kUndertowBodies_fields, 0x6896AC4Cu /* generated version */ };
+    "undertowbodies", kUndertowBodies_fields, 0x124E43F3u /* generated version */ };
 
 }  // namespace Vixen::Views
