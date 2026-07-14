@@ -1217,6 +1217,109 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // Cornell demo M1 root-cause hunt (VIXEN_DDGI_CORNELL_BAKED_DEMO=1): decisive GPU
+        // readback of the actual traced world-space hit positions, reusing hit_record_buffer
+        // (already populated by BodyInstanceRayMarch.comp -- see HitRecord.glsl, worldPos at
+        // byte offset 32) exactly like the M5 CPU-side HitRecord scan above -- no new shader
+        // binding needed, since HitRecord already carries rayOrigin + rayDir*hitT for every
+        // pixel, which is precisely "the actual ray-march transform result" this investigation
+        // needs: if the walls are baked at the wrong world scale (renderScale/localToWorld
+        // mismatch), the hit positions read back here will disagree with
+        // CornellBoxSceneDefinition.h's own world-unit box bounds ([kBoxCenter +/- kBoxHalfExtent]).
+        if (renderGraph && std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
+            static long cornellDiagTick = 0;
+            ++cornellDiagTick;
+            constexpr long kCornellDiagReadTick = 150;  // matches the camera-pose diagnostic's own settle tick
+
+            if (cornellDiagTick == kCornellDiagReadTick) {
+                auto* hrBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+                auto* cornellDevInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+                if (hrBuf && cornellDevInst && cornellDevInst->GetVulkanDevice()) {
+                    auto* cornellDev = cornellDevInst->GetVulkanDevice();
+                    vkDeviceWaitIdle(cornellDev->device);
+                    void* hrMapped = hrBuf->MapForReadback(cornellDev);
+                    if (hrMapped) {
+                        constexpr size_t kHitRecordStride = 64;   // sizeof(HitRecord), HitRecord.glsl
+                        constexpr size_t kWorldPosOffset   = 32;  // HitRecord.glsl's own layout comment
+                        constexpr size_t kHitTOffset        = 28;
+                        constexpr size_t kFlagsOffset       = 44;
+                        const auto* bytes = reinterpret_cast<const uint8_t*>(hrMapped);
+                        const size_t byteSize = static_cast<size_t>(hrBuf->GetSizeBytes());
+                        const size_t recordCount = byteSize / kHitRecordStride;
+                        // Screen is 500x500 (this demo's offscreen render target) -- sample the
+                        // center pixel (camera forward, should look straight down -Z into the box
+                        // per the already-confirmed camera pose) plus a horizontal sweep across the
+                        // middle row to catch a wall even if the center pixel lands on the gap
+                        // between geometry and the open +Z face.
+                        constexpr int kImgSize = 500;
+                        // Round 4 follow-up: the per-body AABB fix (BuildRenderGraph.cpp, tight
+                        // per-body grids) made hitT vary sensibly across the middle-row sweep, but
+                        // EVERY sampled pixel's worldPos still lands at Z~=44 -- well past every
+                        // body's own AABB (max Z=32, ceiling). Sample corners + top/bottom-center
+                        // too, and track min/max worldPos across the WHOLE buffer, to tell a real
+                        // (if unexpectedly-placed) hit apart from a systematic miss/garbage read.
+                        const int samplePixelsX[] = {50, 150, 250, 350, 450};
+                        const int centerY = kImgSize / 2;
+                        size_t hitCount = 0;
+                        float minWorld[3] = {1e30f, 1e30f, 1e30f};
+                        float maxWorld[3] = {-1e30f, -1e30f, -1e30f};
+                        for (size_t i = 0; i < recordCount; ++i) {
+                            uint32_t flagsField;
+                            std::memcpy(&flagsField, bytes + i * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                            if (flagsField & 0x1u) {
+                                ++hitCount;
+                                float wp[3];
+                                std::memcpy(wp, bytes + i * kHitRecordStride + kWorldPosOffset, sizeof(wp));
+                                for (int a = 0; a < 3; ++a) {
+                                    minWorld[a] = std::min(minWorld[a], wp[a]);
+                                    maxWorld[a] = std::max(maxWorld[a], wp[a]);
+                                }
+                            }
+                        }
+                        if (mainLogger) {
+                            mainLogger->Info("[CornellDiag] tick " + std::to_string(cornellDiagTick) +
+                                              ": HitRecord scan " + std::to_string(hitCount) + "/" +
+                                              std::to_string(recordCount) + " pixels hit");
+                            mainLogger->Info("[CornellDiag] worldPos range across all hits: min=(" +
+                                              std::to_string(minWorld[0]) + "," + std::to_string(minWorld[1]) + "," + std::to_string(minWorld[2]) +
+                                              ") max=(" + std::to_string(maxWorld[0]) + "," + std::to_string(maxWorld[1]) + "," + std::to_string(maxWorld[2]) + ")");
+                        }
+                        constexpr size_t kPad0Offset = 48;  // HitRecord._pad0[0]: winning instIdx (TEMP diag)
+                        auto dumpPixel = [&](int px, int py) {
+                            const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
+                            if (idx >= recordCount) return;
+                            uint32_t flagsField;
+                            std::memcpy(&flagsField, bytes + idx * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                            float worldPos[3];
+                            std::memcpy(worldPos, bytes + idx * kHitRecordStride + kWorldPosOffset, sizeof(worldPos));
+                            float hitT;
+                            std::memcpy(&hitT, bytes + idx * kHitRecordStride + kHitTOffset, sizeof(float));
+                            uint32_t winnerInstIdx;
+                            std::memcpy(&winnerInstIdx, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                            if (mainLogger) {
+                                mainLogger->Info("[CornellDiag] pixel(" + std::to_string(px) + "," + std::to_string(py) +
+                                                  ") hit=" + std::to_string(flagsField & 0x1u) +
+                                                  " hitT=" + std::to_string(hitT) +
+                                                  " instIdx=" + std::to_string(winnerInstIdx) +
+                                                  " worldPos=(" + std::to_string(worldPos[0]) + "," +
+                                                  std::to_string(worldPos[1]) + "," + std::to_string(worldPos[2]) + ")");
+                            }
+                        };
+                        for (int px : samplePixelsX) dumpPixel(px, centerY);
+                        dumpPixel(10, 10);
+                        dumpPixel(490, 10);
+                        dumpPixel(10, 490);
+                        dumpPixel(490, 490);
+                        dumpPixel(250, 10);
+                        dumpPixel(250, 490);
+                        hrBuf->UnmapReadback(cornellDev);
+                    }
+                } else if (mainLogger) {
+                    mainLogger->Warning("[CornellDiag] hit_record_buffer or device not found -- readback skipped");
+                }
+            }
+        }
+
         // Sparse-Mip ESVO LOD Inc1 M4c live gate: env-gated scripted camera move, unattended
         // (VIXEN_RESIDENCY_GATE_DEMO=1) — mirrors VIXEN_RESIZE_AT_FRAME's "env-var-scripted
         // behavior for an automated run" shape directly above. Sweeps orbitDistance from far

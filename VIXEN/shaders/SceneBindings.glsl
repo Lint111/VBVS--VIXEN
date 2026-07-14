@@ -243,6 +243,14 @@ layout(push_constant) uniform PushConstants {
 int g_octreeIdx      = 0;   // index into configs[] for the active octree
 int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 
+// CORNELL DIAG (TEMP, round 4 follow-up): which body instance produced the
+// CURRENT best hit this pixel -- set in TraceWorld.glsl whenever bestT is
+// updated, read back by BodyInstanceRayMarch.comp into HitRecord._pad0[0]
+// (existing, otherwise-unused padding field -- no new binding). Lets the CPU
+// readback identify EXACTLY which of the 8 Cornell bodies (or -1 = none) a
+// given pixel's hit belongs to, without adding a new SSBO binding.
+int g_cornellDiagWinnerInstIdx = -1;
+
 // ============================================================================
 // MACRO OVERRIDE: octreeConfig
 // ============================================================================

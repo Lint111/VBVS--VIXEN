@@ -245,7 +245,10 @@ void main() {
     rec.hitT        = worldHit.t;
     rec.worldPos    = rayOrigin + rayDir * worldHit.t;
     rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
-    rec._pad0       = uint[3](0u, 0u, 0u);
+    // CORNELL DIAG (TEMP, round 4 follow-up): stash the winning body-instance index
+    // (or 0xFFFFFFFF if none) in otherwise-unused padding -- see SceneBindings.glsl's
+    // g_cornellDiagWinnerInstIdx and TraceWorld.glsl's two write sites.
+    rec._pad0       = uint[3](uint(g_cornellDiagWinnerInstIdx), 0u, 0u);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
     hitRecords[hitRecordIdx] = rec;

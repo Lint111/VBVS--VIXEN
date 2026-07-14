@@ -161,6 +161,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
                 anyHit         = true;
+                g_cornellDiagWinnerInstIdx = instIdx;  // TEMP diag, see SceneBindings.glsl
             }
             continue;  // procedural body fully handled; skip the ESVO path
         }
@@ -216,6 +217,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
         vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
+
         if (gridT.y < 0.0) {
             instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
             continue;  // ray misses this instance's AABB
@@ -232,20 +234,25 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // this instance's AABB (gridT.x < 0.0): there is no meaningful "entry
         // point" to compare in that case, and the instance may still be the
         // nearest hit.
+        //
+        // ROOT-CAUSE FIX (Cornell demo M1 round 4): entryPointWorldInstSpace is
+        // measured in the (instOrigin-relative, i.e. ALREADY /renderScale) frame
+        // -- length(entryPointWorldInstSpace - instOrigin) is therefore a t
+        // PARAMETER along instDir, not a true world distance, UNLESS renderScale
+        // == 1 (every scene before this one happened to use renderScale=1, which
+        // made this bug invisible -- see instDir's own /invScale derivation
+        // above: instDir is rayDir/renderScale, NOT unit-length, contrary to the
+        // old comment here). Multiplying by inst.renderScale converts the
+        // parameter back to true world-distance units, matching bestT (which
+        // accumulates real hitT values, now also renderScale-corrected below).
+        // Verified numerically against a live GPU readback (HitRecord.worldPos):
+        // without this factor, a renderScale=3.2 body reported hitT=5.625 for a
+        // ray whose true entry distance was 18.0 (5.625*3.2==18.0 exactly).
         if (gridT.x >= 0.0) {
-            // Mirror traverseOctreeInstanced's OWN internal rayStartWorld/tEntryWorld
-            // computation exactly (lines ~524-526 above): entryPointWorldInstSpace is
-            // already in the de-instanced (instOrigin-relative) frame at REAL world
-            // scale (configs[oi].localToWorld bakes in kWorldGridSize) — measuring its
-            // distance from instOrigin (NOT re-applying renderScale/worldPos a second
-            // time) gives the same world-consistent t the traversal itself uses for
-            // hitT, by the identical scale-ratio-preserving argument documented above
-            // (instDir = rayDir/renderScale is not unit-length, but t computed this way
-            // is still in true world-distance units — see the invScale comment block).
             vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
             vec3 entryPointWorldInstSpace =
                 (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
-            float entryTWorld = length(entryPointWorldInstSpace - instOrigin);
+            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale;
             if (entryTWorld > bestT) {
                 // This instance's nearest possible entry is already farther than
                 // something already hit this ray — its full ESVO traversal
@@ -284,10 +291,17 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         uint  hitVoxel;
 
         // Pass the de-instanced ray (origin AND direction both scaled by
-        // 1/renderScale).  Because rayDir is unit-length, the returned hitT
-        // equals the TRUE world distance along the original ray
-        // (instOrigin + t*instDir maps back to rayOrigin + t*rayDir), so the
-        // cross-instance nearest-hit test below compares like-for-like.
+        // 1/renderScale). ROOT-CAUSE FIX (Cornell demo M1 round 4): instDir is
+        // NOT unit-length when renderScale != 1 (it is rayDir/renderScale), so
+        // traverseOctreeInstanced's returned hitT is a parameter along instDir,
+        // not a true world distance -- multiply by inst.renderScale below to
+        // recover true world-distance units before it's used for the
+        // cross-instance nearest-hit test or HitRecord.worldPos reconstruction
+        // (BodyInstanceRayMarch.comp's rayOrigin + rayDir*hitT). Every scene
+        // before this one used renderScale=1, which made the missing factor
+        // invisible (multiplying by 1 is a no-op) -- see this file's other
+        // renderScale-correction (the entryTWorld reject above) for the same fix
+        // applied to the front-to-back early-reject's own copy of this math.
         //
         // Pass localRayOrigin/localRayDir/gridT (already computed above for the AABB cull)
         // straight through instead of letting traverseOctreeInstanced recompute the same
@@ -299,6 +313,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
+        hitT *= inst.renderScale;  // parameter-along-instDir -> true world distance (see comment above)
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
 
         if (instHit && hitT < bestT) {
@@ -310,6 +325,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
             anyHit          = true;
+            g_cornellDiagWinnerInstIdx = instIdx;  // TEMP diag, see SceneBindings.glsl
         }
     }
 

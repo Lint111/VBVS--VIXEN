@@ -2899,48 +2899,59 @@ void VulkanGraphApplication::BuildRenderGraph() {
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: building the Cornell "
                               "box GI reference scene (baked/octree variant)");
 
-            constexpr int   kN    = 64;
             constexpr float kBand = 2.0f;
-            // SerializeSdf/ShellOctreeGpu's localToWorld ALWAYS scales an octree's local [0,1]
-            // (== bake-grid [0,kN)) to a FIXED world span of kWorldGridSize=10 before renderScale
-            // is applied (ShellOctreeGpu.h:484 "constexpr float kWorldGridSize = 10.0f" -- the
-            // SAME fixed constant VIXEN_DDGI_LEAK_GATE_DEMO's own rescale comment documents,
-            // this file ~line 3153). This means grid coordinate g maps to world coordinate
-            // worldPos + (g/kN)*kWorldGridSize*renderScale, REGARDLESS of what units the recipe
-            // program itself was authored in -- a recipe authored directly in "world-looking"
-            // numbers (e.g. box half-extent 10.0) does NOT render at that true world scale
-            // unless renderScale compensates for the fixed 10-unit squash. This bit an earlier
-            // draft of this block (an M1 self-review before the live gate): recipes were
-            // authored at CornellBoxSceneDefinition.h's own world-unit numbers with
-            // renderScale=1, which would have squashed the whole ~26-unit box into a 10-unit
-            // world footprint.
             constexpr float kWorldGridSize = 10.0f;  // ShellOctreeGpu.h's fixed octree-local->world span
 
-            // Fix: choose renderScale = kN/kWorldGridSize so grid coordinate g maps back to
-            // world coordinate g EXACTLY (world = (g/kN)*kWorldGridSize*(kN/kWorldGridSize) = g)
-            // -- an identity map. This lets every body's recipe program be authored directly
-            // using CornellBoxSceneDefinition.h's own WORLD-unit numbers (kBoxCenter,
-            // kBoxHalfExtent, kLightCenter, etc.) with NO unit conversion, as long as kN is large
-            // enough to cover the whole scene's world-space extent as grid coordinates (kN=64
-            // covers grid/world [0,64) on every axis -- the box sits at [6,26], comfortably
-            // inside with margin for the narrow band).
-            const float kRenderScale = static_cast<float>(kN) / kWorldGridSize;  // = 6.4
-            const glm::vec3 kInstanceWorldPos(0.0f, 0.0f, 0.0f);
-
-            // bakeCenter: BakeRecipeInstructionsToSdfWorld/…WithEmission evaluate
-            // evalRecipe(prog, count, p - center) where p is the ABSOLUTE grid sample point in
-            // [0,kN) -- passing center=(0,0,0) means p reaches evalRecipe UNCHANGED, so every
-            // recipe program below (authored at CornellBoxSceneDefinition.h's own absolute
-            // world-unit coordinates, e.g. kBoxCenter=(16,16,16)) is evaluated at that SAME
-            // absolute grid coordinate -- exactly the identity this block's renderScale fix
-            // above depends on.
-            const glm::vec3 kBakeCenter(0.0f, 0.0f, 0.0f);
-
-            auto bakeWallOrObject = [&](const std::vector<Vixen::SVO::Recipe::SdfInstruction>& prog) {
+            // ROOT-CAUSE FIX (M1 round 4, live-gate-verified via a HitRecord readback showing
+            // EVERY pixel reporting a spurious hitT~=0 at the camera's OWN position): every
+            // body's octree AABB is the FULL bake-grid cube [0,n) in its own local frame --
+            // rayAABBIntersection (TraceWorld.glsl) always culls against local [0,1]^3, i.e.
+            // world [worldPos, worldPos + renderScale*kWorldGridSize) on every axis, REGARDLESS
+            // of how little of that cube the body's actual geometry occupies (OctreeConfig's
+            // gridMin/gridMax are recorded but never read by the traversal shader -- confirmed
+            // via BuildRenderGraph.cpp's own tier-crossing-demo comment, ~line 1479). The
+            // previous single-shared-kN=64-grid version baked all 8 bodies over the SAME
+            // worldPos=(0,0,0) cube spanning world [0,64) on every axis -- so EVERY body's AABB
+            // was the same oversized, fully-overlapping box, and the camera (world Z~=50, per
+            // kCameraOrbitDistance=34 from box-center Z=16) landed INSIDE all eight of them,
+            // defeating the front-to-back reject and producing a t~=0 self-intersection "hit"
+            // at the camera's own origin for literally every pixel (a 250000/250000 100% hit
+            // rate that was itself the tell -- not a real, box-bounded set of wall hits).
+            //
+            // Fix: give EACH body its own TIGHT per-body bake grid (small n, just covering that
+            // body's own extent + band + margin), mirroring the established multi-body pattern
+            // already used by VIXEN_DDGI_LEAK_GATE_DEMO (2 distinctly-placed bodies, this file
+            // ~line 3230) and VIXEN_TIER_OBSERVABLE_DEMO (~line 2196) -- NOT a novel mechanism,
+            // this scene's single-shared-grid approach was the outlier. Recipes stay authored
+            // in CornellBoxSceneDefinition.h's own absolute WORLD-unit coordinates verbatim (no
+            // change to any roundedBoxAt/sphereAt call below) by choosing, per body:
+            //   worldPos   = bodyWorldCenter - n/2
+            //   renderScale = n / kWorldGridSize
+            //   bakeCenter  = n/2 - bodyWorldCenter
+            // which composes to an exact identity (world == the recipe's own authored absolute
+            // coordinate) for every point, the same derivation the old comment attempted but
+            // applied per-body instead of once over the whole scene's oversized shared cube.
+            // Verified algebraically (sympy) before landing: substituting these three into
+            // world = worldPos + ((authoredCoord + bakeCenter)/n) * kWorldGridSize * renderScale
+            // simplifies to world == authoredCoord unconditionally.
+            auto bakeTight = [&](const std::vector<Vixen::SVO::Recipe::SdfInstruction>& prog,
+                                  glm::vec3 bodyWorldCenter, int n) {
+                const glm::vec3 bakeCenter = glm::vec3(static_cast<float>(n) * 0.5f) - bodyWorldCenter;
                 Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeInstructionsToSdfWorld(
-                    prog.data(), static_cast<uint32_t>(prog.size()), kBakeCenter, kN, kBand);
+                    prog.data(), static_cast<uint32_t>(prog.size()), bakeCenter, n, kBand);
                 return Vixen::SVO::BuildSdfBodyOctree(baked, 3);
             };
+            auto bodyWorldPos = [](glm::vec3 bodyWorldCenter, int n) {
+                return bodyWorldCenter - glm::vec3(static_cast<float>(n) * 0.5f);
+            };
+            auto bodyRenderScale = [](int n) { return static_cast<float>(n) / kWorldGridSize; };
+
+            // Wall grid: max world extent along any wall's widest two axes is 2*kBoxHalfExtent
+            // (=20 for kb=10) -- n=32 leaves an 8-unit margin (>= kBand on both sides) inside a
+            // brick-aligned (multiple-of-8) size. Light/object grid: max extent ~8 world units
+            // (light) / 6 (sphere/box obj) -- n=16 leaves comparable margin.
+            constexpr int kWallN   = 32;
+            constexpr int kSmallN  = 16;
 
             auto roundedBoxAt = [](glm::vec3 c, glm::vec3 he, float rounding) {
                 Vixen::SVO::Recipe::SdfInstruction in{};
@@ -2993,21 +3004,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 roundedBoxAt(kLightCenter, kLightHalfExtent, 0.05f)
             };
 
-            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeWallOrObject(leftWallProg);
-            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeWallOrObject(rightWallProg);
-            Vixen::SVO::SdfBodyOctree backWallBody   = bakeWallOrObject(backWallProg);
-            Vixen::SVO::SdfBodyOctree floorBody      = bakeWallOrObject(floorProg);
-            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeWallOrObject(ceilingProg);
-            Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeWallOrObject(sphereObjProg);
-            Vixen::SVO::SdfBodyOctree boxObjBody     = bakeWallOrObject(boxObjProg);
+            // Per-body world centers (mirrors each wall/object's own recipe-authored position
+            // above) -- feeds bakeTight/bodyWorldPos/bodyRenderScale so each body's tight local
+            // grid is centered on its own geometry, not the whole scene.
+            const glm::vec3 kLeftWallWorldCenter(kBoxCenter.x - kb - kWallThickness, kBoxCenter.y, kBoxCenter.z);
+            const glm::vec3 kRightWallWorldCenter(kBoxCenter.x + kb + kWallThickness, kBoxCenter.y, kBoxCenter.z);
+            const glm::vec3 kBackWallWorldCenter(kBoxCenter.x, kBoxCenter.y, kBoxCenter.z - kb - kWallThickness);
+            const glm::vec3 kFloorWorldCenter(kBoxCenter.x, kBoxCenter.y - kb - kWallThickness, kBoxCenter.z);
+            const glm::vec3 kCeilingWorldCenter(kBoxCenter.x, kBoxCenter.y + kb + kWallThickness, kBoxCenter.z);
+
+            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeTight(leftWallProg, kLeftWallWorldCenter, kWallN);
+            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeTight(rightWallProg, kRightWallWorldCenter, kWallN);
+            Vixen::SVO::SdfBodyOctree backWallBody   = bakeTight(backWallProg, kBackWallWorldCenter, kWallN);
+            Vixen::SVO::SdfBodyOctree floorBody      = bakeTight(floorProg, kFloorWorldCenter, kWallN);
+            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeTight(ceilingProg, kCeilingWorldCenter, kWallN);
+            Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeTight(sphereObjProg, kSphereObjectCenter, kSmallN);
+            Vixen::SVO::SdfBodyOctree boxObjBody     = bakeTight(boxObjProg, kBoxObjectCenter, kSmallN);
 
             // Light body: baked WITH emission (constant intensity across its whole volume —
             // the ceiling-recessed box IS the emitter, no separate "emissive surface only"
             // distinction at this milestone's fidelity).
+            const glm::vec3 kLightBakeCenter = glm::vec3(static_cast<float>(kSmallN) * 0.5f) - kLightCenter;
             Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeRecipeInstructionsToSdfWorldWithEmission(
-                lightProg.data(), static_cast<uint32_t>(lightProg.size()), kBakeCenter, kN, kBand,
+                lightProg.data(), static_cast<uint32_t>(lightProg.size()), kLightBakeCenter, kSmallN, kBand,
                 [](const glm::vec3&) { return kLightEmissionIntensity; });
             Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
+            const glm::vec3 kLightWorldPos = bodyWorldPos(kLightCenter, kSmallN);
+            const float kLightRenderScale = bodyRenderScale(kSmallN);
 
             const Vixen::SVO::Octree* lightOct = lightBody.octree->getOctree();
             if (lightOct == nullptr) {
@@ -3020,24 +3043,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 Vixen::SVO::LightTreeCutParams cutParams;
                 cutParams.powerThreshold = 0.001f;  // same fine-cut rationale as VIXEN_DDGI_LEAK_GATE_DEMO
                 std::vector<Vixen::SVO::LightTreeNode> cut =
-                    Vixen::SVO::BuildLightTreeCut(*lightOct, lightSer, lightMipPool, kN, cutParams);
+                    Vixen::SVO::BuildLightTreeCut(*lightOct, lightSer, lightMipPool, kSmallN, cutParams);
 
-                // Grid->world transform for the light-tree cut, mirroring the SAME formula
-                // this block's own header comment derives for body geometry (world =
-                // worldPos + (grid/kN)*kWorldGridSize*renderScale) -- the light-tree cut's own
-                // worldPos/worldExtent fields are in the light body's bake-grid frame and need
-                // the IDENTICAL transform the light body's own BodyInstanceGpu (worldPos=(0,0,0),
-                // renderScale=kN/kWorldGridSize) applies, or the light-tree's stashed cut
-                // (read by ProbeUpdate.comp for shading) would disagree with where the light
-                // BODY geometry actually renders -- the exact class of bug
-                // VIXEN_DDGI_LEAK_GATE_DEMO's own header comment warns about (an unrescaled cut
-                // silently lands outside the probe grid's [0,32) coverage).
+                // Grid->world transform for the light-tree cut, mirroring the SAME formula this
+                // block's own header comment derives for body geometry (world = worldPos +
+                // (grid/n)*kWorldGridSize*renderScale) -- the light-tree cut's own worldPos/
+                // worldExtent fields are in the light body's bake-grid frame and need the
+                // IDENTICAL transform the light body's own BodyInstanceGpu (kLightWorldPos,
+                // kLightRenderScale, both derived from the SAME kSmallN grid above) applies, or
+                // the light-tree's stashed cut (read by ProbeUpdate.comp for shading) would
+                // disagree with where the light BODY geometry actually renders -- the exact
+                // class of bug VIXEN_DDGI_LEAK_GATE_DEMO's own header comment warns about (an
+                // unrescaled cut silently lands outside the probe grid's [0,32) coverage).
                 std::vector<Vixen::SVO::LightTreeNode> worldCut;
                 worldCut.reserve(cut.size());
                 for (const auto& node : cut) {
                     Vixen::SVO::LightTreeNode w = node;
-                    w.worldPos = kInstanceWorldPos + (node.worldPos / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
-                    w.worldExtent = (node.worldExtent / static_cast<float>(kN)) * kWorldGridSize * kRenderScale;
+                    w.worldPos = kLightWorldPos + (node.worldPos / static_cast<float>(kSmallN)) * kWorldGridSize * kLightRenderScale;
+                    w.worldExtent = (node.worldExtent / static_cast<float>(kSmallN)) * kWorldGridSize * kLightRenderScale;
                     worldCut.push_back(w);
                 }
 
@@ -3051,29 +3074,50 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     &leftWallBody, &rightWallBody, &backWallBody, &floorBody, &ceilingBody,
                     &lightBody, &sphereObjBody, &boxObjBody,
                 };
+                // TEMP DIAG (root-causing invisible walls): per-body node/brick counts +
+                // world-frame bounds before concatenation, to rule out a degenerate
+                // (zero-node or wrongly-bounded) octree despite non-empty voxel bake batches.
+                {
+                    const char* names[] = {"leftWall","rightWall","backWall","floor","ceiling","light","sphereObj","boxObj"};
+                    for (size_t di = 0; di < octreesForCat.size(); ++di) {
+                        const Vixen::SVO::Octree* diagOct = octreesForCat[di]->octree->getOctree();
+                        if (diagOct == nullptr) {
+                            mainLogger->Info(std::string("[BuildRenderGraph] CORNELL DIAG body=") + names[di] + " octree=NULL");
+                            continue;
+                        }
+                        Vixen::SVO::SerializedOctree diagSer = Vixen::SVO::SerializeSdf(*octreesForCat[di]);
+                        mainLogger->Info(std::string("[BuildRenderGraph] CORNELL DIAG body=") + names[di] +
+                                          " nodeCount=" + std::to_string(diagSer.nodeCount) +
+                                          " brickCount=" + std::to_string(diagSer.brickCount) +
+                                          " gridMin=(" + std::to_string(diagSer.config.gridMinX) + "," + std::to_string(diagSer.config.gridMinY) + "," + std::to_string(diagSer.config.gridMinZ) + ")" +
+                                          " gridMax=(" + std::to_string(diagSer.config.gridMaxX) + "," + std::to_string(diagSer.config.gridMaxY) + "," + std::to_string(diagSer.config.gridMaxZ) + ")");
+                    }
+                }
                 Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
 
-                auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color) {
+                auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos, float renderScale) {
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0] = kInstanceWorldPos.x;
-                    inst.worldPos[1] = kInstanceWorldPos.y;
-                    inst.worldPos[2] = kInstanceWorldPos.z;
-                    inst.renderScale = kRenderScale;
+                    inst.worldPos[0] = worldPos.x;
+                    inst.worldPos[1] = worldPos.y;
+                    inst.worldPos[2] = worldPos.z;
+                    inst.renderScale = renderScale;
                     inst.color[0] = color.x; inst.color[1] = color.y; inst.color[2] = color.z;
                     inst.octreeIndex = octreeIdx;
                     inst.providerKind = 0u;  // PROVIDER_STORED
                     inst.recipeId = 0u;
                     return inst;
                 };
+                const float kWallRenderScale  = bodyRenderScale(kWallN);
+                const float kSmallRenderScale = bodyRenderScale(kSmallN);
                 std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
-                    makeInstance(0u, kLeftWallColor),
-                    makeInstance(1u, kRightWallColor),
-                    makeInstance(2u, kNeutralWallColor),   // back
-                    makeInstance(3u, kNeutralWallColor),   // floor
-                    makeInstance(4u, kNeutralWallColor),   // ceiling
-                    makeInstance(5u, kLightColor),
-                    makeInstance(6u, kSphereObjectColor),
-                    makeInstance(7u, kBoxObjectColor),
+                    makeInstance(0u, kLeftWallColor,    bodyWorldPos(kLeftWallWorldCenter, kWallN),  kWallRenderScale),
+                    makeInstance(1u, kRightWallColor,   bodyWorldPos(kRightWallWorldCenter, kWallN), kWallRenderScale),
+                    makeInstance(2u, kNeutralWallColor, bodyWorldPos(kBackWallWorldCenter, kWallN),  kWallRenderScale),   // back
+                    makeInstance(3u, kNeutralWallColor, bodyWorldPos(kFloorWorldCenter, kWallN),     kWallRenderScale),   // floor
+                    makeInstance(4u, kNeutralWallColor, bodyWorldPos(kCeilingWorldCenter, kWallN),   kWallRenderScale),   // ceiling
+                    makeInstance(5u, kLightColor,       kLightWorldPos,                              kLightRenderScale),
+                    makeInstance(6u, kSphereObjectColor, bodyWorldPos(kSphereObjectCenter, kSmallN), kSmallRenderScale),
+                    makeInstance(7u, kBoxObjectColor,    bodyWorldPos(kBoxObjectCenter, kSmallN),     kSmallRenderScale),
                 };
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
