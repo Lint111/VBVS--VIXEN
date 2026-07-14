@@ -2922,115 +2922,146 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // body's own extent + band + margin), mirroring the established multi-body pattern
             // already used by VIXEN_DDGI_LEAK_GATE_DEMO (2 distinctly-placed bodies, this file
             // ~line 3230) and VIXEN_TIER_OBSERVABLE_DEMO (~line 2196) -- NOT a novel mechanism,
-            // this scene's single-shared-grid approach was the outlier. Recipes stay authored
-            // in CornellBoxSceneDefinition.h's own absolute WORLD-unit coordinates verbatim (no
-            // change to any roundedBoxAt/sphereAt call below) by choosing, per body:
-            //   worldPos   = bodyWorldCenter - n/2
-            //   renderScale = n / kWorldGridSize
-            //   bakeCenter  = n/2 - bodyWorldCenter
-            // which composes to an exact identity (world == the recipe's own authored absolute
-            // coordinate) for every point, the same derivation the old comment attempted but
-            // applied per-body instead of once over the whole scene's oversized shared cube.
-            // Verified algebraically (sympy) before landing: substituting these three into
-            // world = worldPos + ((authoredCoord + bakeCenter)/n) * kWorldGridSize * renderScale
-            // simplifies to world == authoredCoord unconditionally.
-            auto bakeTight = [&](const std::vector<Vixen::SVO::Recipe::SdfInstruction>& prog,
-                                  glm::vec3 bodyWorldCenter, int n) {
-                const glm::vec3 bakeCenter = glm::vec3(static_cast<float>(n) * 0.5f) - bodyWorldCenter;
+            // this scene's single-shared-grid approach was the outlier.
+            //
+            // ROUND 5 FIX (subdivision): the first per-body fix above still rendered as "many
+            // large cubes overlapping" instead of thin walls. Root cause: a brick is ALWAYS
+            // exactly brickSide(8) world units wide under the "grid-unit == 1 world unit"
+            // identity map this file's own header comment derives (renderScale = n/kWorldGridSize
+            // makes brick world-size = (brickSide/n)*kWorldGridSize*renderScale = brickSide,
+            // algebraically independent of n -- increasing n only grows total WORLD COVERAGE,
+            // never voxel/brick DENSITY). A wall only ~2-6 world units thick is therefore thinner
+            // than a single brick; marking that brick "occupied" (because it touches ANY part of
+            // the thin wall) inflates the wall to a full 8-unit-thick slab, and adjacent walls'
+            // inflated slabs overlap deep inside the box interior -- exactly the "large cubes"
+            // symptom. Fix: a subdivision factor (kWallSubdiv) breaks the 1:1 identity so a grid
+            // cell is 1/subdiv world units instead of 1 -- brick world-size becomes
+            // brickSide/subdiv (verified algebraically via sympy: with
+            // renderScale = n/(subdiv*kWorldGridSize), worldPos = bodyWorldCenter - n/(2*subdiv),
+            // and every recipe primitive authored in GRID-LOCAL units (position relative to the
+            // body's own center, scaled by subdiv; half-extents scaled by subdiv; the primitive
+            // is placed at the FIXED grid-local center (n/2,n/2,n/2), not at the body's absolute
+            // world coordinate -- BakeRecipeInstructionsToSdfWorld's bakeCenter is a pure
+            // translation, so a scale can only be expressed by pre-scaling the recipe's own
+            // authored numbers, not via bakeCenter alone), the world = worldPos +
+            // (grid/n)*kWorldGridSize*renderScale identity still holds exactly for every point.
+            constexpr int kWallSubdiv = 4;  // brick world-size 8 -> 2 (wall thickness ~2-6, now resolvable)
+
+            // bakeTight/bodyWorldPos/bodyRenderScale operate ENTIRELY in grid-local space: the
+            // caller passes a primitive already expressed as (localCenterOffset, gridHalfExtent)
+            // relative to the body's own world center, both PRE-SCALED by subdiv -- see
+            // gridBoxAt/gridSphereAt below, the ONLY authors of primitives in this block now.
+            auto bakeTight = [&](const std::vector<Vixen::SVO::Recipe::SdfInstruction>& prog, int n) {
+                const glm::vec3 bakeCenter(static_cast<float>(n) * 0.5f);  // primitive already at grid-local center
                 Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeRecipeInstructionsToSdfWorld(
                     prog.data(), static_cast<uint32_t>(prog.size()), bakeCenter, n, kBand);
                 return Vixen::SVO::BuildSdfBodyOctree(baked, 3);
             };
-            auto bodyWorldPos = [](glm::vec3 bodyWorldCenter, int n) {
-                return bodyWorldCenter - glm::vec3(static_cast<float>(n) * 0.5f);
+            auto bodyWorldPos = [](glm::vec3 bodyWorldCenter, int n, int subdiv) {
+                return bodyWorldCenter - glm::vec3(static_cast<float>(n) / (2.0f * static_cast<float>(subdiv)));
             };
-            auto bodyRenderScale = [](int n) { return static_cast<float>(n) / kWorldGridSize; };
+            auto bodyRenderScale = [](int n, int subdiv) {
+                return static_cast<float>(n) / (static_cast<float>(subdiv) * kWorldGridSize);
+            };
 
-            // Wall grid: max world extent along any wall's widest two axes is 2*kBoxHalfExtent
-            // (=20 for kb=10) -- n=32 leaves an 8-unit margin (>= kBand on both sides) inside a
-            // brick-aligned (multiple-of-8) size. Light/object grid: max extent ~8 world units
-            // (light) / 6 (sphere/box obj) -- n=16 leaves comparable margin.
-            constexpr int kWallN   = 32;
+            // Wall grid (subdiv=4): widest true extent 2*kBoxHalfExtent(=20) + 2*kBand(=4) margin,
+            // scaled by subdiv -> (20+4)*4=96, already brick(8)-aligned. Light/object grid: no
+            // subdivision needed (their thinnest dims — sphere/box radii, light's 0.6-unit
+            // thickness — are close enough to a full brick that subdividing them is a smaller,
+            // non-blocking cosmetic concern; deferred, not a room-scale correctness bug the way
+            // the walls were). n=16 as before for the small bodies (subdiv=1, i.e. no rescale).
+            constexpr int kWallN   = 96;
             constexpr int kSmallN  = 16;
+            constexpr int kSmallSubdiv = 1;
 
-            auto roundedBoxAt = [](glm::vec3 c, glm::vec3 he, float rounding) {
+            // gridBoxAt/gridSphereAt: author a primitive in GRID-LOCAL units -- localOffset is
+            // the primitive's center relative to ITS OWN body's world center (e.g. (0,0,0) for
+            // every wall/object here, since each body's recipe is exactly one primitive centered
+            // on itself), gridHalfExtent/gridRadius are the TRUE world half-extent/radius
+            // multiplied by subdiv. Placed at the fixed grid-local center (n/2,n/2,n/2) --
+            // bakeTight's own bakeCenter above assumes exactly this convention.
+            auto gridBoxAt = [](int n, glm::vec3 localOffsetWorld, glm::vec3 heWorld, float roundingWorld, int subdiv) {
                 Vixen::SVO::Recipe::SdfInstruction in{};
                 in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::RoundedBox);
-                in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z; in.data[3] = rounding;
-                in.data[4] = c.x;  in.data[5] = c.y;  in.data[6] = c.z;
+                const float s = static_cast<float>(subdiv);
+                const glm::vec3 c = glm::vec3(static_cast<float>(n) * 0.5f) + localOffsetWorld * s;
+                in.data[0] = heWorld.x * s; in.data[1] = heWorld.y * s; in.data[2] = heWorld.z * s;
+                in.data[3] = roundingWorld * s;
+                in.data[4] = c.x; in.data[5] = c.y; in.data[6] = c.z;
                 return in;
             };
-            auto sphereAt = [](glm::vec3 c, float r) {
+            auto gridSphereAt = [](int n, glm::vec3 localOffsetWorld, float rWorld, int subdiv) {
                 Vixen::SVO::Recipe::SdfInstruction in{};
                 in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
-                in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+                const float s = static_cast<float>(subdiv);
+                const glm::vec3 c = glm::vec3(static_cast<float>(n) * 0.5f) + localOffsetWorld * s;
+                in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = rWorld * s;
                 return in;
             };
 
             constexpr float kRounding = 0.15f;
             const float kb = kBoxHalfExtent;  // interior half-extent, shared-definition constant
+            const glm::vec3 kZero(0.0f);
 
             // 5 walls, each a thin RoundedBox slab flush against one face of the box interior,
             // recessed by kWallThickness so the interior remains exactly [kBoxCenter +/- kb].
             // Left (-X, red), Right (+X, green), Back (-Z), Floor (-Y), Ceiling (+Y) — the +Z
-            // face is deliberately OPEN (no wall) so the camera can see into the box.
+            // face is deliberately OPEN (no wall) so the camera can see into the box. Every
+            // primitive is centered on its OWN body (localOffset=zero) -- the absolute world
+            // placement now comes entirely from bodyWorldPos/bodyRenderScale below, not from the
+            // recipe's own coordinates.
             std::vector<Vixen::SVO::Recipe::SdfInstruction> leftWallProg = {
-                roundedBoxAt(glm::vec3(kBoxCenter.x - kb - kWallThickness, kBoxCenter.y, kBoxCenter.z),
-                             glm::vec3(kWallThickness, kb, kb), kRounding)
+                gridBoxAt(kWallN, kZero, glm::vec3(kWallThickness, kb, kb), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> rightWallProg = {
-                roundedBoxAt(glm::vec3(kBoxCenter.x + kb + kWallThickness, kBoxCenter.y, kBoxCenter.z),
-                             glm::vec3(kWallThickness, kb, kb), kRounding)
+                gridBoxAt(kWallN, kZero, glm::vec3(kWallThickness, kb, kb), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> backWallProg = {
-                roundedBoxAt(glm::vec3(kBoxCenter.x, kBoxCenter.y, kBoxCenter.z - kb - kWallThickness),
-                             glm::vec3(kb, kb, kWallThickness), kRounding)
+                gridBoxAt(kWallN, kZero, glm::vec3(kb, kb, kWallThickness), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> floorProg = {
-                roundedBoxAt(glm::vec3(kBoxCenter.x, kBoxCenter.y - kb - kWallThickness, kBoxCenter.z),
-                             glm::vec3(kb, kWallThickness, kb), kRounding)
+                gridBoxAt(kWallN, kZero, glm::vec3(kb, kWallThickness, kb), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> ceilingProg = {
-                roundedBoxAt(glm::vec3(kBoxCenter.x, kBoxCenter.y + kb + kWallThickness, kBoxCenter.z),
-                             glm::vec3(kb, kWallThickness, kb), kRounding)
+                gridBoxAt(kWallN, kZero, glm::vec3(kb, kWallThickness, kb), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> sphereObjProg = {
-                sphereAt(kSphereObjectCenter, kSphereObjectRadius)
+                gridSphereAt(kSmallN, kZero, kSphereObjectRadius, kSmallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> boxObjProg = {
-                roundedBoxAt(kBoxObjectCenter, kBoxObjectHalfExtent, kRounding)
+                gridBoxAt(kSmallN, kZero, kBoxObjectHalfExtent, kRounding, kSmallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> lightProg = {
-                roundedBoxAt(kLightCenter, kLightHalfExtent, 0.05f)
+                gridBoxAt(kSmallN, kZero, kLightHalfExtent, 0.05f, kSmallSubdiv)
             };
 
-            // Per-body world centers (mirrors each wall/object's own recipe-authored position
-            // above) -- feeds bakeTight/bodyWorldPos/bodyRenderScale so each body's tight local
-            // grid is centered on its own geometry, not the whole scene.
+            // Per-body world centers (used ONLY for bodyWorldPos/bodyRenderScale placement now --
+            // recipe primitives above no longer reference these directly, see gridBoxAt's own
+            // localOffset=zero convention).
             const glm::vec3 kLeftWallWorldCenter(kBoxCenter.x - kb - kWallThickness, kBoxCenter.y, kBoxCenter.z);
             const glm::vec3 kRightWallWorldCenter(kBoxCenter.x + kb + kWallThickness, kBoxCenter.y, kBoxCenter.z);
             const glm::vec3 kBackWallWorldCenter(kBoxCenter.x, kBoxCenter.y, kBoxCenter.z - kb - kWallThickness);
             const glm::vec3 kFloorWorldCenter(kBoxCenter.x, kBoxCenter.y - kb - kWallThickness, kBoxCenter.z);
             const glm::vec3 kCeilingWorldCenter(kBoxCenter.x, kBoxCenter.y + kb + kWallThickness, kBoxCenter.z);
 
-            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeTight(leftWallProg, kLeftWallWorldCenter, kWallN);
-            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeTight(rightWallProg, kRightWallWorldCenter, kWallN);
-            Vixen::SVO::SdfBodyOctree backWallBody   = bakeTight(backWallProg, kBackWallWorldCenter, kWallN);
-            Vixen::SVO::SdfBodyOctree floorBody      = bakeTight(floorProg, kFloorWorldCenter, kWallN);
-            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeTight(ceilingProg, kCeilingWorldCenter, kWallN);
-            Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeTight(sphereObjProg, kSphereObjectCenter, kSmallN);
-            Vixen::SVO::SdfBodyOctree boxObjBody     = bakeTight(boxObjProg, kBoxObjectCenter, kSmallN);
+            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeTight(leftWallProg, kWallN);
+            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeTight(rightWallProg, kWallN);
+            Vixen::SVO::SdfBodyOctree backWallBody   = bakeTight(backWallProg, kWallN);
+            Vixen::SVO::SdfBodyOctree floorBody      = bakeTight(floorProg, kWallN);
+            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeTight(ceilingProg, kWallN);
+            Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeTight(sphereObjProg, kSmallN);
+            Vixen::SVO::SdfBodyOctree boxObjBody     = bakeTight(boxObjProg, kSmallN);
 
             // Light body: baked WITH emission (constant intensity across its whole volume —
             // the ceiling-recessed box IS the emitter, no separate "emissive surface only"
             // distinction at this milestone's fidelity).
-            const glm::vec3 kLightBakeCenter = glm::vec3(static_cast<float>(kSmallN) * 0.5f) - kLightCenter;
+            const glm::vec3 kLightBakeCenter(static_cast<float>(kSmallN) * 0.5f);
             Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeRecipeInstructionsToSdfWorldWithEmission(
                 lightProg.data(), static_cast<uint32_t>(lightProg.size()), kLightBakeCenter, kSmallN, kBand,
                 [](const glm::vec3&) { return kLightEmissionIntensity; });
             Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
-            const glm::vec3 kLightWorldPos = bodyWorldPos(kLightCenter, kSmallN);
-            const float kLightRenderScale = bodyRenderScale(kSmallN);
+            const glm::vec3 kLightWorldPos = bodyWorldPos(kLightCenter, kSmallN, kSmallSubdiv);
+            const float kLightRenderScale = bodyRenderScale(kSmallN, kSmallSubdiv);
 
             const Vixen::SVO::Octree* lightOct = lightBody.octree->getOctree();
             if (lightOct == nullptr) {
@@ -3107,17 +3138,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     inst.recipeId = 0u;
                     return inst;
                 };
-                const float kWallRenderScale  = bodyRenderScale(kWallN);
-                const float kSmallRenderScale = bodyRenderScale(kSmallN);
+                const float kWallRenderScale  = bodyRenderScale(kWallN, kWallSubdiv);
+                const float kSmallRenderScale = bodyRenderScale(kSmallN, kSmallSubdiv);
                 std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
-                    makeInstance(0u, kLeftWallColor,    bodyWorldPos(kLeftWallWorldCenter, kWallN),  kWallRenderScale),
-                    makeInstance(1u, kRightWallColor,   bodyWorldPos(kRightWallWorldCenter, kWallN), kWallRenderScale),
-                    makeInstance(2u, kNeutralWallColor, bodyWorldPos(kBackWallWorldCenter, kWallN),  kWallRenderScale),   // back
-                    makeInstance(3u, kNeutralWallColor, bodyWorldPos(kFloorWorldCenter, kWallN),     kWallRenderScale),   // floor
-                    makeInstance(4u, kNeutralWallColor, bodyWorldPos(kCeilingWorldCenter, kWallN),   kWallRenderScale),   // ceiling
-                    makeInstance(5u, kLightColor,       kLightWorldPos,                              kLightRenderScale),
-                    makeInstance(6u, kSphereObjectColor, bodyWorldPos(kSphereObjectCenter, kSmallN), kSmallRenderScale),
-                    makeInstance(7u, kBoxObjectColor,    bodyWorldPos(kBoxObjectCenter, kSmallN),     kSmallRenderScale),
+                    makeInstance(0u, kLeftWallColor,    bodyWorldPos(kLeftWallWorldCenter, kWallN, kWallSubdiv),  kWallRenderScale),
+                    makeInstance(1u, kRightWallColor,   bodyWorldPos(kRightWallWorldCenter, kWallN, kWallSubdiv), kWallRenderScale),
+                    makeInstance(2u, kNeutralWallColor, bodyWorldPos(kBackWallWorldCenter, kWallN, kWallSubdiv),  kWallRenderScale),   // back
+                    makeInstance(3u, kNeutralWallColor, bodyWorldPos(kFloorWorldCenter, kWallN, kWallSubdiv),     kWallRenderScale),   // floor
+                    makeInstance(4u, kNeutralWallColor, bodyWorldPos(kCeilingWorldCenter, kWallN, kWallSubdiv),   kWallRenderScale),   // ceiling
+                    makeInstance(5u, kLightColor,       kLightWorldPos,                                          kLightRenderScale),
+                    makeInstance(6u, kSphereObjectColor, bodyWorldPos(kSphereObjectCenter, kSmallN, kSmallSubdiv), kSmallRenderScale),
+                    makeInstance(7u, kBoxObjectColor,    bodyWorldPos(kBoxObjectCenter, kSmallN, kSmallSubdiv),     kSmallRenderScale),
                 };
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
