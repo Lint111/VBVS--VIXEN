@@ -2974,27 +2974,53 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 return static_cast<float>(n) / (static_cast<float>(subdiv) * kWorldGridSize);
             };
 
-            // Wall grid (subdiv=4): widest true extent 2*kBoxHalfExtent(=20) + 2*kBand(=4) margin,
-            // scaled by subdiv -> (20+4)*4=96, already brick(8)-aligned. Light/object grid: no
-            // subdivision needed (their thinnest dims — sphere/box radii, light's 0.6-unit
-            // thickness — are close enough to a full brick that subdividing them is a smaller,
-            // non-blocking cosmetic concern; deferred, not a room-scale correctness bug the way
-            // the walls were). n=16 as before for the small bodies (subdiv=1, i.e. no rescale).
-            constexpr int kWallN   = 96;
+            // Wall grid (subdiv=4): widest true extent 2*(kBoxHalfExtent+kWallThickness)(=22)
+            // + 2*kBand(=4) margin, scaled by subdiv -> (22+4)*4=104, rounded up to the next
+            // brick(8)-aligned size (112) for a small spare margin rather than an exact fit --
+            // M3 round widened each wall's wide-axis half-extent from kb to kWallSpan
+            // (kb+kWallThickness, see kWallSpan's own comment below) so walls reach the box's
+            // true outer corners and seal flush against each other; kWallN must grow to match
+            // or the wider primitive would clip against the grid boundary before the band even
+            // applies. Light/object grid: no subdivision needed (their thinnest dims — sphere/
+            // box radii, light's 0.6-unit thickness — are close enough to a full brick that
+            // subdividing them is a smaller, non-blocking cosmetic concern; deferred, not a
+            // room-scale correctness bug the way the walls were). n=16 as before for the small
+            // bodies (subdiv=1, i.e. no rescale).
+            constexpr int kWallN   = 112;
             constexpr int kSmallN  = 16;
             constexpr int kSmallSubdiv = 1;
 
-            // gridBoxAt/gridSphereAt: author a primitive in GRID-LOCAL units -- localOffset is
-            // the primitive's center relative to ITS OWN body's world center (e.g. (0,0,0) for
-            // every wall/object here, since each body's recipe is exactly one primitive centered
-            // on itself), gridHalfExtent/gridRadius are the TRUE world half-extent/radius
-            // multiplied by subdiv. Placed at the fixed grid-local center (n/2,n/2,n/2) --
-            // bakeTight's own bakeCenter above assumes exactly this convention.
+            // gridBoxAt/gridSphereAt: author a primitive in OBJECT-CENTERED, ZERO-BASED grid
+            // units -- localOffset is the primitive's center relative to ITS OWN body's world
+            // center (e.g. (0,0,0) for every wall/object here, since each body's recipe is
+            // exactly one primitive centered on itself), gridHalfExtent/gridRadius are the TRUE
+            // world half-extent/radius multiplied by subdiv.
+            //
+            // GEOMETRY FIX (M3 round, 2026-07-14): this used to ALSO add n/2 into the
+            // primitive's own recorded position (c = vec3(n*0.5f) + localOffsetWorld*s), on top
+            // of bakeTight's own bakeCenter=n/2 already being subtracted from the raw grid
+            // sample point before evalRecipe ever sees it (BakeRecipeInstructionsToSdfWorld's
+            // own doc comment: "a primitive authored at local (0,0,0) lands at `center` in the
+            // grid" -- i.e. `center`/bakeCenter is the ONLY place the grid-center offset
+            // belongs). Adding n/2 a SECOND time here made the effective primitive center land
+            // at raw grid coordinate n (bakeCenter + primitivePos), entirely OUTSIDE the valid
+            // grid [0,n) for every wall -- confirmed algebraically (q = p_raw - bakeCenter -
+            // primitivePos = p_raw - n) and via a live HitRecord readback showing an
+            // out-of-scene-bounds max hit coordinate (X=37.8, beyond the box's own max possible
+            // X=28) plus a big drop in the hit-count/coverage rate versus a healthy scan. This
+            // is the actual root cause of the baked variant's "distorted, overlapping,
+            // incoherent geometry" symptom -- each wall's true SDF surface was only PARTIALLY
+            // inside the grid (half clipped off, the surviving half offset from the intended
+            // center), producing a half-slab in the wrong place rather than the AABB-overlap
+            // theory this round started from. Fix: author primitives at local ZERO (matching
+            // test_baked_vs_virtual_parity.cpp's own established localSpaceProgram convention,
+            // e.g. its "sphereAt(glm::vec3(0.0f), 18.0f)" for a bake-grid-centered primitive) --
+            // bakeTight's bakeCenter is now the ONLY n/2 offset applied, exactly once.
             auto gridBoxAt = [](int n, glm::vec3 localOffsetWorld, glm::vec3 heWorld, float roundingWorld, int subdiv) {
                 Vixen::SVO::Recipe::SdfInstruction in{};
                 in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::RoundedBox);
                 const float s = static_cast<float>(subdiv);
-                const glm::vec3 c = glm::vec3(static_cast<float>(n) * 0.5f) + localOffsetWorld * s;
+                const glm::vec3 c = localOffsetWorld * s;
                 in.data[0] = heWorld.x * s; in.data[1] = heWorld.y * s; in.data[2] = heWorld.z * s;
                 in.data[3] = roundingWorld * s;
                 in.data[4] = c.x; in.data[5] = c.y; in.data[6] = c.z;
@@ -3004,7 +3030,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 Vixen::SVO::Recipe::SdfInstruction in{};
                 in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
                 const float s = static_cast<float>(subdiv);
-                const glm::vec3 c = glm::vec3(static_cast<float>(n) * 0.5f) + localOffsetWorld * s;
+                const glm::vec3 c = localOffsetWorld * s;
                 in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = rWorld * s;
                 return in;
             };
@@ -3013,27 +3039,62 @@ void VulkanGraphApplication::BuildRenderGraph() {
             const float kb = kBoxHalfExtent;  // interior half-extent, shared-definition constant
             const glm::vec3 kZero(0.0f);
 
+            // GEOMETRY FIX (M3 round, 2026-07-14): each wall's WIDE-axis half-extent must
+            // reach the box's OUTER corner (kb + kWallThickness), not stop at the interior
+            // boundary (kb) -- the previous version used `kb` for a wall's wide axes, which
+            // left every wall's footprint SHORT of the adjacent wall's placement by exactly
+            // kWallThickness on each side, i.e. a kWallThickness-wide gap/hole at every
+            // vertical/horizontal seam where two walls should meet (confirmed both
+            // analytically -- left wall's Z-range [6,26] vs back wall's own [4,6] Z-slab
+            // never overlapping in the region X in [4,6] -- and via a live screenshot showing
+            // visible dark gaps between the red/green/gray wall panels). kWallSpan is the
+            // correct wide-axis half-extent: it makes every wall's footprint reach exactly to
+            // the outer corner where the perpendicular wall begins, so adjacent walls seal
+            // flush against each other with zero gap and zero overlap.
+            const float kWallSpan = kb + kWallThickness;
+
+            // ASYMMETRY FIX (same round): kWallSpan is only correct on axes where BOTH ends
+            // are a CLOSED face meeting a perpendicular wall. The box's +Z face is
+            // deliberately OPEN (camera side, no back wall there) -- symmetrically extending
+            // a wall's Z-extent by kWallSpan on the leftWall/rightWall/floor/ceiling (whose
+            // wide axes include Z) makes them poke kWallThickness past the open face's own
+            // interior boundary (kb) toward the camera, which a live HitRecord readback caught
+            // directly (center-pixel hit worldPos.z=27.0, i.e. 1 unit past the intended
+            // interior boundary z=26 -- the floor/ceiling were partially occluding the open
+            // view into the room instead of stopping flush at it). Fix: on the Z axis only,
+            // extend by kWallThickness/2 toward -Z (the closed/back-wall side) and offset the
+            // primitive's own Z-center by -kWallThickness/2 to compensate -- this reaches the
+            // true outer corner on the closed -Z side while staying EXACTLY at the interior
+            // boundary (kb) on the open +Z side (verified algebraically: half-extent
+            // kb+wt/2 centered at offset -wt/2 gives range [c-kb-wt, c+kb], i.e. extended by
+            // wt on the -Z end, unchanged on the +Z end). backWall's own wide axes (X, Y) are
+            // both fully closed (left/right and floor/ceiling respectively) so keep the plain
+            // symmetric kWallSpan treatment.
+            const float kZWideHalfExtent = kb + kWallThickness * 0.5f;
+            const glm::vec3 kZWideOffset(0.0f, 0.0f, -kWallThickness * 0.5f);
+
             // 5 walls, each a thin RoundedBox slab flush against one face of the box interior,
             // recessed by kWallThickness so the interior remains exactly [kBoxCenter +/- kb].
             // Left (-X, red), Right (+X, green), Back (-Z), Floor (-Y), Ceiling (+Y) — the +Z
             // face is deliberately OPEN (no wall) so the camera can see into the box. Every
-            // primitive is centered on its OWN body (localOffset=zero) -- the absolute world
-            // placement now comes entirely from bodyWorldPos/bodyRenderScale below, not from the
-            // recipe's own coordinates.
+            // primitive is centered on its OWN body (localOffset=zero, except the Z-wide walls'
+            // kZWideOffset compensation above) -- the absolute world placement otherwise comes
+            // entirely from bodyWorldPos/bodyRenderScale below, not from the recipe's own
+            // coordinates.
             std::vector<Vixen::SVO::Recipe::SdfInstruction> leftWallProg = {
-                gridBoxAt(kWallN, kZero, glm::vec3(kWallThickness, kb, kb), kRounding, kWallSubdiv)
+                gridBoxAt(kWallN, kZWideOffset, glm::vec3(kWallThickness, kWallSpan, kZWideHalfExtent), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> rightWallProg = {
-                gridBoxAt(kWallN, kZero, glm::vec3(kWallThickness, kb, kb), kRounding, kWallSubdiv)
+                gridBoxAt(kWallN, kZWideOffset, glm::vec3(kWallThickness, kWallSpan, kZWideHalfExtent), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> backWallProg = {
-                gridBoxAt(kWallN, kZero, glm::vec3(kb, kb, kWallThickness), kRounding, kWallSubdiv)
+                gridBoxAt(kWallN, kZero, glm::vec3(kWallSpan, kWallSpan, kWallThickness), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> floorProg = {
-                gridBoxAt(kWallN, kZero, glm::vec3(kb, kWallThickness, kb), kRounding, kWallSubdiv)
+                gridBoxAt(kWallN, kZWideOffset, glm::vec3(kWallSpan, kWallThickness, kZWideHalfExtent), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> ceilingProg = {
-                gridBoxAt(kWallN, kZero, glm::vec3(kb, kWallThickness, kb), kRounding, kWallSubdiv)
+                gridBoxAt(kWallN, kZWideOffset, glm::vec3(kWallSpan, kWallThickness, kZWideHalfExtent), kRounding, kWallSubdiv)
             };
             std::vector<Vixen::SVO::Recipe::SdfInstruction> sphereObjProg = {
                 gridSphereAt(kSmallN, kZero, kSphereObjectRadius, kSmallSubdiv)
@@ -3269,11 +3330,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
             constexpr float kRounding = 0.15f;
             const float kb = kBoxHalfExtent;
 
-            const glm::vec3 kLeftWallWorldCenter(kBoxCenter.x - kb - kWallThickness, kBoxCenter.y, kBoxCenter.z);
-            const glm::vec3 kRightWallWorldCenter(kBoxCenter.x + kb + kWallThickness, kBoxCenter.y, kBoxCenter.z);
+            // GEOMETRY FIX (M3 round, 2026-07-14): same root cause and fix as the baked
+            // variant above (see its own kWallSpan comment for the full derivation) -- each
+            // wall's WIDE-axis half-extent must reach the box's OUTER corner (kb+kWallThickness),
+            // not stop at the interior boundary (kb), or adjacent walls leave a
+            // kWallThickness-wide gap at every seam. Live-verified: a fresh screenshot before
+            // this fix showed clear dark gaps between the red/green/gray wall panels at every
+            // corner (rounded-gemstone-facet look, not a sealed room).
+            const float kWallSpan = kb + kWallThickness;
+
+            // ASYMMETRY FIX (same round, same reasoning as the baked variant's own comment):
+            // the box's +Z face is deliberately OPEN (camera side) -- symmetrically extending
+            // leftWall/rightWall/floor/ceiling's Z-extent by kWallSpan pokes them kWallThickness
+            // past the open face's interior boundary toward the camera. Fix: on Z only, extend
+            // by kWallThickness/2 toward -Z and offset the wall's own Z-CENTER by -kWallThickness/2
+            // to compensate, reaching the true outer corner on the closed -Z side while staying
+            // exactly at the interior boundary (kb) on the open +Z side.
+            const float kZWideHalfExtent = kb + kWallThickness * 0.5f;
+            const float kZWideCenterOffset = -kWallThickness * 0.5f;
+
+            const glm::vec3 kLeftWallWorldCenter(kBoxCenter.x - kb - kWallThickness, kBoxCenter.y, kBoxCenter.z + kZWideCenterOffset);
+            const glm::vec3 kRightWallWorldCenter(kBoxCenter.x + kb + kWallThickness, kBoxCenter.y, kBoxCenter.z + kZWideCenterOffset);
             const glm::vec3 kBackWallWorldCenter(kBoxCenter.x, kBoxCenter.y, kBoxCenter.z - kb - kWallThickness);
-            const glm::vec3 kFloorWorldCenter(kBoxCenter.x, kBoxCenter.y - kb - kWallThickness, kBoxCenter.z);
-            const glm::vec3 kCeilingWorldCenter(kBoxCenter.x, kBoxCenter.y + kb + kWallThickness, kBoxCenter.z);
+            const glm::vec3 kFloorWorldCenter(kBoxCenter.x, kBoxCenter.y - kb - kWallThickness, kBoxCenter.z + kZWideCenterOffset);
+            const glm::vec3 kCeilingWorldCenter(kBoxCenter.x, kBoxCenter.y + kb + kWallThickness, kBoxCenter.z + kZWideCenterOffset);
 
             // Recipe id allocation: 2..9 (0/1 reserved for the legacy analytic RECIPE_SPHERE/
             // RECIPE_DISPLACED_SPHERE path, same convention VIXEN_PROCEDURAL_UBER_DEMO's own
@@ -3291,22 +3371,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 float boundRadius;
                 glm::vec3 color;
             };
+            // Bound-sphere radius per wall must cover the wall's own half-diagonal now that the
+            // wide-axis half-extent is kWallSpan/kZWideHalfExtent rather than kb -- reusing the
+            // old "kb+kWallThickness+1.0f" radius (sized for the SMALLER pre-fix box) would
+            // under-cover the wall's true corners and clip them out of the procedural trace's
+            // front-to-back bound-sphere cull. kZWideHalfExtent < kWallSpan, so using kWallSpan
+            // for all three axes here is a safe (slightly conservative) upper bound valid for
+            // both the Z-wide walls (leftWall/rightWall/floor/ceiling) and backWall alike.
+            const float kWallBoundRadius = glm::length(glm::vec3(kWallThickness, kWallSpan, kWallSpan)) + 1.0f;
+
             std::vector<CornellVirtualBody> bodies;
             bodies.push_back({"leftWall", 2u,
-                {worldBoxAt(kLeftWallWorldCenter, glm::vec3(kWallThickness, kb, kb), kRounding)},
-                kLeftWallWorldCenter, kb + kWallThickness + 1.0f, kLeftWallColor});
+                {worldBoxAt(kLeftWallWorldCenter, glm::vec3(kWallThickness, kWallSpan, kZWideHalfExtent), kRounding)},
+                kLeftWallWorldCenter, kWallBoundRadius, kLeftWallColor});
             bodies.push_back({"rightWall", 3u,
-                {worldBoxAt(kRightWallWorldCenter, glm::vec3(kWallThickness, kb, kb), kRounding)},
-                kRightWallWorldCenter, kb + kWallThickness + 1.0f, kRightWallColor});
+                {worldBoxAt(kRightWallWorldCenter, glm::vec3(kWallThickness, kWallSpan, kZWideHalfExtent), kRounding)},
+                kRightWallWorldCenter, kWallBoundRadius, kRightWallColor});
             bodies.push_back({"backWall", 4u,
-                {worldBoxAt(kBackWallWorldCenter, glm::vec3(kb, kb, kWallThickness), kRounding)},
-                kBackWallWorldCenter, kb + kWallThickness + 1.0f, kNeutralWallColor});
+                {worldBoxAt(kBackWallWorldCenter, glm::vec3(kWallSpan, kWallSpan, kWallThickness), kRounding)},
+                kBackWallWorldCenter, kWallBoundRadius, kNeutralWallColor});
             bodies.push_back({"floor", 5u,
-                {worldBoxAt(kFloorWorldCenter, glm::vec3(kb, kWallThickness, kb), kRounding)},
-                kFloorWorldCenter, kb + kWallThickness + 1.0f, kNeutralWallColor});
+                {worldBoxAt(kFloorWorldCenter, glm::vec3(kWallSpan, kWallThickness, kZWideHalfExtent), kRounding)},
+                kFloorWorldCenter, kWallBoundRadius, kNeutralWallColor});
             bodies.push_back({"ceiling", 6u,
-                {worldBoxAt(kCeilingWorldCenter, glm::vec3(kb, kWallThickness, kb), kRounding)},
-                kCeilingWorldCenter, kb + kWallThickness + 1.0f, kNeutralWallColor});
+                {worldBoxAt(kCeilingWorldCenter, glm::vec3(kWallSpan, kWallThickness, kZWideHalfExtent), kRounding)},
+                kCeilingWorldCenter, kWallBoundRadius, kNeutralWallColor});
             bodies.push_back({"light", 7u,
                 {worldBoxAt(kLightCenter, kLightHalfExtent, 0.05f)},
                 kLightCenter, glm::length(kLightHalfExtent) + 1.0f, kLightColor});
