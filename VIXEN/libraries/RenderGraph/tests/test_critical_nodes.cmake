@@ -13,11 +13,21 @@
 #
 # Compatible with VULKAN_TRIMMED_BUILD for unit tests.
 # Integration tests require full Vulkan SDK.
-
-# DeviceNode Tests
-add_executable(test_device_node
-    Nodes/test_device_node.cpp
-)
+#
+# ===========================================================================
+# Milestone 2 PDB consolidation (2026-07-14): 41 targets grouped into 21
+# executables (10 merged groups + 11 kept standalone). See
+# Vixen-Docs/04-Development/RenderGraph-Test-PDB-Consolidation-Plan-2026-07.md
+# for the full grouping rationale and collision analysis. Every merged
+# group's constituent files were individually verified for: no file-scope
+# (non-anonymous-namespace) struct/symbol collisions, at most one hand-rolled
+# main()/RUN_ALL_TESTS() among the group's files (all bare gtest_main), and
+# identical POST_BUILD/custom-command/compile-definition requirements (a
+# strict, cheap-to-apply union where a subset of the group needs an extra
+# conditional lib/define). gtest_discover_tests() DISCOVERY_MODE/
+# DISCOVERY_TIMEOUT is preserved unchanged on every resulting group that
+# needs it.
+# ===========================================================================
 
 # Common libraries for RenderGraph tests. Start with GoogleTest and RenderGraph
 set(RENDERGRAPH_TEST_COMMON_LIBS
@@ -45,276 +55,81 @@ if(TARGET ShaderManagement)
     list(APPEND RENDERGRAPH_TEST_COMMON_LIBS ShaderManagement)
 endif()
 
-# Link against library target and explicit dependencies
-target_link_libraries(test_device_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_device_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_device_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_device_node")
-
-# WindowNode Tests
-add_executable(test_window_node
+# ===========================================================================
+# Group 1: test_rendergraph_criticalnodes_infra1 — bare link surface, default
+# discovery. DeviceNode / WindowNode / CommandPoolNode / SwapChainNode /
+# FrameSyncNode / RenderTargetNode / ComputeDispatchNode / BlendMode.
+# ===========================================================================
+add_executable(test_rendergraph_criticalnodes_infra1
+    Nodes/test_device_node.cpp
     Nodes/test_window_node.cpp
-)
-
-target_link_libraries(test_window_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_window_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_window_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_window_node")
-
-# CommandPoolNode Tests
-add_executable(test_command_pool_node
     Nodes/test_command_pool_node.cpp
-)
-
-target_link_libraries(test_command_pool_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_command_pool_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_command_pool_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_command_pool_node")
-
-# SwapChainNode Tests
-add_executable(test_swap_chain_node
     Nodes/test_swap_chain_node.cpp
-)
-
-target_link_libraries(test_swap_chain_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_swap_chain_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_swap_chain_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_swap_chain_node")
-
-# FrameSyncNode Tests
-add_executable(test_frame_sync_node
     Nodes/test_frame_sync_node.cpp
-)
-
-target_link_libraries(test_frame_sync_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_frame_sync_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_frame_sync_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_frame_sync_node")
-
-# PushConstantGathererNode Tests
-add_executable(test_push_constant_gatherer_node
-    Nodes/test_push_constant_gatherer_node.cpp
-)
-
-target_link_libraries(test_push_constant_gatherer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_push_constant_gatherer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_push_constant_gatherer_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_push_constant_gatherer_node")
-
-# DescriptorResourceGathererNode Tests
-add_executable(test_descriptor_resource_gatherer_node
-    Nodes/test_descriptor_resource_gatherer_node.cpp
-)
-
-target_link_libraries(test_descriptor_resource_gatherer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_descriptor_resource_gatherer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_descriptor_resource_gatherer_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_descriptor_resource_gatherer_node")
-
-# AccelerationStructureNode Tests (Phase 3.4)
-add_executable(test_acceleration_structure_node
-    Nodes/test_acceleration_structure_node.cpp
-)
-
-# Link against library targets including CashSystem for ASBuildMode
-target_link_libraries(test_acceleration_structure_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET CashSystem)
-    target_link_libraries(test_acceleration_structure_node PRIVATE CashSystem)
-endif()
-
-
-# Visual Studio solution folder organization
-set_target_properties(test_acceleration_structure_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_acceleration_structure_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_acceleration_structure_node (Phase 3.4)")
-
-# RenderTargetNode Tests (AR#28)
-add_executable(test_render_target_node
     Nodes/test_render_target_node.cpp
-)
-
-target_link_libraries(test_render_target_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_render_target_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_render_target_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_render_target_node (AR#28)")
-
-# ComputeDispatchNode KI-007 fix Tests — pure unit tests, no device (see the test file header)
-add_executable(test_compute_dispatch_node
     Nodes/test_compute_dispatch_node.cpp
-)
-
-target_link_libraries(test_compute_dispatch_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-set_target_properties(test_compute_dispatch_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_compute_dispatch_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_compute_dispatch_node (KI-007 render-target layout tracking)")
-
-# Blend mode recipe + config Tests (AR#32) — pure unit tests, no device
-add_executable(test_blend_mode
     Nodes/test_blend_mode.cpp
 )
+target_link_libraries(test_rendergraph_criticalnodes_infra1 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+set_target_properties(test_rendergraph_criticalnodes_infra1 PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_infra1)
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blend_mode)")
 
-target_link_libraries(test_blend_mode PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_blend_mode PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_blend_mode)
-
-message(STATUS "[RenderGraph Tests] Added: test_blend_mode (AR#32)")
-
-# Selection core types (SEL-P1) — pure unit tests, no device
-# Covers SelectionSet.apply modifier semantics + SelectionId hash/equality.
-add_executable(test_selection_set
-    Selection/test_selection_set.cpp
-)
-
-target_link_libraries(test_selection_set PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_selection_set PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_selection_set)
-
-message(STATUS "[RenderGraph Tests] Added: test_selection_set (SEL-P1)")
-
-# Selection candidate resolution (SEL-P2, providers-are-nodes) — pure unit tests, no device.
-# Pins pickBestCandidate() (max priority, tie-break min depth, ignore non-hits) — the rule the
-# SelectionCoordinatorNode applies to the MultiConnect candidate fan-in. The voxel provider node's
-# GPU readback is exercised live in the app (the user's manual click test).
-add_executable(test_selection_resolve
-    Selection/test_selection_resolve.cpp
-)
-
-target_link_libraries(test_selection_resolve PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_selection_resolve PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_selection_resolve)
-
-message(STATUS "[RenderGraph Tests] Added: test_selection_resolve (SEL-P2)")
-
-# PickRay unproject Tests (AR#35) — pure unit tests, no device
-add_executable(test_pick_ray
+# ===========================================================================
+# Group 2: test_rendergraph_criticalnodes_infra2 — bare link surface plus two
+# cheap conditional unions (AccelerationStructureNode's optional CashSystem
+# link, BodyOctreeLifetime's optional SVO link + VIXEN_WSL_DZN_ICD define —
+# both no-ops when their target/var is absent, harmless to apply to the
+# whole group). Default discovery.
+# ===========================================================================
+add_executable(test_rendergraph_criticalnodes_infra2
     Nodes/test_pick_ray.cpp
-)
-
-target_link_libraries(test_pick_ray PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_pick_ray PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_pick_ray)
-
-message(STATUS "[RenderGraph Tests] Added: test_pick_ray (AR#35)")
-
-# InstanceBufferNode Tests (AR#31)
-add_executable(test_instance_buffer_node
     Nodes/test_instance_buffer_node.cpp
-)
-
-target_link_libraries(test_instance_buffer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_instance_buffer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_instance_buffer_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_instance_buffer_node (AR#31)")
-
-# PickIdTargetNode Tests (AR#35 GPU picking P1)
-add_executable(test_pick_id_target_node
     Nodes/test_pick_id_target_node.cpp
-)
-
-target_link_libraries(test_pick_id_target_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_pick_id_target_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_pick_id_target_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_pick_id_target_node (AR#35)")
-
-# DynamicInstanceBufferNode Tests (AR#33)
-add_executable(test_dynamic_instance_buffer_node
     Nodes/test_dynamic_instance_buffer_node.cpp
-)
-
-target_link_libraries(test_dynamic_instance_buffer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_dynamic_instance_buffer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_dynamic_instance_buffer_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_dynamic_instance_buffer_node (AR#33)")
-
-# MvpUniformNode Tests (AR#31)
-add_executable(test_mvp_uniform_node
     Nodes/test_mvp_uniform_node.cpp
-)
-
-target_link_libraries(test_mvp_uniform_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-
-# Visual Studio solution folder organization
-set_target_properties(test_mvp_uniform_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_mvp_uniform_node)
-
-message(STATUS "[RenderGraph Tests] Added: test_mvp_uniform_node (AR#31)")
-
-# BodyOctreeSceneNode GPU-resource LIFETIME test.
-# Drives the REAL node lifecycle (Compile -> Execute ring cycles -> grow -> Cleanup
-# recompile/teardown -> device destroy) on a real device under the Khronos validation
-# layer, asserting NO lifetime errors (destroy-while-bound, double-free, leaked objects).
-# Links the same set as the FR-7 ring sibling test_dynamic_instance_buffer_node; SVO
-# (ShellOctree/PackInstances) comes in via the RenderGraph link closure. Uses
-# VixenSelectWslGpuIcd() (see the file header) to prefer Mesa-Dozen (the real GPU) on
-# WSL2, falling back to lavapipe otherwise — no VK_ICD_FILENAMES env needed by default.
-add_executable(test_body_octree_lifetime
+    Nodes/test_acceleration_structure_node.cpp
     Nodes/test_body_octree_lifetime.cpp
 )
-
-target_link_libraries(test_body_octree_lifetime PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_rendergraph_criticalnodes_infra2 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET CashSystem)
+    target_link_libraries(test_rendergraph_criticalnodes_infra2 PRIVATE CashSystem)
+endif()
 if(TARGET SVO)
-    target_link_libraries(test_body_octree_lifetime PRIVATE SVO)
+    target_link_libraries(test_rendergraph_criticalnodes_infra2 PRIVATE SVO)
 endif()
 if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_body_octree_lifetime PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+    target_compile_definitions(test_rendergraph_criticalnodes_infra2 PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
+set_target_properties(test_rendergraph_criticalnodes_infra2 PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_infra2)
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)")
 
-# Visual Studio solution folder organization
-set_target_properties(test_body_octree_lifetime PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_body_octree_lifetime)
+# ===========================================================================
+# Group 3 + 4: PushConstantGathererNode / DescriptorResourceGathererNode each
+# hand-roll their own int main()+RUN_ALL_TESTS() — at most one such file per
+# binary (a second would be LNK2005 duplicate-main, the exact collision
+# Milestone 1 found). Paired each with one plain SelectionSet/SelectionResolve
+# unit-test file (no main() of their own, no risky file-scope symbols) rather
+# than growing Group 1/2 with the extra ShaderManagementTestFixtures lib.
+# ===========================================================================
+add_executable(test_rendergraph_criticalnodes_pushconstant
+    Nodes/test_push_constant_gatherer_node.cpp
+    Selection/test_selection_set.cpp
+)
+target_link_libraries(test_rendergraph_criticalnodes_pushconstant PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
+set_target_properties(test_rendergraph_criticalnodes_pushconstant PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_pushconstant)
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)")
 
-message(STATUS "[RenderGraph Tests] Added: test_body_octree_lifetime (real-GPU lifetime)")
+add_executable(test_rendergraph_criticalnodes_descriptorgatherer
+    Nodes/test_descriptor_resource_gatherer_node.cpp
+    Selection/test_selection_resolve.cpp
+)
+target_link_libraries(test_rendergraph_criticalnodes_descriptorgatherer PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
+set_target_properties(test_rendergraph_criticalnodes_descriptorgatherer PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_descriptorgatherer)
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)")
 
 # ===========================================================================
 # BodyInstanceRayMarch.comp REAL-SHADER render-to-PNG test.
@@ -392,67 +207,58 @@ add_custom_command(
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
 
-add_executable(test_body_instance_raymarch_render
+# ===========================================================================
+# Group 5: test_rendergraph_criticalnodes_gpurender1 — real-shader GPU render
+# tests sharing body_instance_raymarch_spv, SVO + (conditional) stb, single
+# GLSL_RAYMARCH_SPV compile-def, PRE_TEST discovery (120s timeout — GPU-init
+# discovery flake, see file headers below).
+#
+# NOTE (found only by an actual Windows/MSVC link, not static review, exactly
+# the Milestone-1 lesson): test_body_instance_raymarch_render.cpp,
+# test_recipe_pool_render.cpp, and test_mip_fallback_render.cpp EACH
+# `#define STB_IMAGE_WRITE_IMPLEMENTATION` to instantiate stb_image_write.h's
+# implementation — at most ONE such file may exist per binary, or every
+# stbi_write_* symbol is LNK2005 multiply-defined. test_hitrecord_readback.cpp
+# does not write PNGs (no stb dependency at all) and is the only file in the
+# original 4-way group safe to pair with an STB-impl file. Split into:
+# BodyInstanceRayMarchRender+HitRecordReadback (paired), RecipePoolRender
+# (standalone STB-impl), MipFallbackRender (standalone STB-impl).
+# ===========================================================================
+add_executable(test_rendergraph_criticalnodes_gpurender1
     Nodes/test_body_instance_raymarch_render.cpp
+    Nodes/test_hitrecord_readback.cpp
 )
-add_dependencies(test_body_instance_raymarch_render body_instance_raymarch_spv)
-target_link_libraries(test_body_instance_raymarch_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+add_dependencies(test_rendergraph_criticalnodes_gpurender1 body_instance_raymarch_spv)
+target_link_libraries(test_rendergraph_criticalnodes_gpurender1 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 if(TARGET SVO)
-    target_link_libraries(test_body_instance_raymarch_render PRIVATE SVO)
+    target_link_libraries(test_rendergraph_criticalnodes_gpurender1 PRIVATE SVO)
 endif()
 if(TARGET stb)
-    target_link_libraries(test_body_instance_raymarch_render PRIVATE stb)
+    target_link_libraries(test_rendergraph_criticalnodes_gpurender1 PRIVATE stb)
 else()
     # stb is an INTERFACE header dep; if the target isn't visible here, add its include dir.
-    target_include_directories(test_body_instance_raymarch_render PRIVATE
+    target_include_directories(test_rendergraph_criticalnodes_gpurender1 PRIVATE
         "${stb_SOURCE_DIR}")
 endif()
-target_compile_definitions(test_body_instance_raymarch_render PRIVATE
+target_compile_definitions(test_rendergraph_criticalnodes_gpurender1 PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
 if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_body_instance_raymarch_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+    target_compile_definitions(test_rendergraph_criticalnodes_gpurender1 PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 
-set_target_properties(test_body_instance_raymarch_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
+set_target_properties(test_rendergraph_criticalnodes_gpurender1 PROPERTIES FOLDER "Tests/RenderGraph Tests")
 # DISCOVERY_MODE PRE_TEST: defer the --gtest_list_tests invocation to ctest run-time,
 # not POST_BUILD. This prevents the Vulkan-init timeout from making the build "FAILED"
 # (the known MSB3073 / 5s discovery timeout flake — see friction log 2026-06-13).
-gtest_discover_tests(test_body_instance_raymarch_render
+gtest_discover_tests(test_rendergraph_criticalnodes_gpurender1
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
-message(STATUS "[RenderGraph Tests] Added: test_body_instance_raymarch_render (real-shader render)")
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender1 (merged: body_instance_raymarch_render/hitrecord_readback)")
 
-# ===========================================================================
-# Sampled Lighting Inc1 M3 — HitRecord SSBO (binding 17) round-trip live gate:
-# dispatches the real shader, reads back the HitRecordBuffer it wrote per-pixel,
-# and cross-checks it against the shader's OWN colour/ID outputs (both driven
-# off the SAME in-shader HitRecord readback — see BodyInstanceRayMarch.comp
-# main()'s round-trip comment). No PNG output (no stb dependency needed).
-# ===========================================================================
-add_executable(test_hitrecord_readback
-    Nodes/test_hitrecord_readback.cpp
-)
-add_dependencies(test_hitrecord_readback body_instance_raymarch_spv)
-target_link_libraries(test_hitrecord_readback PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET SVO)
-    target_link_libraries(test_hitrecord_readback PRIVATE SVO)
-endif()
-target_compile_definitions(test_hitrecord_readback PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_hitrecord_readback PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
-endif()
-set_target_properties(test_hitrecord_readback PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_hitrecord_readback
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_hitrecord_readback (Sampled Lighting Inc1 M3)")
-
-# ===========================================================================
-# I4.1 — SetRecipePool pool render gate: 4 baked SDF recipes,
-# one instance per octreeIndex, asserts all 4 bodies produce visible pixels.
-# ===========================================================================
+# RecipePoolRender — kept standalone: has its own STB_IMAGE_WRITE_IMPLEMENTATION
+# (see NOTE above); no remaining non-STB-impl partner left after pairing
+# HitRecordReadback with BodyInstanceRayMarchRender above.
 add_executable(test_recipe_pool_render
     Nodes/test_recipe_pool_render.cpp
 )
@@ -476,13 +282,10 @@ set_target_properties(test_recipe_pool_render PROPERTIES FOLDER "Tests/RenderGra
 gtest_discover_tests(test_recipe_pool_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate)")
+message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)")
 
-# ===========================================================================
-# Sparse-Mip ESVO LOD Inc1 M3 — shader-side mip fallback read (Tasks 7-9):
-# a mip-only tree (residency never requested) renders a recognizable round
-# silhouette from mip samples alone; a fully-resident tree renders comparably.
-# ===========================================================================
+# MipFallbackRender — kept standalone: has its own STB_IMAGE_WRITE_IMPLEMENTATION
+# (see NOTE above).
 add_executable(test_mip_fallback_render
     Nodes/test_mip_fallback_render.cpp
 )
@@ -506,17 +309,15 @@ set_target_properties(test_mip_fallback_render PROPERTIES FOLDER "Tests/RenderGr
 gtest_discover_tests(test_mip_fallback_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3)")
+message(STATUS "[RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)")
 
 # ===========================================================================
-# Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14 — baked-vs-virtual geometry
-# parity gate. RUNTIME-compiles the recipe-spliced uber-shader via
-# ShaderBundleBuilder (the virtual path has no build-time .spv — the splice
-# text depends on what's registered), reusing this directory's device/pool/
-# dispatch/readback machinery. No dependency on body_instance_raymarch_spv:
-# BOTH shader variants (baked-path plain shader + virtual-path spliced
-# shader) are compiled at TEST RUNTIME through the same production
-# ShaderBundleBuilder path test_uber_shader_splice.cpp already proves clean.
+# Sampled Lighting Inc0 M6 Task 14 — baked-vs-virtual geometry parity gate.
+# Kept STANDALONE: hand-rolled int main()+RUN_ALL_TESTS() (can't coexist with
+# any other main()-defining file in this directory), no body_instance_raymarch_spv
+# dependency (compiles its shader variants at TEST RUNTIME instead), and its
+# own 3-compile-def set (BODY_INSTANCE_RAYMARCH_COMP_PATH/VIXEN_SHADERS_DIR/
+# VIXEN_SVO_SHADERS_DIR) distinct from GLSL_RAYMARCH_SPV.
 # ===========================================================================
 add_executable(test_baked_vs_virtual_parity
     Nodes/test_baked_vs_virtual_parity.cpp
@@ -549,97 +350,91 @@ gtest_discover_tests(test_baked_vs_virtual_parity
 message(STATUS "[RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)")
 
 # ===========================================================================
-# Sparse-Mip ESVO LOD Inc1 M4b — GPU per-ray occlusion reject: a synthetic
-# camera -> occluder -> occluded-target line-up (front-to-back sorted CPU-side)
-# asserts the occluded instance's ESVO traversal ran ZERO iterations once the
-# occluder's hit landed in bestT (binding 14, InstanceIterDebugBuffer), not just
-# "no visible pixel difference." No PNG output (no stb dependency needed).
+# Group 6a: test_rendergraph_criticalnodes_gpurender2 — more real-shader GPU
+# render/dispatch tests sharing body_instance_raymarch_spv + SVO +
+# GLSL_RAYMARCH_SPV + PRE_TEST discovery. TierCrossingLodResidency's
+# `if(TARGET GaiaVoxelWorld)` link is a pre-existing no-op here (GaiaVoxelWorld
+# is already unconditionally in RENDERGRAPH_TEST_COMMON_LIBS when present —
+# see the conditional append block above), so folding it into this group adds
+# zero real new surface.
+#
+# NOTE (found only by an actual Windows/MSVC link, not static review, exactly
+# the Milestone-1 lesson): test_editor_document_render.cpp AND
+# test_recipe_authoring_gate.cpp EACH `#define STB_IMAGE_WRITE_IMPLEMENTATION`
+# — at most ONE such file may exist per binary (LNK2005 otherwise, same
+# constraint as the gpurender1 split above). Split into two groups so each
+# keeps exactly one STB-impl file: this group pairs EditorDocumentRender with
+# the two files that don't write PNGs (BodyInstanceOcclusionReject,
+# TierCrossingLodResidency); RecipeAuthoringGate goes in gpurender2b below
+# with ShadowCorrectness.
 # ===========================================================================
-add_executable(test_body_instance_occlusion_reject
+add_executable(test_rendergraph_criticalnodes_gpurender2
     Nodes/test_body_instance_occlusion_reject.cpp
-)
-add_dependencies(test_body_instance_occlusion_reject body_instance_raymarch_spv)
-target_link_libraries(test_body_instance_occlusion_reject PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET SVO)
-    target_link_libraries(test_body_instance_occlusion_reject PRIVATE SVO)
-endif()
-target_compile_definitions(test_body_instance_occlusion_reject PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_body_instance_occlusion_reject PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
-endif()
-set_target_properties(test_body_instance_occlusion_reject PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_body_instance_occlusion_reject
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_body_instance_occlusion_reject (Sparse-Mip ESVO LOD Inc1 M4b)")
-
-# ===========================================================================
-# Tiered-ESVO Inc2 M4 (Tasks 9-10) — live-GPU proof of the screen-space LOD
-# early-out and residency-reuse fallback for a farBit==1 tier-crossing leaf.
-# Extends test_body_instance_occlusion_reject.cpp's real-device/real-shader
-# dispatch pattern with binding 15 (TierRefTableBuffer) wired in, driving a
-# genuine two-tree tier-crossing scene (same construction as
-# BuildRenderGraph.cpp's VIXEN_TIER_CROSSING_DEMO).
-# ===========================================================================
-add_executable(test_tier_crossing_lod_residency
+    Nodes/test_editor_document_render.cpp
     Nodes/test_tier_crossing_lod_residency.cpp
 )
-add_dependencies(test_tier_crossing_lod_residency body_instance_raymarch_spv)
-target_link_libraries(test_tier_crossing_lod_residency PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+add_dependencies(test_rendergraph_criticalnodes_gpurender2 body_instance_raymarch_spv)
+target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 if(TARGET SVO)
-    target_link_libraries(test_tier_crossing_lod_residency PRIVATE SVO)
-endif()
-if(TARGET GaiaVoxelWorld)
-    target_link_libraries(test_tier_crossing_lod_residency PRIVATE GaiaVoxelWorld)
-endif()
-target_compile_definitions(test_tier_crossing_lod_residency PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_tier_crossing_lod_residency PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
-endif()
-set_target_properties(test_tier_crossing_lod_residency PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_tier_crossing_lod_residency
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_tier_crossing_lod_residency (Tiered-ESVO Inc2 M4 Tasks 9-10)")
-
-# ===========================================================================
-# Voxel Authoring Inc1 M4 — vixen_editor's load/flatten/bake/render/toggle path:
-# golden document renders, then a cut-layer ablation asserts a real
-# pixel-level top-face difference (the cylinder punches through the box).
-# ===========================================================================
-add_executable(test_editor_document_render
-    Nodes/test_editor_document_render.cpp
-)
-add_dependencies(test_editor_document_render body_instance_raymarch_spv)
-target_link_libraries(test_editor_document_render PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET SVO)
-    target_link_libraries(test_editor_document_render PRIVATE SVO)
+    target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE SVO)
 endif()
 if(TARGET stb)
-    target_link_libraries(test_editor_document_render PRIVATE stb)
+    target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE stb)
 else()
-    target_include_directories(test_editor_document_render PRIVATE
+    target_include_directories(test_rendergraph_criticalnodes_gpurender2 PRIVATE
         "${stb_SOURCE_DIR}")
 endif()
-target_compile_definitions(test_editor_document_render PRIVATE
+target_compile_definitions(test_rendergraph_criticalnodes_gpurender2 PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}"
     VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
 if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_editor_document_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+    target_compile_definitions(test_rendergraph_criticalnodes_gpurender2 PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
-set_target_properties(test_editor_document_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_editor_document_render
+set_target_properties(test_rendergraph_criticalnodes_gpurender2 PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_gpurender2
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_editor_document_render (Voxel Authoring Inc1 M4 editor live gate)")
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2 (merged: body_instance_occlusion_reject/editor_document_render/tier_crossing_lod_residency)")
 
 # ===========================================================================
-# AppFlow Inc-2 M4 — headless GPU render-gate: a ToggleLayer dispatched through
-# AppFlowRuntime re-flattens + re-bakes + re-renders the golden document, and Undo()
-# restores the render byte-for-byte. Links AppFlow (offline-only lib) alongside
-# RenderGraph + SVO — the GPU dependency lives in this test, not in the AppFlow lib.
+# Group 6b: test_rendergraph_criticalnodes_gpurender2b — RecipeAuthoringGate
+# (own STB_IMAGE_WRITE_IMPLEMENTATION, see NOTE above) paired with
+# ShadowCorrectness (no stb dependency) — the one remaining non-STB-impl file
+# from the original 5-target group. Same body_instance_raymarch_spv + SVO +
+# GLSL_RAYMARCH_SPV + PRE_TEST contract.
+# ===========================================================================
+add_executable(test_rendergraph_criticalnodes_gpurender2b
+    Nodes/test_recipe_authoring_gate.cpp
+    Nodes/test_shadow_correctness.cpp
+)
+add_dependencies(test_rendergraph_criticalnodes_gpurender2b body_instance_raymarch_spv)
+target_link_libraries(test_rendergraph_criticalnodes_gpurender2b PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_rendergraph_criticalnodes_gpurender2b PRIVATE SVO)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_rendergraph_criticalnodes_gpurender2b PRIVATE stb)
+else()
+    target_include_directories(test_rendergraph_criticalnodes_gpurender2b PRIVATE
+        "${stb_SOURCE_DIR}")
+endif()
+target_compile_definitions(test_rendergraph_criticalnodes_gpurender2b PRIVATE
+    GLSL_RAYMARCH_SPV="${_brm_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_rendergraph_criticalnodes_gpurender2b PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+set_target_properties(test_rendergraph_criticalnodes_gpurender2b PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_gpurender2b
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)")
+
+# ===========================================================================
+# AppFlow Inc-2 M4 — headless GPU render-gate. Kept STANDALONE: the only
+# target in this file that links AppFlow (offline-only lib) — no other target
+# needs it, so merging would add unique surface to a group for no shared
+# benefit. Links AppFlow alongside RenderGraph + SVO; the GPU dependency
+# lives in this test, not in the AppFlow lib.
 # ===========================================================================
 add_executable(test_appflow_editor_toggle_render
     Nodes/test_appflow_editor_toggle_render.cpp
@@ -671,261 +466,75 @@ gtest_discover_tests(test_appflow_editor_toggle_render
 message(STATUS "[RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)")
 
 # ===========================================================================
-# I4.2 — Recipe authoring live gate:
-#   a) Subtract(Box, Sphere) CSG recipe renders a non-trivial solid.
-#   b) Default 3-shell scene regression confirms the M2 SSBO fix holds.
+# Group 7: test_rendergraph_criticalnodes_sdiparity — CPU-only SPIR-V
+# reflection drift-guards (no lavapipe/no GPU dispatch), all reusing the same
+# compiled body_instance_raymarch_spv + identical GLSL_RAYMARCH_SPV
+# compile-def, all PRE_TEST discovery, no hand-rolled main() in any member.
+# OctreeConfigSdiParity's `if(TARGET SVO)` link is a cheap union (SVO already
+# reaches every target here transitively via RenderGraph). ReservoirConfig
+# has no shader to reflect against (pure struct-size/offsetof) and no
+# body_instance_raymarch_spv dependency of its own — a harmless superset dep
+# once merged into a group that already depends on it.
+# OctreeConfigSdiParity / LightingConfigSdiParity / HitRecordSdiParity /
+# ShadowConfigSdiParity / AccumulationConfigSdiParity /
+# PrevCameraConfigSdiParity / ReservoirConfigLayout.
 # ===========================================================================
-add_executable(test_recipe_authoring_gate
-    Nodes/test_recipe_authoring_gate.cpp
-)
-add_dependencies(test_recipe_authoring_gate body_instance_raymarch_spv)
-target_link_libraries(test_recipe_authoring_gate PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET SVO)
-    target_link_libraries(test_recipe_authoring_gate PRIVATE SVO)
-endif()
-if(TARGET stb)
-    target_link_libraries(test_recipe_authoring_gate PRIVATE stb)
-else()
-    target_include_directories(test_recipe_authoring_gate PRIVATE
-        "${stb_SOURCE_DIR}")
-endif()
-target_compile_definitions(test_recipe_authoring_gate PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_recipe_authoring_gate PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
-endif()
-set_target_properties(test_recipe_authoring_gate PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_recipe_authoring_gate
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_recipe_authoring_gate (I4.2 CSG + regression)")
-
-# ===========================================================================
-# OctreeConfig <-> shader SDI layout drift-guard (CPU reflection, no render).
-# Reflects the built BodyInstanceRayMarch SPIR-V via ShaderManagement's SpirvReflector
-# and asserts the C++ Vixen::SVO::OctreeConfig layout matches it (per-field offsets +
-# configs[] array stride == sizeof). Replaces the hand-eyeballed SPIR-V layout check.
-# Pure CPU (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
-# ===========================================================================
-add_executable(test_octree_config_sdi_parity
+add_executable(test_rendergraph_criticalnodes_sdiparity
     Nodes/test_octree_config_sdi_parity.cpp
-)
-add_dependencies(test_octree_config_sdi_parity body_instance_raymarch_spv)
-target_link_libraries(test_octree_config_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET SVO)
-    target_link_libraries(test_octree_config_sdi_parity PRIVATE SVO)
-endif()
-target_compile_definitions(test_octree_config_sdi_parity PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-set_target_properties(test_octree_config_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_octree_config_sdi_parity
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_octree_config_sdi_parity (SDI layout drift-guard)")
-
-# ===========================================================================
-# LightingConfig SDI Parity Test (Sampled Lighting Inc0 M3)
-# ===========================================================================
-# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
-# C++ Vixen::Gpu::LightingConfig / Light layout matches it (per-field offsets
-# + lights[] array stride == sizeof(Light)). Sibling of
-# test_octree_config_sdi_parity above, promised by Inc0 M1's
-# test_lightingconfig_parity.cpp once a shader consumer existed. Pure CPU
-# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
-# ===========================================================================
-add_executable(test_lightingconfig_sdi_parity
     Nodes/test_lightingconfig_sdi_parity.cpp
-)
-add_dependencies(test_lightingconfig_sdi_parity body_instance_raymarch_spv)
-target_link_libraries(test_lightingconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-target_compile_definitions(test_lightingconfig_sdi_parity PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-set_target_properties(test_lightingconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_lightingconfig_sdi_parity
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_lightingconfig_sdi_parity (SDI layout drift-guard)")
-
-# ===========================================================================
-# HitRecord SDI Parity Test (Sampled Lighting Inc1 M3)
-# ===========================================================================
-# Reflects the built BodyInstanceRayMarch SPIR-V and asserts a hand-written
-# local C++ mirror struct's layout matches it (per-field offsets + hitRecords[]
-# array stride == sizeof(HitRecordCpu)). Sibling of test_lightingconfig_sdi_parity
-# above, minus the generated header — HitRecord has no [GpuStruct] codegen this
-# milestone (see shaders/HitRecord.glsl's file header for why). Pure CPU
-# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
-# ===========================================================================
-add_executable(test_hitrecord_sdi_parity
     Nodes/test_hitrecord_sdi_parity.cpp
-)
-add_dependencies(test_hitrecord_sdi_parity body_instance_raymarch_spv)
-target_link_libraries(test_hitrecord_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-target_compile_definitions(test_hitrecord_sdi_parity PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-set_target_properties(test_hitrecord_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_hitrecord_sdi_parity
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_hitrecord_sdi_parity (SDI layout drift-guard)")
-
-# ===========================================================================
-# ShadowConfig SDI Parity Test (Sampled Lighting Inc1 M4)
-# ===========================================================================
-# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
-# C++ Vixen::Gpu::ShadowConfig layout matches it (per-field offsets, 16 B
-# total). Sibling of test_lightingconfig_sdi_parity above. Pure CPU
-# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
-# ===========================================================================
-add_executable(test_shadowconfig_sdi_parity
     Nodes/test_shadowconfig_sdi_parity.cpp
-)
-add_dependencies(test_shadowconfig_sdi_parity body_instance_raymarch_spv)
-target_link_libraries(test_shadowconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-target_compile_definitions(test_shadowconfig_sdi_parity PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-set_target_properties(test_shadowconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_shadowconfig_sdi_parity
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_shadowconfig_sdi_parity (SDI layout drift-guard)")
-
-# ===========================================================================
-# AccumulationConfig SDI Parity Test (Sampled Lighting Inc2 M1)
-# ===========================================================================
-# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
-# C++ Vixen::Gpu::AccumulationConfig layout matches it (per-field offsets, 16 B
-# total). Sibling of test_shadowconfig_sdi_parity above. Pure CPU
-# (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
-# ===========================================================================
-add_executable(test_accumulationconfig_sdi_parity
     Nodes/test_accumulationconfig_sdi_parity.cpp
-)
-add_dependencies(test_accumulationconfig_sdi_parity body_instance_raymarch_spv)
-target_link_libraries(test_accumulationconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-target_compile_definitions(test_accumulationconfig_sdi_parity PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-set_target_properties(test_accumulationconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_accumulationconfig_sdi_parity
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_accumulationconfig_sdi_parity (SDI layout drift-guard)")
-
-# ===========================================================================
-# PrevCameraConfig SDI Parity Test (Sampled Lighting Inc2 M3)
-# ===========================================================================
-# Reflects the built BodyInstanceRayMarch SPIR-V and asserts the generated
-# C++ Vixen::Gpu::PrevCameraConfig layout matches it (per-field offsets, 64 B
-# total — a single mat4). Sibling of test_accumulationconfig_sdi_parity above.
-# Pure CPU (reflection only) — no lavapipe / no GPU. Reuses the same compiled .spv.
-# ===========================================================================
-add_executable(test_prevcameraconfig_sdi_parity
     Nodes/test_prevcameraconfig_sdi_parity.cpp
-)
-add_dependencies(test_prevcameraconfig_sdi_parity body_instance_raymarch_spv)
-target_link_libraries(test_prevcameraconfig_sdi_parity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-target_compile_definitions(test_prevcameraconfig_sdi_parity PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
-set_target_properties(test_prevcameraconfig_sdi_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_prevcameraconfig_sdi_parity
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_prevcameraconfig_sdi_parity (SDI layout drift-guard)")
-
-# ===========================================================================
-# ReservoirConfig Layout Test (Sampled Lighting Inc3 M3)
-# ===========================================================================
-# Pure C++ struct-size/offsetof test — NO shader reflection (ReservoirConfig
-# is M3 scaffolding for M4/M5; no .comp binds it yet, so unlike the SDI-parity
-# tests above there is no compiled SPIR-V to reflect against). See the test
-# file's own header for the "add a real SDI-parity sibling once M4/M5 wire a
-# shader binding" note. Pure CPU, no GPU, no body_instance_raymarch_spv dep.
-# ===========================================================================
-add_executable(test_reservoirconfig_layout
     Nodes/test_reservoirconfig_layout.cpp
 )
-target_link_libraries(test_reservoirconfig_layout PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-set_target_properties(test_reservoirconfig_layout PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_reservoirconfig_layout
-    DISCOVERY_MODE PRE_TEST
-    DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_reservoirconfig_layout (struct layout drift-guard)")
-
-# ===========================================================================
-# Sampled Lighting Inc1 M4 — shadow-ray correctness live gate: dispatches the
-# REAL shader against a known scene + known directional light, asserting a
-# pixel's occlusion classification (shadowed/lit, via shaded colour luminance)
-# matches an independent CPU-traced reference shadow ray. Closes M2's deferred
-# "GLSL traversal agrees with reference" gap.
-# ===========================================================================
-add_executable(test_shadow_correctness
-    Nodes/test_shadow_correctness.cpp
-)
-add_dependencies(test_shadow_correctness body_instance_raymarch_spv)
-target_link_libraries(test_shadow_correctness PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+add_dependencies(test_rendergraph_criticalnodes_sdiparity body_instance_raymarch_spv)
+target_link_libraries(test_rendergraph_criticalnodes_sdiparity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 if(TARGET SVO)
-    target_link_libraries(test_shadow_correctness PRIVATE SVO)
+    target_link_libraries(test_rendergraph_criticalnodes_sdiparity PRIVATE SVO)
 endif()
-target_compile_definitions(test_shadow_correctness PRIVATE
+target_compile_definitions(test_rendergraph_criticalnodes_sdiparity PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
-if(VIXEN_WSL_DZN_ICD)
-    target_compile_definitions(test_shadow_correctness PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
-endif()
-set_target_properties(test_shadow_correctness PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_shadow_correctness
+set_target_properties(test_rendergraph_criticalnodes_sdiparity PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_sdiparity
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_shadow_correctness (Sampled Lighting Inc1 M4 shadow-ray gate)")
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)")
 
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_body_instance_raymarch_render — no glslc runnable on this platform found (searched ${_glslc_hints} + PATH)")
 endif()
 
 # ===========================================================================
-# AppFlow Inc-2b M3 — windowed editor toggle/undo/redo capture assertion.
-# Reads the 4 PNGs VIXEN/temp/run_editor_script.bat's unattended vixen_editor.exe run dumps and
-# asserts the toggle/undo/redo relations (see test_editor_toggle_undo_capture.cpp's file header).
-# Pure file I/O (stb_image) -- no Vulkan/GPU, so deliberately registered OUTSIDE the glslc-gated
-# `if(VIXEN_GLSLC)` block above so it builds+runs on the Windows/MSVC side too, matching
-# where the windowed editor itself builds and runs (this whole increment is Windows-side-first).
+# Group 8: test_rendergraph_criticalnodes_windowedcapture — pure file-I/O
+# (stb_image) PNG-assertion tests, no Vulkan/GPU, deliberately registered
+# OUTSIDE the glslc-gated `if(VIXEN_GLSLC)` block above so they build+run on
+# the Windows/MSVC side regardless of glslc availability, matching where the
+# windowed apps that produce their input PNGs themselves build and run.
+# AppFlow Inc-2b M3 (EditorToggleUndoCapture) + View Contract Inc-2 Task 5
+# (HudRenderCapture) — same bare-plus-stb link surface, default discovery.
 # ===========================================================================
-add_executable(test_editor_toggle_undo_capture
+add_executable(test_rendergraph_criticalnodes_windowedcapture
     Nodes/test_editor_toggle_undo_capture.cpp
-)
-target_link_libraries(test_editor_toggle_undo_capture PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
-if(TARGET stb)
-    target_link_libraries(test_editor_toggle_undo_capture PRIVATE stb)
-else()
-    target_include_directories(test_editor_toggle_undo_capture PRIVATE
-        "${stb_SOURCE_DIR}")
-endif()
-set_target_properties(test_editor_toggle_undo_capture PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_editor_toggle_undo_capture)
-message(STATUS "[RenderGraph Tests] Added: test_editor_toggle_undo_capture (AppFlow Inc-2b M3 windowed gate assertion)")
-
-# ===========================================================================
-# View Contract Inc-2 Task 5 — windowed main-app HUD capture assertion.
-# Reads the 3 PNGs application/main/main_hud_capture.bat's unattended VIXEN.exe run dumps and
-# asserts the generic IView-host + native HudView path renders the HUD (see
-# test_hud_render_capture.cpp's file header). Pure file I/O (stb_image) -- no Vulkan/GPU, so
-# registered OUTSIDE the glslc-gated block above, mirroring test_editor_toggle_undo_capture.
-# ===========================================================================
-add_executable(test_hud_render_capture
     Nodes/test_hud_render_capture.cpp
 )
-target_link_libraries(test_hud_render_capture PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+target_link_libraries(test_rendergraph_criticalnodes_windowedcapture PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 if(TARGET stb)
-    target_link_libraries(test_hud_render_capture PRIVATE stb)
+    target_link_libraries(test_rendergraph_criticalnodes_windowedcapture PRIVATE stb)
 else()
-    target_include_directories(test_hud_render_capture PRIVATE
+    target_include_directories(test_rendergraph_criticalnodes_windowedcapture PRIVATE
         "${stb_SOURCE_DIR}")
 endif()
-set_target_properties(test_hud_render_capture PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_hud_render_capture)
-message(STATUS "[RenderGraph Tests] Added: test_hud_render_capture (View Contract Inc-2 Task 5 windowed gate assertion)")
+set_target_properties(test_rendergraph_criticalnodes_windowedcapture PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_rendergraph_criticalnodes_windowedcapture)
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)")
 
 # ===========================================================================
-# P2.2 M2 — Procedural recipe live compute render (compile realization)
+# P2.2 M2 — Procedural recipe live compute render (compile realization).
+# Kept STANDALONE: its own `if(TARGET ShaderManagement)` gate block (separate
+# from the glslc-gated block above) and its own POST_BUILD TBB DLL copy step
+# — no other target in this file needs that POST_BUILD, so merging would
+# force it onto unrelated tests for no shared benefit.
 # ===========================================================================
 # Emits an all-HLSL compute shader from SdfInstruction[], compiles it via
 # ShaderCompiler (HLSL→SPIR-V at test run time), dispatches with a
@@ -984,6 +593,11 @@ endif()
 
 # ===========================================================================
 # Surface-Shell ESVO cache — ShellRevalidateNode GPU dispatch live-gate.
+# Kept STANDALONE: its own separate `if(VIXEN_GLSLC)` gate block with its own
+# custom-command target (shell_derive_spv, compiling ShellDerive.comp — a
+# DIFFERENT shader than body_instance_raymarch_spv's BodyInstanceRayMarch.comp),
+# so it cannot share a merged group with any body_instance_raymarch_spv-
+# dependent target above.
 # ===========================================================================
 # Compiles the SHIPPED shaders/ShellDerive.comp to SPIR-V at build time with the
 # environment-appropriate glslc (same gate as body_instance_raymarch_spv above — skipped
