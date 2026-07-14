@@ -274,6 +274,26 @@ inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstructi
         center, n, bandVoxels, brickDepth);
 }
 
+// Sampled Lighting Cornell Box Demo M1: recipe-instruction path + an explicit
+// emissive-intensity eval function, mirroring BakeRecipeToSdfWorldWithEmission's
+// analytic-recipe overload above (M1's own investigation found no emission
+// opcode/material-tag in the recipe-VM's SdfOpCode catalogue or RecipeRegistry::
+// RecipeEntry -- emission stays a SEPARATE CPU-side bake-time concern layered on
+// top of geometry recipes, same convention as the analytic overload). EmitFn is
+// evaluated in the SAME grid space as `eval` (world-space grid coords) — mirrors
+// BakeRecipeToSdfWorldWithEmission's own convention exactly.
+template<class EmitFn>
+inline SdfBakeResult BakeRecipeInstructionsToSdfWorldWithEmission(const Recipe::SdfInstruction* prog,
+                                                                  uint32_t count,
+                                                                  const glm::vec3& center,
+                                                                  int n, float bandVoxels,
+                                                                  EmitFn&& emit, int brickDepth = 3) {
+    return BakeSdfWorld(
+        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center); },
+        center, n, bandVoxels, brickDepth,
+        std::forward<EmitFn>(emit));
+}
+
 // sampleStored implementation (out-of-line in the header — inline body)
 inline std::optional<float> SdfBakeResult::sampleStored(const glm::vec3& gridPos) const {
     // getEntityByWorldSpace returns a bare EntityID (gaia::ecs::Entity); check
