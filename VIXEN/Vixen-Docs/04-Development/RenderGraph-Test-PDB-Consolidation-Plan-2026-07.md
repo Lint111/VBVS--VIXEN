@@ -113,11 +113,14 @@ changes, not gtest's internal registration).
   `test_graph_systems.cmake`, `test_core_systems.cmake`, `test_voxel_systems.cmake` into grouped
   executables. Full build + test verification, PDB byte-reduction measurement. DONE 2026-07-14,
   commit `6de8902f` on `feat/rendergraph-pdb-consolidation`.
+- [x] **Milestone 2**: Consolidate `test_critical_nodes.cmake`'s 41 GPU/shader-dependent targets
+  (highest-risk file, deferred out of Milestone 1). Full build + test verification, PDB
+  byte-reduction measurement. DONE 2026-07-14, commit `26fd12e1` on
+  `feat/rendergraph-pdb-consolidation-m2`.
 
-(Further milestones — `test_critical_nodes.cmake`'s 41 GPU-dependent targets, or extending this
-pattern to other libraries' test suites beyond RenderGraph — are explicitly NOT planned here; revisit
-only after Milestone 1's real-world numbers are in hand and if the residual footprint still warrants
-it.)
+(`test_type_system.cmake`'s 3 and `CompileTimeResourceSystem`'s 8 non-GTest/special-compile-feature
+targets remain explicitly out of scope per Milestone 1's own scoping — low target count doesn't
+justify the risk. Revisit only if a future audit shows continued disk pressure.)
 
 ## Progress Log
 
@@ -208,3 +211,83 @@ original targets no longer existing standalone (TimerTest 23/23, WaveSchedulerTe
 BarrierTypes 5/5) — all present and passing in their claimed new groups. PDB byte numbers could not
 be independently re-measured (MSVC `/Z7`-only, this validator's WSL/GCC toolchain produces no PDBs)
 — explicitly flagged as a real tooling limitation, not silently assumed correct.
+
+**Milestone 2 — DONE 2026-07-14.**
+
+Scoped to the single highest-risk file Milestone 1 deferred: `test_critical_nodes.cmake`'s 41
+GPU/shader-dependent targets (`.spv` custom-command shader deps, POST_BUILD DLL copies, a shared
+conditional `RENDERGRAPH_TEST_COMMON_LIBS` link-surface variable, `DISCOVERY_MODE PRE_TEST`/
+`DISCOVERY_TIMEOUT 120`). Grouped conservatively — 41 targets -> 15 executables (10 merged groups
++ 5 kept standalone), a smaller consolidation ratio than Milestone 1's 48->16 given the file's
+higher structural risk, exactly as the plan anticipated ("acceptable to consolidate a smaller
+fraction... if the file's structure doesn't support more").
+
+**Real collision caught only by an actual link, not static review** (same lesson class as
+Milestone 1, different mechanism): 8 files each `#define STB_IMAGE_WRITE_IMPLEMENTATION`
+(single-header library implementation guard) to instantiate `stb_image_write.h` once per binary.
+A first grouping attempt (by shared `body_instance_raymarch_spv` shader dependency alone) put
+2-3 such files in one binary and hit LNK2005 duplicate `stbi_write_*` symbols on the first build
+attempt. Fixed by re-splitting so every group/standalone target has at most one STB-impl file —
+a plain grep for struct/class/`main()` collisions (the class of check Milestone 1 used) would NOT
+have caught this, since it's a preprocessor-guarded header-implementation include, not a C++
+declaration.
+
+**Kept standalone (5) and why**: `test_baked_vs_virtual_parity` (own hand-rolled `main()`, no spv
+dependency, distinct compile-defs), `test_appflow_editor_toggle_render` (only target in the file
+linking `AppFlow`), `test_procedural_recipe_render` (own POST_BUILD TBB DLL copy step),
+`test_shell_revalidate_node` (own separate `shell_derive_spv` custom target — a different shader,
+`ShellDerive.comp`, than `body_instance_raymarch_spv`'s `BodyInstanceRayMarch.comp`),
+`test_recipe_pool_render` and `test_mip_fallback_render` (each has its own STB-impl file with no
+remaining non-STB partner after the collision-driven split — 6 named here since the split left one
+extra standalone beyond the 5 originally anticipated by link-surface alone, net result still 5
+standalone after accounting for one of these landing in a merged group's final form).
+
+**Verification — real Windows/MSVC build, independently re-run by the Opus validator**, not just
+the implementer's self-report:
+- **BEFORE** (independently measured by the validator from `main`'s own existing build tree,
+  41/41 PDBs present): **6,800,371,712 bytes (6.33 GiB)**. (Implementer's own BEFORE measurement:
+  6,803,410,944 bytes — 0.045% apart, normal PDB build-to-build jitter, not a discrepancy.)
+- **AFTER** (validator's own fresh `build.bat all` reconfigure+build of the worktree, exit 0, zero
+  build failures): **2,501,103,616 bytes (2.33 GiB)** across 15 PDBs — **exact match** to the
+  implementer's reported AFTER figure.
+- **Reduction: 4,299,268,096 bytes (4.00 GiB), 63.22%** (validator's independent figure; implementer
+  reported 4.01 GiB / 63.2% — matches within rounding).
+- Confirmed mechanism directly: each `/Z7` PDB sits at a near-constant ~166MB regardless of source
+  count (validator's 15 AFTER PDBs span only 165.7-168.9MB despite 1-8 source files each) —
+  consistent with Milestone 1's root-cause finding that cutting N targets to M executables removes
+  (N-M) whole-library debug-info re-collations, a genuine reduction not a redistribution.
+- **Test-case parity**: 41 unique `.cpp` sources on `main`, 41 in the merged file, set-diff EMPTY
+  both directions (0 dropped, 0 new) — every source file landed in exactly one resulting executable.
+  Static `TEST()`-macro count is 376 (not the implementer's runtime-enumerated 361; the gap is
+  `#if`-gated tests not compiled into every configuration) — parity holds regardless, since the
+  merge changes zero `.cpp` source content and preserves every per-target compile-definition
+  untouched. Validator spot-checked real test names across the merge boundary for 5 formerly-
+  standalone targets (`DeviceNodeTest`/`DeviceNodeIntegration`, `OctreeConfigSdiParity`,
+  `HitRecordReadbackTest`, `EditorDocumentRenderTest`, `SelectionId`/`SelectionSet`) — all present
+  in their claimed new groups.
+- `git diff main..26fd12e1 --stat`: only `test_critical_nodes.cmake` changed (214+/600-), zero
+  other files touched — confirmed by both implementer and validator independently.
+- `DISCOVERY_MODE PRE_TEST`/`DISCOVERY_TIMEOUT 120` preserved on every resulting executable that
+  carries a GPU-dependent source (20 sources land correctly); the 5 CPU-only default-discovery
+  executables match the sources that used default discovery on `main`. Zero regressions.
+- `test_node_self_registration` and all Milestone-1/other out-of-scope files
+  (`tests/CMakeLists.txt`, `test_graph_systems.cmake`, `test_core_systems.cmake`,
+  `test_voxel_systems.cmake`, `test_type_system.cmake`, `test_fail_scenarios.cmake`,
+  `CompileTimeResourceSystem/CMakeLists.txt`) confirmed byte-identical to `main`.
+
+Committed as `26fd12e1` on branch `feat/rendergraph-pdb-consolidation-m2` in worktree
+`.claude/worktrees/rendergraph-pdb-m2` (not yet merged to main at time of this entry).
+
+**Opus validator — APPROVED 2026-07-14.** Independently re-derived every claim above from a fresh
+Windows/MSVC build of the validator's own (able to directly re-measure real `/Z7` PDB bytes, unlike
+Milestone 1's validator which was WSL/GCC-only and had to flag that as a limitation). One
+non-blocking doc nit found and fixed post-approval: the in-file header comment originally said "41
+targets grouped into 21 executables (10 merged groups + 11 kept standalone)" — stale arithmetic
+from an earlier grouping attempt; corrected to match the actual committed result (15 executables,
+10 merged + 5 standalone) before merge. No functional/structural issues found.
+
+**Program running total after Milestone 2**: 89 of 117 original RenderGraph test targets
+consolidated (48 in Milestone 1 + 41 in Milestone 2) down to 31 executables (16 + 15), combined
+measured reduction 9,544,572,928 bytes (8.89 GiB) on the affected subsets. Remaining out of scope:
+`test_type_system.cmake` (3) and `CompileTimeResourceSystem` (8) — 11 non-GTest/special-compile-
+feature targets, low count, not pursued per Milestone 1's original scoping rationale.
