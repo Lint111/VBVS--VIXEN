@@ -1,0 +1,13 @@
+# viewblob v1
+model undertowhudfactions
+version 0x0D7F3F7A
+elem UndertowHudFactionRow
+  name string
+  grievance float
+  focused int
+  known int
+  inLens int
+  strengthBand int
+  confidence int
+  recentEventAge int
+field rows array UndertowHudFactionRow

@@ -1,0 +1,9 @@
+# viewblob v1
+model undertowrecipes
+version 0xC9AE4EBC
+elem UndertowRecipeRow
+  recipeId int
+  provider int
+  relAmp float
+  relCycles float
+field rows array UndertowRecipeRow

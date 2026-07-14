@@ -418,6 +418,7 @@ set(RENDERGRAPH_UI_HEADERS
     include/Ui/ViewStore.h
     include/Ui/ViewBlobFile.h
     include/Ui/ViewWireReader.h
+    include/Ui/ViewWireReaderSoa.h
     include/Ui/BlobView.h
     include/Data/Nodes/UIRenderNodeConfig.h
     include/Nodes/UIRenderNode.h
@@ -429,6 +430,7 @@ set(RENDERGRAPH_UI_SOURCES
     src/Ui/ViewStore.cpp
     src/Ui/ViewBlobFile.cpp
     src/Ui/ViewWireReader.cpp
+    src/Ui/ViewWireReaderSoa.cpp
     src/Ui/BlobView.cpp
     # UIRenderNode.cpp moved to RENDERGRAPH_NODE_SOURCES (Inc-1 M4) -- it's a node, and needs its
     # own RenderGraphNode_UIRenderNode OBJECT lib for scoped linkage to work correctly.

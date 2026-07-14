@@ -1,0 +1,10 @@
+# viewblob v1
+model undertowhudinspect
+version 0x398FCD18
+field selected int
+field name string
+field maxGrievance float
+field strength float
+field topRelName string
+field topRelSig float
+field cause string

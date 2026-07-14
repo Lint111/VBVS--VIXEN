@@ -1,0 +1,12 @@
+# viewblob v1
+model undertowbodies
+version 0x124E43F3
+elem UndertowBodyRow
+  kind int
+  mass float
+  orbitParent int
+  ownerInLens int
+  ownerRecentEventAge int
+  recipeId int
+  radiusAu float
+field rows array UndertowBodyRow

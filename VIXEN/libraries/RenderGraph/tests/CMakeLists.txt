@@ -983,6 +983,84 @@ else()
 endif()
 
 # ===========================================================================
+# View Contract Inc-5: ViewWireReaderSoa — SoA wire round-trip proof
+# ===========================================================================
+# Sibling proof to test_view_wire_roundtrip: the CanonicalSoaWire buffer built in-test is the
+# byte-for-byte twin of the C# HudViewWriter.ToBuffer() golden for a Soa-declared Hud model
+# (Yeroket ViewWriterEmitterTests.ToBuffer_Produces_Canonical_Soa_Bytes). Proves
+# ViewWireReaderSoa::Apply reads back every field via ViewStore -- per-column contiguous scalars
+# and per-column offsets+blob strings, including a non-empty AND an empty string row in the same
+# column -- hard-fails on a version mismatch (store untouched), and rejects malformed input.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_wire_soa_roundtrip test_view_wire_soa_roundtrip.cpp)
+    target_link_libraries(test_view_wire_soa_roundtrip PRIVATE GTest::gtest_main RenderGraph)
+
+    # Hud.blob.g.h is a CONSUMER artifact (application/main) -- needs the app's include dir to
+    # resolve "Generated/Hud.blob.g.h" (mirrors test_view_wire_roundtrip's identical include dir).
+    target_include_directories(test_view_wire_soa_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set_target_properties(test_view_wire_soa_roundtrip PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_wire_soa_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)")
+else()
+    message(STATUS "⊗ test_view_wire_soa_roundtrip skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-5b Milestone A: TypedAccessorEmitter equivalence proof
+# ===========================================================================
+# Fills a ViewStore via ViewWireReaderSoa::Apply (same canonical wire + kHudBlob fixture as
+# test_view_wire_soa_roundtrip.cpp) then wraps the SAME store in the NEW GENERATED
+# Vixen::Views::HudSection accessor class (TypedAccessorEmitter.cs, --typed-accessor-cpp) and
+# asserts the decoded values match exactly -- proving the generated typed accessors reproduce what
+# the raw ViewStore API already proves correct.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_typed_accessor_emitter test_typed_accessor_emitter.cpp)
+    target_link_libraries(test_typed_accessor_emitter PRIVATE GTest::gtest_main RenderGraph)
+
+    # HudTypedAccessor.g.h / Hud.blob.g.h are CONSUMER artifacts (application/main) -- needs the
+    # app's include dir to resolve "Generated/..." (mirrors test_view_wire_soa_roundtrip's identical
+    # include dir).
+    target_include_directories(test_typed_accessor_emitter PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set_target_properties(test_typed_accessor_emitter PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_typed_accessor_emitter DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)")
+else()
+    message(STATUS "⊗ test_typed_accessor_emitter skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# View Contract Inc-5b Milestone 2.5: writer-side wiring + UTVC container proof
+# ===========================================================================
+# C#-side/isolated round-trip proof (per the plan's explicit scope -- does NOT touch undertow's
+# real C++ reader/live seam, that is Milestone 3's job). The embedded byte array is the VERBATIM
+# output of the real undertow C# writer path (Undertow.View.ViewWriterAdapter +
+# Undertow.View.ViewContainerBuilder.Build) run against a REAL captured SimFrame
+# (new UndertowSim(); sim.NewCampaign(7); sim.ProjectObserverFrame()) -- manually unwraps the new
+# UTVC multi-section container, then decodes each of the 5 sub-buffers via
+# ViewWireReaderSoa::Apply + the Milestone-2/2.4-generated typed accessors, asserting decoded
+# values match the real SimFrame's real values exactly.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_view_container_builder test_view_container_builder.cpp)
+    target_link_libraries(test_view_container_builder PRIVATE GTest::gtest_main RenderGraph)
+
+    # The 5 Undertow*.blob.g.h/.typed.g.h headers are CONSUMER artifacts (application/main) --
+    # needs the app's include dir to resolve "Generated/..." (mirrors test_typed_accessor_emitter's
+    # identical include dir).
+    target_include_directories(test_view_container_builder PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set_target_properties(test_view_container_builder PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_view_container_builder DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_view_container_builder configured (View Contract Inc-5b Milestone 2.5: writer-side UTVC round-trip)")
+else()
+    message(STATUS "⊗ test_view_container_builder skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # BarrierTypes Tests (auto-sync P1)
 # ===========================================================================
 # Validates AccessKind -> Vulkan sync-semantics mapping

@@ -159,29 +159,73 @@ but DO re-verify file:line if code has moved)
   round-trip (write via the new SoA emitter → read via the new reader → values match) mirroring Inc-3's
   own AoS round-trip proof pattern (`test_view_wire_roundtrip.cpp`).
 
-### Task 4 — Declare undertow's real schema + regenerate + prove byte-identical
+### Task 4 — Declare undertow's real schema + regenerate + prove DECODED-VALUE identical (RESCOPED 2026-07-12, TWICE)
 
+**Rescoped after a real architectural gap was found during Milestone 3 (see Progress Log entry below):**
+undertow's live `vixen/app/src/main.cpp` consumes a TYPED, per-section C++ accessor class
+(`undertow::view::BodiesSection` with `position()`/`orbit_points()`/etc. methods, generated from
+`view_contract.h`) — but the shipped Yeroket `[View]` pipeline (Inc-1/2/2b + this program's own Inc-5
+Milestone 2) only emits a GENERIC reflection blob (`ViewBlob`/`ViewFieldDesc`, consumed by name/index at
+runtime via `BlobView`/`ViewStore`) — architecturally a different consumption model, not a drop-in
+replacement for `view_contract.h`'s typed-accessor shape. There is no emitter anywhere in Yeroket that
+produces a `view_contract.h`-shaped file. Task 4 was first rescoped to prove WIRE-BYTE identity only, but a
+SECOND rescope was needed after discovering undertow's real `UTVW` wire (magic + per-section TOC +
+per-column TOC + 16-byte alignment, byte-offset column lookup — `ViewBufferBuilder.cs`) is a
+STRUCTURALLY DIFFERENT binary protocol from Yeroket's generated `UTVA`/SoA wire (no TOC, no alignment,
+flat declared-field-order stream — `ViewWireFormat.cs`). These are two independently-designed wire
+formats (different magic bytes even) — a byte-diff between them can never match regardless of schema
+correctness, so "wire-byte identical" was never an achievable bar either. **Task 4 is therefore rescoped a
+second time to prove DECODED-VALUE identity**: decode undertow's real `UTVW` bytes via undertow's own
+reader/accessor logic, decode the schema-driven `UTVA`/SoA bytes via `ViewWireReaderSoa` (Milestone 2), and
+assert the SAME logical values come out for the SAME reference frame (same body count, positions, faction
+names, etc.) — this is the achievable, meaningful realization of "prove a real already-shipped behavior is
+reproduced through the new mechanism," mirroring Milestone 2's own round-trip proof discipline, just
+cross-validated against undertow's real writer's decoded output instead of a hand-built expected buffer.
+NOT wire-byte identity, NOT `view_contract.h` TEXT identity — see Follow-ups for both deferred gaps.
 - Declare the 5 real sections (`Bodies`/`Hud`/`HudFactions`/`HudEvents`/`HudInspect`) as `[View]`/
-  `[ViewSection(Layout=Soa)]` schemas, using `[Projected]` for every non-identity `Source` expression
-  found in Task 1's categorization.
-- Regenerate `view_contract.h` (C++) and a C# writer, and prove BYTE-IDENTICAL output against undertow's
-  current hand-rolled generator's output for the same reference frame (Task 1's chosen fixture) — this is
-  the mandatory, non-negotiable gate before Task 5 touches anything undertow-side.
+  `[ViewSection(Layout=Soa)]` schemas. **Gap #2 (found + resolved before writing schemas):** `[Projected]`
+  is consumed ONLY by `RmlDataModelEmitter.cs` (the RmlUi/View-Model-Binding C++ face) — `ViewWireFormat`'s
+  `ToBuffer()` generator never reads `f.Projection`, so declaring `[Projected]` fields would compile but
+  NOT transform anything in the writer path. **Resolution (confirmed by controller):** do the transform in
+  hand-written adapter code (SimFrame → the generated `<Name>ViewWriter`'s already-transformed fields),
+  matching the existing `Hud.cs`/`EditorLayers.cs` precedent of plain pre-transformed struct fields;
+  `[Projected]` stays attached to the 3 name-mismatch/transform fields as documentation/traceability only
+  for this proof, not a functioning mechanism — inventing new C#-side callable-dispatch emitter machinery
+  is explicitly out of scope for this milestone (Follow-ups).
+- Regenerate the C# writer output via the SoA mechanism (Milestone 2), and prove DECODED VALUES read back
+  (via `ViewWireReaderSoa` on the schema-driven side, undertow's own reader on the real side) match for the
+  SAME logical reference frame (extend/capture a frame that exercises populated Str/ListVec3f columns, per
+  the proof-fixture gap both prior milestones' validators flagged) — this is the mandatory, non-negotiable
+  gate before Task 5. Do NOT attempt to regenerate or diff `view_contract.h` itself this task, and do NOT
+  attempt a raw wire-byte diff — both are out of scope/unachievable as established above.
 
-### Task 5 — Retire the hand-rolled undertow generator (the actual migration)
+### Task 5 — Retire the hand-rolled undertow WRITER generator only (RESCOPED 2026-07-12 — see Task 4)
 
-- ONLY after Task 4's byte-identical proof: switch `Undertow.View.csproj`'s `Analyzer` reference (or the
-  equivalent build wiring) from `Undertow.Authoring.Codegen`'s view-specific emitters to the Yeroket
-  kernel-framework CLI's generated output. Retire `EmitViewContractHeader.cs`, `EmitViewWriter.cs`/
-  `ViewWriterGenerator.cs`, and `ViewSchema.cs`'s hand-declared `FormatVersion`/intro-version constants
-  (replaced by the Inc-3 `ViewVersionHash`, per D4).
-- Update undertow's own golden tests (`ViewContractHeaderTests.cs`/`SchemaJsonEmitTests.cs`/
-  `GeneratedHeaderTests.cs`/`SchemaDisclaimerTests.cs`) to validate the NEW generated output rather than
-  the retired hand-rolled one — do not simply delete these tests; they encode real correctness properties
-  (the `<auto-generated/> DO NOT EDIT` banner discipline, the regen-command convention) that the new
-  generator must still satisfy in its own way.
+**Rescoped alongside Task 4**: since Yeroket has no `view_contract.h`-shaped emitter, Task 5 can ONLY retire
+the WRITER side (`ViewWriterGenerator.cs`/`EmitViewWriter.cs` + `ViewSchema.cs`'s hand-declared
+`FormatVersion`) once Task 4's DECODED-VALUE proof holds (not wire-byte identity — see Task 4's second
+rescope: the wire formats are structurally different protocols, so retiring the hand-rolled writer means
+undertow's C++ reader side must also switch from `view_contract.h`'s `UTVW`-TOC reader to `ViewWireReaderSoa`'s
+`UTVA`/SoA reader — a bigger coupled change than Task 5 originally assumed; flagged for Task 5's own
+implementer to re-scope when it starts, not resolved here). **`EmitViewContractHeader.cs` and
+`view_contract.h` generation are NOT retired by this plan** — `main.cpp`'s typed accessor consumption stays
+on the existing hand-rolled header generator until the follow-on typed-accessor-emitter increment (see
+Follow-ups) exists and is proven. This is a genuine, deliberate scope reduction from the original Task 5,
+not a shortcut.
+- ONLY after Task 4's decoded-value-identical proof: switch the WRITER half of `Undertow.View.csproj`'s
+  `Analyzer` reference (or equivalent build wiring) from `Undertow.Authoring.Codegen`'s
+  `ViewWriterGenerator.cs`/`EmitViewWriter.cs` to the Yeroket kernel-framework CLI's generated writer
+  output. Retire those two files and `ViewSchema.cs`'s hand-declared `FormatVersion`/intro-version
+  constants (replaced by the Inc-3 `ViewVersionHash`, per D4). Leave `EmitViewContractHeader.cs` and
+  `view_contract.h` generation completely untouched.
+- Update the WRITER-relevant subset of undertow's own golden tests to validate the NEW generated writer
+  output rather than the retired hand-rolled one — do not simply delete these tests; they encode real
+  correctness properties (the `<auto-generated/> DO NOT EDIT` banner discipline, the regen-command
+  convention) the new generator must still satisfy. Leave `ViewContractHeaderTests.cs` (the header-side
+  golden) untouched, since the header generator itself is untouched.
 - Live-gate: undertow's actual sim→render seam (real host + renderer, not just a unit test) must still
-  function identically — this is the ultimate proof the migration didn't silently change wire semantics.
+  function identically — this is the ultimate proof the writer-side migration didn't silently change wire
+  semantics. The C++ reader side (`view_contract.h`'s typed accessors) is unaffected since it's untouched.
 
 ## Gates / guardrails
 
@@ -212,14 +256,16 @@ but DO re-verify file:line if code has moved)
 - [x] **Milestone 1 (Task 1):** ground the shape — column categorization, SoA serialization decision,
   regeneration/diff proof mechanism, Env-1/Env-2 boundary confirmation (report-back gate, no building
   until confirmed). One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 2 (Task 2-3):** SoA wire emit (Yeroket) + SoA-aware C++ reader (VIXEN) + round-trip
+- [x] **Milestone 2 (Task 2-3):** SoA wire emit (Yeroket) + SoA-aware C++ reader (VIXEN) + round-trip
   proof. One Sonnet implementer + one Opus validator.
-- [ ] **Milestone 3 (Task 4):** declare undertow's real schema, regenerate, prove byte-identical against
-  the current hand-rolled generator's output. This is the increment's hardest correctness bar — may need
-  sub-milestones per section if the categorization/regeneration proves large. One Sonnet implementer + one
-  Opus validator.
-- [ ] **Milestone 4 (Task 5):** retire the hand-rolled undertow generator, update undertow's own golden
-  tests, live-gate the real sim→render seam. One Sonnet implementer + one Opus validator.
+- [x] **Milestone 3 (Task 4):** declare undertow's real schema, regenerate, prove DECODED-VALUE identity
+  (rescoped twice — see Progress Log) against undertow's real writer's output. COMPLETE for all 5 sections;
+  `Bodies.Position`/`RecipeParams`/`OrbitPath` explicitly deferred (gap #4, Follow-ups) — the other 7
+  Bodies columns plus all of Hud/HudFactions/HudEvents/HudInspect are proven, 48/48 checks pass. One
+  Sonnet implementer (no separate Opus validator dispatched yet — pending).
+- [!] **Milestone 4 (Task 5):** retire the hand-rolled undertow generator, update undertow's own golden
+  tests, live-gate the real sim→render seam. BLOCKED 2026-07-12 — see Progress Log. Not done, not
+  skipped: a genuine structural blocker was confirmed against real source before any code was written.
 
 ## Progress Log
 
@@ -295,8 +341,310 @@ but DO re-verify file:line if code has moved)
     exists but doesn't pin bytes — insufficient for Milestone 3's byte-identical bar). One correction to
     the Env-1/Env-2 framing (see above, folded in). **APPROVED, Milestone 2 can proceed.**
 
+- Milestone 2 (Task 2-3, SoA wire emit + C++ reader + round-trip): DONE · 2026-07-12
+  - **Yeroket (`feat/view-contract-inc5`, commit `bf094679`):** `ViewWireFormat.EmitField` now
+    dispatches SoA StructArray fields to a new `EmitSoaBody` instead of throwing. Per-column
+    algorithm exactly as Milestone 1 decided: `u32 rowCount` header, then one column at a time in
+    declared field order — fixed-size scalar columns (Int/Float/Bool) emit as `rowCount`
+    contiguous values; each `String` column emits its OWN `(rowCount+1)`-entry `u32` offsets array
+    (offsets[0]=0, monotonically increasing) followed by the concatenated UTF8 bytes of just that
+    column's rows. Magic/header/top-level-scalar encoding is byte-identical to AoS (`UTVA`,
+    unchanged) — only the `ArrayOfStruct` body shape differs per-field, matching the design's
+    "wire layout for StructArray fields; scalars ignore it" framing.
+  - **Regression:** `ViewSectionLayoutTests.Emitter_Rejects_Soa_Layout` was itself pinning the old
+    throwing stub as correct behavior — replaced with `Emitter_Accepts_Soa_Layout` (asserts real
+    emission, not a specific byte shape; the byte-golden proof lives in the new test below). All
+    of Inc-3's other AoS tests (`ViewWriterEmitterTests.ToBuffer_Produces_Canonical_UTVA_Bytes`,
+    `ViewModelTests`, `ViewVersionHashTests`) pass unmodified — the AoS code path itself was not
+    touched, only the SoA branch gained real behavior. Full `CodegenTool.Tests` suite: 43/43 pass
+    (was 42/43 — 1 pre-existing failure from the stale-stub test, now fixed by replacing it).
+  - **New SoA proof test:** `ViewWriterEmitterTests.ToBuffer_Produces_Canonical_Soa_Bytes` — 3
+    faction rows (row 1 has an EMPTY `name`, deliberately exercising the offsets+blob path at a
+    zero-length string mid-column) + 2 event rows, byte-golden against a hand-built expected
+    buffer. This closes the exact gap the Milestone 1 Opus validator flagged (undertow's own
+    `seed7-view.bin` golden never exercises a populated variable-length SoA column).
+  - **VIXEN (`feat/view-contract-inc5` worktree, this commit):** added a SIBLING reader
+    `ViewWireReaderSoa` (`include/Ui/ViewWireReaderSoa.h` + `src/Ui/ViewWireReaderSoa.cpp`)
+    rather than branching Inc-3's `ViewWireReader` — the `ArrayOfStruct` body's byte shape is
+    genuinely different (columns, not rows) and Inc-3's `ViewBlob`/`ViewFieldDesc` carry no
+    per-field layout flag today (that's a Task 4 concern for the real undertow schema), so a
+    reader that always decodes the SoA shape for `ArrayOfStruct` fields is cleaner than
+    conditionally branching an existing reader against a layout bit that doesn't exist yet on the
+    C++ side. Reuses the exact bounds-checking/version-guard discipline of `ViewWireReader`
+    (same failure contract: version/magic/field-count mismatch returns false before any write;
+    a malformed body may leave partial writes — caller must discard on `false`).
+  - **Round-trip proof (non-vacuous):** new test `test_view_wire_soa_roundtrip.cpp`
+    (`ViewWireSoaRoundtrip.ReadsBackEveryFieldIncludingEmptyStringRow` +
+    `VersionMismatchIsHardError` + `MalformedIsRejected`), registered in
+    `libraries/RenderGraph/tests/CMakeLists.txt` alongside Inc-3's `test_view_wire_roundtrip`.
+    Same scenario as the Yeroket byte-golden above (tick=7/bodyCount=12/"Ops"/4,
+    3 factions incl. one with an empty name, 2 events) — decoded via `ViewWireReaderSoa::Apply`
+    into a `ViewStore` built from the real `kHudBlob`, every scalar/column/row value asserted
+    individually so a wrong-column or wrong-row bug would surface as a wrong VALUE. All 3 pass.
+  - **Build + full regression (Windows, worktree's own `build.bat`):** configure clean; full
+    build 1274/1275 targets succeeded (the 1 failure, `codegen/CMakeFiles/shadowconfig_check`,
+    is a pre-existing unrelated WSL-bridge drift-guard for `ShadowConfig` — confirmed unrelated
+    to this change, not introduced by it). `test_view_wire_roundtrip` (Inc-3 AoS, 3/3),
+    `test_view_wire_soa_roundtrip` (Inc-5 SoA, 3/3), `test_view_blob` (2/2), `test_view_store`
+    (3/3), `test_view_blob_file` (3/3), `test_blob_view` (2/2), `test_view_hud_golden` (3/3) —
+    all green, no regressions across the View Contract test family.
+  - No blockers. Ready for Milestone 3.
+  - **Opus validator (independent re-verification across both repos):** confirmed the SoA emit
+    algorithm's writer/reader byte-layout consistency BY CONSTRUCTION (traced both sides' code,
+    not just "the test happens to pass"); hand-verified the byte-golden's arithmetic against real
+    UTF-8 lengths ("Reds"=4/""=0/"Greens"=6 → offsets [0,4,4,10]; "war"=3/"truce"=5 → [0,3,8]);
+    confirmed the C++ reader's monotonicity check provably prevents any OOB slice regardless of
+    malformed-but-monotonic input; constructed concrete hypothetical bugs (swapped column order,
+    off-by-one row indexing) and confirmed the round-trip test's distinct per-row/per-column
+    values would actually catch them; confirmed the AoS diff is exactly a one-line dispatch
+    addition with the pre-existing row-major emit untouched. Independently re-ran the Yeroket
+    suite (43/43) and both C++ round-trip binaries (3/3 SoA, 3/3 AoS) from the already-built
+    binaries. Confirmed the reported `shadowconfig_check` failure did NOT recur on validator's own
+    run either — consistent with the known concurrent-build CodegenTool race, not a real defect.
+    **One carry-forward flagged for Milestone 4/Task 4 (not a blocker now):** `ViewWireReader.cpp`
+    and `ViewWireReaderSoa.cpp` duplicate their `Cursor` struct (magic check, version guard,
+    trailing-byte check) verbatim across two files — sound today since both are independently
+    correct, but a natural refactor point once `ViewFieldDesc` gains a real per-field layout flag
+    and the two readers can fold back into one. **APPROVED, Milestone 3 can build on this.**
+
+- Milestone 3 (Task 4, first attempt): BLOCKED, then RESCOPED · 2026-07-12
+  - **Real architectural gap found before any schema/callable code was written**, per the plan's own
+    "investigate and report BLOCKED, don't force a match" instruction. Confirmed independently by the
+    controller before deciding: `grep`/`find` across the entire Yeroket kernel-framework tree for any
+    `EmitView*`/`*ViewContract*` file returns ZERO matches — there is no emitter anywhere that produces
+    a `view_contract.h`-shaped typed-accessor C++ header. Confirmed undertow's `vixen/app/src/main.cpp:38,186`
+    genuinely includes `view_contract.h` and instantiates `undertow::view::BodiesSection` with named
+    accessor calls — a real, live consumption site, not aspirational/dead code. Confirmed
+    `EmitViewContractHeader.cs`'s own doc comment: "accessor logic is copied verbatim from the
+    hand-written v1 file: cached column pointers in the constructor... fixed-column row × elemSize
+    indexing" — a fundamentally different consumption model than the shipped `[View]` pipeline's generic
+    reflection blob (`ViewBlob`/`ViewFieldDesc`, consumed by name/index at runtime via `BlobView`/
+    `ViewStore`). The mismatch is real, not a misunderstanding of either side.
+  - **User decision (asked directly, given the scope-changing nature of the gap): scope Milestone 3/Task 4
+    to WIRE-BYTE identity only** (the schema-driven SoA writer produces the same `UTVW` bytes undertow's
+    current hand-rolled writer produces) — NOT `view_contract.h` TEXT identity, which would require new,
+    unscoped emitter work. Task 4 and Task 5 above have been rewritten in-place to reflect this: Task 4 no
+    longer touches `view_contract.h` at all; Task 5 retires ONLY the writer half
+    (`ViewWriterGenerator.cs`/`EmitViewWriter.cs`), explicitly leaving `EmitViewContractHeader.cs` and
+    `view_contract.h` generation untouched. A NEW follow-on increment ("typed C++ accessor header from
+    ViewBlob") is needed before the header side can ever be retired — noted below, deliberately NOT
+    designed under this decision's time pressure.
+  - Column categorization re-confirmed unchanged against undertow's current `ViewSchema.cs` (still 30
+    columns, 5 sections, same name-mismatches, same 8 transform columns) before the blocker was hit — that
+    part of Milestone 1's research still holds; only the PROOF TARGET needed rescoping, not the schema
+    understanding itself.
+  - No commits made during this blocked attempt (worktree/branch unchanged at pre-Milestone-3 HEAD).
+    Milestone 3 restarts fresh against the rescoped Task 4/5 text above.
+  - **Gap #2 found before writing any schema code (same session, before the second rescope below):**
+    traced every consumer of `ViewField.Projection` across the whole Yeroket kernel-framework tree — the
+    ONLY consumer is `RmlDataModelEmitter.cs` (the RmlUi/View-Model-Binding C++ data-model face). Confirmed
+    by reading `ViewWireFormat.cs` in full that `ViewWriterEmitter`'s `ToBuffer()` generator NEVER reads
+    `f.Projection` — `EmitScalar` always serializes the field's raw value verbatim. So declaring
+    `[Projected]` fields as the (first) rescoped Task 4 text described would compile but silently NOT
+    transform anything in the generated writer. **Resolution (user-confirmed, verified independently):**
+    do the transform in hand-written adapter code producing already-transformed field values BEFORE they
+    reach the `[View]`-declared struct — matches the existing `Hud.cs`/`EditorLayers.cs` precedent (already
+    pre-transformed plain fields; `EditorLayers.cs`'s `isChecked` IS declared `[Projected]`, but that
+    schema is consumed via the RmlUi face, where Projection is real — the two schemas are NOT contradictory
+    once you know which consumer reads which). `[Projected]` stays attached to the transform/name-mismatch
+    fields in the new schemas as documentation/traceability only for this proof; inventing new C#-side
+    callable-dispatch emitter machinery is explicitly out of scope for this milestone (see Follow-ups).
+  - **Gap #3 found before writing any schema code (second rescope, same session):** traced undertow's REAL
+    `UTVW` wire via the actual compiled `ViewWriter.g.cs` + `ViewBufferBuilder.cs` — magic(`UTVW`) +
+    formatVersion + sectionCount, then a per-section TOC (id/byteOffset/byteLength), then per-section
+    rowCount+columnCount + a per-column TOC (id/byteOffsetWithinSection), with every column and section
+    16-byte aligned; columns are found by ID LOOKUP at read time. Yeroket's generated `ToBuffer()` wire
+    (`ViewWireFormat.cs`, what Milestone 2 built) is magic(`UTVA`) + SchemaVersion + fieldCount, then fields
+    written POSITIONALLY in declared order with NO TOC, no per-section/per-column offsets, no alignment —
+    even its SoA `StructArray` body is a flat rowCount+columns stream, no column TOC. These are two
+    independently-designed, structurally different binary protocols (different magic bytes on purpose) — a
+    raw byte-diff between them can NEVER match regardless of schema/callable/adapter correctness; it is not
+    a fixable content bug. "Undertow's UTVW wire is already columnar/SoA" (Milestone 1's own framing) was
+    true only at a vague conceptual level (per-column contiguous data), not at the byte level the
+    wire-byte-identical proof needed. **Resolution (user-confirmed, independently re-verified via
+    `ViewBufferBuilder.cs`): rescope the proof a second time to DECODED-VALUE identity** — decode
+    undertow's real `UTVW` bytes via undertow's own reader, decode the schema-driven `UTVA`/SoA bytes via
+    `ViewWireReaderSoa` (Milestone 2), and assert the same logical values for the same reference frame. This
+    is the achievable, meaningful realization of the proof discipline (re-derive an already-shipped
+    behavior through the new mechanism and prove it matches), consistent with Milestone 2's own round-trip
+    tests, just cross-validated against a real undertow-produced buffer instead of a hand-built one. Task 4
+    and Task 5's text above have been rewritten a second time to reflect this — see both sections' "RESCOPED
+    (TWICE)"/"second rescope" markers. No commits made during any of these three holds; Milestone 3 now
+    proceeds under the final DECODED-VALUE proof target.
+  - **Gap #4 found before writing `Bodies` (same session, PARTIAL progress — Hud/HudFactions/HudEvents/
+    HudInspect complete, Bodies held for direction):** `ViewModelBuilder.Classify` (`ViewModel.cs:58-71`)
+    only recognizes scalar / `T[]`-of-scalar-struct / plain-nested-struct field shapes, and
+    `ViewWireFormat.EmitField` (`ViewWireFormat.cs:49`) explicitly throws for the plain-nested-struct case.
+    `Bodies.Position`/`Bodies.RecipeParams` are Vec3f SCALARS (not arrays) — unrepresentable.
+    `Bodies.OrbitPath` is `ListVec3f` (a nullable, per-row VARIABLE-LENGTH list of points) — a 2-level
+    nesting (struct-array of lists-of-structs) with no representation at all in the `[View]` model, and
+    even the SoA variable-length machinery only implements the String-column case. This gap is ISOLATED to
+    `Bodies` — `Hud`/`HudFactions`/`HudEvents`/`HudInspect` have no Vec3f/ListVec3f columns and are fully
+    representable. Reported with 3 options; held for direction. Proceeded on the 4 unaffected sections in
+    parallel per the controller's explicit go-ahead rather than idling.
+  - **Task 4 delivered for `Hud`/`HudFactions`/`HudEvents`/`HudInspect` (Bodies deferred, gap #4 unresolved):**
+    - Schemas declared in `codegen/view-schemas/UndertowHud.cs`: `UndertowHud`, `UndertowHudFactions`
+      (`UndertowHudFactionRow[]`, Soa layout), `UndertowHudEvents` (`UndertowHudEventRow[]`, Soa layout),
+      `UndertowHudInspect` — distinct names from the existing live `Hud`/`HudFaction`/`HudEvent` schema
+      (`Hud.cs`) so this proof vehicle does not collide with or risk VIXEN's own committed, drift-guarded
+      HUD artifacts.
+    - Callables in `codegen/view-schemas/UndertowViewCallables.cs`: ONE shared `BoolToByte(bool)` for all 4
+      bool→byte columns (Focused/Known/InLens/Selected — Milestone 1 Opus validator's finding confirmed in
+      practice); `StrengthBandToByte`/`ConfidenceToByte` for the 2 enum casts; `OrbitParentOrSentinel`
+      authored for completeness/documentation even though Bodies itself is deferred; `IdentityFloat`/
+      `IdentityString` no-op callables as the name-binding mechanism for `TopRelSig`/`Cause` (the third
+      name-mismatch column, `Mass`, is Bodies-side and deferred with gap #4). Real count: 6 callables, not
+      8 — matches Milestone 1's "3-4 real transforms, or fewer" estimate once the 2 identity name-binding
+      callables are counted separately from actual value transforms.
+    - Hand adapter in `codegen/view-schemas/UndertowFrameAdapter.cs` (gap #2's resolution): maps a real
+      `SimFrame`'s `HudView`/`HudFactionView`/`HudEventView`/`HudInspectView` into the generated
+      `UndertowHud*ViewWriter` row types, calling the SAME `UndertowViewCallables` methods each
+      `[Projected]` attribute documents, so callable and adapter can never semantically drift.
+    - Regenerated via the real Yeroket CLI (`dotnet run --project CodegenTool~ -c Release -- --schema
+      codegen/view-schemas --view-writer <Name> --out-cs <path>`) for all 4 schemas — clean generation, no
+      errors; column order in generated `ToBuffer()` confirmed to match `ViewSchema.cs`'s declared column
+      order exactly (verified by reading `UndertowHudFactions.view.g.cs`'s output directly).
+    - **Decoded-value proof (non-vacuous, real cross-check):** a standalone console harness (not committed
+      to any build graph — references undertow's real `Undertow.Sim.dll`/`Undertow.View.dll`/
+      `Undertow.Substrate.dll` build outputs directly, read-only) constructs a reference frame extending
+      `ViewContractTests.ViewWriter_RoundTripsHudFactionAndEventStrings`'s fixture (2 factions incl. one
+      with 0 grievance/unfocused/unknown, 2 events incl. one with EMPTY PerpName/VictimName — the
+      populated-Str-column exercise both prior milestones' validators required) with a populated
+      `HudInspect` row (that test doesn't exercise HudInspect at all). Calls undertow's REAL
+      `ViewWriter.WriteView` + decodes via undertow's REAL `ViewBufferReader`; separately calls the 4
+      generated `UndertowHud*ViewWriter.ToBuffer()` (fed by the hand adapter) and decodes via a
+      hand-written UTVA/SoA decoder mirroring `ViewWireFormat.cs`'s exact emit algorithm. **Result: 34/34
+      decoded-value checks pass, 0 mismatches** — every transform column (bool→byte ×3, enum→byte ×2),
+      every identity column, every populated AND empty Str value, and both name-mismatch columns
+      (TopRelSig, Cause) match exactly between undertow's real writer and the schema-driven regeneration.
+  - **Gap #4 RESOLVED (controller decision: option 1 — split the proof, defer the unrepresentable
+    columns as a named Follow-up):** declared `UndertowBodies`/`UndertowBodyRow` in `UndertowHud.cs`
+    covering the 7 REPRESENTABLE columns only (`kind`, `mass`, `orbitParent`, `ownerInLens`,
+    `ownerRecentEventAge`, `recipeProvider`, `recipeId`); `Position`/`RecipeParams` (Vec3f scalars) and
+    `OrbitPath` (ListVec3f) are explicitly NOT declared — see the new Follow-up entry below ("Vec3f-scalar
+    and ListVec3f field-shape support in the [View] model"). `mass` carries the THIRD name-mismatch
+    column (`Mass` ← `el.MassKg`, ALSO a `double`→`float` narrowing) via the same `IdentityFloat`
+    name-binding callable used for `HudInspect.topRelSig`/`cause`; `orbitParent` is the nullable-unwrap-
+    with-`-1`-sentinel transform (`OrbitParentOrSentinel`, authored in Milestone 3's first pass, now
+    actually exercised). Adapter extended in `UndertowFrameAdapter.cs` (`Bodies(IReadOnlyList<BodyView>)`).
+    Regenerated cleanly via the CLI — verified column order matches `ViewSchema.cs`'s `Bodies` columns
+    exactly (kind, mass, orbitParent, ownerInLens, ownerRecentEventAge, recipeProvider, recipeId — the
+    3 skipped columns simply omitted, no reordering).
+    **Decoded-value proof extended and re-run**: 2 real `BodyView`s (a star with `orbit: null` — exercises
+    the `-1` sentinel path — and a planet with a real `OrbitView(0, ...)` — exercises the real
+    `ParentBodyIndex` path, proving BOTH ternary branches, not just one) added to the same harness/
+    reference frame. **Full re-run result: 48/48 decoded-value checks pass, 0 mismatches** — all 34 prior
+    checks unchanged plus 14 new Bodies checks (RowCount + 7 columns × 2 rows), including the `Mass`
+    double→float narrowing (`1.99e30`/`5.97e24` match exactly at float precision) and both `OrbitParent`
+    branches. **Milestone 3 (Task 4) is now COMPLETE** for all 5 sections, with `Position`/`RecipeParams`/
+    `OrbitPath` an explicit, named, deferred gap (not silently dropped) — Milestone Map updated below.
+  - **Opus validator (independent field-by-field re-verification):** cross-checked every column in all 5
+    schemas against undertow's real `ViewSchema.cs` fresh (Hud/HudFactions/HudEvents/HudInspect match
+    exactly; `Bodies` declares EXACTLY the 7 claimed columns, genuinely omitting the 3 deferred ones);
+    confirmed all 6 callables are byte-for-byte semantically identical to their original `Source`
+    expressions (including that `BoolToByte`'s sharing across all 4 bool→byte columns is semantically
+    valid — all 4 really do `? 1 : 0`); verified all 10 field↔`[Projected]`-attribute pairs in
+    `UndertowFrameAdapter.cs` call the EXACT SAME callable their schema attribute names (zero drift —
+    gap #2's resolution holds); specifically verified the `orbitParent` expression is null-safe
+    (`el.Orbit.Value.ParentBodyIndex` is only evaluated when `el.Orbit.HasValue` is true, never throws);
+    confirmed the generated writer type shapes the adapter assumes match `ViewWriterEmitter.cs`'s real
+    output. Treated the 48/48 proof result as TRUSTED-FROM-REPORT (harness uncommitted, can't re-run)
+    but independently verified the described reference frame's SOUNDNESS — every declared transform,
+    name-mismatch, and edge case (empty-string SoA path, both `OrbitParentOrSentinel` branches, the
+    `Mass` narrowing) is genuinely exercised by the described 2-faction/2-event/1-inspect/2-body
+    scenario. Confirmed zero build-graph references to the 3 new files (correct — proof-vehicle schema
+    declarations, not shipped runtime code). Tree clean. **APPROVED, no defects, no changes made.**
+
+- Milestone 4 (Task 5): BLOCKED · 2026-07-12 · no files modified in any of the three repos
+  - Implementer read Task 5's rescoped text and the full Progress Log (including Gap #3 and its
+    Follow-up) before writing any code, per this program's own precedent of investigating before
+    forcing a match. Verified Gap #3's claim against real source rather than trusting the doc at face
+    value, since Task 5 is the first milestone that would actually write to undertow:
+    - `undertow/vixen/render/view_contract.h`'s per-section accessor classes (`BodiesSection`,
+      `HudSection`, `HudFactionsSection`, `HudEventsSection`, `HudInspectSection`) do raw byte-offset
+      arithmetic hard-wired to the `UTVW` wire's specific shape: per-section TOC (byte-offset/length),
+      per-column TOC, 16-byte alignment, and `(count()+1)*4`-style offsets-array-then-blob addressing
+      for variable-length columns. This is not a format-agnostic reader sitting next to a swappable
+      writer — the typed accessors' arithmetic assumes `UTVW`'s exact byte layout.
+    - Yeroket's generated writer (Milestone 2's `ViewWriterEmitter`/`ToBuffer()`) emits a structurally
+      different protocol: magic `UTVA`, no per-section/per-column TOC, fields positional in declared
+      order, no 16-byte alignment even in the SoA `StructArray` body.
+    - Confirmed `main.cpp:38,186` (`#include "view_contract.h"`, `undertow::view::BodiesSection bs(sec,
+      wire.end())`) is a real, live consumption site, not dead/aspirational code.
+    - Confirmed `core/src/Undertow.View/Undertow.View.csproj`'s Analyzer wiring is a single
+      `ProjectReference` to the WHOLE `Undertow.Authoring.Codegen` project
+      (`OutputItemType="Analyzer"`) — not scoped per-emitter-file. `EmitViewWriter.cs` (produces the
+      `UTVW` bytes) and `EmitViewContractHeader.cs` (produces `view_contract.h`'s reader) are generated
+      from the same source-generator invocation over the same `view-schema.json`, as one co-designed
+      wire+reader pair. There is no existing mechanism to retire only the writer's output shape while
+      leaving the reader's byte-layout assumptions about that shape unchanged.
+  - **Conclusion: swapping the writer (for all 5 sections, or any subset) while `view_contract.h`'s
+    reader stays on `UTVW`-shaped offset arithmetic makes `main.cpp` decode garbage from real sim
+    frames.** This is not the Bodies Vec3f/ListVec3f gap (Gap #4, already resolved in Milestone 3 by a
+    scope-split) — it is Gap #3, and it applies to EVERY section equally, since the incompatibility is
+    at the wire-protocol level, not the column-coverage level. The "conservative" fallback the task brief
+    offered (migrate only the 4 fully-representable sections, leave Bodies on the old writer) does not
+    route around this: whichever sections move to the new writer would still be read by a reader that
+    doesn't know they changed shape.
+  - **Real game/sim data was on the line** (undertow's actual save/render pipeline, not a proof-of-concept)
+    — per this program's own precedent (holding on real gaps rather than guessing), the implementer
+    stopped and reported BLOCKED rather than forcing a partial cutover or inventing new reader-side
+    mechanism under milestone time pressure. Team lead independently re-verified the `.csproj` Analyzer
+    granularity claim and confirmed the blocker is genuine, not overcautious.
+  - **What would need to happen first, per the plan's own Follow-ups (unscoped, not decided here):**
+    either (a) build the not-yet-designed "typed C++ accessor header emitter from `ViewBlob`" (targeting
+    the same generic `ViewBlob`/`BlobView`/`ViewStore` model Milestone 2's `ViewWireReaderSoa` already
+    reads, replacing `view_contract.h`'s hand-rolled offset arithmetic with generated accessors), or (b)
+    migrate `main.cpp` and any other `view_contract.h` consumers directly onto the generic
+    `BlobView`/`ViewStore` API, retiring `view_contract.h` outright. Both are real, unscoped design work
+    — genuinely bigger than a milestone — and deliberately NOT scoped or chosen here; that decision is
+    for the user/team lead, not to be improvised by this milestone's implementer.
+  - No files touched in the undertow worktree (`view-contract-inc5-m4`, left clean at `2c8f25b4`) or in
+    Yeroket. This VIXEN plan-doc update is the only change made to close out Milestone 4.
+
 ## Follow-ups (explicitly out of scope, note for later increments)
 
+- **Vec3f-scalar-field and ListVec3f-field support in the `[View]` model** (gap #4, discovered during
+  Milestone 3, 2026-07-12): `ViewModelBuilder.Classify` only recognizes int/float/bool/string scalars,
+  `T[]` of scalar-only structs, and a plain nested struct (which `ViewWireFormat.EmitField` explicitly
+  throws on). `Bodies.Position`/`Bodies.RecipeParams` (Vec3f SCALAR fields, not arrays) and
+  `Bodies.OrbitPath` (`ListVec3f` — a nullable, per-row VARIABLE-LENGTH list of points, a 2-level nesting
+  with no representation at all) are consequently NOT declarable — Milestone 3's `UndertowBodies` schema
+  proves only the other 7 columns. A future increment would need to teach `ViewModel`/`ViewWireFormat`
+  (both AoS and SoA paths) a new Vec3f-scalar field kind (fixed 12-byte triple) and a new variable-length
+  struct-list field kind (reusing the existing offsets+blob machinery, generalized beyond String columns)
+  before `Bodies` can be declared in full — real, undesigned mechanism work, not a workaround
+  (flattening Vec3f to 3 separate floats was considered and rejected: it doesn't generalize to
+  `OrbitPath`, since row count and per-row list length are different cardinalities).
+- **A C#-side `[Projected]`-dispatch extension to `ViewWireFormat`/`ViewWriterEmitter`** (gap #2, discovered
+  during Milestone 3, 2026-07-12): today `[Projected]` only affects the RmlUi `RmlDataModelEmitter.cs` C++
+  face; the View Contract C# writer (`ViewWireFormat.EmitScalar`) never dispatches to a callable. If a
+  future schema genuinely needs the writer itself to invoke a transform (rather than pre-transforming in a
+  hand adapter, as Milestone 3 does), this would mean emitting a call to a C#-side
+  `Vixen.Views.Generated.<Method>(access)` before serializing — new, undesigned emitter work, deliberately
+  not built under Milestone 3's time pressure.
+- **Unifying (or bridging) undertow's real `UTVW` wire protocol and Yeroket's generated `UTVA`/SoA wire
+  protocol** (gap #3, discovered during Milestone 3, 2026-07-12): the two are structurally different binary
+  formats (TOC+16-byte-alignment+ID-lookup vs flat declared-order stream) — Milestone 3 worked around this
+  by proving DECODED-VALUE identity instead of wire-byte identity, but a real writer-generator retirement
+  (Task 5) means undertow's C++ reader side must eventually also move off `view_contract.h`'s `UTVW`-TOC
+  reader onto `ViewWireReaderSoa`'s `UTVA`/SoA reader (or Yeroket's emitter must learn to speak `UTVW`'s
+  exact wire dialect) — neither is designed yet; Task 5's own implementer must scope this explicitly rather
+  than assuming "switch the Analyzer reference" is a small mechanical step.
+- **A typed C++ accessor header emitter from `ViewBlob`** (discovered as a genuine gap during Milestone 3,
+  2026-07-12): Yeroket's shipped `[View]` pipeline has no emitter producing a `view_contract.h`-equivalent
+  file (named per-section accessor classes with cached column pointers and typed methods like
+  `position(i)`/`orbit_points(i)`) — only the generic reflection-blob consumption model
+  (`ViewBlob`/`BlobView`/`ViewStore`) exists. Retiring `EmitViewContractHeader.cs` (and therefore fully
+  completing "undertow becomes a pure consumer") requires EITHER building this new emitter face as its own
+  scoped increment, OR a separate, larger decision to migrate undertow's C++ call sites (`main.cpp` and
+  similar) to consume the generic `BlobView`/`ViewStore` API directly instead of a generated typed header
+  — the two are genuinely different amounts of work and neither was designed under this decision's time
+  pressure; scope and decide between them as a dedicated increment before attempting it.
+- **`ViewWireReader`/`ViewWireReaderSoa` `Cursor` duplication** (flagged by Milestone 2's Opus validator):
+  the two C++ readers duplicate their bounds-checked `Cursor` struct (magic check, version guard,
+  trailing-byte check) verbatim. Sound today; fold back into one shared cursor once `ViewFieldDesc` gains
+  a real per-field layout flag (likely a natural side effect of Milestone 4's schema work).
 - Migrating undertow's OTHER ~30 `Undertow.Authoring.Codegen` emitter files (save codecs, patch parsers,
   authored-kind builders, effect/action/param/system registration, merge logic) — a separate, larger epic;
   this plan touches only the view-contract slice.

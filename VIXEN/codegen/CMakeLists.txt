@@ -92,7 +92,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
                 "codegen regen/golden DRIFT GUARD DISABLED. Run the WSL-side configure to enable it.")
             return()
         endif()
-        # ${CMAKE_SOURCE_DIR}/... args are Windows paths (C:/...) on this configure; the WSL tool
+        # ${VIXEN_ROOT}/... args are Windows paths (C:/...) on this configure; the WSL tool
         # needs them as /mnt/c/... — translate once via wslpath and reuse for every target below.
         function(_codegen_to_wsl_path win_path out_var)
             execute_process(
@@ -104,68 +104,90 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ShadowConfig.glsl" _out_shadowconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h" _out_accumulationconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/AccumulationConfig.glsl" _out_accumulationconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h" _out_prevcameraconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl" _out_prevcameraconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h" _out_reservoirconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirConfig.glsl" _out_reservoirconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h" _out_probegridconfig_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ProbeGridConfig.glsl" _out_probegridconfig_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h" _out_lighttreebuffer_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ShadowConfig.glsl" _out_shadowconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h" _out_accumulationconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/AccumulationConfig.glsl" _out_accumulationconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h" _out_prevcameraconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/PrevCameraConfig.glsl" _out_prevcameraconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h" _out_reservoirconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirConfig.glsl" _out_reservoirconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h" _out_probegridconfig_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ProbeGridConfig.glsl" _out_probegridconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h" _out_lighttreebuffer_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
         # Lives under application/editor (a CONSUMER artifact, same "engine sees only Ui/IView.h"
         # convention Hud.g.h's comment above documents).
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h" _out_editor_layers_header_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h" _out_editor_layers_header_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.blob.g.h" _out_hud_blob_header_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
         _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
-        _codegen_to_wsl_path("${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp" _out_callables_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp" _out_callables_hdr_run)
+        # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHud.readmodel.g.h" _out_undertowhud_readmodel_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h" _out_undertowhudfactions_readmodel_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h" _out_undertowhudevents_readmodel_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h" _out_undertowhudinspect_readmodel_run)
+        # View Read-Model Codegen Milestone 6: the umbrella include header for the whole
+        # UndertowHud.cs [View] family -- --schema-file (a single .cs file, not the
+        # directory-scoped --schema) + --out-dir (existence-probe root for each discovered
+        # schema's sibling .blob/.typed/.readmodel.g.h files) + --out-header (the umbrella itself).
+        _codegen_to_wsl_path("${_cg}/view-schemas/UndertowHud.cs" _schema_undertowhud_file_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated" _out_undertowhud_gendir_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFamily.umbrella.g.h" _out_undertowhud_umbrella_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
     else()
         set(_yk_tool_run "${_yk_tool}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
-        set(_out_octreeconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/SVO/include/Generated/OctreeConfig.g.h")
-        set(_out_octreeconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/OctreeConfig.glsl")
-        set(_out_lightingconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
-        set(_out_lightingconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/LightingConfig.glsl")
-        set(_out_shadowconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
-        set(_out_shadowconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ShadowConfig.glsl")
-        set(_out_accumulationconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h")
-        set(_out_accumulationconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/AccumulationConfig.glsl")
-        set(_out_prevcameraconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h")
-        set(_out_prevcameraconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/PrevCameraConfig.glsl")
-        set(_out_reservoirconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h")
-        set(_out_reservoirconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirConfig.glsl")
-        set(_out_probegridconfig_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h")
-        set(_out_probegridconfig_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ProbeGridConfig.glsl")
-        set(_out_lighttreebuffer_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h")
-        set(_out_lighttreebuffer_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/LightTreeBuffer.glsl")
-        set(_out_reservoirrecord_cpp_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
-        set(_out_reservoirrecord_glsl_run "${CMAKE_SOURCE_DIR}/shaders/Generated/ReservoirRecord.glsl")
-        set(_out_hud_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.g.h")
-        set(_out_hud_rml_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/Hud.view.rml")
-        set(_out_editor_layers_header_run "${CMAKE_SOURCE_DIR}/application/editor/include/Generated/EditorLayers.g.h")
-        set(_out_hud_blob_header_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.blob.g.h")
-        set(_out_hud_blob_data_run "${CMAKE_SOURCE_DIR}/libraries/RenderGraph/assets/ui/hud.viewblob")
-        set(_out_hud_writer_cs_run "${CMAKE_SOURCE_DIR}/application/main/include/Generated/Hud.view.g.cs")
+        set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
+        set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
+        set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
+        set(_out_lightingconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl")
+        set(_out_shadowconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
+        set(_out_shadowconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ShadowConfig.glsl")
+        set(_out_accumulationconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/AccumulationConfig.g.h")
+        set(_out_accumulationconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/AccumulationConfig.glsl")
+        set(_out_prevcameraconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/PrevCameraConfig.g.h")
+        set(_out_prevcameraconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/PrevCameraConfig.glsl")
+        set(_out_reservoirconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirConfig.g.h")
+        set(_out_reservoirconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirConfig.glsl")
+        set(_out_probegridconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ProbeGridConfig.g.h")
+        set(_out_probegridconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ProbeGridConfig.glsl")
+        set(_out_lighttreebuffer_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h")
+        set(_out_lighttreebuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl")
+        set(_out_reservoirrecord_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
+        set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
+        set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
+        set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
+        set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
+        set(_out_hud_blob_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.blob.g.h")
+        set(_out_hud_blob_data_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob")
+        set(_out_hud_writer_cs_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs")
         set(_schema_appflow_run "${_cg}/appflow-schemas")
-        set(_out_appflow_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlow.g.h")
-        set(_out_callables_hdr_run "${CMAKE_SOURCE_DIR}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp")
+        set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
+        set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp")
+        # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
+        set(_out_undertowhud_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHud.readmodel.g.h")
+        set(_out_undertowhudfactions_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h")
+        set(_out_undertowhudevents_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h")
+        set(_out_undertowhudinspect_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h")
+        # View Read-Model Codegen Milestone 6: umbrella include header (native-path mirror
+        # of the WSL-bridge block above).
+        set(_schema_undertowhud_file_run "${_cg}/view-schemas/UndertowHud.cs")
+        set(_out_undertowhud_gendir_run "${VIXEN_ROOT}/application/main/include/Generated")
+        set(_out_undertowhud_umbrella_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFamily.umbrella.g.h")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
@@ -451,10 +473,111 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
         COMMENT "[codegen] regenerate AppFlowCallables.g.hpp"
         VERBATIM)
+
+    # --- View Read-Model Codegen Milestone 5 (R6): --readmodel-cpp DTO headers for the 4
+    # undertow Hud-family [View] schemas (UndertowHud/HudFactions/HudEvents/HudInspect).
+    # Mirrors view_hud_check/view_hud_regen's pattern exactly -- these are the same undertow
+    # view-schemas dir (_schema_view_run) the existing UndertowHud*.typed.g.h accessors are
+    # generated from (that CLI invocation is currently run manually, not CMake-driven, per
+    # Milestone 5's research; this is the first CMake-wired drift guard for the Undertow* Hud
+    # schemas). A schema edit that isn't regenerated now fails the build, same as every other
+    # generated artifact here.
+    set(_readmodel_undertowhud_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHud
+        --out-header "${_out_undertowhud_readmodel_run}")
+    add_custom_target(readmodel_undertowhud_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args} --check
+        COMMENT "[codegen] golden check: UndertowHud.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhud_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args}
+        COMMENT "[codegen] regenerate UndertowHud.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowhudfactions_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudFactions
+        --out-header "${_out_undertowhudfactions_readmodel_run}")
+    add_custom_target(readmodel_undertowhudfactions_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args} --check
+        COMMENT "[codegen] golden check: UndertowHudFactions.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhudfactions_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args}
+        COMMENT "[codegen] regenerate UndertowHudFactions.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowhudevents_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudEvents
+        --out-header "${_out_undertowhudevents_readmodel_run}")
+    add_custom_target(readmodel_undertowhudevents_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args} --check
+        COMMENT "[codegen] golden check: UndertowHudEvents.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhudevents_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args}
+        COMMENT "[codegen] regenerate UndertowHudEvents.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowhudinspect_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudInspect
+        --out-header "${_out_undertowhudinspect_readmodel_run}")
+    add_custom_target(readmodel_undertowhudinspect_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args} --check
+        COMMENT "[codegen] golden check: UndertowHudInspect.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowhudinspect_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args}
+        COMMENT "[codegen] regenerate UndertowHudInspect.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    # --- View Read-Model Codegen Milestone 6: umbrella include header for the whole
+    # UndertowHud.cs [View] family (UndertowHud/HudFactions/HudEvents/HudInspect/Bodies/
+    # Recipes). --schema-file discovers every [View] type in that ONE .cs file via
+    # CompilationLoader.LoadViews (not the directory-scoped --schema every other target uses
+    # here) -- this is what gives "add a new [View] struct to UndertowHud.cs, next regen picks
+    # it up with zero CMakeLists edits" (Milestone 6 Task 1 research). --out-dir is the
+    # existence-probe root: the umbrella only #includes a schema's .blob/.typed/.readmodel.g.h
+    # sibling if that file actually exists there (UndertowBodies/UndertowRecipes have no
+    # .readmodel.g.h yet -- Milestone 5 was Hud-only scope -- so the umbrella must degrade
+    # gracefully per schema rather than assume all 3 siblings exist for every family member).
+    #
+    # add_dependencies below is the one genuinely new wrinkle vs. every earlier _check/_regen
+    # pair in this file: the umbrella's existence-probe must see a FRESH, consistent set of
+    # sibling files, not stale ones from a previous schema shape, so its check/regen must run
+    # strictly after all 6 family members' own check/regen targets (the individual schema
+    # targets above never needed this -- they have no siblings to depend on).
+    set(_readmodel_umbrella_undertowhud_args
+        run --project "${_yk_tool_run}" -c Release --
+        --readmodel-umbrella-cpp
+        --schema-file "${_schema_undertowhud_file_run}"
+        --out-dir "${_out_undertowhud_gendir_run}"
+        --out-header "${_out_undertowhud_umbrella_run}")
+    add_custom_target(readmodel_umbrella_undertowhud_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_umbrella_undertowhud_args} --check
+        COMMENT "[codegen] golden check: UndertowHudFamily.umbrella.g.h matches canonical [View] schemas in UndertowHud.cs (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_umbrella_undertowhud_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_umbrella_undertowhud_args}
+        COMMENT "[codegen] regenerate UndertowHudFamily.umbrella.g.h (Yeroket tool)"
+        VERBATIM)
+    # Only the 4 Hud-family schemas have their own CMake _check targets today (Milestone 5's
+    # scope; UndertowBodies/UndertowRecipes have no CMake-wired --readmodel-cpp or other
+    # per-schema check target at all -- confirmed by Milestone 6 Task 1's research, "no prior
+    # CMake target existed for any Undertow* schema check before this milestone" -- so those
+    # 2 have nothing to depend on here; the umbrella's own existence-probe still degrades
+    # gracefully for them via --out-dir, it just can't order itself after a target that
+    # doesn't exist).
+    add_dependencies(readmodel_umbrella_undertowhud_check
+        readmodel_undertowhud_check readmodel_undertowhudfactions_check
+        readmodel_undertowhudevents_check readmodel_undertowhudinspect_check)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, ProbeGridConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h) are used as-is and will NOT be checked against "
+        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/UndertowHud-readmodel/UndertowHudFamily-umbrella golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, ProbeGridConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h, UndertowHud/HudFactions/HudEvents/HudInspect.readmodel.g.h, UndertowHudFamily.umbrella.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")
