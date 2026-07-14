@@ -3188,6 +3188,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
+                    // TESTED AND RULED OUT (M3 round 4, 2026-07-14): a RequestBrickResidency(true)
+                    // call was tried here, hypothesizing that this scene's DeriveResidencyDefault-
+                    // computed LAZY residency (every body is mip-capable) plus its async brick-
+                    // upload latency explained the observed non-determinism. A live trial with the
+                    // eager call in place STILL produced out-of-bounds hits (7894/191705, worse
+                    // than some lazy-residency trials) -- and critically, the culprit instance
+                    // shifted from backWall (instIdx=2, prior trials) to ceiling (instIdx=4, this
+                    // trial), proving the anomaly is not tied to residency state or to one specific
+                    // body. Reverted; left this comment so a future investigator doesn't re-try the
+                    // same disproven hypothesis. See the plan doc's M3 round 4 Progress Log entry
+                    // for the full trial-by-trial evidence.
                     bodyScene->SetInstances(std::move(instances));
                     mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: seeded 8 body "
                                       "instances (5 walls + 1 ceiling light + 2 objects)");
