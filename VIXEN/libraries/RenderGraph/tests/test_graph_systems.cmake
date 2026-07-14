@@ -6,94 +6,24 @@
 # - Resource Management: ResourceBudgetManager, DeferredDestruction, SlotTask
 #
 # Compatible with VULKAN_TRIMMED_BUILD (headers only, no Vulkan required).
+#
+# PDB-consolidation (Milestone 1, 2026-07): test_graph_topology and
+# test_graph_lifecycle_hooks used to live here as their own executables. Both are
+# safe-to-merge by link surface (bare GTest::gtest_main + RenderGraph), but they
+# CANNOT be merged into the same binary as each other: both files define an
+# out-of-line static member `MockNodeType MockNode::mockType("MockNode");` —
+# linking both TUs into one executable produces a duplicate-symbol link error
+# (not just an ODR footgun; a hard linker failure). So:
+#   - test_graph_topology moved to tests/CMakeLists.txt's test_rendergraph_syncbarrier
+#     group (verified no MockNode/MockNodeType name collision there).
+#   - test_graph_lifecycle_hooks moved to tests/CMakeLists.txt as its own standalone
+#     target (its other candidate neighbor, test_connection_rule, ALSO collides —
+#     both define a redundant `int main()`, an LNK2005 duplicate-symbol error caught
+#     by an actual Windows/MSVC link during this milestone — so it stays unmerged).
+# test_slot_task is untouched here (out of Milestone 1 scope — additionally links
+# ResourceManagement, not a bare RenderGraph link surface).
+# See Vixen-Docs/04-Development/RenderGraph-Test-PDB-Consolidation-Plan-2026-07.md.
 # ===========================================================================
-
-# ---------------------------------------------------------------------------
-# Graph Topology Tests
-# ---------------------------------------------------------------------------
-# Validates graph topology validation and dependency tracking:
-# - Circular dependency detection (direct & indirect)
-# - Topological sorting
-# - Dependency chain analysis
-# - Complex graph validation
-# - Edge case handling
-
-message(STATUS "Configuring test_graph_topology (trimmed build compatible)")
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_graph_topology
-        test_graph_topology.cpp
-    )
-
-    # Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-    target_include_directories(test_graph_topology PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-    )
-
-    target_link_libraries(test_graph_topology PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    # Visual Studio solution folder organization
-    set_target_properties(test_graph_topology PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    # Platform-specific settings
-    if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
-        # Full build mode
-        if(TARGET Vulkan::Vulkan)
-            target_link_libraries(test_graph_topology PRIVATE Vulkan::Vulkan)
-        endif()
-    else()
-        # Trimmed build mode
-        message(STATUS "  Using Vulkan headers from: ${VULKAN_HEADERS_INCLUDE_DIR}")
-    endif()
-
-    gtest_discover_tests(test_graph_topology)
-
-    message(STATUS "✓ test_graph_topology configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
-else()
-    message(STATUS "⊗ test_graph_topology skipped (GoogleTest not available)")
-endif()
-
-# ---------------------------------------------------------------------------
-# Graph Lifecycle Hooks Tests
-# ---------------------------------------------------------------------------
-# Validates GraphLifecycleHooks node-hook targeting:
-# - A hook registered against a specific target node only runs for that node
-# - Untargeted (global) hooks still run for every node (legacy behavior)
-# - ClearNodeHooks clears both targeted and global storage
-
-message(STATUS "Configuring test_graph_lifecycle_hooks (trimmed build compatible)")
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_graph_lifecycle_hooks
-        test_graph_lifecycle_hooks.cpp
-    )
-
-    target_include_directories(test_graph_lifecycle_hooks PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
-
-    target_link_libraries(test_graph_lifecycle_hooks PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_graph_lifecycle_hooks PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
-        if(TARGET Vulkan::Vulkan)
-            target_link_libraries(test_graph_lifecycle_hooks PRIVATE Vulkan::Vulkan)
-        endif()
-    endif()
-
-    gtest_discover_tests(test_graph_lifecycle_hooks)
-
-    message(STATUS "✓ test_graph_lifecycle_hooks configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
-else()
-    message(STATUS "⊗ test_graph_lifecycle_hooks skipped (GoogleTest not available)")
-endif()
 
 # ---------------------------------------------------------------------------
 # Resource Management Tests

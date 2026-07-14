@@ -4,9 +4,30 @@ project(RenderGraphTests)
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest)
 
-add_executable(test_rendergraph_basic
+# ===========================================================================
+# RenderGraph Core Basics (PDB-consolidation Milestone 1, 2026-07)
+# ===========================================================================
+# Merges 4 formerly-separate targets, each a bare GTest::gtest_main + RenderGraph
+# link surface, into one executable — same test coverage, far fewer redundant
+# ~150-160MB /Z7 PDB collations. See
+# Vixen-Docs/04-Development/RenderGraph-Test-PDB-Consolidation-Plan-2026-07.md.
+#
+# - test_rendergraph_basic / test_rendergraph_dependency: dependency-tracking
+#   basics (array-slot dedup, multiple-producer detection).
+# - test_typednode_helpers (+ test_executeonly_behavior, formerly appended via
+#   target_sources): TypedNode helper coverage, including ExecuteOnly node
+#   behavior.
+# - test_lightingconfig_parity (Sampled Lighting Inc0 M1): generated Light /
+#   LightingConfig [GpuStruct] drift-guard; see
+#   codegen/config-schemas/LightingConfig.cs.
+add_executable(test_rendergraph_core
     test_rendergraph_basic.cpp
     test_rendergraph_dependency.cpp
+    test_array_slot_dedup.cpp
+    test_multiple_producers.cpp
+    test_typednode_helpers.cpp
+    test_executeonly_behavior.cpp
+    test_lightingconfig_parity.cpp
 )
 
 # Ensure tests can include generated headers and centralized test mocks
@@ -16,114 +37,49 @@ include_directories(${VIXEN_ROOT})
 # Link against the RenderGraph library target - includes propagate automatically
 # RenderGraph target exposes its include directory as PUBLIC, no manual include_directories needed
 if(TARGET RenderGraph)
-    target_link_libraries(test_rendergraph_basic PRIVATE GTest::gtest_main RenderGraph)
+    target_link_libraries(test_rendergraph_core PRIVATE GTest::gtest_main RenderGraph)
 else()
-    target_link_libraries(test_rendergraph_basic PRIVATE GTest::gtest_main)
+    target_link_libraries(test_rendergraph_core PRIVATE GTest::gtest_main)
 endif()
 
 # Visual Studio solution folder organization
-set_target_properties(test_rendergraph_basic PROPERTIES FOLDER "Tests/RenderGraph Tests")
+set_target_properties(test_rendergraph_core PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_basic)
+gtest_discover_tests(test_rendergraph_core)
 
-add_executable(test_rendergraph_dependency
-    test_rendergraph_dependency.cpp
-    test_array_slot_dedup.cpp
-    test_multiple_producers.cpp
+# ===========================================================================
+# RenderGraph Shader Mirrors (PDB-consolidation Milestone 1, 2026-07)
+# ===========================================================================
+# Merges 3 formerly-separate bare-link-surface targets into one executable.
+# test_sampling_compile_gate is NOT included here — it has a compile definition
+# (VIXEN_SHADER_SOURCE_DIR) and a conditional ShaderManagement link in its
+# else() branch, a real build-semantics complication, so it stays standalone.
+#
+# - test_brdf_mirror (Sampled Lighting Inc0 M2): gpu-shader-debug mirror of
+#   shaders/Brdf.glsl's evalBRDF, verified against an independent scalar reference.
+# - test_traceworld_mirror (Sampled Lighting Inc1 M2): gpu-shader-debug mirror of
+#   shaders/TraceWorld.glsl's TraceWorldShadow any-hit occlusion test, verified
+#   against an independent AABB-list reference using Data/VoxelTraversal.h's
+#   Ray/AABB/IntersectRayAABB.
+# - test_vndf_mirror (Sampled Lighting Inc0 M4): gpu-shader-debug mirror of
+#   shaders/Sampling.glsl's sampleGGXVNDF/vndfPdf, verified against two independent
+#   references: a from-scratch analytic VNDF density and the original Heitz 2018
+#   sampler construction.
+add_executable(test_rendergraph_shadermirrors
+    test_brdf_mirror.cpp
+    test_traceworld_mirror.cpp
+    test_vndf_mirror.cpp
 )
 
-# Link against the RenderGraph library target - includes propagate automatically
 if(TARGET RenderGraph)
-    target_link_libraries(test_rendergraph_dependency PRIVATE GTest::gtest_main RenderGraph)
+    target_link_libraries(test_rendergraph_shadermirrors PRIVATE GTest::gtest_main RenderGraph)
 else()
-    target_link_libraries(test_rendergraph_dependency PRIVATE GTest::gtest_main)
+    target_link_libraries(test_rendergraph_shadermirrors PRIVATE GTest::gtest_main)
 endif()
 
-# Visual Studio solution folder organization
-set_target_properties(test_rendergraph_dependency PROPERTIES FOLDER "Tests/RenderGraph Tests")
+set_target_properties(test_rendergraph_shadermirrors PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_dependency)
-
-add_executable(test_typednode_helpers test_typednode_helpers.cpp)
-
-# Link against the RenderGraph library target - includes propagate automatically
-if(TARGET RenderGraph)
-    target_link_libraries(test_typednode_helpers PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_typednode_helpers PRIVATE GTest::gtest_main)
-endif()
-
-# Visual Studio solution folder organization
-set_target_properties(test_typednode_helpers PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_typednode_helpers)
-
-# ===========================================================================
-# LightingConfig Parity Test (Sampled Lighting Inc0 M1 — generated Light /
-# LightingConfig [GpuStruct] drift-guard; see codegen/config-schemas/LightingConfig.cs)
-# ===========================================================================
-add_executable(test_lightingconfig_parity test_lightingconfig_parity.cpp)
-
-if(TARGET RenderGraph)
-    target_link_libraries(test_lightingconfig_parity PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_lightingconfig_parity PRIVATE GTest::gtest_main)
-endif()
-
-set_target_properties(test_lightingconfig_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_lightingconfig_parity)
-
-# ===========================================================================
-# Brdf CPU Mirror Test (Sampled Lighting Inc0 M2 — gpu-shader-debug mirror of
-# shaders/Brdf.glsl's evalBRDF, verified against an independent scalar reference)
-# ===========================================================================
-add_executable(test_brdf_mirror test_brdf_mirror.cpp)
-
-if(TARGET RenderGraph)
-    target_link_libraries(test_brdf_mirror PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_brdf_mirror PRIVATE GTest::gtest_main)
-endif()
-
-set_target_properties(test_brdf_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_brdf_mirror)
-
-# ===========================================================================
-# TraceWorld CPU Mirror Test (Sampled Lighting Inc1 M2 — gpu-shader-debug mirror of
-# shaders/TraceWorld.glsl's TraceWorldShadow any-hit occlusion test, verified against
-# an independent AABB-list reference using Data/VoxelTraversal.h's Ray/AABB/IntersectRayAABB)
-# ===========================================================================
-add_executable(test_traceworld_mirror test_traceworld_mirror.cpp)
-
-if(TARGET RenderGraph)
-    target_link_libraries(test_traceworld_mirror PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_traceworld_mirror PRIVATE GTest::gtest_main)
-endif()
-
-set_target_properties(test_traceworld_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_traceworld_mirror)
-
-# ===========================================================================
-# VNDF CPU Mirror Test (Sampled Lighting Inc0 M4 — gpu-shader-debug mirror of
-# shaders/Sampling.glsl's sampleGGXVNDF/vndfPdf, verified against two
-# independent references: a from-scratch analytic VNDF density and the
-# original Heitz 2018 sampler construction)
-# ===========================================================================
-add_executable(test_vndf_mirror test_vndf_mirror.cpp)
-
-if(TARGET RenderGraph)
-    target_link_libraries(test_vndf_mirror PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_vndf_mirror PRIVATE GTest::gtest_main)
-endif()
-
-set_target_properties(test_vndf_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_vndf_mirror)
+gtest_discover_tests(test_rendergraph_shadermirrors)
 
 # ===========================================================================
 # Sampling.glsl SPIR-V Compile Gate (Sampled Lighting Inc0 M4 — proves
@@ -148,35 +104,6 @@ set_target_properties(test_sampling_compile_gate PROPERTIES FOLDER "Tests/Render
 
 gtest_discover_tests(test_sampling_compile_gate)
 
-add_executable(test_node_parameter_manager Core/test_node_parameter_manager.cpp)
-
-# Link against the RenderGraph library target - includes propagate automatically
-if(TARGET RenderGraph)
-    target_link_libraries(test_node_parameter_manager PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_node_parameter_manager PRIVATE GTest::gtest_main)
-endif()
-
-# Visual Studio solution folder organization
-set_target_properties(test_node_parameter_manager PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_node_parameter_manager)
-
-# Typed runtime accumulation-gather (InAll<T> fan-in) — CPU-only, no device
-add_executable(test_accumulation_gather test_accumulation_gather.cpp)
-
-# Link against the RenderGraph library target - includes propagate automatically
-if(TARGET RenderGraph)
-    target_link_libraries(test_accumulation_gather PRIVATE GTest::gtest_main RenderGraph)
-else()
-    target_link_libraries(test_accumulation_gather PRIVATE GTest::gtest_main)
-endif()
-
-# Visual Studio solution folder organization
-set_target_properties(test_accumulation_gather PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-gtest_discover_tests(test_accumulation_gather)
-
 # UI hit-mask math (Ui/UiHitMask.h) — pure CPU, no RmlUi/Vulkan/GPU. The pngwrite TU compiles
 # stb_image_write for the Image round-trip (the read side comes from RenderGraph's link closure).
 if(TARGET RenderGraph)
@@ -198,9 +125,6 @@ if(TARGET RenderGraph)
 else()
     message(STATUS "⊗ test_ui_hit_mask skipped (RenderGraph target not available)")
 endif()
-
-# Additional typed-node tests
-target_sources(test_typednode_helpers PRIVATE test_executeonly_behavior.cpp)
 
 # ===========================================================================
 # Type System Tests - CONSOLIDATED
@@ -298,40 +222,73 @@ endif()  # Disabled due to API incompatibilities
 message(STATUS "⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)")
 
 # ===========================================================================
-# PassThroughStorage Handle Types Test
+# RenderGraph Node/Connection Helpers (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
-# This test validates PassThroughStorage accepts platform handle types used by nodes.
-# Tests compile-time type registration (no Vulkan runtime required).
+# Merges 3 formerly-separate bare-link-surface targets into one executable.
+# test_connection_rule is deliberately NOT included here — it defines a file-scope
+# `struct MockBindingRef` with a DIFFERENT member layout than test_connection_concepts's
+# own `struct MockBindingRef` (2 fields vs. 3, including a const char* name). Linking
+# both into the same binary would be an ODR violation (ill-formed, no diagnostic
+# required) rather than a clean build/link error, so test_connection_rule stays out of
+# this group — see its own standalone target further below.
+# test_connection_concepts is ALSO deliberately NOT included here (a second,
+# independent reason it can't join this group beyond the ODR issue above): its
+# `main()` is hand-rolled and never calls RUN_ALL_TESTS() — it just prints
+# static_assert-pass banners to stdout (a pre-existing property of this file,
+# not something this milestone changed). Verified live: merging it into
+# test_rendergraph_nodeconn made this file's main() win link-time main()
+# selection for the WHOLE binary, which silently stopped
+# test_node_parameter_manager/test_accumulation_gather/test_passthroughstorage_handles's
+# real TEST() cases from ever running (their gtest registrations existed but
+# RUN_ALL_TESTS() was never called) — a real regression caught only by actually
+# running the merged binary, not by static review. test_connection_concepts stays
+# standalone below.
+#
+# - test_node_parameter_manager: NodeParameterManager coverage.
+# - test_accumulation_gather: typed runtime accumulation-gather (InAll<T> fan-in) —
+#   CPU-only, no device.
+# - test_passthroughstorage_handles: validates PassThroughStorage accepts platform
+#   handle types used by nodes; compile-time type registration, no Vulkan runtime.
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_passthroughstorage_handles
+    add_executable(test_rendergraph_nodeconn
+        Core/test_node_parameter_manager.cpp
+        test_accumulation_gather.cpp
         test_passthroughstorage_handles.cpp
     )
 
     # Link against the RenderGraph library target - includes propagate automatically
-    target_link_libraries(test_passthroughstorage_handles PRIVATE
+    target_link_libraries(test_rendergraph_nodeconn PRIVATE
         GTest::gtest_main
         RenderGraph
     )
 
     # Visual Studio solution folder organization
-    set_target_properties(test_passthroughstorage_handles PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    set_target_properties(test_rendergraph_nodeconn PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_passthroughstorage_handles)
+    gtest_discover_tests(test_rendergraph_nodeconn)
 
-    message(STATUS "✓ test_passthroughstorage_handles configured")
+    message(STATUS "✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)")
 else()
-    message(STATUS "⊗ test_passthroughstorage_handles skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_nodeconn skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
-# Connection Concepts Test (Sprint 6.0.1)
+# Connection Concepts Test (Sprint 6.0.1) — kept standalone, PDB-consolidation Milestone 1
 # ===========================================================================
 # This test validates C++20 concepts for the unified connection system:
 # - SlotReference, BindingReference, AccumulationSlot concepts
 # - ConnectionMetadata concept and helper types
 # - Legacy type trait wrappers
 # Tests are primarily compile-time (static_assert).
+#
+# NOT merged with anything: (1) an ODR collision with test_connection_rule's own
+# differently-shaped `struct MockBindingRef` (see test_rendergraph_nodeconn's
+# comment above), and (2) independently, its hand-rolled `main()` never calls
+# RUN_ALL_TESTS() — it monopolizes main() for whatever binary it's linked into,
+# silently preventing any other merged file's real TEST() cases from running.
+# Confirmed live during this milestone: merging it into test_rendergraph_nodeconn
+# silently zeroed out that group's other 3 files' test execution. Stays standalone.
 
 if(TARGET GTest::gtest_main)
     add_executable(test_connection_concepts
@@ -355,13 +312,26 @@ else()
 endif()
 
 # ===========================================================================
-# Connection Rule Test (Sprint 6.0.1)
+# Connection Rule Test (Sprint 6.0.1) — kept standalone, PDB-consolidation Milestone 1
 # ===========================================================================
 # This test validates the ConnectionRule system:
 # - SlotDescriptor and BindingDescriptor creation
 # - ConnectionRuleRegistry rule matching
 # - DirectConnectionRule validation logic
 # Tests use GoogleTest framework.
+#
+# NOT merged into test_rendergraph_nodeconn: test_connection_rule defines a
+# file-scope `struct MockBindingRef` with a DIFFERENT member layout than
+# test_connection_concepts's own `struct MockBindingRef` (2 fields vs. 3,
+# including a const char* name) — an ODR violation if both land in one binary.
+# NOT merged with test_graph_lifecycle_hooks either (its other natural
+# neighbor after test_graph_topology got excluded for a different collision,
+# see below): both test_connection_rule.cpp and test_graph_lifecycle_hooks.cpp
+# define their own `int main()` (leftover boilerplate identical to what
+# GTest::gtest_main already supplies from back when each was a standalone
+# target) — a hard LNK2005 "main already defined" error, caught by an actual
+# Windows/MSVC link during this milestone. With every other bare-link-surface
+# neighbor ruled out by one collision or another, this one stays standalone.
 
 if(TARGET GTest::gtest_main)
     add_executable(test_connection_rule
@@ -385,220 +355,131 @@ else()
 endif()
 
 # ===========================================================================
-# Sprint 6.1: Group-Based Dispatch Tests
+# Graph Lifecycle Hooks Tests — kept standalone, PDB-consolidation Milestone 1
 # ===========================================================================
-# Tests for MultiDispatchNode GROUP_INPUTS and GroupKeyModifier
-# - GroupKeyModifier validation and metadata storage
-# - DispatchPass validation (IsValid())
-# - Group partitioning logic
-# - Deterministic ordering (std::map)
-# - Backward compatibility with QueueDispatch()
+# Validates GraphLifecycleHooks node-hook targeting:
+# - A hook registered against a specific target node only runs for that node
+# - Untargeted (global) hooks still run for every node (legacy behavior)
+# - ClearNodeHooks clears both targeted and global storage
+#
+# Formerly in test_graph_systems.cmake, alongside test_graph_topology. NOT
+# merged with test_graph_topology: both define an out-of-line static
+# `MockNodeType MockNode::mockType("MockNode");`, a duplicate-symbol link
+# error if both TUs land in one binary (test_graph_topology instead moved
+# into test_rendergraph_syncbarrier below). NOT merged with test_connection_rule
+# either — see that target's own comment just above for why (both define their
+# own redundant `int main()`).
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_group_dispatch
+    add_executable(test_graph_lifecycle_hooks
+        test_graph_lifecycle_hooks.cpp
+    )
+
+    target_include_directories(test_graph_lifecycle_hooks PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
+    target_link_libraries(test_graph_lifecycle_hooks PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    set_target_properties(test_graph_lifecycle_hooks PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
+    if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
+        if(TARGET Vulkan::Vulkan)
+            target_link_libraries(test_graph_lifecycle_hooks PRIVATE Vulkan::Vulkan)
+        endif()
+    endif()
+
+    gtest_discover_tests(test_graph_lifecycle_hooks)
+
+    message(STATUS "✓ test_graph_lifecycle_hooks configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
+else()
+    message(STATUS "⊗ test_graph_lifecycle_hooks skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# RenderGraph Dispatch/Scheduling (PDB-consolidation Milestone 1, 2026-07)
+# ===========================================================================
+# Merges 5 formerly-separate bare-link-surface targets into one executable.
+#
+# - test_group_dispatch (Sprint 6.1): MultiDispatchNode GROUP_INPUTS and
+#   GroupKeyModifier — GroupKeyModifier validation and metadata storage,
+#   DispatchPass validation (IsValid()), group partitioning logic, deterministic
+#   ordering (std::map), backward compatibility with QueueDispatch().
+# - test_task_queue (Sprint 6.2): TaskQueue template — budget enforcement
+#   (strict/lenient modes), priority-based scheduling, overflow protection,
+#   TaskBudget configuration and presets, backward compatibility with Sprint 6.1.
+# - test_multidispatch_integration (Sprint 6.2): MultiDispatchNode + TaskQueue
+#   integration tests.
+# - test_prediction_error_tracker (Sprint 6.3 Phase 3.1): prediction error tracking
+#   system — error ratio computation, rolling statistics (mean, variance, bias),
+#   correction factor generation, TimelineCapacityTracker integration. (Other Sprint
+#   6.3 tests — GPUQueryManager, TimelineCapacityTracker — are in test_core_systems.cmake.)
+# - test_task_profile (Sprint 6.3 Phase 3.2a): TaskProfile unit tests.
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_rendergraph_dispatch
         test_group_dispatch.cpp
-    )
-
-    target_link_libraries(test_group_dispatch PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_group_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_group_dispatch)
-
-    message(STATUS "✓ test_group_dispatch configured (Sprint 6.1)")
-else()
-    message(STATUS "⊗ test_group_dispatch skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# Sprint 6.2: TaskQueue Budget-Aware System Tests
-# ===========================================================================
-# Tests for TaskQueue template and MultiDispatchNode integration
-# - Budget enforcement (strict/lenient modes)
-# - Priority-based scheduling
-# - Overflow protection
-# - TaskBudget configuration and presets
-# - Integration with MultiDispatchNode
-# - Backward compatibility with Sprint 6.1
-
-if(TARGET GTest::gtest_main)
-    # Unit tests for TaskQueue template
-    add_executable(test_task_queue
         test_task_queue.cpp
-    )
-
-    target_link_libraries(test_task_queue PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_task_queue PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_task_queue)
-
-    message(STATUS "✓ test_task_queue configured (Sprint 6.2)")
-
-    # Integration tests for MultiDispatchNode + TaskQueue
-    add_executable(test_multidispatch_integration
         test_multidispatch_integration.cpp
-    )
-
-    target_link_libraries(test_multidispatch_integration PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_multidispatch_integration PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_multidispatch_integration)
-
-    message(STATUS "✓ test_multidispatch_integration configured (Sprint 6.2)")
-else()
-    message(STATUS "⊗ Sprint 6.2 tests skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# Sprint 6.3: Phase 3.1 - PredictionErrorTracker Tests
-# ===========================================================================
-# Tests for prediction error tracking system
-# - Error ratio computation
-# - Rolling statistics (mean, variance, bias)
-# - Correction factor generation
-# - TimelineCapacityTracker integration
-# NOTE: Other Sprint 6.3 tests (GPUQueryManager, TimelineCapacityTracker)
-#       are defined in test_core_systems.cmake
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_prediction_error_tracker
         test_prediction_error_tracker.cpp
-    )
-
-    target_link_libraries(test_prediction_error_tracker PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_prediction_error_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_prediction_error_tracker)
-
-    message(STATUS "✓ test_prediction_error_tracker configured (Sprint 6.3 Phase 3.1)")
-
-    # TaskProfile unit tests (Phase 3.2a)
-    add_executable(test_task_profile
         test_task_profile.cpp
     )
 
-    target_link_libraries(test_task_profile PRIVATE
+    target_link_libraries(test_rendergraph_dispatch PRIVATE
         GTest::gtest_main
         RenderGraph
     )
 
-    set_target_properties(test_task_profile PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    set_target_properties(test_rendergraph_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_task_profile)
+    gtest_discover_tests(test_rendergraph_dispatch)
 
-    message(STATUS "✓ test_task_profile configured (Sprint 6.3 Phase 3.2a)")
+    message(STATUS "✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)")
 else()
-    message(STATUS "⊗ Sprint 6.3 Phase 3 tests skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_dispatch skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
-# Sprint 6.4: ResourceAccessTracker Tests (Phase 0)
+# RenderGraph Resource/Task Tracking + VirtualTask (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
-# Tests for resource access conflict detection
-# - Read/write access tracking
-# - Conflict detection (write-write, write-read)
-# - Multi-resource scenarios
-# - GraphTopology integration
+# Merges 5 formerly-separate bare-link-surface targets into one executable.
+# test_tbb_virtual_task_executor and test_virtual_task_integration are NOT included
+# here — both have a POST_BUILD step copying TBB::tbb's DLL next to the binary, a
+# real build-semantics complication, so they stay standalone below.
+#
+# - test_resource_access_tracker (Sprint 6.4 Phase 0): resource access conflict
+#   detection — read/write access tracking, conflict detection (write-write,
+#   write-read), multi-resource scenarios, GraphTopology integration.
+# - test_wave_scheduler (Sprint 6.4 Phase 1): WaveScheduler coverage.
+#   (test_tbb_graph_executor removed — functionality merged into TBBVirtualTaskExecutor.)
+# - test_virtual_task (Sprint 6.5 Phase 0 — Task-Level Parallelism): VirtualTask
+#   coverage.
+# - test_virtual_resource_access_tracker (Sprint 6.5 Phase 1): VirtualResourceAccessTracker
+#   coverage.
+# - test_task_dependency_graph (Sprint 6.5 Phase 2): TaskDependencyGraph coverage.
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_resource_access_tracker
+    add_executable(test_rendergraph_tracking
         test_resource_access_tracker.cpp
-    )
-
-    target_link_libraries(test_resource_access_tracker PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_resource_access_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_resource_access_tracker)
-
-    message(STATUS "✓ test_resource_access_tracker configured (Sprint 6.4 Phase 0)")
-
-    # WaveScheduler Tests (Phase 1)
-    add_executable(test_wave_scheduler
         test_wave_scheduler.cpp
-    )
-
-    target_link_libraries(test_wave_scheduler PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_wave_scheduler PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_wave_scheduler)
-
-    message(STATUS "✓ test_wave_scheduler configured (Sprint 6.4 Phase 1)")
-
-    # Note: test_tbb_graph_executor removed - functionality merged into TBBVirtualTaskExecutor
-
-    # ===========================================================================
-    # VirtualTask Tests (Sprint 6.5 - Task-Level Parallelism)
-    # ===========================================================================
-
-    add_executable(test_virtual_task
         test_virtual_task.cpp
-    )
-
-    target_link_libraries(test_virtual_task PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_virtual_task PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_virtual_task)
-
-    message(STATUS "✓ test_virtual_task configured (Sprint 6.5 Phase 0)")
-
-    # VirtualResourceAccessTracker Tests (Sprint 6.5 - Phase 1)
-    add_executable(test_virtual_resource_access_tracker
         test_virtual_resource_access_tracker.cpp
-    )
-
-    target_link_libraries(test_virtual_resource_access_tracker PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    set_target_properties(test_virtual_resource_access_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_virtual_resource_access_tracker)
-
-    message(STATUS "✓ test_virtual_resource_access_tracker configured (Sprint 6.5 Phase 1)")
-
-    # TaskDependencyGraph Tests (Sprint 6.5 - Phase 2)
-    add_executable(test_task_dependency_graph
         test_task_dependency_graph.cpp
     )
 
-    target_link_libraries(test_task_dependency_graph PRIVATE
+    target_link_libraries(test_rendergraph_tracking PRIVATE
         GTest::gtest_main
         RenderGraph
     )
 
-    set_target_properties(test_task_dependency_graph PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    set_target_properties(test_rendergraph_tracking PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_task_dependency_graph)
+    gtest_discover_tests(test_rendergraph_tracking)
 
-    message(STATUS "✓ test_task_dependency_graph configured (Sprint 6.5 Phase 2)")
+    message(STATUS "✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/VirtualTask/VirtualResourceAccessTracker/TaskDependencyGraph)")
 
     # TBBVirtualTaskExecutor Tests (Sprint 6.5 - Phase 4)
     add_executable(test_tbb_virtual_task_executor
@@ -650,7 +531,7 @@ if(TARGET GTest::gtest_main)
 
     message(STATUS "✓ test_virtual_task_integration configured (Sprint 6.5 Phase 6)")
 else()
-    message(STATUS "⊗ Sprint 6.4 tests skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_tracking / TBB virtual-task tests skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
@@ -895,67 +776,44 @@ else()
 endif()
 
 # ===========================================================================
-# View Contract Inc-2b: ViewBlob/ViewKind/ViewValue reflection-blob contract
+# RenderGraph View/Blob Contract (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
-# Pure CPU test of the constexpr descriptor shape + scalar kind/value agreement.
-# No RmlUi/Vulkan/GPU required.
+# Merges 4 formerly-separate bare-link-surface targets into one executable.
+# All 4 originals used gtest_discover_tests(... DISCOVERY_MODE PRE_TEST
+# DISCOVERY_TIMEOUT 60) — preserved on the merged target's single discover call.
+# The other View Contract targets below (wire_roundtrip, wire_soa_roundtrip,
+# typed_accessor_emitter, view_container_builder) are NOT included here — they
+# each need application/main/include for a Generated/*.g.h header, a real
+# build-semantics complication, so they stay standalone.
+#
+# - test_view_blob (View Contract Inc-2b): ViewBlob/ViewKind/ViewValue
+#   reflection-blob contract — pure CPU test of the constexpr descriptor shape +
+#   scalar kind/value agreement. No RmlUi/Vulkan/GPU required.
+# - test_view_store (View Contract Inc-2b): ViewStore typed storage + by-field
+#   setters — pure CPU test of scalar/array storage + blob-validated setter
+#   rejection. Links RmlUi (via RenderGraph) for Rml::String/DataModelHandle, no
+#   GPU/device.
+# - test_view_blob_file (View Contract Inc-2b): ViewBlobFile runtime .viewblob
+#   parser — pure CPU test of the line-grammar parser (model/version/field/elem)
+#   + hard-fail validation on malformed input. No RmlUi/Vulkan/GPU touchpoints.
+# - test_blob_view (View Contract Inc-2b): BlobView generic IView host, dynamic
+#   RmlUi model — proves a ViewBlob alone (no per-schema C++) builds a live
+#   RmlUi data model (scalars + array-of-struct) and that a version mismatch
+#   hard-skips registration.
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_view_blob test_view_blob.cpp)
-    target_link_libraries(test_view_blob PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_view_blob PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_view_blob DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
-    message(STATUS "✓ test_view_blob configured (View Contract Inc-2b: ViewBlob contract)")
+    add_executable(test_rendergraph_viewblob
+        test_view_blob.cpp
+        test_view_store.cpp
+        test_view_blob_file.cpp
+        test_blob_view.cpp
+    )
+    target_link_libraries(test_rendergraph_viewblob PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_rendergraph_viewblob PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_rendergraph_viewblob DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    message(STATUS "✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)")
 else()
-    message(STATUS "⊗ test_view_blob skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# View Contract Inc-2b: ViewStore typed storage + by-field setters
-# ===========================================================================
-# Pure CPU test of scalar/array storage + blob-validated setter rejection.
-# Links RmlUi (via RenderGraph) for Rml::String/DataModelHandle, no GPU/device.
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_view_store test_view_store.cpp)
-    target_link_libraries(test_view_store PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_view_store PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_view_store DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
-    message(STATUS "✓ test_view_store configured (View Contract Inc-2b: ViewStore storage)")
-else()
-    message(STATUS "⊗ test_view_store skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# View Contract Inc-2b: ViewBlobFile — runtime .viewblob parser
-# ===========================================================================
-# Pure CPU test of the line-grammar parser (model/version/field/elem) + hard-fail
-# validation on malformed input. No RmlUi/Vulkan/GPU touchpoints.
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_view_blob_file test_view_blob_file.cpp)
-    target_link_libraries(test_view_blob_file PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_view_blob_file PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_view_blob_file DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
-    message(STATUS "✓ test_view_blob_file configured (View Contract Inc-2b: ViewBlobFile parser)")
-else()
-    message(STATUS "⊗ test_view_blob_file skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# View Contract Inc-2b: BlobView — generic IView host, dynamic RmlUi model
-# ===========================================================================
-# Proves a ViewBlob alone (no per-schema C++) builds a live RmlUi data model
-# (scalars + array-of-struct) and that a version mismatch hard-skips registration.
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_blob_view test_blob_view.cpp)
-    target_link_libraries(test_blob_view PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_blob_view PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_blob_view DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
-    message(STATUS "✓ test_blob_view configured (View Contract Inc-2b: BlobView dynamic registration)")
-else()
-    message(STATUS "⊗ test_blob_view skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_viewblob skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
@@ -1061,64 +919,54 @@ else()
 endif()
 
 # ===========================================================================
-# BarrierTypes Tests (auto-sync P1)
+# RenderGraph Sync/Barrier + GraphTopology (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
-# Validates AccessKind -> Vulkan sync-semantics mapping
+# Merges 5 formerly-separate bare-link-surface targets, PLUS test_graph_topology
+# (formerly in test_graph_systems.cmake — moved here because it could not be
+# merged with its original neighbor test_graph_lifecycle_hooks: both define an
+# out-of-line static `MockNodeType MockNode::mockType("MockNode");`, a genuine
+# duplicate-symbol link error if both land in one binary. Verified no
+# MockNode/MockNodeType collision against any file in this group.)
+#
+# - test_barrier_types (auto-sync P1): AccessKind -> Vulkan sync-semantics mapping.
+# - test_frame_sync_scheduler (auto-sync P2): FrameSyncSchedule data types (pure
+#   structs, no business logic).
+# - test_frame_sync_node_timeline (auto-sync P5a M1): pure CPU test of
+#   NextFrameBase arithmetic (no Vulkan device required) — monotonic advance, no
+#   ring collision, zero-stride no-op.
+# - test_pass_group_schedule (auto-sync P4 M1): BuildPassGroupSchedule node-local
+#   barrier baking (pure CPU, no GPU).
+# - test_graph_topology: graph topology validation and dependency tracking —
+#   circular dependency detection (direct & indirect), topological sorting,
+#   dependency chain analysis, complex graph validation, edge case handling.
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_barrier_types test_barrier_types.cpp)
-    target_link_libraries(test_barrier_types PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_barrier_types PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_barrier_types)
-    message(STATUS "✓ test_barrier_types configured (auto-sync P1)")
+    add_executable(test_rendergraph_syncbarrier
+        test_barrier_types.cpp
+        test_frame_sync_scheduler.cpp
+        test_frame_sync_node_timeline.cpp
+        test_pass_group_schedule.cpp
+        test_graph_topology.cpp
+    )
+
+    # test_graph_topology's own need: allow #include "RenderGraph/..." with a clean path.
+    target_include_directories(test_rendergraph_syncbarrier PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+    )
+
+    target_link_libraries(test_rendergraph_syncbarrier PRIVATE GTest::gtest_main RenderGraph)
+
+    if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
+        if(TARGET Vulkan::Vulkan)
+            target_link_libraries(test_rendergraph_syncbarrier PRIVATE Vulkan::Vulkan)
+        endif()
+    endif()
+
+    set_target_properties(test_rendergraph_syncbarrier PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_rendergraph_syncbarrier)
+    message(STATUS "✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)")
 else()
-    message(STATUS "⊗ test_barrier_types skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# FrameSyncSchedule Data Types Tests (auto-sync P2)
-# ===========================================================================
-# Validates FrameSyncSchedule data types (pure structs, no business logic)
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_frame_sync_scheduler test_frame_sync_scheduler.cpp)
-    target_link_libraries(test_frame_sync_scheduler PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_frame_sync_scheduler PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_frame_sync_scheduler)
-    message(STATUS "✓ test_frame_sync_scheduler configured (auto-sync P2)")
-else()
-    message(STATUS "⊗ test_frame_sync_scheduler skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# FrameSyncNode Timeline Semaphore + frameBase Tests (auto-sync P5a M1)
-# ===========================================================================
-# Pure CPU test of NextFrameBase arithmetic (no Vulkan device required).
-# Validates: monotonic advance, no ring collision, zero-stride no-op.
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_frame_sync_node_timeline test_frame_sync_node_timeline.cpp)
-    target_link_libraries(test_frame_sync_node_timeline PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_frame_sync_node_timeline PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_frame_sync_node_timeline)
-    message(STATUS "✓ test_frame_sync_node_timeline configured (auto-sync P5a M1)")
-else()
-    message(STATUS "⊗ test_frame_sync_node_timeline skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# PassGroupSchedule Tests (auto-sync P4 M1)
-# ===========================================================================
-# Validates BuildPassGroupSchedule node-local barrier baking (pure CPU, no GPU)
-
-if(TARGET GTest::gtest_main)
-    add_executable(test_pass_group_schedule test_pass_group_schedule.cpp)
-    target_link_libraries(test_pass_group_schedule PRIVATE GTest::gtest_main RenderGraph)
-    set_target_properties(test_pass_group_schedule PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_pass_group_schedule)
-    message(STATUS "✓ test_pass_group_schedule configured (auto-sync P4 M1)")
-else()
-    message(STATUS "⊗ test_pass_group_schedule skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_syncbarrier skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
@@ -1168,83 +1016,48 @@ else()
 endif()
 
 # ===========================================================================
-# Partial Brick Upload Test (Sparse-Mip ESVO LOD Inc1 M2)
+# RenderGraph Nodes/ Suite (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
-# Real Vulkan device required (software rasterizer or Mesa-Dozen on WSL2 — see
-# IsAcceptableDevice in the test file). Drives BodyOctreeSceneNode's real
-# Setup/Compile/Execute lifecycle against a real BatchedUploader (wired exactly as
-# DeviceNode::CreateDeviceBudgetManager does) to verify brick-pool residency gating.
-if(TARGET GTest::gtest_main)
-    add_executable(test_partial_brick_upload Nodes/test_partial_brick_upload.cpp)
-    if(TARGET RenderGraph)
-        target_link_libraries(test_partial_brick_upload PRIVATE GTest::gtest_main RenderGraph)
-    else()
-        target_link_libraries(test_partial_brick_upload PRIVATE GTest::gtest_main)
-    endif()
-    set_target_properties(test_partial_brick_upload PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_partial_brick_upload)
-    message(STATUS "✓ test_partial_brick_upload configured (Sparse-Mip ESVO LOD Inc1 M2)")
-else()
-    message(STATUS "⊗ test_partial_brick_upload skipped (GoogleTest not available)")
-endif()
+# Merges 4 formerly-separate bare-link-surface targets (all registered directly
+# from Nodes/*.cpp, not routed through test_critical_nodes.cmake) into one
+# executable.
+#
+# - test_partial_brick_upload (Sparse-Mip ESVO LOD Inc1 M2): real Vulkan device
+#   required (software rasterizer or Mesa-Dozen on WSL2 — see IsAcceptableDevice
+#   in the test file). Drives BodyOctreeSceneNode's real Setup/Compile/Execute
+#   lifecycle against a real BatchedUploader (wired exactly as
+#   DeviceNode::CreateDeviceBudgetManager does) to verify brick-pool residency
+#   gating.
+# - test_bandwidth_ab_measurement (Sparse-Mip ESVO LOD Inc1 M5, Task 12): the
+#   increment's gate measurement — N real BodyOctreeSceneNode trees, all-resident
+#   (baseline) vs all mip-only (Inc1), real BatchedUploaderStats bytes + wall time.
+# - test_buffer_sync_gatherer_node (Sampled Lighting Inc3 M5): config-shape +
+#   pre-registration + node-type-registration checks — the generic
+#   variadic-VkBuffer-gatherer that replaces ComputeStageNodeConfig's old fixed
+#   named buffer-sync slots. Real correctness is validated by the live
+#   render-graph gate (see gate-artifacts/inc3-m5-hashes.txt), mirroring every
+#   other gatherer node in this codebase.
+# - test_probegridconfig_layout (Sampled Lighting Inc4 M2): ProbeGridConfig
+#   drift-guard — pure C++ struct-layout test, no shader reflection yet (see the
+#   original test_probegridconfig_layout.cpp's own file header for why).
 
-# ===========================================================================
-# Bandwidth A/B Measurement (Sparse-Mip ESVO LOD Inc1 M5, Task 12)
-# ===========================================================================
-# The increment's gate measurement: N real BodyOctreeSceneNode trees, all-resident
-# (baseline) vs all mip-only (Inc1), real BatchedUploaderStats bytes + wall time.
 if(TARGET GTest::gtest_main)
-    add_executable(test_bandwidth_ab_measurement Nodes/test_bandwidth_ab_measurement.cpp)
+    add_executable(test_rendergraph_nodes
+        Nodes/test_partial_brick_upload.cpp
+        Nodes/test_bandwidth_ab_measurement.cpp
+        Nodes/test_buffer_sync_gatherer_node.cpp
+        Nodes/test_probegridconfig_layout.cpp
+    )
     if(TARGET RenderGraph)
-        target_link_libraries(test_bandwidth_ab_measurement PRIVATE GTest::gtest_main RenderGraph)
+        target_link_libraries(test_rendergraph_nodes PRIVATE GTest::gtest_main RenderGraph)
     else()
-        target_link_libraries(test_bandwidth_ab_measurement PRIVATE GTest::gtest_main)
+        target_link_libraries(test_rendergraph_nodes PRIVATE GTest::gtest_main)
     endif()
-    set_target_properties(test_bandwidth_ab_measurement PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_bandwidth_ab_measurement)
-    message(STATUS "✓ test_bandwidth_ab_measurement configured (Sparse-Mip ESVO LOD Inc1 M5)")
+    set_target_properties(test_rendergraph_nodes PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_rendergraph_nodes)
+    message(STATUS "✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)")
 else()
-    message(STATUS "⊗ test_bandwidth_ab_measurement skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# BufferSyncGathererNode Tests (Sampled Lighting Inc3 M5)
-# ===========================================================================
-# Config-shape + pre-registration + node-type-registration checks — the generic
-# variadic-VkBuffer-gatherer that replaces ComputeStageNodeConfig's old fixed named
-# buffer-sync slots. Real correctness is validated by the live render-graph gate (see
-# gate-artifacts/inc3-m5-hashes.txt), mirroring every other gatherer node in this codebase.
-if(TARGET GTest::gtest_main)
-    add_executable(test_buffer_sync_gatherer_node Nodes/test_buffer_sync_gatherer_node.cpp)
-    if(TARGET RenderGraph)
-        target_link_libraries(test_buffer_sync_gatherer_node PRIVATE GTest::gtest_main RenderGraph)
-    else()
-        target_link_libraries(test_buffer_sync_gatherer_node PRIVATE GTest::gtest_main)
-    endif()
-    set_target_properties(test_buffer_sync_gatherer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_buffer_sync_gatherer_node)
-    message(STATUS "✓ test_buffer_sync_gatherer_node configured (Sampled Lighting Inc3 M5)")
-else()
-    message(STATUS "⊗ test_buffer_sync_gatherer_node skipped (GoogleTest not available)")
-endif()
-
-# ===========================================================================
-# ProbeGridConfig drift-guard (Sampled Lighting Inc4 M2) — pure C++ struct-
-# layout test, no shader reflection yet (see test_probegridconfig_layout.cpp's
-# own file header for why). Mirrors test_buffer_sync_gatherer_node's own
-# "register the executable directly" shape above.
-if(TARGET GTest::gtest_main)
-    add_executable(test_probegridconfig_layout Nodes/test_probegridconfig_layout.cpp)
-    if(TARGET RenderGraph)
-        target_link_libraries(test_probegridconfig_layout PRIVATE GTest::gtest_main RenderGraph)
-    else()
-        target_link_libraries(test_probegridconfig_layout PRIVATE GTest::gtest_main)
-    endif()
-    set_target_properties(test_probegridconfig_layout PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_probegridconfig_layout)
-    message(STATUS "✓ test_probegridconfig_layout configured (Sampled Lighting Inc4 M2)")
-else()
-    message(STATUS "⊗ test_probegridconfig_layout skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_nodes skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================
