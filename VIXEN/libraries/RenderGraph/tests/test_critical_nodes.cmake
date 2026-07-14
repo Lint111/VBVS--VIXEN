@@ -15,8 +15,8 @@
 # Integration tests require full Vulkan SDK.
 #
 # ===========================================================================
-# Milestone 2 PDB consolidation (2026-07-14): 41 targets grouped into 21
-# executables (10 merged groups + 11 kept standalone). See
+# Milestone 2 PDB consolidation (2026-07-14): 41 targets grouped into 15
+# executables (10 merged groups + 5 kept standalone). See
 # Vixen-Docs/04-Development/RenderGraph-Test-PDB-Consolidation-Plan-2026-07.md
 # for the full grouping rationale and collision analysis. Every merged
 # group's constituent files were individually verified for: no file-scope
