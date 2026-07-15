@@ -208,6 +208,13 @@ only makes the VM/shader side capable of consuming a param array that already re
   `test_baked_vs_virtual_parity.VirtualRendersGeometricallyEquivalentToBaked` fail
   identically (byte-for-byte same `bakedHits=0 virtualHits=0`/VUID signature) on a pure M1
   baseline rebuild — confirmed pre-existing/environmental, not a regression from this milestone.
+  **Opus-validated APPROVED 2026-07-15** — validator independently ran the same numerical-parity
+  sweep test live (real GPU, confirmed genuinely compile-once/dispatch-5-values, not per-value
+  recompile), confirmed both `traceUberRecipeBody` call sites (including `TraceWorldShadow`) got
+  params threading, confirmed the M1 allowlist is fully gone with real corpus coverage replacing
+  it, and independently corroborated the 2 pre-existing failures via 5 pieces of evidence
+  (symmetric zero-hit failure upstream of any recipe path, both files last touched at a pre-branch
+  ancestor commit, `.spv`-owning shader untouched, zero non-test RenderGraph diff).
 - **M3 — Live zero-bake render + no-recompile proof** (Tasks 8-10) · **live-run gate, validation
   layers mandatory** · a registered `ReadParam` recipe renders as a virtual (zero-bake) body whose
   geometry visibly tracks `recipeParams[]` changes frame-to-frame; instrumented/logged proof that
@@ -230,9 +237,9 @@ validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' 
   2026-07-15. See Milestone Map entry above for full detail. Worktree
   `.claude/worktrees/recipe-param-inc1` (branch `feat/recipe-parameterization-inc1`), not yet
   merged to main — remaining milestones (M2-M4) continue on this branch/worktree before merge.
-- **Milestone M2 (Tasks 5-7): DONE (implementer-reported; pending Opus validation)** · commits
-  `0b937df2..73b27f01` · 2026-07-15. See Milestone Map entry above for full detail. Same worktree/
-  branch, continuing before merge to main.
+- **Milestone M2 (Tasks 5-7): DONE** · commits `0b937df2..73b27f01` · Opus validator APPROVED ·
+  2026-07-15. See Milestone Map entry above for full detail. Same worktree/branch, continuing
+  before merge to main.
 
 ---
 
