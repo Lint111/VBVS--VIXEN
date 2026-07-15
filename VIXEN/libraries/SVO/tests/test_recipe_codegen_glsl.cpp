@@ -30,9 +30,10 @@ TEST(EmitProceduralFieldFunctionGlsl, SingleSphereProducesComposableFunction) {
     SdfInstruction prog[] = { MakeSphere(0.0f, 0.0f, 0.0f, 2.5f) };
     const std::string glsl = EmitProceduralFieldFunctionGlsl(prog, 1, /*recipeId=*/7);
 
-    // Composable function, not a trace main: exactly one function, named by id, takes vec3,
-    // returns float, no [numthreads]/main()/RWTexture/cbuffer trace-shader scaffolding.
-    EXPECT_NE(glsl.find("float sdfRecipe_7(vec3 p) {"), std::string::npos);
+    // Composable function, not a trace main: exactly one function, named by id, takes vec3
+    // + the per-instance params[6] array (Recipe-Parameterization M2 Task 5), returns float,
+    // no [numthreads]/main()/RWTexture/cbuffer trace-shader scaffolding.
+    EXPECT_NE(glsl.find("float sdfRecipe_7(vec3 p, float params[6]) {"), std::string::npos);
     EXPECT_EQ(glsl.find("void main"), std::string::npos);
     EXPECT_EQ(glsl.find("numthreads"), std::string::npos);
     EXPECT_EQ(glsl.find("cbuffer"), std::string::npos);
@@ -62,6 +63,10 @@ TEST(EmitProceduralFieldFunctionGlsl, EveryNumericLiteralHasDecimalPoint) {
     // Every bare integer token (a run of digits NOT adjacent to '.', and not part of an
     // identifier like sdfRecipe_1 or t0) would indicate a literal emitted without ".0".
     // std::regex's ECMAScript flavor has no lookbehind, so scan manually instead.
+    // Array-size/index brackets ([...]) are the one deliberate exception (Recipe-
+    // Parameterization M2 Task 5's params[6] argument/params[N] indexed reads) — those
+    // digits are compile-time array dimensions/indices, never GLSL float-typed values, so
+    // GLSL's int/float overload split (the guard's whole reason to exist) doesn't apply.
     for (size_t i = 0; i < glsl.size(); ) {
         if (!std::isdigit(static_cast<unsigned char>(glsl[i]))) { ++i; continue; }
         const size_t start = i;
@@ -70,7 +75,9 @@ TEST(EmitProceduralFieldFunctionGlsl, EveryNumericLiteralHasDecimalPoint) {
             (std::isalpha(static_cast<unsigned char>(glsl[start - 1])) || glsl[start - 1] == '_' || glsl[start - 1] == '.');
         const bool followedByIdentChar = i < glsl.size() &&
             (std::isalpha(static_cast<unsigned char>(glsl[i])) || glsl[i] == '_' || glsl[i] == '.');
-        if (!precededByIdentChar && !followedByIdentChar) {
+        const bool isArrayBracketDigit = start > 0 && glsl[start - 1] == '[' &&
+            i < glsl.size() && glsl[i] == ']';
+        if (!precededByIdentChar && !followedByIdentChar && !isArrayBracketDigit) {
             FAIL() << "Bare integer literal (no decimal point) found: '" << glsl.substr(start, i - start)
                    << "' in:\n" << glsl;
         }

@@ -11,17 +11,22 @@ namespace Vixen::SVO::Recipe {
 // GLSL sibling of EmitProceduralComputeShader (SdfRecipeCodegen.h) — Lazy-Procedural-Delta-
 // Baseline Inc1 M4 Task 8. Same emit-time simulation (value stack, position stack, DistScale
 // stack with the |scale-1|>1e-4 multiply on RestorePos) but emits GLSL and returns ONLY a
-// composable `float sdfRecipe_<id>(vec3 p) { ... }` function — no trace main (that's the
-// caller's job: composing this + SdfCoreKernels.glsl + a wrapper compute shader, per Task 9's
-// numerical-parity harness). Covers exactly the opcode set RecipeRegistry::IsValidSdfOpCode
-// accepts (asserted at the call site by that same predicate, mirroring the HLSL emitter's
-// `assert(paramMask == 0)`).
+// composable `float sdfRecipe_<id>(vec3 p, float params[6]) { ... }` function — no trace main
+// (that's the caller's job: composing this + SdfCoreKernels.glsl + a wrapper compute shader,
+// per Task 9's numerical-parity harness). Covers exactly the opcode set
+// RecipeRegistry::IsValidSdfOpCode accepts (asserted at the call site by that same predicate,
+// mirroring the HLSL emitter's `assert(paramMask == 0)`). `params` (Recipe-Parameterization
+// M2 Task 5) is the per-instance dynamic-parameter array backing ReadParam/ReadParamFloat3 —
+// every emitted function takes it uniformly (even one that never uses it), since
+// evalRecipeField's switch dispatches to whichever sdfRecipe_<id> by recipeId and needs one
+// call shape.
 //
 // Float-literal guard (mandatory, kernel-framework discipline): every numeric literal must
 // emit with a decimal point/exponent — GLSL, like HLSL, has an int/float overload split, and
 // `1/6` (no decimal point) silently integer-divides to 0 on the GPU where the CPU VM's C++
 // `1.0f/6.0f` doesn't (the documented failure class this guard exists for). `f()` below
-// enforces that for every literal this emitter writes.
+// enforces that for every literal this emitter writes. ReadParam/ReadParamFloat3 (M2 Task 5)
+// are the one deliberate exception — see their case sites below for why.
 inline std::string EmitProceduralFieldFunctionGlsl(
     const SdfInstruction* prog,
     uint32_t count,
@@ -50,7 +55,13 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
         assert(IsValidSdfOpCode(in.opCode) && "EmitProceduralFieldFunctionGlsl: unknown opcode");
-        assert(in.paramMask == 0 && "ParamMask!=0 deferred to P4");
+        // paramMask!=0 is now legal exactly for ReadParam/ReadParamFloat3 (Recipe-
+        // Parameterization M1 Task 2's registry allow-list) — every other opcode still
+        // requires paramMask==0, mirroring RecipeRegistry::Register's own narrowed check.
+        assert((in.paramMask == 0 ||
+                static_cast<SdfOpCode>(in.opCode) == SdfOpCode::ReadParam ||
+                static_cast<SdfOpCode>(in.opCode) == SdfOpCode::ReadParamFloat3) &&
+               "ParamMask!=0 only valid on ReadParam/ReadParamFloat3");
         switch (static_cast<SdfOpCode>(in.opCode)) {
             case SdfOpCode::Sphere: {
                 // data[0..2] = center xyz, data[3] = radius (mirrors SdfRecipeEval.h)
@@ -727,6 +738,33 @@ inline std::string EmitProceduralFieldFunctionGlsl(
                 stk.push_back(t);
                 break;
             }
+            case SdfOpCode::ReadParam: {           // push params[data[0]] (runtime-indexed read)
+                // Deliberate exception to the float-literal guard above: only the INDEX
+                // (in.data[0], which slot to read) is a compile-time-known literal here —
+                // the VALUE at that slot is runtime-dynamic, read from the params[] argument
+                // at shader execution time. Baking the value itself as a GLSL literal would
+                // defeat the entire point of Recipe-Parameterization P4 (params must vary
+                // without a shader recompile) — see Recipe-Parameterization-Plan-2026-07.md
+                // M2 Task 5.
+                std::string t = "t" + std::to_string(n++);
+                int idx = static_cast<int>(in.data[0]);
+                body += "  float " + t + " = params[" + std::to_string(idx) + "];\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::ReadParamFloat3: {     // push params[idx*3 .. idx*3+2] as vec3
+                // Same deliberate float-literal-guard exception as ReadParam above — the
+                // three read indices are compile-time literals, the values are not.
+                std::string t = "t" + std::to_string(n++);
+                int idx = static_cast<int>(in.data[0]);
+                int base = idx * 3;
+                body += "  vec3 " + t + " = vec3(params[" + std::to_string(base) + "], params["
+                    + std::to_string(base + 1) + "], params[" + std::to_string(base + 2) + "]);\n";
+                stk.push_back(t + ".x");
+                stk.push_back(t + ".y");
+                stk.push_back(t + ".z");
+                break;
+            }
             case SdfOpCode::PushFloat3: {          // push data[0..2] as x,y,z scalars
                 std::string t = "t" + std::to_string(n++);
                 body += "  vec3 " + t + " = vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
@@ -860,7 +898,7 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     }
 
     assert(!stk.empty() && "EmitProceduralFieldFunctionGlsl: empty value stack at return");
-    return "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p) {\n"
+    return "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6]) {\n"
         + body
         + "  return " + stk.back() + ";\n"
         "}\n";
