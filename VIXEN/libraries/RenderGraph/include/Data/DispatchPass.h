@@ -48,8 +48,17 @@ struct DispatchPass {
     // Push constants (optional - per-pass overrides)
     std::optional<PushConstantData> pushConstants;
 
-    // Dispatch dimensions
+    // Dispatch dimensions (used only when indirectBuffer is unset — see below)
     glm::uvec3 workGroupCount = {1, 1, 1};
+
+    // Recipe GPU Instance Bucketing Inc2 M2 (Task 4): indirect dispatch support.
+    // When set, RecordDispatches issues vkCmdDispatchIndirect(cmd, indirectBuffer, offset)
+    // instead of vkCmdDispatch(cmd, workGroupCount.x/y/z) — workGroupCount is ignored in that
+    // case. `indirectBuffer` at `offset` must hold a tightly-packed VkDispatchIndirectCommand
+    // (3x uint32 x/y/z, no header/padding per the Vulkan spec). Strictly additive: a pass with
+    // indirectBuffer unset is byte-identical to pre-M2 behavior.
+    std::optional<VkBuffer> indirectBuffer;
+    VkDeviceSize indirectBufferOffset = 0;
 
     // Debug/profiling
     std::string debugName;
@@ -60,11 +69,9 @@ struct DispatchPass {
 
     // Validation helpers
     [[nodiscard]] bool IsValid() const {
-        return pipeline != VK_NULL_HANDLE &&
-               layout != VK_NULL_HANDLE &&
-               workGroupCount.x > 0 &&
-               workGroupCount.y > 0 &&
-               workGroupCount.z > 0;
+        if (pipeline == VK_NULL_HANDLE || layout == VK_NULL_HANDLE) return false;
+        if (indirectBuffer.has_value()) return indirectBuffer.value() != VK_NULL_HANDLE;
+        return workGroupCount.x > 0 && workGroupCount.y > 0 && workGroupCount.z > 0;
     }
 
     [[nodiscard]] uint32_t TotalWorkGroups() const {

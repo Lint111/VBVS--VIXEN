@@ -384,16 +384,21 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
     // --- GPU buffers. ---
     VkBuffer instBuf = VK_NULL_HANDLE, boundBuf = VK_NULL_HANDLE, countBuf = VK_NULL_HANDLE,
              idxBuf = VK_NULL_HANDLE, minXBuf = VK_NULL_HANDLE, minYBuf = VK_NULL_HANDLE,
-             maxXBuf = VK_NULL_HANDLE, maxYBuf = VK_NULL_HANDLE;
+             maxXBuf = VK_NULL_HANDLE, maxYBuf = VK_NULL_HANDLE, indirectBuf = VK_NULL_HANDLE;
     VkDeviceMemory instMem = VK_NULL_HANDLE, boundMem = VK_NULL_HANDLE, countMem = VK_NULL_HANDLE,
                    idxMem = VK_NULL_HANDLE, minXMem = VK_NULL_HANDLE, minYMem = VK_NULL_HANDLE,
-                   maxXMem = VK_NULL_HANDLE, maxYMem = VK_NULL_HANDLE;
+                   maxXMem = VK_NULL_HANDLE, maxYMem = VK_NULL_HANDLE, indirectMem = VK_NULL_HANDLE;
 
     const VkDeviceSize instSize  = instanceCount * sizeof(Vixen::SVO::BodyInstanceGpu);
     const VkDeviceSize boundSize = kMaxBuckets * sizeof(RecipeBoundSphereCpu);
     const VkDeviceSize countSize = kMaxBuckets * sizeof(uint32_t);
     const VkDeviceSize idxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * kMaxMembersPerBucket * sizeof(uint32_t);
     const VkDeviceSize extremaSize = kMaxBuckets * sizeof(uint32_t);
+    // Inc2 M2 Task 4: RecipeInstanceBucketing.comp gained a 9th binding (BucketIndirectCommandBuffer,
+    // binding 8) for the new mode==2 finalize pass — this test doesn't exercise mode==2, but the
+    // descriptor set layout must still declare every binding the SPIR-V module references, or
+    // vkCreateComputePipelines fails VUID-VkComputePipelineCreateInfo-layout-07988.
+    const VkDeviceSize indirectSize = static_cast<VkDeviceSize>(kMaxBuckets) * 3 * sizeof(uint32_t);
 
     CreateHostBuffer(instSize,  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf,  instMem,  false);
     CreateHostBuffer(boundSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, boundBuf, boundMem, false);
@@ -403,6 +408,7 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
     CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, minYBuf, minYMem, true);
     CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, maxXBuf, maxXMem, true);
     CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, maxYBuf, maxYMem, true);
+    CreateHostBuffer(indirectSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, indirectBuf, indirectMem, true);
 
     UploadBuffer(instMem,  instances.data(),     instSize);
     UploadBuffer(boundMem, boundSpheres.data(),  boundSize);
@@ -422,8 +428,8 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
         lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         return lb;
     };
-    const std::array<VkDescriptorSetLayoutBinding, 8> bindings = {
-        bind(0), bind(1), bind(2), bind(3), bind(4), bind(5), bind(6), bind(7),
+    const std::array<VkDescriptorSetLayoutBinding, 9> bindings = {
+        bind(0), bind(1), bind(2), bind(3), bind(4), bind(5), bind(6), bind(7), bind(8),
     };
     VkDescriptorSetLayoutCreateInfo dslci{};
     dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -449,7 +455,7 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
     VkPipeline pipeline = VK_NULL_HANDLE;
     ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline), VK_SUCCESS);
 
-    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8};
+    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9};
     VkDescriptorPoolCreateInfo dpci{};
     dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     dpci.maxSets = 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = &poolSize;
@@ -470,6 +476,7 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
     VkDescriptorBufferInfo minYInfo{minYBuf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo maxXInfo{maxXBuf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo maxYInfo{maxYBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE};
 
     auto wBuf = [&](uint32_t b, VkDescriptorBufferInfo* info) {
         VkWriteDescriptorSet w{};
@@ -478,9 +485,10 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
         w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
         return w;
     };
-    const std::array<VkWriteDescriptorSet, 8> writes = {
+    const std::array<VkWriteDescriptorSet, 9> writes = {
         wBuf(0, &instInfo), wBuf(1, &boundInfo), wBuf(2, &countInfo), wBuf(3, &idxInfo),
         wBuf(4, &minXInfo), wBuf(5, &minYInfo), wBuf(6, &maxXInfo), wBuf(7, &maxYInfo),
+        wBuf(8, &indirectInfo),
     };
     vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -600,4 +608,5 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
     vkDestroyBuffer(logicalDevice_, minYBuf, nullptr);  vkFreeMemory(logicalDevice_, minYMem, nullptr);
     vkDestroyBuffer(logicalDevice_, maxXBuf, nullptr);  vkFreeMemory(logicalDevice_, maxXMem, nullptr);
     vkDestroyBuffer(logicalDevice_, maxYBuf, nullptr);  vkFreeMemory(logicalDevice_, maxYMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, indirectBuf, nullptr); vkFreeMemory(logicalDevice_, indirectMem, nullptr);
 }

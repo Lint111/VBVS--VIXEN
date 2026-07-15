@@ -695,3 +695,40 @@ message(STATUS "[RenderGraph Tests] Added: test_recipe_instance_bucketing (Recip
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_instance_bucketing — no glslc runnable on this platform found")
 endif()
+
+# ===========================================================================
+# Recipe GPU Instance Bucketing Inc2 M2 — indirect dispatch + specialized pipeline live-run gate.
+# Shares recipe_instance_bucketing_spv (the M1 bucketing shader, now with M2's added mode==2
+# finalize pass) — kept inside the SAME if(VIXEN_GLSLC) block since it depends on that target.
+# The specialized single-recipe shader (Task 5) is NOT build-time glslc-compiled: it's emitted
+# and compiled AT TEST RUNTIME via ShaderManagement::ShaderCompiler (mirrors
+# test_procedural_recipe_render.cpp's own runtime-compile pattern), so this target needs no
+# second add_custom_command — only the vendored SdfCoreKernels.glsl file PATH (inlined into the
+# generated source at runtime, not #include-d — see SpecializedRecipeShaderGlsl.h's header
+# comment for why ShaderCompiler::Compile cannot resolve #include directives).
+# ===========================================================================
+if(VIXEN_GLSLC)
+add_executable(test_recipe_bucketed_indirect_dispatch
+    Nodes/test_recipe_bucketed_indirect_dispatch.cpp
+)
+add_dependencies(test_recipe_bucketed_indirect_dispatch recipe_instance_bucketing_spv)
+target_link_libraries(test_recipe_bucketed_indirect_dispatch PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bucketed_indirect_dispatch PRIVATE SVO)
+endif()
+target_compile_definitions(test_recipe_bucketed_indirect_dispatch PRIVATE
+    RECIPE_BUCKETING_SPV="${_recipebucketing_spv}"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_recipe_bucketed_indirect_dispatch PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
+set_target_properties(test_recipe_bucketed_indirect_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_recipe_bucketed_indirect_dispatch
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatch (Recipe GPU Instance Bucketing Inc2 M2 live-run gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_bucketed_indirect_dispatch — no glslc runnable on this platform found")
+endif()

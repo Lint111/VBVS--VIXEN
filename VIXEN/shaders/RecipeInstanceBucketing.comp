@@ -37,6 +37,18 @@
 // overflow bucketIndices[] silently — an overflowing append is dropped (the
 // atomic counter still increments past capacity so overflow is DETECTABLE
 // from the host: bucketCounts[id] > maxMembersPerBucket signals truncation).
+//
+// Inc2 M2 Task 4: mode==2 is a third pass (one thread per bucket, dispatched
+// AFTER mode==0 completes with a barrier in between — coverage extrema are
+// only final once every instance thread has finished its atomicMin/atomicMax)
+// that converts a bucket's finished pixel-space coverage rect directly into a
+// tightly-packed VkDispatchIndirectCommand (3x uint32 x/y/z, no header/padding
+// per the Vulkan spec) in bucketIndirectCommands[], sized via the same
+// (dim+7)/8 workgroup convention ComputeDispatchNode.cpp:417-418 uses on the
+// CPU side, just computed here on-GPU from the bucket's own AABB instead of
+// the full screen extent. An empty/untouched bucket (minX>maxX, the mode==1
+// init sentinel never overwritten) emits a zero-workgroup command, which is a
+// legal, no-op vkCmdDispatchIndirect (dispatches 0 workgroups on every axis).
 // ============================================================================
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -100,6 +112,12 @@ layout(std430, binding = 5) buffer BucketCoverageMinYBuffer { uint bucketCoverag
 layout(std430, binding = 6) buffer BucketCoverageMaxXBuffer { uint bucketCoverageMaxX[]; };
 layout(std430, binding = 7) buffer BucketCoverageMaxYBuffer { uint bucketCoverageMaxY[]; };
 
+// Inc2 M2 Task 4: per-bucket VkDispatchIndirectCommand output, one 3xuint32 (x,y,z) record per
+// bucket slot — tightly packed, matches the Vulkan spec's indirect-buffer contract exactly (no
+// struct padding possible since std430's tightest-eligible layout for 3 consecutive uints is
+// already 4-byte-aligned/12-byte-stride). Populated by the mode==2 finalize pass below.
+layout(std430, binding = 8) buffer BucketIndirectCommandBuffer { uint bucketIndirectCommands[]; };
+
 layout(push_constant) uniform Push {
     mat4  viewProj;            // CameraNodeConfig::CURRENT_VIEW_PROJ (Task 1)
     uint  instanceCount;       // number of valid entries in bodyInstances[]
@@ -107,7 +125,7 @@ layout(push_constant) uniform Push {
     uint  maxMembersPerBucket; // per-bucket compacted-index-list row stride
     uint  screenWidth;
     uint  screenHeight;
-    uint  mode;                // 0 = bucket + coverage (this pass); 1 = init coverage extrema
+    uint  mode;                // 0 = bucket + coverage; 1 = init extrema; 2 = emit indirect cmd
 } pc;
 
 // Projects a world-space point through viewProj to pixel-space (x,y); returns false if the
@@ -138,6 +156,39 @@ void main() {
         bucketCoverageMinY[gid] = 0xFFFFFFFFu;
         bucketCoverageMaxX[gid] = 0u;
         bucketCoverageMaxY[gid] = 0u;
+        return;
+    }
+
+    if (pc.mode == 2u) {
+        // Finalize pass (Task 4): one thread per bucket slot, converts the now-final
+        // per-bucket pixel-space AABB into a VkDispatchIndirectCommand sized to just that
+        // bucket's coverage — (coverageWidth+7)/8 x (coverageHeight+7)/8 x 1, mirroring
+        // ComputeDispatchNode.cpp:417-418's CPU-side dispatch-sizing convention but computed
+        // here from the bucket's own rect instead of the full screen extent. Must run AFTER
+        // mode==0 with a barrier between them (extrema are only final once every instance
+        // thread's atomicMin/atomicMax has completed).
+        if (gid >= pc.maxBuckets) return;
+
+        float minX = uintBitsToFloat(bucketCoverageMinX[gid]);
+        float minY = uintBitsToFloat(bucketCoverageMinY[gid]);
+        float maxX = uintBitsToFloat(bucketCoverageMaxX[gid]);
+        float maxY = uintBitsToFloat(bucketCoverageMaxY[gid]);
+
+        uint outBase = gid * 3u;
+        if (maxX <= minX || maxY <= minY) {
+            // Untouched/degenerate bucket (mode==1's sentinel never overwritten, or a
+            // zero-area rect): emit a legal zero-workgroup command, a documented no-op.
+            bucketIndirectCommands[outBase + 0u] = 0u;
+            bucketIndirectCommands[outBase + 1u] = 0u;
+            bucketIndirectCommands[outBase + 2u] = 0u;
+            return;
+        }
+
+        uint coverageWidth  = uint(ceil(maxX - minX));
+        uint coverageHeight = uint(ceil(maxY - minY));
+        bucketIndirectCommands[outBase + 0u] = (coverageWidth  + 7u) / 8u;
+        bucketIndirectCommands[outBase + 1u] = (coverageHeight + 7u) / 8u;
+        bucketIndirectCommands[outBase + 2u] = 1u;
         return;
     }
 
