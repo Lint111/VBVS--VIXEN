@@ -19,6 +19,15 @@
 
 namespace Vixen::RenderGraph {
 
+// Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
+// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
+// start), so sizing the reusable command-buffer ring to the flight count makes the resource
+// ring == the flight ring that fence already guards. This blit is a live composite-chain
+// producer that submits with VK_NULL_HANDLE (leaveImageInGeneral), so CB[imageN] otherwise
+// has the same reuse-while-pending hazard as the compute nodes. Mirrors
+// CameraNodeConfig::MAX_FRAMES_IN_FLIGHT / FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
+static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
+
 // ============================================================================
 // NODETYPE FACTORY
 // ============================================================================
@@ -64,26 +73,31 @@ void BlitNode::CompileImpl(TypedCompileContext& ctx) {
                                  "(RENDER_COMPLETE_SEMAPHORES_ARRAY empty)");
     }
 
-    commandBuffers_.resize(imageCount);
+    // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
+    // COMMAND_BUFFER_RING_DEPTH note above). imageCount above is still read for the image-derived
+    // arrays; the reusable command-buffer ring is sized to the flight count.
+    const uint32_t cmdBufferCount = COMMAND_BUFFER_RING_DEPTH;
+    commandBuffers_.resize(cmdBufferCount);
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     allocInfo.commandPool = commandPool_;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = imageCount;
+    allocInfo.commandBufferCount = cmdBufferCount;
 
-    std::vector<VkCommandBuffer> cmdBuffers(imageCount);
+    std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(GetDevice()->device, &allocInfo, cmdBuffers.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[BlitNode::CompileImpl] vkAllocateCommandBuffers failed: " +
                                  std::to_string(result));
     }
-    for (uint32_t i = 0; i < imageCount; ++i) {
+    for (uint32_t i = 0; i < cmdBufferCount; ++i) {
         commandBuffers_[i] = cmdBuffers[i];
         commandBuffers_.MarkDirty(i);
     }
 
     ctx.Out(BlitNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 
-    NODE_LOG_INFO("[BlitNode::CompileImpl] Allocated " + std::to_string(imageCount) + " command buffers");
+    NODE_LOG_INFO("[BlitNode::CompileImpl] Allocated " + std::to_string(cmdBufferCount) +
+                  " command buffers (flight-ring depth; swapchain imageCount=" + std::to_string(imageCount) + ")");
 }
 
 // ============================================================================
@@ -95,21 +109,39 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
         GetParameterValue<bool>(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
 
     const uint32_t imageIndex = ctx.In(BlitNodeConfig::IMAGE_INDEX);
+    const uint32_t currentFrameIndex = ctx.In(BlitNodeConfig::CURRENT_FRAME_INDEX);
     VkFence inFlightFence = ctx.In(BlitNodeConfig::IN_FLIGHT_FENCE);
     const std::vector<VkSemaphore>& renderComplete = ctx.In(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size()) {
-        NODE_LOG_WARNING("[BlitNode] Invalid image index - skipping frame");
+    // Two separate bounds: the image-derived arrays are indexed by imageIndex (bounded by
+    // renderComplete size), while the command-buffer ring is frame-indexed (bounded by its own
+    // flight-ring size).
+    if (imageIndex == UINT32_MAX || imageIndex >= renderComplete.size() ||
+        currentFrameIndex >= commandBuffers_.size()) {
+        NODE_LOG_WARNING("[BlitNode] Invalid image/frame index - skipping frame");
         return;
     }
 
-    // This node is the frame's last compute-queue submit before Present: it resets + owns
-    // the in-flight fence (mirrors ComputeStageNode's own consumer-role fence ownership).
-    vkResetFences(GetDevice()->device, 1, &inFlightFence);
+    // Fence ownership mirrors ComputeDispatchNode's leaveImageInGeneral convention exactly: the
+    // per-flight in-flight fence must be reset+signalled by EXACTLY ONE submit per frame. When a
+    // downstream graphics pass follows (leaveImageInGeneral==true — the composite chain: Blit ->
+    // sky -> UI, where UIRenderNode is the true frame-final submit and owns the fence), this blit
+    // is NOT the last submit, so it must NOT reset or signal the fence. Two nodes resetting+
+    // signalling one binary fence per frame is illegal (VUID-vkResetFences-pFences-01123 "fence in
+    // use", plus a binary-fence double-signal). Blit must not own the fence when leaveImageInGeneral
+    // because UIRenderNode is the frame-final submit and the sole legitimate fence owner. Blit's
+    // GPU ordering before UI is preserved regardless: both submit to the same device->queue in
+    // executionOrder, so submission order already sequences them (a fence never orders GPU work).
+    // Terminal blit (leaveImageInGeneral==false, no UI after it): Blit stays the sole fence owner.
+    if (!leaveImageInGeneral) {
+        vkResetFences(GetDevice()->device, 1, &inFlightFence);
+    }
 
-    VkCommandBuffer cmd = commandBuffers_.GetValue(imageIndex);
+    // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
+    // already waited; RecordBlitCommands still targets the physical swapchain image by imageIndex.
+    VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
     RecordBlitCommands(ctx, cmd, imageIndex, leaveImageInGeneral);
-    commandBuffers_.MarkReady(imageIndex);
+    commandBuffers_.MarkReady(currentFrameIndex);
 
     VkSemaphore timelineSem = ctx.In(BlitNodeConfig::TIMELINE_SEMAPHORE_IN);
     uint64_t frameBase = ctx.In(BlitNodeConfig::TIMELINE_FRAME_BASE_IN);
@@ -152,12 +184,16 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
+    // Composite (leaveImageInGeneral): downstream UI owns the frame fence, so submit with none —
+    // see the fence-ownership comment above. Terminal blit: this is the last submit, own the fence.
+    VkFence submitFence = leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence;
+
     VkResult result;
     {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
         std::lock_guard<std::mutex> submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, inFlightFence);
+        result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
     }
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[BlitNode::ExecuteImpl] vkQueueSubmit2 failed: " +

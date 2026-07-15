@@ -78,6 +78,8 @@ Both the empirical sample and synchronization validation were run. Findings:
 
 **Why BAKED corrupts but VIRTUAL does not — with direct evidence.** Sync-val on the VIRTUAL variant, run to the same frame count, showed the **identical descriptor/command-buffer VUID cluster (same 20× counts)** — confirming the reuse-while-pending violation is **general, not baked-specific** — BUT the VIRTUAL run had **0× `SYNC-HAZARD-WRITE-AFTER-PRESENT`** while the BAKED run had **10×**. The discriminator is *duration*: the BAKED ESVO compute dispatch (heavy octree traversal reading the per-instance config/`renderScale`/shell bindings) runs far longer on the GPU than VIRTUAL's cheap analytic sphere-trace, so the window in which a still-pending read overlaps the descriptor/command-buffer overwrite is much wider on the baked path. When that window overlaps, the compute reads torn/stale bindings — the wrong instance's `octreeIndex`/`renderScale`/`worldToLocal` — producing exactly the observed symptom: a hit whose `hitT` is off by a `renderScale` factor, attributed to a shifting instance, clustered in the screen region that instance projects to, intermittent, and load-dependent. VIRTUAL, finishing its compute fast, almost always completes its reads before the overwrite lands, so the same latent violation stays invisible.
 
+> **Correction (Round 7 validator, post-fix independent re-check):** the "VIRTUAL = 0× WRITE-AFTER-PRESENT" claim above did NOT reproduce independently — the validator's own fresh capture showed VIRTUAL at 10× WAP, the same as BAKED. This does not affect the fix's validity (WRITE-AFTER-PRESENT is out-of-scope either way, unchanged pre/post fix on both variants) — but the "duration discriminator explains 0-vs-10 WAP" framing above should be treated as unconfirmed/likely wrong. The rest of the duration-discriminator reasoning (why BAKED shows *hit-corruption* while VIRTUAL doesn't) is independently supported by the load-test evidence in Round 6/7 and is NOT in question — only the specific WAP-count side-claim above is retracted.
+
 This ties together every previously-unexplained fact: run-to-run non-determinism from identical inputs (a timing race), byte-identical clean runs (no overlap → correct), the `renderScale`-scaled `hitT` (a torn per-instance binding read), the shifting culprit `instIdx` (which instance's binding was torn depends on timing), the screen-region clustering (that instance's projection), the load-dependence (wider overlap under scheduling jitter), and BAKED-only visibility (longer compute → wider window).
 
 ### The fix (NOT applied this round — high blast radius, deliberately deferred to a focused round)
@@ -107,6 +109,104 @@ The `WRITE-AFTER-PRESENT` layout-transition-vs-present hazard is part of the sam
 ## Diagnostic tooling already in place
 
 Left in the codebase (not stripped, since it will be needed again): `VulkanGraphApplication.cpp`'s `[CornellDiag]` block (env-gated behind `VIXEN_DDGI_CORNELL_BAKED_DEMO`, fires at tick 150) scans the full `HitRecord` buffer for out-of-bounds `worldPos` and reports the exact pixel plus which instance won the hit. `TraceWorld.glsl` carries a `WorldHit.instIdx` field (both commit sites) threaded through `HitRecord._pad0[0]` (`BodyInstanceRayMarch.comp`) to make this possible — a real spare struct field, no layout break (`test_hitrecord_sdi_parity.cpp`'s own layout assert is unaffected). Whoever picks this up can re-run the exact same diagnostic immediately without re-deriving it.
+
+## Round 6 — FIX APPLIED (2026-07-15): frame-index the producer/consumer per-image resources
+
+### Root cause, restated precisely
+The reuse cluster fires on **producer** command buffers and descriptor sets that are allocated at the
+**swapchain image count** (3) and indexed by `imageIndex`, but the only per-frame GPU-completion fence
+is **per-flight** (`MAX_FRAMES_IN_FLIGHT` = 4), waited by `FrameSyncNode` at frame start. Because 4 ≠ 3
+the flight ring and image ring desync: when image N recurs (every 3 frames) with a 4-deep pipeline, a
+producer re-records / re-submits command buffer `CB[imageN]` and `vkUpdateDescriptorSets` on
+`descriptorSet[imageN]` while a **prior submission of that same per-image resource is still pending** —
+sync-val `VUID-vkBeginCommandBuffer-00049` / `-vkQueueSubmit2-03875` / `-vkUpdateDescriptorSets-03047`.
+Producers submit with `VK_NULL_HANDLE` (the consumer owns the per-flight fence), so nothing proves the
+prior producer submission of that command buffer finished.
+
+### Why the first attempt (per-image render-done fence) was reverted
+An initial fix added a per-image render-done fence array owned by `SwapChainNode`, signalled by a
+post-present empty `vkQueueSubmit` in `PresentNode` and waited (with reset) in `SwapChainNode` right
+after acquire. **It had zero effect — the cluster was byte-identical to baseline (20/20/20).** A CPU-side
+`vkWaitForFences` in `SwapChainNode` does not clear sync-val's per-batch command-buffer tracking: that
+tracking is keyed to *the submit that carried the command buffer*, and the producers' submits pass
+`VK_NULL_HANDLE`, so no unrelated empty-submit fence on the same queue ever retires them in the layer's
+view. (An Opus sync-val review confirmed this and recommended the resource-count fix below.) The whole
+per-image render-done fence apparatus was reverted; only the correct BlitNode double-reset (below) was kept.
+
+### The fix (chosen: resource re-indexing — the "double-buffer to MAX_FRAMES_IN_FLIGHT" direction, #2 above)
+Index the **resource objects** (command buffers + descriptor sets) by `currentFrameIndex` at depth
+`MAX_FRAMES_IN_FLIGHT` (4) instead of by `imageIndex` at image count (3). Then the resource ring **is**
+the flight ring that `FrameSyncNode`'s per-flight fence already guards — no new fence, no host wait, no
+producer serialization beyond the 4-deep pipeline already budgeted. The key discipline: **resource
+OBJECTS become frame-indexed; image-derived VALUES stay image-indexed** (framebuffers, swapchain image
+handles in layout-transition barriers, `renderComplete[imageIndex]` semaphores, and the descriptor
+image-VIEW values written into the sets). Files:
+- `ComputeDispatchNode` / `ComputeStageNode` / `BlitNode` / `UIRenderNode`: command-buffer arrays sized to
+  4, selected by `currentFrameIndex`; the guard split so `imageIndex` still bounds the image-derived
+  arrays and `currentFrameIndex` bounds the command-buffer ring.
+- `DescriptorSetNode` (+ config): descriptor sets, pool `maxSets`, and per-frame scratch info arrays sized
+  to 4. New **optional** input `CURRENT_FRAME_INDEX` (index 5). `setIndex = frameIndexWired ?
+  currentFrameIndex : imageIndex`; `BuildDescriptorWrites` split into `(setIndex, viewImageIndex)` so the
+  set OBJECT is frame-indexed while the swapchain-image-derived VIEW written into it stays image-indexed.
+- The two consumers that bind these sets (`ComputeDispatchNode` / `ComputeStageNode`
+  `RecordComputeCommands`) select `descriptorSets[setIndex]` with the identical fallback, so producer and
+  consumer always agree.
+- `BuildRenderGraph.cpp`: wires `FrameSyncNode::CURRENT_FRAME_INDEX` → each of the 4 descriptor nodes
+  (`compute`/`direct_lighting`/`spatial_reuse`/`probe_update`). The three demo graphs
+  (`FanIn`/`Instancing`/`AutoSync`) wire their descriptor nodes too, for producer/consumer consistency;
+  graphs that leave the optional slot unwired fall back to `imageIndex` (safe: 4 ≥ 3).
+- **BlitNode double-reset fix (kept, separate):** the composite-chain blit (`leaveImageInGeneral`) must NOT
+  reset/own the per-flight `inFlightFence` — `UIRenderNode` is the frame-final submit and sole fence owner.
+  Two nodes resetting+signalling one binary fence per frame is illegal (`VUID-vkResetFences-01123` + a
+  binary double-signal). Gated on `leaveImageInGeneral`.
+
+### Verification gate — PASSED
+- **sync-val, reuse cluster GONE (not reduced), deterministic:** across **7 runs** (baked + virtual Cornell,
+  160 frames, sync-val force-enabled), `VUID-vkUpdateDescriptorSets-03047` = **0**,
+  `-vkBeginCommandBuffer-00049` = **0**, `-vkQueueSubmit2-03875` = **0** — every run (baseline was
+  20/20/20). `VUID-vkResetFences-01123` = **0** every run.
+- **Load test, 20 runs under deliberate CPU load** (busy-loop workers on N-1 cores): baked `[CornellDiag]`
+  `worldPos` range **byte-identical across all 20** at the known-good `min z = -11.58 … max z = 27.0`
+  (this IS the valid Cornell geometry range — the box floor legitimately reaches z ≈ -11.58), **zero**
+  out-of-bounds / wild values. The load-dependent corruption is gone.
+- **Demos:** `VIXEN_TIER_OBSERVABLE_DEMO` and the default render path both exit cleanly with reuse cluster
+  0/0/0 under sync-val.
+- **Regression suite:** ctest 98% (61 fail / 2604). Every failure is **pre-existing**, none attributable to
+  this fix: the render-capture group (`BakedVsVirtualParityTest`, `MipFallbackRenderTest`,
+  `BodyInstanceRayMarchRenderTest`, `HudRenderCapture`, …) fails **identically on the clean baseline
+  `9115458f`** with a systematic `hits=0` no-render signature (a headless GPU-capture harness limitation —
+  verified by a from-scratch baseline build+run in an isolated worktree); the `VoxelInjector*` /
+  `VoxelInjectionQueue*` heap-corruption failures are documented in `Known-Issues.md` (2026-07-12 sweep).
+  No RenderGraph node-logic unit test regressed.
+
+### Out of scope (documented, NOT fixed): the separate WRITE-AFTER-PRESENT / acquire-semaphore cluster
+`SYNC-HAZARD-WRITE-AFTER-PRESENT` (flaky, 0 or 10 per run) plus `VUID-vkAcquireNextImageKHR-semaphore-01779`,
+`-vkCmdDraw-None-09600`, `-vkCmdDispatch-None-08114`, `-vkQueueSubmit2-semaphore-03868` (each ~20/run) are a
+**pre-existing structural cluster, independent of the reuse-while-pending race**: they appear at the same
+counts before and after this fix, and persist even under `WAIT_FOR_IDLE=true`. WRITE-AFTER-PRESENT is a
+layout-transition-vs-present ordering hazard on the swapchain image; `01779` is per-flight acquire-semaphore
+lifetime reuse. A targeted attempt to close WRITE-AFTER-PRESENT by broadening the producers' acquire-wait
+`stageMask` (COMPUTE_SHADER → ALL_COMMANDS) had **zero effect** and was reverted. These belong to the
+`SwapChainNode` acquire/present-semaphore path and need their own investigation (present-drain edge via
+`VK_EXT_swapchain_maintenance1` present fences, or per-flight acquire-semaphore lifetime), separate from the
+reuse-while-pending fix this round delivers. `09600`/`08114`/`03047`-on-`test_dispatch` overlap with the
+already-documented **KI-024** (isolated demo-pipeline descriptor gatherer, zero pixel impact).
+
+## Round 7 — independent Opus validation of the Round 6 fix (2026-07-15): APPROVED
+
+A separate Opus validator (not the implementer) independently re-verified the Round 6 fix before merge, per this program's standing discipline of never trusting a fix's own self-report on high-stakes changes — especially warranted here given two prior speculative fixes in this exact investigation were tried and disproven before Round 5/6 found and closed the real cause.
+
+**Independently confirmed, with fresh evidence (own build, own runs, not re-reading the implementer's numbers):**
+- Fix design (re-index resource OBJECTS by `currentFrameIndex` at flight-depth, leave image-DERIVED values image-indexed) is applied correctly and consistently across all 8 changed production files — no leftover imageIndex-for-a-reused-resource-object site found.
+- The self-reported AutoSync regression risk (descriptor depth 3→4 potentially binding 4 sets to a 1-set layout) is a **non-issue**: `PassRecorder::RecordOneStep` binds exactly one set (`count=1, &set`), never the whole vector, so the feared VUID was never reachable on that path. Confirmed by reading `PassRecorder.cpp` directly, not just re-running the demo.
+- Sync-val re-run (own capture, own grep counts): the target VUID cluster (`03047`/`00049`/`03875`/`01123`) is genuinely **0/0** on both variants — matches the implementer's claim exactly.
+- Load test (own run): 20/20 baked `[CornellDiag]` runs clean under real, self-generated CPU contention (concurrent build + stressors) — byte-identical known-good range every run, zero out-of-bounds hits.
+- Regression spot-checks: the failing test cluster is provably pre-existing (a render-capture test binary predating the fix fails identically) or environmental (Windows temp-file locking), not sync-fix-induced.
+- WRITE-AFTER-PRESENT deferral is a reasonable, correctly-scoped decision — genuinely a different mechanism (present/acquire-semaphore ordering) from the reuse-while-pending race this fix targets.
+
+**One discrepancy found and corrected** (see the inline correction note earlier in this doc): the Round 6 "VIRTUAL has 0× WRITE-AFTER-PRESENT vs BAKED's 10×" claim did not reproduce — the validator's own capture showed 10× on both variants. This does not affect the fix's correctness (WAP is out-of-scope regardless) but the specific duration-discriminator side-claim about WAP counts is retracted; the core reasoning for why BAKED shows hit-corruption while VIRTUAL doesn't remains independently supported by the load-test evidence.
+
+**Verdict: safe to merge to main.** Merged as part of `worktree-render-graph-sync-reuse-fix` → `main`.
 
 ## Related
 

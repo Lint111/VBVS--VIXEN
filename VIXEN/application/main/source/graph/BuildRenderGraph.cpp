@@ -4475,6 +4475,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring the
+         // per-flight fence guards. Same source that feeds computeDispatch's CURRENT_FRAME_INDEX.
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  computeDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
          // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
@@ -4614,6 +4618,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   directLightingDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   directLightingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  directLightingDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   directLightingPipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
@@ -4813,6 +4820,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   spatialReuseDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   spatialReuseDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   spatialReusePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
@@ -5156,6 +5166,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   probeUpdateDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   probeUpdateDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   probeUpdatePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,

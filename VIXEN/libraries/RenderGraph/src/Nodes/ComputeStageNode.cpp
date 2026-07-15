@@ -27,6 +27,13 @@
 
 namespace Vixen::RenderGraph {
 
+// Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
+// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
+// start), so sizing the reusable command-buffer ring to the flight count makes the resource
+// ring == the flight ring that fence already guards. Mirrors
+// CameraNodeConfig::MAX_FRAMES_IN_FLIGHT / FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
+static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
+
 // ============================================================================
 // NODETYPE FACTORY
 // ============================================================================
@@ -76,19 +83,23 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
                                  "(RENDER_COMPLETE_SEMAPHORES_ARRAY empty)");
     }
 
-    commandBuffers_.resize(imageCount);
+    // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
+    // COMMAND_BUFFER_RING_DEPTH note above). imageCount above is still read for the image-derived
+    // arrays; the reusable command-buffer ring is sized to the flight count.
+    const uint32_t cmdBufferCount = COMMAND_BUFFER_RING_DEPTH;
+    commandBuffers_.resize(cmdBufferCount);
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     allocInfo.commandPool = commandPool_;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = imageCount;
+    allocInfo.commandBufferCount = cmdBufferCount;
 
-    std::vector<VkCommandBuffer> cmdBuffers(imageCount);
+    std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(GetDevice()->device, &allocInfo, cmdBuffers.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeStageNode::CompileImpl] vkAllocateCommandBuffers failed: " +
                                  std::to_string(result));
     }
-    for (uint32_t i = 0; i < imageCount; ++i) {
+    for (uint32_t i = 0; i < cmdBufferCount; ++i) {
         commandBuffers_[i] = cmdBuffers[i];
         commandBuffers_.MarkDirty(i);
     }
@@ -107,8 +118,8 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(ComputeStageNodeConfig::BUFFER_OUT, writtenBuffer);
     ctx.Out(ComputeStageNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 
-    NODE_LOG_INFO("[ComputeStageNode::CompileImpl] Allocated " + std::to_string(imageCount) +
-                  " command buffers");
+    NODE_LOG_INFO("[ComputeStageNode::CompileImpl] Allocated " + std::to_string(cmdBufferCount) +
+                  " command buffers (flight-ring depth; swapchain imageCount=" + std::to_string(imageCount) + ")");
 }
 
 // ============================================================================
@@ -124,8 +135,12 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderComplete = ctx.In(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeStageNodeConfig::IN_FLIGHT_FENCE);
 
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size()) {
-        NODE_LOG_WARNING("[ComputeStageNode] Invalid image index - skipping frame");
+    // Two separate bounds: the image-derived arrays are indexed by imageIndex (bounded by
+    // renderComplete size), while the command-buffer ring is frame-indexed (bounded by its own
+    // flight-ring size).
+    if (imageIndex == UINT32_MAX || imageIndex >= renderComplete.size() ||
+        currentFrameIndex >= commandBuffers_.size()) {
+        NODE_LOG_WARNING("[ComputeStageNode] Invalid image/frame index - skipping frame");
         return;
     }
 
@@ -147,9 +162,11 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
         lastDescriptorSets_ = currentSets;
     }
 
-    VkCommandBuffer cmd = commandBuffers_.GetValue(imageIndex);
+    // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
+    // already waited; RecordComputeCommands still selects its image-derived values by imageIndex.
+    VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
     RecordComputeCommands(ctx, cmd, imageIndex, isConsumer);
-    commandBuffers_.MarkReady(imageIndex);
+    commandBuffers_.MarkReady(currentFrameIndex);
 
     // P5b: timeline primitives from FrameSyncNode (Optional — VK_NULL_HANDLE / 0 if not wired).
     VkSemaphore timelineSem = ctx.In(ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN);
@@ -258,9 +275,19 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout layout = ctx.In(ComputeStageNodeConfig::PIPELINE_LAYOUT);
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeStageNodeConfig::DESCRIPTOR_SETS);
-    if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
-        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] Invalid descriptor sets for image " +
-                                 std::to_string(imageIndex));
+
+    // Descriptor SET OBJECTS are frame-indexed by DescriptorSetNode (set ring at flight depth,
+    // set[frameIndex]) whenever its CURRENT_FRAME_INDEX is wired, else set[imageIndex]. Bind the
+    // SAME index it was written into: frameIndex when THIS node's CURRENT_FRAME_INDEX is wired
+    // (main graph: both wired together), else imageIndex (demo graphs: neither wired). The producer/
+    // consumer pair is always wired as a set, so the two choices agree.
+    const uint32_t currentFrameIndex = ctx.In(ComputeStageNodeConfig::CURRENT_FRAME_INDEX);
+    const bool frameIndexWired =
+        NodeInstance::GetInput(ComputeStageNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0) != nullptr;
+    const uint32_t setIndex = frameIndexWired ? currentFrameIndex : imageIndex;
+    if (descriptorSets.empty() || setIndex >= descriptorSets.size()) {
+        throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] Invalid descriptor sets for set index " +
+                                 std::to_string(setIndex));
     }
 
     // Dispatch dims: explicit params, falling back to the swapchain extent (consumer),
@@ -344,7 +371,9 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // read of the same image needs no further layout transition either. See the slot's own
     // doc comment on ComputeStageNodeConfig::IMAGE_READ_ARRAY.
 
-    BindComputePipeline(cmd, pipeline, layout, descriptorSets[imageIndex]);
+    // Frame-indexed SET OBJECT (see setIndex derivation above); the swapchain image VALUES this
+    // pass transitions/writes stay imageIndex-selected.
+    BindComputePipeline(cmd, pipeline, layout, descriptorSets[setIndex]);
     SetPushConstants(ctx, cmd, layout);
     vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
 

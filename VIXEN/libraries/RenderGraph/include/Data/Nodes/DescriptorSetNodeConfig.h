@@ -30,6 +30,9 @@ using ShaderDataBundle = ShaderManagement::ShaderDataBundle;
  * - SWAPCHAIN_INFO - Swapchain public variables (swapChainImageCount read during Compile)
  * - DESCRIPTOR_RESOURCES (std::vector<DescriptorResourceEntry>) - Resources with embedded metadata
  * - IMAGE_INDEX - Current swapchain image index
+ * - CURRENT_FRAME_INDEX (optional) - Current frame-in-flight index; when wired, the descriptor SET
+ *   OBJECTS are allocated at flight-ring depth and selected by this index instead of imageIndex
+ *
  *
  * Outputs:
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Layout defining descriptor bindings
@@ -45,7 +48,7 @@ using ShaderDataBundle = ShaderManagement::ShaderDataBundle;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 5;  // DEVICE, SHADER_BUNDLE, SWAPCHAIN_COUNT, DESCRIPTOR_RESOURCES, IMAGE_INDEX
+    static constexpr size_t INPUTS = 6;  // DEVICE, SHADER_BUNDLE, SWAPCHAIN_COUNT, DESCRIPTOR_RESOURCES, IMAGE_INDEX, CURRENT_FRAME_INDEX
     static constexpr size_t OUTPUTS = 4;  // LAYOUT, POOL, SETS, DEVICE_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -93,6 +96,19 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Current frame-in-flight index. When wired (from FrameSyncNode), the descriptor SET OBJECTS
+    // are allocated at flight-ring depth and selected by this index instead of imageIndex, so the
+    // set ring == the flight ring the per-flight fence already guards (fixes the reuse-while-pending
+    // sync-val cluster: VUID-vkUpdateDescriptorSets-03047 et al.). Optional: graphs that do not wire
+    // it (the demo graphs) fall back to imageIndex — since flight depth (4) >= image count (3),
+    // allocating at flight depth is safe for the fallback too. Consumers binding these sets use the
+    // same fallback, so the set-object index always matches.
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 5,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (4) =====
     OUTPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0,
         SlotNullability::Required,
@@ -126,6 +142,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         INIT_INPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources", ResourceLifetime::Transient, descriptorResourcesDesc);
 
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
+
+        INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, BufferDescription{});
 
         // Initialize output descriptors
         INIT_OUTPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout",
@@ -166,6 +184,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     static_assert(IMAGE_INDEX_Slot::index == 4, "IMAGE_INDEX must be at index 4");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
+
+    static_assert(CURRENT_FRAME_INDEX_Slot::index == 5, "CURRENT_FRAME_INDEX must be at index 5");
+    static_assert(CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX is optional (demo graphs fall back to imageIndex)");
 
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 0, "DESCRIPTOR_SET_LAYOUT must be at index 0");
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable, "DESCRIPTOR_SET_LAYOUT is required");

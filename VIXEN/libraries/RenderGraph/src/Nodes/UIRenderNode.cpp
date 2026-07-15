@@ -20,6 +20,14 @@
 
 namespace Vixen::RenderGraph {
 
+// Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
+// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
+// start), so sizing the reusable command-buffer ring to the flight count makes the resource
+// ring == the flight ring that fence already guards. The per-image present/composite
+// semaphores (uiCompleteSemaphores_) stay imageCount-sized — they are intrinsically tied to
+// the physical swapchain image. Mirrors CameraNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
+static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
+
 namespace {
 // Resolve an RmlUi asset path. vixen_stage_assets stages assets next to demo binaries, so the
 // configured relative path (e.g. "assets/ui/hud.rml") resolves when the CWD is the exe dir. A consumer
@@ -184,7 +192,12 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
     const bool rebuildSync = (imageCount != syncImageCount_) || commandBuffers_.empty();
     if (rebuildSync) {
         FreeCommandBuffers();
-        commandBuffers_.resize(imageCount);
+        // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
+        // COMMAND_BUFFER_RING_DEPTH note above). The composite present semaphores below stay
+        // imageCount-sized. rebuildSync still keys on imageCount (semaphore count), which is stable
+        // across a pure recompile; the command-buffer ring depth is constant so this only reallocates
+        // them on a real image-count change or first compile, same as before.
+        commandBuffers_.resize(COMMAND_BUFFER_RING_DEPTH);
         VkCommandBufferAllocateInfo cbai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
         cbai.commandPool = commandPool_;
         cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -261,7 +274,9 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     VkFence inFlightFence = ctx.In(UIRenderNodeConfig::IN_FLIGHT_FENCE);
     const std::vector<VkFramebuffer>& framebuffers = ctx.In(UIRenderNodeConfig::FRAMEBUFFERS);
 
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size() || imageIndex >= framebuffers.size()) return;
+    // Two separate bounds: framebuffers are image-indexed (imageIndex), the command-buffer ring is
+    // frame-indexed (currentFrameIndex, bounded by its own flight-ring size).
+    if (imageIndex == UINT32_MAX || currentFrameIndex >= commandBuffers_.size() || imageIndex >= framebuffers.size()) return;
 
     // Composite: the compute→UI ordering is carried SOLELY by the baked timeline waitEdge (P5b M3) —
     // no binary handoff wait here. This node signals its own per-image semaphore for present. Standalone
@@ -279,7 +294,9 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
 
-    VkCommandBuffer cmd = commandBuffers_[imageIndex];
+    // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
+    // already waited; the framebuffer it renders into stays imageIndex-selected.
+    VkCommandBuffer cmd = commandBuffers_[currentFrameIndex];
     RecordFrame(cmd, framebuffers[imageIndex], currentFrameIndex);
 
     // P5b M1: read timeline primitives (Optional — VK_NULL_HANDLE / 0 if not wired)
