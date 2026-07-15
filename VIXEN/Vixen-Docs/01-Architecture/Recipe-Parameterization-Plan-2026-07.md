@@ -221,7 +221,44 @@ only makes the VM/shader side capable of consuming a param array that already re
   `SpliceProceduralRecipesIntoSource` / shader recompile does NOT fire on a pure param-value update
   (same bytecode, same instance count); baked (CPU-bake) evaluation of the same `ReadParam` recipe
   also produces correct, non-regressed geometry (bake-time snapshot of the param array).
-  - [ ] Not started.
+  **✅ DONE 2026-07-15** — commit `33694860`. Task 8: appended a genuine `ReadParam`-driven body
+  to `VIXEN_PROCEDURAL_UBER_DEMO` (`sphere(center,6.0) - ReadParam(0)` via `MathSub` — a runtime
+  radius offset), swept per-frame in `VulkanGraphApplication::PreTick` via
+  `3.0*sin(tick*0.05)`. Live capture (3 frames at distinct sweep phases) confirms (a) visibly
+  changing geometry — 3 different PNG checksums, gold sphere visibly grows/shifts; (b) zero-bake
+  holds — 0 `BakeSdfWorld`/`BuildSdfBodyOctree` calls logged for demo bodies; (c) **found a
+  pre-existing, unrelated bug**: `VIXEN_PROCEDURAL_UBER_DEMO` with validation layers on produces a
+  one-time boot-time recompile of `body_octree_scene` (swapchain-settling related, NOT
+  `SetInstances`'s `MarkNeedsRecompile` — confirmed zero occurrences of that log line all run) that
+  leaves the shared descriptor set stale for `voxelGridNode`-sourced bindings (`RayTraceBuffer`),
+  producing a VUID cascade — isolation-tested against the unmodified 3-body demo (ReadParam body
+  excluded via a temporary env-gate, reverted after) with byte-identical VUID/recompile counts,
+  confirming this is pre-existing and unrelated to `ReadParam`/recompile-avoidance. This exact gate
+  had never been run to completion before (flagged "STILL CARRIED (windowed only)" in the
+  Lazy-Procedural M5 doc) — filing as a new known issue, not fixed in this milestone (out of P4's
+  scope: a shared-node descriptor-refresh gap, not a recipe/param bug).
+  Task 9: dedicated gtest `ReadParamValueSweepNeverMarksNodeNeedsRecompile` (in
+  `test_body_octree_lifetime.cpp`, real GPU device) directly instruments
+  `NodeInstance::NeedsRecompile()` — not a log-grep — across 50 frames of pure `recipeParams[0]`
+  sine-sweep updates on a real `ReadParam`-registered recipe, same instance count/bytecode every
+  frame. Zero recompiles across all 50 frames (confirmed via `ADD_FAILURE` never firing). The
+  test's own `ExpectNoValidationErrors` assertions fail due to the SAME pre-existing EOS-overlay
+  Vulkan-loader JSON error (`EOSOverlayVkLayer-Win32.json`) the unmodified sibling test
+  `RealNodeRingLifecycleHasNoValidationErrors` also hits identically — machine-local artifact,
+  unrelated to this change (zero-diff on `EnabledValidationLayers()`/wiring).
+  Task 10: `BakeRecipeInstructionsToSdfWorld` gained an additive `std::span<const float> params`
+  argument (default `{}`, every existing call site — `RecipeBaker.h`, `BodyOctreeSceneNode.cpp`,
+  `test_baked_vs_virtual_parity.cpp` — compiles unchanged). Two new tests in `test_recipe_bake.cpp`:
+  `ReadParamBakeDefaultsToZeroFillFailSafe` (no params passed → matches a plain non-parameterized
+  sphere, proving the empty-span default is well-defined) and
+  `ReadParamBakeWithExplicitSnapshotMatchesEvalRecipe` (explicit snapshot → matches both direct
+  `evalRecipe(..., snapshot)` and an equivalent-radius plain sphere). `BakeRegistryToPool` (the
+  generic bake-everything call site with no natural per-recipe snapshot source) deliberately kept
+  on the empty-span default per the plan's own guidance — no new `RecipeEntry` field added.
+  Full recipe/SVO suite green (176 recipe tests + `test_recipe_glsl_numerical_parity` 4/4 GPU);
+  `test_recipe_pool_render`/`test_baked_vs_virtual_parity`/`test_mip_fallback_render` fail
+  identically to the already-documented pre-existing baseline (zero-diff on their dependency files
+  since M2's `770ec1c1`).
 - **M4 — Parity gate + doc closure + sweep** (Tasks 11-12) · **live-run gate** · baked-vs-virtual
   geometry parity (reusing Lazy-Procedural M6's IoU harness) on a `ReadParam` recipe at a specific
   snapshotted parameter value; full no-regression sweep across the recipe/SVO/RenderGraph suites;
@@ -240,6 +277,11 @@ validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' 
 - **Milestone M2 (Tasks 5-7): DONE** · commits `0b937df2..73b27f01` · Opus validator APPROVED ·
   2026-07-15. See Milestone Map entry above for full detail. Same worktree/branch, continuing
   before merge to main.
+- **Milestone M3 (Tasks 8-10): DONE** · commit `33694860` · 2026-07-15 (Opus validation pending).
+  See Milestone Map entry above for full detail. Same worktree/branch, continuing before merge to
+  main. **New known issue filed** (pre-existing, not a regression): boot-time `body_octree_scene`
+  recompile leaves `voxelGridNode`-sourced descriptor bindings stale under
+  `VIXEN_PROCEDURAL_UBER_DEMO` — see Milestone Map entry for isolation-test evidence.
 
 ---
 
