@@ -187,7 +187,27 @@ only makes the VM/shader side capable of consuming a param array that already re
   `getRecipeBoundSphere`/uber-shader call site correctly pass the per-instance params array through
   to the emitted field function; CPU-vs-GLSL numerical parity harness extended to sweep parameter
   values (not just structural opcode coverage).
-  - [ ] Not started.
+  **✅ DONE 2026-07-15** — commits `0b937df2..73b27f01`. Design decision confirmed:
+  argument-passing, per the `TraceWorld.glsl` legacy-path precedent (`inst.recipeParams[]` read
+  out of the SSBO once at each call site, threaded down as a plain `float params[6]` function
+  argument through `traceUberRecipeBody` → `evalRecipeField` → every emitted `sdfRecipe_<id>`) —
+  NOT the direct-SSBO-index alternative the plan's Risks section left open; `instanceIndex` was
+  never needed since the params array is read once by value at the call site, matching M1's own
+  resolution note. `getRecipeBoundSphere` deliberately left unchanged (bounds are structural
+  registry metadata, not param-dependent). Found and fixed a real bug during compile-gate
+  testing: `TraceWorldShadow` (the any-hit shadow-ray function) has its OWN second
+  `traceUberRecipeBody` call site (`TraceWorld.glsl` ~line 412) beyond the primary nearest-hit
+  `TraceWorld()` — missed on the first pass, caught by `test_uber_shader_splice`'s real
+  production-compile-path gate (3 of 6 sub-tests failed with a glslang "no matching overloaded
+  function found" error until fixed). CPU-vs-GPU numerical-parity-across-values check ACTUALLY
+  RAN (Windows-native, real GPU, not skipped):
+  `RecipeGlslNumericalParityTest.ReadParamSweepAcrossValuesWithoutRecompile` compiles one
+  `ReadParam` corpus program to SPIR-V exactly once and redispatches it against 5 distinct
+  `params[6]` values without recompiling, confirming CPU/GPU agreement at each — PASSED.
+  Full recipe/SVO suite green; `test_recipe_pool_render` and
+  `test_baked_vs_virtual_parity.VirtualRendersGeometricallyEquivalentToBaked` fail
+  identically (byte-for-byte same `bakedHits=0 virtualHits=0`/VUID signature) on a pure M1
+  baseline rebuild — confirmed pre-existing/environmental, not a regression from this milestone.
 - **M3 — Live zero-bake render + no-recompile proof** (Tasks 8-10) · **live-run gate, validation
   layers mandatory** · a registered `ReadParam` recipe renders as a virtual (zero-bake) body whose
   geometry visibly tracks `recipeParams[]` changes frame-to-frame; instrumented/logged proof that
@@ -210,6 +230,9 @@ validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' 
   2026-07-15. See Milestone Map entry above for full detail. Worktree
   `.claude/worktrees/recipe-param-inc1` (branch `feat/recipe-parameterization-inc1`), not yet
   merged to main — remaining milestones (M2-M4) continue on this branch/worktree before merge.
+- **Milestone M2 (Tasks 5-7): DONE (implementer-reported; pending Opus validation)** · commits
+  `0b937df2..73b27f01` · 2026-07-15. See Milestone Map entry above for full detail. Same worktree/
+  branch, continuing before merge to main.
 
 ---
 
