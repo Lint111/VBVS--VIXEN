@@ -185,12 +185,23 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     if (ok) {
         void* mapped = nullptr;
         if (vkMapMemory(vkDevice, hostMem, 0, bufSize, 0, &mapped) == VK_SUCCESS) {
+            // Swap R and B for BGRA-family formats so the PNG matches on-screen colors (see
+            // CaptureSwapchainToPng below for the full rationale). No-op for this helper's
+            // usual RGBA offscreen targets (VK_FORMAT_R8G8B8A8_*).
+            const VkFormat fmt = target->GetFormat();
+            const bool swapRB = (fmt == VK_FORMAT_B8G8R8A8_UNORM ||
+                                 fmt == VK_FORMAT_B8G8R8A8_SRGB  ||
+                                 fmt == VK_FORMAT_B8G8R8A8_SNORM ||
+                                 fmt == VK_FORMAT_B8G8R8A8_UINT  ||
+                                 fmt == VK_FORMAT_B8G8R8A8_SINT);
+            const uint32_t rIdx = swapRB ? 2u : 0u;
+            const uint32_t bIdx = swapRB ? 0u : 2u;
             std::vector<uint8_t> rgb(size_t(w) * h * 3);
             const auto* rgba = static_cast<const uint8_t*>(mapped);
             for (uint32_t i = 0; i < w * h; ++i) {
-                rgb[i * 3 + 0] = rgba[i * 4 + 0];
+                rgb[i * 3 + 0] = rgba[i * 4 + rIdx];
                 rgb[i * 3 + 1] = rgba[i * 4 + 1];
-                rgb[i * 3 + 2] = rgba[i * 4 + 2];
+                rgb[i * 3 + 2] = rgba[i * 4 + bIdx];
             }
             vkUnmapMemory(vkDevice, hostMem);
             ok = stbi_write_png(path.c_str(), int(w), int(h), 3, rgb.data(), int(w) * 3) != 0;
@@ -375,12 +386,26 @@ inline bool CaptureSwapchainToPng(Vixen::Vulkan::Resources::VulkanDevice* device
     if (ok) {
         void* mapped = nullptr;
         if (vkMapMemory(vkDevice, hostMem, 0, bufSize, 0, &mapped) == VK_SUCCESS) {
+            // The swapchain image stores raw bytes in its native channel order. On a
+            // BGRA-family surface format (VK_FORMAT_B8G8R8A8_* — the format Dozen/D3D12
+            // selects on WSL2, see VulkanSwapChain.cpp) byte 0 is BLUE and byte 2 is RED,
+            // so a straight byte->RGB copy writes B into the PNG's R slot (reds render as
+            // blues). Swap R and B for those formats so the PNG matches what is presented on
+            // screen — same correction FrameCapture.cpp already applies for the same reason.
+            const VkFormat fmt = target->GetFormat();
+            const bool swapRB = (fmt == VK_FORMAT_B8G8R8A8_UNORM ||
+                                 fmt == VK_FORMAT_B8G8R8A8_SRGB  ||
+                                 fmt == VK_FORMAT_B8G8R8A8_SNORM ||
+                                 fmt == VK_FORMAT_B8G8R8A8_UINT  ||
+                                 fmt == VK_FORMAT_B8G8R8A8_SINT);
+            const uint32_t rIdx = swapRB ? 2u : 0u;
+            const uint32_t bIdx = swapRB ? 0u : 2u;
             std::vector<uint8_t> rgb(size_t(w) * h * 3);
             const auto* rgba = static_cast<const uint8_t*>(mapped);
             for (uint32_t i = 0; i < w * h; ++i) {
-                rgb[i * 3 + 0] = rgba[i * 4 + 0];
+                rgb[i * 3 + 0] = rgba[i * 4 + rIdx];
                 rgb[i * 3 + 1] = rgba[i * 4 + 1];
-                rgb[i * 3 + 2] = rgba[i * 4 + 2];
+                rgb[i * 3 + 2] = rgba[i * 4 + bIdx];
             }
             vkUnmapMemory(vkDevice, hostMem);
             ok = stbi_write_png(path.c_str(), int(w), int(h), 3, rgb.data(), int(w) * 3) != 0;
