@@ -11,6 +11,61 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-034 — 8 test files hand-mirror `BodyInstanceRayMarch.comp`'s push-constant struct at a stale 76 bytes, now 92; blocks ~30+ render tests
+
+**Discovered:** 2026-07-15, during [[Recipe-GPU-Instance-Bucketing-Inc2-Plan-2026-07]] M1's Opus
+validator's regression sweep — the implementer reported "4 pre-existing failures," but the
+validator's own full-suite run found the real pre-existing baseline is materially larger
+(~34 RenderGraph render-cluster failures sharing this one root cause, plus 4 unrelated benchmark
+timeouts under concurrent machine load).
+
+**Symptom:** every test that hand-declares a local `PushConstants` mirror struct and
+`static_assert(sizeof(PushConstants) == 76, ...)` fails at `vkCreateComputePipelines` with
+`VUID-VkComputePipelineCreateInfo-layout-10069` (`[0,92] outside VkPushConstantRange [0,76]`) —
+pipeline creation fails, the shader never runs, and every downstream assertion (hit count,
+silhouette, IoU, etc.) fails on zero rendered pixels, masking the tests' actual intended coverage.
+
+**Root cause:** `shaders/SceneBindings.glsl`'s real `PushConstants` block grew from 76 to 92 bytes
+when Sampled Lighting Inc2 M2 added `uint accumFrameCount` (`SceneBindings.glsl:228`, "consecutive
+STATIC-camera frame count... drives the accumulate seam's converging-1/N alpha"). The production
+shader/pipeline-layout path picked this up correctly; 8 test files' hand-copied C++ mirror structs
+were never updated to match:
+- `libraries/RenderGraph/tests/Nodes/test_hitrecord_readback.cpp:54-63` (the structural template
+  every other file copied — `static_assert(sizeof(PushConstants) == 76, ...)` at :63)
+- `test_appflow_editor_toggle_render.cpp`, `test_body_instance_occlusion_reject.cpp`,
+  `test_editor_document_render.cpp`, `test_recipe_authoring_gate.cpp`, `test_recipe_pool_render.cpp`,
+  `test_shadow_correctness.cpp`, `test_tier_crossing_lod_residency.cpp` — same stale 76-byte mirror.
+
+**Confirmed pre-existing and independent of any single recent branch**: commit `bad30727` (the
+`accumFrameCount` addition) is an ancestor of `main` well before this discovery; none of the 8
+files above were touched by the increment that surfaced this.
+
+**Impact:** ~30+ render-cluster tests across 8 files currently fail at pipeline-creation time, not
+at their actual intended assertion — meaning this class of test has provided ZERO real geometry/
+render coverage since `bad30727` landed. This is a significant, silent loss of test signal, not
+just cosmetic failures. Also a trap for future validators: this class of failure shares symptoms
+with several ALREADY-CATALOGUED unrelated pre-existing issues (KI-032's VUID-layout-07988 class),
+so a future session should diff a new failure's specific VUID/message against this entry before
+assuming "pre-existing, same as always."
+
+**Fix options:** (a) the honest fix — update all 8 hand-mirrored structs to 92 bytes (add
+`accumFrameCount`) and their `static_assert`s, one mechanical edit per file, following
+`test_hitrecord_readback.cpp`'s struct as the canonical shape to copy from `SceneBindings.glsl`
+correctly this time; (b) the durable fix — these hand-mirrored structs are exactly the class of
+drift the project's `[GpuStruct]`/generated-struct codegen convention exists to prevent (see
+[[kernel-codegen-framework-direction]], [[runtime-kernel-pipeline-direction]]'s config-struct
+codegen program) — promoting this push-constant block to a generated/shared struct (like
+`OctreeConfig`'s precedent) would make this whole class of bug structurally impossible instead of
+mechanically fixed 8 times over. (a) is the fast unblock; (b) is the real fix if this drift
+recurs again.
+
+**Severity:** High (silent, wide loss of test coverage — not just noisy failures) · **Status:**
+OPEN, pre-existing, out of scope for [[Recipe-GPU-Instance-Bucketing-Inc2-Plan-2026-07]] (a
+render-pipeline-architecture increment, not a test-maintenance fix) — needs its own dedicated
+session, ideally reached before it grows to a 9th/10th copy-pasted stale mirror.
+
+---
+
 ## KI-032 — `test_baked_vs_virtual_parity`/`test_mip_fallback_render`/`test_recipe_pool_render` read back a color image no shader in their single-pass dispatch ever writes (Sampled-Lighting-Inc3 M5 pass-split fallout)
 
 **Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M4's Task 11 (baked-vs-virtual
