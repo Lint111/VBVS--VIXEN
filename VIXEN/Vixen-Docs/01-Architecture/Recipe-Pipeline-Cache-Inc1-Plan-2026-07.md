@@ -116,7 +116,12 @@ in the GPU sense (see the `D`/`CI` resolution note above); any change to
   content-hash function over `RecipeEntry::bytecode` exists, is deterministic, and the design
   question of what `D`/`CI` the cache should hold is resolved and documented (not deferred as an
   open question into implementation).
-  - [ ] Not started.
+  - [x] Done. `CashSystem::ComputeRecipeBytecodeHash` (`libraries/CashSystem/include/RecipeContentHash.h`)
+    hashes PRE-EMIT `RecipeEntry::bytecode` via `CacheKeyHasher::AddBytes` over the raw
+    `SdfInstruction[]` span (132-byte POD, confirmed by the type's own `static_assert`). 6 gtest
+    cases in `libraries/CashSystem/tests/test_recipe_content_hash.cpp` pass, incl. the critical
+    `ReadParam`/`ReadParamFloat3` slot-index-distinguishing property. `RecipeFamilyRecord`
+    (same header) is the resolved `D` shape — see Progress Log.
 - **M2 — Cache implementation + population wiring + tests** (Tasks 3-4) · gate: pure-CPU gtest
   green — the `TypedCacher` derivative exists, is populated at a real call site, and the
   exact-dup-collapse property is proven by test (identical bytecode → 1 entry; distinct bytecode →
@@ -127,6 +132,38 @@ in the GPU sense (see the `D`/`CI` resolution note above); any change to
 
 (populated as milestones complete — one entry per milestone: commit hash, gate evidence, Opus
 validator verdict; follow the Recipe-Parameterization / Lazy-Procedural plans' convention.)
+
+**M1 (2026-07-15, implementer, pre-validator):**
+- **Task 1 decision:** pre-emit bytecode hashing, via `CashSystem::CacheKeyHasher::AddBytes` over
+  the raw `std::vector<Recipe::SdfInstruction>` byte span, finalized with `Vixen::Hash::ComputeHash64`
+  (FNV-1a). Equivalence check performed, not assumed: `EmitProceduralFieldFunctionGlsl`
+  (`SdfRecipeCodegenGlsl.h:901`) bakes `recipeId` into the emitted GLSL function name
+  (`sdfRecipe_<recipeId>`), so identical bytecode under two different `recipeId`s emits
+  textually-different GLSL strings. This does not invalidate bytecode hashing — the hash's job is
+  "same bytecode logic", which is exactly what a later increment needs to detect shareable
+  pipelines; `recipeId` is deliberately excluded from the hash input as per-registration identity,
+  not bytecode content. Emission itself confirmed order-preserving/deterministic (plain indexed
+  loop over the instruction array, no unordered iteration, no time/random/pointer-derived output).
+- **Task 2 decision:** `RecipeFamilyRecord { contentHash, firstRecipeId, memberRecipeIds[] }` —
+  NOT `PipelineWrapper`-shaped, per the plan's own steer (no `VkPipeline` exists this increment).
+  Lives in `CashSystem` (not SVO): `CacheKeyHasher`/`VixenHash.h` require linking `Core`, which SVO
+  does not link (confirmed via `CMakeLists.txt`), while `CashSystem` already links `SVO` publicly
+  — so the one-directional CashSystem→SVO dependency is respected by putting the hash+record types
+  CashSystem-side, matching the plan's own steer ("the recipe system should own a thin cacher that
+  only depends on `CashSystem::TypedCacher`'s template machinery" — read the other way, CashSystem
+  owns the SVO-consuming pieces). `TypedCacher<D,CI>` confirmed usable without a real
+  `VulkanDevice*`: `MainCacher::GetDeviceIndependentCacher` never touches `m_device`, so a future
+  M2 cacher can register `isDeviceDependent=false` and never call `Initialize()`.
+- **`ReadParam` slot-index property — confirmed + tested:** slot index lives in `data[0]`
+  (`SdfRecipeCodegenGlsl.h:741-767`), not `paramMask` (`paramMask` is only a nonzero validity
+  gate). `data[0]` is part of the hashed raw bytes, so slot-0 vs slot-1 reads hash differently —
+  proven by `RecipeContentHash.DistinguishesReadParamSlotIndex`. No runtime `recipeParams[]` value
+  is reachable from `RecipeEntry` (confirmed: `RecipeEntry` has no such field; those values live in
+  `BodyInstanceGpu`, a separate per-instance struct) — nothing for the hash to accidentally pick up.
+- Files: `libraries/CashSystem/include/RecipeContentHash.h`,
+  `libraries/CashSystem/tests/test_recipe_content_hash.cpp` (+ its `CMakeLists.txt` registration).
+  6/6 new tests pass; 16/16 existing `test_recipe_registry` tests pass (zero regression). WSL
+  build (`vixen-wsl` preset), compile-clean.
 
 ---
 
