@@ -11,6 +11,138 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-032 — `test_baked_vs_virtual_parity`/`test_mip_fallback_render`/`test_recipe_pool_render` read back a color image no shader in their single-pass dispatch ever writes (Sampled-Lighting-Inc3 M5 pass-split fallout)
+
+**Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M4's Task 11 (baked-vs-virtual
+parity gate for a `ReadParam` recipe) — while root-causing why `test_baked_vs_virtual_parity`'s
+`VirtualRendersGeometricallyEquivalentToBaked` gate had been failing (`bakedHits=0 virtualHits=0`) across
+two independent prior validator passes (M2, M3), both of which correctly established the failure
+pre-dates recipe-parameterization but had not root-caused it further.
+
+**Two separate bugs were found and disentangled here — do not conflate them:**
+
+1. **FIXED this milestone (M4):** all three test files hand-build a local `VkDescriptorSetLayout`
+   including a stale `binding = 8` entry (a debug `ShaderCountersBuffer`). That binding was compiled
+   out of `BodyInstanceRayMarch.comp`'s reflected SPIR-V interface unconditionally by
+   `8509f58b` ("perf(widescreen): M2.1 compile shader debug counters out of the live path") on
+   2026-07-03 — `SceneBindings.glsl`'s own binding-8 comment states this explicitly, and the real
+   shader's binding set is `{0,1,2,3,4,5,9,10,...,22}` (verified by grepping every file
+   `BodyInstanceRayMarch.comp`/`SceneBindings.glsl` transitively `#include`s — zero `binding = 8`
+   declarations anywhere in the live path). Production's own descriptor-gatherer wiring
+   (`BuildRenderGraph.cpp:795-801`) agrees — no binding 8. A local test layout that includes a
+   binding the SPIR-V module doesn't declare is a `VUID-VkComputePipelineCreateInfo-layout-07988`-
+   class validation error: the pipeline layout is incompatible with the shader module's actual
+   resource interface. This is a genuinely SEPARATE bug from the `body_octree_scene` boot-recompile
+   descriptor-staleness bug M3 filed (see KI-033 below) — that bug is real and still open, but is
+   NOT what was causing these three specific tests' VUID cascade (different code path: a live
+   render-graph recompile vs. these tests' own hand-built descriptor layouts); the
+   stale binding-8 entry is a distinct, simpler, now-fixed root cause. **Fix:** removed the
+   `bindL(8, ...)` layout entry, its `VkWriteDescriptorSet`, the pool-size count, and the
+   now-unused `ctrBuf`/`ctrMem` plumbing from all three files. Confirmed live (Windows-native, real
+   AMD Radeon GPU): `vkCreateComputePipelines` now succeeds with **zero** VUID/validation-layer
+   output across all three files, where every prior run aborted or failed at pipeline-creation time.
+
+2. **STILL OPEN, NOT fixed this milestone, filed here as the carried blocker for Task 11:** with
+   the VUID gone, all three tests now run their full dispatch+readback cleanly but produce a
+   totally empty (`bakedHits=0 virtualHits=0`) color-buffer readback — not a validation error, not
+   a crash, just genuinely zero content in the image these tests read back. Root cause: **the
+   `outputImage`/`colorImg` these tests dispatch-then-readback is no longer written by the single
+   compute pass they invoke.** `BodyInstanceRayMarch.comp` stopped writing `outputImage` in
+   `784adff7` ("wip(sampled-lighting-inc3): M1 shader-side pass split (KI-018) — DirectLighting.comp
+   extracted, march traversal-only", 2026-07-11) — binding 0 is kept `writeonly`-declared only for
+   its `imageSize()` call (see the shader's own header comment, ~lines 35-40/191-206). The pass that
+   inherited the write, `DirectLighting.comp`, ALSO doesn't write it (bound `readonly` there,
+   "EXCLUSIVELY for imageSize()" per its own header) — `747e156c` ("feat(sampled-lighting-inc3-m5):
+   2-dispatch split -- RIS+temporal producer / spatial-reuse consumer", 2026-07-12) moved the real
+   `imageStore(outputImage, ...)` a second time, into a THIRD shader, `SpatialReuseShade.comp`
+   (`:33,591,594`). The production `RenderGraph` correctly chains all three passes with the right
+   barriers; these three standalone test harnesses (authored/last-touched between 2026-06-29 and
+   2026-07-11, i.e. straddling the M1/M5 pass-split) dispatch ONLY the first pass
+   (`BodyInstanceRayMarch.comp` alone) and then copy back an image that pass never touches — reading
+   back genuine, correctly-zeroed, untouched memory. `HitRecord` (binding 18) and `idOutputImage`
+   (binding 9) ARE written by the single dispatched pass and would show real hit data if read back;
+   the harnesses just don't read those.
+
+**Confirmed pre-existing, not introduced by recipe-parameterization work:** both root causes
+(`8509f58b`, `784adff7`/`747e156c`) predate `feat/recipe-parameterization-inc1`'s fork point by 8-16
+days and touch zero recipe/param files; `git diff` of this milestone's actual corpus/bake/render-call
+changes against `SceneBindings.glsl`/`BodyInstanceRayMarch.comp`/`DirectLighting.comp`/
+`SpatialReuseShade.comp` is empty.
+
+**Impact:** `test_baked_vs_virtual_parity`, `test_mip_fallback_render`, and `test_recipe_pool_render`
+cannot produce a real pass/fail geometry signal via their current single-pass dispatch+colorImg-readback
+design — ANY corpus entry (pre-existing or the new Task 11 `readparam_sphere` one) fails identically
+with `bakedHits=0 virtualHits=0`, independent of recipe correctness. This is why Task 11's `ReadParam`
+parity gate is CODE DONE / LIVE GATE PENDING for this milestone (same carried-obligation pattern as
+Lazy-Procedural M2's boot-lazy live gate) rather than a real green pass — the corpus entry, bake-time
+snapshot wiring, and virtual `recipeParams[]` wiring are all confirmed correct (register/bake/splice/
+dispatch/readback all run cleanly, zero VUIDs, zero crashes) but the harness itself cannot currently
+produce a nonzero IoU for ANY recipe, parameterized or not.
+
+**Fix options:** (a) chain all three passes (`BodyInstanceRayMarch` → `DirectLighting` →
+`SpatialReuseShade`) with correct barriers/bindings in each of the three test harnesses — the
+production-correct fix, but nontrivial: a 3-stage pipeline with cross-dispatch buffer hazards per
+`DirectLighting.comp`'s own M5 header comment, effectively porting a slice of `RenderGraph`'s real
+pass-chaining logic into 3 already-large standalone harnesses; (b) switch each harness's pass/fail
+signal from `colorImg` readback to `HitRecord`/`idOutputImage` readback (both ARE written by the single
+dispatched pass) — far less surface to maintain, though it changes what "parity" measures (hit/id
+buffer content vs. final shaded color) and would need re-deriving each harness's threshold/silhouette
+logic against the new buffer's format. Not investigated further — a dedicated fix session should choose
+between (a)/(b) deliberately, not as a drive-by inside a future unrelated milestone.
+
+**Severity:** Medium (three real geometry-correctness gates are currently unable to assert anything —
+not a production runtime bug, but a meaningful loss of test coverage that predates and is unrelated to
+this branch) · **Status:** OPEN (item 2 only — item 1, the binding-8 VUID, is RESOLVED this milestone,
+commit range TBD at merge) · out of scope for [[Recipe-Parameterization-Plan-2026-07]] to fully fix (a
+RenderGraph/shader-pass-chaining problem, not a recipe/param-VM one) — Task 11's corpus entry and
+wiring are provably correct and ready to pass once either fix option above lands.
+
+---
+
+## KI-033 — `VIXEN_PROCEDURAL_UBER_DEMO` boot recompile leaves shared descriptor set stale, producing a persistent VUID cascade
+
+**Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M3's live validation-layer
+render gate — the first time this exact gate (`VIXEN_PROCEDURAL_UBER_DEMO` + real Windows-native GPU +
+`VK_LAYER_KHRONOS_validation`) was ever run to completion (it had been flagged "STILL CARRIED
+(windowed only)" and never executed in
+[[Lazy-Procedural-Delta-Baseline-Inc0-Inc1-Plan-2026-07]] M5's own Progress Log).
+
+**Symptom:** running the demo with validation layers on produces ~80-160 VUID lines (run-to-run
+variance), all on `voxelGridNode`-sourced bindings (`InstanceIterDebugBuffer` binding 14,
+`RayTraceBuffer` binding 4) — never on `recipeParams`/binding-10/`bodyInstances`. The count and
+bindings are identical whether or not any `ReadParam`-using body is present.
+
+**Root cause (confirmed, not yet fixed):** a ONE-TIME boot-time recompile of `body_octree_scene`
+fires right after the Render-pause/resume (swapchain-settling) sequence — NOT
+`BodyOctreeSceneNode::SetInstances`'s `MarkNeedsRecompile` (confirmed zero occurrences of that log
+line across full runs; "exceeds ring capacity" count is 0 every time). That recompile leaves the
+shared descriptor set stale for `voxelGridNode`-sourced bindings, and the staleness persists/
+recurs through most of the run rather than resolving after one frame.
+
+**Confirmed pre-existing, not introduced by recipe-parameterization work:** independently isolation-
+tested twice — once by the M3 implementer (env-gating out the `ReadParam` body, rebuilding, re-
+running the original unmodified 3-body demo: byte-identical VUID/recompile counts) and once
+independently by the M3 Opus validator (same experiment, same result: 1 boot recompile of
+`body_octree_scene`, same VUID cascade on the same bindings, present or absent the `ReadParam`
+body). Zero VUIDs reference any recipe-parameterization-touched binding.
+
+**Impact:** any future live validation-layer gate through this demo path will see this cascade
+unless/until fixed — a source of noise that could mask a REAL new VUID regression in a later
+session unless carefully diffed against this known baseline signature (bindings 4/14, not the
+bindings a given change actually touches).
+
+**Fix options:** not investigated beyond root-causing the trigger (boot-time recompile timing vs.
+swapchain settle) — likely a descriptor-set refresh/rebind gap in whatever handles
+`voxelGridNode`'s bindings across a recompile, scoped to `RenderGraph`/`DescriptorSetNode`
+territory, not the recipe/procedural system. Needs its own investigation session.
+
+**Severity:** Medium (noisy but not a correctness bug in anything downstream of this cascade — no
+crash, no wrong render output observed; the concern is masking future real VUIDs, not this one
+itself) · **Status:** OPEN, pre-existing, out of scope for
+[[Recipe-Parameterization-Plan-2026-07]] (a recipe/param-VM change, not a descriptor-refresh fix)
+
+---
+
 ## KI-027 — `VoxelInjectionQueue`/`VoxelInjector` concurrent voxel creation is unsound (heap corruption, ECS assertion mismatch)
 
 **Discovered:** 2026-07-12, in a broad ctest sweep audit — 7 tests fail: `VoxelInjectionQueueTest.ProcessMultipleVoxels` (SEGFAULT: `_CrtIsValidHeapPointer`/`is_block_type_valid` debug-heap assertions — real heap corruption, not a benign crash), `.ProcessBatchCreation` (Gaia ECS internal assertion `entityExpected == entityPresent` at `gaia.h:30565`), `.ConcurrentEnqueue`, `.StopDuringProcessing`, `VoxelInjectorTest.InsertEntities_SingleEntity` (`Exit code 0xc0000409`, a Windows stack-buffer-overrun/security-cookie trap), `.InsertEntities_MultipleEntities`, `.InsertEntitiesBatched_SingleBrick`, `.InsertEntitiesBatched_MultipleBricks`, `.CompactOctree`, `.InsertEntities_MixValidAndInvalid`, `.LargeBatchInsertion`.

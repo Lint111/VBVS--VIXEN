@@ -45,6 +45,7 @@ inline bool IsValidSdfOpCode(uint8_t raw) {
         case SdfOpCode::Float3MulComponentWise: case SdfOpCode::Float3Min:
         case SdfOpCode::Float3Max: case SdfOpCode::Float3ScalarMul:
         case SdfOpCode::Float3Dot: case SdfOpCode::Float3Normalize:
+        case SdfOpCode::ReadParam: case SdfOpCode::ReadParamFloat3:
             return true;
         default:
             return false;
@@ -93,7 +94,8 @@ public:
         DuplicateId,
         EmptyProgram,
         BadOpCode,
-        ParamMaskUnsupported,
+        ParamMaskUnsupported, // paramMask != 0 on an opcode that does NOT accept dynamic params
+        ParamMaskRequired,    // paramMask == 0 on ReadParam/ReadParamFloat3 (P4 requires it)
         StackOverflow,     // static stack-depth exceeds 64 or underflows
         BadBoundRadius,    // boundRadius set (nonzero) but not > 0
         BadStepRelaxation, // stepRelaxation set (nonzero) but not in (0,1]
@@ -111,7 +113,18 @@ public:
         int sp = 0, psp = 0;
         for (const auto& in : entry.bytecode) {
             if (!IsValidSdfOpCode(in.opCode)) return RegisterResult::BadOpCode;
-            if (in.paramMask != 0)            return RegisterResult::ParamMaskUnsupported;
+
+            // paramMask gate: ReadParam/ReadParamFloat3 (P4) REQUIRE an explicit non-zero marker
+            // (convention: paramMask must equal 1, meaning "data[0] is a runtime param-array
+            // index"); every other opcode still hard-rejects a nonzero paramMask unchanged.
+            const auto op = static_cast<Recipe::SdfOpCode>(in.opCode);
+            const bool isParamOp = (op == Recipe::SdfOpCode::ReadParam) ||
+                                    (op == Recipe::SdfOpCode::ReadParamFloat3);
+            if (isParamOp) {
+                if (in.paramMask == 0) return RegisterResult::ParamMaskRequired;
+            } else {
+                if (in.paramMask != 0) return RegisterResult::ParamMaskUnsupported;
+            }
 
             auto a = Recipe::RecipeStackArity(static_cast<Recipe::SdfOpCode>(in.opCode));
             // underflow checks

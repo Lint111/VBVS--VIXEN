@@ -74,7 +74,8 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
 // ============================================================================
 // Uber-shader recipe path (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11).
 // ============================================================================
-// evalRecipeField(uint recipeId, vec3 p) and getRecipeBoundSphere(...) are GENERATED
+// evalRecipeField(uint recipeId, vec3 p, float params[6]) and getRecipeBoundSphere(...) are
+// GENERATED
 // functions, spliced into BodyInstanceRayMarch.comp at the VIXEN_UBER_RECIPE_SPLICE_MARKER
 // (see that file) by UberShaderSplice.h — NOT defined in this vendored file. This sphere-
 // march is the one hand-written piece both the splice and the two legacy analytic recipes
@@ -136,7 +137,8 @@ float sampleRecipeOccupancy(uint gridOffset, uint gridDim, vec3 gridAabbMin, flo
 }
 
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
-                         vec3 ro, vec3 rd, out vec3 hitNormal, out float hitT, out uint stepsUsed) {
+                         vec3 ro, vec3 rd, float params[6],
+                         out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
     stepsUsed = 0u;
@@ -163,14 +165,14 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     for (int i = 0; i < MAX_STEPS; ++i) {
         stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
-        float d = evalRecipeField(recipeId, p);
+        float d = evalRecipeField(recipeId, p, params);
         if (d < EPS) {
             // Central-difference gradient — mirrors sdfGradient's h/EPS coincidence above.
             const float h = 1e-3;
             vec2 e = vec2(h, 0.0);
-            float gx = evalRecipeField(recipeId, p + e.xyy) - evalRecipeField(recipeId, p - e.xyy);
-            float gy = evalRecipeField(recipeId, p + e.yxy) - evalRecipeField(recipeId, p - e.yxy);
-            float gz = evalRecipeField(recipeId, p + e.yyx) - evalRecipeField(recipeId, p - e.yyx);
+            float gx = evalRecipeField(recipeId, p + e.xyy, params) - evalRecipeField(recipeId, p - e.xyy, params);
+            float gy = evalRecipeField(recipeId, p + e.yxy, params) - evalRecipeField(recipeId, p - e.yxy, params);
+            float gz = evalRecipeField(recipeId, p + e.yyx, params) - evalRecipeField(recipeId, p - e.yyx, params);
             hitNormal = normalize(vec3(gx, gy, gz));
             hitT      = t;
             return true;

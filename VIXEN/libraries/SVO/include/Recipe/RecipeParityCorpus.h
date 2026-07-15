@@ -278,6 +278,18 @@ inline SdfInstruction float3DotOp() {
 inline SdfInstruction float3NormalizeOp() {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Normalize; return in; }
 
+// Recipe-Parameterization M2 Task 5b: ReadParam/ReadParamFloat3 corpus helpers. paramMask=1
+// mirrors RecipeRegistry::Register's convention ("data[0] is a runtime param-array index"),
+// even though evalRecipe/EmitProceduralFieldFunctionGlsl themselves dispatch on opCode alone
+// and don't inspect paramMask — set for realism/consistency with a genuinely-registerable
+// program, not because these two functions require it.
+inline SdfInstruction readParamOp(int idx) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParam; in.paramMask=1;
+    in.data[0]=(float)idx; return in; }
+inline SdfInstruction readParamFloat3Op(int idx) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamFloat3; in.paramMask=1;
+    in.data[0]=(float)idx; return in; }
+
 // ────────────────────────────────────────────────────────────────────────────
 // One function per TEST case, building the SAME prog[] sequence (verbatim
 // literal values) as the corresponding TEST(RecipeEvalParity, <Name>) body.
@@ -832,6 +844,28 @@ inline std::vector<SdfInstruction> Make_M5_CompositionAll_IndependentOracle() {
     };
 }
 
+// Recipe-Parameterization M2 Task 5b: ReadParam/ReadParamFloat3 corpus coverage. Evaluated
+// with an EMPTY params span by the shared corpus consumers (evalRecipe defaults to {}), same
+// as every other corpus program — bounds-check fail-safe (SdfRecipeEval.h Task 3) means an
+// out-of-range read is well-defined (0.0f), not undefined behavior, so these still produce a
+// deterministic CPU/GPU-comparable value even with no params supplied. The actual "params
+// VARY without recompile" claim is exercised separately in Task 7's dedicated sweep test,
+// which supplies real non-empty params arrays against one of these same programs.
+inline std::vector<SdfInstruction> Make_M2_ReadParam_MatchesIndexedRead() {
+    // A sphere whose radius is read from params[0] rather than baked — index 0 chosen to
+    // land inside the fixed params[6] carrier's valid range for the Task 7 sweep test reuse.
+    return { readParamOp(0), sphere(glm::vec3(0.f), 0.5f), mathMaxOp() };
+}
+
+inline std::vector<SdfInstruction> Make_M2_ReadParamFloat3_MatchesIndexedRead() {
+    // Reads params[idx*3..idx*3+2] as a vec3 offset, decomposes to its Y component, and adds
+    // a baked sphere distance — exercises the vec3 three-component indexed read end-to-end.
+    return {
+        readParamFloat3Op(0), decomposeFloat3Op(1),
+        sphere(glm::vec3(0.f), 0.5f), mathAddOp()
+    };
+}
+
 inline std::vector<CorpusProgram> GetAll() {
     return {
         { "SphereUnionMatchesAnalytic", Make_SphereUnionMatchesAnalytic() },
@@ -924,6 +958,8 @@ inline std::vector<CorpusProgram> GetAll() {
         { "M4d_Float3Normalize_Oracle", Make_M4d_Float3Normalize_Oracle() },
         { "M4d_Float3Normalize_ZeroVector_Safe", Make_M4d_Float3Normalize_ZeroVector_Safe() },
         { "M5_CompositionAll_IndependentOracle", Make_M5_CompositionAll_IndependentOracle() },
+        { "M2_ReadParam_MatchesIndexedRead", Make_M2_ReadParam_MatchesIndexedRead() },
+        { "M2_ReadParamFloat3_MatchesIndexedRead", Make_M2_ReadParamFloat3_MatchesIndexedRead() },
     };
 }
 

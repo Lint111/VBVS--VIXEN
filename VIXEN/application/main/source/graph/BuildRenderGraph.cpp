@@ -1804,7 +1804,71 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 inst.octreeIndex = 0u;    // unused by Procedural
                 inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
                 inst.recipeId = recipeId; // >=2 -> routes through the spliced uber path
+                // Recipe-Parameterization M2 Task 6: seed a real per-instance varying value
+                // (not the previous all-zero placeholder) so a future ReadParam-using recipe
+                // (M3's live demo) has something live to read; none of these N demo programs
+                // use ReadParam yet, so this is inert today but proves the SSBO carries a
+                // genuinely varying value end-to-end per instance.
+                inst.recipeParams[0] = static_cast<float>(i % 10);
                 uberBodies.push_back(inst);
+            }
+
+            // Recipe-Parameterization M3 Task 8: append ONE genuinely ReadParam-driven body —
+            // program = { sphere(center, kReadParamDemoBaseRadius), ReadParam(0), MathSub }, i.e.
+            // sd = |p-center| - kReadParamDemoBaseRadius - params[0] (MathSub is non-commutative
+            // a-b; stack order [sphereSD, readParam] gives a=sphereSD, b=params[0]). Subtracting a
+            // runtime-read scalar from a baked sphere's distance field is exactly a radius offset,
+            // so this body's rendered radius = kReadParamDemoBaseRadius + recipeParams[0], varied
+            // live in PreTick() (VIXEN_PROCEDURAL_UBER_DEMO's own sweep, gated on the SAME env var
+            // — see PreTick's "Recipe-Parameterization M3 Task 8" block). recipeId = 2+n is the
+            // next free id after the N structurally-varied bodies just registered above.
+            // ReadParam/MathSub are deliberately NOT on the Lipschitz occupancy-grid whitelist
+            // (RecipeOccupancy.h) — DeriveOccupancyGrid declines gracefully (occupancyGridDim=0,
+            // documented non-hazard), and are NOT on DeriveConservativeBounds's whitelist either,
+            // so boundCenter/boundRadius are authored explicitly here (must cover the full sweep
+            // range, not just the base radius) rather than left for derivation to guess wrong.
+            {
+                constexpr float kReadParamDemoBaseRadius = 6.0f;
+                constexpr float kReadParamDemoSweepMax   = 3.0f;  // PreTick sweeps params[0] in [-max,+max]
+                const uint32_t readParamRecipeId = static_cast<uint32_t>(2 + n);
+                // X-offset from body 0's own center (64,64,kBaseZ) — NOT kBaseZ-kSpacingZ (a
+                // negative-Z placement that landed behind the camera/outside the frustum in the
+                // first authored version of this block, confirmed by a live capture showing zero
+                // visible change — fixed by placing this body at the SAME Z as the already-
+                // confirmed-visible body 0, offset sideways so the two don't overlap).
+                const glm::vec3 rpCenter(64.0f + 14.0f, 64.0f, kBaseZ);
+
+                SdfInstruction rpSphere{}; rpSphere.opCode = (uint8_t)SdfOpCode::Sphere;
+                rpSphere.data[0] = rpCenter.x; rpSphere.data[1] = rpCenter.y; rpSphere.data[2] = rpCenter.z;
+                rpSphere.data[3] = kReadParamDemoBaseRadius;
+                SdfInstruction rpRead{}; rpRead.opCode = (uint8_t)SdfOpCode::ReadParam;
+                rpRead.paramMask = 1; rpRead.data[0] = 0.0f;  // index 0 into recipeParams[]
+                SdfInstruction rpSub{}; rpSub.opCode = (uint8_t)SdfOpCode::MathSub;
+
+                Vixen::SVO::RecipeRegistry::RecipeEntry rpEntry{};
+                rpEntry.bytecode    = { rpSphere, rpRead, rpSub };
+                rpEntry.boundCenter = rpCenter;
+                rpEntry.boundRadius = kReadParamDemoBaseRadius + kReadParamDemoSweepMax + 2.0f;  // margin
+
+                auto rpRegResult = RegisterProceduralRecipe(readParamRecipeId, rpEntry);
+                if (rpRegResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: "
+                                     "RegisterProceduralRecipe(ReadParam demo, " +
+                                     std::to_string(readParamRecipeId) + ") failed, code " +
+                                     std::to_string(static_cast<int>(rpRegResult)));
+                } else {
+                    Vixen::SVO::BodyInstanceGpu rpInst{};
+                    rpInst.renderScale  = 1.0f;   // unused by Procedural
+                    rpInst.color[0] = 1.0f; rpInst.color[1] = 0.85f; rpInst.color[2] = 0.2f;  // gold tint, visually distinct
+                    rpInst.octreeIndex  = 0u;     // unused by Procedural
+                    rpInst.providerKind = 1u;     // PROVIDER_PROCEDURAL
+                    rpInst.recipeId     = readParamRecipeId;
+                    rpInst.recipeParams[0] = 0.0f;  // PreTick's sweep overwrites this every frame
+                    uberBodies.push_back(rpInst);
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: registered "
+                                     "ReadParam demo body recipeId=" + std::to_string(readParamRecipeId) +
+                                     " baseRadius=" + std::to_string(kReadParamDemoBaseRadius));
+                }
             }
 
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {

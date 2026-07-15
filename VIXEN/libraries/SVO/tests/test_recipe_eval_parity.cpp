@@ -2184,3 +2184,83 @@ TEST(RecipeEvalParity, M5_CompositionAll_IndependentOracle) {
             << "  evalRecipe=" << evalRecipe(prog,10,p)
             << "  oracle=" << compositionOracle(p);
 }
+
+// =========================================================================
+// Recipe-Parameterization-Plan-2026-07 M1 Task 4: ReadParam / ReadParamFloat3
+// =========================================================================
+
+static SdfInstruction readParamOp(float slotIdx) {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::ReadParam;
+    in.paramMask = 1; in.data[0] = slotIdx; return in;
+}
+static SdfInstruction readParamFloat3Op(float slotIdx) {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::ReadParamFloat3;
+    in.paramMask = 1; in.data[0] = slotIdx; return in;
+}
+
+TEST(RecipeEvalParity, ReadParamReadsIndexedValue) {
+    const float params[] = { 10.0f, 20.0f, 30.0f };
+    SdfInstruction prog[] = { readParamOp(0.0f) };
+    EXPECT_NEAR(evalRecipe(prog, 1, glm::vec3(0), params), 10.0f, 1e-6f);
+
+    SdfInstruction prog1[] = { readParamOp(1.0f) };
+    EXPECT_NEAR(evalRecipe(prog1, 1, glm::vec3(0), params), 20.0f, 1e-6f);
+
+    SdfInstruction prog2[] = { readParamOp(2.0f) };
+    EXPECT_NEAR(evalRecipe(prog2, 1, glm::vec3(0), params), 30.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, ReadParamOutOfRangeFailsSafeToZero) {
+    const float params[] = { 10.0f, 20.0f };
+    SdfInstruction prog[] = { readParamOp(5.0f) }; // idx 5 >= size 2
+    EXPECT_NEAR(evalRecipe(prog, 1, glm::vec3(0), params), 0.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, ReadParamWithEmptyParamsFailsSafeToZero) {
+    // Default-constructed empty span (pre-P4 call-site shape) -- must not crash.
+    SdfInstruction prog[] = { readParamOp(0.0f) };
+    EXPECT_NEAR(evalRecipe(prog, 1, glm::vec3(0)), 0.0f, 1e-6f);
+}
+
+TEST(RecipeEvalParity, ReadParamFloat3ReadsThreeConsecutiveValues) {
+    // Sum the 3 components via Float3Dot-with-self would need a second float3; simplest proof is
+    // DecomposeFloat3 to pull out each component independently.
+    const float params[] = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f }; // slot 0 = {1,2,3}, slot 1 = {4,5,6}
+
+    auto decompose = [&](float slotIdx, int channel) {
+        SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::DecomposeFloat3; in.data[0] = (float)channel;
+        SdfInstruction prog[] = { readParamFloat3Op(slotIdx), in };
+        return evalRecipe(prog, 2, glm::vec3(0), params);
+    };
+
+    EXPECT_NEAR(decompose(0.0f, 0), 1.0f, 1e-6f); // slot 0 .x
+    EXPECT_NEAR(decompose(0.0f, 1), 2.0f, 1e-6f); // slot 0 .y
+    EXPECT_NEAR(decompose(0.0f, 2), 3.0f, 1e-6f); // slot 0 .z
+    EXPECT_NEAR(decompose(1.0f, 0), 4.0f, 1e-6f); // slot 1 .x
+    EXPECT_NEAR(decompose(1.0f, 1), 5.0f, 1e-6f); // slot 1 .y
+    EXPECT_NEAR(decompose(1.0f, 2), 6.0f, 1e-6f); // slot 1 .z
+}
+
+TEST(RecipeEvalParity, ReadParamFloat3OutOfRangePerComponentFailSafe) {
+    // slot 1 -> base index 3; params has only 4 entries (indices 0..3), so component .y (base+1=4)
+    // and .z (base+2=5) are out-of-range and must fail safe to 0, while .x (base=3) is in range.
+    const float params[] = { 100.0f, 200.0f, 300.0f, 400.0f };
+    SdfInstruction decomposeX{}; decomposeX.opCode = (uint8_t)SdfOpCode::DecomposeFloat3; decomposeX.data[0] = 0.0f;
+    SdfInstruction decomposeY{}; decomposeY.opCode = (uint8_t)SdfOpCode::DecomposeFloat3; decomposeY.data[0] = 1.0f;
+    SdfInstruction decomposeZ{}; decomposeZ.opCode = (uint8_t)SdfOpCode::DecomposeFloat3; decomposeZ.data[0] = 2.0f;
+
+    SdfInstruction progX[] = { readParamFloat3Op(1.0f), decomposeX };
+    SdfInstruction progY[] = { readParamFloat3Op(1.0f), decomposeY };
+    SdfInstruction progZ[] = { readParamFloat3Op(1.0f), decomposeZ };
+    EXPECT_NEAR(evalRecipe(progX, 2, glm::vec3(0), params), 400.0f, 1e-6f); // in-range
+    EXPECT_NEAR(evalRecipe(progY, 2, glm::vec3(0), params), 0.0f, 1e-6f);   // out-of-range
+    EXPECT_NEAR(evalRecipe(progZ, 2, glm::vec3(0), params), 0.0f, 1e-6f);   // out-of-range
+}
+
+TEST(RecipeEvalParity, ReadParamDoesNotAffectExistingPushParam) {
+    // Regression pin: PushParam (baked literal) and ReadParam (runtime-indexed) are distinct
+    // opcodes with distinct semantics -- confirm PushParam still ignores the params array.
+    const float params[] = { 999.0f };
+    SdfInstruction pushProg[] = { pushParamOp(42.0f) };
+    EXPECT_NEAR(evalRecipe(pushProg, 1, glm::vec3(0), params), 42.0f, 1e-6f);
+}

@@ -448,6 +448,39 @@ void VulkanGraphApplication::PreTick() {
                                         factions, {});
             }
         }
+
+        // Recipe-Parameterization M3 Task 8: per-frame recipeParams[0] sweep for the ReadParam
+        // demo body BuildRenderGraph.cpp registered above (VIXEN_PROCEDURAL_UBER_DEMO, gated on
+        // the SAME env var so this block is a true no-op when the demo isn't active). Deliberately
+        // NOT an engine-wide SDFImplicitParams-style sync (explicitly out of scope, plan §0) — a
+        // plain per-frame SetInstances() call with ONE mutated float is the whole mechanism, per
+        // the plan's own scope note. Reads the CURRENT instance list back from the node (mutating
+        // one instance's recipeParams[0] and re-submitting the WHOLE list, since SetInstances
+        // replaces wholesale) rather than caching a duplicate copy at the app level — the node is
+        // already the single source of truth for "what's currently staged."
+        if (std::getenv("VIXEN_PROCEDURAL_UBER_DEMO")) {
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(
+                    renderGraph ? renderGraph->GetInstance(bodyOctreeSceneNode_) : nullptr)) {
+                std::vector<Vixen::SVO::BodyInstanceGpu> instances = bodyScene->GetInstances();
+                // The ReadParam demo body is always appended LAST by BuildRenderGraph.cpp's
+                // VIXEN_PROCEDURAL_UBER_DEMO block; a plain color-tag check (gold tint) confirms
+                // we're mutating the right one without needing to plumb its recipeId/index through.
+                if (!instances.empty()) {
+                    Vixen::SVO::BodyInstanceGpu& rp = instances.back();
+                    if (rp.providerKind == 1u && rp.color[0] == 1.0f && rp.color[1] == 0.85f && rp.color[2] == 0.2f) {
+                        constexpr float kSweepAmplitude = 3.0f;   // matches BuildRenderGraph.cpp's kReadParamDemoSweepMax
+                        constexpr float kSweepSpeed     = 0.05f;  // radians/frame
+                        rp.recipeParams[0] = kSweepAmplitude *
+                            std::sin(static_cast<float>(hudUpdateTick_) * kSweepSpeed);
+                        // SAME instance COUNT every frame -> BodyOctreeSceneNode::SetInstances never
+                        // calls MarkNeedsRecompile (see its own comment: "Do NOT call MarkNeedsRecompile
+                        // for a steady same-size update"). This is the live proof Task 9's dedicated
+                        // gtest also pins structurally.
+                        bodyScene->SetInstances(std::move(instances));
+                    }
+                }
+            }
+        }
     } catch (const std::exception& e) {
         lastError_ = std::string("PreTick failed: ") + e.what();
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);

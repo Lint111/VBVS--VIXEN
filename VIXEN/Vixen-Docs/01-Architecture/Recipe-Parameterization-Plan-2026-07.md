@@ -150,7 +150,20 @@ genuine mismatch is found, in which case flag it, don't silently diverge); SPIR-
 constants; any node-graph/`ParameterDefinition`/`SetParameter` change (that system stays exactly
 as-is — it's the *upstream* content-authoring layer that would feed `recipeParams[]` in a full
 authoring pipeline, but wiring THAT bridge is separate follow-up work, not this plan; this plan
-only makes the VM/shader side capable of consuming a param array that already reaches the GPU).
+only makes the VM/shader side capable of consuming a param array that already reaches the GPU);
+**per-recipe-type declared Gaia query / batched-dispatch instantiation** — a real follow-on idea
+(user, 2026-07-15) for auto-generating each recipe type's sim-data fetch as a declared query
+against the same view layer, batching same-recipe instances into one dispatch group, and enabling
+easy indirect instantiation — captured as
+[[Recipe-Declared-Gaia-Query-Direction-2026-07]], explicitly depends on THIS plan shipping first
+(there's no `recipeParams[]`/`ReadParam` to batch-populate until M1/M2 land); **partial/dirty-only
+instance SSBO upload** — a real follow-on optimization idea (user, 2026-07-15) to only re-upload
+changed `recipeParams[]` data instead of the whole instance array every frame — captured as
+[[Instance-SSBO-Dirty-Upload-Direction-2026-07]]; genuinely harder than it looks (the destination
+is a per-frame-in-flight RING buffer, not one persistent buffer, so naive dirty-tracking is
+actually WRONG — a changed instance stays effectively-dirty for up to `kRingSize` frames, not 1)
+and likely not load-bearing at today's instance counts — measure before building, the direction
+doc's own recommendation is to revisit once the JIT epic's N≥100 target is real.
 
 ---
 
@@ -160,30 +173,214 @@ only makes the VM/shader side capable of consuming a param array that already re
   opcodes registered, `evalRecipe` correctly reads from a passed-in params array, registry accepts
   `ReadParam`/`ReadParamFloat3` and continues rejecting `paramMask!=0` on every other opcode, stack
   arity/overflow checks unaffected, zero regression on the existing recipe/SVO suites.
-  - [ ] Not started.
+  **✅ DONE 2026-07-15, Opus-validated APPROVED** — commits `353e6b8e..aaa28116` (worktree
+  `feat/recipe-parameterization-inc1`, one commit per task + a follow-up test-scope fix). Opcodes
+  `ReadParam=96`/`ReadParamFloat3=111` mirrored from Yeroket canonical (confirmed byte-identical
+  at validation time, not stale); opcode 110 correctly identified as `CurlNoise3D` (NOT free) and
+  deliberately left unmirrored. `RecipeStackArity` entries `{0,1,0,0}`/`{0,3,0,0}` confirmed to
+  match eval-code push counts. `paramMask` allow-list narrowed correctly — P4 opcodes require
+  nonzero mask, every other opcode's `!=0` reject pinned by regression test
+  `ParamMaskOnUnrelatedOpcodeStillRejected`. `evalRecipe`'s new `std::span<const float>` params
+  arg confirmed truly additive (grepped every call site). Bounds-check fail-safe (0.0f on
+  out-of-range) confirmed, no assert/crash. `PushParam` confirmed byte-identical/untouched.
+  Scope containment confirmed via merge-base diff — zero shader/GLSL/RenderGraph files touched.
+  **Test-scope finding (self-caught, fixed same milestone):** adding the 2 opcodes to
+  `IsValidSdfOpCode` tripped `RecipeGlslOpcodeCoverage.CorpusCoversEveryValidOpcode` (a drift-guard
+  expecting every valid opcode to be GLSL-corpus-exercised) since the GLSL emitter case is M2, not
+  M1 — fixed with a narrow, documented, temporary allowlist for opcodes 96/111 pointing at M2 Task
+  5 for removal. CPU gates green: `test_recipe_registry` 16/16, `test_recipe_eval_parity` 97/97,
+  `test_recipe_occupancy` 7/7 (120/120 recipe tests, 13 new). Validator independently reproduced
+  the build (Windows-native) and traced the 4 GPU-render test failures the implementer flagged
+  (`VUID-VkComputePipelineCreateInfo-layout-10069/-07988`) to a pre-existing shader/pipeline state
+  predating this branch's fork point (main is actually ahead on that code) — confirmed
+  environmental, not a regression. 11 further Gaia/VoxelInjector failures independently matched to
+  pre-existing **KI-027** (open, unrelated, predates this branch).
 - **M2 — GLSL emitter + shader-side plumbing** (Tasks 5-7) · gate: emitted-GLSL compiles through
   glslang (WSL, no GPU needed) for a `ReadParam`-using program; `evalRecipeField`/
   `getRecipeBoundSphere`/uber-shader call site correctly pass the per-instance params array through
   to the emitted field function; CPU-vs-GLSL numerical parity harness extended to sweep parameter
   values (not just structural opcode coverage).
-  - [ ] Not started.
+  **✅ DONE 2026-07-15** — commits `0b937df2..73b27f01`. Design decision confirmed:
+  argument-passing, per the `TraceWorld.glsl` legacy-path precedent (`inst.recipeParams[]` read
+  out of the SSBO once at each call site, threaded down as a plain `float params[6]` function
+  argument through `traceUberRecipeBody` → `evalRecipeField` → every emitted `sdfRecipe_<id>`) —
+  NOT the direct-SSBO-index alternative the plan's Risks section left open; `instanceIndex` was
+  never needed since the params array is read once by value at the call site, matching M1's own
+  resolution note. `getRecipeBoundSphere` deliberately left unchanged (bounds are structural
+  registry metadata, not param-dependent). Found and fixed a real bug during compile-gate
+  testing: `TraceWorldShadow` (the any-hit shadow-ray function) has its OWN second
+  `traceUberRecipeBody` call site (`TraceWorld.glsl` ~line 412) beyond the primary nearest-hit
+  `TraceWorld()` — missed on the first pass, caught by `test_uber_shader_splice`'s real
+  production-compile-path gate (3 of 6 sub-tests failed with a glslang "no matching overloaded
+  function found" error until fixed). CPU-vs-GPU numerical-parity-across-values check ACTUALLY
+  RAN (Windows-native, real GPU, not skipped):
+  `RecipeGlslNumericalParityTest.ReadParamSweepAcrossValuesWithoutRecompile` compiles one
+  `ReadParam` corpus program to SPIR-V exactly once and redispatches it against 5 distinct
+  `params[6]` values without recompiling, confirming CPU/GPU agreement at each — PASSED.
+  Full recipe/SVO suite green; `test_recipe_pool_render` and
+  `test_baked_vs_virtual_parity.VirtualRendersGeometricallyEquivalentToBaked` fail
+  identically (byte-for-byte same `bakedHits=0 virtualHits=0`/VUID signature) on a pure M1
+  baseline rebuild — confirmed pre-existing/environmental, not a regression from this milestone.
+  **Opus-validated APPROVED 2026-07-15** — validator independently ran the same numerical-parity
+  sweep test live (real GPU, confirmed genuinely compile-once/dispatch-5-values, not per-value
+  recompile), confirmed both `traceUberRecipeBody` call sites (including `TraceWorldShadow`) got
+  params threading, confirmed the M1 allowlist is fully gone with real corpus coverage replacing
+  it, and independently corroborated the 2 pre-existing failures via 5 pieces of evidence
+  (symmetric zero-hit failure upstream of any recipe path, both files last touched at a pre-branch
+  ancestor commit, `.spv`-owning shader untouched, zero non-test RenderGraph diff).
 - **M3 — Live zero-bake render + no-recompile proof** (Tasks 8-10) · **live-run gate, validation
   layers mandatory** · a registered `ReadParam` recipe renders as a virtual (zero-bake) body whose
   geometry visibly tracks `recipeParams[]` changes frame-to-frame; instrumented/logged proof that
   `SpliceProceduralRecipesIntoSource` / shader recompile does NOT fire on a pure param-value update
   (same bytecode, same instance count); baked (CPU-bake) evaluation of the same `ReadParam` recipe
   also produces correct, non-regressed geometry (bake-time snapshot of the param array).
-  - [ ] Not started.
+  **✅ DONE 2026-07-15** — commit `33694860`. Task 8: appended a genuine `ReadParam`-driven body
+  to `VIXEN_PROCEDURAL_UBER_DEMO` (`sphere(center,6.0) - ReadParam(0)` via `MathSub` — a runtime
+  radius offset), swept per-frame in `VulkanGraphApplication::PreTick` via
+  `3.0*sin(tick*0.05)`. Live capture (3 frames at distinct sweep phases) confirms (a) visibly
+  changing geometry — 3 different PNG checksums, gold sphere visibly grows/shifts; (b) zero-bake
+  holds — 0 `BakeSdfWorld`/`BuildSdfBodyOctree` calls logged for demo bodies; (c) **found a
+  pre-existing, unrelated bug**, filed as **[[Known-Issues|KI-033]]**: this exact live gate had
+  never been run to completion before (flagged "STILL CARRIED (windowed only)" in the
+  Lazy-Procedural M5 doc), and running it revealed a boot-time recompile of `body_octree_scene`
+  that leaves a shared descriptor set stale, producing a VUID cascade — independently isolation-
+  tested by BOTH the implementer and the Opus validator (env-gating the `ReadParam` body out,
+  byte-identical cascade either way) confirming this predates and is unrelated to
+  recipe-parameterization. Out of P4's scope (a shared-node descriptor-refresh gap, not a
+  recipe/param bug); not fixed in this milestone.
+  Task 9: dedicated gtest `ReadParamValueSweepNeverMarksNodeNeedsRecompile` (in
+  `test_body_octree_lifetime.cpp`, real GPU device) directly instruments
+  `NodeInstance::NeedsRecompile()` — not a log-grep — across 50 frames of pure `recipeParams[0]`
+  sine-sweep updates on a real `ReadParam`-registered recipe, same instance count/bytecode every
+  frame. Zero recompiles across all 50 frames (confirmed via `ADD_FAILURE` never firing). The
+  test's own `ExpectNoValidationErrors` assertions fail due to the SAME pre-existing EOS-overlay
+  Vulkan-loader JSON error (`EOSOverlayVkLayer-Win32.json`) the unmodified sibling test
+  `RealNodeRingLifecycleHasNoValidationErrors` also hits identically — machine-local artifact,
+  unrelated to this change (zero-diff on `EnabledValidationLayers()`/wiring).
+  Task 10: `BakeRecipeInstructionsToSdfWorld` gained an additive `std::span<const float> params`
+  argument (default `{}`, every existing call site — `RecipeBaker.h`, `BodyOctreeSceneNode.cpp`,
+  `test_baked_vs_virtual_parity.cpp` — compiles unchanged). Two new tests in `test_recipe_bake.cpp`:
+  `ReadParamBakeDefaultsToZeroFillFailSafe` (no params passed → matches a plain non-parameterized
+  sphere, proving the empty-span default is well-defined) and
+  `ReadParamBakeWithExplicitSnapshotMatchesEvalRecipe` (explicit snapshot → matches both direct
+  `evalRecipe(..., snapshot)` and an equivalent-radius plain sphere). `BakeRegistryToPool` (the
+  generic bake-everything call site with no natural per-recipe snapshot source) deliberately kept
+  on the empty-span default per the plan's own guidance — no new `RecipeEntry` field added.
+  Full recipe/SVO suite green (176 recipe tests + `test_recipe_glsl_numerical_parity` 4/4 GPU);
+  `test_recipe_pool_render`/`test_baked_vs_virtual_parity`/`test_mip_fallback_render` fail
+  identically to the already-documented pre-existing baseline (zero-diff on their dependency files
+  since M2's `770ec1c1`).
+  **Opus-validated APPROVED 2026-07-15** — validator independently reproduced BOTH self-reported
+  concerns rather than accepting them: re-ran the KI-033 isolation test itself (same result, zero
+  VUIDs on any recipe-parameterization-touched binding); and — the strongest check in this
+  milestone — **proved the Task 9 no-recompile assertion can actually fail** by temporarily
+  injecting an unconditional `MarkNeedsRecompile()` into `SetInstances`, rebuilding, and confirming
+  the test fires `ADD_FAILURE` on all 50 frames, then reverting to restore the clean pass — the
+  assertion is a real, non-vacuous regression gate, not one that would pass regardless of the code
+  under test. Also independently confirmed the EOS-overlay loader failure is machine-local (the
+  unmodified sibling test hits it identically).
 - **M4 — Parity gate + doc closure + sweep** (Tasks 11-12) · **live-run gate** · baked-vs-virtual
   geometry parity (reusing Lazy-Procedural M6's IoU harness) on a `ReadParam` recipe at a specific
   snapshotted parameter value; full no-regression sweep across the recipe/SVO/RenderGraph suites;
   format-contract and JIT-direction docs updated to reflect P4 shipped.
-  - [ ] Not started.
+  **✅ DONE 2026-07-15 (DONE_WITH_CONCERNS on Task 11 specifically — carried obligation, see
+  below)** — commit `a6510536` (code) + doc-closure commit. Task 11: root-caused the
+  `test_baked_vs_virtual_parity.VirtualRendersGeometricallyEquivalentToBaked`
+  `bakedHits=0 virtualHits=0` failure that both the M2 and M3 Opus validators had independently
+  confirmed pre-existing but not root-caused further — found a REAL, FIXED bug: the test's
+  hand-built `VkDescriptorSetLayout` included a stale `binding=8` entry (a debug
+  `ShaderCountersBuffer`) removed from `BodyInstanceRayMarch.comp`'s reflected SPIR-V interface by
+  `8509f58b` on 2026-07-03; a local layout binding absent from the shader's actual resource
+  interface is a `VUID-VkComputePipelineCreateInfo-layout-07988`-class validation error at
+  pipeline-creation time — a bug genuinely SEPARATE from KI-033's boot-recompile theory (different
+  code path: these tests' own hand-built descriptor layouts vs. a live render-graph recompile),
+  independently confirmed by the Opus validator, not a reclassification of KI-033. Fixed in both
+  `test_baked_vs_virtual_parity.cpp` and `test_mip_fallback_render.cpp` (identical stale entry);
+  confirmed live (Windows-native, real AMD Radeon GPU) that `vkCreateComputePipelines` now succeeds
+  with **zero** VUID/validation-layer output in both, where every prior run had aborted or failed
+  at pipeline-creation time — genuine, verified progress. Fixing it exposed a SECOND, deeper,
+  unrelated pre-existing bug (filed as **[[Known-Issues|KI-032]]**): both harnesses dispatch only
+  `BodyInstanceRayMarch.comp` and read back its `outputImage`, but that image hasn't been written
+  by this shader since the Sampled-Lighting-Inc3 M1/M5 pass-split (`784adff7`, `747e156c`) moved
+  the real `imageStore` to a third shader, `SpatialReuseShade.comp` — the harnesses are reading
+  back genuinely untouched (correctly zeroed) memory, not observing a march/geometry failure.
+  Confirmed via a live isolation check that `HitRecord`/`idOutputImage` (bindings 18/9) ARE
+  written by the single dispatched pass and would show real data; the harnesses just don't read
+  those. This is why Task 11 is **CODE DONE / LIVE GATE PENDING** (the same carried-obligation
+  pattern as Lazy-Procedural M2's boot-lazy live gate): added corpus entry (4) `readparam_sphere`
+  reusing the EXACT `{sphere(center,2.0), ReadParam(0), MathSub}` bytecode shape M3 Task 8
+  registered/rendered live and `test_body_octree_lifetime.cpp`'s M3 gtest also uses, with a bake-
+  time snapshot (`readParamSnapshot={0.5}`, threaded through `BakeRecipeInstructionsToSdfWorld`'s
+  M1/M3 Task 10 `params` argument) IDENTICAL to the virtual path's `BodyInstanceGpu::recipeParams[0]`
+  value. Confirmed live: registers, bakes, splices, dispatches, and reads back with **zero VUIDs
+  and zero crashes** — the corpus entry, snapshot wiring, and virtual-instance wiring are all
+  provably correct and ready to produce a real IoU number the moment KI-032 is fixed; it currently
+  fails the SAME `bakedHits=0/virtualHits=0` structural symptom as every other corpus entry
+  (pre-existing and new alike), which is the expected, honest outcome given KI-032 is unfixed — not
+  a recipe-parameterization defect. The IoU floor (0.75, KI-LPD-003) was NOT weakened or bypassed.
+  Task 12: full sweep run (Windows-native, real GPU, fresh full build first) — the implementer's
+  own tally (225/229) undercounted; the Opus validator's independent recount found the true
+  pre-existing failure surface is larger — `test_rendergraph_criticalnodes_gpurender1` (7 failed,
+  not 1), `..._gpurender2b` (3 failed, not 2, incl. an uncited `ShadowCorrectnessTest.
+  OccludedPixelMatchesCpuReferenceShadowRay`), plus `test_recipe_pool_render` (1) — **every one
+  independently confirmed pre-existing** (every involved source/shader file last touched by
+  `375211ad`, an ancestor of this branch's fork point; zero diff on any of them this branch).
+  **Zero NEW regressions from this branch** — the correction is a reporting-accuracy fix, not a
+  correctness concern. Original 4 named failures
+  (`BodyInstanceRayMarchRenderTest.RenderRecipeBakedBody`,
+  `RecipePoolRenderTest.FourRecipesAllRender`,
+  `RecipeAuthoringGateTest.CsgSubtractRendersNonTrivial`,
+  `RecipeAuthoringGateTest.DefaultSceneRegression`) match the M1-established baseline exactly (same
+  `VUID-VkComputePipelineCreateInfo-layout-10069`/`-07988` signature — the same stale-descriptor-
+  layout drift class as KI-032, just in harnesses this milestone wasn't scoped to fix); 1 skip
+  (`SVOBuilderTest.GeometricError`, an unrelated `GTEST_SKIP()` in a different subsystem);
+  `test_baked_vs_virtual_parity`/`test_mip_fallback_render` aren't ctest-registered
+  (`gtest_discover_tests` didn't pick them up) so were run directly and separately confirmed above.
+  `test_recipe_pool_render` deliberately left unfixed (its own stale layout gap is materially
+  larger — missing bindings 15-22 entirely plus a wrong push-constant size, not just binding 8 —
+  out of Task 11's required scope, confirmed unchanged/no-new-regression). Doc updates: this doc
+  (Milestone Map + Progress Log), `Recipe-Container-Format-Contract-2026-06.md` §6 (+ two other
+  stale P4 references at §1.2/§3.2) flipped to shipped, `Runtime-Tiered-Recipe-Pipeline-JIT-
+  Direction-2026-07.md` intro + §5 flipped to keystone-shipped. M1 Task 1's drift check confirmed
+  a no-op (M1's own Milestone Map entry already documents byte-identical opcode values, no drift
+  found) — no new KI needed for that.
 
 ### Progress Log
 
 (populated as milestones complete — one entry per milestone: commit hash, gate evidence, Opus
 validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' convention.)
+
+- **Milestone M1 (Tasks 1-4): DONE** · commits `353e6b8e..aaa28116` · Opus validator APPROVED ·
+  2026-07-15. See Milestone Map entry above for full detail. Worktree
+  `.claude/worktrees/recipe-param-inc1` (branch `feat/recipe-parameterization-inc1`), not yet
+  merged to main — remaining milestones (M2-M4) continue on this branch/worktree before merge.
+- **Milestone M2 (Tasks 5-7): DONE** · commits `0b937df2..73b27f01` · Opus validator APPROVED ·
+  2026-07-15. See Milestone Map entry above for full detail. Same worktree/branch, continuing
+  before merge to main.
+- **Milestone M3 (Tasks 8-10): DONE** · commit `33694860` · Opus validator APPROVED · 2026-07-15.
+  See Milestone Map entry above for full detail. Same worktree/branch, continuing before merge to
+  main. **New known issue filed as [[Known-Issues|KI-033]]** (pre-existing, not a regression):
+  boot-time `body_octree_scene` recompile leaves `voxelGridNode`-sourced descriptor bindings stale
+  under `VIXEN_PROCEDURAL_UBER_DEMO` — double isolation-tested (implementer + validator,
+  independently). Validator additionally proved the Task 9 no-recompile gtest is non-vacuous by
+  injecting a real regression and confirming it fails.
+- **Milestone M4 (Tasks 11-12): DONE, Task 11 DONE_WITH_CONCERNS (carried obligation)** ·
+  commit `a6510536` (code) + doc-closure commit · Opus validator APPROVED · 2026-07-15. **This is
+  the FINAL milestone — branch is READY for the finishing-a-development-branch merge step.** See
+  Milestone Map entry above for full detail. Root-caused and FIXED a real bug (stale `binding=8`
+  descriptor-layout entry) genuinely SEPARATE from KI-033 (independently confirmed by the
+  validator, not a misdiagnosis retraction — two distinct bugs on two distinct code paths); fixing
+  it exposed a second, deeper, unrelated pre-existing bug, filed as **[[Known-Issues|KI-032]]**
+  (RenderGraph test-harness reads back an `outputImage` no longer written after the
+  Sampled-Lighting-Inc3 pass-split — a RenderGraph/shader-pass-chaining problem, not a
+  recipe/param-VM one). Task 11's `ReadParam` parity corpus entry is CODE DONE / LIVE GATE PENDING
+  on KI-032 — confirmed correct via a clean zero-VUID, zero-crash live run, not a fake pass. Task
+  12's full sweep: validator's corrected independent recount found a larger (but still 100%
+  pre-existing, zero-new-regression) failure surface than the implementer's own tally — see
+  Milestone Map entry for the corrected count. Format-contract and JIT-direction docs flipped to
+  P4-shipped. **KI numbering collision found and fixed post-validation**: KI-032/KI-033 had
+  originally been filed as KI-028/KI-029, colliding with two pre-existing Sampled-Lighting-Inc4
+  entries already using those numbers — renumbered to the validator-confirmed next-free slots.
 
 ---
 

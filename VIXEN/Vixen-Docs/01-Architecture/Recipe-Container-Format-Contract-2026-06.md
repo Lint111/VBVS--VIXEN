@@ -58,7 +58,9 @@ static_assert(sizeof(RecipeContainerHeader) == 32);
 struct SdfInstruction {
     uint8_t opCode;     // SdfOpCode enum (see §2)
     uint8_t inputMask;  // reserved; always 0 in VIXEN runtime
-    uint8_t paramMask;  // 0 = all-baked; ≠0 = dynamic param (P4, not yet supported)
+    uint8_t paramMask;  // 0 = all-baked; ≠0 = dynamic param, REQUIRED on ReadParam/
+                        // ReadParamFloat3 (P4, shipped — see §6), still rejected on every
+                        // other opcode
     uint8_t _pad1;      // padding; always 0
     float   data[32];   // Data0..Data7 packed as 8 float4s = 32 floats = 128 bytes
 };
@@ -142,7 +144,8 @@ struct RecipeEntry {
 1. `recipeId` must be unique within the registry.
 2. `bytecode` must be non-empty.
 3. Every `opCode` must be a valid `SdfOpCode` enumerator.
-4. `paramMask` must be 0 on every instruction (dynamic params are P4).
+4. `paramMask` must be 0 on every instruction EXCEPT `ReadParam`/`ReadParamFloat3`, which
+   REQUIRE `paramMask != 0` (P4, shipped — see §6).
 5. Static stack simulation must not underflow or overflow 64 slots.
 
 Violation returns a `RegisterResult` enum value other than `Ok`.
@@ -230,5 +233,14 @@ whether to reject or trim.
 ## 6. Format Evolution
 
 - **P2.4 (2026-06):** Initial VRC1 format; 87 opcodes; `paramMask` reserved.
-- **P4 (planned):** `paramMask ≠ 0` opcodes; `ReadParam` instruction;
-  per-frame override through `SetRecipeParams()`.
+- **P4 (shipped 2026-07-15):** `paramMask ≠ 0` opcodes (`ReadParam=96`, `ReadParamFloat3=111`);
+  per-instance override via `BodyInstanceGpu::recipeParams[6]` (binding 10, uploaded every
+  frame — no new GPU binding/buffer). `paramMask` is now a narrow allow-list: `!=0` is required
+  on exactly these two opcodes (an explicit "data[0] is a runtime param-array index" marker) and
+  still rejected on every other opcode, unchanged from P2.4. See
+  [[Recipe-Parameterization-Plan-2026-07]] for the full design/implementation (commits
+  `353e6b8e..0ae8ea48` M1-M3, M4 doc-closure commit TBD at merge). Known carried gap: the M4
+  baked-vs-virtual parity gate for a `ReadParam` recipe is CODE DONE / LIVE GATE PENDING — see
+  [[Known-Issues|KI-032]] (a pre-existing RenderGraph test-harness readback bug, unrelated to P4
+  itself; CPU-eval/GLSL-emit/registry/no-recompile claims are all independently live-verified via
+  other M1-M3 gates that don't share KI-032's stale-readback path).

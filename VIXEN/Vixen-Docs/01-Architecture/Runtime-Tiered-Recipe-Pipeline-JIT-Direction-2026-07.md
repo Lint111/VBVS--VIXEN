@@ -13,12 +13,16 @@
 > `switch(recipeId)` uber-shader degrades as recipe count rises. If M5 shows the switch scales fine,
 > this stays parked. Do not build ahead of that data.
 >
-> **Foundation dependency (user decision 2026-07-10): recipe parameterization is the KEYSTONE,
-> planned as the increment AFTER Inc1** — this JIT epic sits on top of it. Parameterization spans
-> TWO layers (user correction 2026-07-10): the **existing node-level** `ParameterDefinition` /
-> `SetParameter` capability (carries per-instance values to the node) + the **deferred recipe-VM
-> `ReadParam` opcode** (P4 dynamic params — lets the recipe program consume them) + SPIR-V
-> spec-constants for burned-in values. Both layers, wired together. See §5.
+> **Foundation dependency (user decision 2026-07-10): recipe parameterization is the KEYSTONE —
+> ✅ SHIPPED 2026-07-15** ([[Recipe-Parameterization-Plan-2026-07]], commits `353e6b8e..0ae8ea48`
+> M1-M3 + M4 doc-closure, all four milestones DONE, Opus-validated APPROVED). This JIT epic can now
+> build on top of it. Parameterization spans TWO layers (user correction 2026-07-10): the
+> **existing node-level** `ParameterDefinition`/`SetParameter` capability (carries per-instance
+> values to the node, unchanged by that plan) + the **recipe-VM `ReadParam`/`ReadParamFloat3`
+> opcodes** (P4 dynamic params — now shipped, lets the recipe program consume them via
+> `BodyInstanceGpu::recipeParams[6]`, no shader recompile on a pure value change). SPIR-V
+> spec-constants for burned-in per-shape values were explicitly deferred out of that plan (v1 uses
+> the instance-buffer path only) — still open for this JIT epic if/when it needs them. See §5.
 
 ## 1. The idea (user, 2026-07-10, verbatim intent)
 
@@ -78,21 +82,27 @@ the tiered-ESVO/lazy program leans on everywhere, applied to pipelines.
 
 ## 5. Keystone dependency: recipe parameterization — TWO layers, wired together
 
-**Planned as the increment after Inc1 (user decision 2026-07-10).** This is the foundation the whole
-JIT rests on. **Correction (user, 2026-07-10): parameterization spans TWO distinct existing/planned
-mechanisms — do not conflate them:**
+**✅ SHIPPED 2026-07-15** ([[Recipe-Parameterization-Plan-2026-07]], all 4 milestones DONE,
+Opus-validated APPROVED, commits `353e6b8e..0ae8ea48`). This was the foundation the whole JIT
+rests on — it is now in place, and this epic can be un-parked once the §8 decision-gate data is
+re-checked against current conditions. **Correction (user, 2026-07-10): parameterization spans TWO
+distinct mechanisms — do not conflate them:**
 
-1. **Node-level parameters — VIXEN node-graph capability, EXISTS TODAY.** `NodeType` /
-   `ParameterDefinition` with `SetParameter` / `GetParameter` (used across the instancing demos,
-   ~34 callers). This is the plumbing that carries a per-instance value from the app/graph **down to
-   the render node** and into an instance param buffer / uniform. It is NOT a shader primitive and
-   NOT the recipe VM.
-2. **Recipe-VM `ReadParam` opcode — a BYTECODE instruction, deferred to kernel-codegen "P4 dynamic
-   params".** `ReadParam` (opcode 96) / `ReadParamFloat3` (111) are recipe-VM opcodes (see
-   [[Recipe-Container-Format-Contract-2026-06]] P4, and the SDF-Recipe-Kernel-Codegen P2.4 specs
-   where they are explicitly DEFERRED). They let the **recipe program itself** read a dynamic
-   parameter *instead of a baked-in constant*, evaluated by `evalRecipe` (CPU) and the field emitters
-   (GPU). Today recipes are closed constant programs (`paramMask==0` enforced).
+1. **Node-level parameters — VIXEN node-graph capability, EXISTS TODAY (unchanged by the
+   parameterization plan).** `NodeType` / `ParameterDefinition` with `SetParameter` / `GetParameter`
+   (used across the instancing demos, ~34 callers). This is the plumbing that carries a per-instance
+   value from the app/graph **down to the render node** and into an instance param buffer / uniform.
+   It is NOT a shader primitive and NOT the recipe VM.
+2. **Recipe-VM `ReadParam` opcode — a BYTECODE instruction, SHIPPED 2026-07-15.** `ReadParam`
+   (opcode 96) / `ReadParamFloat3` (111) are recipe-VM opcodes (see
+   [[Recipe-Container-Format-Contract-2026-06]] §6, P4 shipped) that let the **recipe program
+   itself** read a dynamic parameter *instead of a baked-in constant*, evaluated by `evalRecipe`
+   (CPU) and the field emitters (GPU), sourced from `BodyInstanceGpu::recipeParams[6]` (binding 10,
+   already-existing per-instance upload path — no new GPU binding/buffer). Confirmed live: a
+   `recipeParams[]` value change does NOT trigger a shader recompile (M3 Task 9, 50-frame
+   instrumented gate) and the rendered geometry visibly tracks the value frame-to-frame (M3 Task 8).
+   Recipes with `paramMask==0` on every instruction remain closed constant programs exactly as
+   before — P4 only relaxes the gate for these two opcodes specifically.
 
 **"Parameterable recipes" requires BOTH, wired:** node capability (1) supplies the value → it lands
 in a per-instance param buffer → the recipe VM's `ReadParam` opcode (2) consumes it during

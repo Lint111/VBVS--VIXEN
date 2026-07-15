@@ -382,16 +382,16 @@ protected:
         vkUnmapMemory(logicalDevice_, mem);
     }
 
-    // Render using the real BodyInstanceRayMarch shader (bindings 0-5,8-13).
+    // Render using the real BodyInstanceRayMarch shader (bindings 0-5,9-22; binding 8 does
+    // not exist in the reflected SPIR-V — see the descriptor-layout comment below).
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms) {
         ASSERT_TRUE(deviceConfirmed_);
-        VkBuffer traceBuf=VK_NULL_HANDLE, ctrBuf=VK_NULL_HANDLE;
-        VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
+        VkBuffer traceBuf=VK_NULL_HANDLE;
+        VkDeviceMemory traceMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf, ctrMem, true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE, dummyTierRef=VK_NULL_HANDLE, dummyOccGrid=VK_NULL_HANDLE;
         VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE, dTierRefMem=VK_NULL_HANDLE, dOccGridMem=VK_NULL_HANDLE;
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyIter,dIterMem,true);  // Inc1 M4b binding 14
@@ -445,14 +445,19 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,21> bindings = {
+        // NOTE: binding 8 (ShaderCounters debug SSBO) deliberately absent — removed from the
+        // shader's reflected interface by 8509f58b (ENABLE_SHADER_COUNTERS compiled out
+        // unconditionally; see SceneBindings.glsl's binding-8 comment). Including it here
+        // desyncs this local layout from the SPIR-V module's actual resource interface,
+        // which is a VUID-VkComputePipelineCreateInfo-layout-07988-class validation error
+        // (root-caused 2026-07-15, Recipe-Parameterization M4).
+        const std::array<VkDescriptorSetLayoutBinding,20> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -488,7 +493,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -504,7 +509,7 @@ protected:
         VkDescriptorImageInfo historyImgI{VK_NULL_HANDLE,historyView,VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
-            ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
+            instI{inst,0,VK_WHOLE_SIZE},
             sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{mip,0,VK_WHOLE_SIZE},
             tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, occGridI{dummyOccGrid,0,VK_WHOLE_SIZE},
             lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
@@ -521,9 +526,9 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,21> writes = {
+        const std::array<VkWriteDescriptorSet,20> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
-            wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
+            wB(5,&cfgI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI),  // Inc1 M4b: per-instance iteration debug
             wB(15,&tierRefI),  // Tiered-ESVO: TierRefTableBuffer
             wB(16,&occGridI),  // M6 Task 13: OccupancyGridBuffer
@@ -595,7 +600,6 @@ protected:
         vkDestroyImage(logicalDevice_,idImg,nullptr);    vkFreeMemory(logicalDevice_,idMem,nullptr);
         vkDestroyImage(logicalDevice_,historyImg,nullptr); vkFreeMemory(logicalDevice_,historyMem,nullptr);
         vkDestroyBuffer(logicalDevice_,traceBuf,nullptr); vkFreeMemory(logicalDevice_,traceMem,nullptr);
-        vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);    vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
         if (dummyMip    != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyMip,nullptr);    vkFreeMemory(logicalDevice_,dMipMem,nullptr); }

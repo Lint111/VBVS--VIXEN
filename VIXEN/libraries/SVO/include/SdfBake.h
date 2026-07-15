@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <cmath>
+#include <span>
 #include <vector>
 #include <functional>
 
@@ -277,13 +278,25 @@ inline SdfBakeResult BakeRecipeToSdfWorldWithEmission(uint32_t recipeId, const g
 // sample point before evaluation, so a primitive authored at local (0,0,0)
 // lands at `center` in the grid. This mirrors evalSdf's `p - center` exactly
 // (SdfBake.h ~line 45) — the two bake paths are now consistent.
+//
+// params: Recipe-Parameterization M3 Task 10 — bake-time SNAPSHOT for a ReadParam/
+// ReadParamFloat3 recipe. Baking produces a static voxel grid, so a "dynamic" runtime
+// param becomes whatever value is current AT BAKE TIME — this is exactly that snapshot,
+// threaded straight to evalRecipe's own params span. Defaults to an empty span so every
+// existing call site (BakeRegistryToPool's generic per-entry loop, which has no natural
+// per-recipe snapshot source today) compiles unchanged and falls back to evalRecipe's own
+// well-defined zero-fill fail-safe on ReadParam (documented behavior, not a footgun) — a
+// caller baking a SPECIFIC ReadParam recipe that needs a real snapshot value passes one
+// explicitly (e.g. the authoring/demo path that already knows the intended param value at
+// bake time).
 inline SdfBakeResult BakeRecipeInstructionsToSdfWorld(const Recipe::SdfInstruction* prog,
                                                       uint32_t count,
                                                       const glm::vec3& center,
                                                       int n, float bandVoxels,
-                                                      int brickDepth = 3) {
+                                                      int brickDepth = 3,
+                                                      std::span<const float> params = {}) {
     return BakeSdfWorld(
-        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center); },
+        [&](const glm::vec3& p) { return Recipe::evalRecipe(prog, count, p - center, params); },
         center, n, bandVoxels, brickDepth);
 }
 

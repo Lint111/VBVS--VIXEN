@@ -45,10 +45,12 @@ inline StackArity RecipeStackArity(SdfOpCode op) {
         case SdfOpCode::PositionChannel:
         case SdfOpCode::DistanceTo:
         case SdfOpCode::PushParam:
+        case SdfOpCode::ReadParam:
             return {0, 1, 0, 0};
 
-        // PushFloat3: push 3 values
+        // PushFloat3 / ReadParamFloat3: push 3 values
         case SdfOpCode::PushFloat3:
+        case SdfOpCode::ReadParamFloat3:
             return {0, 3, 0, 0};
 
         // --- Unary value ops: pop 1, push 1 (net 0) ---
