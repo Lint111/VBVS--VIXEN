@@ -88,10 +88,15 @@ inline std::string SpliceProceduralRecipesIntoSource(
             << "\n";
     }
 
-    out << "float evalRecipeField(uint recipeId, vec3 p) {\n"
+    // params (Recipe-Parameterization M2 Task 6): threaded through as a plain function
+    // argument, following the TraceWorld.glsl legacy-path precedent (BodyInstance.recipeParams
+    // read out of the SSBO once at the call site, passed down as an argument — not re-indexed
+    // from the SSBO inside deeply-nested functions). Every case takes it uniformly even though
+    // only ReadParam/ReadParamFloat3-using recipes reference it.
+    out << "float evalRecipeField(uint recipeId, vec3 p, float params[6]) {\n"
            "  switch (recipeId) {\n";
     for (uint32_t id : ids) {
-        out << "    case " << id << "u: return sdfRecipe_" << id << "(p);\n";
+        out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params);\n";
     }
     out << "    default: return 0.0;\n"
            "  }\n"

@@ -1672,6 +1672,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 inst.octreeIndex = 0u;    // unused by Procedural
                 inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
                 inst.recipeId = recipeId; // >=2 -> routes through the spliced uber path
+                // Recipe-Parameterization M2 Task 6: seed a real per-instance varying value
+                // (not the previous all-zero placeholder) so a future ReadParam-using recipe
+                // (M3's live demo) has something live to read; none of these N demo programs
+                // use ReadParam yet, so this is inert today but proves the SSBO carries a
+                // genuinely varying value end-to-end per instance.
+                inst.recipeParams[0] = static_cast<float>(i % 10);
                 uberBodies.push_back(inst);
             }
 

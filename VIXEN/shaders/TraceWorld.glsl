@@ -143,8 +143,15 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
                 } else {
                     uint pSteps;
+                    // Recipe-Parameterization M2 Task 6: read inst.recipeParams[] out of the
+                    // SSBO once here and pass it down as a plain argument — same convention
+                    // the legacy recipeId<2 branch above already uses for pParams, not a
+                    // re-index inside the emitted field-function bodies.
+                    float uberParams[6] = float[6](
+                        inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
+                        inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                               rayOrigin, rayDir, pNormal, pT, pSteps);
+                                               rayOrigin, rayDir, uberParams, pNormal, pT, pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
@@ -402,8 +409,13 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
                 vec3  boundCenter; float boundRadius; float relaxation;
                 getRecipeBoundSphere(inst.recipeId, boundCenter, boundRadius, relaxation);
                 uint pSteps;
+                // Recipe-Parameterization M2 Task 6: same inst.recipeParams[] threading as
+                // TraceWorld's primary call site above.
+                float uberParams[6] = float[6](
+                    inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
+                    inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                           rayOrigin, rayDir, pNormal, pT, pSteps);
+                                           rayOrigin, rayDir, uberParams, pNormal, pT, pSteps);
             }
 #endif
 
