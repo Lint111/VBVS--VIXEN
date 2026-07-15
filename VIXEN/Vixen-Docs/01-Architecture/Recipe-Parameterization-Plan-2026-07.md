@@ -160,7 +160,28 @@ only makes the VM/shader side capable of consuming a param array that already re
   opcodes registered, `evalRecipe` correctly reads from a passed-in params array, registry accepts
   `ReadParam`/`ReadParamFloat3` and continues rejecting `paramMask!=0` on every other opcode, stack
   arity/overflow checks unaffected, zero regression on the existing recipe/SVO suites.
-  - [ ] Not started.
+  **✅ DONE 2026-07-15, Opus-validated APPROVED** — commits `353e6b8e..aaa28116` (worktree
+  `feat/recipe-parameterization-inc1`, one commit per task + a follow-up test-scope fix). Opcodes
+  `ReadParam=96`/`ReadParamFloat3=111` mirrored from Yeroket canonical (confirmed byte-identical
+  at validation time, not stale); opcode 110 correctly identified as `CurlNoise3D` (NOT free) and
+  deliberately left unmirrored. `RecipeStackArity` entries `{0,1,0,0}`/`{0,3,0,0}` confirmed to
+  match eval-code push counts. `paramMask` allow-list narrowed correctly — P4 opcodes require
+  nonzero mask, every other opcode's `!=0` reject pinned by regression test
+  `ParamMaskOnUnrelatedOpcodeStillRejected`. `evalRecipe`'s new `std::span<const float>` params
+  arg confirmed truly additive (grepped every call site). Bounds-check fail-safe (0.0f on
+  out-of-range) confirmed, no assert/crash. `PushParam` confirmed byte-identical/untouched.
+  Scope containment confirmed via merge-base diff — zero shader/GLSL/RenderGraph files touched.
+  **Test-scope finding (self-caught, fixed same milestone):** adding the 2 opcodes to
+  `IsValidSdfOpCode` tripped `RecipeGlslOpcodeCoverage.CorpusCoversEveryValidOpcode` (a drift-guard
+  expecting every valid opcode to be GLSL-corpus-exercised) since the GLSL emitter case is M2, not
+  M1 — fixed with a narrow, documented, temporary allowlist for opcodes 96/111 pointing at M2 Task
+  5 for removal. CPU gates green: `test_recipe_registry` 16/16, `test_recipe_eval_parity` 97/97,
+  `test_recipe_occupancy` 7/7 (120/120 recipe tests, 13 new). Validator independently reproduced
+  the build (Windows-native) and traced the 4 GPU-render test failures the implementer flagged
+  (`VUID-VkComputePipelineCreateInfo-layout-10069/-07988`) to a pre-existing shader/pipeline state
+  predating this branch's fork point (main is actually ahead on that code) — confirmed
+  environmental, not a regression. 11 further Gaia/VoxelInjector failures independently matched to
+  pre-existing **KI-027** (open, unrelated, predates this branch).
 - **M2 — GLSL emitter + shader-side plumbing** (Tasks 5-7) · gate: emitted-GLSL compiles through
   glslang (WSL, no GPU needed) for a `ReadParam`-using program; `evalRecipeField`/
   `getRecipeBoundSphere`/uber-shader call site correctly pass the per-instance params array through
@@ -184,6 +205,11 @@ only makes the VM/shader side capable of consuming a param array that already re
 
 (populated as milestones complete — one entry per milestone: commit hash, gate evidence, Opus
 validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' convention.)
+
+- **Milestone M1 (Tasks 1-4): DONE** · commits `353e6b8e..aaa28116` · Opus validator APPROVED ·
+  2026-07-15. See Milestone Map entry above for full detail. Worktree
+  `.claude/worktrees/recipe-param-inc1` (branch `feat/recipe-parameterization-inc1`), not yet
+  merged to main — remaining milestones (M2-M4) continue on this branch/worktree before merge.
 
 ---
 
