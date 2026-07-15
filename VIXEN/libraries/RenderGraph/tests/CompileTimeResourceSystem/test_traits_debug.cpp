@@ -9,7 +9,7 @@ using namespace Vixen::RenderGraph;
 static_assert(IsRegisteredType<VkSwapchainKHR>::value, "VkSwapchainKHR should be registered");
 static_assert(ResourceTypeTraits<VkSwapchainKHR>::isValid, "VkSwapchainKHR should be valid in traits");
 
-int main() {
+int run_test_traits_debug() {
     // If this compiles, the assertions passed
     return 0;
 }

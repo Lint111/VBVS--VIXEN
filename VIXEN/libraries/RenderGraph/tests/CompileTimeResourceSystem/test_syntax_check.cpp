@@ -3,6 +3,6 @@
 #include "Headers.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 
-int main() {
+int run_test_syntax_check() {
     return 0;
 }

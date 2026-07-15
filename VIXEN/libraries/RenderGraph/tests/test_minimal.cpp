@@ -5,7 +5,7 @@
 
 using namespace Vixen::RenderGraph;
 
-int main() {
+int run_test_minimal() {
     // Test 1: VkSwapchainKHR is registered directly in ResourceV3
     constexpr bool swapchain_registered = IsRegisteredType<VkSwapchainKHR>::value;
     std::cout << "IsRegisteredType<VkSwapchainKHR> = " << swapchain_registered << "\n";

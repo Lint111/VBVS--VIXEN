@@ -5,40 +5,29 @@ project(CompileTimeResourceSystemTests)
 include(GoogleTest)
 
 # ===========================================================================
-# test_minimal - Basic CompileTimeResourceSystem functionality
+# test_compile_time_resource_system - Merged CompileTimeResourceSystem debug
+# programs (PDB consolidation: test_minimal, test_compile_time_cache,
+# test_traits_debug, test_registration, test_simple_traits, test_syntax_check,
+# test_type_check). Each contributes a uniquely-named run_test_X() function;
+# test_compile_time_resource_system_main.cpp's int main() calls all 7 in
+# sequence. Union of every constituent's include dirs/link libs (gli was
+# needed by test_minimal/test_compile_time_cache/test_type_check).
 # ===========================================================================
-add_executable(test_minimal
+add_executable(test_compile_time_resource_system
     ../test_minimal.cpp
-)
-# Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_minimal PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_minimal PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
-set_property(TARGET test_minimal PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
-
-# ===========================================================================
-# test_compile_time_cache - Compile-time type caching validation
-# ===========================================================================
-add_executable(test_compile_time_cache
     test_compile_time_cache.cpp
-)
-# Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_compile_time_cache PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_compile_time_cache PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
-set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
-
-# ===========================================================================
-# test_traits_debug - ResourceTypeTraits debugging and validation
-# ===========================================================================
-add_executable(test_traits_debug
     test_traits_debug.cpp
+    test_registration.cpp
+    test_simple_traits.cpp
+    test_syntax_check.cpp
+    test_type_check.cpp
+    test_compile_time_resource_system_main.cpp
 )
 # Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_traits_debug PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_traits_debug PRIVATE RenderGraph ${Vulkan_LIBRARIES})
-set_property(TARGET test_traits_debug PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_traits_debug PROPERTY CXX_STANDARD_REQUIRED ON)
+target_include_directories(test_compile_time_resource_system PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
+target_link_libraries(test_compile_time_resource_system PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
+set_property(TARGET test_compile_time_resource_system PROPERTY CXX_STANDARD 23)
+set_property(TARGET test_compile_time_resource_system PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # ===========================================================================
 # Additional type system tests
@@ -63,76 +52,22 @@ set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
 # set_property(TARGET test_cache_performance PROPERTY CXX_STANDARD 23)
 # set_property(TARGET test_cache_performance PROPERTY CXX_STANDARD_REQUIRED ON)
 
-add_executable(test_registration
-    test_registration.cpp
-)
-# Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_registration PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_registration PRIVATE RenderGraph ${Vulkan_LIBRARIES})
-set_property(TARGET test_registration PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_registration PROPERTY CXX_STANDARD_REQUIRED ON)
-
-add_executable(test_simple_traits
-    test_simple_traits.cpp
-)
-# Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_simple_traits PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_simple_traits PRIVATE RenderGraph ${Vulkan_LIBRARIES})
-set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD_REQUIRED ON)
-
-add_executable(test_syntax_check
-    test_syntax_check.cpp
-)
-# Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_syntax_check PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_syntax_check PRIVATE RenderGraph ${Vulkan_LIBRARIES})
-set_property(TARGET test_syntax_check PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_syntax_check PROPERTY CXX_STANDARD_REQUIRED ON)
-
-add_executable(test_type_check
-    test_type_check.cpp
-)
-# Use VIXEN_ROOT for project root - link against RenderGraph for includes
-target_include_directories(test_type_check PRIVATE ${VIXEN_ROOT}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_type_check PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
-set_property(TARGET test_type_check PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_type_check PROPERTY CXX_STANDARD_REQUIRED ON)
-
 # Visual Studio solution folder organization
 set_target_properties(
-    test_minimal
-    test_compile_time_cache
-    test_traits_debug
+    test_compile_time_resource_system
     test_recursive_validation
-    test_registration
-    test_simple_traits
-    test_syntax_check
-    test_type_check
     PROPERTIES FOLDER "Tests/RenderGraph Tests/CompileTimeResourceSystem"
 )
 
 # Add /FS flag for MSVC to allow parallel PDB writes
 if(MSVC)
-    target_compile_options(test_minimal PRIVATE /FS)
-    target_compile_options(test_compile_time_cache PRIVATE /FS)
-    target_compile_options(test_traits_debug PRIVATE /FS)
+    target_compile_options(test_compile_time_resource_system PRIVATE /FS)
     target_compile_options(test_recursive_validation PRIVATE /FS)
-    target_compile_options(test_registration PRIVATE /FS)
-    target_compile_options(test_simple_traits PRIVATE /FS)
-    target_compile_options(test_syntax_check PRIVATE /FS)
-    target_compile_options(test_type_check PRIVATE /FS)
 endif()
 
 # Register tests with CTest (these are standalone executables, not GTest-based)
 # Use slash separators for hierarchical organization in Test Explorer
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_minimal COMMAND test_minimal)
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_compile_time_cache COMMAND test_compile_time_cache)
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_traits_debug COMMAND test_traits_debug)
+add_test(NAME RenderGraph/CompileTimeResourceSystem/test_compile_time_resource_system COMMAND test_compile_time_resource_system)
 add_test(NAME RenderGraph/CompileTimeResourceSystem/test_recursive_validation COMMAND test_recursive_validation)
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_registration COMMAND test_registration)
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_simple_traits COMMAND test_simple_traits)
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_syntax_check COMMAND test_syntax_check)
-add_test(NAME RenderGraph/CompileTimeResourceSystem/test_type_check COMMAND test_type_check)
 
-message(STATUS "[CompileTimeResourceSystem Tests] Added: 8 test executables (1 disabled)")
+message(STATUS "[CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)")

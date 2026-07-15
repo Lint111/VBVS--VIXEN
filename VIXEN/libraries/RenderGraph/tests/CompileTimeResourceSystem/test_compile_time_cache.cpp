@@ -21,7 +21,7 @@ struct ForceCompileTimeCheck {
     }
 };
 
-int main() {
+int run_test_compile_time_cache() {
     std::cout << "==============================================\n";
     std::cout << " COMPILE-TIME RECURSIVE VALIDATION WITH CACHE\n";
     std::cout << "==============================================\n\n";
