@@ -150,7 +150,20 @@ genuine mismatch is found, in which case flag it, don't silently diverge); SPIR-
 constants; any node-graph/`ParameterDefinition`/`SetParameter` change (that system stays exactly
 as-is — it's the *upstream* content-authoring layer that would feed `recipeParams[]` in a full
 authoring pipeline, but wiring THAT bridge is separate follow-up work, not this plan; this plan
-only makes the VM/shader side capable of consuming a param array that already reaches the GPU).
+only makes the VM/shader side capable of consuming a param array that already reaches the GPU);
+**per-recipe-type declared Gaia query / batched-dispatch instantiation** — a real follow-on idea
+(user, 2026-07-15) for auto-generating each recipe type's sim-data fetch as a declared query
+against the same view layer, batching same-recipe instances into one dispatch group, and enabling
+easy indirect instantiation — captured as
+[[Recipe-Declared-Gaia-Query-Direction-2026-07]], explicitly depends on THIS plan shipping first
+(there's no `recipeParams[]`/`ReadParam` to batch-populate until M1/M2 land); **partial/dirty-only
+instance SSBO upload** — a real follow-on optimization idea (user, 2026-07-15) to only re-upload
+changed `recipeParams[]` data instead of the whole instance array every frame — captured as
+[[Instance-SSBO-Dirty-Upload-Direction-2026-07]]; genuinely harder than it looks (the destination
+is a per-frame-in-flight RING buffer, not one persistent buffer, so naive dirty-tracking is
+actually WRONG — a changed instance stays effectively-dirty for up to `kRingSize` frames, not 1)
+and likely not load-bearing at today's instance counts — measure before building, the direction
+doc's own recommendation is to revisit once the JIT epic's N≥100 target is real.
 
 ---
 
