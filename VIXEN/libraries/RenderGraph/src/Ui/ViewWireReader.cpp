@@ -66,6 +66,14 @@ bool ViewWireReader::Apply(std::span<const std::byte> wire, ViewStore& store) {
             case ViewKind::Float:  { float v = c.F32(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::F(v)); break; }
             case ViewKind::Bool:   { bool v = c.Bool(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::B(v)); break; }
             case ViewKind::String: { std::string v = c.Str(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::S(std::move(v))); break; }
+            case ViewKind::Vector: {
+                // 3 consecutive F32s (x,y,z), declared field order -- mirrors ViewWireReaderSoa's
+                // top-level Vector case (the AoS/SoA wire header and top-level field loop are
+                // identical; only ArrayOfStruct bodies differ between the two formats).
+                Vec3f v; v.x = c.F32(); if (!c.ok) break; v.y = c.F32(); if (!c.ok) break; v.z = c.F32(); if (!c.ok) break;
+                store.SetScalar(f.name, ViewValue::Vec(v));
+                break;
+            }
             case ViewKind::ArrayOfStruct: {
                 uint32_t rows = c.U32();
                 if (!c.ok) break;
@@ -77,6 +85,11 @@ bool ViewWireReader::Apply(std::span<const std::byte> wire, ViewStore& store) {
                             case ViewKind::Float:  { float v = c.F32(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::F(v)); break; }
                             case ViewKind::Bool:   { bool v = c.Bool(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::B(v)); break; }
                             case ViewKind::String: { std::string v = c.Str(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::S(std::move(v))); break; }
+                            case ViewKind::Vector: {
+                                Vec3f v; v.x = c.F32(); if (!c.ok) break; v.y = c.F32(); if (!c.ok) break; v.z = c.F32(); if (!c.ok) break;
+                                h.Set(r, ef.name, ViewValue::Vec(v));
+                                break;
+                            }
                             default: c.ok = false; break;   // nested arrays unsupported in the kind catalogue
                         }
                         if (!c.ok) break;
