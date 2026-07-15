@@ -117,10 +117,16 @@ changes, not gtest's internal registration).
   (highest-risk file, deferred out of Milestone 1). Full build + test verification, PDB
   byte-reduction measurement. DONE 2026-07-14, commit `26fd12e1` on
   `feat/rendergraph-pdb-consolidation-m2`.
+- [x] **Milestone 3**: Consolidate `CompileTimeResourceSystem`'s 7 `RenderGraph`-linked, non-gtest
+  standalone targets (each with its own `main()`) into 1 executable via mechanical
+  `main()`-to-named-function rename + a new shared entry point. Full build + functional
+  verification, PDB byte-reduction measurement. DONE 2026-07-15, commit `4ea873dd` on
+  `feat/rendergraph-pdb-consolidation-m3`.
 
-(`test_type_system.cmake`'s 3 and `CompileTimeResourceSystem`'s 8 non-GTest/special-compile-feature
-targets remain explicitly out of scope per Milestone 1's own scoping — low target count doesn't
-justify the risk. Revisit only if a future audit shows continued disk pressure.)
+(`test_type_system.cmake`'s 3 targets remain out of scope: measured at ~2-3MB each, ~7MB total —
+header-only, no `RenderGraph` link, negligible disk win, not worth the touch. `test_recursive_validation`
+in `CompileTimeResourceSystem` also remains untouched — links `Core::Core` only, ~2MB, deliberately
+isolated per its own pre-existing comment.)
 
 ## Progress Log
 
@@ -291,3 +297,78 @@ consolidated (48 in Milestone 1 + 41 in Milestone 2) down to 31 executables (16 
 measured reduction 9,544,572,928 bytes (8.89 GiB) on the affected subsets. Remaining out of scope:
 `test_type_system.cmake` (3) and `CompileTimeResourceSystem` (8) — 11 non-GTest/special-compile-
 feature targets, low count, not pursued per Milestone 1's original scoping rationale.
+
+**Milestone 3 — DONE 2026-07-15.**
+
+Re-scoped on user request ("finish all the small targets, no reason to waste space") after measuring
+real PDB sizes for the remaining 11 out-of-scope targets: `test_type_system.cmake`'s 3 are ~2-3MB
+each (~7MB total, header-only, no `RenderGraph` link) — genuinely not worth touching, left out of
+scope. `CompileTimeResourceSystem`'s 8 targets split 7-vs-1: 7 link `RenderGraph` and sit at the
+usual ~165MB/PDB (~1.16GB total); the 8th, `test_recursive_validation`, deliberately links
+`Core::Core` only (~2MB) per its own pre-existing isolation comment — left untouched.
+
+**Structurally different from Milestones 1-2**: the 7 targets are NOT gtest — each is a small
+standalone ad-hoc diagnostic program (leftover debug/scratch tooling from developing the
+`CompileTimeResourceSystem` feature, `std::cout` prints + some `static_assert`s, 8-96 lines) with
+its OWN `int main()`. A CMake-only regrouping (Milestones 1-2's approach) was impossible — every
+single one of the 7 would collide on `main()`. Required an actual code change: each file's
+`main()` mechanically renamed to a distinct function
+(`run_test_minimal`/`run_test_compile_time_cache`/`run_test_traits_debug`/`run_test_registration`/
+`run_test_simple_traits`/`run_test_syntax_check`/`run_test_type_check`), function bodies otherwise
+byte-identical, plus one new file (`test_compile_time_resource_system_main.cpp`) holding the single
+real `main()` that calls all 7 in sequence. Merged into one `add_executable(
+test_compile_time_resource_system ...)` with the union of the 7's link/include requirements
+(`RenderGraph`, `Vulkan_LIBRARIES`, `gli` — needed by 3 of the 7, included since ANY needed it).
+
+**Verification — real Windows/MSVC build, independently re-run by the Opus validator**:
+- **BEFORE** (implementer's measurement, real Windows/MSVC build from `main`, 7 separate PDBs):
+  **1,156,321,280 bytes**. Not independently re-derived by the validator (would have required a
+  second full build of `main` purely to re-confirm; explicitly flagged as a validator limitation,
+  not silently assumed correct).
+  - **AFTER** (validator's own fresh full `build.bat all` build of the worktree, exit 0, 585/586
+  targets, 0 failed): **162,017,280 bytes** for the merged PDB — **exact match** to the
+  implementer's own reported AFTER figure. `test_recursive_validation.pdb` confirmed still isolated
+  at 1,937,408 bytes (~1.9MB), untouched.
+- **Reduction: 994,304,000 bytes (~0.93 GiB), 85.99%** — the largest per-target ratio of the three
+  milestones (vs. 65.9% and 63.2%), consistent with going from 7 executables down to exactly 1
+  (removing 6 of 7 whole-library debug-info re-collations, the highest N-to-M ratio of any
+  milestone in this program).
+- **Functional verification, both implementer and validator**: built+ran the 7 original binaries
+  from `main` first to capture real BEFORE stdout; built+ran the merged binary, confirmed identical
+  output (the "COMPILE-TIME RECURSIVE VALIDATION WITH CACHE" banner, multiple
+  `IsRegisteredType<VkSwapchainKHR>` diagnostic lines, `sizeof(VkSwapchainKHR)=8`, etc. all present)
+  except one expected, benign MSVC artifact: an anonymous local struct's compiler-generated mangled
+  name changed from referencing `main` to `run_test_compile_time_cache` — a direct, harmless
+  reflection of the rename, not a behavior change.
+- **Diff correctness (validator, most important check for this milestone)**: read every one of the
+  7 renamed files' diffs directly — each is exactly 1 insertion/1 deletion (the function-signature
+  line only), every context line unchanged, confirming the rename did not alter behavior. File-scope
+  `static_assert`s outside any function body (2 in the old `test_traits_debug.cpp`, 4 in
+  `test_simple_traits.cpp`) confirmed preserved verbatim. New main file confirmed to declare and
+  call all 7 renamed functions exactly once each, none missing, none duplicated. CMake merge
+  confirmed correct: all 8 sources present, `gli` correctly included (verified 3 of 7 originals
+  actually needed it), `cxx_std_23` + `/FS` preserved, exactly one `add_test`.
+- `git diff main..4ea873dd --stat`: exactly `CompileTimeResourceSystem/CMakeLists.txt` + the 7
+  original `.cpp` files (1 line each) + 1 new `.cpp` file added — nothing else, confirmed by both
+  implementer and validator independently.
+
+Committed as `4ea873dd` on branch `feat/rendergraph-pdb-consolidation-m3` in worktree
+`.claude/worktrees/rendergraph-pdb-m3`, merged to `main`.
+
+**Opus validator — APPROVED 2026-07-15.** Independently re-derived every claim from a fresh full
+Windows/MSVC build (not target-scoped, unlike part of the implementer's own verification) — exact
+match on the AFTER PDB byte count, confirmed via direct diff reading that every rename was
+behavior-preserving, ran the merged binary itself and confirmed real output. One disclosed,
+non-blocking limitation: did not independently re-derive the BEFORE figure (would need a second
+full build of `main`); AFTER half and the rename-correctness check (the part most likely to hide a
+real regression) were both fully independent. No issues found.
+
+**Program running total after Milestone 3**: 96 of 117 original RenderGraph test targets
+consolidated (48 + 41 + 7) down to 32 executables (16 + 15 + 1), combined measured reduction
+10,538,876,928 bytes (9.81 GiB) on the affected subsets. Remaining out of scope:
+`test_type_system.cmake`'s 3 targets (~7MB total, header-only, no `RenderGraph` link — genuinely
+negligible, confirmed by direct measurement, not pursued) and `test_recursive_validation` (~2MB,
+deliberately isolated). 21 of 117 original targets remain as their own executables — all either
+already cheap (not linking `RenderGraph`) or explicitly load-bearing isolation
+(`test_node_self_registration`, `test_recursive_validation`, the 4 Milestone-1 standalone survivors,
+etc.).
