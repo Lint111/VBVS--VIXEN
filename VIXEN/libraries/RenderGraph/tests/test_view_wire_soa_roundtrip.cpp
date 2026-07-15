@@ -148,3 +148,49 @@ TEST(ViewWireSoaRoundtrip, MalformedIsRejected) {
     { ViewStore s(blob, blob.version); auto w = good; w.push_back(std::byte{0xAB});
       EXPECT_FALSE(ViewWireReaderSoa::Apply(w, s)); }
 }
+
+namespace {
+
+// A self-contained blob exercising a Vector-kind field as a ROW/COLUMN of an SoA StructArray --
+// the gap this fix closes. Before the fix, the row-element decode switch hit `default: c.ok =
+// false` for ViewKind::Vector (rejected as malformed) instead of reading 3 contiguous F32s per
+// row (SoA columns are per-field contiguous, so the whole "position" column is 3*rowCount floats
+// back-to-back, not interleaved with "t").
+constexpr ViewFieldDesc kOrbitPointElem[] = {
+    {"t", ViewKind::Float, {}}, {"position", ViewKind::Vector, {}} };
+constexpr ViewFieldDesc kVecFields[] = {
+    {"points", ViewKind::ArrayOfStruct, kOrbitPointElem} };
+constexpr ViewBlob kVecBlob = {"orbitpath", kVecFields, 0x3333u};
+
+std::vector<std::byte> VecSoaWire() {
+    WB w;
+    w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
+    w.u32(kVecBlob.version);
+    w.u32(1);                              // top-field count: points
+    w.u32(2);                              // points row count
+    w.f32(1.5f); w.f32(2.5f);              // t column: contiguous
+    w.f32(1.0f); w.f32(2.0f); w.f32(3.0f); // position column, row0 xyz
+    w.f32(-1.0f); w.f32(0.0f); w.f32(4.5f);// position column, row1 xyz
+    return w.b;
+}
+
+}  // namespace
+
+TEST(ViewWireSoaRoundtrip, RowVectorColumnReadBackCorrectly) {
+    ViewStore store(kVecBlob, kVecBlob.version);
+    auto wire = VecSoaWire();
+
+    ASSERT_TRUE(ViewWireReaderSoa::Apply(wire, store));
+
+    int pi = Field(kVecBlob, "points");
+    const auto& pdesc = kVecBlob.fields[pi];
+    auto& rows = store.Array(pi);
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "t")].f, 1.5f);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "position")].vec.x, 1.0f);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "position")].vec.y, 2.0f);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "position")].vec.z, 3.0f);
+    EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "t")].f, 2.5f);
+    EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.x, -1.0f);
+    EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.z, 4.5f);
+}

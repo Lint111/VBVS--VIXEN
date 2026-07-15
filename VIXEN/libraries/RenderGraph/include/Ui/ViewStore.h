@@ -10,9 +10,9 @@ namespace Vixen::RenderGraph {
 
 // One fixed-layout cell per element field; BlobView binds a ScalarDefinition to the active member
 // by the field's kind. Only the member matching the field kind is ever read. `vec` is a Vector-kind
-// cell (3 floats); struct-array elements can't declare a Vector-kind column today (only top-level
-// Vector fields are wired -- View Contract Inc-5b Milestone 2.4 scope), but the member lives here
-// alongside i/f/b/s so ViewRow's per-element cell layout stays uniform across all ViewKinds.
+// cell (3 floats); a struct-array element CAN declare a Vector-kind column (View Contract Inc-5b
+// Milestone 2.4b's row/element-Vector fix) and reads/writes through this same member, alongside
+// i/f/b/s, so ViewRow's per-element cell layout stays uniform across all ViewKinds.
 struct ViewCell { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; };
 
 struct ViewRow {

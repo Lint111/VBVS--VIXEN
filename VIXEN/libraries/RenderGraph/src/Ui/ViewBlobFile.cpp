@@ -12,6 +12,7 @@ static bool ScalarKind(std::string_view t, ViewKind& out) {
     if (t == "float") { out = ViewKind::Float; return true; }
     if (t == "bool") { out = ViewKind::Bool; return true; }
     if (t == "string") { out = ViewKind::String; return true; }
+    if (t == "vector") { out = ViewKind::Vector; return true; }
     return false;
 }
 

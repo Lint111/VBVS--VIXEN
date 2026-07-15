@@ -114,3 +114,56 @@ TEST(ViewWireRoundtrip, MalformedIsRejected) {
     { ViewStore s(blob, blob.version); auto w = good; w.push_back(std::byte{0xAB});
       EXPECT_FALSE(ViewWireReader::Apply(w, s)); }
 }
+
+namespace {
+
+// A self-contained blob (not the generated Hud header) exercising BOTH a top-level Vector field
+// AND a Vector-kind field as a ROW of a StructArray -- the exact gap this fix closes. Before the
+// fix: (a) the top-level field-kind switch had no ViewKind::Vector case at all (fell through the
+// switch, wrote nothing, moved cursor 0 bytes -> desynced every subsequent field); (b) the
+// row-element decode switch hit `default: c.ok = false` for a Vector row field (rejected as
+// malformed).
+constexpr ViewFieldDesc kOrbitPointElem[] = {
+    {"t", ViewKind::Float, {}}, {"position", ViewKind::Vector, {}} };
+constexpr ViewFieldDesc kVecFields[] = {
+    {"origin", ViewKind::Vector, {}},
+    {"points", ViewKind::ArrayOfStruct, kOrbitPointElem} };
+constexpr ViewBlob kVecBlob = {"orbitpath", kVecFields, 0x2222u};
+
+std::vector<std::byte> VecWire() {
+    WB w;
+    w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
+    w.u32(kVecBlob.version);
+    w.u32(2);                              // top-field count: origin, points
+    w.f32(10.0f); w.f32(20.0f); w.f32(30.0f);   // origin (top-level Vector)
+    w.u32(2);                              // points row count
+    w.f32(1.5f); w.f32(1.0f); w.f32(2.0f); w.f32(3.0f);      // row0: t, position.xyz
+    w.f32(2.5f); w.f32(-1.0f); w.f32(0.0f); w.f32(4.5f);     // row1: t, position.xyz
+    return w.b;
+}
+
+}  // namespace
+
+TEST(ViewWireRoundtrip, TopLevelAndRowVectorFieldsReadBackCorrectly) {
+    ViewStore store(kVecBlob, kVecBlob.version);
+    auto wire = VecWire();
+
+    ASSERT_TRUE(ViewWireReader::Apply(wire, store));
+
+    auto* origin = static_cast<Vec3f*>(store.ScalarSlotPtr(Field(kVecBlob, "origin")));
+    EXPECT_FLOAT_EQ(origin->x, 10.0f);
+    EXPECT_FLOAT_EQ(origin->y, 20.0f);
+    EXPECT_FLOAT_EQ(origin->z, 30.0f);
+
+    int pi = Field(kVecBlob, "points");
+    const auto& pdesc = kVecBlob.fields[pi];
+    auto& rows = store.Array(pi);
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "t")].f, 1.5f);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "position")].vec.x, 1.0f);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "position")].vec.y, 2.0f);
+    EXPECT_FLOAT_EQ(rows[0].cells[Elem(pdesc, "position")].vec.z, 3.0f);
+    EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "t")].f, 2.5f);
+    EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.x, -1.0f);
+    EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.z, 4.5f);
+}
