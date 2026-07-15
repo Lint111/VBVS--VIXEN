@@ -99,15 +99,30 @@ Per the scoping research (2026-07-15), the raw building blocks are a mix of "alr
 This section is the actual design work — sketched here as the open questions a review pass needs
 to close, not as decided architecture. Do not treat anything below as final.
 
-### 3.1 Bucketing pass
+### 3.1 Bucketing pass — granularity RESOLVED (2026-07-15)
+
 A new compute pre-pass, run once per frame before the main shading dispatch, that reads
-`bodyInstances[]` (already bound, binding 10) and produces, per distinct `recipeId` (or per
-recipe-content-hash "family" from [[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]] — **open question**:
-bucket by exact `recipeId` or by content-hash family, which would let structurally-identical
-recipes under different `recipeId`s share a bucket/pipeline, closer to the epic's Increment 4
-"family" goal? Deciding this now vs. deferring to Increment 4 needs a call), a compacted list of
-member instance indices (an atomic-counter-driven append, mirroring the `atomicAdd` precedent) plus
-a per-bucket screen-space coverage estimate (see §3.2).
+`bodyInstances[]` (already bound, binding 10) and produces, per bucket, a compacted list of member
+instance indices (an atomic-counter-driven append, mirroring the `atomicAdd` precedent) plus a
+per-bucket screen-space coverage estimate (see §3.2).
+
+**Decision: bucket by exact `recipeId`, not by content-hash family, for this design.** The epic
+doc (§7) already frames family-normalization as a SEPARATE, later increment (Increment 4:
+"shape/literal normalization → parameterized family pipelines," explicitly depending on
+[[Recipe-Parameterization-Plan-2026-07]] §5, shipped) — coupling this design's bucketing
+granularity to the family concept now would prematurely merge two increments' scope and make this
+design depend on Increment 4's normalization logic (which doesn't exist yet) before it's even
+built. Bucketing by exact `recipeId` is: (a) simpler — `BodyInstanceGpu.recipeId` is already a
+direct per-instance field, no extra indirection through
+[[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]]'s `RecipeContentCacher` lookup needed in the hot
+bucketing-pass loop; (b) strictly correct today — every `recipeId` already gets its own emitted
+`sdfRecipe_<id>` GLSL function (`UberShaderSplice.h`), so per-recipeId bucketing naturally lines up
+with what a specialized pipeline would compile; (c) NOT a dead end — Increment 4's family
+normalization is a natural, additive upgrade on top of working recipeId-level bucketing later
+(swap the bucketing key from `recipeId` to a family hash once Increment 1's `RecipeContentCacher`
+data is threaded into the bucketing pass, without needing to touch the dispatch/compositing
+machinery this design builds). Building family-aware bucketing FIRST, before Increment 4's own
+normalization design exists, would be scope creep into a not-yet-designed increment.
 
 ### 3.2 Screen-space coverage per bucket
 For each bucket, need a conservative screen-space region (tile range, bounding rect, or similar) so
@@ -118,58 +133,116 @@ bucket's members. **Open question**: per-instance projection unioned per-bucket 
 more per-thread work) vs. some coarser per-bucket approximation (e.g. union of member bound spheres
 computed once, cheaper but coarser)? Needs real design, not a guess.
 
-### 3.3 Indirect dispatch sizing
+### 3.3 Indirect dispatch sizing — RESOLVED (2026-07-15)
+
 Once a bucket's screen-space coverage is known, write a `VkDispatchIndirectCommand`-shaped entry
 into an indirect buffer (the plumbing for this — `IndirectBuffer` usage + `IndirectRead` barrier —
-already exists per §2) sized to that bucket's coverage, then `vkCmdDispatchIndirect` a specialized
-per-recipe pipeline against just that region. **Open question**: how does a workgroup that only
-covers "recipe 6's screen region" know it should ONLY shade recipe-6 instances and not accidentally
-re-shade instances another bucket already owns, given screen regions from different buckets will
-overlap in practice (two different recipes' bound spheres can easily overlap on screen)? This needs
-either (a) each bucket's pass writing into the shared `HitRecord` SSBO with a nearest-hit
-compare-and-conditionally-overwrite (mirroring Option A's one salvageable idea, but now bounded to
-real coverage instead of the whole screen, so the cost concern from Option A doesn't apply at the
-same magnitude — still needs careful ordering/synchronization design), or (b) some other resolution
-scheme. **This is probably the single most important remaining design question** — get the
-cross-bucket depth/hit resolution right or this whole design produces wrong pixels under overlap.
+already exists, see §2) sized to that bucket's coverage, then `vkCmdDispatchIndirect` a specialized
+per-recipe pipeline against just that region.
+
+**Cross-bucket overlap resolution — the single most important design question, now resolved via a
+codebase survey (2026-07-15):**
+
+**Decision: sequential per-bucket dispatches with a plain non-atomic read-compare-conditionally-
+overwrite against the shared `HitRecord` SSBO. No new atomic pattern needed.** This works because
+of an existing, already-correct property of the RenderGraph barrier system, confirmed by direct
+inspection:
+
+- `FrameSyncScheduler::NeedsSync` (`FrameSyncScheduler.cpp:12-17`) treats **write-after-write as a
+  hazard**, not just the usual RAW/WAR — `AccessWrites(prev) || AccessWrites(cur)` triggers a
+  `SyncEdge`/`GroupBarrier` ordered by the nodes' graph-declared execution order
+  (`FrameSyncScheduler.cpp:26-49`). So if bucket A's dispatch and bucket B's dispatch are both
+  RenderGraph nodes declaring a write access to the `HitRecord` resource, the graph AUTOMATICALLY
+  serializes them with a real memory-visibility barrier (`PassRecorder.cpp:24-48`, a global
+  `VkMemoryBarrier2` — not region-scoped, which is exactly what's needed since it doesn't assume
+  disjoint writes, it correctly flushes/serializes ALL shader-storage writes before the next
+  dispatch reads/writes).
+- `MultiDispatchNode` already does this as its DEFAULT behavior: with `autoBarriers_` on (the
+  default), it inserts a compute→compute `VkMemoryBarrier2` (`srcAccess=SHADER_WRITE`,
+  `dstAccess=SHADER_READ|SHADER_WRITE`) between every dispatch pass in a group
+  (`MultiDispatchNode.cpp:462-468,480-484,653-668`) — the exact UAV-hazard serialization this
+  design needs, already built and already the default.
+- **Given that serialization, a plain (non-atomic) `if (myHitT < hitRecords[idx].hitT) hitRecords[idx] = myRecord;`
+  in each bucket's shader is CORRECT** — no two threads within one dispatch write the same pixel
+  (one thread per covered pixel), and the barrier guarantees bucket A's writes are complete and
+  visible before bucket B's dispatch begins reading/writing. Atomics (a float-bitcast
+  `atomicMin`-on-`hitT`-as-bits trick, proven viable via the existing `atomicMax`-on-`floatBitsToUint`
+  precedent at `SpatialReuseShade.comp:503-515`, though only for a single scalar reduction, not a
+  full-struct winner-write) would ONLY become necessary if a future revision wants buckets to run
+  CONCURRENTLY (no barrier between them) for performance — an explicit, deliberate future
+  optimization to consider only if sequential bucket dispatch proves too slow, not a day-one
+  requirement.
+
+**Consequence for §4's "prototype before full design" recommendation**: the prototype should use
+`MultiDispatchNode`'s existing per-pass-barrier default (do NOT disable `autoBarriers_`) and a
+plain read-compare-write shader — this is now a low-risk, well-precedented mechanism, not an
+open research question. The only remaining uncertainty is PERFORMANCE (how much serialization
+cost N sequential bucket dispatches add vs. the tier-0 switch, and vs. Option A's rejected
+per-recipe-full-screen-redispatch cost) — that's an empirical question for the prototype/spike,
+not a correctness question.
 
 ### 3.4 Fallback path
 Per the epic's own tier-0/tier-1 model: NOT every recipe should get bucketed-dispatch treatment —
 only genuinely hot ones (Increment 2's original "hot-mark" concept, still needed). Cold/rare
 recipes should stay on the existing tier-0 switch path (correctly, since a bucket+specialized-
 pipeline+indirect-dispatch machine has real fixed overhead per bucket that isn't worth paying for a
-recipe rendering 1 instance). **Open question**: does the bucketing pass itself need to know
-hotness (skip bucketing cold recipes, leave them for the existing switch-based instance loop to
-handle inline as today), or does bucketing run for everything and hotness only gates WHICH buckets
-get their own specialized pipeline vs. falling back to a "residual tier-0 bucket"? The latter is
-probably cleaner (uniform bucketing, heterogeneous pipeline assignment) but needs to be decided.
+recipe rendering 1 instance).
+
+**Recommendation (2026-07-15, judgment call — revisit once the spike has real numbers): hotness
+gates WHICH buckets get their own specialized pipeline, not whether bucketing happens at all.**
+Bucket every recipeId uniformly in the pre-pass (cheap — it's one atomic-append per instance, no
+per-bucket cost yet), then partition buckets AFTER bucketing into "hot" (gets a specialized
+pipeline + its own indirect dispatch) vs. "cold" (its member instances fall back to the existing
+tier-0 switch path, handled inline exactly as today — no new machinery needed for cold recipes at
+all). This is cleaner than trying to skip bucketing cold recipes up front, because: (a) hotness is
+inherently a THIS-FRAME-VS-HISTORY concept (a recipe is hot because it was rendered enough times
+recently) that the bucketing pass itself has no way to know without extra state — simpler to let
+bucketing be uniform and stateless, and apply the hotness gate as a separate, simpler decision
+using data the hot-mark tracking (still TODO, §5) already maintains; (b) it keeps the bucketing
+pass's job single-purpose (partition by recipeId) rather than also encoding a hotness policy
+inside it, easier to test and reason about independently. **Caveat**: this recommendation is not
+empirically validated — if the spike (§4 item 4) finds bucketing-everything's fixed cost is
+non-trivial even for cold/rare recipes, revisit toward skip-cold-recipes-up-front instead.
 
 ## 4. Immediate next steps (before a plan doc)
 
-1. **Resolve the view-proj-matrix gap (§2).** Decide: plumb a real `mat4 viewProj` into a new
-   binding (simplest, matches how `prevViewProj` already exists elsewhere for a different purpose),
-   or derive an on-GPU projection from the existing basis vectors (avoids a new binding, more GPU
-   math per bucketing thread — probably not worth it given a matrix binding is cheap and simple).
-   Recommend: new binding, mirror `prevViewProj`'s existing CPU-side computation
-   (`CameraNode.cpp:193,377`) for the CURRENT frame instead of previous.
-2. **Resolve §3.3's cross-bucket overlap/depth-resolution question** — this is the load-bearing
-   correctness question the whole design hinges on. Consider prototyping the `HitRecord`
-   compare-and-conditionally-overwrite scheme in isolation (e.g. two overlapping buckets, confirm
-   nearest-hit resolves correctly) before committing to the full design.
-3. **Decide the recipeId-vs-content-hash-family bucketing granularity (§3.1)** relative to
-   [[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]] §7 Increment 4's own family-normalization
-   goal — avoid building bucketing twice (once naive by-recipeId, once later reworked to
-   by-family) if the family concept can be adopted now cheaply.
-4. **Prototype/measure before committing to full design.** Given the real complexity surfaced
-   here, consider a small measurement spike (e.g. hand-rolled bucketing + indirect dispatch for a
-   SYNTHETIC 2-3-recipe scene, no hotness/async yet) to validate the core mechanism (bucket →
-   indirect dispatch → correct compositing) works and is actually cheaper than the tier-0 switch at
-   realistic instance counts, before investing in the full milestone-mapped implementation plan.
-5. **Once §4.1-4.4 are resolved**, write the actual milestone-mapped implementation plan doc
-   (mirroring [[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]]'s structure: Milestone Map, per-task
-   detail, live-run gates given this is fundamentally GPU/render work throughout — unlike
-   Increment 1, NOTHING in this design is pure-CPU infra, every milestone here needs a real
-   Windows-native GPU live-run gate).
+1. **View-proj-matrix gap — RESOLVED (2026-07-15), low-risk.** Confirmed `CameraNode` already
+   computes `projection * view` EVERY frame (`CameraNode.cpp:193,377`) but only exposes it as the
+   deliberately-lagged `PREV_VIEW_PROJ` graph output (`CameraNodeConfig.h:74`, `OUTPUT_SLOT` macro
+   pattern, `OUTPUTS=2`). **Decision: add a sibling `CURRENT_VIEW_PROJ` output** using the exact
+   same `OUTPUT_SLOT`/`INIT_OUTPUT_DESC` pattern already established for `PREV_VIEW_PROJ`
+   (`CameraNodeConfig.h:74,141,153,161` are the 4 touch points to mirror) — no new math (the
+   multiply already happens), no new CPU computation, just exposing a value already computed under
+   a new slot + wiring it into a new binding for the bucketing pre-pass. This is now a small,
+   well-understood, low-risk task, not an open design question.
+2. **§3.3's cross-bucket overlap/depth-resolution question — RESOLVED (2026-07-15).** See §3.3 —
+   sequential `MultiDispatchNode`-style dispatches (its existing `autoBarriers_` default already
+   provides correct write-after-write serialization) + a plain non-atomic read-compare-write is
+   correct. No atomics, no new synchronization primitive needed. The only open item left here is
+   empirical (performance), not design (correctness) — see item 4.
+3. **Bucketing granularity (§3.1) — RESOLVED (2026-07-15).** Bucket by exact `recipeId`, not
+   content-hash family — avoids prematurely coupling this design to Increment 4's not-yet-designed
+   family-normalization work; recipeId-level bucketing upgrades cleanly to family-level later.
+4. **Hotness-gating shape (§3.4) — RESOLVED as a recommendation (2026-07-15), not empirically
+   validated.** Bucket uniformly, gate specialized-pipeline assignment by hotness after bucketing.
+   Revisit if the spike below shows this is wrong.
+5. **All four design questions above are now resolved or have a stated recommendation** — no
+   remaining open CORRECTNESS questions block a plan doc. What remains is empirical validation
+   (below) and the async/hot-mark tracking mechanism itself (§5, out of this design's scope,
+   layers on top).
+6. **Prototype/measure before committing to full design.** With items 1-4 resolved and no longer
+   open research questions, the remaining uncertainty is PERFORMANCE: does sequential bucketed
+   dispatch (N buckets × serialized barriers) actually beat the tier-0 switch at realistic hot-
+   recipe counts, and by how much? A small measurement spike (hand-rolled bucketing + indirect
+   dispatch for a SYNTHETIC 2-3-recipe scene, no hotness/async yet, using `MultiDispatchNode`'s
+   existing default barrier behavior) would give a real number before investing in the full
+   milestone-mapped implementation plan.
+7. **Once the item-6 spike confirms the mechanism is worth building**, write the actual
+   milestone-mapped implementation plan doc (mirroring
+   [[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]]'s structure: Milestone Map, per-task detail,
+   live-run gates given this is fundamentally GPU/render work throughout — unlike Increment 1,
+   NOTHING in this design is pure-CPU infra, every milestone here needs a real Windows-native GPU
+   live-run gate).
 
 ## 5. Scope notes
 

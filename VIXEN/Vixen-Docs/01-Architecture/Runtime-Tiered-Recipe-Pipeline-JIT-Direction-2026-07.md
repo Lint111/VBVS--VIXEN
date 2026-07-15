@@ -162,14 +162,18 @@ This resolves two of the user's sub-ideas:
    this is N full-framebuffer passes per frame, inverting the whole point of tier-1 promotion; (B)
    **GPU instance bucketing** (partition instances by recipe pre-pass, indirect-dispatch each
    bucket sized to its actual screen coverage) — SELECTED as the only approach that scales toward
-   1000+. See [[Recipe-GPU-Instance-Bucketing-Design-2026-07]] for the full design-in-progress
-   (raw plumbing survey: indirect-dispatch buffer/barrier support already exists unused, a dormant
-   `MultiDispatchNode`/`DispatchPass` per-pipeline-dispatch primitive exists unwired, but NO
-   view-proj matrix reaches any shader today and NO tile/screen-space-region structure of any kind
-   exists — both must be built from scratch). The async-compile-and-swap half of this increment's
-   original sketch now layers ON TOP of working bucketed dispatch, not before it. **This is
-   real architecture, not a quick increment** — needs its own design review + a follow-on
-   milestone-mapped plan doc before implementation starts.
+   1000+. See [[Recipe-GPU-Instance-Bucketing-Design-2026-07]] for the full design. **All 4 design
+   questions RESOLVED 2026-07-15**: view-proj matrix gap closed (mirror `CameraNode`'s
+   already-computed `projection*view`, expose as a new `CURRENT_VIEW_PROJ` output alongside the
+   existing `PREV_VIEW_PROJ`); cross-bucket depth/hit compositing resolved WITHOUT new atomics
+   (sequential `MultiDispatchNode`-style dispatches already get correct write-after-write barrier
+   serialization by default, so a plain read-compare-write against `HitRecord` is correct);
+   bucketing granularity resolved to exact-`recipeId` (not content-hash family — avoids coupling to
+   Increment 4's not-yet-designed normalization work); hotness-gating shape recommended (bucket
+   uniformly, gate pipeline assignment by hotness after bucketing). Only empirical validation (a
+   measurement spike) remains before a milestone-mapped implementation plan can be written. The
+   async-compile-and-swap half of this increment's original sketch still layers ON TOP of working
+   bucketed dispatch, not before it.
 3. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
 4. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
    similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline.
