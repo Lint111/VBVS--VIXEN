@@ -151,8 +151,25 @@ This resolves two of the user's sub-ideas:
 
 1. **Recipe-content-hash pipeline cache** over the existing `PipelineCacher` (exact-dup family
    sharing free); recipes still all render via tier-0 switch. Pure infra, measurable.
+   **✅ SHIPPED 2026-07-15** ([[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]], merged main `bf8dfbf5`).
 2. **Async tier-1 promotion on usage** — hot-mark → background emit+compile → swap when ready →
    universal fallback. Requires the async-compile-and-swap machinery (frame never blocks).
+   **⚠️ SCOPING REVEALED A HARD BLOCKER (2026-07-15), design doc in progress, NOT YET a milestone
+   plan.** Today's renderer is ONE full-screen dispatch where every pixel-thread marches every
+   instance via an in-shader `switch(recipeId)` — there is no per-draw/per-dispatch seam for a
+   second pipeline to intercept. Two decompositions were considered: (A) per-recipe full-screen
+   re-dispatch + cross-pass compositing — REJECTED, at the real target scale (1000+ live recipes)
+   this is N full-framebuffer passes per frame, inverting the whole point of tier-1 promotion; (B)
+   **GPU instance bucketing** (partition instances by recipe pre-pass, indirect-dispatch each
+   bucket sized to its actual screen coverage) — SELECTED as the only approach that scales toward
+   1000+. See [[Recipe-GPU-Instance-Bucketing-Design-2026-07]] for the full design-in-progress
+   (raw plumbing survey: indirect-dispatch buffer/barrier support already exists unused, a dormant
+   `MultiDispatchNode`/`DispatchPass` per-pipeline-dispatch primitive exists unwired, but NO
+   view-proj matrix reaches any shader today and NO tile/screen-space-region structure of any kind
+   exists — both must be built from scratch). The async-compile-and-swap half of this increment's
+   original sketch now layers ON TOP of working bucketed dispatch, not before it. **This is
+   real architecture, not a quick increment** — needs its own design review + a follow-on
+   milestone-mapped plan doc before implementation starts.
 3. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
 4. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
    similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline.
