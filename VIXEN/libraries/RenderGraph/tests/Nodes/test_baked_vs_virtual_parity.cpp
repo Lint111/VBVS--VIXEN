@@ -121,6 +121,7 @@
 
 #include <array>
 #include <cctype>
+#include <span>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -156,10 +157,16 @@ namespace {
 // ---------------------------------------------------------------------------
 uint32_t g_bakeCallCount = 0;
 
+// params: Recipe-Parameterization M4 Task 11 — an explicit bake-time snapshot for a
+// ReadParam/ReadParamFloat3 corpus entry (M3 Task 10's additive params argument, threaded
+// through here so the BAKED path can reproduce a SPECIFIC recipeParams[] value rather than
+// falling back to evalRecipe's zero-fill default). Defaults to an empty span so every
+// existing non-parameterized corpus entry's call site is unaffected.
 Vixen::SVO::SdfBakeResult CountedBake(const Vixen::SVO::Recipe::SdfInstruction* prog, uint32_t count,
-                                       const glm::vec3& center, int n, float bandVoxels, int brickDepth) {
+                                       const glm::vec3& center, int n, float bandVoxels, int brickDepth,
+                                       std::span<const float> params = {}) {
     ++g_bakeCallCount;
-    return Vixen::SVO::BakeRecipeInstructionsToSdfWorld(prog, count, center, n, bandVoxels, brickDepth);
+    return Vixen::SVO::BakeRecipeInstructionsToSdfWorld(prog, count, center, n, bandVoxels, brickDepth, params);
 }
 
 struct PushConstants {
@@ -239,6 +246,11 @@ struct ParityRecipe {
     // "entry.boundCenter = center" comment in BuildRenderGraph.cpp for the same requirement.
     glm::vec3 authoredBoundCenter = glm::vec3(0.0f);
     float     authoredBoundRadius = 0.0f;  // 0 = not authored
+    // Recipe-Parameterization M4 Task 11: a ReadParam corpus entry's bake-time-snapshot /
+    // render-time recipeParams[] value — IDENTICAL on both paths, proving CPU bake-time-
+    // snapshot eval and GPU per-frame-dynamic-read eval agree for the same effective
+    // parameter value. Empty (default) for every non-ReadParam corpus entry.
+    std::vector<float> readParamSnapshot;
 };
 
 using Vixen::SVO::Recipe::SdfOpCode;
@@ -272,6 +284,18 @@ SdfInstruction combine(SdfOpCode op, float k) {
 }
 SdfInstruction twist(float k) {
     SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Twist; in.data[0] = k;
+    return in;
+}
+// ReadParam(index) — reads recipeParams[index] at eval time (M1 Task 3 CPU / M2 Task 5 GLSL).
+// paramMask=1 is the required non-zero marker (RecipeRegistry.h's paramMask convention —
+// see M1 Task 2) distinguishing a ReadParam instruction from a malformed zero-mask one.
+SdfInstruction readParam(uint32_t index) {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::ReadParam;
+    in.paramMask = 1; in.data[0] = static_cast<float>(index);
+    return in;
+}
+SdfInstruction mathSub() {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::MathSub;
     return in;
 }
 // Diagnostic helper (see the file-header "RESOLVED (KI-LPD-003...)" note): during the
@@ -396,6 +420,44 @@ std::vector<ParityRecipe> BuildCorpus() {
         // explicitly so the march's entry/exit bracket actually covers worldTarget.
         r.authoredBoundCenter = r.worldTarget;
         r.authoredBoundRadius = 6.0f;
+        r.expectOccupancyGrid = false;
+        out.push_back(std::move(r));
+    }
+
+    // (4) ReadParam-driven sphere radius offset — Recipe-Parameterization M4 Task 11. Same
+    // bytecode SHAPE M3 Task 8 already registered/rendered live (BuildRenderGraph.cpp's
+    // VIXEN_PROCEDURAL_UBER_DEMO ReadParam demo body, and test_body_octree_lifetime.cpp's
+    // ReadParamValueSweepNeverMarksNodeNeedsRecompile gtest): { sphere(center, baseRadius),
+    // ReadParam(0), MathSub }. MathSub is non-commutative a-b (RecipeStack push order:
+    // [sphereSD, params[0]] -> a=sphereSD, b=params[0]), so sd = sphereSD - params[0] i.e. a
+    // pure radius offset: rendered radius = baseRadius + readParamSnapshot[0]. Baked with a
+    // SPECIFIC snapshotted param value (M1/M3 Task 10's params argument to
+    // BakeRecipeInstructionsToSdfWorld) and rendered virtual with recipeParams[] set to the
+    // IDENTICAL value — proves CPU bake-time-snapshot eval and GPU per-frame-dynamic-read
+    // eval agree for the same effective parameter value. ReadParam/MathSub are outside both
+    // DeriveConservativeBounds' and RecipeOccupancy.h's Lipschitz whitelists (same as Twist
+    // above) -> occupancy grid not expected, bound authored explicitly and MUST cover the
+    // full baseRadius+snapshot extent, mirroring BuildRenderGraph.cpp's own margin comment.
+    {
+        ParityRecipe r;
+        r.name = "readparam_sphere";
+        r.bakeCenter  = glm::vec3(32.0f, 32.0f, 32.0f);
+        r.worldTarget = bodyCentre;
+        constexpr float kBaseRadius = 2.0f;      // world-unit base radius (bake-grid: *6, matching recipe (1)'s 18/3 ratio)
+        constexpr float kParamValue = 0.5f;      // the SAME snapshot value baked AND rendered virtual
+        r.worldSpaceProgram = {
+            sphereAt(r.worldTarget, kBaseRadius),
+            readParam(0),
+            mathSub(),
+        };
+        r.localSpaceProgram = {
+            sphereAt(glm::vec3(0.0f), kBaseRadius * 6.0f),
+            readParam(0),
+            mathSub(),
+        };
+        r.readParamSnapshot = { kParamValue };
+        r.authoredBoundCenter = r.worldTarget;
+        r.authoredBoundRadius = kBaseRadius + kParamValue + 1.0f;  // margin, mirrors BuildRenderGraph.cpp's demo
         r.expectOccupancyGrid = false;
         out.push_back(std::move(r));
     }
@@ -594,10 +656,9 @@ protected:
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms) {
         ASSERT_TRUE(deviceConfirmed_);
-        VkBuffer traceBuf=VK_NULL_HANDLE, ctrBuf=VK_NULL_HANDLE;
-        VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
+        VkBuffer traceBuf=VK_NULL_HANDLE;
+        VkDeviceMemory traceMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf, ctrMem, true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE,
                  dummyTierRef=VK_NULL_HANDLE, dummyOccGrid=VK_NULL_HANDLE;
         VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE,
@@ -655,14 +716,21 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,21> bindings = {
+        // NOTE: binding 8 (ShaderCounters debug SSBO) deliberately absent — removed from the
+        // shader's reflected interface by 8509f58b (ENABLE_SHADER_COUNTERS compiled out
+        // unconditionally; see SceneBindings.glsl's binding-8 comment). Including it here
+        // desyncs this local layout from the SPIR-V module's actual resource interface,
+        // which is a VUID-VkComputePipelineCreateInfo-layout-07988-class validation error
+        // (root-caused 2026-07-15, Recipe-Parameterization M4 — was previously misdiagnosed
+        // as a boot-recompile descriptor-staleness bug in KI-028; that issue is real but
+        // unrelated to this test's symmetric bakedHits=0/virtualHits=0 failure).
+        const std::array<VkDescriptorSetLayoutBinding,20> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bindL(8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(10,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(11,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -698,7 +766,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -714,7 +782,7 @@ protected:
         VkDescriptorImageInfo historyImgI{VK_NULL_HANDLE,historyView,VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
-            ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
+            instI{inst,0,VK_WHOLE_SIZE},
             sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{mip,0,VK_WHOLE_SIZE},
             tierRefI{tierRef,0,VK_WHOLE_SIZE}, occGridI{occGrid,0,VK_WHOLE_SIZE},
             lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
@@ -731,9 +799,9 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,21> writes = {
+        const std::array<VkWriteDescriptorSet,20> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
-            wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
+            wB(5,&cfgI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI), wB(15,&tierRefI), wB(16,&occGridI),
             wB(17,&lightingI), wB(18,&hitRecordI), wB(19,&shadowI), wB(20,&accumI),
             wI(21,&historyImgI), wB(22,&prevCamI),
@@ -802,7 +870,6 @@ protected:
         vkDestroyImage(logicalDevice_,idImg,nullptr);    vkFreeMemory(logicalDevice_,idMem,nullptr);
         vkDestroyImage(logicalDevice_,historyImg,nullptr); vkFreeMemory(logicalDevice_,historyMem,nullptr);
         vkDestroyBuffer(logicalDevice_,traceBuf,nullptr); vkFreeMemory(logicalDevice_,traceMem,nullptr);
-        vkDestroyBuffer(logicalDevice_,ctrBuf,nullptr);   vkFreeMemory(logicalDevice_,ctrMem,nullptr);
         if (dummySdf     != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);     vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup  != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr);  vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
         if (dummyMip     != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyMip,nullptr);     vkFreeMemory(logicalDevice_,dMipMem,nullptr); }
@@ -856,7 +923,8 @@ protected:
         using C = BodyOctreeSceneNodeConfig;
 
         auto baked = CountedBake(r.localSpaceProgram.data(), uint32_t(r.localSpaceProgram.size()),
-                                  r.bakeCenter, /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3);
+                                  r.bakeCenter, /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3,
+                                  std::span<const float>(r.readParamSnapshot));
         Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
         std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs{&body};
         Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
@@ -970,6 +1038,11 @@ protected:
         inst.providerKind=1u;  // PROVIDER_PROCEDURAL
         inst.recipeId=kRecipeId;
         inst.color[0]=1.0f; inst.color[1]=1.0f; inst.color[2]=1.0f;
+        // Recipe-Parameterization M4 Task 11: recipeParams[] set to the IDENTICAL value the
+        // baked path snapshotted (r.readParamSnapshot) — the whole point of this corpus entry
+        // is proving both paths agree on the SAME effective parameter value.
+        for (size_t i = 0; i < r.readParamSnapshot.size() && i < 6; ++i)
+            inst.recipeParams[i] = r.readParamSnapshot[i];
         node->SetInstances({inst});
         node->Setup();
         ASSERT_NO_THROW(node->Compile());
