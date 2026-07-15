@@ -3060,17 +3060,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
             };
 
             // Wall grid (subdiv=4): widest true extent 2*(kBoxHalfExtent+kWallThickness)(=22)
-            // + 2*kBand(=4) margin, scaled by subdiv -> (22+4)*4=104, rounded up to the next
-            // brick(8)-aligned size (112) for a small spare margin rather than an exact fit.
+            // + 2*kBand(=4) margin, scaled by subdiv -> (22+4)*4=104.
+            //
+            // CRITICAL (combined-verify round, 2026-07-15): the bake grid `n` MUST be a POWER OF
+            // TWO. BuildSdfBodyOctree (SdfBake.h) derives the octree's own voxel resolution as
+            // 2^(maxLevels-brickDepth) where maxLevels = floor(log2(n)) + brickDepth -- i.e. it
+            // silently ROUNDS n DOWN to the previous power of two. The prior value 112 (and the
+            // even-earlier 96) are NOT powers of two, so the octree was built at a 64-voxel grid
+            // while the SDF was baked into a 112-voxel grid: the octree's bricksPerAxis (8) and
+            // the config's bricksPerAxisSdf from the 112-grid bake (14) DISAGREE, so the shader's
+            // brick/voxel addressing reads the wrong cells -- producing spurious/misplaced
+            // occupancy (grazing rays over the ceiling hit a far ghost surface at ~y=37.6, z=-24,
+            // hitT~78; ~4% of pixels land out-of-bounds and poison the DDGI probe gather with
+            // noise). Using 128 (the next power of two >= 104) makes the octree grid EQUAL the
+            // bake grid, so addressing is consistent end to end. This is the "leftover interaction
+            // between the world-space-unification refactor and the baked traversal path" the
+            // geometry-fix rounds flagged but never pinned: those rounds set n to non-pow2 values
+            // (96 then 112) for brick-alignment without noticing the octree builder's pow2 contract.
+            //
             // subdiv breaks the "grid-unit == 1 world unit" identity so a grid cell is
             // 1/subdiv world units instead of 1 -- brick world-size (always brickSide=8 world
             // units under subdiv=1, independent of n) becomes brickSide/subdiv, making thin
             // (~2-6 world unit) walls resolvable instead of dilating into solid overlapping
             // slabs (round 5's own finding). Light/object grid: no subdivision needed (their
             // thinnest dims are close enough to a full brick that subdividing them is a smaller,
-            // non-blocking cosmetic concern). n=16 as before for the small bodies (subdiv=1).
+            // non-blocking cosmetic concern). n=16 (pow2) as before for the small bodies (subdiv=1).
             constexpr int kWallSubdiv = 4;
-            constexpr int kWallN   = 112;
+            constexpr int kWallN   = 128;  // power of two (was 112 -- see the pow2 note above)
             constexpr int kSmallN  = 16;
             constexpr int kSmallSubdiv = 1;
 
@@ -3188,17 +3204,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
-                    // TESTED AND RULED OUT (M3 round 4, 2026-07-14): a RequestBrickResidency(true)
-                    // call was tried here, hypothesizing that this scene's DeriveResidencyDefault-
-                    // computed LAZY residency (every body is mip-capable) plus its async brick-
-                    // upload latency explained the observed non-determinism. A live trial with the
-                    // eager call in place STILL produced out-of-bounds hits (7894/191705, worse
-                    // than some lazy-residency trials) -- and critically, the culprit instance
-                    // shifted from backWall (instIdx=2, prior trials) to ceiling (instIdx=4, this
-                    // trial), proving the anomaly is not tied to residency state or to one specific
-                    // body. Reverted; left this comment so a future investigator doesn't re-try the
-                    // same disproven hypothesis. See the plan doc's M3 round 4 Progress Log entry
-                    // for the full trial-by-trial evidence.
+                    // Force EAGER brick residency so the primary visible hit brick-marches the
+                    // real trilinear SDF surface (handleLeafHitInstancedSdf) instead of the coarse
+                    // mip-fallback (shadeFromMipSample) -- root cause of the "fragmented Cornell box"
+                    // this demo was reported broken with (combined-verify round, 2026-07-15).
+                    //
+                    // WHY this is required (two stacked causes, both found this round):
+                    //  (1) Every body is mip-capable, so DeriveResidencyDefault boots the scene LAZY
+                    //      (brickResident=0). Under LAZY the primary hit resolves via mip-fallback at
+                    //      coarse leaf-NODE granularity -- grey base color, flat up-normal, leaf-entry
+                    //      t. A coarse-grid HitRecord readback showed this renders geometrically
+                    //      INCOHERENT hits: wrong body per screen region, worldPos.z never below ~18.8
+                    //      (rays never reach the interior/back wall), no coherent wall planes.
+                    //  (2) The prior M3-round-4 "RequestBrickResidency ruled out" note was wrong for a
+                    //      subtle reason: VulkanGraphApplication::UpdateBodySceneResidency() runs a
+                    //      per-FRAME frustum/resolvability heuristic (tuned for the orbit-scale
+                    //      tiered-ESVO demos) that calls RequestBrickResidency(anyInstanceWantsBricks)
+                    //      every tick and STOMPED this grant back to false for this fixed close box
+                    //      (its walls fail the pixel-resolvability threshold) -- so the earlier trial's
+                    //      residency never actually stuck. That heuristic now early-returns for this
+                    //      demo (see UpdateBodySceneResidency), leaving this call the exclusive driver,
+                    //      exactly like VIXEN_TIER_ZOOM_DEMO's own scripted residency ownership.
+                    bodyScene->RequestBrickResidency(true);
                     bodyScene->SetInstances(std::move(instances));
                     mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: seeded 8 body "
                                       "instances (5 walls + 1 ceiling light + 2 objects)");
