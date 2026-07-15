@@ -37,6 +37,13 @@ struct WorldHit {
     float roughness;
     uint  brickIndex;
     uint  voxelIdx;
+    // M3 round 3 (2026-07-14): which body instance produced the winning nearest-hit --
+    // a Cornell-demo diagnostic aid (localizing a stray out-of-bounds hit found by a CPU
+    // HitRecord readback) mirroring M1 round 4's own now-removed g_cornellDiagWinnerInstIdx
+    // technique, but carried as a real WorldHit field this time instead of a separate
+    // shader global, and left permanently available (cheap, always-written) rather than
+    // scaffolded in/out per round. 0xFFFFFFFFu when anyHit is false (no winner).
+    uint  instIdx;
 };
 
 // ============================================================================
@@ -61,6 +68,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     float bestRoughness   = 0.5;   // Inc3 M3: default for binary/procedural paths
     uint  bestBrickIndex  = 0u;
     uint  bestVoxelIdx    = 0u;
+    uint  bestInstIdx     = 0xFFFFFFFFu;  // M3 round 3: winning instance, see WorldHit.instIdx
 
     // -----------------------------------------------------------------------
     // INSTANCE LOOP
@@ -160,6 +168,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestNormal     = pNormal;      // smooth SDF-gradient normal
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
+                bestInstIdx    = uint(instIdx);
                 anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -323,6 +332,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
+            bestInstIdx     = uint(instIdx);
             anyHit          = true;
         }
     }
@@ -333,6 +343,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.roughness  = bestRoughness;
     hit.brickIndex = bestBrickIndex;
     hit.voxelIdx   = bestVoxelIdx;
+    hit.instIdx    = bestInstIdx;
     return anyHit;
 }
 

@@ -1232,6 +1232,11 @@ void VulkanGraphApplication::Update() {
             constexpr long kCornellDiagReadTick = 150;  // matches the camera-pose diagnostic's own settle tick
 
             if (cornellDiagTick == kCornellDiagReadTick) {
+                if (auto* bodySceneDiag = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstanceByName("body_octree_scene"))) {
+                    mainLogger->Info(std::string("[CornellDiag] residency at tick 150: requested=") +
+                                      (bodySceneDiag->IsResidencyRequested() ? "true" : "false") +
+                                      " brickPoolUploaded=" + (bodySceneDiag->IsBrickPoolUploaded() ? "true" : "false"));
+                }
                 auto* hrBuf = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
                 auto* cornellDevInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
                 if (hrBuf && cornellDevInst && cornellDevInst->GetVulkanDevice()) {
@@ -1243,6 +1248,7 @@ void VulkanGraphApplication::Update() {
                         constexpr size_t kWorldPosOffset   = 32;  // HitRecord.glsl's own layout comment
                         constexpr size_t kHitTOffset        = 28;
                         constexpr size_t kFlagsOffset       = 44;
+                        constexpr size_t kPad0Offset        = 48;  // _pad0[0] = winning instIdx (M3 round 3, TraceWorld.glsl's WorldHit.instIdx)
                         const auto* bytes = reinterpret_cast<const uint8_t*>(hrMapped);
                         const size_t byteSize = static_cast<size_t>(hrBuf->GetSizeBytes());
                         const size_t recordCount = byteSize / kHitRecordStride;
@@ -1263,6 +1269,17 @@ void VulkanGraphApplication::Update() {
                         size_t hitCount = 0;
                         float minWorld[3] = {1e30f, 1e30f, 1e30f};
                         float maxWorld[3] = {-1e30f, -1e30f, -1e30f};
+                        // M3 round 3 (2026-07-14): localize the out-of-bounds stray hit(s) found
+                        // in rounds 1/2 (worldPos.z ~= -48, impossible for any real Cornell body
+                        // -- max legitimate Z is 4, the back wall's outer face) by scanning every
+                        // pixel for an OUT-OF-BOUNDS worldPos (any axis outside a generous
+                        // [-20,60] box, well beyond the true scene's [~-2,~30] extent) and
+                        // reporting exact pixel coordinates + hitT, not just the aggregate
+                        // min/max -- pinpoints WHERE on screen the anomaly lands (which wall's
+                        // region, or a lone isolated pixel) instead of just confirming it exists.
+                        constexpr float kBoundsLo = -20.0f, kBoundsHi = 60.0f;
+                        size_t oobCount = 0;
+                        int oobFirstPx = -1, oobFirstPy = -1;
                         for (size_t i = 0; i < recordCount; ++i) {
                             uint32_t flagsField;
                             std::memcpy(&flagsField, bytes + i * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
@@ -1274,6 +1291,28 @@ void VulkanGraphApplication::Update() {
                                     minWorld[a] = std::min(minWorld[a], wp[a]);
                                     maxWorld[a] = std::max(maxWorld[a], wp[a]);
                                 }
+                                const bool oob = wp[0] < kBoundsLo || wp[0] > kBoundsHi ||
+                                                  wp[1] < kBoundsLo || wp[1] > kBoundsHi ||
+                                                  wp[2] < kBoundsLo || wp[2] > kBoundsHi;
+                                if (oob) {
+                                    const int px = static_cast<int>(i % static_cast<size_t>(kImgSize));
+                                    const int py = static_cast<int>(i / static_cast<size_t>(kImgSize));
+                                    if (oobCount == 0) { oobFirstPx = px; oobFirstPy = py; }
+                                    ++oobCount;
+                                    if (oobCount <= 20 && mainLogger) {
+                                        float hitT;
+                                        std::memcpy(&hitT, bytes + i * kHitRecordStride + kHitTOffset, sizeof(float));
+                                        uint32_t winnerInstIdx;
+                                        std::memcpy(&winnerInstIdx, bytes + i * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                                        float nrm[3];
+                                        std::memcpy(nrm, bytes + i * kHitRecordStride + 16, sizeof(nrm));  // worldNormal @16
+                                        mainLogger->Info("[CornellDiag] OOB pixel(" + std::to_string(px) + "," + std::to_string(py) +
+                                                          ") hitT=" + std::to_string(hitT) +
+                                                          " instIdx=" + std::to_string(winnerInstIdx) +
+                                                          " worldPos=(" + std::to_string(wp[0]) + "," + std::to_string(wp[1]) + "," + std::to_string(wp[2]) + ")" +
+                                                          " normal=(" + std::to_string(nrm[0]) + "," + std::to_string(nrm[1]) + "," + std::to_string(nrm[2]) + ")");
+                                    }
+                                }
                             }
                         }
                         if (mainLogger) {
@@ -1283,6 +1322,10 @@ void VulkanGraphApplication::Update() {
                             mainLogger->Info("[CornellDiag] worldPos range across all hits: min=(" +
                                               std::to_string(minWorld[0]) + "," + std::to_string(minWorld[1]) + "," + std::to_string(minWorld[2]) +
                                               ") max=(" + std::to_string(maxWorld[0]) + "," + std::to_string(maxWorld[1]) + "," + std::to_string(maxWorld[2]) + ")");
+                            mainLogger->Info("[CornellDiag] out-of-bounds hits (any axis outside [" +
+                                              std::to_string(kBoundsLo) + "," + std::to_string(kBoundsHi) + "]): " +
+                                              std::to_string(oobCount) + "/" + std::to_string(hitCount) +
+                                              (oobCount > 0 ? (" first at pixel(" + std::to_string(oobFirstPx) + "," + std::to_string(oobFirstPy) + ")") : std::string()));
                         }
                         auto dumpPixel = [&](int px, int py) {
                             const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
@@ -1293,10 +1336,13 @@ void VulkanGraphApplication::Update() {
                             std::memcpy(worldPos, bytes + idx * kHitRecordStride + kWorldPosOffset, sizeof(worldPos));
                             float hitT;
                             std::memcpy(&hitT, bytes + idx * kHitRecordStride + kHitTOffset, sizeof(float));
+                            uint32_t winnerInstIdx;
+                            std::memcpy(&winnerInstIdx, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
                             if (mainLogger) {
                                 mainLogger->Info("[CornellDiag] pixel(" + std::to_string(px) + "," + std::to_string(py) +
                                                   ") hit=" + std::to_string(flagsField & 0x1u) +
                                                   " hitT=" + std::to_string(hitT) +
+                                                  " instIdx=" + std::to_string(winnerInstIdx) +
                                                   " worldPos=(" + std::to_string(worldPos[0]) + "," +
                                                   std::to_string(worldPos[1]) + "," + std::to_string(worldPos[2]) + ")");
                             }
@@ -1308,6 +1354,62 @@ void VulkanGraphApplication::Update() {
                         dumpPixel(490, 490);
                         dumpPixel(250, 10);
                         dumpPixel(250, 490);
+
+                        // COARSE-GRID VISUAL RECONSTRUCTION (2026-07-15, combined-verify round):
+                        // prior rounds relied on a handful of sample pixels + aggregate min/max,
+                        // which was insufficient to catch the deterministic per-region breakage.
+                        // Emit a 25x25 ASCII map (every 20th pixel over the 500x500 frame) of the
+                        // WINNING instIdx per cell -- so the rendered screen->body mapping can be
+                        // reconstructed and compared against where each wall SHOULD project, from
+                        // the log alone, without needing the PNG. Legend: 0=leftWall 1=rightWall
+                        // 2=backWall 3=floor 4=ceiling 5=light 6=sphere 7=boxObj '.'=miss
+                        // '?'=out-of-range instIdx. Also dumps a coarse worldPos/hitT grid so a
+                        // region's depth can be checked against its body's true world extent.
+                        {
+                            constexpr int kGrid = 25;
+                            constexpr int kStep = kImgSize / kGrid;  // 20
+                            std::string legend =
+                                "[CornellDiag] instIdx map (25x25, cell=20px; 0=Lwall 1=Rwall 2=back 3=floor 4=ceil 5=light 6=sph 7=box .=miss):";
+                            mainLogger->Info(legend);
+                            for (int gy = 0; gy < kGrid; ++gy) {
+                                std::string row;
+                                const int py = gy * kStep + kStep / 2;
+                                for (int gx = 0; gx < kGrid; ++gx) {
+                                    const int px = gx * kStep + kStep / 2;
+                                    const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
+                                    if (idx >= recordCount) { row += ' '; continue; }
+                                    uint32_t f;
+                                    std::memcpy(&f, bytes + idx * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                    if ((f & 0x1u) == 0u) { row += '.'; continue; }
+                                    uint32_t wi;
+                                    std::memcpy(&wi, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                                    row += (wi <= 7u) ? static_cast<char>('0' + wi) : '?';
+                                }
+                                mainLogger->Info("[CornellDiag] |" + row + "|");
+                            }
+                            // Coarse worldPos.z depth map (same grid) -- one char per cell bucketing
+                            // the hit's world Z into a symbol, to see whether a region's depth is
+                            // sane for the body it claims to be (walls at known Z, floor/ceiling
+                            // spanning Z etc). '-'=z<6, '='=6..16, '#'=16..26, '+'=z>26, '.'=miss.
+                            mainLogger->Info("[CornellDiag] worldPos.z depth map (-:<6 =:6-16 #:16-26 +:>26 .=miss):");
+                            for (int gy = 0; gy < kGrid; ++gy) {
+                                std::string row;
+                                const int py = gy * kStep + kStep / 2;
+                                for (int gx = 0; gx < kGrid; ++gx) {
+                                    const int px = gx * kStep + kStep / 2;
+                                    const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
+                                    if (idx >= recordCount) { row += ' '; continue; }
+                                    uint32_t f;
+                                    std::memcpy(&f, bytes + idx * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                    if ((f & 0x1u) == 0u) { row += '.'; continue; }
+                                    float wp[3];
+                                    std::memcpy(wp, bytes + idx * kHitRecordStride + kWorldPosOffset, sizeof(wp));
+                                    const float z = wp[2];
+                                    row += (z < 6.0f) ? '-' : (z < 16.0f) ? '=' : (z < 26.0f) ? '#' : '+';
+                                }
+                                mainLogger->Info("[CornellDiag] |" + row + "|");
+                            }
+                        }
                         hrBuf->UnmapReadback(cornellDev);
                     }
                 } else if (mainLogger) {
@@ -2405,6 +2507,20 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // ExecuteImpl). This mirrors VIXEN_TIER_CROSSING_NONRESIDENT/VIXEN_RESIDENCY_GATE_DEMO's own
     // precedent of a demo env knob taking deliberate, exclusive control of one subsystem.
     if (std::getenv("VIXEN_TIER_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+        return;
+    }
+
+    // Cornell Box GI reference demo (baked variant): its BuildRenderGraph block calls
+    // RequestBrickResidency(true) once, unconditionally, because the whole point is a
+    // fully-resident brick-marched box to visually compare against the virtual variant.
+    // This per-frame frustum/resolvability heuristic — tuned for the orbit-scale tiered-ESVO
+    // demos, not this fixed close box — otherwise re-decides residency to FALSE every frame
+    // (the walls fail its pixel-resolvability threshold at this camera distance), stomping the
+    // explicit grant back off and dropping the primary visible hit onto the coarse mip-fallback
+    // path (grey/flat-normal, geometrically-incoherent leaf-node hits — the "fragmented Cornell
+    // box" this demo was reported broken with). Take exclusive control here, exactly like
+    // VIXEN_TIER_ZOOM_DEMO above (a demo env knob owning one subsystem's schedule).
+    if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
         return;
     }
 

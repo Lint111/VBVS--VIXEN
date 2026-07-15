@@ -245,7 +245,13 @@ void main() {
     rec.hitT        = worldHit.t;
     rec.worldPos    = rayOrigin + rayDir * worldHit.t;
     rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
-    rec._pad0       = uint[3](0u, 0u, 0u);
+    // M3 round 3 (2026-07-14): stash the winning instance index in HitRecord's own spare
+    // padding (a real, always-64-byte field, test_hitrecord_sdi_parity.cpp's own layout
+    // assert is unaffected) -- a Cornell-demo diagnostic aid for localizing a stray
+    // out-of-bounds hit, cheap enough (one extra uint write, no new binding) to leave
+    // permanently available rather than scaffolding it in/out per round the way M1
+    // round 4's own g_cornellDiagWinnerInstIdx was.
+    rec._pad0       = uint[3](worldHit.instIdx, 0u, 0u);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
     hitRecords[hitRecordIdx] = rec;
