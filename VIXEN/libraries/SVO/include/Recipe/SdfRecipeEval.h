@@ -16,10 +16,17 @@
 #include <glm/glm.hpp>
 #include <cassert>
 #include <cstdint>
+#include <span>
 
 namespace Vixen::SVO::Recipe {
 
-inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p) {
+// params: per-instance dynamic-parameter array backing ReadParam/ReadParamFloat3 (Recipe-
+// Parameterization-Plan-2026-07 M1 Task 3). Defaults to an empty span so every pre-P4 call site
+// compiles unchanged. Out-of-range reads fail safe to 0.0f (mirrors the Yeroket Burst reference's
+// `baseIdx < ctx.Parameters.Length ? ... : 0f` pattern) rather than asserting/crashing, since
+// content authoring will get an index wrong sometimes.
+inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
+                         std::span<const float> params = {}) {
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
@@ -27,7 +34,6 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
     using namespace Yeroket::Sdf::Generated;
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
-        assert(in.paramMask == 0 && "ParamMask!=0 deferred to P4");
         switch (static_cast<SdfOpCode>(in.opCode)) {
             case SdfOpCode::Sphere: {
                 assert(sp < 64 && "value stack overflow");
@@ -466,6 +472,19 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p)
             case SdfOpCode::PushParam: {           // push baked parameter value
                 assert(sp < 64 && "PushParam: value stack overflow");
                 stack[sp++] = in.data[0];
+            } break;
+            case SdfOpCode::ReadParam: {           // push params[data[0]] (runtime-indexed read)
+                assert(sp < 64 && "ReadParam: value stack overflow");
+                size_t idx = static_cast<size_t>(in.data[0]);
+                stack[sp++] = idx < params.size() ? params[idx] : 0.0f;
+            } break;
+            case SdfOpCode::ReadParamFloat3: {     // push params[idx*3 .. idx*3+2] as 3 floats
+                assert(sp < 62 && "ReadParamFloat3: value stack overflow");
+                size_t idx = static_cast<size_t>(in.data[0]);
+                size_t base = idx * 3;
+                stack[sp++] = base     < params.size() ? params[base]     : 0.0f; // x (deepest)
+                stack[sp++] = base + 1 < params.size() ? params[base + 1] : 0.0f; // y
+                stack[sp++] = base + 2 < params.size() ? params[base + 2] : 0.0f; // z (top)
             } break;
             case SdfOpCode::PushFloat3: {          // push data[0..2] as 3 floats (x then y then z)
                 assert(sp < 62 && "PushFloat3: value stack overflow");
