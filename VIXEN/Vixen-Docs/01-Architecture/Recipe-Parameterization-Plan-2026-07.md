@@ -240,7 +240,7 @@ doc's own recommendation is to revisit once the JIT epic's N≥100 target is rea
   `3.0*sin(tick*0.05)`. Live capture (3 frames at distinct sweep phases) confirms (a) visibly
   changing geometry — 3 different PNG checksums, gold sphere visibly grows/shifts; (b) zero-bake
   holds — 0 `BakeSdfWorld`/`BuildSdfBodyOctree` calls logged for demo bodies; (c) **found a
-  pre-existing, unrelated bug**, filed as **[[Known-Issues|KI-028]]**: this exact live gate had
+  pre-existing, unrelated bug**, filed as **[[Known-Issues|KI-033]]**: this exact live gate had
   never been run to completion before (flagged "STILL CARRIED (windowed only)" in the
   Lazy-Procedural M5 doc), and running it revealed a boot-time recompile of `body_octree_scene`
   that leaves a shared descriptor set stale, producing a VUID cascade — independently isolation-
@@ -271,7 +271,7 @@ doc's own recommendation is to revisit once the JIT epic's N≥100 target is rea
   identically to the already-documented pre-existing baseline (zero-diff on their dependency files
   since M2's `770ec1c1`).
   **Opus-validated APPROVED 2026-07-15** — validator independently reproduced BOTH self-reported
-  concerns rather than accepting them: re-ran the KI-028 isolation test itself (same result, zero
+  concerns rather than accepting them: re-ran the KI-033 isolation test itself (same result, zero
   VUIDs on any recipe-parameterization-touched binding); and — the strongest check in this
   milestone — **proved the Task 9 no-recompile assertion can actually fail** by temporarily
   injecting an unconditional `MarkNeedsRecompile()` into `SetInstances`, rebuilding, and confirming
@@ -292,13 +292,14 @@ doc's own recommendation is to revisit once the JIT epic's N≥100 target is rea
   `ShaderCountersBuffer`) removed from `BodyInstanceRayMarch.comp`'s reflected SPIR-V interface by
   `8509f58b` on 2026-07-03; a local layout binding absent from the shader's actual resource
   interface is a `VUID-VkComputePipelineCreateInfo-layout-07988`-class validation error at
-  pipeline-creation time — this, not KI-028's boot-recompile theory, was the real cause of the
-  VUID cascade these three specific tests hit. Fixed in both `test_baked_vs_virtual_parity.cpp`
-  and `test_mip_fallback_render.cpp` (identical stale entry); confirmed live (Windows-native, real
-  AMD Radeon GPU) that `vkCreateComputePipelines` now succeeds with **zero** VUID/validation-layer
-  output in both, where every prior run had aborted or failed at pipeline-creation time — genuine,
-  verified progress, not a reclassification. Fixing it exposed a SECOND, deeper, unrelated
-  pre-existing bug (filed as **[[Known-Issues|KI-029]]**): both harnesses dispatch only
+  pipeline-creation time — a bug genuinely SEPARATE from KI-033's boot-recompile theory (different
+  code path: these tests' own hand-built descriptor layouts vs. a live render-graph recompile),
+  independently confirmed by the Opus validator, not a reclassification of KI-033. Fixed in both
+  `test_baked_vs_virtual_parity.cpp` and `test_mip_fallback_render.cpp` (identical stale entry);
+  confirmed live (Windows-native, real AMD Radeon GPU) that `vkCreateComputePipelines` now succeeds
+  with **zero** VUID/validation-layer output in both, where every prior run had aborted or failed
+  at pipeline-creation time — genuine, verified progress. Fixing it exposed a SECOND, deeper,
+  unrelated pre-existing bug (filed as **[[Known-Issues|KI-032]]**): both harnesses dispatch only
   `BodyInstanceRayMarch.comp` and read back its `outputImage`, but that image hasn't been written
   by this shader since the Sampled-Lighting-Inc3 M1/M5 pass-split (`784adff7`, `747e156c`) moved
   the real `imageStore` to a third shader, `SpatialReuseShade.comp` — the harnesses are reading
@@ -313,19 +314,25 @@ doc's own recommendation is to revisit once the JIT epic's N≥100 target is rea
   M1/M3 Task 10 `params` argument) IDENTICAL to the virtual path's `BodyInstanceGpu::recipeParams[0]`
   value. Confirmed live: registers, bakes, splices, dispatches, and reads back with **zero VUIDs
   and zero crashes** — the corpus entry, snapshot wiring, and virtual-instance wiring are all
-  provably correct and ready to produce a real IoU number the moment KI-029 is fixed; it currently
+  provably correct and ready to produce a real IoU number the moment KI-032 is fixed; it currently
   fails the SAME `bakedHits=0/virtualHits=0` structural symptom as every other corpus entry
-  (pre-existing and new alike), which is the expected, honest outcome given KI-029 is unfixed — not
+  (pre-existing and new alike), which is the expected, honest outcome given KI-032 is unfixed — not
   a recipe-parameterization defect. The IoU floor (0.75, KI-LPD-003) was NOT weakened or bypassed.
-  Task 12: full sweep run (Windows-native, real GPU, fresh full build first) —
-  **225/229 tests passed**; the 4 failures
+  Task 12: full sweep run (Windows-native, real GPU, fresh full build first) — the implementer's
+  own tally (225/229) undercounted; the Opus validator's independent recount found the true
+  pre-existing failure surface is larger — `test_rendergraph_criticalnodes_gpurender1` (7 failed,
+  not 1), `..._gpurender2b` (3 failed, not 2, incl. an uncited `ShadowCorrectnessTest.
+  OccludedPixelMatchesCpuReferenceShadowRay`), plus `test_recipe_pool_render` (1) — **every one
+  independently confirmed pre-existing** (every involved source/shader file last touched by
+  `375211ad`, an ancestor of this branch's fork point; zero diff on any of them this branch).
+  **Zero NEW regressions from this branch** — the correction is a reporting-accuracy fix, not a
+  correctness concern. Original 4 named failures
   (`BodyInstanceRayMarchRenderTest.RenderRecipeBakedBody`,
   `RecipePoolRenderTest.FourRecipesAllRender`,
   `RecipeAuthoringGateTest.CsgSubtractRendersNonTrivial`,
   `RecipeAuthoringGateTest.DefaultSceneRegression`) match the M1-established baseline exactly (same
-  `VUID-VkComputePipelineCreateInfo-layout-10069`/`-07988` signature, same 4-test count, 2 more
-  test files with their OWN independent stale descriptor/push-constant setups than the 3 already
-  known — confirmed pre-existing, zero diff on their own dependency files this milestone); 1 skip
+  `VUID-VkComputePipelineCreateInfo-layout-10069`/`-07988` signature — the same stale-descriptor-
+  layout drift class as KI-032, just in harnesses this milestone wasn't scoped to fix); 1 skip
   (`SVOBuilderTest.GeometricError`, an unrelated `GTEST_SKIP()` in a different subsystem);
   `test_baked_vs_virtual_parity`/`test_mip_fallback_render` aren't ctest-registered
   (`gtest_discover_tests` didn't pick them up) so were run directly and separately confirmed above.
@@ -352,23 +359,28 @@ validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' 
   before merge to main.
 - **Milestone M3 (Tasks 8-10): DONE** · commit `33694860` · Opus validator APPROVED · 2026-07-15.
   See Milestone Map entry above for full detail. Same worktree/branch, continuing before merge to
-  main. **New known issue filed as [[Known-Issues|KI-028]]** (pre-existing, not a regression):
+  main. **New known issue filed as [[Known-Issues|KI-033]]** (pre-existing, not a regression):
   boot-time `body_octree_scene` recompile leaves `voxelGridNode`-sourced descriptor bindings stale
   under `VIXEN_PROCEDURAL_UBER_DEMO` — double isolation-tested (implementer + validator,
   independently). Validator additionally proved the Task 9 no-recompile gtest is non-vacuous by
   injecting a real regression and confirming it fails.
 - **Milestone M4 (Tasks 11-12): DONE, Task 11 DONE_WITH_CONCERNS (carried obligation)** ·
-  commit `a6510536` (code) + doc-closure commit · 2026-07-15. **This is the FINAL milestone —
-  plan ready for merge to main pending Opus validation.** See Milestone Map entry above for full
-  detail. Root-caused and FIXED a real bug (stale `binding=8` descriptor-layout entry) that had
-  been misdiagnosed as KI-028 by prior milestones; fixing it exposed a second, deeper, unrelated
-  pre-existing bug, filed as **[[Known-Issues|KI-029]]** (RenderGraph test-harness reads back an
-  `outputImage` no longer written after the Sampled-Lighting-Inc3 pass-split — a RenderGraph/
-  shader-pass-chaining problem, not a recipe/param-VM one). Task 11's `ReadParam` parity corpus
-  entry is CODE DONE / LIVE GATE PENDING on KI-029 — confirmed correct via a clean zero-VUID,
-  zero-crash live run, not a fake pass. Task 12's full sweep: 225/229 passed, 4 pre-existing
-  failures matching the exact M1-established VUID baseline, 1 unrelated pre-existing skip, zero
-  new regressions. Format-contract and JIT-direction docs flipped to P4-shipped.
+  commit `a6510536` (code) + doc-closure commit · Opus validator APPROVED · 2026-07-15. **This is
+  the FINAL milestone — branch is READY for the finishing-a-development-branch merge step.** See
+  Milestone Map entry above for full detail. Root-caused and FIXED a real bug (stale `binding=8`
+  descriptor-layout entry) genuinely SEPARATE from KI-033 (independently confirmed by the
+  validator, not a misdiagnosis retraction — two distinct bugs on two distinct code paths); fixing
+  it exposed a second, deeper, unrelated pre-existing bug, filed as **[[Known-Issues|KI-032]]**
+  (RenderGraph test-harness reads back an `outputImage` no longer written after the
+  Sampled-Lighting-Inc3 pass-split — a RenderGraph/shader-pass-chaining problem, not a
+  recipe/param-VM one). Task 11's `ReadParam` parity corpus entry is CODE DONE / LIVE GATE PENDING
+  on KI-032 — confirmed correct via a clean zero-VUID, zero-crash live run, not a fake pass. Task
+  12's full sweep: validator's corrected independent recount found a larger (but still 100%
+  pre-existing, zero-new-regression) failure surface than the implementer's own tally — see
+  Milestone Map entry for the corrected count. Format-contract and JIT-direction docs flipped to
+  P4-shipped. **KI numbering collision found and fixed post-validation**: KI-032/KI-033 had
+  originally been filed as KI-028/KI-029, colliding with two pre-existing Sampled-Lighting-Inc4
+  entries already using those numbers — renumbered to the validator-confirmed next-free slots.
 
 ---
 

@@ -241,6 +241,6 @@ whether to reject or trim.
   [[Recipe-Parameterization-Plan-2026-07]] for the full design/implementation (commits
   `353e6b8e..0ae8ea48` M1-M3, M4 doc-closure commit TBD at merge). Known carried gap: the M4
   baked-vs-virtual parity gate for a `ReadParam` recipe is CODE DONE / LIVE GATE PENDING — see
-  [[Known-Issues|KI-029]] (a pre-existing RenderGraph test-harness readback bug, unrelated to P4
+  [[Known-Issues|KI-032]] (a pre-existing RenderGraph test-harness readback bug, unrelated to P4
   itself; CPU-eval/GLSL-emit/registry/no-recompile claims are all independently live-verified via
-  other M1-M3 gates that don't share KI-029's stale-readback path).
+  other M1-M3 gates that don't share KI-032's stale-readback path).

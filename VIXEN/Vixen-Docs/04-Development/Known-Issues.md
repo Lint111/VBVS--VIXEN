@@ -11,7 +11,7 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-029 — `test_baked_vs_virtual_parity`/`test_mip_fallback_render`/`test_recipe_pool_render` read back a color image no shader in their single-pass dispatch ever writes (Sampled-Lighting-Inc3 M5 pass-split fallout)
+## KI-032 — `test_baked_vs_virtual_parity`/`test_mip_fallback_render`/`test_recipe_pool_render` read back a color image no shader in their single-pass dispatch ever writes (Sampled-Lighting-Inc3 M5 pass-split fallout)
 
 **Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M4's Task 11 (baked-vs-virtual
 parity gate for a `ReadParam` recipe) — while root-causing why `test_baked_vs_virtual_parity`'s
@@ -32,9 +32,10 @@ pre-dates recipe-parameterization but had not root-caused it further.
    (`BuildRenderGraph.cpp:795-801`) agrees — no binding 8. A local test layout that includes a
    binding the SPIR-V module doesn't declare is a `VUID-VkComputePipelineCreateInfo-layout-07988`-
    class validation error: the pipeline layout is incompatible with the shader module's actual
-   resource interface. This was previously misdiagnosed (M3's KI-028 investigation) as the
-   `body_octree_scene` boot-recompile descriptor-staleness bug — that bug is real and still open
-   (see KI-028 below) but is NOT what was causing these three specific tests' VUID cascade; the
+   resource interface. This is a genuinely SEPARATE bug from the `body_octree_scene` boot-recompile
+   descriptor-staleness bug M3 filed (see KI-033 below) — that bug is real and still open, but is
+   NOT what was causing these three specific tests' VUID cascade (different code path: a live
+   render-graph recompile vs. these tests' own hand-built descriptor layouts); the
    stale binding-8 entry is a distinct, simpler, now-fixed root cause. **Fix:** removed the
    `bindL(8, ...)` layout entry, its `VkWriteDescriptorSet`, the pool-size count, and the
    now-unused `ctrBuf`/`ctrMem` plumbing from all three files. Confirmed live (Windows-native, real
@@ -98,7 +99,7 @@ wiring are provably correct and ready to pass once either fix option above lands
 
 ---
 
-## KI-028 — `VIXEN_PROCEDURAL_UBER_DEMO` boot recompile leaves shared descriptor set stale, producing a persistent VUID cascade
+## KI-033 — `VIXEN_PROCEDURAL_UBER_DEMO` boot recompile leaves shared descriptor set stale, producing a persistent VUID cascade
 
 **Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M3's live validation-layer
 render gate — the first time this exact gate (`VIXEN_PROCEDURAL_UBER_DEMO` + real Windows-native GPU +
