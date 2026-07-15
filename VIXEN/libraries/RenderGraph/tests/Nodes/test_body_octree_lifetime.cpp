@@ -50,11 +50,14 @@
 #include "ShellOctreeGpu.h"                          // Vixen::SVO::BodyInstanceGpu
 #include "SdfBake.h"                                 // BakeRecipeToSdfWorld / BuildSdfBodyOctree
 #include "SdfRecipes.h"                              // RECIPE_SPHERE, RecipeParams
+#include "Recipe/RecipeRegistry.h"                   // Recipe-Parameterization M3 Task 9: ReadParam program
+#include "Recipe/SdfInstruction.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"                        // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
 
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -598,6 +601,124 @@ TEST_F(BodyOctreeLifetimeTest, RealNodeRingLifecycleHasNoValidationErrors) {
     ReleaseDeviceShell();              // drop the non-owning shell (no vkDestroyDevice)
     DestroyDeviceAndCommandPool();     // vkDestroyDevice — leak/double-free report point
     ExpectNoValidationErrors("device destroy (leaked-object check)");
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-Parameterization M3 Task 9 — THE MOST IMPORTANT CLAIM IN THIS PLAN:
+// pure recipeParams[] value updates (same registered bytecode, same instance count) must
+// NEVER trigger BodyOctreeSceneNode::SetInstances's recompile-avoidance logic to fire
+// MarkNeedsRecompile(). This is the exact fragile/load-bearing logic SetInstances's own
+// comment calls out ("Do NOT call MarkNeedsRecompile for a steady same-size update — the
+// per-tick recompile cascade was the race root cause"). Directly instruments the real
+// production path — NodeInstance::NeedsRecompile() — the same observable flag the engine's
+// own RenderGraph::RecompileDirtyNodes() checks every tick, not a log-grep proxy for it.
+// ---------------------------------------------------------------------------
+TEST_F(BodyOctreeLifetimeTest, ReadParamValueSweepNeverMarksNodeNeedsRecompile) {
+    std::cout << "[ device ] no-recompile-proof device: '" << selectedDeviceName_ << "'\n";
+    using C = BodyOctreeSceneNodeConfig;
+
+    // A genuine ReadParam-using program: sphere(center, baseRadius) - params[0] (MathSub is
+    // non-commutative a-b; stack [sphereSD, readParam] => a=sphereSD, b=params[0]) — the SAME
+    // construction BuildRenderGraph.cpp's VIXEN_PROCEDURAL_UBER_DEMO live gate uses (M3 Task 8),
+    // registered here directly against RecipeRegistry (no VulkanGraphApplication needed — the
+    // recompile-avoidance property under test lives entirely in BodyOctreeSceneNode::
+    // SetInstances, independent of what the shader-splice/registry layer above it does).
+    using Vixen::SVO::Recipe::SdfOpCode;
+    using Vixen::SVO::Recipe::SdfInstruction;
+    Vixen::SVO::RecipeRegistry registry;
+    constexpr uint32_t kReadParamRecipeId = 7u;
+    {
+        SdfInstruction sph{}; sph.opCode = (uint8_t)SdfOpCode::Sphere;
+        sph.data[0] = 0.0f; sph.data[1] = 0.0f; sph.data[2] = 0.0f; sph.data[3] = 6.0f;
+        SdfInstruction rp{}; rp.opCode = (uint8_t)SdfOpCode::ReadParam; rp.paramMask = 1; rp.data[0] = 0.0f;
+        SdfInstruction sub{}; sub.opCode = (uint8_t)SdfOpCode::MathSub;
+
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+        entry.bytecode    = { sph, rp, sub };
+        entry.boundCenter = glm::vec3(0.0f);
+        entry.boundRadius = 12.0f;
+        auto regResult = registry.Register(kReadParamRecipeId, entry);
+        ASSERT_EQ(regResult, Vixen::SVO::RecipeRegistry::RegisterResult::Ok)
+            << "ReadParam program failed to register, code " << static_cast<int>(regResult);
+    }
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_octree_no_recompile_proof");
+    ASSERT_NE(nodeBase, nullptr);
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes;  SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;    SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;   uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    // One PROVIDER_PROCEDURAL instance carrying the ReadParam recipe id — mirrors
+    // VIXEN_PROCEDURAL_UBER_DEMO's own instance shape (BuildRenderGraph.cpp M3 Task 8).
+    auto makeReadParamInstance = [&](float paramValue) {
+        Vixen::SVO::BodyInstanceGpu inst{};
+        inst.renderScale     = 1.0f;
+        inst.providerKind    = 1u;   // PROVIDER_PROCEDURAL
+        inst.recipeId        = kReadParamRecipeId;
+        inst.recipeParams[0] = paramValue;
+        return inst;
+    };
+
+    const uint32_t kInstanceCount = 3u;
+    std::vector<Vixen::SVO::BodyInstanceGpu> initial(kInstanceCount, makeReadParamInstance(0.0f));
+    // The very FIRST SetInstances (instanceRingCapacity_ starts at 0, before any Compile ever
+    // allocated a ring) correctly/expectedly flags NeedsRecompile — there is no ring yet to fit
+    // into, so this is the documented growth path, not the steady-state claim under test. The
+    // real "pure param update never recompiles" claim only applies POST-compile (below), once a
+    // ring actually exists to compare capacity against.
+    node->SetInstances(initial);
+
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    node->ClearNeedsRecompile();  // isolate the assertion below to POST-compile SetInstances calls
+    ExpectNoValidationErrors("no-recompile-proof compile");
+    ASSERT_FALSE(node->NeedsRecompile()) << "post-Compile baseline must start clean";
+
+    // =========================================================================
+    // THE ASSERTION: N frames of PURE recipeParams[] value updates — SAME bytecode
+    // (registry never re-registers), SAME instance COUNT (kInstanceCount every frame,
+    // matching SetInstances's own "steady same-size update" language) — must produce
+    // ZERO recompile requests. A sine sweep mirrors the live demo's actual value shape
+    // (BuildRenderGraph.cpp / VulkanGraphApplication::PreTick), not just a monotonic ramp.
+    // =========================================================================
+    constexpr uint32_t kFrames = 50u;
+    uint32_t recompileFlagCount = 0;
+    for (uint32_t f = 0; f < kFrames; ++f) {
+        const float sweepValue = 3.0f * std::sin(static_cast<float>(f) * 0.13f);
+        std::vector<Vixen::SVO::BodyInstanceGpu> instances(kInstanceCount, makeReadParamInstance(sweepValue));
+        // Same-size vector, different recipeParams[0] content only — the exact shape of a
+        // real per-frame param sweep, never touching instance COUNT or recipe bytecode.
+        node->SetInstances(std::move(instances));
+        if (node->NeedsRecompile()) {
+            ++recompileFlagCount;
+            ADD_FAILURE() << "frame " << f << " (params[0]=" << sweepValue
+                           << "): SetInstances raised NeedsRecompile on a pure "
+                              "same-size param-value update — this is the recompile-per-"
+                              "param-change regression this test exists to catch";
+        }
+
+        frameIndex = f;
+        SetHandleVal<uint32_t>(frameRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute()) << "Execute threw on frame " << f;
+    }
+    EXPECT_EQ(recompileFlagCount, 0u)
+        << "expected ZERO recompiles across " << kFrames
+        << " frames of pure recipeParams value updates; got " << recompileFlagCount;
+    ExpectNoValidationErrors("no-recompile-proof execute sweep");
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+    ReleaseDeviceShell();
+    DestroyDeviceAndCommandPool();
+    ExpectNoValidationErrors("no-recompile-proof device destroy");
 }
 
 // A second test instance: a separate fixture lifecycle so the device-destroy leak check
