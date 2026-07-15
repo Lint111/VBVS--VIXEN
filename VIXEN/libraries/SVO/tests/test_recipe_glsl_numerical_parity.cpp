@@ -628,9 +628,19 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
 
     ASSERT_FALSE(validOpcodes.empty()) << "IsValidSdfOpCode accepted nothing 0..255 — broken enum?";
 
+    // Scoped allowlist: ReadParam (96) and ReadParamFloat3 (111) are valid CPU-side
+    // opcodes as of Recipe-Parameterization M1 (evalRecipe handles them — see
+    // SdfRecipeEval.h), but EmitProceduralFieldFunctionGlsl has no emitter case for
+    // them yet, so no corpus program can exercise them through this GLSL-parity
+    // harness without failing gate B (RecipeGlslCompiles) above. That GLSL emitter
+    // case is Recipe-Parameterization-Plan-2026-07.md M2 Task 5 — remove this
+    // allowlist entry once it lands and a corpus program exercises both opcodes.
+    static const std::set<uint8_t> kGlslEmitterNotYetImplemented = {96, 111};
+
     std::vector<int> missingFromCorpus;   // valid but never exercised by the corpus
     for (uint8_t v : validOpcodes)
-        if (!corpusOpcodes.count(v)) missingFromCorpus.push_back(static_cast<int>(v));
+        if (!corpusOpcodes.count(v) && !kGlslEmitterNotYetImplemented.count(v))
+            missingFromCorpus.push_back(static_cast<int>(v));
 
     std::vector<int> extraInCorpus;       // corpus uses a byte IsValidSdfOpCode rejects
     for (uint8_t c : corpusOpcodes)
