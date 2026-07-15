@@ -188,6 +188,14 @@ private:
     // alpha>=1.0 history-skip guard).
     glm::mat4 prevViewProj{1.0f};
 
+    // Recipe Bucketing Inc2 M1: THIS frame's view*proj, published every Compile/Execute
+    // under CURRENT_VIEW_PROJ. Computed at the exact same call sites as prevViewProj's
+    // assignment (see CameraNode.cpp) -- this is the freshly-computed `projection * view`
+    // BEFORE it becomes next frame's "previous", unlike prevViewProj which always lags by
+    // one frame. Consumed by the recipe instance-bucketing pre-pass to project world-space
+    // bound spheres to screen space for THIS frame's actual view.
+    glm::mat4 currentViewProj{1.0f};
+
     // Camera state
     glm::vec3 cameraPosition{0.0f, 0.0f, 3.0f};
     float yaw = 0.0f;

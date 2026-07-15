@@ -1,0 +1,212 @@
+#version 460
+
+// ============================================================================
+// RecipeInstanceBucketing.comp — Recipe GPU Instance Bucketing Inc2 M1 (Tasks 2-3).
+//
+// Standalone pre-pass, ONE THREAD PER INSTANCE (not per pixel — a fundamentally
+// different dispatch shape than the shared BodyInstanceRayMarch.comp per-pixel
+// march). Reads bodyInstances[] (mirrors the binding-10 layout from
+// SceneBindings.glsl, but declared standalone here at binding 0 — this shader
+// does not #include the shared scene-binding chain, mirroring ShellDerive.comp's
+// precedent of a self-contained binding set starting from 0) and buckets them by
+// EXACT recipeId (design doc §3.1, resolved — NOT content-hash family, that is
+// Increment 4's job).
+//
+// Two things this pass produces, per the M1 plan (Tasks 2 and 3):
+//   1. Per-recipeId compacted instance-index lists via atomic-counter-driven
+//      append (mirrors shaders/ShaderCounters.glsl's atomicAdd idiom — the
+//      proven-working atomic compaction pattern in this codebase).
+//   2. Per-bucket screen-space coverage: each member instance's world-space
+//      bound sphere (CPU-supplied via recipeBounds[], indexed by recipeId —
+//      NOT the uber-shader's getRecipeBoundSphere GLSL switch, which only
+//      exists once BodyInstanceRayMarch.comp has been recipe-spliced; this
+//      pass is a decoupled standalone dispatch and needs the same data as
+//      plain SSBO content instead) is projected to screen space via the
+//      CURRENT_VIEW_PROJ matrix (CameraNodeConfig, Task 1) and unioned into a
+//      conservative pixel-space AABB per bucket via atomicMin/atomicMax.
+//
+// Bucket capacity (Task 2): distinct-recipeId buckets are capped at
+// kMaxBuckets (256 — see push-constant maxBuckets, CPU-supplied so it can be
+// tuned without a shader recompile, default 256). This caps DISTINCT
+// SIMULTANEOUSLY-HOT recipeIds, NOT total instances — the 1000+ instance
+// target does not imply 1000+ distinct recipeIds live at once (design doc
+// §2/Task 2). An instance whose recipeId >= maxBuckets is silently dropped
+// from bucketing (out of this milestone's scope to handle; M1's gate scene
+// stays well under the cap). Per-bucket member capacity is also CPU-supplied
+// (maxMembersPerBucket) so a pathological single-recipe scene doesn't
+// overflow bucketIndices[] silently — an overflowing append is dropped (the
+// atomic counter still increments past capacity so overflow is DETECTABLE
+// from the host: bucketCounts[id] > maxMembersPerBucket signals truncation).
+// ============================================================================
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// std430 SSBO record, 64 bytes — byte-for-byte identical to shaders/SceneBindings.glsl's
+// BodyInstance (binding 10 there; declared standalone here since this shader has its own
+// binding namespace, mirroring the same C++ Vixen::SVO::BodyInstanceGpu layout).
+struct BodyInstance {
+    vec3  worldPos;          // 0
+    float renderScale;       // 12
+    vec3  color;             // 16
+    uint  octreeIndex;       // 28
+    uint  providerKind;      // 32  (0 = Stored/ESVO, 1 = Procedural)
+    uint  recipeId;          // 36
+    float recipeParams[6];   // 40..63
+};
+
+layout(std430, binding = 0) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+
+// Per-recipeId world-space bound sphere, CPU-uploaded from RecipeRegistry::RecipeEntry
+// (boundCenter/boundRadius/stepRelaxation) — indexed DIRECTLY by recipeId (dense array,
+// sized to maxBuckets), not a lookup/switch. relaxation is carried through for parity with
+// getRecipeBoundSphere's signature but unused by this pass's own coverage math (M1 does
+// screen-space AABB from center+radius only; relaxation affects step size, not bound
+// extent).
+struct RecipeBoundSphere {
+    vec3  center;
+    float radius;
+    float relaxation;
+    float _pad[3];
+};
+
+layout(std430, binding = 1) readonly buffer RecipeBoundSphereBuffer {
+    RecipeBoundSphere recipeBounds[];
+};
+
+// Per-bucket atomic append counter (bucketCounts[recipeId]) — mirrors ShaderCounters.glsl's
+// atomicAdd-then-indexed-write compaction idiom. Sized to maxBuckets.
+layout(std430, binding = 2) buffer BucketCountBuffer {
+    uint bucketCounts[];
+};
+
+// Flattened [bucket][slot] compacted instance-index list. Row stride = maxMembersPerBucket
+// (push constant); slot >= maxMembersPerBucket for a given bucket is an overflow (detectable
+// via bucketCounts[id] > maxMembersPerBucket from the host, see file header).
+layout(std430, binding = 3) buffer BucketIndicesBuffer {
+    uint bucketIndices[];
+};
+
+// Per-bucket screen-space pixel-space AABB, accumulated via atomicMin/atomicMax over
+// bit-cast-to-uint representations. minX/minY start at UINT_MAX (mode==1 init pass below)
+// so an untouched bucket reads as an empty/degenerate rect (minX > maxX), distinguishable
+// from a real 1-pixel bucket. Kept as 4 parallel flat arrays rather than a struct-of-atomics
+// — GLSL atomics operate on individual scalar buffer variables, not struct members reached
+// through an array-of-structs index in a single atomicMin call; 4 flat arrays keep every
+// atomic call a direct scalar reference.
+layout(std430, binding = 4) buffer BucketCoverageMinXBuffer { uint bucketCoverageMinX[]; };
+layout(std430, binding = 5) buffer BucketCoverageMinYBuffer { uint bucketCoverageMinY[]; };
+layout(std430, binding = 6) buffer BucketCoverageMaxXBuffer { uint bucketCoverageMaxX[]; };
+layout(std430, binding = 7) buffer BucketCoverageMaxYBuffer { uint bucketCoverageMaxY[]; };
+
+layout(push_constant) uniform Push {
+    mat4  viewProj;            // CameraNodeConfig::CURRENT_VIEW_PROJ (Task 1)
+    uint  instanceCount;       // number of valid entries in bodyInstances[]
+    uint  maxBuckets;          // distinct-recipeId cap (Task 2; default 256)
+    uint  maxMembersPerBucket; // per-bucket compacted-index-list row stride
+    uint  screenWidth;
+    uint  screenHeight;
+    uint  mode;                // 0 = bucket + coverage (this pass); 1 = init coverage extrema
+} pc;
+
+// Projects a world-space point through viewProj to pixel-space (x,y); returns false if the
+// point is behind the camera (w <= 0 — a degenerate/unusable projection, excluded from the
+// coverage union rather than producing a garbage huge rect).
+bool ProjectToPixel(vec3 worldPos, out vec2 pixel) {
+    vec4 clip = pc.viewProj * vec4(worldPos, 1.0);
+    if (clip.w <= 0.0) return false;
+    vec3 ndc = clip.xyz / clip.w;
+    // NDC [-1,1] -> pixel [0,screenWidth]x[0,screenHeight]. Vulkan NDC Y already points
+    // down post the CameraNode Y-flip (projection[1][1] *= -1.0 in CameraNode.cpp), so no
+    // extra flip here — ndc.y in [-1,1] maps directly to [0,height] top-to-bottom.
+    pixel = vec2((ndc.x * 0.5 + 0.5) * float(pc.screenWidth),
+                 (ndc.y * 0.5 + 0.5) * float(pc.screenHeight));
+    return true;
+}
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+
+    if (pc.mode == 1u) {
+        // Init pass: one thread per bucket slot, reset extrema to their "untouched" sentinel
+        // (min=UINT_MAX so any real atomicMin wins; max=0 so any real atomicMax wins) and
+        // zero the count. Dispatched with gl_GlobalInvocationID.x ranging over maxBuckets.
+        if (gid >= pc.maxBuckets) return;
+        bucketCounts[gid] = 0u;
+        bucketCoverageMinX[gid] = 0xFFFFFFFFu;
+        bucketCoverageMinY[gid] = 0xFFFFFFFFu;
+        bucketCoverageMaxX[gid] = 0u;
+        bucketCoverageMaxY[gid] = 0u;
+        return;
+    }
+
+    // mode == 0: bucket + coverage pass, one thread per INSTANCE.
+    if (gid >= pc.instanceCount) return;
+
+    BodyInstance inst = bodyInstances[gid];
+    uint recipeId = inst.recipeId;
+    if (recipeId >= pc.maxBuckets) return;  // out-of-range recipeId: dropped (see file header)
+
+    // Task 2: atomic-append compaction into this bucket's slot list.
+    uint slot = atomicAdd(bucketCounts[recipeId], 1u);
+    if (slot < pc.maxMembersPerBucket) {
+        bucketIndices[recipeId * pc.maxMembersPerBucket + slot] = gid;
+    }
+    // slot >= maxMembersPerBucket: overflow, intentionally dropped (still counted above so
+    // the host can detect truncation — see file header).
+
+    // Task 3: project this instance's recipe bound sphere and union into the bucket's
+    // screen-space AABB. The bound sphere is a PER-RECIPE property (not per-instance), but
+    // its center is recipe-LOCAL — the actual world-space sphere for THIS instance is the
+    // recipe's bound sphere translated to this instance's worldPos (mirrors how
+    // getRecipeBoundSphere's center is combined with a BodyInstance's own worldPos at the
+    // existing TraceWorld.glsl call sites: boundCenter is added to inst.worldPos there too).
+    RecipeBoundSphere bound = recipeBounds[recipeId];
+    vec3 sphereCenterWorld = inst.worldPos + bound.center;
+    float radius = bound.radius;
+
+    // Conservative screen-space footprint: project the sphere center plus 6 axis-extremal
+    // points (center +/- radius along world X/Y/Z) and union their pixel-space projections.
+    // This is a simple, cheap over-approximation (not a tight screen-space ellipse fit) —
+    // deliberately conservative per the design doc's "over-cover, not under-cover" guidance
+    // for bound-sphere-derived screen coverage (SdfRecipes.glsl's bound spheres are already
+    // loose, not tight).
+    vec2 pixel;
+    bool any = false;
+    float minX = 0.0, minY = 0.0, maxX = 0.0, maxY = 0.0;
+
+    vec3 offsets[7] = vec3[7](
+        vec3(0.0),
+        vec3(radius, 0.0, 0.0), vec3(-radius, 0.0, 0.0),
+        vec3(0.0, radius, 0.0), vec3(0.0, -radius, 0.0),
+        vec3(0.0, 0.0, radius), vec3(0.0, 0.0, -radius)
+    );
+    for (int i = 0; i < 7; ++i) {
+        if (ProjectToPixel(sphereCenterWorld + offsets[i], pixel)) {
+            if (!any) {
+                minX = maxX = pixel.x;
+                minY = maxY = pixel.y;
+                any = true;
+            } else {
+                minX = min(minX, pixel.x); maxX = max(maxX, pixel.x);
+                minY = min(minY, pixel.y); maxY = max(maxY, pixel.y);
+            }
+        }
+    }
+    if (!any) return;  // entire sphere behind camera: contributes nothing to coverage
+
+    // Clamp to screen bounds and floor/ceil to integer pixels before the atomic union —
+    // guarantees non-negative values (required for atomicMin/atomicMax-on-bitcast-uint to
+    // preserve numeric ordering, the same precondition SpatialReuseShade.comp's precedent
+    // documents for its own non-negative-float atomicMax usage).
+    float clampedMinX = clamp(floor(minX), 0.0, float(pc.screenWidth));
+    float clampedMinY = clamp(floor(minY), 0.0, float(pc.screenHeight));
+    float clampedMaxX = clamp(ceil(maxX),  0.0, float(pc.screenWidth));
+    float clampedMaxY = clamp(ceil(maxY),  0.0, float(pc.screenHeight));
+
+    atomicMin(bucketCoverageMinX[recipeId], floatBitsToUint(clampedMinX));
+    atomicMin(bucketCoverageMinY[recipeId], floatBitsToUint(clampedMinY));
+    atomicMax(bucketCoverageMaxX[recipeId], floatBitsToUint(clampedMaxX));
+    atomicMax(bucketCoverageMaxY[recipeId], floatBitsToUint(clampedMaxY));
+}

@@ -646,3 +646,52 @@ message(STATUS "[RenderGraph Tests] Added: test_shell_revalidate_node (Surface-S
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_shell_revalidate_node — no glslc runnable on this platform found")
 endif()
+
+# ===========================================================================
+# Recipe GPU Instance Bucketing Inc2 M1 — bucketing pre-pass live-run gate.
+# Kept STANDALONE, mirroring the ShellDerive.comp block above: its own separate
+# `if(VIXEN_GLSLC)` gate block with its own custom-command target
+# (recipe_instance_bucketing_spv, compiling shaders/RecipeInstanceBucketing.comp — a
+# standalone shader with its own binding namespace starting at 0, no dependency on
+# BodyInstanceRayMarch.comp's uber-shader splice chain), so it cannot share a merged
+# group with any body_instance_raymarch_spv-dependent target above.
+# ===========================================================================
+if(VIXEN_GLSLC)
+set(_recipebucketing_src "${_brm_shader_dir}/RecipeInstanceBucketing.comp")
+set(_recipebucketing_spv "${CMAKE_CURRENT_BINARY_DIR}/RecipeInstanceBucketing.spv")
+
+add_custom_command(
+    OUTPUT  ${_recipebucketing_spv}
+    COMMAND ${VIXEN_GLSLC}
+            -fshader-stage=compute
+            --target-env=vulkan1.3
+            ${_recipebucketing_src}
+            -o ${_recipebucketing_spv}
+    DEPENDS ${_recipebucketing_src}
+    COMMENT "Compiling RecipeInstanceBucketing.comp -> SPIR-V (bundled glslc)"
+    VERBATIM)
+add_custom_target(recipe_instance_bucketing_spv DEPENDS ${_recipebucketing_spv})
+
+add_executable(test_recipe_instance_bucketing
+    Nodes/test_recipe_instance_bucketing.cpp
+)
+add_dependencies(test_recipe_instance_bucketing recipe_instance_bucketing_spv)
+target_link_libraries(test_recipe_instance_bucketing PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_recipe_instance_bucketing PRIVATE SVO)
+endif()
+target_compile_definitions(test_recipe_instance_bucketing PRIVATE
+    RECIPE_BUCKETING_SPV="${_recipebucketing_spv}")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_recipe_instance_bucketing PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
+set_target_properties(test_recipe_instance_bucketing PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_recipe_instance_bucketing
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_recipe_instance_bucketing (Recipe GPU Instance Bucketing Inc2 M1 live-run gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_instance_bucketing — no glslc runnable on this platform found")
+endif()
