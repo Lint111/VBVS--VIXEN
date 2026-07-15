@@ -23,6 +23,18 @@
 > `BodyInstanceGpu::recipeParams[6]`, no shader recompile on a pure value change). SPIR-V
 > spec-constants for burned-in per-shape values were explicitly deferred out of that plan (v1 uses
 > the instance-buffer path only) — still open for this JIT epic if/when it needs them. See §5.
+>
+> **Reprioritization (user, 2026-07-15): N=100 is a NEAR-TERM wall, not a someday-at-scale
+> concern.** The §8 decision gate's framing ("when the engine needs to render on the order of
+> 100+ distinct recipe programs concurrently") undersells how soon that threshold is actually
+> crossed: any scene with real visual variety — a few dozen prop/rock/building/decal archetypes,
+> each with a handful of structural variants — reaches N=100 distinct structural recipes almost
+> immediately, well before the scene reads as "detailed" by any normal standard. The switch's knee
+> at N=100 and hard hang at N=500 is therefore a **capability blocker for anything beyond the
+> current uber-shader tech-demo scale**, not a distant scaling optimization to defer. Sequencing
+> stays as scoped (Increment 1 → 2 → 3 → 4, §7), but treat the whole epic as urgent: move through
+> increments back-to-back rather than pausing between them once Increment 1 is underway.
+> [[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]] is Increment 1's implementation plan.
 
 ## 1. The idea (user, 2026-07-10, verbatim intent)
 
