@@ -30,7 +30,21 @@
  *      with no such device (this one — WSL2, no Vulkan ICD, not even lavapipe is
  *      permitted here per project policy) the fixture's SetUp() calls GTEST_SKIP()
  *      and this TEST_F reports SKIPPED rather than FAILED/CRASHED — but (1) and (2)
- *      above still run and still assert, since they aren't part of this fixture.
+ *      above still run and still assert, since they aren't part of this fixture. Every
+ *      corpus program is dispatched with a ZERO-FILLED params[6] (matching evalRecipe()'s
+ *      own default-empty-span behavior) — this test proves structural opcode coverage
+ *      including ReadParam/ReadParamFloat3's bounds-check-fail-safe path, NOT the
+ *      params-vary-without-recompile claim; that is (4) below.
+ *
+ *  (4) RecipeGlslNumericalParityTest::ReadParamSweepAcrossValuesWithoutRecompile (TEST_F,
+ *      Recipe-Parameterization M2 Task 7) — the harder, more important check the M1-era
+ *      harness above does not cover: compiles ONE ReadParam/ReadParamFloat3-using corpus
+ *      program to SPIR-V EXACTLY ONCE, then re-dispatches that SAME compiled module
+ *      several times with DIFFERENT params[6] buffer contents (never re-invoking
+ *      glslang between dispatches), asserting CPU evalRecipe(prog, p, params) and GPU
+ *      sdfRecipe_0(p, params) agree at EACH value. This is the actual property P4 exists
+ *      for — params vary without a shader recompile — which a per-program-fixed-value
+ *      corpus sweep cannot exercise on its own. Same GPU-required/SKIP behavior as (3).
  *
  * HANDOFF — run part (2) on Windows-native (never through lavapipe; this harness's
  * IsRealGpu() gate explicitly excludes both llvmpipe/lavapipe AND Dozen (WARP/d3d12
@@ -74,11 +88,13 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <set>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -130,7 +146,15 @@ std::vector<glm::vec3> BuildSamplePoints() {
 
 // ---------------------------------------------------------------------------
 // Compose the full GLSL compute shader source for one corpus program:
-//   #version 450 + SdfCoreKernels.glsl + emitted sdfRecipe_0(vec3) + wrapper main().
+//   #version 450 + SdfCoreKernels.glsl + emitted sdfRecipe_0(vec3, float[6]) + wrapper main().
+//
+// Recipe-Parameterization M2 Task 7: params are read from a THIRD SSBO binding (2), not
+// baked as literals — this is what lets Task 7's dedicated sweep test below rewrite the
+// params buffer and redispatch the SAME already-compiled SPIR-V module for several different
+// parameter-array values, which is the actual property under test (params vary without
+// recompile). Every corpus program in the main GlslMatchesCpuEvalAcrossCorpus loop and the
+// RecipeGlslCompiles gate below still pass a caller-chosen (usually zero-filled) params
+// buffer once per compile, matching evalRecipe()'s own default-empty-span CPU reference.
 // ---------------------------------------------------------------------------
 std::string ComposeComputeShader(const std::string& sdfCoreGlsl,
                                   const std::string& emittedFieldFn) {
@@ -147,10 +171,14 @@ layout(set = 0, binding = 0, std430) readonly buffer InPoints {
 layout(set = 0, binding = 1, std430) writeonly buffer OutValues {
     float values[];
 };
+layout(set = 0, binding = 2, std430) readonly buffer InParams {
+    float params[6];
+};
 
 void main() {
     if (gl_GlobalInvocationID.x >= points.length()) return;
-    values[gl_GlobalInvocationID.x] = sdfRecipe_0(points[gl_GlobalInvocationID.x].xyz);
+    float p[6] = float[6](params[0], params[1], params[2], params[3], params[4], params[5]);
+    values[gl_GlobalInvocationID.x] = sdfRecipe_0(points[gl_GlobalInvocationID.x].xyz, p);
 }
 )GLSL";
     return ss.str();
@@ -316,10 +344,16 @@ protected:
     }
 
     // Dispatch one compiled program against the sample-point grid; returns GPU sdf
-    // values in outValues (one per input point).
+    // values in outValues (one per input point). params (Recipe-Parameterization M2 Task 7,
+    // default zero-filled to match evalRecipe()'s default-empty-span CPU reference) is
+    // uploaded to a THIRD SSBO binding (2) — callers that want to exercise the "params vary
+    // without recompile" claim can call this repeatedly with the SAME already-compiled
+    // `spirv` blob and different `params` each time (glslang is never invoked again; only
+    // the params buffer's contents change between calls).
     void DispatchAndReadback(const std::vector<uint32_t>& spirv,
                               const std::vector<glm::vec3>& points,
-                              std::vector<float>& outValues) {
+                              std::vector<float>& outValues,
+                              const std::array<float, 6>& params = {}) {
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
 
@@ -347,6 +381,18 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(outSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, outBuf, outMem));
 
+        // Params SSBO: fixed 6 floats (mirrors BodyInstanceGpu::recipeParams[6]).
+        const VkDeviceSize paramsSize = params.size() * sizeof(float);
+        VkBuffer paramsBuf = VK_NULL_HANDLE; VkDeviceMemory paramsMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(paramsSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, paramsBuf, paramsMem));
+        {
+            void* mapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, paramsMem, 0, paramsSize, 0, &mapped), VK_SUCCESS);
+            std::memcpy(mapped, params.data(), static_cast<size_t>(paramsSize));
+            vkUnmapMemory(logicalDevice_, paramsMem);
+        }
+
         VkShaderModuleCreateInfo smci{};
         smci.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         smci.codeSize = spirv.size() * sizeof(uint32_t);
@@ -354,7 +400,7 @@ protected:
         VkShaderModule shaderModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shaderModule), VK_SUCCESS);
 
-        VkDescriptorSetLayoutBinding bindings[2]{};
+        VkDescriptorSetLayoutBinding bindings[3]{};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -363,10 +409,14 @@ protected:
         bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[1].descriptorCount = 1;
         bindings[1].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[2].binding         = 2;
+        bindings[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[2].descriptorCount = 1;
+        bindings[2].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
 
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 2;
+        dslci.bindingCount = 3;
         dslci.pBindings    = bindings;
         VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
@@ -389,7 +439,7 @@ protected:
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline),
                   VK_SUCCESS);
 
-        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2};
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets       = 1;
@@ -408,7 +458,8 @@ protected:
 
         VkDescriptorBufferInfo inInfo{inBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo outInfo{outBuf, 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet writes[2]{};
+        VkDescriptorBufferInfo paramsInfo{paramsBuf, 0, VK_WHOLE_SIZE};
+        VkWriteDescriptorSet writes[3]{};
         writes[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet          = descSet;
         writes[0].dstBinding      = 0;
@@ -421,7 +472,13 @@ protected:
         writes[1].descriptorCount = 1;
         writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[1].pBufferInfo     = &outInfo;
-        vkUpdateDescriptorSets(logicalDevice_, 2, writes, 0, nullptr);
+        writes[2].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[2].dstSet          = descSet;
+        writes[2].dstBinding      = 2;
+        writes[2].descriptorCount = 1;
+        writes[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[2].pBufferInfo     = &paramsInfo;
+        vkUpdateDescriptorSets(logicalDevice_, 3, writes, 0, nullptr);
 
         VkCommandBufferAllocateInfo cbai{};
         cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -482,6 +539,8 @@ protected:
         vkFreeMemory(logicalDevice_, outMem, nullptr);
         vkDestroyBuffer(logicalDevice_, inBuf, nullptr);
         vkFreeMemory(logicalDevice_, inMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, paramsBuf, nullptr);
+        vkFreeMemory(logicalDevice_, paramsMem, nullptr);
     }
 };
 
@@ -549,6 +608,83 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
         for (size_t i = 0; i < samplePoints.size(); ++i) {
             EXPECT_TRUE(NearlyEqual(gpuValues[i], cpuRef[i]))
                 << "Mismatch for corpus program '" << entry.name << "' at point ("
+                << samplePoints[i].x << ", " << samplePoints[i].y << ", " << samplePoints[i].z
+                << "): gpu=" << gpuValues[i] << " cpu=" << cpuRef[i]
+                << " |diff|=" << std::fabs(gpuValues[i] - cpuRef[i]);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-Parameterization M2 Task 7 — the harder, more important check: compile ONE
+// ReadParam/ReadParamFloat3-using program ONCE, then sweep SEVERAL DIFFERENT params[6]
+// values through the SAME compiled SPIR-V module (never recompiling between them),
+// confirming CPU evalRecipe(prog, p, params) and GPU sdfRecipe_0(p, params) agree at
+// EACH value. This is the actual claim under test — param values vary without a shader
+// recompile — which GlslMatchesCpuEvalAcrossCorpus above (one fixed zero-filled params
+// buffer per program) does not exercise.
+// ---------------------------------------------------------------------------
+TEST_F(RecipeGlslNumericalParityTest, ReadParamSweepAcrossValuesWithoutRecompile) {
+    const std::vector<glm::vec3> samplePoints = BuildSamplePoints();
+    const auto corpus = Vixen::SVO::Recipe::ParityCorpus::GetAll();
+
+    const auto it = std::find_if(corpus.begin(), corpus.end(), [](const auto& e) {
+        return e.name == "M2_ReadParam_MatchesIndexedRead";
+    });
+    ASSERT_NE(it, corpus.end())
+        << "M2_ReadParam_MatchesIndexedRead missing from ParityCorpus::GetAll()";
+    const auto& entry = *it;
+
+    ShaderManagement::ShaderCompiler compiler;
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+
+    // Compile EXACTLY ONCE — this SPIR-V module is reused verbatim for every params value
+    // swept below, proving the recompile-avoidance claim (only the params SSBO's contents
+    // change between vkCmdDispatch calls, never the shader module/pipeline).
+    const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        entry.program.data(), static_cast<uint32_t>(entry.program.size()), /*recipeId=*/0);
+    const std::string shaderSrc = ComposeComputeShader(sdfCoreGlsl, fieldFn);
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "GLSL compile failed for '" << entry.name << "':\n" << compOut.GetFullLog();
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Several distinct params[6] values, including one that deliberately exercises the
+    // out-of-range bounds-check fail-safe (idx=0 is in range; the program only reads
+    // params[0], so params[1..5] varying is inert but included for realism).
+    const std::vector<std::array<float, 6>> paramSweep = {
+        {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {-2.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {7.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+        {0.001f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    };
+
+    for (const auto& params : paramSweep) {
+        SCOPED_TRACE("params[0]=" + std::to_string(params[0]));
+
+        std::vector<float> cpuRef(samplePoints.size());
+        for (size_t i = 0; i < samplePoints.size(); ++i) {
+            cpuRef[i] = Vixen::SVO::Recipe::evalRecipe(
+                entry.program.data(), static_cast<uint32_t>(entry.program.size()),
+                samplePoints[i], std::span<const float>(params.data(), params.size()));
+        }
+
+        std::vector<float> gpuValues;
+        ASSERT_NO_FATAL_FAILURE(
+            DispatchAndReadback(compOut.spirv, samplePoints, gpuValues, params));
+        ASSERT_EQ(gpuValues.size(), cpuRef.size());
+
+        for (size_t i = 0; i < samplePoints.size(); ++i) {
+            EXPECT_TRUE(NearlyEqual(gpuValues[i], cpuRef[i]))
+                << "Mismatch at params[0]=" << params[0] << ", point ("
                 << samplePoints[i].x << ", " << samplePoints[i].y << ", " << samplePoints[i].z
                 << "): gpu=" << gpuValues[i] << " cpu=" << cpuRef[i]
                 << " |diff|=" << std::fabs(gpuValues[i] - cpuRef[i]);
@@ -628,18 +764,9 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
 
     ASSERT_FALSE(validOpcodes.empty()) << "IsValidSdfOpCode accepted nothing 0..255 — broken enum?";
 
-    // Scoped allowlist: ReadParam (96) and ReadParamFloat3 (111) are valid CPU-side
-    // opcodes as of Recipe-Parameterization M1 (evalRecipe handles them — see
-    // SdfRecipeEval.h), but EmitProceduralFieldFunctionGlsl has no emitter case for
-    // them yet, so no corpus program can exercise them through this GLSL-parity
-    // harness without failing gate B (RecipeGlslCompiles) above. That GLSL emitter
-    // case is Recipe-Parameterization-Plan-2026-07.md M2 Task 5 — remove this
-    // allowlist entry once it lands and a corpus program exercises both opcodes.
-    static const std::set<uint8_t> kGlslEmitterNotYetImplemented = {96, 111};
-
     std::vector<int> missingFromCorpus;   // valid but never exercised by the corpus
     for (uint8_t v : validOpcodes)
-        if (!corpusOpcodes.count(v) && !kGlslEmitterNotYetImplemented.count(v))
+        if (!corpusOpcodes.count(v))
             missingFromCorpus.push_back(static_cast<int>(v));
 
     std::vector<int> extraInCorpus;       // corpus uses a byte IsValidSdfOpCode rejects
