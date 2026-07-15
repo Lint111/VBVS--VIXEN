@@ -3,20 +3,20 @@
 namespace Vixen::RenderGraph {
 
 namespace detail {
-    std::vector<std::function<void(NodeTypeRegistry&)>>& NodeRegistrars() {
-        static std::vector<std::function<void(NodeTypeRegistry&)>> registrars;
-        return registrars;
+    NodeRegistrarLink*& HeadLink() {
+        static NodeRegistrarLink* head = nullptr;
+        return head;
     }
 
-    bool RegisterNodeFactory(std::function<void(NodeTypeRegistry&)> thunk) {
-        NodeRegistrars().push_back(std::move(thunk));
-        return true;
+    NodeRegistrarLink::NodeRegistrarLink(void (*fn)(NodeTypeRegistry&))
+        : registerFn(fn), next(HeadLink()) {
+        HeadLink() = this;
     }
 }
 
 void RegisterAllNodes(NodeTypeRegistry& registry) {
-    for (auto& thunk : detail::NodeRegistrars()) {
-        thunk(registry);
+    for (detail::NodeRegistrarLink* link = detail::HeadLink(); link != nullptr; link = link->next) {
+        link->registerFn(registry);
     }
 }
 

@@ -337,20 +337,46 @@ Each node `.cpp` self-registers via a one-liner at file scope:
 VIXEN_REGISTER_NODE(Vixen::RenderGraph::CameraNodeType);
 ```
 
-`VIXEN_REGISTER_NODE` (in `include/Core/NodeRegistration.h`) appends a registrar thunk to a
-global Meyers-singleton manifest at dynamic-init. `RegisterAllNodes(NodeTypeRegistry&)`
-replays that manifest into any per-`EngineContext` registry; wire it via
+`VIXEN_REGISTER_NODE` (in `include/Core/NodeRegistration.h`) links a small static
+`detail::NodeRegistrarLink` object into a global intrusive linked list (Meyers-singleton
+`detail::HeadLink()`) the moment its constructor runs at dynamic-init — see §9.3.1 for why this
+replaced an earlier `std::vector<std::function>` design. `RegisterAllNodes(NodeTypeRegistry&)`
+walks that list into any per-`EngineContext` registry; wire it via
 `EngineConfig::registerNodeTypes`. The app (`VulkanGraphApplication`) and the benchmark
 (`BenchmarkRunner`) both use it — there is **no hand-maintained registration list anywhere**.
 
-### 9.3 Whole-archive requirement (the #1 footgun)
+### 9.3 Whole-archive requirement (the #1 footgun) + COMDAT/section GC (the #2 footgun)
 
-The registrars are anonymous-namespace statics that nothing references, so a static-library
-linker **strips them** by default. The facade therefore links `RenderGraphNodes`
-**whole-archive** (`$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>` on CMake ≥3.24, with
-MSVC `/WHOLEARCHIVE` and GNU `--whole-archive` fallbacks). `tests/test_node_self_registration.cpp`
-is the guard: without whole-archive `GetNodeTypeCount()` collapses to 0; with it, ≥32.
-**If that test goes red after a CMake change, check the link command for the whole-archive flag first.**
+The registrars are anonymous-namespace statics with internal linkage, so the facade must link
+`RenderGraphNodes` **whole-archive** (`$<LINK_LIBRARY:WHOLE_ARCHIVE,RenderGraphNodes>` on CMake
+≥3.24, with MSVC `/WHOLEARCHIVE` and GNU `--whole-archive` fallbacks) — otherwise a static-library
+linker's normal archive-member selection never pulls a node's `.obj` into the link at all.
+`tests/test_node_self_registration.cpp` is the guard: without whole-archive `GetNodeTypeCount()`
+collapses to 0; with it, it matches `RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT`.
+**If that test goes red after a CMake change, check the link command for the whole-archive flag
+first** — but if the flag is present and correct and the count is still 0, see §9.3.1: a second,
+independent failure mode exists that whole-archiving cannot fix.
+
+#### 9.3.1 COMDAT/section garbage collection (2026-07, MSVC-specific, mechanism-level fix shipped)
+
+Whole-archiving only solves **archive-member selection** (getting a node's `.obj` onto the link
+line at all). It does **not** stop a linker's separate **COMDAT/section garbage collection**
+pass (MSVC `/OPT:REF`, on by default in this project's build config) from then discarding an
+individually-unreferenced registrar COMDAT/section from within an `.obj` that *is* present on the
+link line — this is a distinct mechanism from archive selection and whole-archiving does not
+touch it. This bit MSVC specifically once [[Graph-Derived-Node-Linkage-Inc1-Plan-2026-07]]'s
+OBJECT-library split (§9.7) put per-node object code where COMDAT GC could reach it independent
+of archive selection, silently collapsing `test_node_self_registration`'s guard to `0` even with
+the whole-archive flag present and correct.
+
+**Fixed at the mechanism level (2026-07), not by a further linker-flag layer:** `VIXEN_REGISTER_NODE`
+no longer relies on "was my symbol referenced by something else" at all. Each node's registrar is
+now an intrusive-linked-list node (`detail::NodeRegistrarLink`) whose *constructor running* —
+guaranteed the instant its enclosing `.obj` is linked in, independent of whether anything
+references it — is what links it into the global list. There is no unreferenced symbol left for
+any toolchain's GC pass (COMDAT/section GC, LTO, `/OPT:ICF`, etc.) to strip. Full root-cause
+writeup and design rationale:
+[[Node-Self-Registration-Portable-Fix-Direction-2026-07]].
 
 ### 9.4 Adding a node now
 

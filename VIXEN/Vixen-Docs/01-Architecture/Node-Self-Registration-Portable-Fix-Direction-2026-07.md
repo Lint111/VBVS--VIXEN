@@ -3,7 +3,7 @@ title: Node Self-Registration — Portable Fix Direction
 aliases: [Intrusive Node Registrar, Self-Registration Linker-GC Fix]
 tags: [architecture, rendergraph, nodes, build, direction]
 created: 2026-07-12
-status: Planned — not started
+status: Done — shipped 2026-07-15
 related:
   - "[[RenderGraph-System]]"
   - "[[Graph-Derived-Node-Linkage-Direction-2026-07]]"
@@ -203,3 +203,42 @@ was never the problem.
   ctest-sweep audit before being scoped into its own direction/plan; if a KI entry was opened
   for the `NodeSelfRegistration` failures during that audit, close it with a pointer here
   instead of a standalone resolution (avoids two records of the same root cause).
+
+## 6. Completion note (2026-07-15)
+
+Shipped as-is against the design in §3 — verification-only session, the intrusive-linked-list
+mechanism (`NodeRegistrarLink` + `HeadLink()` Meyers singleton, `VIXEN_REGISTER_NODE_IMPL`
+capturing `__COUNTER__` once via an `Id` parameter) was already implemented uncommitted in the
+worktree and matched this doc's §3.1 shape exactly, with the double-`__COUNTER__` risk called
+out in §3.1 already correctly avoided. Grepped the whole repo for stale `NodeRegistrars()`/
+`RegisterNodeFactory()` callers: zero hits, no follow-up caller fix needed.
+
+- **MSVC build:** Windows-native, `build.bat all`, 1291/1291 targets, 0 failures.
+- **Guard test (the actual regression this doc exists to close):** `test_node_self_registration.exe`
+  — both `NodeSelfRegistration.RegistersAllBuiltInNodes` and
+  `NodeSelfRegistration.ReplaysIntoEachRegistryInstance` PASS, `GetNodeTypeCount()` now returns
+  the real `RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT` = **59** (was 0 before this fix, per the
+  2026-07-12 discovery).
+- **Full ctest sweep:** 2596 tests run (Windows-native, `build/ninja`), **97% passed, 71 failed**.
+  Every failure was individually confirmed pre-existing/environmental and unrelated to this
+  mechanism change — none reference `NodeTypeRegistry`/`RegisterAllNodes`/`NodeRegistration`:
+  the `VoxelInjectionQueue`/`VoxelInjector` cluster matches already-documented KI-027 exactly;
+  `HudRenderCapture`/similar render-capture tests fail on a missing golden-image fixture
+  (`temp/hud_capture_*.png` — requires a separate manual capture script, not a registration
+  issue); `CacheCodec`/`ShaderCompilerTest`/etc. fail deterministically even fully isolated and
+  serial, on a Windows temp-file locking race unrelated to node registration and last touched
+  2026-07-12, before this fix existed. No RenderGraph node-config unit test (`DeviceNodeTest`,
+  `WindowNodeTest`, etc.) regressed.
+- **Live-run gate:** `VIXEN.exe`, Windows-native, `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`.
+  Booted clean: `Registered 51 built-in node types (self-registration)` (VixenApp's
+  Graph-Derived-Node-Linkage-scoped count, correctly smaller than the test's unscoped 59), full
+  render graph built (315 connections), ran ~110 FPS stably past frame 15,000 with no crash.
+  Only pre-existing validation noise present (`VUID-vkCmdDispatch-None-08114` /
+  `VUID-vkUpdateDescriptorSets-None-03047` on `RayTraceBuffer`/`InstanceIterDebugBuffer` /
+  `compute_desc_gatherer` — matches KI-024's documented isolated-demo-pipeline signature,
+  "ZERO pixel impact on the real render path"; `PushConstantGathererNode::Validate` type-mismatch
+  logs on two ReSTIR-era gatherers, logged once at compile time, not per-frame, not a crash).
+- **Known-Issues.md:** no `NodeSelfRegistration` KI entry existed to close — this bug was
+  root-caused directly into this direction doc on 2026-07-12 without a separate KI ever being
+  filed, confirmed by grep across the whole file.
+- Commit: `ed4000e19548b3e79dbbc08538439a77daa04807` (`feat/node-self-registration-fix`).
