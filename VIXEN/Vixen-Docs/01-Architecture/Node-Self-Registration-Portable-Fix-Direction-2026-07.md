@@ -241,5 +241,4 @@ out in §3.1 already correctly avoided. Grepped the whole repo for stale `NodeRe
 - **Known-Issues.md:** no `NodeSelfRegistration` KI entry existed to close — this bug was
   root-caused directly into this direction doc on 2026-07-12 without a separate KI ever being
   filed, confirmed by grep across the whole file.
-- Commit: (this worktree's `feat/node-self-registration-fix` branch — see its own git log for
-  the hash).
+- Commit: `ed4000e19548b3e79dbbc08538439a77daa04807` (`feat/node-self-registration-fix`).
