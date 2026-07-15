@@ -121,6 +121,86 @@ TEST(RecipeRegistry, LinkRejectsStackOverflow) {
 // Catches missing entries in RecipeStackArity before they become bad accepts/rejects.
 // Legitimate no-ops (Output, ComposeFloat3) are explicitly excluded.
 
+// --- Recipe-Parameterization-Plan-2026-07 M1 Task 4: ReadParam/ReadParamFloat3 registration ---
+
+static SdfInstruction readParam(uint8_t paramMask, float slotIdx) {
+    SdfInstruction in{};
+    in.opCode = (uint8_t)SdfOpCode::ReadParam;
+    in.paramMask = paramMask;
+    in.data[0] = slotIdx;
+    return in;
+}
+static SdfInstruction readParamFloat3(uint8_t paramMask, float slotIdx) {
+    SdfInstruction in{};
+    in.opCode = (uint8_t)SdfOpCode::ReadParamFloat3;
+    in.paramMask = paramMask;
+    in.data[0] = slotIdx;
+    return in;
+}
+
+TEST(RecipeRegistry, ReadParamWithCorrectParamMaskSucceeds) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    e.bytecode = { readParam(1, 0.0f) };
+    EXPECT_EQ(reg.Register(30u, e), RecipeRegistry::RegisterResult::Ok);
+}
+
+TEST(RecipeRegistry, ReadParamFloat3WithCorrectParamMaskSucceeds) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    e.bytecode = { readParamFloat3(1, 0.0f) };
+    EXPECT_EQ(reg.Register(31u, e), RecipeRegistry::RegisterResult::Ok);
+}
+
+TEST(RecipeRegistry, ReadParamWithZeroParamMaskFails) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    e.bytecode = { readParam(0, 0.0f) };
+    EXPECT_EQ(reg.Register(32u, e), RecipeRegistry::RegisterResult::ParamMaskRequired);
+}
+
+TEST(RecipeRegistry, ReadParamFloat3WithZeroParamMaskFails) {
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    e.bytecode = { readParamFloat3(0, 0.0f) };
+    EXPECT_EQ(reg.Register(33u, e), RecipeRegistry::RegisterResult::ParamMaskRequired);
+}
+
+TEST(RecipeRegistry, ParamMaskOnUnrelatedOpcodeStillRejected) {
+    // Regression pin: proves the paramMask gate was NARROWED to ReadParam/ReadParamFloat3,
+    // not removed wholesale -- a stray nonzero paramMask on e.g. Sphere is still malformed.
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    SdfInstruction s = sphere(1.0f);
+    s.paramMask = 1;
+    e.bytecode = { s };
+    EXPECT_EQ(reg.Register(34u, e), RecipeRegistry::RegisterResult::ParamMaskUnsupported);
+}
+
+TEST(RecipeRegistry, ReadParamFloat3StackArityNearBoundary) {
+    // 21 x ReadParamFloat3 pushes 63 values (net-0 pops elsewhere) -- fits in 64 slots.
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    for (int i = 0; i < 21; ++i) e.bytecode.push_back(readParamFloat3(1, 0.0f));
+    EXPECT_EQ(reg.Register(35u, e), RecipeRegistry::RegisterResult::Ok);
+
+    // 22nd push (66 total) overflows the 64-slot value stack.
+    e.bytecode.push_back(readParamFloat3(1, 0.0f));
+    EXPECT_EQ(reg.Register(36u, e), RecipeRegistry::RegisterResult::StackOverflow);
+}
+
+TEST(RecipeRegistry, ReadParamStackArityAtBoundary) {
+    // 64 x ReadParam fills the value stack exactly -- valid.
+    RecipeRegistry reg;
+    RecipeRegistry::RecipeEntry e{};
+    for (int i = 0; i < 64; ++i) e.bytecode.push_back(readParam(1, 0.0f));
+    EXPECT_EQ(reg.Register(37u, e), RecipeRegistry::RegisterResult::Ok);
+
+    // 65th push overflows.
+    e.bytecode.push_back(readParam(1, 0.0f));
+    EXPECT_EQ(reg.Register(38u, e), RecipeRegistry::RegisterResult::StackOverflow);
+}
+
 TEST(RecipeRegistry, ArityTableCoversAllValidOpcodes) {
     constexpr uint8_t kLegitimateNoOps[] = {
         (uint8_t)SdfOpCode::Output,
