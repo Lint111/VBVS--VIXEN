@@ -26,6 +26,7 @@
 #include <gtest/gtest.h>
 #include "Nodes/DeviceNode.h"
 #include "Data/Nodes/DeviceNodeConfig.h"
+#include "Data/NodeParameterManager.h"
 #include <memory>
 
 // Define globals required by DeviceNode
@@ -114,6 +115,25 @@ TEST_F(DeviceNodeTest, ConfigHasGpuIndexParameter) {
     const char* gpuIndexParam = DeviceNodeConfig::PARAM_GPU_INDEX;
     EXPECT_STREQ(gpuIndexParam, "gpu_index")
         << "DeviceNode should have 'gpu_index' parameter";
+}
+
+TEST_F(DeviceNodeTest, GpuIndexAutoSentinelIsMaxUint32) {
+    // GPU_INDEX_AUTO must never collide with a real device index, so it must
+    // be the maximum representable uint32_t (no real GPU list reaches that size).
+    EXPECT_EQ(DeviceNodeConfig::GPU_INDEX_AUTO, UINT32_MAX)
+        << "GPU_INDEX_AUTO sentinel must be UINT32_MAX so it can't collide with a real index";
+}
+
+TEST_F(DeviceNodeTest, GpuIndexParameterDefaultsToAuto) {
+    // Callers that don't set PARAM_GPU_INDEX at all must get auto-select behavior,
+    // matching the SetParameter(..., GPU_INDEX_AUTO) call sites in the app's graph builders.
+    Vixen::RenderGraph::NodeParameterManager parameterManager;
+    uint32_t index = parameterManager.GetParameterValue<uint32_t>(
+        DeviceNodeConfig::PARAM_GPU_INDEX,
+        DeviceNodeConfig::GPU_INDEX_AUTO
+    );
+    EXPECT_EQ(index, DeviceNodeConfig::GPU_INDEX_AUTO)
+        << "Unset gpu_index parameter should resolve to auto-select";
 }
 
 // ============================================================================

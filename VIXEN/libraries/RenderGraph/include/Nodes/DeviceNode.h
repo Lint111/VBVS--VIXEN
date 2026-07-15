@@ -32,7 +32,9 @@ public:
  * Enumerates physical devices, selects one, and creates logical device.
  *
  * Parameters:
- * - gpu_index (uint32_t): Index of GPU to select (0 = first GPU, default)
+ * - gpu_index (uint32_t): Index of GPU to select. Defaults to DeviceNodeConfig::GPU_INDEX_AUTO,
+ *   which auto-selects the first discrete GPU (falling back to index 0 if none is present).
+ *   Pass an explicit index to override auto-selection.
  *
  * Outputs (auto-generated from DeviceNodeConfig):
  * - DEVICE: VulkanDevice* (index 0, required)
@@ -87,6 +89,7 @@ private:
     // Helper methods
     void EnumeratePhysicalDevices();
     void SelectPhysicalDevice();
+    static bool IsDiscreteGPU(VkPhysicalDevice gpu);
     void CreateLogicalDevice();
     void CreateDeviceBudgetManager(CashSystem::DeviceRegistry& deviceRegistry);  // Create allocator + budget manager for device
     void PublishDeviceMetadata();  // Publish device capabilities via EventBus

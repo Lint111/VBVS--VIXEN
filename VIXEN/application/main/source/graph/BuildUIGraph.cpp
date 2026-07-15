@@ -47,7 +47,7 @@ void VulkanGraphApplication::BuildUIGraph() {
     window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
     window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
-    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
 

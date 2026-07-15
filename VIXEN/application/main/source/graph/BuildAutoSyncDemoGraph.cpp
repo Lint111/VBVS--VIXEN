@@ -198,7 +198,7 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
     window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
     window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
-    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
 
     // SSBO sized to the swapchain extent: vec4 (16 bytes) per pixel. Connecting
     // SWAPCHAIN_INFO (below) drives the size from the live extent and re-sizes via
