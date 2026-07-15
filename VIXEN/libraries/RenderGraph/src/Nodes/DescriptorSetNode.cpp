@@ -19,6 +19,15 @@
 
 namespace Vixen::RenderGraph {
 
+// Descriptor SET OBJECTS (and their per-frame scratch info arrays) are frame-indexed at the
+// flight-ring depth, NOT image-indexed: the only per-frame GPU-completion fence is per-FLIGHT
+// (FrameSyncNode waits it at frame start), so sizing the set ring to the flight count makes the
+// set ring == the flight ring that fence already guards — fixing the reuse-while-pending
+// vkUpdateDescriptorSets hazard (VUID-vkUpdateDescriptorSets-03047 et al.). Flight depth (4) >=
+// swapchain image count (3), so the imageIndex fallback (when CURRENT_FRAME_INDEX is unwired) is
+// also in-bounds. Mirrors CameraNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
+static constexpr uint32_t DESCRIPTOR_SET_RING_DEPTH = 4;
+
 // ===== NODE TYPE =====
 
 std::unique_ptr<NodeInstance> DescriptorSetNodeType::CreateInstance(
@@ -247,13 +256,20 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
     }
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Creating per-frame resources for " + std::to_string(imageCount) + " swapchain images");
+    // Descriptor SET OBJECTS + their per-frame scratch info arrays are allocated at the flight-ring
+    // depth (see DESCRIPTOR_SET_RING_DEPTH note above), NOT imageCount. imageCount is still read
+    // above (validated non-zero) as the swapchain-image count for the imageIndex fallback; the set
+    // ring is sized to the flight count so it == the flight ring the per-flight fence guards.
+    const uint32_t setRingDepth = DESCRIPTOR_SET_RING_DEPTH;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Creating " + std::to_string(setRingDepth) +
+                  " per-frame descriptor sets (flight-ring depth; swapchain imageCount=" +
+                  std::to_string(imageCount) + ")");
 
     // Create descriptor pool
-    CreateDescriptorPool(*shaderBundle, imageCount);
+    CreateDescriptorPool(*shaderBundle, setRingDepth);
 
     // Allocate descriptor sets
-    AllocateDescriptorSets(imageCount);
+    AllocateDescriptorSets(setRingDepth);
 
     // Phase H: Bind Dependency (static) descriptors in Compile
     // Execute (transient) descriptors bound per-frame in Execute
@@ -269,9 +285,10 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
                       ", Execute=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Execute)) + ")");
     }
 
-    // Initialize persistent descriptor info storage (node scope for lifetime)
-    perFrameImageInfos.resize(imageCount);
-    perFrameBufferInfos.resize(imageCount);
+    // Initialize persistent descriptor info storage (node scope for lifetime). Sized to the set
+    // ring depth so each set object has its own scratch info sub-vector (indexed by setIndex).
+    perFrameImageInfos.resize(setRingDepth);
+    perFrameBufferInfos.resize(setRingDepth);
 
     // Defer ALL descriptor binding to Execute phase
     // PostCompile hooks populate resources AFTER CompileImpl completes,
@@ -300,14 +317,23 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Get current image index to select correct per-frame descriptor set
+    // Get current image index (selects the swapchain-image-derived VIEWS to write) and the
+    // frame-in-flight index (selects the SET OBJECT to write into).
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
+    uint32_t currentFrameIndex = ctx.In(DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
 
-    // Honor the out-of-date skip sentinel from SwapChainNode (UINT32_MAX = no image this
-    // frame); descriptorSets/perFrame* are indexed by imageIndex, same guard as the other
-    // IMAGE_INDEX consumers. Missing this was the maximize/fullscreen segfault.
-    if (imageIndex == UINT32_MAX || imageIndex >= descriptorSets.size()) {
-        NODE_LOG_WARNING("DescriptorSetNode: Invalid image index - skipping frame");
+    // The descriptor SET OBJECTS are now frame-indexed at flight-ring depth. Select the set to
+    // update by frameIndex when CURRENT_FRAME_INDEX is wired (main graph), else fall back to
+    // imageIndex (demo graphs that leave the optional slot unconnected). Consumers binding these
+    // sets use the SAME fallback (their own CURRENT_FRAME_INDEX connectivity), so the index matches.
+    const bool frameIndexWired =
+        NodeInstance::GetInput(DescriptorSetNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0) != nullptr;
+    const uint32_t setIndex = frameIndexWired ? currentFrameIndex : imageIndex;
+
+    // Honor the out-of-date skip sentinel from SwapChainNode (UINT32_MAX = no image this frame).
+    // Guard the imageIndex (swapchain views) AND the setIndex (set-object ring) separately.
+    if (imageIndex == UINT32_MAX || setIndex >= descriptorSets.size()) {
+        NODE_LOG_WARNING("DescriptorSetNode: Invalid image/frame index - skipping frame");
         return;
     }
 
@@ -347,7 +373,9 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] First execute - binding Dependency descriptors for all frames");
 
         for (uint32_t i = 0; i < static_cast<uint32_t>(descriptorSets.size()); i++) {
-            auto dependencyWrites = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
+            // Dependency descriptors are static (not swapchain-image-derived), so setIndex and the
+            // view index are both i here — this pre-binds every set object in the ring once.
+            auto dependencyWrites = BuildDescriptorWrites(i, i, descriptorResources, descriptorBindings,
                                                          perFrameImageInfos[i], perFrameBufferInfos[i],
                                                          SlotRole::Dependency, swapchainInfo);
             if (!dependencyWrites.empty()) {
@@ -370,10 +398,13 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ClearFlag(NodeFlags::NeedsInitialBind);
     }
 
-    // Build writes for Execute (transient) bindings for current frame
-    NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Building Execute writes for frame " + std::to_string(imageIndex));
-    auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
-                                       perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
+    // Build writes for Execute (transient) bindings for the current frame. setIndex selects the SET
+    // OBJECT + its scratch info sub-vectors (frame-indexed); imageIndex selects the swapchain-image-
+    // derived VIEW values written into that set (image-indexed) — passed as the separate view index.
+    NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Building Execute writes for set " + std::to_string(setIndex) +
+                  " (image " + std::to_string(imageIndex) + ")");
+    auto writes = BuildDescriptorWrites(setIndex, imageIndex, descriptorResources, descriptorBindings,
+                                       perFrameImageInfos[setIndex], perFrameBufferInfos[setIndex],
                                        SlotRole::Execute, swapchainInfo);
 
     // DEBUG: Use INFO level to see in console
@@ -864,7 +895,8 @@ void DescriptorSetNode::HandleAccelerationStructure(
 }
 
 std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
-    uint32_t imageIndex,
+    uint32_t setIndex,
+    uint32_t viewImageIndex,
     const std::vector<DescriptorResourceEntry>& descriptorResources,
     const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
     std::vector<VkDescriptorImageInfo>& imageInfos,
@@ -924,23 +956,26 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         const auto& resourceEntry = descriptorResources[binding.binding];
         const auto resourceVariant = resourceEntry.GetHandle();
 
-        // Initialize write descriptor
+        // Initialize write descriptor. dstSet is the frame-indexed SET OBJECT (setIndex); the image
+        // VALUES the handlers write into it are selected by viewImageIndex (image-indexed).
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = descriptorSets[imageIndex];
+        write.dstSet = descriptorSets[setIndex];
         write.dstBinding = binding.binding;
         write.dstArrayElement = 0;
         write.descriptorType = binding.descriptorType;
         write.descriptorCount = 1;
 
-        // Dispatch to type-specific handlers
+        // Dispatch to type-specific handlers. The image handlers select the swapchain-image-derived
+        // VIEW by viewImageIndex (image-indexed) — unchanged from before; only the SET OBJECT the
+        // write targets (write.dstSet above) moved to setIndex.
         switch (binding.descriptorType) {
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                HandleStorageImage(binding, resourceVariant, imageIndex, write, imageInfos, writes, &resourceEntry, swapchainInfo);
+                HandleStorageImage(binding, resourceVariant, viewImageIndex, write, imageInfos, writes, &resourceEntry, swapchainInfo);
                 break;
 
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-                HandleSampledImage(binding, resourceVariant, imageIndex, write, imageInfos, writes, &resourceEntry);
+                HandleSampledImage(binding, resourceVariant, viewImageIndex, write, imageInfos, writes, &resourceEntry);
                 break;
 
             case VK_DESCRIPTOR_TYPE_SAMPLER:
@@ -948,7 +983,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                 break;
 
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-                HandleCombinedImageSampler(binding, resourceVariant, descriptorResources, imageIndex, bindingIdx, write, imageInfos, writes, &resourceEntry);
+                HandleCombinedImageSampler(binding, resourceVariant, descriptorResources, viewImageIndex, bindingIdx, write, imageInfos, writes, &resourceEntry);
                 break;
 
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:

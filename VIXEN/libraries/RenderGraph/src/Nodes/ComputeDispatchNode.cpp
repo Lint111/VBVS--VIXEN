@@ -18,6 +18,13 @@
 
 namespace Vixen::RenderGraph {
 
+// Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
+// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
+// start), so sizing the reusable command-buffer ring to the flight count makes the resource
+// ring == the flight ring that fence already guards. Mirrors
+// CameraNodeConfig::MAX_FRAMES_IN_FLIGHT / FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
+static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
+
 // ============================================================================
 // NODETYPE FACTORY
 // ============================================================================
@@ -88,30 +95,35 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     uint32_t imageCount = swapchainInfo->GetImageCount();
-    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating " + std::to_string(imageCount) + " command buffers");
+    // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
+    // COMMAND_BUFFER_RING_DEPTH note above). imageCount is still read for the image-derived
+    // arrays' logging context, but the reusable command-buffer ring is sized to the flight count.
+    const uint32_t cmdBufferCount = COMMAND_BUFFER_RING_DEPTH;
+    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating " + std::to_string(cmdBufferCount) +
+                  " command buffers (flight-ring depth; swapchain imageCount=" + std::to_string(imageCount) + ")");
 
-    // Allocate command buffers (one per swapchain image)
-    commandBuffers.resize(imageCount);
+    // Allocate command buffers (one per frame-in-flight)
+    commandBuffers.resize(cmdBufferCount);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = imageCount;
+    allocInfo.commandBufferCount = cmdBufferCount;
 
-    std::vector<VkCommandBuffer> cmdBuffers(imageCount);
+    std::vector<VkCommandBuffer> cmdBuffers(cmdBufferCount);
     VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, cmdBuffers.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to allocate command buffers: " + std::to_string(result));
     }
 
     // Store command buffers in stateful container
-    for (uint32_t i = 0; i < imageCount; ++i) {
+    for (uint32_t i = 0; i < cmdBufferCount; ++i) {
         commandBuffers[i] = cmdBuffers[i];
         commandBuffers.MarkDirty(i);  // Initial state: needs recording
     }
 
-    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocated " + std::to_string(imageCount) + " command buffers successfully");
+    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocated " + std::to_string(cmdBufferCount) + " command buffers successfully");
 
     // Create GPU performance logger using centralized GPUQueryManager from VulkanDevice
     // Sprint 6.3 Phase 0: All nodes share the same query manager to prevent slot conflicts
@@ -167,9 +179,12 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Guard against the invalid-image sentinel BEFORE any per-image indexing or side effect:
     // renderCompleteSemaphores[imageIndex] below read OOB on UINT32_MAX (the maximize crash),
     // and skipping before the fence reset keeps the frame fence signalled so the next
-    // FrameSyncNode wait can't deadlock on a skipped frame.
-    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
-        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image index - skipping frame");
+    // FrameSyncNode wait can't deadlock on a skipped frame. Two separate bounds now: the
+    // image-derived arrays are indexed by imageIndex (bounded by renderComplete size), while the
+    // command-buffer ring is frame-indexed (bounded by its own flight-ring size).
+    if (imageIndex == UINT32_MAX || imageIndex >= renderCompleteSemaphores.size() ||
+        currentFrameIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image/frame index - skipping frame");
         return;
     }
 
@@ -254,9 +269,11 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Always re-record to update push constants (they change every frame)
     // TODO: Optimize using secondary command buffers or dynamic state
-    VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
+    // Command buffer is frame-indexed (flight ring), so the per-flight fence FrameSyncNode already
+    // waited guards its reuse; the image-derived values RecordComputeCommands reads stay imageIndex.
+    VkCommandBuffer cmdBuffer = commandBuffers.GetValue(currentFrameIndex);
     RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants, leaveImageInGeneral, writesNoImage);
-    commandBuffers.MarkReady(imageIndex);
+    commandBuffers.MarkReady(currentFrameIndex);
 
     // P5b M1: read timeline primitives from FrameSyncNode slots (Optional — VK_NULL_HANDLE / 0 if not wired)
     VkSemaphore timelineSem = ctx.In(ComputeDispatchNodeConfig::TIMELINE_SEMAPHORE_IN);
@@ -376,9 +393,19 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     // end of this function upscales into the swapchain. See RENDER_TARGET_INFO slot doc.
     Vixen::Vulkan::Resources::IRenderTarget* renderTargetInfo = ctx.In(ComputeDispatchNodeConfig::RENDER_TARGET_INFO);
 
+    // Descriptor SET OBJECTS are now frame-indexed by DescriptorSetNode (it allocates the set ring
+    // at flight depth and writes set[frameIndex]) whenever its CURRENT_FRAME_INDEX is wired; when it
+    // is not wired it falls back to writing set[imageIndex]. This consumer must bind the SAME index
+    // it was written into: use frameIndex when THIS node's CURRENT_FRAME_INDEX is wired (main graph:
+    // both are wired together), else imageIndex (demo graphs: neither is wired). The producer/
+    // consumer pair is always wired as a set, so the two choices agree.
+    const bool frameIndexWired =
+        NodeInstance::GetInput(ComputeDispatchNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0) != nullptr;
+    const uint32_t setIndex = frameIndexWired ? frameIndex : imageIndex;
+
     // Validate descriptor sets
-    if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Invalid descriptor sets for image " + std::to_string(imageIndex));
+    if (descriptorSets.empty() || setIndex >= descriptorSets.size()) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Invalid descriptor sets for set index " + std::to_string(setIndex));
     }
 
     // Dispatch dims, shader output image, and GPU-perf extent come from the render target when
@@ -403,7 +430,9 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     // The image the compute shader actually writes: the render target's current image when
     // connected, else the swapchain image (pre-M4 behavior).
     VkImage writeImage = renderTargetInfo ? renderTargetInfo->GetCurrentImage() : swapchainImage;
-    VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
+    // Frame-indexed SET OBJECT (see setIndex derivation above); the image VALUES it references
+    // (swapchainImage, writeImage) stay imageIndex-selected.
+    VkDescriptorSet descriptorSet = descriptorSets[setIndex];
 
     // Begin GPU timing frame (reset queries for this frame)
     if (gpuPerfLogger_) {

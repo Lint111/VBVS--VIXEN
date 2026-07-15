@@ -251,7 +251,10 @@ void VulkanGraphApplication::BuildFanInDemoGraph() {
              .Connect(shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, descSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
              .Connect(gatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, descSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
              .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, descSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+             // Frame-index the descriptor SET OBJECTS (sync-reuse fix): matches the stage consumer,
+             // which binds by frameIndex — closes the set[frameIndex] unwritten gap.
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, descSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, pipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
              .Connect(shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, pipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
              .Connect(descSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, pipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);

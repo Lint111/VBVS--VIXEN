@@ -283,7 +283,9 @@ void VulkanGraphApplication::BuildAutoSyncDemoGraph() {
              .Connect(shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, descSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
              .Connect(gatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, descSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
              .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, descSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+             // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, descSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
     };
     wireDescriptorPath(fillShaderLib, fillGatherer, fillDescSet);
     wireDescriptorPath(postShaderLib, postGatherer, postDescSet);

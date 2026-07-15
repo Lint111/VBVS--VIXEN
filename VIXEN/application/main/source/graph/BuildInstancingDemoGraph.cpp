@@ -291,7 +291,9 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
          .Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, descriptorSetNode, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(descGathererNode, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, descriptorSetNode, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX);
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX)
+         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, descriptorSetNode, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
 
     // --- Graphics pipeline ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN)

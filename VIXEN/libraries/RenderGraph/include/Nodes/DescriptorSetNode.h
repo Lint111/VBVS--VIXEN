@@ -143,7 +143,13 @@ private:
 
     /**
      * @brief Update descriptor sets from resource array using shader metadata
-     * @param imageIndex Swapchain image index (which descriptor set to update)
+     * @param setIndex Frame-in-flight index of the SET OBJECT to write into (the set ring is
+     *        allocated at flight depth; see DescriptorSetNode.cpp DESCRIPTOR_SET_RING_DEPTH). This
+     *        also selects the perFrameImageInfos/perFrameBufferInfos scratch sub-vector passed below.
+     * @param viewImageIndex Swapchain image index selecting the image-derived VIEW VALUES written
+     *        into the set (e.g. SwapChainPublicVariables::colorBuffers[viewImageIndex].view). Kept
+     *        separate from setIndex so a frame-indexed set still receives THIS frame's actual image
+     *        view. Equals setIndex only when CURRENT_FRAME_INDEX is unwired (imageIndex fallback).
      * @param descriptorResources Resource array from DescriptorResourceGathererNode
      * @param descriptorBindings Shader bindings metadata
      * @param imageInfos Output vector for image infos (keep alive for vkUpdateDescriptorSets)
@@ -156,7 +162,8 @@ private:
      * @return VkWriteDescriptorSet array ready for vkUpdateDescriptorSets
      */
     std::vector<VkWriteDescriptorSet> BuildDescriptorWrites(
-        uint32_t imageIndex,
+        uint32_t setIndex,
+        uint32_t viewImageIndex,
         const std::vector<DescriptorResourceEntry>& descriptorResources,
         const std::vector<::ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
         std::vector<VkDescriptorImageInfo>& imageInfos,
