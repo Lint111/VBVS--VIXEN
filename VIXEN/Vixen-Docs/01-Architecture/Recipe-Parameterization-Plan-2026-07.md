@@ -227,16 +227,14 @@ only makes the VM/shader side capable of consuming a param array that already re
   `3.0*sin(tick*0.05)`. Live capture (3 frames at distinct sweep phases) confirms (a) visibly
   changing geometry — 3 different PNG checksums, gold sphere visibly grows/shifts; (b) zero-bake
   holds — 0 `BakeSdfWorld`/`BuildSdfBodyOctree` calls logged for demo bodies; (c) **found a
-  pre-existing, unrelated bug**: `VIXEN_PROCEDURAL_UBER_DEMO` with validation layers on produces a
-  one-time boot-time recompile of `body_octree_scene` (swapchain-settling related, NOT
-  `SetInstances`'s `MarkNeedsRecompile` — confirmed zero occurrences of that log line all run) that
-  leaves the shared descriptor set stale for `voxelGridNode`-sourced bindings (`RayTraceBuffer`),
-  producing a VUID cascade — isolation-tested against the unmodified 3-body demo (ReadParam body
-  excluded via a temporary env-gate, reverted after) with byte-identical VUID/recompile counts,
-  confirming this is pre-existing and unrelated to `ReadParam`/recompile-avoidance. This exact gate
-  had never been run to completion before (flagged "STILL CARRIED (windowed only)" in the
-  Lazy-Procedural M5 doc) — filing as a new known issue, not fixed in this milestone (out of P4's
-  scope: a shared-node descriptor-refresh gap, not a recipe/param bug).
+  pre-existing, unrelated bug**, filed as **[[Known-Issues|KI-028]]**: this exact live gate had
+  never been run to completion before (flagged "STILL CARRIED (windowed only)" in the
+  Lazy-Procedural M5 doc), and running it revealed a boot-time recompile of `body_octree_scene`
+  that leaves a shared descriptor set stale, producing a VUID cascade — independently isolation-
+  tested by BOTH the implementer and the Opus validator (env-gating the `ReadParam` body out,
+  byte-identical cascade either way) confirming this predates and is unrelated to
+  recipe-parameterization. Out of P4's scope (a shared-node descriptor-refresh gap, not a
+  recipe/param bug); not fixed in this milestone.
   Task 9: dedicated gtest `ReadParamValueSweepNeverMarksNodeNeedsRecompile` (in
   `test_body_octree_lifetime.cpp`, real GPU device) directly instruments
   `NodeInstance::NeedsRecompile()` — not a log-grep — across 50 frames of pure `recipeParams[0]`
@@ -259,6 +257,15 @@ only makes the VM/shader side capable of consuming a param array that already re
   `test_recipe_pool_render`/`test_baked_vs_virtual_parity`/`test_mip_fallback_render` fail
   identically to the already-documented pre-existing baseline (zero-diff on their dependency files
   since M2's `770ec1c1`).
+  **Opus-validated APPROVED 2026-07-15** — validator independently reproduced BOTH self-reported
+  concerns rather than accepting them: re-ran the KI-028 isolation test itself (same result, zero
+  VUIDs on any recipe-parameterization-touched binding); and — the strongest check in this
+  milestone — **proved the Task 9 no-recompile assertion can actually fail** by temporarily
+  injecting an unconditional `MarkNeedsRecompile()` into `SetInstances`, rebuilding, and confirming
+  the test fires `ADD_FAILURE` on all 50 frames, then reverting to restore the clean pass — the
+  assertion is a real, non-vacuous regression gate, not one that would pass regardless of the code
+  under test. Also independently confirmed the EOS-overlay loader failure is machine-local (the
+  unmodified sibling test hits it identically).
 - **M4 — Parity gate + doc closure + sweep** (Tasks 11-12) · **live-run gate** · baked-vs-virtual
   geometry parity (reusing Lazy-Procedural M6's IoU harness) on a `ReadParam` recipe at a specific
   snapshotted parameter value; full no-regression sweep across the recipe/SVO/RenderGraph suites;
@@ -277,11 +284,13 @@ validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' 
 - **Milestone M2 (Tasks 5-7): DONE** · commits `0b937df2..73b27f01` · Opus validator APPROVED ·
   2026-07-15. See Milestone Map entry above for full detail. Same worktree/branch, continuing
   before merge to main.
-- **Milestone M3 (Tasks 8-10): DONE** · commit `33694860` · 2026-07-15 (Opus validation pending).
+- **Milestone M3 (Tasks 8-10): DONE** · commit `33694860` · Opus validator APPROVED · 2026-07-15.
   See Milestone Map entry above for full detail. Same worktree/branch, continuing before merge to
-  main. **New known issue filed** (pre-existing, not a regression): boot-time `body_octree_scene`
-  recompile leaves `voxelGridNode`-sourced descriptor bindings stale under
-  `VIXEN_PROCEDURAL_UBER_DEMO` — see Milestone Map entry for isolation-test evidence.
+  main. **New known issue filed as [[Known-Issues|KI-028]]** (pre-existing, not a regression):
+  boot-time `body_octree_scene` recompile leaves `voxelGridNode`-sourced descriptor bindings stale
+  under `VIXEN_PROCEDURAL_UBER_DEMO` — double isolation-tested (implementer + validator,
+  independently). Validator additionally proved the Task 9 no-recompile gtest is non-vacuous by
+  injecting a real regression and confirming it fails.
 
 ---
 

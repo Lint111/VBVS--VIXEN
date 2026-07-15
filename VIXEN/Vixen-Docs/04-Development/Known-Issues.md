@@ -11,6 +11,50 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-028 — `VIXEN_PROCEDURAL_UBER_DEMO` boot recompile leaves shared descriptor set stale, producing a persistent VUID cascade
+
+**Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M3's live validation-layer
+render gate — the first time this exact gate (`VIXEN_PROCEDURAL_UBER_DEMO` + real Windows-native GPU +
+`VK_LAYER_KHRONOS_validation`) was ever run to completion (it had been flagged "STILL CARRIED
+(windowed only)" and never executed in
+[[Lazy-Procedural-Delta-Baseline-Inc0-Inc1-Plan-2026-07]] M5's own Progress Log).
+
+**Symptom:** running the demo with validation layers on produces ~80-160 VUID lines (run-to-run
+variance), all on `voxelGridNode`-sourced bindings (`InstanceIterDebugBuffer` binding 14,
+`RayTraceBuffer` binding 4) — never on `recipeParams`/binding-10/`bodyInstances`. The count and
+bindings are identical whether or not any `ReadParam`-using body is present.
+
+**Root cause (confirmed, not yet fixed):** a ONE-TIME boot-time recompile of `body_octree_scene`
+fires right after the Render-pause/resume (swapchain-settling) sequence — NOT
+`BodyOctreeSceneNode::SetInstances`'s `MarkNeedsRecompile` (confirmed zero occurrences of that log
+line across full runs; "exceeds ring capacity" count is 0 every time). That recompile leaves the
+shared descriptor set stale for `voxelGridNode`-sourced bindings, and the staleness persists/
+recurs through most of the run rather than resolving after one frame.
+
+**Confirmed pre-existing, not introduced by recipe-parameterization work:** independently isolation-
+tested twice — once by the M3 implementer (env-gating out the `ReadParam` body, rebuilding, re-
+running the original unmodified 3-body demo: byte-identical VUID/recompile counts) and once
+independently by the M3 Opus validator (same experiment, same result: 1 boot recompile of
+`body_octree_scene`, same VUID cascade on the same bindings, present or absent the `ReadParam`
+body). Zero VUIDs reference any recipe-parameterization-touched binding.
+
+**Impact:** any future live validation-layer gate through this demo path will see this cascade
+unless/until fixed — a source of noise that could mask a REAL new VUID regression in a later
+session unless carefully diffed against this known baseline signature (bindings 4/14, not the
+bindings a given change actually touches).
+
+**Fix options:** not investigated beyond root-causing the trigger (boot-time recompile timing vs.
+swapchain settle) — likely a descriptor-set refresh/rebind gap in whatever handles
+`voxelGridNode`'s bindings across a recompile, scoped to `RenderGraph`/`DescriptorSetNode`
+territory, not the recipe/procedural system. Needs its own investigation session.
+
+**Severity:** Medium (noisy but not a correctness bug in anything downstream of this cascade — no
+crash, no wrong render output observed; the concern is masking future real VUIDs, not this one
+itself) · **Status:** OPEN, pre-existing, out of scope for
+[[Recipe-Parameterization-Plan-2026-07]] (a recipe/param-VM change, not a descriptor-refresh fix)
+
+---
+
 ## KI-027 — `VoxelInjectionQueue`/`VoxelInjector` concurrent voxel creation is unsound (heap corruption, ECS assertion mismatch)
 
 **Discovered:** 2026-07-12, in a broad ctest sweep audit — 7 tests fail: `VoxelInjectionQueueTest.ProcessMultipleVoxels` (SEGFAULT: `_CrtIsValidHeapPointer`/`is_block_type_valid` debug-heap assertions — real heap corruption, not a benign crash), `.ProcessBatchCreation` (Gaia ECS internal assertion `entityExpected == entityPresent` at `gaia.h:30565`), `.ConcurrentEnqueue`, `.StopDuringProcessing`, `VoxelInjectorTest.InsertEntities_SingleEntity` (`Exit code 0xc0000409`, a Windows stack-buffer-overrun/security-cookie trap), `.InsertEntities_MultipleEntities`, `.InsertEntitiesBatched_SingleBrick`, `.InsertEntitiesBatched_MultipleBricks`, `.CompactOctree`, `.InsertEntities_MixValidAndInvalid`, `.LargeBatchInsertion`.
