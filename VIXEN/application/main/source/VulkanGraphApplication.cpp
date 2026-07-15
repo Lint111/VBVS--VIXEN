@@ -1243,6 +1243,7 @@ void VulkanGraphApplication::Update() {
                         constexpr size_t kWorldPosOffset   = 32;  // HitRecord.glsl's own layout comment
                         constexpr size_t kHitTOffset        = 28;
                         constexpr size_t kFlagsOffset       = 44;
+                        constexpr size_t kPad0Offset        = 48;  // _pad0[0] = winning instIdx (M3 round 3, TraceWorld.glsl's WorldHit.instIdx)
                         const auto* bytes = reinterpret_cast<const uint8_t*>(hrMapped);
                         const size_t byteSize = static_cast<size_t>(hrBuf->GetSizeBytes());
                         const size_t recordCount = byteSize / kHitRecordStride;
@@ -1263,6 +1264,17 @@ void VulkanGraphApplication::Update() {
                         size_t hitCount = 0;
                         float minWorld[3] = {1e30f, 1e30f, 1e30f};
                         float maxWorld[3] = {-1e30f, -1e30f, -1e30f};
+                        // M3 round 3 (2026-07-14): localize the out-of-bounds stray hit(s) found
+                        // in rounds 1/2 (worldPos.z ~= -48, impossible for any real Cornell body
+                        // -- max legitimate Z is 4, the back wall's outer face) by scanning every
+                        // pixel for an OUT-OF-BOUNDS worldPos (any axis outside a generous
+                        // [-20,60] box, well beyond the true scene's [~-2,~30] extent) and
+                        // reporting exact pixel coordinates + hitT, not just the aggregate
+                        // min/max -- pinpoints WHERE on screen the anomaly lands (which wall's
+                        // region, or a lone isolated pixel) instead of just confirming it exists.
+                        constexpr float kBoundsLo = -20.0f, kBoundsHi = 60.0f;
+                        size_t oobCount = 0;
+                        int oobFirstPx = -1, oobFirstPy = -1;
                         for (size_t i = 0; i < recordCount; ++i) {
                             uint32_t flagsField;
                             std::memcpy(&flagsField, bytes + i * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
@@ -1274,6 +1286,25 @@ void VulkanGraphApplication::Update() {
                                     minWorld[a] = std::min(minWorld[a], wp[a]);
                                     maxWorld[a] = std::max(maxWorld[a], wp[a]);
                                 }
+                                const bool oob = wp[0] < kBoundsLo || wp[0] > kBoundsHi ||
+                                                  wp[1] < kBoundsLo || wp[1] > kBoundsHi ||
+                                                  wp[2] < kBoundsLo || wp[2] > kBoundsHi;
+                                if (oob) {
+                                    const int px = static_cast<int>(i % static_cast<size_t>(kImgSize));
+                                    const int py = static_cast<int>(i / static_cast<size_t>(kImgSize));
+                                    if (oobCount == 0) { oobFirstPx = px; oobFirstPy = py; }
+                                    ++oobCount;
+                                    if (oobCount <= 20 && mainLogger) {
+                                        float hitT;
+                                        std::memcpy(&hitT, bytes + i * kHitRecordStride + kHitTOffset, sizeof(float));
+                                        uint32_t winnerInstIdx;
+                                        std::memcpy(&winnerInstIdx, bytes + i * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                                        mainLogger->Info("[CornellDiag] OOB pixel(" + std::to_string(px) + "," + std::to_string(py) +
+                                                          ") hitT=" + std::to_string(hitT) +
+                                                          " instIdx=" + std::to_string(winnerInstIdx) +
+                                                          " worldPos=(" + std::to_string(wp[0]) + "," + std::to_string(wp[1]) + "," + std::to_string(wp[2]) + ")");
+                                    }
+                                }
                             }
                         }
                         if (mainLogger) {
@@ -1283,6 +1314,10 @@ void VulkanGraphApplication::Update() {
                             mainLogger->Info("[CornellDiag] worldPos range across all hits: min=(" +
                                               std::to_string(minWorld[0]) + "," + std::to_string(minWorld[1]) + "," + std::to_string(minWorld[2]) +
                                               ") max=(" + std::to_string(maxWorld[0]) + "," + std::to_string(maxWorld[1]) + "," + std::to_string(maxWorld[2]) + ")");
+                            mainLogger->Info("[CornellDiag] out-of-bounds hits (any axis outside [" +
+                                              std::to_string(kBoundsLo) + "," + std::to_string(kBoundsHi) + "]): " +
+                                              std::to_string(oobCount) + "/" + std::to_string(hitCount) +
+                                              (oobCount > 0 ? (" first at pixel(" + std::to_string(oobFirstPx) + "," + std::to_string(oobFirstPy) + ")") : std::string()));
                         }
                         auto dumpPixel = [&](int px, int py) {
                             const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
@@ -1293,10 +1328,13 @@ void VulkanGraphApplication::Update() {
                             std::memcpy(worldPos, bytes + idx * kHitRecordStride + kWorldPosOffset, sizeof(worldPos));
                             float hitT;
                             std::memcpy(&hitT, bytes + idx * kHitRecordStride + kHitTOffset, sizeof(float));
+                            uint32_t winnerInstIdx;
+                            std::memcpy(&winnerInstIdx, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
                             if (mainLogger) {
                                 mainLogger->Info("[CornellDiag] pixel(" + std::to_string(px) + "," + std::to_string(py) +
                                                   ") hit=" + std::to_string(flagsField & 0x1u) +
                                                   " hitT=" + std::to_string(hitT) +
+                                                  " instIdx=" + std::to_string(winnerInstIdx) +
                                                   " worldPos=(" + std::to_string(worldPos[0]) + "," +
                                                   std::to_string(worldPos[1]) + "," + std::to_string(worldPos[2]) + ")");
                             }
