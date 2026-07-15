@@ -81,6 +81,18 @@ struct SdfBakeResult {
 // the only caller that supplies a real emission function.
 inline float NoEmission(const glm::vec3&) { return 0.0f; }
 
+// Default per-voxel color: smooth RGB bands varying across the grid (visible
+// per-voxel variation, a debug-friendly default). Passed as BakeSdfWorld's
+// default ColorFn so every existing call site stays byte-identical (this exact
+// formula is asserted by test_body_instance_raymarch_render.cpp). A caller that
+// wants a FLAT authored color (e.g. the Cornell box's per-wall tint) passes its
+// own ColorFn instead — the per-voxel rainbow is only a default, not a
+// requirement of the bake.
+inline glm::vec3 DefaultBandColor(const glm::vec3& p) {
+    return 0.5f + 0.5f * glm::cos(glm::vec3(p.x, p.y, p.z) * 0.12f
+                                  + glm::vec3(0.0f, 2.094f, 4.188f));
+}
+
 // ---------------------------------------------------------------------------
 // BakeSdfWorld — eval-callable core (P2.1 M1).
 //
@@ -89,10 +101,12 @@ inline float NoEmission(const glm::vec3&) { return 0.0f; }
 // EmitFn: float(glm::vec3 gridPos) -> emissive intensity (Sampled Lighting
 // Inc3 M3); defaults to NoEmission so pre-M3 callers are unaffected.
 // ---------------------------------------------------------------------------
-template<class EvalFn, class EmitFn = float(*)(const glm::vec3&)>
+template<class EvalFn, class EmitFn = float(*)(const glm::vec3&),
+         class ColorFn = glm::vec3(*)(const glm::vec3&)>
 inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
                                   int n, float bandVoxels, int brickDepth = 3,
-                                  EmitFn&& emit = NoEmission) {
+                                  EmitFn&& emit = NoEmission,
+                                  ColorFn&& colorFn = DefaultBandColor) {
     SdfBakeResult r;
     r.n      = n;
     r.center = center;
@@ -211,10 +225,9 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
                               static_cast<float>(y),
                               static_cast<float>(z));
             const float sd = eval(p);
-            // Smooth RGB bands varying across the grid (visible per-voxel variation)
-            const glm::vec3 col = 0.5f + 0.5f * glm::cos(
-                glm::vec3(p.x, p.y, p.z) * 0.12f
-                + glm::vec3(0.0f, 2.094f, 4.188f));
+            // Per-voxel color from the caller's ColorFn (defaults to DefaultBandColor's
+            // smooth RGB bands; a scene wanting a flat authored tint passes its own).
+            const glm::vec3 col = colorFn(p);
             // Roughness: striped along Y, clamped to [0,1]
             const float rough = glm::clamp(
                 0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);

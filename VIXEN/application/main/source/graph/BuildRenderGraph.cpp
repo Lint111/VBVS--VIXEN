@@ -3053,9 +3053,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world);
                 };
             };
+            // Bake each body with a FLAT WHITE per-voxel color (Cornell M3 round 7 fix):
+            // BakeSdfWorld's DEFAULT per-voxel color is a debug rainbow (SdfBake.h
+            // DefaultBandColor), which the STORED shading path multiplies by inst.color
+            // (TraceWorld.glsl: bestColor = hitColor*inst.color) -- rendering every wall as
+            // garish rainbow*tint blotches instead of a flat per-wall color. Baking WHITE
+            // (1,1,1) makes hitColor*inst.color == inst.color, i.e. the STORED path now
+            // yields EXACTLY the same flat per-wall tint the virtual/PROCEDURAL variant
+            // already shows (bestColor = inst.color; that path has no baked voxel channel).
+            // White (not the per-body tint) is deliberate: the tint is already applied ONCE
+            // via inst.color, so baking the tint too would square it (darken). Passing the
+            // color as the ColorFn (rather than overwriting the serialized channelPool
+            // post-bake) fixes BOTH the brick channelPool and the mip pool consistently, and
+            // touches the shared BakeSdfWorld only via its additive, default-preserving
+            // ColorFn parameter (the rainbow default is still what every other caller/test gets).
             auto bakeWorldSpaceBody = [&](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
                 Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeSdfWorld(
-                    makeWorldSpaceEval(prog, bodyWorldCenter, n, subdiv), bodyWorldCenter, n, kBand);
+                    makeWorldSpaceEval(prog, bodyWorldCenter, n, subdiv), bodyWorldCenter, n, kBand,
+                    3, Vixen::SVO::NoEmission,
+                    [](const glm::vec3&) { return glm::vec3(1.0f); });
                 return Vixen::SVO::BuildSdfBodyOctree(baked, 3);
             };
 
@@ -3109,7 +3125,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
             Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeSdfWorld(
                 makeWorldSpaceEval(bodies[5].prog, kLightWorldCenter, kSmallN, kSmallSubdiv),
                 kLightWorldCenter, kSmallN, kBand, 3,
-                [](const glm::vec3&) { return kLightEmissionIntensity; });
+                [](const glm::vec3&) { return kLightEmissionIntensity; },
+                [](const glm::vec3&) { return glm::vec3(1.0f); });  // flat white, not the debug rainbow (tint applied once via inst.color; see bakeWorldSpaceBody)
             Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
             const glm::vec3 kLightWorldPos = bodyWorldPos(kLightWorldCenter, kSmallN, kSmallSubdiv);
             const float kLightRenderScale = bodyRenderScale(kSmallN, kSmallSubdiv);
