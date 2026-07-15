@@ -56,6 +56,16 @@ inline std::string EmitSpecializedRecipeComputeShader(
     std::string fieldFn = EmitProceduralFieldFunctionGlsl(
         entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
 
+    // Matches EmitProceduralFieldFunctionGlsl's/UberShaderSplice.h's own float-literal guard --
+    // every literal baked into GLSL source must carry a decimal point or GLSL parses it as an
+    // int (the "1/6 integer-divides to 0" failure class).
+    auto f = [](float v) {
+        std::string s = std::to_string(v);
+        if (s.find('.') == std::string::npos && s.find('e') == std::string::npos)
+            s += ".0";
+        return s;
+    };
+
     std::ostringstream out;
     out << "#version 460\n\n";
     out << "// Recipe GPU Instance Bucketing Inc2 M2 Task 5 -- specialized single-recipe shader\n";
@@ -144,13 +154,19 @@ vec3 getRayDir(vec2 uv) {
     out << "    for (uint m = 0u; m < pc.memberCount; ++m) {\n";
     out << "        uint instIdx = bucketMembers[m];\n";
     out << "        BodyInstance inst = bodyInstances[instIdx];\n";
-    out << "        // Bound-sphere center is recipe-LOCAL, translated by this instance's worldPos\n";
-    out << "        // (mirrors RecipeInstanceBucketing.comp's same convention, and TraceWorld.glsl's\n";
-    out << "        // own boundCenter-from-getRecipeBoundSphere+worldPos combination). The field\n";
-    out << "        // function itself (sdfRecipe_<id>) evaluates in WORLD space directly -- mirrors\n";
+    out << "        // Bound-sphere reject center matches tier-0's getRecipeBoundSphere EXACTLY:\n";
+    out << "        // this recipe's REGISTERED boundCenter, baked as a compile-time constant --\n";
+    out << "        // worldPos is NEVER added to it (UberShaderSplice.h's getRecipeBoundSphere\n";
+    out << "        // returns entry.boundCenter verbatim; TraceWorld.glsl's call site does not\n";
+    out << "        // combine it with inst.worldPos either). Do not confuse this with\n";
+    out << "        // RecipeInstanceBucketing.comp's OWN bucketing/coverage pass, which separately\n";
+    out << "        // computes inst.worldPos + bound.center for its screen-space AABB projection --\n";
+    out << "        // that is a different, bucketing-only convention. The field function itself\n";
+    out << "        // (sdfRecipe_<id>) evaluates in WORLD space directly -- mirrors\n";
     out << "        // traceUberRecipeBody's evalRecipeField(recipeId, p, params) call, which passes\n";
     out << "        // the raw world-space march point with NO per-instance offset subtraction.\n";
-    out << "        vec3 boundCenter = inst.worldPos;\n\n";
+    out << "        vec3 boundCenter = vec3(" << f(entry.boundCenter.x) << ", "
+        << f(entry.boundCenter.y) << ", " << f(entry.boundCenter.z) << ");\n\n";
     out << "        vec3  oc = rayOrigin - boundCenter;\n";
     out << "        float b  = dot(oc, rayDir);\n";
     out << "        float c  = dot(oc, oc) - pc.boundRadius * pc.boundRadius;\n";

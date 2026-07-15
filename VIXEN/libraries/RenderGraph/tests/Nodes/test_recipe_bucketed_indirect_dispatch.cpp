@@ -422,9 +422,14 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     // codebase's own existing convention (confirmed by inspection of TraceWorld.glsl's
     // recipeId>=2 branch — evalRecipeField/traceUberRecipeBody take the raw world-space march
     // point with NO per-instance worldPos offset, unlike the legacy recipeId<2 analytic path),
-    // a recipeId>=2 recipe's actual FIELD GEOMETRY is not translated by instance worldPos —
-    // only the bound-sphere early-reject test is (boundCenter = inst.worldPos + bound.center,
-    // RecipeInstanceBucketing.comp's own documented convention). So these 4 instances all
+    // a recipeId>=2 recipe's actual FIELD GEOMETRY is not translated by instance worldPos.
+    // The bound-sphere early-reject in TraceWorld.glsl/tier-0 ALSO does not add worldPos: it
+    // calls getRecipeBoundSphere(recipeId, ...), which (UberShaderSplice.h) returns the
+    // recipe's REGISTERED boundCenter verbatim as a compile-time constant — worldPos is never
+    // combined with it at that call site. (RecipeInstanceBucketing.comp's OWN bucketing/
+    // coverage pass separately computes `inst.worldPos + bound.center` for its screen-space
+    // AABB projection — that is a different, bucketing-only convention and must not be
+    // conflated with the tier-0 reject-sphere center used here.) So these 4 instances all
     // produce the SAME sphere at world origin, but exercise 4 separate bound-sphere-reject +
     // member-list-loop iterations — this test's job is proving the specialized pipeline
     // reproduces the tier-0 switch's march EXACTLY (same surprising behavior included), not
@@ -812,7 +817,11 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
 
             bool oracleAnyHit = false; float oracleBestT = 1e30f; glm::vec3 oracleNormal(0.0f, 1.0f, 0.0f);
             for (const auto& inst : instances) {
-                glm::vec3 boundCenter(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
+                // Tier-0's getRecipeBoundSphere returns the recipe's REGISTERED boundCenter
+                // verbatim (UberShaderSplice.h emits it as a compile-time constant baked from
+                // RecipeEntry::boundCenter) — worldPos is never added to it at the
+                // TraceWorld.glsl call site. Must match entry.boundCenter, not inst.worldPos.
+                glm::vec3 boundCenter = entry.boundCenter;
                 glm::vec3 n; float t;
                 std::array<float, 6> params{};
                 std::copy(std::begin(inst.recipeParams), std::end(inst.recipeParams), params.begin());
