@@ -283,7 +283,60 @@ doc's own recommendation is to revisit once the JIT epic's N≥100 target is rea
   geometry parity (reusing Lazy-Procedural M6's IoU harness) on a `ReadParam` recipe at a specific
   snapshotted parameter value; full no-regression sweep across the recipe/SVO/RenderGraph suites;
   format-contract and JIT-direction docs updated to reflect P4 shipped.
-  - [ ] Not started.
+  **✅ DONE 2026-07-15 (DONE_WITH_CONCERNS on Task 11 specifically — carried obligation, see
+  below)** — commit `a6510536` (code) + doc-closure commit. Task 11: root-caused the
+  `test_baked_vs_virtual_parity.VirtualRendersGeometricallyEquivalentToBaked`
+  `bakedHits=0 virtualHits=0` failure that both the M2 and M3 Opus validators had independently
+  confirmed pre-existing but not root-caused further — found a REAL, FIXED bug: the test's
+  hand-built `VkDescriptorSetLayout` included a stale `binding=8` entry (a debug
+  `ShaderCountersBuffer`) removed from `BodyInstanceRayMarch.comp`'s reflected SPIR-V interface by
+  `8509f58b` on 2026-07-03; a local layout binding absent from the shader's actual resource
+  interface is a `VUID-VkComputePipelineCreateInfo-layout-07988`-class validation error at
+  pipeline-creation time — this, not KI-028's boot-recompile theory, was the real cause of the
+  VUID cascade these three specific tests hit. Fixed in both `test_baked_vs_virtual_parity.cpp`
+  and `test_mip_fallback_render.cpp` (identical stale entry); confirmed live (Windows-native, real
+  AMD Radeon GPU) that `vkCreateComputePipelines` now succeeds with **zero** VUID/validation-layer
+  output in both, where every prior run had aborted or failed at pipeline-creation time — genuine,
+  verified progress, not a reclassification. Fixing it exposed a SECOND, deeper, unrelated
+  pre-existing bug (filed as **[[Known-Issues|KI-029]]**): both harnesses dispatch only
+  `BodyInstanceRayMarch.comp` and read back its `outputImage`, but that image hasn't been written
+  by this shader since the Sampled-Lighting-Inc3 M1/M5 pass-split (`784adff7`, `747e156c`) moved
+  the real `imageStore` to a third shader, `SpatialReuseShade.comp` — the harnesses are reading
+  back genuinely untouched (correctly zeroed) memory, not observing a march/geometry failure.
+  Confirmed via a live isolation check that `HitRecord`/`idOutputImage` (bindings 18/9) ARE
+  written by the single dispatched pass and would show real data; the harnesses just don't read
+  those. This is why Task 11 is **CODE DONE / LIVE GATE PENDING** (the same carried-obligation
+  pattern as Lazy-Procedural M2's boot-lazy live gate): added corpus entry (4) `readparam_sphere`
+  reusing the EXACT `{sphere(center,2.0), ReadParam(0), MathSub}` bytecode shape M3 Task 8
+  registered/rendered live and `test_body_octree_lifetime.cpp`'s M3 gtest also uses, with a bake-
+  time snapshot (`readParamSnapshot={0.5}`, threaded through `BakeRecipeInstructionsToSdfWorld`'s
+  M1/M3 Task 10 `params` argument) IDENTICAL to the virtual path's `BodyInstanceGpu::recipeParams[0]`
+  value. Confirmed live: registers, bakes, splices, dispatches, and reads back with **zero VUIDs
+  and zero crashes** — the corpus entry, snapshot wiring, and virtual-instance wiring are all
+  provably correct and ready to produce a real IoU number the moment KI-029 is fixed; it currently
+  fails the SAME `bakedHits=0/virtualHits=0` structural symptom as every other corpus entry
+  (pre-existing and new alike), which is the expected, honest outcome given KI-029 is unfixed — not
+  a recipe-parameterization defect. The IoU floor (0.75, KI-LPD-003) was NOT weakened or bypassed.
+  Task 12: full sweep run (Windows-native, real GPU, fresh full build first) —
+  **225/229 tests passed**; the 4 failures
+  (`BodyInstanceRayMarchRenderTest.RenderRecipeBakedBody`,
+  `RecipePoolRenderTest.FourRecipesAllRender`,
+  `RecipeAuthoringGateTest.CsgSubtractRendersNonTrivial`,
+  `RecipeAuthoringGateTest.DefaultSceneRegression`) match the M1-established baseline exactly (same
+  `VUID-VkComputePipelineCreateInfo-layout-10069`/`-07988` signature, same 4-test count, 2 more
+  test files with their OWN independent stale descriptor/push-constant setups than the 3 already
+  known — confirmed pre-existing, zero diff on their own dependency files this milestone); 1 skip
+  (`SVOBuilderTest.GeometricError`, an unrelated `GTEST_SKIP()` in a different subsystem);
+  `test_baked_vs_virtual_parity`/`test_mip_fallback_render` aren't ctest-registered
+  (`gtest_discover_tests` didn't pick them up) so were run directly and separately confirmed above.
+  `test_recipe_pool_render` deliberately left unfixed (its own stale layout gap is materially
+  larger — missing bindings 15-22 entirely plus a wrong push-constant size, not just binding 8 —
+  out of Task 11's required scope, confirmed unchanged/no-new-regression). Doc updates: this doc
+  (Milestone Map + Progress Log), `Recipe-Container-Format-Contract-2026-06.md` §6 (+ two other
+  stale P4 references at §1.2/§3.2) flipped to shipped, `Runtime-Tiered-Recipe-Pipeline-JIT-
+  Direction-2026-07.md` intro + §5 flipped to keystone-shipped. M1 Task 1's drift check confirmed
+  a no-op (M1's own Milestone Map entry already documents byte-identical opcode values, no drift
+  found) — no new KI needed for that.
 
 ### Progress Log
 
@@ -304,6 +357,18 @@ validator verdict; follow the Lazy-Procedural / Sparse-Mip / Tiered-ESVO plans' 
   under `VIXEN_PROCEDURAL_UBER_DEMO` — double isolation-tested (implementer + validator,
   independently). Validator additionally proved the Task 9 no-recompile gtest is non-vacuous by
   injecting a real regression and confirming it fails.
+- **Milestone M4 (Tasks 11-12): DONE, Task 11 DONE_WITH_CONCERNS (carried obligation)** ·
+  commit `a6510536` (code) + doc-closure commit · 2026-07-15. **This is the FINAL milestone —
+  plan ready for merge to main pending Opus validation.** See Milestone Map entry above for full
+  detail. Root-caused and FIXED a real bug (stale `binding=8` descriptor-layout entry) that had
+  been misdiagnosed as KI-028 by prior milestones; fixing it exposed a second, deeper, unrelated
+  pre-existing bug, filed as **[[Known-Issues|KI-029]]** (RenderGraph test-harness reads back an
+  `outputImage` no longer written after the Sampled-Lighting-Inc3 pass-split — a RenderGraph/
+  shader-pass-chaining problem, not a recipe/param-VM one). Task 11's `ReadParam` parity corpus
+  entry is CODE DONE / LIVE GATE PENDING on KI-029 — confirmed correct via a clean zero-VUID,
+  zero-crash live run, not a fake pass. Task 12's full sweep: 225/229 passed, 4 pre-existing
+  failures matching the exact M1-established VUID baseline, 1 unrelated pre-existing skip, zero
+  new regressions. Format-contract and JIT-direction docs flipped to P4-shipped.
 
 ---
 
