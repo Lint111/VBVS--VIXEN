@@ -78,6 +78,8 @@ Both the empirical sample and synchronization validation were run. Findings:
 
 **Why BAKED corrupts but VIRTUAL does not — with direct evidence.** Sync-val on the VIRTUAL variant, run to the same frame count, showed the **identical descriptor/command-buffer VUID cluster (same 20× counts)** — confirming the reuse-while-pending violation is **general, not baked-specific** — BUT the VIRTUAL run had **0× `SYNC-HAZARD-WRITE-AFTER-PRESENT`** while the BAKED run had **10×**. The discriminator is *duration*: the BAKED ESVO compute dispatch (heavy octree traversal reading the per-instance config/`renderScale`/shell bindings) runs far longer on the GPU than VIRTUAL's cheap analytic sphere-trace, so the window in which a still-pending read overlaps the descriptor/command-buffer overwrite is much wider on the baked path. When that window overlaps, the compute reads torn/stale bindings — the wrong instance's `octreeIndex`/`renderScale`/`worldToLocal` — producing exactly the observed symptom: a hit whose `hitT` is off by a `renderScale` factor, attributed to a shifting instance, clustered in the screen region that instance projects to, intermittent, and load-dependent. VIRTUAL, finishing its compute fast, almost always completes its reads before the overwrite lands, so the same latent violation stays invisible.
 
+> **Correction (Round 7 validator, post-fix independent re-check):** the "VIRTUAL = 0× WRITE-AFTER-PRESENT" claim above did NOT reproduce independently — the validator's own fresh capture showed VIRTUAL at 10× WAP, the same as BAKED. This does not affect the fix's validity (WRITE-AFTER-PRESENT is out-of-scope either way, unchanged pre/post fix on both variants) — but the "duration discriminator explains 0-vs-10 WAP" framing above should be treated as unconfirmed/likely wrong. The rest of the duration-discriminator reasoning (why BAKED shows *hit-corruption* while VIRTUAL doesn't) is independently supported by the load-test evidence in Round 6/7 and is NOT in question — only the specific WAP-count side-claim above is retracted.
+
 This ties together every previously-unexplained fact: run-to-run non-determinism from identical inputs (a timing race), byte-identical clean runs (no overlap → correct), the `renderScale`-scaled `hitT` (a torn per-instance binding read), the shifting culprit `instIdx` (which instance's binding was torn depends on timing), the screen-region clustering (that instance's projection), the load-dependence (wider overlap under scheduling jitter), and BAKED-only visibility (longer compute → wider window).
 
 ### The fix (NOT applied this round — high blast radius, deliberately deferred to a focused round)
@@ -189,6 +191,22 @@ lifetime reuse. A targeted attempt to close WRITE-AFTER-PRESENT by broadening th
 `VK_EXT_swapchain_maintenance1` present fences, or per-flight acquire-semaphore lifetime), separate from the
 reuse-while-pending fix this round delivers. `09600`/`08114`/`03047`-on-`test_dispatch` overlap with the
 already-documented **KI-024** (isolated demo-pipeline descriptor gatherer, zero pixel impact).
+
+## Round 7 — independent Opus validation of the Round 6 fix (2026-07-15): APPROVED
+
+A separate Opus validator (not the implementer) independently re-verified the Round 6 fix before merge, per this program's standing discipline of never trusting a fix's own self-report on high-stakes changes — especially warranted here given two prior speculative fixes in this exact investigation were tried and disproven before Round 5/6 found and closed the real cause.
+
+**Independently confirmed, with fresh evidence (own build, own runs, not re-reading the implementer's numbers):**
+- Fix design (re-index resource OBJECTS by `currentFrameIndex` at flight-depth, leave image-DERIVED values image-indexed) is applied correctly and consistently across all 8 changed production files — no leftover imageIndex-for-a-reused-resource-object site found.
+- The self-reported AutoSync regression risk (descriptor depth 3→4 potentially binding 4 sets to a 1-set layout) is a **non-issue**: `PassRecorder::RecordOneStep` binds exactly one set (`count=1, &set`), never the whole vector, so the feared VUID was never reachable on that path. Confirmed by reading `PassRecorder.cpp` directly, not just re-running the demo.
+- Sync-val re-run (own capture, own grep counts): the target VUID cluster (`03047`/`00049`/`03875`/`01123`) is genuinely **0/0** on both variants — matches the implementer's claim exactly.
+- Load test (own run): 20/20 baked `[CornellDiag]` runs clean under real, self-generated CPU contention (concurrent build + stressors) — byte-identical known-good range every run, zero out-of-bounds hits.
+- Regression spot-checks: the failing test cluster is provably pre-existing (a render-capture test binary predating the fix fails identically) or environmental (Windows temp-file locking), not sync-fix-induced.
+- WRITE-AFTER-PRESENT deferral is a reasonable, correctly-scoped decision — genuinely a different mechanism (present/acquire-semaphore ordering) from the reuse-while-pending race this fix targets.
+
+**One discrepancy found and corrected** (see the inline correction note earlier in this doc): the Round 6 "VIRTUAL has 0× WRITE-AFTER-PRESENT vs BAKED's 10×" claim did not reproduce — the validator's own capture showed 10× on both variants. This does not affect the fix's correctness (WAP is out-of-scope regardless) but the specific duration-discriminator side-claim about WAP counts is retracted; the core reasoning for why BAKED shows hit-corruption while VIRTUAL doesn't remains independently supported by the load-test evidence.
+
+**Verdict: safe to merge to main.** Merged as part of `worktree-render-graph-sync-reuse-fix` → `main`.
 
 ## Related
 
