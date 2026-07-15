@@ -43,6 +43,7 @@
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
 #include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
 #include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
+#include "RecipeContentCacher.h"              // Recipe Pipeline Cache Inc1 Task 4: population call site
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
 #include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
@@ -2469,7 +2470,38 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
                          (occGrid.ok ? (std::to_string(occGrid.dim) + "^3") : std::string("none (non-whitelisted opcode)")));
     }
 
-    return proceduralRecipes_.Register(recipeId, std::move(entry));
+    auto result = proceduralRecipes_.Register(recipeId, entry);
+
+    // Recipe Pipeline Cache Inc1 Task 4 — real population call site. RecipeRegistry (SVO) does
+    // not and should not link CashSystem (confirmed by M1: SVO has zero Core references, and
+    // CashSystem->{Core,SVO} is one-directional), so this is the lowest layer that can populate
+    // the content-hash cache without an inverted dependency. Only populate on a successful
+    // registration — a rejected recipe (DuplicateId/BadOpCode/etc.) never enters the registry and
+    // has nothing to cache.
+    if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        auto& mainCacher = renderGraph->GetMainCacher();
+        const auto cacherType = std::type_index(typeid(CashSystem::RecipeFamilyRecord));
+        if (!mainCacher.IsRegistered(cacherType)) {
+            mainCacher.RegisterCacher<
+                CashSystem::RecipeContentCacher,
+                CashSystem::RecipeFamilyRecord,
+                CashSystem::RecipeContentCacheCreateInfo
+            >(cacherType, "RecipeContent", /*isDeviceDependent=*/false);
+        }
+        auto* recipeCacher = mainCacher.GetCacher<
+            CashSystem::RecipeContentCacher,
+            CashSystem::RecipeFamilyRecord,
+            CashSystem::RecipeContentCacheCreateInfo
+        >(cacherType);
+        if (recipeCacher) {
+            recipeCacher->RegisterRecipe(recipeId, entry.bytecode);
+        } else if (mainLogger) {
+            mainLogger->Warning("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
+                                std::to_string(recipeId) + " failed to get RecipeContentCacher — cache not populated");
+        }
+    }
+
+    return result;
 }
 
 void VulkanGraphApplication::RecompileProceduralShader() {

@@ -215,3 +215,29 @@ gtest_discover_tests(test_pipeline_cache_header)
 # endif()
 #
 # gtest_discover_tests(test_cashsystem_all)
+
+# Recipe-bytecode content-hash tests (Recipe Pipeline Cache Inc1, M1)
+add_executable(test_recipe_content_hash
+    test_recipe_content_hash.cpp
+)
+target_compile_features(test_recipe_content_hash PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_recipe_content_hash PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_recipe_content_hash PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_recipe_content_hash PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_recipe_content_hash)
+
+# Recipe-content cacher tests (Recipe Pipeline Cache Inc1, M2)
+add_executable(test_recipe_content_cacher
+    test_recipe_content_cacher.cpp
+)
+target_compile_features(test_recipe_content_cacher PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_recipe_content_cacher PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_recipe_content_cacher PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_recipe_content_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_recipe_content_cacher)

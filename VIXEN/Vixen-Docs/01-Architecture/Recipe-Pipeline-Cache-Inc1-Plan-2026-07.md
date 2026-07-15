@@ -116,17 +116,107 @@ in the GPU sense (see the `D`/`CI` resolution note above); any change to
   content-hash function over `RecipeEntry::bytecode` exists, is deterministic, and the design
   question of what `D`/`CI` the cache should hold is resolved and documented (not deferred as an
   open question into implementation).
-  - [ ] Not started.
+  - [x] Done. `CashSystem::ComputeRecipeBytecodeHash` (`libraries/CashSystem/include/RecipeContentHash.h`)
+    hashes PRE-EMIT `RecipeEntry::bytecode` via `CacheKeyHasher::AddBytes` over the raw
+    `SdfInstruction[]` span (132-byte POD, confirmed by the type's own `static_assert`). 6 gtest
+    cases in `libraries/CashSystem/tests/test_recipe_content_hash.cpp` pass, incl. the critical
+    `ReadParam`/`ReadParamFloat3` slot-index-distinguishing property. `RecipeFamilyRecord`
+    (same header) is the resolved `D` shape — see Progress Log.
 - **M2 — Cache implementation + population wiring + tests** (Tasks 3-4) · gate: pure-CPU gtest
   green — the `TypedCacher` derivative exists, is populated at a real call site, and the
   exact-dup-collapse property is proven by test (identical bytecode → 1 entry; distinct bytecode →
   distinct entries; zero regression on existing RecipeRegistry/CashSystem suites).
-  - [ ] Not started.
+  - [x] Done. `CashSystem::RecipeContentCacher` (`libraries/CashSystem/include/RecipeContentCacher.h`)
+    — a device-independent `TypedCacher<RecipeFamilyRecord, RecipeContentCacheCreateInfo>`
+    derivative registered/fetched via `MainCacher::RegisterCacher`/`GetCacher` with
+    `isDeviceDependent=false`. Populated at `VulkanGraphApplication::RegisterProceduralRecipe`
+    after `RecipeRegistry::Register` succeeds. 6/6 new gtest cases pass
+    (`test_recipe_content_cacher.cpp`); 6/6 M1 + 16/16 `test_recipe_registry` regression suites
+    pass unchanged. See Progress Log.
 
 ### Progress Log
 
 (populated as milestones complete — one entry per milestone: commit hash, gate evidence, Opus
 validator verdict; follow the Recipe-Parameterization / Lazy-Procedural plans' convention.)
+
+**M1 (2026-07-15, implementer, pre-validator):**
+- **Task 1 decision:** pre-emit bytecode hashing, via `CashSystem::CacheKeyHasher::AddBytes` over
+  the raw `std::vector<Recipe::SdfInstruction>` byte span, finalized with `Vixen::Hash::ComputeHash64`
+  (FNV-1a). Equivalence check performed, not assumed: `EmitProceduralFieldFunctionGlsl`
+  (`SdfRecipeCodegenGlsl.h:901`) bakes `recipeId` into the emitted GLSL function name
+  (`sdfRecipe_<recipeId>`), so identical bytecode under two different `recipeId`s emits
+  textually-different GLSL strings. This does not invalidate bytecode hashing — the hash's job is
+  "same bytecode logic", which is exactly what a later increment needs to detect shareable
+  pipelines; `recipeId` is deliberately excluded from the hash input as per-registration identity,
+  not bytecode content. Emission itself confirmed order-preserving/deterministic (plain indexed
+  loop over the instruction array, no unordered iteration, no time/random/pointer-derived output).
+- **Task 2 decision:** `RecipeFamilyRecord { contentHash, firstRecipeId, memberRecipeIds[] }` —
+  NOT `PipelineWrapper`-shaped, per the plan's own steer (no `VkPipeline` exists this increment).
+  Lives in `CashSystem` (not SVO): `CacheKeyHasher`/`VixenHash.h` require linking `Core`, which SVO
+  does not link (confirmed via `CMakeLists.txt`), while `CashSystem` already links `SVO` publicly
+  — so the one-directional CashSystem→SVO dependency is respected by putting the hash+record types
+  CashSystem-side, matching the plan's own steer ("the recipe system should own a thin cacher that
+  only depends on `CashSystem::TypedCacher`'s template machinery" — read the other way, CashSystem
+  owns the SVO-consuming pieces). `TypedCacher<D,CI>` confirmed usable without a real
+  `VulkanDevice*`: `MainCacher::GetDeviceIndependentCacher` never touches `m_device`, so a future
+  M2 cacher can register `isDeviceDependent=false` and never call `Initialize()`.
+- **`ReadParam` slot-index property — confirmed + tested:** slot index lives in `data[0]`
+  (`SdfRecipeCodegenGlsl.h:741-767`), not `paramMask` (`paramMask` is only a nonzero validity
+  gate). `data[0]` is part of the hashed raw bytes, so slot-0 vs slot-1 reads hash differently —
+  proven by `RecipeContentHash.DistinguishesReadParamSlotIndex`. No runtime `recipeParams[]` value
+  is reachable from `RecipeEntry` (confirmed: `RecipeEntry` has no such field; those values live in
+  `BodyInstanceGpu`, a separate per-instance struct) — nothing for the hash to accidentally pick up.
+- Files: `libraries/CashSystem/include/RecipeContentHash.h`,
+  `libraries/CashSystem/tests/test_recipe_content_hash.cpp` (+ its `CMakeLists.txt` registration).
+  6/6 new tests pass; 16/16 existing `test_recipe_registry` tests pass (zero regression). WSL
+  build (`vixen-wsl` preset), compile-clean.
+
+**M2 (2026-07-15, implementer, pre-validator):**
+- **Task 3 decision:** `D = CashSystem::RecipeFamilyRecord` (M1's resolved shape, unchanged);
+  `CI = RecipeContentCacheCreateInfo { uint32_t recipeId; std::vector<SdfInstruction> bytecode; }`
+  — a new small struct, not the bytecode span alone, because `Create` needs `recipeId` (to seed
+  `firstRecipeId`/`memberRecipeIds` on first sight of a content hash) in addition to `bytecode`
+  (which `ComputeKey` hashes via M1's `ComputeRecipeBytecodeHash`). File location matches the
+  plan's Task 3 note: `libraries/CashSystem/include/RecipeContentCacher.h`, alongside M1's
+  `RecipeContentHash.h`. Device-independent, confirmed via `MainCacher::GetDeviceIndependentCacher`
+  (no `VkPipeline`/GPU resource exists this increment, matching M1's validator finding).
+  Registration follows `ComputePipelineNode`'s `RegisterCacher<...>`/`GetCacher<...>` pattern
+  exactly, with `isDeviceDependent=false`.
+- **`GetOrCreate` return-semantics note:** `TypedCacher::GetOrCreate` returns the SAME cached
+  `shared_ptr<D>` on a content-hash hit (does not re-invoke `Create`), so `RecipeContentCacher`
+  adds one thin layer on top (`RegisterRecipe`) that appends the newly-registering `recipeId` to
+  the shared record's `memberRecipeIds` post-hoc (guarded against re-adding an already-present
+  id, e.g. a caller retrying the same registration). This is what makes `memberRecipeIds` actually
+  grow past 1 on a repeat-content registration — bare `GetOrCreate` alone would return the right
+  shared record but never update its membership list past the first registrant.
+- **Task 4 wiring:** `VulkanGraphApplication::RegisterProceduralRecipe`
+  (`application/main/source/VulkanGraphApplication.cpp`) — confirmed the pre-resolved call site
+  from the prompt: `RecipeRegistry` (SVO) does not link `CashSystem`, `application/main` links
+  both. The existing single-expression `return proceduralRecipes_.Register(recipeId,
+  std::move(entry))` was restructured to capture `result` first (still passing `entry` by const-ref
+  into `Register`, not moving it, so `entry.bytecode` remains valid afterward) — on
+  `RegisterResult::Ok`, registers/fetches `RecipeContentCacher` from `renderGraph->GetMainCacher()`
+  and calls `RegisterRecipe(recipeId, entry.bytecode)`. A rejected registration (DuplicateId,
+  BadOpCode, etc.) never touches the cache.
+- **Tests** (`libraries/CashSystem/tests/test_recipe_content_cacher.cpp`, 6 cases, all passing):
+  device-independent registration; (a) identical bytecode under two `recipeId`s → same
+  `shared_ptr` identity + `memberRecipeIds.size()==2`; (b) opcode-differing and literal-differing
+  bytecode → distinct entries; (c) `ReadParam` slot-0 vs. slot-1 → distinct entries THROUGH the
+  cacher (not just the hash), plus a third same-slot-0 recipe correctly re-joining the first
+  family (proves the distinction isn't over-splitting); re-registering the same `recipeId` twice
+  does not duplicate its own membership entry.
+- **Build/verify:** WSL (`vixen-wsl` preset) reconfigure (new source files) + build. New
+  `test_recipe_content_cacher`: 6/6 pass. Regression: `test_recipe_content_hash` (M1) 6/6 pass,
+  `test_recipe_registry` 16/16 pass — zero regression. `VixenApp` (the
+  `VulkanGraphApplication.cpp` target) builds and links clean, confirming the population wiring
+  compiles in its real call site, not just in isolation. Pure-CPU throughout, no GPU/render step
+  needed, as the plan's Tech Stack note anticipated.
+- Files: `libraries/CashSystem/include/RecipeContentCacher.h`,
+  `libraries/CashSystem/tests/test_recipe_content_cacher.cpp` (+ `CMakeLists.txt` registration),
+  `application/main/source/VulkanGraphApplication.cpp` (population call site + include).
+- **Increment 1 status: both milestones done, ready for final validator review / merge**, per the
+  plan's own scope — no production rendering behavior changed (every recipe still renders through
+  the tier-0 switch), matching the "deliberately inert" risk note.
 
 ---
 
