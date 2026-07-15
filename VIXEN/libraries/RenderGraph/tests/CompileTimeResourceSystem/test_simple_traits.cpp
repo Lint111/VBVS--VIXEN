@@ -13,6 +13,6 @@ static_assert(IsRegisteredType<VkImageView>::value, "VkImageView should be regis
 static_assert(ResourceTypeTraits<VkSwapchainKHR>::isValid, "VkSwapchainKHR should be valid");
 static_assert(ResourceTypeTraits<std::vector<VkImageView>>::isValid, "vector<VkImageView> should be valid");
 
-int main() {
+int run_test_simple_traits() {
     return 0;
 }

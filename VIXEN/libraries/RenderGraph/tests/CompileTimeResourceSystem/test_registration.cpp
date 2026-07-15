@@ -5,7 +5,7 @@
 
 using namespace Vixen::RenderGraph;
 
-int main() {
+int run_test_registration() {
     // Test 1: Direct registration check
     std::cout << "IsRegisteredType<VkSwapchainKHR>::value = "
               << IsRegisteredType<VkSwapchainKHR>::value << "\n";

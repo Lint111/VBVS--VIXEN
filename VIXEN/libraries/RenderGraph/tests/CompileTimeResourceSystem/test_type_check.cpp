@@ -6,7 +6,7 @@
 
 using namespace Vixen::RenderGraph;
 
-int main() {
+int run_test_type_check() {
     // Test 1: Check if VkSwapchainKHR is defined
     std::cout << "sizeof(VkSwapchainKHR) = " << sizeof(VkSwapchainKHR) << "\n";
 
