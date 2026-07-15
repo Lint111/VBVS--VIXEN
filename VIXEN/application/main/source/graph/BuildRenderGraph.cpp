@@ -3131,11 +3131,37 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // post-bake) fixes BOTH the brick channelPool and the mip pool consistently, and
             // touches the shared BakeSdfWorld only via its additive, default-preserving
             // ColorFn parameter (the rainbow default is still what every other caller/test gets).
-            auto bakeWorldSpaceBody = [&](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
+            // SDF Bake Box-Tight Region M2: worldHalfExtent (optional, sentinel (0,0,0) = full
+            // cube, matching SdfBake.h's own bakeRegion(0,0,0)-means-default convention) is the
+            // body's TRUE per-axis half-extent in WORLD units (thin on a wall's thickness axis,
+            // wide on its span axes). makeWorldSpaceEval maps grid coord n/2 -> the body's true
+            // world center (see that lambda's own header comment), so the body's occupied region
+            // is centered on grid n/2, not on the bakeRegion window's own center -- bakeRegion
+            // itself is an ORIGIN-ANCHORED [0,region) window (SdfBake.h's contract), so the
+            // region upper bound must cover n/2 + (worldHalfExtent+kBand)*subdiv on every axis
+            // (there is no room to shrink the LOW side of an origin-anchored window when the
+            // occupied span is centered at n/2, only the high side beyond what's occupied).
+            // Rounded up to the next brick boundary (brickSide=8) since bakeRegion snaps to
+            // whole bricks anyway (SdfBake.h's own occupancy/active-brick arrays are brick-
+            // granular) — a non-brick-aligned bound buys nothing and just obscures the real
+            // brick count in a diagnostic dump.
+            auto bakeWorldSpaceBody = [&](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv,
+                                          glm::vec3 worldHalfExtent = glm::vec3(0.0f)) {
+                glm::ivec3 bakeRegion(0);
+                if (worldHalfExtent != glm::vec3(0.0f)) {
+                    constexpr int kBrickSide = 8;
+                    for (int axis = 0; axis < 3; ++axis) {
+                        const float hi = static_cast<float>(n) * 0.5f +
+                                         (worldHalfExtent[axis] + kBand) * static_cast<float>(subdiv);
+                        const int hiRoundedUp = ((static_cast<int>(std::ceil(hi)) + kBrickSide - 1) / kBrickSide) * kBrickSide;
+                        bakeRegion[axis] = std::min(hiRoundedUp, n);
+                    }
+                }
                 Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeSdfWorld(
                     makeWorldSpaceEval(prog, bodyWorldCenter, n, subdiv), bodyWorldCenter, n, kBand,
                     3, Vixen::SVO::NoEmission,
-                    [](const glm::vec3&) { return glm::vec3(1.0f); });
+                    [](const glm::vec3&) { return glm::vec3(1.0f); },
+                    bakeRegion);
                 return Vixen::SVO::BuildSdfBodyOctree(baked, 3);
             };
 
@@ -3173,11 +3199,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
             std::vector<CornellWorldSpaceBody> bodies = BuildCornellWorldSpaceBodies();
             // bodies[]: leftWall, rightWall, backWall, floor, ceiling, light, sphereObj, boxObj (fixed order, see BuildCornellWorldSpaceBodies)
 
-            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeWorldSpaceBody(bodies[0].prog, bodies[0].worldCenter, kWallN, kWallSubdiv);
-            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeWorldSpaceBody(bodies[1].prog, bodies[1].worldCenter, kWallN, kWallSubdiv);
-            Vixen::SVO::SdfBodyOctree backWallBody   = bakeWorldSpaceBody(bodies[2].prog, bodies[2].worldCenter, kWallN, kWallSubdiv);
-            Vixen::SVO::SdfBodyOctree floorBody      = bakeWorldSpaceBody(bodies[3].prog, bodies[3].worldCenter, kWallN, kWallSubdiv);
-            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeWorldSpaceBody(bodies[4].prog, bodies[4].worldCenter, kWallN, kWallSubdiv);
+            // SDF Bake Box-Tight Region M2: per-wall TRUE world-space half-extents, mirroring
+            // BuildCornellWorldSpaceBodies's own CornellWorldBoxAt(...) half-extent args exactly
+            // (kWallThickness=1, kWallSpan=kBoxHalfExtent+kWallThickness=11, kZWideHalfExtent=
+            // kBoxHalfExtent+kWallThickness*0.5=10.5) -- each wall is thin on exactly ONE axis,
+            // wide on the other two, so passing these into bakeWorldSpaceBody's worldHalfExtent
+            // shrinks the bake region on the thin axis only (the wide axes are already close to
+            // the full kWallN cube's own span and see little/no reduction -- see this milestone's
+            // Progress Log entry for the measured before/after brick counts).
+            const float kWallThicknessHalf = 1.0f;              // CornellBoxSceneDefinition.h::kWallThickness
+            const float kWallSpanHalf      = 11.0f;             // kBoxHalfExtent(10) + kWallThickness(1)
+            const float kZWideHalf         = 10.5f;              // kBoxHalfExtent(10) + kWallThickness*0.5
+
+            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeWorldSpaceBody(bodies[0].prog, bodies[0].worldCenter, kWallN, kWallSubdiv,
+                                                                           glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
+            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeWorldSpaceBody(bodies[1].prog, bodies[1].worldCenter, kWallN, kWallSubdiv,
+                                                                           glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
+            Vixen::SVO::SdfBodyOctree backWallBody   = bakeWorldSpaceBody(bodies[2].prog, bodies[2].worldCenter, kWallN, kWallSubdiv,
+                                                                           glm::vec3(kWallSpanHalf, kWallSpanHalf, kWallThicknessHalf));
+            Vixen::SVO::SdfBodyOctree floorBody      = bakeWorldSpaceBody(bodies[3].prog, bodies[3].worldCenter, kWallN, kWallSubdiv,
+                                                                           glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
+            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeWorldSpaceBody(bodies[4].prog, bodies[4].worldCenter, kWallN, kWallSubdiv,
+                                                                           glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
             Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeWorldSpaceBody(bodies[6].prog, bodies[6].worldCenter, kSmallN, kSmallSubdiv);
             Vixen::SVO::SdfBodyOctree boxObjBody     = bakeWorldSpaceBody(bodies[7].prog, bodies[7].worldCenter, kSmallN, kSmallSubdiv);
 
@@ -3600,6 +3643,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
                 return outside + inside;
             };
+            // SDF Bake Box-Tight Region M2: this body was investigated as this plan's own
+            // second named validation case, but a box-tight bakeRegion computed honestly for
+            // its ACTUAL geometry is a no-op here -- NOT applied, deliberately, not an
+            // oversight. M1's bakeRegion is an ORIGIN-ANCHORED [0,region) window (SdfBake.h);
+            // it can only trim occupied bricks off the HIGH end of a grid axis. This wall's
+            // thin axis (X, half-extent 1.0 + kBand 2.0 = 3.0) is occupied at grid X~[19,25)
+            // because kWallCenter.x=22 sits near the HIGH end of the kN=32 grid, not centered
+            // at n/2=16 -- so the occupied range's own high edge (25, rounded to the brick
+            // boundary at 32) already equals the FULL grid width; there is no low-side region
+            // to trim away. The other two axes (Y/Z, half-extent 15) are occupied almost the
+            // entire [0,32) span by design ("a real wall, not a small block", see this block's
+            // own header comment) -- also no room to shrink. Recentering kWallCenter to n/2
+            // would change this body's WORLD position (both bodies here share ONE grid->world
+            // transform, sourceWorldPos/kRenderScale below -- there is no per-body compensating
+            // offset the way Cornell's bodyWorldPos/bodyRenderScale gives each wall its own
+            // placement), which would desync the near/far probe indices this scene's geometry
+            // was carefully hand-tuned against (see the header comment above) -- out of this
+            // milestone's scope. Verified by computing bakeRegion per axis for this body's real
+            // half-extents: all three axes round up to the full kN=32, i.e. zero brick
+            // reduction, confirmed by hand and left unapplied rather than landing dead plumbing
+            // with no measured effect. Cornell's walls (bakeWorldSpaceBody above) DO benefit --
+            // their bodies are each individually world-placed (bodyWorldPos/bodyRenderScale per
+            // body), so recentering the bake grid on each wall's own true center was already the
+            // existing convention, not a new risk.
             Vixen::SVO::SdfBakeResult wallBaked = Vixen::SVO::BakeSdfWorld(wallSdf, kWallCenter, kN, kBand, 3);
             Vixen::SVO::SdfBodyOctree wallBody = Vixen::SVO::BuildSdfBodyOctree(wallBaked, 3);
 

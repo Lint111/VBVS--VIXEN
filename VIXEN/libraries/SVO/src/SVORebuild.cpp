@@ -251,9 +251,15 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     int brickDepth = m_brickDepthLevels;
     int brickSideLength = 1 << brickDepth;
 
-    int voxelsPerAxis = static_cast<int>(worldSize.x);
+    // voxelsPerAxis must cover the LARGEST axis of worldSize -- an enclosing-cube grid,
+    // per the octree's own cube-subdivision contract (see BuildSdfBodyOctree). Reading
+    // only .x here silently collapsed a non-cube worldSize (e.g. a box-tight bake region)
+    // to its X extent alone, ignoring Y/Z; every existing caller today passes a cube
+    // worldSize (worldSize.x == .y == .z), so max() is a strict no-op for them -- this
+    // only changes behavior once a genuinely non-cube worldSize is passed in.
+    int voxelsPerAxis = static_cast<int>(std::max({worldSize.x, worldSize.y, worldSize.z}));
     int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;
-    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
+    float brickWorldSize = static_cast<float>(voxelsPerAxis) / static_cast<float>(bricksPerAxis);
 
     m_octree->bricksPerAxis = bricksPerAxis;
     m_octree->brickSideLength = brickSideLength;
