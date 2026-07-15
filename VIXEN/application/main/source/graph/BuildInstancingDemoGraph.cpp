@@ -86,7 +86,7 @@ void VulkanGraphApplication::BuildInstancingDemoGraph() {
     window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
     window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
-    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
 
     // Cube vertex buffer (36 verts, pos vec4 + UV vec2; same layout as the disabled Draw path).
     auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
