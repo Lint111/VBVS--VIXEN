@@ -100,16 +100,37 @@ inline glm::vec3 DefaultBandColor(const glm::vec3& p) {
 // Color/roughness synthesis is unchanged from the original analytic path.
 // EmitFn: float(glm::vec3 gridPos) -> emissive intensity (Sampled Lighting
 // Inc3 M3); defaults to NoEmission so pre-M3 callers are unaffected.
+//
+// bakeRegion (SDF Bake Box-Tight Region M1): optional per-axis extent the two
+// bake passes actually iterate over, defaulting to glm::ivec3(n) -- today's
+// unconditional [0,n)^3 cube on every axis, byte-identical for every existing
+// caller that doesn't pass this. A caller whose true geometry is thin on one
+// axis (e.g. a wall) can pass a tighter (thinAxis, wide, wide) region so the
+// two bake passes (occupancy scan + full-brick population) never touch, and
+// therefore never allocate, bricks outside the body's real extent -- those
+// stay in the octree builder's default "unallocated" state. bakeRegion must be
+// <= glm::ivec3(n) on every axis (the occupancy/active arrays are still sized
+// by the FULL n-cube's bricksPerAxis, since the octree remains a cube grid per
+// its own descent contract -- see BuildSdfBodyOctree; only which bricks WITHIN
+// that cube get baked changes).
 // ---------------------------------------------------------------------------
 template<class EvalFn, class EmitFn = float(*)(const glm::vec3&),
          class ColorFn = glm::vec3(*)(const glm::vec3&)>
 inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
                                   int n, float bandVoxels, int brickDepth = 3,
                                   EmitFn&& emit = NoEmission,
-                                  ColorFn&& colorFn = DefaultBandColor) {
+                                  ColorFn&& colorFn = DefaultBandColor,
+                                  glm::ivec3 bakeRegion = glm::ivec3(0)) {
     SdfBakeResult r;
     r.n      = n;
     r.center = center;
+
+    // Default-preserving: bakeRegion=(0,0,0) (the type's zero-init default, never a
+    // meaningful caller-supplied region) means "today's behavior" -- the full [0,n)^3
+    // cube. Clamp to [1,n] per axis so a caller-supplied region can never read/write
+    // outside the allocated bricksPerAxis^3 occupancy arrays below.
+    if (bakeRegion == glm::ivec3(0)) bakeRegion = glm::ivec3(n);
+    bakeRegion = glm::clamp(bakeRegion, glm::ivec3(1), glm::ivec3(n));
 
     // Registry (density Float key + color Vec3 attr + roughness Float attr)
     r.registry = std::make_unique<AttributeRegistry>();
@@ -142,9 +163,9 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
     // bug. Now a body's full solid interior gets real SDF data.
     const size_t numBricks = static_cast<size_t>(bricksPerAxis) * bricksPerAxis * bricksPerAxis;
     std::vector<uint8_t> occupiedBrick(numBricks, 0u);
-    for (int z = 0; z < n; ++z)
-      for (int y = 0; y < n; ++y)
-        for (int x = 0; x < n; ++x) {
+    for (int z = 0; z < bakeRegion.z; ++z)
+      for (int y = 0; y < bakeRegion.y; ++y)
+        for (int x = 0; x < bakeRegion.x; ++x) {
             const float sd = eval(
                 glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)));
             if (sd <= bandVoxels)
@@ -205,9 +226,9 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
     // request's span into compStorage[i] stays valid for the whole loop and the batch
     // call after it.
     size_t activeVoxelCount = 0;
-    for (int z = 0; z < n; ++z)
-      for (int y = 0; y < n; ++y)
-        for (int x = 0; x < n; ++x)
+    for (int z = 0; z < bakeRegion.z; ++z)
+      for (int y = 0; y < bakeRegion.y; ++y)
+        for (int x = 0; x < bakeRegion.x; ++x)
             if (activeBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)])
                 ++activeVoxelCount;
 
@@ -216,9 +237,9 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
     compStorage.reserve(activeVoxelCount);
     requests.reserve(activeVoxelCount);
 
-    for (int z = 0; z < n; ++z)
-      for (int y = 0; y < n; ++y)
-        for (int x = 0; x < n; ++x) {
+    for (int z = 0; z < bakeRegion.z; ++z)
+      for (int y = 0; y < bakeRegion.y; ++y)
+        for (int x = 0; x < bakeRegion.x; ++x) {
             if (!activeBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)])
                 continue;
             const glm::vec3 p(static_cast<float>(x),
@@ -349,16 +370,27 @@ inline SdfBodyOctree BuildSdfBodyOctree(SdfBakeResult& baked, int brickDepth /*=
 
     const int n          = baked.n;
     const glm::vec3 worldMin(0.0f);
-    const glm::vec3 worldMax(static_cast<float>(n));
 
-    // maxLevels: 2^(maxLevels - brickDepth) must == n  =>  maxLevels = log2(n) + brickDepth
-    // n is set by the caller as a power of two (baking uses [0,n)^3 grid).
-    int log2n = 0;
+    // The octree's own grid resolution must be a power of two (2^maxLevels), but the
+    // bake grid `n` is not guaranteed to already be one (a caller deriving `n` from a
+    // body's true extent, e.g. box-tight bake regions, will often land on a non-pow2
+    // value). ROUND UP to the next pow2 >= n, never down: rounding down would make
+    // `worldMax` (and therefore `rebuild()`'s derived `bricksPerAxis`/scale, SVORebuild.cpp)
+    // SMALLER than the region actually baked, desyncing the octree's brick addressing from
+    // the bake's own brick grid -- this exact mechanism caused a real bug (Cornell
+    // kWallN=112 -> the old round-down path silently built a 64-voxel octree over a
+    // 112-voxel bake, corrupting brick/voxel addressing). Rounding UP instead only ever
+    // grows worldMax to cover a few extra never-baked voxels beyond `n`; those bricks are
+    // simply left unallocated (the same safe "not populated" state box-tight regions
+    // already rely on), so this is a strict superset, never a data loss.
+    int log2nUp = 0;
     {
-        int tmp = n;
-        while (tmp > 1) { tmp >>= 1; ++log2n; }
+        int tmp = 1;
+        while (tmp < n) { tmp <<= 1; ++log2nUp; }
     }
-    const int maxLevels = log2n + brickDepth;
+    const int nRounded = 1 << log2nUp;
+    const glm::vec3 worldMax(static_cast<float>(nRounded));
+    const int maxLevels = log2nUp + brickDepth;
 
     result.octree = std::make_unique<LaineKarrasOctree>(
         *result.world, result.registry.get(), maxLevels, brickDepth);

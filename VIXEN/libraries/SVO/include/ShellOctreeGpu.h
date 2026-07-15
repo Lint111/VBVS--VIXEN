@@ -826,6 +826,24 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     c.brickESVOScale  = c.esvoMaxScale - (c.userMaxLevels - 1 - brickUserScale);
     c.bricksPerAxis   = oct->bricksPerAxis;
 
+    // NOT FIXED IN M1 -- see M1 Progress Log entry. localToWorld's hardcoded uniform
+    // kWorldGridSize=10.0 scale (ignoring the octree's own worldMin/worldMax, which ARE
+    // already written correctly into gridMinX/Y/Z below) is a genuine bug in isolation,
+    // but a dedicated investigation found it is currently a DE FACTO load-bearing
+    // convention: application/main/source/graph/BuildRenderGraph.cpp independently
+    // redeclares the identical `constexpr float kWorldGridSize = 10.0f;` in 4 places
+    // (search that file for the symbol) and uses it to convert every baked body's
+    // grid-space world position/extent (including light-tree cuts) into world units via
+    // BodyInstanceGpu's separate worldPos/renderScale instancing layer -- NOT via this
+    // localToWorld matrix, which the instanced shader path (TraceWorld.glsl) treats as a
+    // fixed body-LOCAL [0,1]^3->[0,10]^3 frame, already de-instanced before worldToLocal
+    // is ever applied. Changing this scale to the octree's real worldMax-worldMin here
+    // without ALSO updating every one of those BuildRenderGraph.cpp call sites in lockstep
+    // silently mis-sizes/mis-places every demo body (Cornell walls, DDGI leak-gate,
+    // tier-crossing spheres) currently rendered via the instanced path -- a regression far
+    // outside M1's zero-behavior-change gate. Left as pre-existing behavior; flagged back
+    // to the plan owner as a separate, larger cross-cutting fix (touches every scene
+    // authoring call site, not just SDF bake) rather than silently expanding this plan.
     constexpr float kWorldGridSize = 10.0f;
     c.gridMinX = oct->worldMin.x; c.gridMinY = oct->worldMin.y; c.gridMinZ = oct->worldMin.z;
     c.gridMaxX = oct->worldMax.x; c.gridMaxY = oct->worldMax.y; c.gridMaxZ = oct->worldMax.z;

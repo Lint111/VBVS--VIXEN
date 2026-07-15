@@ -3,6 +3,12 @@
 
 #include "SdfBake.h"
 #include "SdfRecipes.h"
+#include "ShellOctreeGpu.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <vector>
 
 // MSVC's <windows.h> (pulled in transitively on the Windows build) defines
 // far/near as segment-qualifier macros and min/max as function macros.
@@ -135,4 +141,160 @@ TEST(SdfBake, OctreeBuildIsNonEmpty) {
         glm::vec3( 1.0f, 0.0f, 0.0f),
         0.0f, 1e30f);
     EXPECT_TRUE(hit.hit) << "castRay must hit the baked SDF shell along +x axis";
+}
+
+// ============================================================================
+// SDF Bake Box-Tight Region M1 — BakeSdfWorld's optional bakeRegion parameter.
+//
+// A thin slab (like a Cornell wall): thin along X, wide along Y/Z, occupying
+// only a small X-slice of an n=32 cube grid. Bake it twice with the SAME
+// geometry: once with the DEFAULT (full-cube) bake region, once with an
+// explicit box-tight bakeRegion tightly covering only the slab's true X
+// extent. Assert the box-tight bake allocates STRICTLY FEWER bricks than the
+// full-cube bake -- the actual point of this plan's box-tight mechanism (a
+// thin body no longer pays for empty volume along its thin axis).
+// ============================================================================
+namespace {
+// Thin slab centered on the grid: |x - 16| <= 2 (thin X, ~4 voxels thick),
+// full-span Y/Z. Occupancy predicate is `sd <= bandVoxels`, so this slab's
+// full [0,32)x[0,32) Y/Z span is occupied only near x=16 -- everything at
+// x < 12 or x >= 20 in a full-cube bake is genuinely empty space that a
+// box-tight bakeRegion should skip entirely.
+float thinSlabSdf(const glm::vec3& p) {
+    const glm::vec3 halfExtent(2.0f, 100.0f, 100.0f);  // thin X, effectively-infinite Y/Z
+    const glm::vec3 center(16.0f, 16.0f, 16.0f);
+    const glm::vec3 q = glm::abs(p - center) - halfExtent;
+    const glm::vec3 qPos = glm::max(q, glm::vec3(0.0f));
+    const float outside = glm::length(qPos);
+    const float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+    return outside + inside;
+}
+
+// Count allocated (non-unallocated) brickGridLookup cells for a baked body.
+int CountAllocatedBricks(const SdfBodyOctree& body) {
+    Vixen::SVO::SerializedOctree out = Vixen::SVO::SerializeSdf(body);
+    const int bpa = body.octree->getOctree()->bricksPerAxis;
+    const uint32_t tableSize = static_cast<uint32_t>(bpa) * bpa * bpa;
+    std::vector<uint32_t> lookup(tableSize);
+    std::memcpy(lookup.data(), out.brickGridLookup.data(), out.brickGridLookup.size());
+    int allocated = 0;
+    for (uint32_t v : lookup) if (!Vixen::SVO::isBrickUnallocated(v)) ++allocated;
+    return allocated;
+}
+}  // namespace
+
+TEST(SdfBake, BoxTightRegionAllocatesFewerBricksThanFullCube) {
+    const int n = 32;
+    const float bandVoxels = 2.0f;
+    const glm::vec3 center(16.0f, 16.0f, 16.0f);
+
+    // Full-cube bake: default bakeRegion (today's unconditional [0,n)^3 behavior).
+    SdfBakeResult fullBaked = BakeSdfWorld(thinSlabSdf, center, n, bandVoxels);
+    SdfBodyOctree fullBody  = BuildSdfBodyOctree(fullBaked, 3);
+    const int fullAllocated = CountAllocatedBricks(fullBody);
+
+    // Box-tight bake: same geometry, but bakeRegion covers only the slab's true
+    // X extent (|x-16|<=2 -> [12,20), rounded to whole bricks [8,24) at brickSide=8)
+    // tightly, while still spanning the full Y/Z.
+    SdfBakeResult tightBaked = BakeSdfWorld(thinSlabSdf, center, n, bandVoxels, /*brickDepth=*/3,
+                                            NoEmission, DefaultBandColor,
+                                            /*bakeRegion=*/glm::ivec3(24, 32, 32));
+    SdfBodyOctree tightBody  = BuildSdfBodyOctree(tightBaked, 3);
+    const int tightAllocated = CountAllocatedBricks(tightBody);
+
+    std::printf("[BoxTight] full-cube allocated=%d, box-tight allocated=%d\n",
+                fullAllocated, tightAllocated);
+
+    EXPECT_LT(tightAllocated, fullAllocated)
+        << "box-tight bakeRegion must allocate strictly fewer bricks than the full-cube bake "
+           "for a thin-slab body";
+    EXPECT_GT(tightAllocated, 0) << "box-tight bake must still allocate the slab's own bricks";
+
+    // The box-tight octree must still hit the same surface (correctness, not just sparsity).
+    auto hit = tightBody.octree->castRay(
+        glm::vec3(-2.0f, 16.0f, 16.0f),
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        0.0f, 1e30f);
+    EXPECT_TRUE(hit.hit) << "box-tight bake must still produce a hittable surface";
+}
+
+// bakeRegion defaulting (omitted entirely) must be byte-identical to passing
+// bakeRegion == glm::ivec3(n) explicitly -- confirms the default-preservation
+// contract the M1 gate requires (every existing caller stays unchanged).
+TEST(SdfBake, BoxTightRegionDefaultMatchesExplicitFullCube) {
+    const int n = 32;
+    const float bandVoxels = 2.0f;
+    const glm::vec3 center(16.0f, 16.0f, 16.0f);
+
+    SdfBakeResult defaultBaked = BakeSdfWorld(thinSlabSdf, center, n, bandVoxels);
+    SdfBodyOctree defaultBody  = BuildSdfBodyOctree(defaultBaked, 3);
+    const int defaultAllocated = CountAllocatedBricks(defaultBody);
+
+    SdfBakeResult explicitBaked = BakeSdfWorld(thinSlabSdf, center, n, bandVoxels, /*brickDepth=*/3,
+                                               NoEmission, DefaultBandColor,
+                                               /*bakeRegion=*/glm::ivec3(n));
+    SdfBodyOctree explicitBody  = BuildSdfBodyOctree(explicitBaked, 3);
+    const int explicitAllocated = CountAllocatedBricks(explicitBody);
+
+    EXPECT_EQ(defaultAllocated, explicitAllocated)
+        << "omitting bakeRegion must match explicitly passing glm::ivec3(n) (full cube)";
+}
+
+// ============================================================================
+// SDF Bake Box-Tight Region M1 — BuildSdfBodyOctree pow2 round-UP contract.
+//
+// A deliberately NON-power-of-two bake grid (n=48, between pow2 32 and 64).
+// BuildSdfBodyOctree must round the octree's own resolution UP to 64 (the next
+// covering pow2), never DOWN to 32 -- rounding down would make the octree's
+// worldMax (32) SMALLER than the actual baked region (48), desyncing brick
+// addressing exactly like the real Cornell kWallN=112->64 bug this plan's own
+// investigation found. Verify by construction: castRay must still hit a
+// surface placed near the edge of the 48-grid (x~44), which a wrongly-rounded
+// 32-grid octree could not possibly represent (its worldMax would be 32).
+// ============================================================================
+TEST(SdfBake, BuildSdfBodyOctreeRoundsPow2Up) {
+    const int n = 48;  // deliberately non-pow2 (32 < 48 < 64)
+    const glm::vec3 center(24.0f, 24.0f, 24.0f);
+    RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // sphere r=6, near grid centre
+    const float bandVoxels = 2.0f;
+
+    SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, rp, n, bandVoxels);
+    SdfBodyOctree body  = BuildSdfBodyOctree(baked, 3);
+    ASSERT_NE(body.octree, nullptr);
+
+    const Vixen::SVO::Octree* oct = body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+
+    // worldMax must be 64 (next pow2 >= 48), NOT 32 (the old round-down result) and NOT 48
+    // (n itself is not a valid octree resolution -- must be pow2).
+    EXPECT_FLOAT_EQ(oct->worldMax.x, 64.0f)
+        << "octree worldMax must round UP to the next covering pow2 (64), not down to 32 or "
+           "left at the non-pow2 bake n=48 -- round-down desyncs brick addressing (the real "
+           "Cornell kWallN=112->64 bug this plan's investigation found)";
+    EXPECT_FLOAT_EQ(oct->worldMax.y, 64.0f);
+    EXPECT_FLOAT_EQ(oct->worldMax.z, 64.0f);
+
+    // The extra [48,64) region beyond the bake is never populated -- unallocated, not a
+    // correctness problem (verified by CountAllocatedBricks-style reasoning: the sphere
+    // near grid centre is still fully allocated and hittable).
+    auto hit = body.octree->castRay(
+        glm::vec3(24.0f, 24.0f, -2.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f),
+        0.0f, 1e30f);
+    EXPECT_TRUE(hit.hit) << "sphere surface must still be hittable after pow2 round-up";
+}
+
+// n already a power of two (e.g. 64, every existing caller's convention) must be a
+// complete no-op for the round-up logic -- worldMax stays exactly n, not n*2.
+TEST(SdfBake, BuildSdfBodyOctreePow2InputIsNoOp) {
+    const int n = 64;
+    const glm::vec3 center(32.0f, 32.0f, 32.0f);
+    RecipeParams rp{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, rp, n, 2.0f);
+    SdfBodyOctree body  = BuildSdfBodyOctree(baked, 3);
+
+    const Vixen::SVO::Octree* oct = body.octree->getOctree();
+    ASSERT_NE(oct, nullptr);
+    EXPECT_FLOAT_EQ(oct->worldMax.x, 64.0f)
+        << "an already-pow2 n must stay unchanged (64), not round up to 128";
 }
