@@ -686,9 +686,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
     window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
 
-    // Device parameters (default GPU = 0)
+    // Device parameters (auto-select: prefers a discrete GPU over integrated)
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
-    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
 
     // M4: render-scale decoupling. VIXEN_RENDER_SCALE in (0,1] shrinks the offscreen target the
     // compute dispatch writes into relative to the swapchain; ComputeDispatchNode blits it back up.

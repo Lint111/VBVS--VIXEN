@@ -92,10 +92,10 @@ void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_INFO("[DeviceNode] Published device invalidation event (recompilation)");
     }
 
-    // Get gpu_index parameter (default to 0 if not set)
+    // Get gpu_index parameter (default: auto-select, preferring a discrete GPU)
     selectedGPUIndex = GetParameterValue<uint32_t>(
         DeviceNodeConfig::PARAM_GPU_INDEX,
-        0  // Default: first GPU
+        DeviceNodeConfig::GPU_INDEX_AUTO
     );
 
     // Enumerate all available physical devices
@@ -194,12 +194,37 @@ void DeviceNode::EnumeratePhysicalDevices() {
     }
 }
 
+bool DeviceNode::IsDiscreteGPU(VkPhysicalDevice gpu) {
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(gpu, &props);
+    return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+}
+
 void DeviceNode::SelectPhysicalDevice() {
-    // Validate selected index
-    if (selectedGPUIndex >= availableGPUs.size()) {
+    std::string selectionReason;
+
+    if (selectedGPUIndex == DeviceNodeConfig::GPU_INDEX_AUTO) {
+        // No explicit preference: prefer the first discrete GPU, if any.
+        selectedGPUIndex = 0;
+        bool foundDiscrete = false;
+        for (uint32_t i = 0; i < availableGPUs.size(); i++) {
+            if (IsDiscreteGPU(availableGPUs[i])) {
+                selectedGPUIndex = i;
+                foundDiscrete = true;
+                break;
+            }
+        }
+
+        selectionReason = foundDiscrete
+            ? "auto-selected discrete GPU"
+            : "auto-selected (no discrete GPU found; using first available)";
+    } else if (selectedGPUIndex >= availableGPUs.size()) {
         NODE_LOG_WARNING("[DeviceNode] WARNING: Requested GPU index " + std::to_string(selectedGPUIndex)
                     + " but only " + std::to_string(availableGPUs.size()) + " GPUs available. Using GPU 0.");
         selectedGPUIndex = 0;
+        selectionReason = "auto-selected (requested index out of range)";
+    } else {
+        selectionReason = "using explicitly-requested GPU index " + std::to_string(selectedGPUIndex);
     }
 
     VkPhysicalDevice selectedGPU = availableGPUs[selectedGPUIndex];
@@ -207,7 +232,8 @@ void DeviceNode::SelectPhysicalDevice() {
     // Log selected device
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(selectedGPU, &props);
-    NODE_LOG_INFO("[DeviceNode] Selected GPU " + std::to_string(selectedGPUIndex) + ": " + props.deviceName);
+    NODE_LOG_INFO("[DeviceNode] Selected GPU " + std::to_string(selectedGPUIndex) + ": " + props.deviceName
+              + " (" + selectionReason + ")");
     NODE_LOG_INFO("[DeviceNode]   Vendor ID: 0x" + std::to_string(props.vendorID));
     NODE_LOG_INFO("[DeviceNode]   Device ID: 0x" + std::to_string(props.deviceID));
     NODE_LOG_INFO("[DeviceNode]   Driver Version: " + std::to_string(props.driverVersion));

@@ -2,6 +2,7 @@
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDeviceFwd.h"
+#include <cstdint>
 
 namespace Vixen::RenderGraph {
 
@@ -54,6 +55,10 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
 
     // Compile-time parameter names
     static constexpr const char* PARAM_GPU_INDEX = "gpu_index";
+
+    // Sentinel for PARAM_GPU_INDEX meaning "no explicit preference - auto-select"
+    // (prefers a discrete GPU over an integrated one; see DeviceNode::SelectPhysicalDevice)
+    static constexpr uint32_t GPU_INDEX_AUTO = UINT32_MAX;
 
     // Constructor for runtime descriptor initialization
     DeviceNodeConfig() {
