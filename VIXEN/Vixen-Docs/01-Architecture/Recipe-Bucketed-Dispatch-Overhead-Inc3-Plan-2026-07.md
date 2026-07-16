@@ -91,7 +91,12 @@ GPU (Windows-native) for every milestone.
   proceeds as planned. Supersedes an earlier "identical-trivial vs. real-differing" binary design
   (2-point comparison) per user correction 2026-07-16: a single combined, randomized, swept
   experiment is a strictly better isolation of the same question than two hand-picked extremes.
-  - [ ] Not started.
+  - [x] **DONE 2026-07-16.** Finding: MIXED m_i+k_i correlation, N (switch-case count) ruled OUT
+    as an independent driver — see Perf-Ledger.md "Switch-cost isolation (Inc3 M0...)" for full
+    swept data + axis-decoupling proof. Decision: M1/M2 as currently scoped (per-bucket dispatch-
+    COUNT overhead) do NOT address what this measurement found actually drives tier-0's own N=100
+    knee (m_i/k_i-shaped, not switch-dispatch-shaped) — flagged to controller/user for a scope
+    decision before M1/M2 proceed, NOT unilaterally started or skipped by this milestone.
 - **M1 — Reduce per-bucket descriptor/push-constant overhead** (Task 2) · **live-run gate** · shared
   SSBO + per-dispatch offset/index replaces per-bucket descriptor-set aliasing where data doesn't
   genuinely require a distinct set; correctness proven against the existing M2/M3 oracle pattern.
@@ -135,6 +140,26 @@ validator verdict.)
   repo — this directly motivated adding M0 as a gating milestone before committing to M1/M2's
   batching-oriented fixes, per explicit user decision 2026-07-16 ("cheap measurement spike first,
   then scope the plan").
+
+- **M0 (2026-07-16):** randomized N/m_i/k_i stress harness (`test_switch_cost_isolation.cpp`,
+  new standalone GTest target) built and run on confirmed discrete NVIDIA RTX 3060 Laptop GPU.
+  Main N=3/10/100 sweep (random m_i in [3,50], k_i in [1,20] per recipe) showed a real/control
+  ratio growing monotonically with N: ~1.0x at N=3, ~1.8x at N=10, ~2-4x at N=100 (multiple
+  repeated trials of the same seeded draw at each N). Three axis-decoupling cases (pinning m_i/k_i
+  narrow while N varies) then isolated the actual driver: **N=100 with m_i pinned to [3,5] and
+  k_i pinned to [1,3] collapsed the ratio to 1.19x** (statistically indistinguishable from N=3's
+  baseline) despite the switch still having 100 cases — ruling OUT switch-case-count/branch-
+  dispatch cost as the driver. **N=10 with m_i pinned to [45,50] and k_i pinned to [15,20] raised
+  the ratio to 2.66x** — higher than N=100's own large-m_i/low-k_i case (1.30x) — with switch-case
+  count held at only 10. **Verdict: MIXED m_i (code-size/register-pressure) + k_i (instance-count/
+  re-evaluation-count) correlation, N ruled out as an independent factor.** Full swept data,
+  seed/methodology, and the decision-gate writeup are in Perf-Ledger.md's "Switch-cost isolation
+  (Inc3 M0...)" section. Per the plan doc's explicit scope, M1/M2 were NOT started — this finding
+  is handed to the controller/user: M1/M2 as currently framed (per-bucket dispatch-COUNT overhead)
+  target a switch-case-count-shaped cost this measurement found is NOT what's driving tier-0's own
+  N=100 knee; the knee is m_i/k_i-shaped, pointing more toward
+  [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s single-dispatch-no-switch
+  territory than toward reducing bucket-count overhead.
 
 ---
 

@@ -804,3 +804,37 @@ message(STATUS "[RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GP
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_bucketing_perf — no glslc runnable on this platform found")
 endif()
+
+# ===========================================================================
+# Recipe Bucketed-Dispatch Overhead Inc3 M0 — switch-cost isolation gating spike (Task 1).
+# Does NOT depend on recipe_instance_bucketing_spv (this milestone is about the tier-0 SWITCH
+# shader's own scaling, not the bucketing mechanism) — only needs SdfCoreKernels.glsl's path
+# (read at runtime, same textual-inline convention M2/M3/M4 use since ShaderCompiler::Compile
+# has no #include resolution) and a runtime-compiled synthetic switch-shader per test case, via
+# ShaderManagement::ShaderCompiler. Kept inside the SAME if(VIXEN_GLSLC) guard as its siblings
+# for consistency (glslc availability is this platform's general "can we compile GLSL at all"
+# gate, even though this target's own shaders are all runtime-compiled, not build-time glslc).
+# ===========================================================================
+if(VIXEN_GLSLC)
+add_executable(test_switch_cost_isolation
+    Nodes/test_switch_cost_isolation.cpp
+)
+target_link_libraries(test_switch_cost_isolation PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_switch_cost_isolation PRIVATE SVO)
+endif()
+target_compile_definitions(test_switch_cost_isolation PRIVATE
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_switch_cost_isolation PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
+set_target_properties(test_switch_cost_isolation PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_switch_cost_isolation
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_switch_cost_isolation — no glslc runnable on this platform found")
+endif()

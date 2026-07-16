@@ -169,3 +169,109 @@ not a reason to abandon the mechanism. **Sequencing implication for Increment 3+
 alone does not fix the per-iteration 0.05x–0.31x gap measured here (that gap is steady-state,
 compile already excluded) — the NEXT thing to measure/fix is per-bucket dispatch overhead
 (barrier/bind cost per `vkCmdDispatchIndirect`), not just compile latency.
+
+### Switch-cost isolation (Inc3 M0, randomized N/m_i/k_i stress, 2026-07-16)
+
+**GATING milestone (Recipe Bucketed-Dispatch Overhead Inc3, M0/Task 1).** Answers the question
+[[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]] and this increment's own plan doc left
+open: is the tier-0 switch's own N=100 knee (M5 table above, ~8x FPS collapse, and the re-capture
+above at (a), ~2x on this discrete GPU) caused by switch/branch-DISPATCH cost, by
+REGISTER-PRESSURE/instruction-cache thrash from code-size-per-case, or by INSTANCE-COUNT
+(bucketing/dispatch-count) pressure? These have different fixes, and Inc3's M1/M2 (which target
+per-bucket dispatch overhead — an instance/bucket-count-shaped concern) only make sense to pursue
+if the answer is consistent with that framing.
+
+**Physical device confirmed for EVERY number below:** `NVIDIA GeForce RTX 3060 Laptop GPU`
+(discrete) — printed per test case as `[switch-cost-isolation] selected physical device: '...'
+(discrete=1)`, and the harness (`test_switch_cost_isolation.cpp`) hard-`ASSERT`s
+`discreteGpuSelected_` before capturing any number (refuses to run on integrated/software rather
+than silently degrading — the exact Inc2 M1-M3 gap M4 fixed after the fact).
+
+**Methodology:** a NEW standalone GTest harness (`libraries/RenderGraph/tests/Nodes/
+test_switch_cost_isolation.cpp`), Windows-native Debug build (`vixen-ninja`, no Release preset —
+same caveat as (a) above), validation layers on (`EnabledValidationLayers()`, auto-detected).
+Reuses `EmitProceduralFieldFunctionGlsl` + the SAME switch-generation SHAPE
+`UberShaderSplice.h`'s `evalRecipeField` switch uses (N `sdfRecipe_<id>` field functions + a
+`switch(recipeId)` dispatcher), wrapped in a self-contained sphere-traced `main()` — a standalone
+synthetic-shader measurement, NOT a change to `BodyInstanceRayMarch.comp`, mirroring M3/M4's own
+established "cold-path stand-in, not the live production shader" scoping (see those files'
+header comments for why). 30 steady-state iterations per case, 1 excluded warm-up, pipeline
+compile timed separately and excluded from steady-state (same discipline as the bucketed-dispatch
+table above).
+
+**Randomization**: fixed seed `kSeed=0x5EC0DE01u` driving a deterministic `std::mt19937`, offset
+per test case (printed as `seed=0x........` in every run, so any row is exactly reproducible).
+Each recipe's `m_i`-step program is a randomly-generated, ARITY-VALID binary tree (leaf primitives
+— Sphere/Box/Torus/Capsule/Cylinder/BoxRounded, arity `{0,1,0,0}` — joined by binary CSG ops —
+Union/SmoothUnion/Subtract/Intersect, arity `{2,1,0,0}` — with occasional unary Round/Onion
+modifiers filling odd remainders, arity `{1,1,0,0}`), constructed so the value stack is valid BY
+CONSTRUCTION and then explicitly re-validated via `RecipeRegistry::Register` (the SAME arity check
+the production registry uses) before use — never assumed. `m_i` range `[3,50]` for the main sweep
+(the existing recipe corpus's realistic authored-complexity ballpark, matching the Task 1 prompt's
+guidance); `k_i` range `[1,20]` per recipe (a skewed, non-uniform mixed-scene population, not one-
+instance-per-recipe). The **CONTROL** variant preserves the exact same per-recipe `m_i` SHAPE
+(same instruction count per switch case) but forces every leaf to an identical unit sphere at the
+origin and every binary op to `Union` — same switch/case size, zero varying content.
+
+**Main N=3/10/100 sweep** (matches the existing switch-scaling table's N values), one random draw
+per N, REAL vs CONTROL sharing the same draw:
+
+| N | m_i range (actual draw) | Sigma(k_i) | REAL ms/iter | REAL fps | CONTROL ms/iter | CONTROL fps | ratio (REAL/CONTROL) |
+|---|---|---|---|---|---|---|---|
+| 3 | [4,29] | 37 | 0.393–0.441 (3 trials) | 2266–2541 | 0.410–0.462 (3 trials) | 2165–2439 | **0.89–1.08x** |
+| 10 | [8,50] | 101 | 1.130–1.352 (4 trials) | 739–885 | 0.604–0.706 (4 trials) | 1417–1655 | **1.79–1.92x** |
+| 100 | [3,50] | 1016 | 4.749–9.339 (4 trials) | 107–211 | 2.076–3.736 (4 trials) | 268–482 | **2.05–4.27x** |
+
+(Ranges above are across repeated re-runs of the SAME seeded draw — the per-recipe program/scene
+is IDENTICAL across trials of a given N; the range reflects real run-to-run wall-clock noise on
+sub-10ms dispatches, not a different random draw. Full per-recipe `m_i`/`k_i` arrays are printed
+by the harness for every run and are reproducible from the seed.)
+
+**Axis-decoupling cases** — the main sweep varies `m_i`/`k_i` randomly WITH `N`, so all three axes
+grow together and the main sweep alone cannot attribute the ratio's growth to any ONE axis. These
+three cases hold two axes deliberately fixed/narrow while the third varies, isolating which axis
+the ratio actually tracks:
+
+| Case | N | m_i range (forced) | k_i range (forced) | Sigma(k_i) | REAL ms/iter | CONTROL ms/iter | ratio |
+|---|---|---|---|---|---|---|---|
+| N=100, tiny m_i, low k_i | 100 | [3,5] | [1,3] | 219 | 0.763 | 0.641 | **1.19x** |
+| N=10, large m_i, high k_i | 10 | [45,50] | [15,20] | 172 | 2.389 | 0.899 | **2.66x** |
+| N=100, large m_i, low k_i | 100 | [45,50] | [1,2] | 153 | 2.221 | 1.711 | **1.30x** |
+
+**DECISION GATE — explicit answer:** the correlation is **NOT primarily N (switch-case count)**.
+`N=100` with `m_i` pinned tiny and `k_i` pinned low collapses the ratio to **1.19x** — statistically
+indistinguishable from the N=3 baseline's 0.89–1.08x — even though the switch still has 100 cases.
+Conversely, `N=10` (an N value the main sweep shows behaving near-flat, ratio 1.79–1.92x at its own
+randomly-drawn m_i/k_i) jumps to **2.66x** — HIGHER than N=100's own large-m_i/low-k_i case
+(1.30x) — purely by forcing large `m_i` and high `k_i`, with the switch-case count unchanged at
+10. **The ratio tracks `m_i` (per-case code complexity / register-pressure-shaped) AND `k_i`
+(instance count — each instance re-enters the switch on every march step, so more instances means
+more switch evaluations even at fixed N), not `N` itself.** This is neither a clean (a)
+register-pressure-only nor a clean (c) pure-instance-count-only answer — both axes independently
+raise the ratio (large-m_i/low-k_i at N=100 gets 1.30x; large-m_i/high-k_i at N=10 gets 2.66x,
+higher still) — but N alone, with both other axes suppressed, produces no knee at all. Reporting
+this honestly as a MIXED m_i+k_i correlation, not a single clean verdict: **switch/branch-dispatch
+cost (answer (b)) is ruled out** (a low-complexity N=100 switch is fast; N doesn't matter when
+m_i/k_i are small) — the real driver is code-size-per-case (register pressure/icache, answer (a))
+COMBINED WITH instance-count/re-evaluation-count (answer (c) as extended by the plan doc's own
+k_i-tracking framing), with no evidence isolating N/switch-breadth as an independent third factor
+once those two are controlled for.
+
+**Implication for M1/M2**: M1/M2 target PER-BUCKET DISPATCH OVERHEAD (the fixed cost of issuing
+N separate `vkCmdDispatchIndirect` + descriptor-bind + barrier per bucket) — a switch-CASE-COUNT
+concern, closest to the ruled-out (b) framing, not the m_i/k_i-shaped cost this M0 measurement
+actually found. The bucketed-dispatch mechanism (M4 table above) ALREADY separates each recipe
+into its own specialized single-case pipeline with NO switch at all per dispatch — so M1/M2's
+planned fixes (shared-SSBO instead of per-bucket descriptor sets, barrier coalescing) address a
+real, separately-measured cost (the 5N-1-API-calls grounding research, M4's per-bucket-overhead
+finding) but do NOT address what THIS measurement shows is actually driving tier-0's OWN N=100
+knee (m_i/k_i, i.e. per-instance re-evaluation cost of complex recipes at scale) — that finding
+points toward [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s territory (a
+single dispatch, no switch, one specialized code path per instance) more than toward reducing
+bucket COUNT overhead. Per the plan doc's explicit instruction, this finding is reported here for
+the controller/user's scope decision — M1/M2 are NOT started or begun as part of this milestone.
+
+**Reproducing this data**: `test_switch_cost_isolation.exe --gtest_filter=*RandomizedStress*` for
+the main sweep, `--gtest_filter=*Decoupling*` for the axis-isolation cases, or no filter for all 6
+cases. Every run prints its exact seed and the full per-recipe `m_i[]`/`k_i[]` arrays before
+executing, so any row above can be regenerated exactly.
