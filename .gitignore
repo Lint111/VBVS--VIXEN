@@ -97,3 +97,7 @@ NUL
 # Codex CLI local config (contains plaintext API keys — never commit)
 /.codex/
 .codex/config.toml
+
+# Windows-native capability bench rig: scripts tracked, outputs are not
+temp_bench/*
+!temp_bench/*.bat
