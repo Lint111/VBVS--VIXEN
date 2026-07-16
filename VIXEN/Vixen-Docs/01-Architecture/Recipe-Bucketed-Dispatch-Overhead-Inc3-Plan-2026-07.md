@@ -165,7 +165,45 @@ GPU (Windows-native) for every milestone.
 - **M3 — Re-measurement + honest doc closure** (Task 4) · **live-run gate, discrete GPU mandatory** ·
   full M4-equivalent perf comparison re-run after M1/M2's changes, honestly reported (including a
   "still slower" outcome if that's what the data shows), plan/epic doc closure.
-  - [ ] Not started.
+  - [x] **DONE 2026-07-16.** Full re-run of Inc2 M4's exact comparison
+    (`test_recipe_bucketing_perf`, same 3 GTest cases/N values/scene shape) on the confirmed
+    discrete `NVIDIA GeForce RTX 3060 Laptop GPU`, twice (reproducibility check). **Result: NO
+    MEANINGFUL IMPROVEMENT.** Speedup ratios are flat within run-to-run noise vs. M4's original
+    baseline: N=3 0.31x→0.30-0.33x, N=10 0.25x→0.22-0.24x, N=100 0.05x→0.04-0.05x. M1's real,
+    verified `vkCmdBindDescriptorSets` N→1 reduction (14.3%/18.4%/19.8% of total 5N−1 API calls at
+    N=3/10/100) did not translate into any detectable steady-state speedup — the arithmetic
+    sanity-check (required by this milestone) shows a ~15-20% call-count reduction producing
+    essentially 0% measured improvement, meaning descriptor-set binds were not a disproportionate
+    share of the actual per-bucket bottleneck on this GPU/driver; the dominant cost is more likely
+    `vkCmdDispatchIndirect` and/or the architecturally-unavoidable `vkCmdBindPipeline`, neither
+    addressed by this increment. Full numbers, methodology, and the arithmetic check: see
+    Perf-Ledger.md "Bucketed-dispatch re-measurement (Inc3 M3...)" section. **No-regression sweep:**
+    131 GTest binaries run Windows-native on the same GPU, validation layers on — 1769 individual
+    test cases passed, 0 assertion failures; this increment's own 4 target tests
+    (`test_recipe_instance_bucketing`, `test_recipe_bucketed_indirect_dispatch`,
+    `test_recipe_multi_bucket_compositing`, `test_recipe_bucketing_perf`) all pass cleanly (1+4+2+3
+    = matches M1's 16/16 baseline). 16 binaries reported a non-zero exit/timeout; every one
+    individually cross-checked against `git diff main` (zero overlap — this branch touches only
+    recipe-bucketing dispatch files) and against Known-Issues.md: all are pre-existing/unrelated
+    (KI-034's stale-push-constant-mirror files, KI-032's empty-colorbuffer-readback files, already-
+    documented multi-minute SDF-bake binaries, or unrelated environment issues — a Windows temp-file
+    handle race, a missing EOS-overlay JSON, HUD/RML rendering). **Zero new regressions.** Deviation
+    from prompt: none.
+    **Increment 3 overall verdict, honestly stated:** the story across M0-M3 IS coherent, even
+    though the outcome is not a win. M0 correctly gated the increment's premise and found tier-0's
+    OWN knee is m_i/k_i-shaped (a separate problem, carried forward, not fixed here) but correctly
+    did NOT block M1/M2 (a real, distinct, already-confirmed regression worth investigating on its
+    own merits). M1 shipped a real, correctness-verified improvement to ONE specific cost
+    (descriptor-set bind count) — this was genuine, measured engineering, not wasted work. M2
+    honestly found a theoretically-sound but currently-blocked optimization path (real bug filed,
+    KI-035) rather than forcing an unsafe reduction. M3 (this milestone) honestly reports that the
+    one change which DID ship doesn't move the needle on the metric this whole increment was
+    scoped around. **This increment does not close the bucketed-dispatch-vs-tier-0 gap** — the
+    real next step, per M0's own finding, is more likely
+    [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s single-dispatch-no-switch
+    territory (addressing m_i/k_i-shaped cost directly) than further per-bucket-call-count
+    reduction, since this increment's entire premise (per-bucket API call count is the dominant
+    cost) is now measured, not just theorized, to be false or at least not the dominant factor.
 
 ### Progress Log
 
@@ -271,6 +309,26 @@ validator verdict.)
   own explicit fallback.** Full regression suite not re-run for M2 specifically (no code change to
   regress) — M1's 16/16 passing baseline stands unchanged; M3 will re-run the full suite alongside
   its re-measurement pass regardless.
+
+- **M3 (2026-07-16):** full re-measurement of Inc2 M4's exact comparison
+  (`test_recipe_bucketing_perf`, N=3/10/100), run twice for reproducibility on the confirmed
+  discrete `NVIDIA GeForce RTX 3060 Laptop GPU`. **No meaningful improvement**: speedup ratios flat
+  within noise vs. M4's baseline at every N (0.31x→0.30-0.33x, 0.25x→0.22-0.24x,
+  0.05x→0.04-0.05x). Arithmetic sanity-check: M1 removed 14.3%/18.4%/19.8% of total 5N−1 API calls
+  at N=3/10/100 but this produced ~0% measured speedup change — descriptor-set binds were not a
+  disproportionate share of the real bottleneck on this GPU/driver. Full regression: 131 GTest
+  binaries, 1769 cases passed, 0 assertion failures; this increment's 4 target tests all pass
+  (1+4+2+3, matches M1's 16/16); 16 binaries with a non-zero exit, all individually confirmed
+  pre-existing/unrelated (KI-034, KI-032, documented slow SDF-bake binaries, unrelated environment
+  issues) via `git diff main` (zero file overlap) and Known-Issues.md cross-check — zero new
+  regressions. Full numbers/methodology: Perf-Ledger.md "Bucketed-dispatch re-measurement (Inc3
+  M3...)". **Increment 3 overall: coherent story, real-but-insufficient result** — M0's gating
+  finding stands (tier-0's own knee is m_i/k_i-shaped, not switch-count-shaped), M1's descriptor-
+  bind reduction is real and correctness-verified but M3 shows it doesn't move the bucketed-vs-
+  cold-path ratio, M2's honest non-reduction stands. This increment does NOT close the gap M4
+  found; the next real step is more likely
+  [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s territory than further
+  per-bucket-call-count work. See Milestone Map entry above for full detail.
 
 - **M1 (2026-07-16):** shared-SSBO + push-constant-shrink refactor, implemented against
   `SpecializedRecipeShaderGlsl.h` (shader emission) and all 3 dispatch-phase test harnesses

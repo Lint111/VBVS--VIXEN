@@ -184,6 +184,36 @@ This resolves two of the user's sub-ideas:
    bucketed dispatch is competitive with the naive fixed-dispatch alternative, let alone the
    tier-0 switch at low N. GPU-LRU eviction (Increment 3) and family normalization (Increment 4)
    remain as originally scoped, layered on top of this now-proven-but-not-yet-fast mechanism.
+   **Increment 3 (Recipe Bucketed-Dispatch Overhead — per-bucket dispatch overhead reduction,
+   the sequencing implication directly above) ✅ RUN 2026-07-16, RESULT: real-but-insufficient**
+   ([[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]], M0-M3 all DONE, Opus-validated
+   APPROVED on M1-M2, M3 measurement-only). M0 (gating spike) found the tier-0 switch's OWN N=100
+   knee is m_i/k_i-shaped (per-instance code-complexity/re-evaluation-count), NOT switch-case-
+   count-shaped — a separate finding from Inc2's bucketed-dispatch-overhead problem, carried
+   forward as motivation for [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]
+   rather than blocking Inc3's own M1/M2 (which target the distinct, already-confirmed bucketed-
+   dispatch regression above). M1 shipped a real, correctness-verified fix: shared SSBO + push-
+   constant shrink reduced `vkCmdBindDescriptorSets` from N to 1 per frame (verified via Vulkan
+   pipeline-layout-compatibility spec research, zero validation-layer errors, byte-identical
+   oracle/compositing results preserved). M2 found barrier-coalescing (the N−1
+   `InsertAutoBarrier` calls) is theoretically safe in principle but blocked by a real,
+   separately-filed precondition bug (KI-035, `ProjectToPixel`'s near-plane coverage-rect
+   under-computation) — correctly NOT implemented rather than forcing an unsafe reduction. **M3's
+   honest re-measurement: M1's real API-call reduction did NOT move the bucketed-dispatch-vs-
+   cold-path speedup ratio at any tested N** (0.31x/0.25x/0.05x → 0.30-0.33x/0.22-0.24x/
+   0.04-0.05x, all within run-to-run noise) — the arithmetic sanity-check shows M1 removed
+   ~14-20% of total per-bucket API calls but this produced ~0% measured speedup change, meaning
+   descriptor-set binds were not a disproportionate share of the real per-bucket bottleneck on the
+   confirmed discrete GPU; `vkCmdDispatchIndirect` and/or the architecturally-unavoidable
+   `vkCmdBindPipeline` are the more likely dominant costs, neither addressed by this increment.
+   Full numbers: [[Perf-Ledger]] "Bucketed-dispatch re-measurement (Inc3 M3, post-M1 shared-
+   descriptor-set change, 2026-07-16)". **Net effect: bucketed dispatch remains substantially
+   slower than a single fixed dispatch at every tested N after this increment — the gap Inc2 M4
+   found is NOT closed.** The real next step, per M0's own finding, points toward
+   [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s single-dispatch-no-switch
+   territory (addressing m_i/k_i-shaped cost directly) rather than further per-bucket-call-count
+   reduction — this increment's own premise (per-bucket API call count is the dominant cost) is
+   now measured, not just theorized, to be insufficient on its own.
 3. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
 4. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
    similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline.
