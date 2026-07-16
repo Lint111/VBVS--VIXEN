@@ -8,7 +8,17 @@ created: 2026-07-16
 
 Executes the verified findings of [[Baked-Content-Perf-Audit-2026-07]] toward the
 end-state in [[Baked-Content-Perf-Consolidation-2026-07]] §0: **Cornell-class scenes at
-realtime, benchmarked Windows-native**. Run under the `post-brainstorm-context-manager`
+realtime, benchmarked Windows-native**.
+
+**Why both paths matter (user, 2026-07-16):** the final renderer composes BOTH providers
+in one frame — procedural recipes as the compact exact baseline, baked voxel deltas
+carrying edits/modifications (the [[lazy-procedural + delta baseline program]]:
+instructions-first rendering, tiered deltas). Virtual and baked are not alternative
+demos; they are the two halves of the eventual hybrid frame, already per-body via
+`providerKind` (PROCEDURAL/STORED) through the same graph and lighting stack. This
+pipeline's true deliverable: both providers at budget with parity semantics in the same
+scene. GAP: the bench rig exercises the providers only separately — see the
+mixed-provider gate below. Run under the `post-brainstorm-context-manager`
 pipeline: thin controller, fresh Sonnet-medium implementer per milestone, Opus-high
 validator per milestone, progress persisted here (this doc is the pipeline's memory —
 a /clear loses nothing).
@@ -248,6 +258,16 @@ virtual capture (5.6).
 **Gate:** zero new validation-layer errors; wall/GPU-span ratio improves; 8 bodies.
 
 ## Phase 2 (dispatch after Phase-1 review with the user)
+
+## Milestone M6b — Mixed-provider capability bench (S–M) — the hybrid-frame gate
+
+Rationale: the end-state frame composes procedural + stored bodies together; nothing
+currently benches or verifies that composition. Add a third bench variant: the Cornell
+scene with MIXED providers (e.g. walls stored/baked + sphere/box/light procedural, and
+the inverse split), `temp_bench/run_mixed.bat`. Gates: correct instIdx map for all 8
+bodies in both splits; per-pass timers within the sum-of-parts envelope; no
+provider-boundary artifacts (lighting/shadow rays crossing provider kinds). This becomes
+a STANDING gate for every later milestone (M7/M8 and the delta program inherit it).
 
 ## Milestone M7 — Boot parallel bake + serialize bulk path (M)
 
