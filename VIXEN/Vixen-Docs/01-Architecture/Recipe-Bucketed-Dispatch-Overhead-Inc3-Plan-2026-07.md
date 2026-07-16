@@ -146,7 +146,7 @@ GPU (Windows-native) for every milestone.
   proof; implement ONLY if a safe reduction is actually established, not assumed.
   - [x] **DONE (analysis-only) 2026-07-16, commit `5394c889`.** **Verdict: a safe reduction is
     theoretically sound in principle but its soundness precondition is currently VIOLATED by an
-    unrelated, real gap — NOT implemented this milestone.** No code change. Filed as **KI-035**
+    unrelated, real gap — NOT implemented this milestone.** No code change. Filed as **KI-037**
     (`ProjectToPixel` silently drops camera-straddling points, shrinking coverage rects below their
     true footprint — the wrong direction for the scheme's "always over-cover" requirement; latent,
     no current test constructs a camera-straddling hot instance, but blocks a rect-disjointness-
@@ -196,7 +196,7 @@ GPU (Windows-native) for every milestone.
     own merits). M1 shipped a real, correctness-verified improvement to ONE specific cost
     (descriptor-set bind count) — this was genuine, measured engineering, not wasted work. M2
     honestly found a theoretically-sound but currently-blocked optimization path (real bug filed,
-    KI-035) rather than forcing an unsafe reduction. M3 (this milestone) honestly reports that the
+    KI-037) rather than forcing an unsafe reduction. M3 (this milestone) honestly reports that the
     one change which DID ship doesn't move the needle on the metric this whole increment was
     scoped around. **This increment does not close the bucketed-dispatch-vs-tier-0 gap** — the
     real next step, per M0's own finding, is more likely

@@ -199,7 +199,7 @@ This resolves two of the user's sub-ideas:
    pipeline-layout-compatibility spec research, zero validation-layer errors, byte-identical
    oracle/compositing results preserved). M2 found barrier-coalescing (the N−1
    `InsertAutoBarrier` calls) is theoretically safe in principle but blocked by a real,
-   separately-filed precondition bug (KI-035, `ProjectToPixel`'s near-plane coverage-rect
+   separately-filed precondition bug (KI-037, `ProjectToPixel`'s near-plane coverage-rect
    under-computation) — correctly NOT implemented rather than forcing an unsafe reduction. **M3's
    honest re-measurement: M1's real API-call reduction did NOT move the bucketed-dispatch-vs-
    cold-path speedup ratio at any tested N** (0.31x/0.25x/0.05x → 0.30-0.33x/0.22-0.24x/
