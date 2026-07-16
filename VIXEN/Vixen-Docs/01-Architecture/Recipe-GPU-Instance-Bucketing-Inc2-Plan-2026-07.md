@@ -115,7 +115,8 @@ the granularity decision).
   JIT direction doc's Increment 2 status flipped to shipped (or, if the measurement shows the
   mechanism ISN'T actually a win yet, documented honestly as a real, load-bearing finding — see Task
   9's explicit instruction not to force a positive result).
-  - [x] DONE — commit `06ecccdd`. Opus validator: pending.
+  - [x] DONE — commits `06ecccdd`, `a6508d2e`. Opus validator: **APPROVED**. Full 4-milestone
+    increment ready for final review + merge.
 
 ### Progress Log
 
@@ -143,33 +144,6 @@ validator verdict; follow the Recipe-Parameterization / Recipe-Pipeline-Cache pl
   integrated GPU as a result; not a correctness blocker for M3 (mechanism/compositing proof is
   GPU-vendor-agnostic), but flagged for M4 since M4 IS a performance measurement and needs to run on
   the discrete NVIDIA GPU to be representative.
-- Milestone 4 (Tasks 9-10): DONE · commit `06ecccdd` · 2026-07-16.
-  **GPU-selection fix applied FIRST** (Task 9 prerequisite): new perf harness
-  (`test_recipe_bucketing_perf.cpp`)'s `PickPhysicalDevice()` mirrors
-  `DeviceNode::SelectPhysicalDevice()` exactly (discrete-first, integrated fallback, software
-  last resort) — confirmed selecting `NVIDIA GeForce RTX 3060 Laptop GPU` (discrete) on every run,
-  cross-checked against `vulkaninfo --summary`'s enumeration order (GPU0/GPU2 = AMD integrated,
-  GPU1 = NVIDIA discrete). **Tier-0 baseline RE-CAPTURED** (not reused) on this same discrete GPU
-  via live `VIXEN.exe` + `VIXEN_PROCEDURAL_UBER_DEMO`, since the existing 2026-07-10 baseline
-  predates the `DeviceNode` discrete-fix and its GPU class was never confirmed — decision and full
-  numbers in [[Perf-Ledger]]. **Task 9 perf finding (honest, not cherry-picked): bucketed dispatch
-  is SLOWER than a cold-path stand-in at every tested N** (N=3: 0.31x, N=10: 0.25x, N=100: 0.05x —
-  gap widens with N), driven by per-bucket fixed overhead (indirect dispatch + descriptor bind +
-  auto-barrier per bucket) scaling linearly with N while a single fixed dispatch stays flat. This
-  is the anticipated risk from this plan's own Risks section, now measured — Increment 2 proved
-  the ROUTING mechanism correct (M1-M3), not that it's already fast; async compile (Increment 3+)
-  alone will not close this gap, per-bucket dispatch overhead is the next thing to address. **Task
-  10 no-regression sweep**: full `ctest` run, 2643 tests, 97% pass (69 failed) — ALL 6
-  recipe-bucketing tests pass (M1's `RecipeInstanceBucketingTest`, M2's `DispatchPassIndirect`
-  suite, M3's `RecipeMultiBucketCompositingTest`+`HotnessGate`, M4's 3 new
-  `RecipeBucketingPerfTest` cases); the 69 failures are entirely outside this milestone's change
-  surface (`VoxelData`/`GaiaVoxelWorld`/`Timer`/`CacheCodec`/windowed-render tests) and traced to
-  live cross-agent GPU/filesystem contention on this machine during the run (a concurrent
-  `VIXEN.exe` process from another agent held the GPU, confirmed via `tasklist`; affected
-  GPU-render tests fell back to `[lavapipe]` software rasterizer instead of a real GPU — re-run in
-  isolation still hit the same contention, consistent with an external, ongoing process rather
-  than a code regression). Doc closure: this plan doc + JIT direction doc §7/§8 updated with the
-  honest M4 finding.
 
 ---
 
