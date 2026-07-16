@@ -15,7 +15,7 @@ namespace Vixen::RenderGraph {
 // sub-fields (which would make fieldCount untruthful). Carries exactly 3 floats (x,y,z); a future
 // vector shape (Float2, Float4) would need its own ViewKind rather than overloading this one, since
 // ViewValue::Vec below is fixed at 3 components.
-enum class ViewKind : uint8_t { Int, Float, Bool, String, ArrayOfStruct, Vector };
+enum class ViewKind : uint8_t { Int, Float, Bool, String, ArrayOfStruct, Vector, SubjectRef };
 
 struct ViewFieldDesc {
     std::string_view name;
@@ -34,27 +34,37 @@ struct ViewBlob {
 // ViewValue payload here is likewise a bare primitive.
 struct Vec3f { float x = 0.0f, y = 0.0f, z = 0.0f; };
 
+// SubjectRef: a discriminated presentation-subject reference -- (kind, instance) where kind mirrors
+// undertow's SubjectKindId catalogue via a small closed byte enum undertow's write side maps onto
+// (docs/superpowers/specs/2026-07-16-discriminated-subjectref-and-relation-keys-design.md), and
+// instance is the subject's raw numeric id. A genuine distinct kind (same rationale as Vector above),
+// not two synthetic Int/scalar sub-fields.
+struct SubjectRef { uint8_t kind = 0; uint64_t instance = 0; };
+
 struct ViewValue {
-    enum class Tag : uint8_t { Int, Float, Bool, String, Vector } tag;
+    enum class Tag : uint8_t { Int, Float, Bool, String, Vector, SubjectRef } tag;
     int         i = 0;
     float       f = 0.0f;
     bool        b = false;
     std::string s;
     Vec3f       vec;
+    SubjectRef  subj;
     static ViewValue I(int v)          { ViewValue r; r.tag = Tag::Int;    r.i = v; return r; }
     static ViewValue F(float v)        { ViewValue r; r.tag = Tag::Float;  r.f = v; return r; }
     static ViewValue B(bool v)         { ViewValue r; r.tag = Tag::Bool;   r.b = v; return r; }
     static ViewValue S(std::string v)  { ViewValue r; r.tag = Tag::String; r.s = std::move(v); return r; }
     static ViewValue Vec(Vec3f v)      { ViewValue r; r.tag = Tag::Vector; r.vec = v; return r; }
+    static ViewValue Subject(SubjectRef v) { ViewValue r; r.tag = Tag::SubjectRef; r.subj = v; return r; }
 };
 
 inline bool KindAcceptsValue(ViewKind k, const ViewValue& v) {
     switch (k) {
-        case ViewKind::Int:    return v.tag == ViewValue::Tag::Int;
-        case ViewKind::Float:  return v.tag == ViewValue::Tag::Float;
-        case ViewKind::Bool:   return v.tag == ViewValue::Tag::Bool;
-        case ViewKind::String: return v.tag == ViewValue::Tag::String;
-        case ViewKind::Vector: return v.tag == ViewValue::Tag::Vector;
+        case ViewKind::Int:        return v.tag == ViewValue::Tag::Int;
+        case ViewKind::Float:      return v.tag == ViewValue::Tag::Float;
+        case ViewKind::Bool:       return v.tag == ViewValue::Tag::Bool;
+        case ViewKind::String:     return v.tag == ViewValue::Tag::String;
+        case ViewKind::Vector:     return v.tag == ViewValue::Tag::Vector;
+        case ViewKind::SubjectRef: return v.tag == ViewValue::Tag::SubjectRef;
         case ViewKind::ArrayOfStruct: return false;
     }
     return false;
