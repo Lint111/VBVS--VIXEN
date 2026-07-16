@@ -161,12 +161,16 @@ read it raw):
    @ `6568c3ee`. Still to do: validate its correctness with the §2 ground-truth rig
    before believing its numbers.
 2. Root-cause the vanishing-bodies interaction (blocks the `*subdiv` fix).
-3. Full render-path audit (workflow launched 2026-07-16, results to be appended /
-   linked here).
+3. ~~Full render-path audit~~ **DONE 2026-07-16**: 74 confirmed findings + 35 research
+   patterns + ranked Top-10 action list in [[Baked-Content-Perf-Audit-2026-07]].
+   Headline: `brickLookup` base mis-addressing for mixed `bricksPerAxis` (audit B1,
+   `StoredSdf.glsl:78` vs `ShellOctreeGpu.h:993`) is the prime suspect for the
+   vanishing-bodies blocker in §2 — small fix, unblocks the proven ~3.8×.
 4. Prune `fix/baked-sdf-perf-codex` branch + stale worktree entry.
 
 ## Related docs
 
+[[Baked-Content-Perf-Audit-2026-07]] (the verified findings + action list) ·
 [[Baked-SDF-Perf-Rootfix-2026-07]] (in the rootfix worktree, not on main) ·
 [[SDF-Bake-Box-Tight-Region-Plan-2026-07]] ·
 [[Instance-SSBO-Dirty-Upload-Direction-2026-07]] ·
