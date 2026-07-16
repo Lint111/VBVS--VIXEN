@@ -768,3 +768,39 @@ message(STATUS "[RenderGraph Tests] Added: test_recipe_multi_bucket_compositing 
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_multi_bucket_compositing — no glslc runnable on this platform found")
 endif()
+
+# ===========================================================================
+# Recipe GPU Instance Bucketing Inc2 M4 — performance measurement live-run gate (Task 9).
+# Shares recipe_instance_bucketing_spv exactly like the M2/M3 targets above — kept inside the
+# SAME if(VIXEN_GLSLC) block since it depends on that custom-command target. N specialized
+# single-recipe shaders (Task 5, looped up to N=100) AND the cold-path stand-in shader are
+# emitted/compiled AT TEST RUNTIME via ShaderManagement::ShaderCompiler, same as M2/M3.
+# Kept STANDALONE (not merged into gpurender groups above): this is a PERFORMANCE gate with its
+# own steady-state timing loop (kSteadyIters repeats per N), and pairing it with a PNG/STB-impl
+# target would let unrelated build failures block a perf capture, or vice versa.
+# ===========================================================================
+if(VIXEN_GLSLC)
+add_executable(test_recipe_bucketing_perf
+    Nodes/test_recipe_bucketing_perf.cpp
+)
+add_dependencies(test_recipe_bucketing_perf recipe_instance_bucketing_spv)
+target_link_libraries(test_recipe_bucketing_perf PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_recipe_bucketing_perf PRIVATE SVO)
+endif()
+target_compile_definitions(test_recipe_bucketing_perf PRIVATE
+    RECIPE_BUCKETING_SPV="${_recipebucketing_spv}"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_recipe_bucketing_perf PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
+set_target_properties(test_recipe_bucketing_perf PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_recipe_bucketing_perf
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GPU Instance Bucketing Inc2 M4 performance live-run gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_bucketing_perf — no glslc runnable on this platform found")
+endif()

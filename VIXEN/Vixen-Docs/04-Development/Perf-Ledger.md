@@ -86,3 +86,86 @@ from FPS; this would just sharpen the attribution). The switch-scaling table abo
   (`esvo_traverse_shade_ms` is the compute-pass GPU timestamp via the existing `GPUPerformanceLogger`;
   boot vs steady byte counters latch in `BodyOctreeSceneNode`.) To backfill a row: run the app
   Windows-native with `VIXEN_PERF_CSV` set, hand over the CSV, transcribe.
+
+### Bucketed-dispatch measurement (Recipe GPU Instance Bucketing Inc2 M4, 2026-07-16)
+
+**GPU-selection prerequisite (Task 9):** the original switch-scaling table above (M5,
+2026-07-10) predates the `DeviceNode::SelectPhysicalDevice()` discrete-GPU-preference fix (main
+`0ee32428`, merged 2026-07-15) — its "AMD Radeon" header does not confirm which of this machine's
+3 enumerated GPUs (`vulkaninfo`: GPU0=AMD integrated, GPU1=NVIDIA RTX 3060 Laptop discrete,
+GPU2=AMD integrated again) was actually selected at capture time, since device selection back
+then had no discrete-vs-integrated preference at all (first-enumerated-wins). **Decision: the
+old table is NOT reused — the tier-0-switch baseline is RE-CAPTURED below**, on the same
+confirmed discrete GPU used for this milestone's bucketed-dispatch numbers, so the comparison is
+apples-to-apples. (M1-M3's own standalone test harnesses had the identical gap — no
+discrete-preference in their hand-rolled `PickPhysicalDevice()` — fixed in this milestone's new
+perf harness, `test_recipe_bucketing_perf.cpp`, by mirroring `DeviceNode`'s exact selection logic.)
+
+**Physical device confirmed for EVERY number below:** `NVIDIA GeForce RTX 3060 Laptop GPU`
+(discrete) — printed by both the live-app run (`DeviceNode::SelectPhysicalDevice()`, deterministic
+first-discrete-wins, cross-checked against `vulkaninfo --summary`'s enumeration order) and the
+standalone perf harness (`PickPhysicalDevice()`, explicit discrete-first pass, logged per-test-case
+as `[recipe-bucketing-perf] selected physical device: '...' (discrete=1)`).
+
+**(a) Tier-0-switch-only path, RE-CAPTURED on the discrete NVIDIA GPU** (live `VIXEN.exe`,
+`VIXEN_PROCEDURAL_UBER_DEMO=<N>`, `VIXEN_PERF_CSV`, `VIXEN_EXIT_AFTER_FRAMES=300`, validation
+layers on, Windows-native Debug build — **this repo has no Windows Release CMake preset**
+(`vixen-ninja` is `CMAKE_BUILD_TYPE: Debug` unconditionally; only the WSL presets have a Release
+variant), so this Debug-build number is the only Windows-native number obtainable here and is
+what both this table and the original 2026-07-10 table were necessarily captured under):
+
+| N | steady FPS (avg, last 60 frames) | steady FPS range | cpu_frame_time_ms (avg) | boot/steady bytes |
+|---|---|---|---|---|
+| 3 | 165.5 | 161.3–168.4 | 6.10 | 0 / 0 |
+| 10 | 171.6 | 165.5–177.7 | 5.47 | 0 / 0 |
+| 100 | 85.7 | 82.7–87.8 | 10.30 | 0 / 0 |
+
+**Qualitative shape matches the original 2026-07-10 table** (flat N=3→N=10, real drop by N=100 —
+here ~2× rather than the original's ~8×, consistent with the discrete GPU's larger compute/cache
+headroom than whatever device the un-fixed original selection landed on) — the tier-0 switch
+knee is confirmed again on this GPU, just less severe in absolute terms. Absolute FPS values are
+NOT directly comparable to the 2026-07-10 table (different, now-known-correct GPU); the *shape*
+is the reusable finding.
+
+**(b) THIS increment's bucketed-dispatch mechanism vs. a cold-path stand-in** (standalone GTest
+harness, `test_recipe_bucketing_perf.cpp`, mirrors M1-M3's proven pattern — see that file's header
+for why a stand-in shader, not the real `BodyInstanceRayMarch.comp`, is the correct-scoped
+substitute; live-app integration is out of scope for this whole increment). N recipes, each with
+exactly `kHotnessThreshold=4` instances (100% promoted — Task 6's gate), spread on a
+non-overlapping world-space grid (isolates dispatch/routing overhead from compositing, which M3
+already proved correct under real overlap). 30 steady-state iterations per N, 1 warm-up iteration
+excluded, synchronous specialized-pipeline compile timed and reported SEPARATELY (excluded from
+the steady-state figures — see below):
+
+| N | bucketed ms/iter | bucketed fps | cold-stand-in ms/iter | cold-stand-in fps | speedup (cold/bucketed) | sync compile total (excluded above) |
+|---|---|---|---|---|---|---|
+| 3 | 1.063 | 941.0 | 0.330 | 3031.0 | **0.31x (bucketed SLOWER)** | 1117 ms (372 ms/recipe) |
+| 10 | 1.651 | 605.6 | 0.417 | 2397.5 | **0.25x (bucketed SLOWER)** | 1676 ms (168 ms/recipe) |
+| 100 | 12.899 | 77.5 | 0.599 | 1670.8 | **0.05x (bucketed SLOWER)** | 9883 ms (99 ms/recipe) |
+
+**HONEST FINDING (Task 9's explicit requirement — not cherry-picked, not papered over): at every
+tested N, this increment's bucketed-dispatch mechanism is SLOWER than a single fixed dispatch
+covering the same instance/recipe load, and the gap WIDENS as N grows** (0.31x → 0.25x → 0.05x).
+This is the anticipated risk from the plan doc's own Risks section, now measured, not assumed:
+per-bucket fixed overhead (N separate `vkCmdDispatchIndirect` calls + N descriptor-set binds + N
+`MultiDispatchNode` auto-barrier insertions, each against a SMALL per-bucket screen-space rect at
+this harness's scene scale) dominates the per-bucket useful work, and that fixed cost scales
+linearly with N while the single cold-path dispatch's cost stays roughly flat (it's one dispatch
+covering the full screen regardless of how many recipes' instances it loops). **This increment's
+own scope was to prove the ROUTING mechanism is correct (M1-M3, APPROVED), not to already be the
+faster path** — that was explicitly flagged as a possible outcome (plan doc Risks: "Task 9's
+honesty requirement"). The synchronous-compile cost (excluded above, but real and on the critical
+path per M2/M3's own scoped limitation) makes first-promotion latency even worse — 99 ms/recipe
+at N=100, ~10 seconds total — reinforcing rather than contradicting this finding.
+
+**What this does NOT mean:** the epic's own justification (§8, [[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]])
+was for the tier-0 SWITCH's own degradation at N≥100 (confirmed again in (a) above) — this
+increment's bucketed-dispatch mechanism was never claimed to already be the fully-optimized
+answer to that; it was scoped to prove routing correctness first. The per-bucket fixed-overhead
+problem measured here is exactly what the deferred async-compile-and-swap follow-on (Increment
+3+) and any future per-bucket-dispatch-batching work would need to address before bucketed
+dispatch is competitive — this is the concrete, measured starting point for sequencing that work,
+not a reason to abandon the mechanism. **Sequencing implication for Increment 3+:** async compile
+alone does not fix the per-iteration 0.05x–0.31x gap measured here (that gap is steady-state,
+compile already excluded) — the NEXT thing to measure/fix is per-bucket dispatch overhead
+(barrier/bind cost per `vkCmdDispatchIndirect`), not just compile latency.
