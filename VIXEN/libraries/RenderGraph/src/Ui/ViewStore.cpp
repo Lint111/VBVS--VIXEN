@@ -23,11 +23,12 @@ int ViewStore::FindElemField(size_t fieldIndex, std::string_view name) const {
 
 static void AssignCell(ViewCell& c, ViewKind kind, const ViewValue& v) {
     switch (kind) {
-        case ViewKind::Int:    c.i = v.i; break;
-        case ViewKind::Float:  c.f = v.f; break;
-        case ViewKind::Bool:   c.b = v.b; break;
-        case ViewKind::String: c.s = v.s; break;
-        case ViewKind::Vector: c.vec = v.vec; break;
+        case ViewKind::Int:        c.i = v.i; break;
+        case ViewKind::Float:      c.f = v.f; break;
+        case ViewKind::Bool:       c.b = v.b; break;
+        case ViewKind::String:     c.s = v.s; break;
+        case ViewKind::Vector:     c.vec = v.vec; break;
+        case ViewKind::SubjectRef: c.subj = v.subj; break;
         default: break;
     }
 }
@@ -39,11 +40,12 @@ void ViewStore::SetScalar(std::string_view field, ViewValue v) {
     if (!KindAcceptsValue(k, v)) { Rml::Log::Message(Rml::Log::LT_ERROR, "ViewStore: kind mismatch for '%.*s'", (int)field.size(), field.data()); return; }
     auto& slot = scalars_[idx];
     switch (k) {
-        case ViewKind::Int:    slot.i = v.i; break;
-        case ViewKind::Float:  slot.f = v.f; break;
-        case ViewKind::Bool:   slot.b = v.b; break;
-        case ViewKind::String: slot.s = v.s; break;
-        case ViewKind::Vector: slot.vec = v.vec; break;
+        case ViewKind::Int:        slot.i = v.i; break;
+        case ViewKind::Float:      slot.f = v.f; break;
+        case ViewKind::Bool:       slot.b = v.b; break;
+        case ViewKind::String:     slot.s = v.s; break;
+        case ViewKind::Vector:     slot.vec = v.vec; break;
+        case ViewKind::SubjectRef: slot.subj = v.subj; break;
         default: break;
     }
 }
@@ -75,11 +77,12 @@ void ViewStore::RowHandle::Set(size_t row, std::string_view elemField, ViewValue
 void* ViewStore::ScalarSlotPtr(size_t fieldIndex) {
     auto& slot = scalars_[fieldIndex];
     switch (blob_.fields[fieldIndex].kind) {
-        case ViewKind::Int:    return &slot.i;
-        case ViewKind::Float:  return &slot.f;
-        case ViewKind::Bool:   return &slot.b;
-        case ViewKind::String: return &slot.s;
-        case ViewKind::Vector: return &slot.vec;
+        case ViewKind::Int:        return &slot.i;
+        case ViewKind::Float:      return &slot.f;
+        case ViewKind::Bool:       return &slot.b;
+        case ViewKind::String:     return &slot.s;
+        case ViewKind::Vector:     return &slot.vec;
+        case ViewKind::SubjectRef: return &slot.subj;
         default: return nullptr;
     }
 }

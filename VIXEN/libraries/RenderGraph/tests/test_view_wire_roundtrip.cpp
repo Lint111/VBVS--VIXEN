@@ -167,3 +167,55 @@ TEST(ViewWireRoundtrip, TopLevelAndRowVectorFieldsReadBackCorrectly) {
     EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.x, -1.0f);
     EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.z, 4.5f);
 }
+
+namespace {
+
+// SubjectRef milestone (Task 10): a top-level SubjectRef field's wire payload is 1 kind byte +
+// 8 little-endian instance bytes -- the exact shape Yeroket ViewWriterEmitterTests.
+// ToBuffer_SubjectRefField_WritesNineBytes_KindThenInstance proves the C# writer emits (kind byte
+// 0x0A i.e. decimal 10, then instance 42UL as 8 little-endian bytes 2A 00 00 00 00 00 00 00).
+constexpr ViewFieldDesc kSubjectFields[] = { {"subject", ViewKind::SubjectRef, {}} };
+constexpr ViewBlob kSubjectBlob = {"inspect", kSubjectFields, 0x4444u};
+
+std::vector<std::byte> SubjectWire(uint32_t version, uint8_t kind, uint64_t instance) {
+    WB w;
+    w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
+    w.u32(version);
+    w.u32(1);           // top-field count: subject
+    w.u8(kind);
+    for (int i = 0; i < 8; ++i) w.u8(static_cast<uint8_t>((instance >> (8*i)) & 0xFF));
+    return w.b;
+}
+
+}  // namespace
+
+TEST(ViewWireRoundtrip, SubjectRefFieldReadsBackKindAndInstance) {
+    ViewStore store(kSubjectBlob, kSubjectBlob.version);
+    auto wire = SubjectWire(kSubjectBlob.version, 10, 42ULL);
+
+    ASSERT_TRUE(ViewWireReader::Apply(wire, store));
+
+    auto* subj = static_cast<SubjectRef*>(store.ScalarSlotPtr(Field(kSubjectBlob, "subject")));
+    EXPECT_EQ(subj->kind, 10);
+    EXPECT_EQ(subj->instance, 42ULL);
+}
+
+// Drive-by fix: the top-level switch previously had NO default: case -- an unrecognized ViewKind
+// would silently no-op past that field (cursor unmoved) instead of failing Apply. Construct a
+// ViewFieldDesc whose kind is outside ViewKind's real enum range via a raw cast (there's no
+// legitimate way to author this through normal blob construction) and assert Apply now rejects it.
+namespace {
+constexpr ViewFieldDesc kBadKindFields[] = { {"mystery", static_cast<ViewKind>(99), {}} };
+constexpr ViewBlob kBadKindBlob = {"bad", kBadKindFields, 0x5555u};
+}  // namespace
+
+TEST(ViewWireRoundtrip, UnrecognizedTopLevelKindIsRejected) {
+    ViewStore store(kBadKindBlob, kBadKindBlob.version);
+    WB w;
+    w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
+    w.u32(kBadKindBlob.version);
+    w.u32(1);   // top-field count: mystery
+    // No payload bytes -- an unrecognized kind must be rejected before it could even decide how
+    // many bytes to consume.
+    EXPECT_FALSE(ViewWireReader::Apply(w.b, store));
+}

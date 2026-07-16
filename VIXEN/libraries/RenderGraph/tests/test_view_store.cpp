@@ -7,7 +7,8 @@ static constexpr ViewFieldDesc kElem[] = {
 static constexpr ViewFieldDesc kFields[] = {
     {"tick", ViewKind::Int, {}},
     {"name", ViewKind::String, {}},
-    {"factions", ViewKind::ArrayOfStruct, kElem} };
+    {"factions", ViewKind::ArrayOfStruct, kElem},
+    {"selected", ViewKind::SubjectRef, {}} };
 static constexpr ViewBlob kBlob = {"hud", kFields, 0x1111u};
 
 TEST(ViewStore, ScalarSetAndReadBack) {
@@ -36,4 +37,20 @@ TEST(ViewStore, RejectsWrongNameAndKind) {
     s.SetScalar("nope", ViewValue::I(1));       // unknown name -> no-op (logged)
     s.SetScalar("tick", ViewValue::S("bad"));   // wrong kind -> no-op (logged)
     EXPECT_EQ(*static_cast<int*>(s.ScalarSlotPtr(0)), 0);  // unchanged
+}
+
+TEST(ViewStore, SubjectRefSetAndReadBack) {
+    ViewStore s(kBlob, 0x1111u);
+    s.SetScalar("selected", ViewValue::Subject(SubjectRef{7, 123456789ull}));
+    auto* subj = static_cast<SubjectRef*>(s.ScalarSlotPtr(3));
+    EXPECT_EQ(subj->kind, 7);
+    EXPECT_EQ(subj->instance, 123456789ull);
+}
+
+TEST(ViewStore, RejectsWrongTagForSubjectRefField) {
+    ViewStore s(kBlob, 0x1111u);
+    s.SetScalar("selected", ViewValue::I(1));   // wrong tag -> no-op (logged)
+    auto* subj = static_cast<SubjectRef*>(s.ScalarSlotPtr(3));
+    EXPECT_EQ(subj->kind, 0);       // unchanged (default)
+    EXPECT_EQ(subj->instance, 0u);  // unchanged (default)
 }
