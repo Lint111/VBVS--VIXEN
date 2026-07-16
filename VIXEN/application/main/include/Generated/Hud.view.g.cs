@@ -4,7 +4,7 @@ namespace Vixen.Views
 {
     public sealed partial class HudViewWriter
     {
-        public const uint SchemaVersion = 0x55D27B8Cu;
+        public const uint SchemaVersion = 0x7F78462Du;
 
         public struct HudFactionRow
         {
@@ -33,6 +33,8 @@ namespace Vixen.Views
         private static void WF32(System.Collections.Generic.List<byte> b, float v) { var t = System.BitConverter.GetBytes(v); if(!System.BitConverter.IsLittleEndian) System.Array.Reverse(t); b.AddRange(t); }
         private static void WBool(System.Collections.Generic.List<byte> b, bool v) => b.Add(v ? (byte)1 : (byte)0);
         private static void WStr(System.Collections.Generic.List<byte> b, string v) { var u = System.Text.Encoding.UTF8.GetBytes(v ?? string.Empty); W32(b, (uint)u.Length); b.AddRange(u); }
+        private static void WU8(System.Collections.Generic.List<byte> b, byte v) => b.Add(v);
+        private static void WU64(System.Collections.Generic.List<byte> b, ulong v) { for (int __i = 0; __i < 8; __i++) b.Add((byte)(v >> (8 * __i))); }
 
         public byte[] ToBuffer()
         {
