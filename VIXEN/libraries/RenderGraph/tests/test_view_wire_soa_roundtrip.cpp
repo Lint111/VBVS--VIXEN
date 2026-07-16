@@ -194,3 +194,33 @@ TEST(ViewWireSoaRoundtrip, RowVectorColumnReadBackCorrectly) {
     EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.x, -1.0f);
     EXPECT_FLOAT_EQ(rows[1].cells[Elem(pdesc, "position")].vec.z, 4.5f);
 }
+
+namespace {
+
+// SubjectRef milestone (Task 10): the SoA top-level-field decode is identical to AoS -- 1 kind
+// byte + 8 little-endian instance bytes, same as the AoS test's SubjectWire.
+constexpr ViewFieldDesc kSubjectFields[] = { {"subject", ViewKind::SubjectRef, {}} };
+constexpr ViewBlob kSubjectBlob = {"inspect", kSubjectFields, 0x4444u};
+
+std::vector<std::byte> SubjectSoaWire(uint32_t version, uint8_t kind, uint64_t instance) {
+    WB w;
+    w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
+    w.u32(version);
+    w.u32(1);           // top-field count: subject
+    w.u8(kind);
+    for (int i = 0; i < 8; ++i) w.u8(static_cast<uint8_t>((instance >> (8*i)) & 0xFF));
+    return w.b;
+}
+
+}  // namespace
+
+TEST(ViewWireSoaRoundtrip, SubjectRefFieldReadsBackKindAndInstance) {
+    ViewStore store(kSubjectBlob, kSubjectBlob.version);
+    auto wire = SubjectSoaWire(kSubjectBlob.version, 10, 42ULL);
+
+    ASSERT_TRUE(ViewWireReaderSoa::Apply(wire, store));
+
+    auto* subj = static_cast<SubjectRef*>(store.ScalarSlotPtr(Field(kSubjectBlob, "subject")));
+    EXPECT_EQ(subj->kind, 10);
+    EXPECT_EQ(subj->instance, 42ULL);
+}
