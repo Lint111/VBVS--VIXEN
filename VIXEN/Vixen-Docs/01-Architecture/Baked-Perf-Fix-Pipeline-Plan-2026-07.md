@@ -157,6 +157,29 @@ mirror tests green; no visual regression vs pre-milestone screenshot.
 **Gate:** lighting-pass GPU ms down; shadowed image matches pre-milestone reference
 (soft-compare screenshot); 8 bodies.
 
+## Milestone M4b — Wake the dormant Sparse-Mip path for secondary rays (M)
+
+Rationale (user-directed 2026-07-16): the Sparse-Mip LOD infra (mip pools via
+`ConcatenateSdfWithMips`/`BakeMipPool`, marching via `MipFallback.glsl`) was built for
+exactly this and is dormant on default paths (audit pattern R5). Post-M1 attribution:
+probe_update 140.6 + spatial_reuse 74.1 ms = ⅔ of the frame is secondary rays that
+don't need brick-resolution distances. Sequenced AFTER the baked-lighting-gap diagnosis
+so mip A/Bs aren't confounded by a pre-existing shading defect.
+
+- [ ] Task 4b.1 — Dormancy audit: confirm mip pools are baked+uploaded on the Cornell
+  baked path, `MipFallback.glsl` still compiles against current bindings, and M1's
+  `brickLookupBase` stamping covers the mip lookup tables (`ConcatenateSdfWithMips` was
+  stamped in M1 — verify the mip-march read side).
+- [ ] Task 4b.2 — Per-ray-type LOD policy: probe rays (`ProbeUpdate.comp`) and shadow
+  rays (M4's any-hit variant) march coarse mip level(s) via the MipFallback path;
+  primary rays unchanged at full res.
+- [ ] Task 4b.3 — A/B with per-pass timers: probe_update + spatial_reuse deltas;
+  correctness: primary-ray instIdx map unchanged; image soft-compare vs full-res
+  reference — watch for light leaks / over-darkening in the closed box.
+
+**Gate:** measurable probe/shadow ms reduction; no visible leak/darkening artifacts vs
+reference; 8 bodies; tests green.
+
 ## Milestone M5 — Trace bounds + culling revival (M) — toward the 52-FPS ceiling
 
 - [ ] Task 5.1 — Record allocated-brick min/max AABB in `SerializeSdf`'s existing loop →
@@ -218,7 +241,8 @@ mirror tests green; no visual regression vs pre-milestone screenshot.
 | M1 | brickLookupBase + *subdiv + band | 1.1–1.4 | S–M | ~4 FPS, 8 bodies |
 | M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
-| M4 | Shadow/probe economy | 4.1–4.4 | S–M | lighting passes cut |
+| M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
+| M4b | Sparse-Mip for secondary rays | 4b.1–4b.3 | M | probe/shadow coarse-LOD |
 | M5 | Trace bounds + culling | 5.1–5.4 | M | toward ~40–52 FPS |
 | M6 | Sync/overlap | 6.1–6.4 | M | wall≈GPU span |
 | M7 | Boot parallel bake (Phase 2) | 7.1–7.3 | M | boot < 60 s |
