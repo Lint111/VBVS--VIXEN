@@ -993,6 +993,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
+               // Baked-perf-pipeline M2b (Task 2b.1): splicedSource here is ALREADY the final
+               // effective source (post-recipe-splice, post-VIXEN_GPU_TRACE_HOOKS #define
+               // injection above) -- Build() hashes exactly this text (plus stage/entry/
+               // options) for the cache key, so either input changing busts the cache with no
+               // extra plumbing.
+               .EnableCaching(&shaderCacheManager_)
                .AddStage(ShaderManagement::ShaderStage::Compute, splicedSource, "main");
 
         // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
@@ -1061,6 +1067,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
+               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
+               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
+               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
+               // stage/entry/options) for the cache key, so toggling that env var naturally
+               // produces a distinct cache entry.
+               .EnableCaching(&shaderCacheManager_)
                .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
@@ -1097,6 +1109,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
+               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
+               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
+               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
+               // stage/entry/options) for the cache key, so toggling that env var naturally
+               // produces a distinct cache entry.
+               .EnableCaching(&shaderCacheManager_)
                .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
@@ -1133,6 +1151,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
+               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
+               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
+               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
+               // stage/entry/options) for the cache key, so toggling that env var naturally
+               // produces a distinct cache entry.
+               .EnableCaching(&shaderCacheManager_)
                .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });

@@ -10,6 +10,7 @@
 #include <cstring>     // std::memcpy for M5's shadeM5IndirectLumaBits float reinterpretation
 #include <unordered_map>  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES groupId->name lookup
 #include "Core/FrameSyncSchedule.h"  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES
+#include "ShaderLogger.h"  // Baked-perf-pipeline M2b: ShaderLogger::GetTelemetry() cache hit/miss counters
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
@@ -99,6 +100,23 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 #ifndef USE_COMPRESSED_SHADER
 #define USE_COMPRESSED_SHADER 1  // Default: compressed baseline
 #endif
+
+// Baked-perf-pipeline M2b (Task 2b.1): shaderCacheManager_'s config. Default cache dir is a
+// relative "cache/shaders" (gitignored via "cache/" at repo root -- same convention as the
+// app's other relative shader search paths like "shaders/"); VIXEN_SHADER_CACHE_DIR overrides
+// it, VIXEN_SHADER_CACHE_DISABLE=1 disables caching outright (e.g. for a clean-recompile A/B)
+// without deleting whatever is already on disk.
+ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig() {
+    ShaderManagement::ShaderCacheConfig config;
+    config.cacheDirectory = "cache/shaders";
+    if (const char* dirEnv = std::getenv("VIXEN_SHADER_CACHE_DIR")) {
+        config.cacheDirectory = dirEnv;
+    }
+    if (const char* disableEnv = std::getenv("VIXEN_SHADER_CACHE_DISABLE")) {
+        config.enabled = (std::atoi(disableEnv) == 0);
+    }
+    return config;
+}
 
 VulkanGraphApplication::VulkanGraphApplication()
     : VulkanApplicationBase(),
@@ -2288,6 +2306,22 @@ void VulkanGraphApplication::CompileRenderGraph() {
     // Callbacks are registered during RegisterAll() and executed automatically as nodes compile
     renderGraph->Compile();
     graphCompiled = true;
+
+    // Baked-perf-pipeline M2b (Task 2b.2): log the process-wide shader-cache telemetry right
+    // after Compile() -- every ShaderLibraryNode::CompileImpl (the 4 live builders wired to
+    // shaderCacheManager_ in BuildRenderGraph.cpp) funnels into this ONE ShaderLogger::
+    // GetTelemetry() singleton's cacheHits/cacheMisses counters via ShaderBundleBuilder::Build().
+    // Info level (not the cache-hit path's own Debug-level log line) so this is visible in a
+    // default run without raising the whole app's log verbosity -- the evidence line the
+    // cold-vs-warm-boot and poisoning-test benches grep for.
+    {
+        auto& shaderTelemetry = ShaderManagement::ShaderLogger::GetTelemetry();
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[CompileRenderGraph] Shader cache telemetry: hits=" +
+                              std::to_string(shaderTelemetry.cacheHits.load()) + " misses=" +
+                              std::to_string(shaderTelemetry.cacheMisses.load()));
+        }
+    }
 
     // Validate final graph
     if (mainLogger && mainLogger->IsEnabled()) {
