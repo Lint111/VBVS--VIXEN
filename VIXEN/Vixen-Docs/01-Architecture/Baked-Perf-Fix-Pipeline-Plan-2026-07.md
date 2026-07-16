@@ -27,8 +27,13 @@ a /clear loses nothing).
 
 - **Isolation:** ONE worktree for the whole pipeline: `.claude/worktrees/baked-perf-pipeline`,
   branch `fix/baked-perf-pipeline` off main. Single consolidated branch (per the
-  per-increment-worktrees lesson); merge to main only at pipeline Finish. Pre-bless the
-  worktree-isolated tier at setup so workers run unattended.
+  per-increment-worktrees lesson). **Merge policy (user-approved 2026-07-16): validated
+  milestone boundaries merge to main incrementally** — first merge `0bcbc146` (through
+  M2c @ `1538bdba`), integration-verified on main by full build + warm bench (297.9 ms,
+  8 bodies) because main had concurrently received recipe-bucketing Inc2 (`7a27357f`).
+  KI-number collision with the concurrent session resolved: their uncommitted entry
+  renumbered KI-035→KI-037 (`bfb3f825`). Pre-bless the worktree-isolated tier at setup
+  so workers run unattended.
 - **Build/test Windows-native** per repo build rules + `vixen-build-policy` (machine-wide
   build lock; ONE build at a time; drive via `.bat` + `cmd.exe /c`). Workers watch long
   builds with a foreground ~15–30 s poll loop — NEVER blind-wait, NEVER switch to
