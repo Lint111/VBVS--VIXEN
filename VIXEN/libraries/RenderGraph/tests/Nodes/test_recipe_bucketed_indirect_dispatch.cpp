@@ -130,19 +130,32 @@ struct RecipeBoundSphereCpu {
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
 // Byte-identical to the specialized shader's Push block (SpecializedRecipeShaderGlsl.h).
+// Inc3 M1: shrunk to camera/screen fields plus a single recipeId selector --
+// memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation moved to the shared BucketMetaBuffer
+// SSBO (see BucketMetaCpu below), indexed by recipeId.
 struct SpecializedPush {
     glm::vec3 cameraPos; float _p0;
     glm::vec3 cameraDir; float fov;
     glm::vec3 cameraUp;  float aspect;
     glm::vec3 cameraRight; float _p1;
-    uint32_t  memberCount;
     uint32_t  screenWidth;
     uint32_t  screenHeight;
-    uint32_t  rectMinX;
-    uint32_t  rectMinY;
-    float     boundRadius;
-    float     stepRelaxation;
+    uint32_t  maxMembersPerBucket;
+    uint32_t  recipeId;
 };
+
+// Byte-identical to the specialized shader's BucketMeta struct (SpecializedRecipeShaderGlsl.h).
+// One shared SSBO, one entry per recipeId -- Inc3 M1's replacement for the old per-bucket
+// push-constant scalar fields.
+struct BucketMetaCpu {
+    uint32_t memberCount;
+    uint32_t rectMinX;
+    uint32_t rectMinY;
+    float    boundRadius;
+    float    stepRelaxation;
+    uint32_t _pad[3];
+};
+static_assert(sizeof(BucketMetaCpu) == 32, "BucketMetaCpu std430 mirror size");
 
 // Byte-identical to HitRecord.glsl's std430 layout (64 B/element — see that file's own layout
 // comment). A plain C++ float[3] has only 4-byte alignment (unlike GLSL's vec3, which is 16-byte
@@ -677,21 +690,33 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     // ======================================================================
     // STEP 3: dispatch the specialized shader via vkCmdDispatchIndirect against the real
     // indirect command produced in Step 1.
+    //
+    // Inc3 M1: `idxBuf` (bucketIndices[], STEP 1's own shared row-major output) is bound
+    // DIRECTLY here instead of being read back and re-uploaded into a separate specMembersBuf --
+    // the buffer this dispatch needs already exists, on the GPU, from STEP 1. A new
+    // BucketMetaBuffer (bucketMetaBuf, one entry, populated at row kHotRecipeId) replaces the old
+    // per-bucket push-constant scalar fields (memberCount/rectMinX/rectMinY/boundRadius/
+    // stepRelaxation).
     // ======================================================================
-    VkBuffer specInstBuf, specMembersBuf, hitRecordBuf;
-    VkDeviceMemory specInstMem, specMembersMem, hitRecordMem;
+    VkBuffer specInstBuf, hitRecordBuf;
+    VkDeviceMemory specInstMem, hitRecordMem;
     CreateHostBuffer(instSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, specInstBuf, specInstMem, false);
     UploadBuffer(specInstMem, instances.data(), instSize);
 
-    // This bucket's compacted member list, sliced out of bucketIndices[] at row kHotRecipeId.
-    std::vector<uint32_t> members(bucketIndices.begin() + kHotRecipeId * kMaxMembersPerBucket,
-                                   bucketIndices.begin() + kHotRecipeId * kMaxMembersPerBucket + instanceCount);
-    const VkDeviceSize membersSize = instanceCount * sizeof(uint32_t);
-    CreateHostBuffer(membersSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, specMembersBuf, specMembersMem, false);
-    UploadBuffer(specMembersMem, members.data(), membersSize);
-
     const VkDeviceSize hitRecordSize = static_cast<VkDeviceSize>(kScreenWidth) * kScreenHeight * sizeof(HitRecordCpu);
     CreateHostBuffer(hitRecordSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hitRecordBuf, hitRecordMem, true);
+
+    std::vector<BucketMetaCpu> bucketMetaCpuVec(kMaxBuckets, BucketMetaCpu{});
+    {
+        BucketMetaCpu meta{};
+        meta.memberCount = instanceCount; meta.rectMinX = rectMinX; meta.rectMinY = rectMinY;
+        meta.boundRadius = entry.boundRadius; meta.stepRelaxation = entry.stepRelaxation;
+        bucketMetaCpuVec[kHotRecipeId] = meta;
+    }
+    const VkDeviceSize bucketMetaSize = bucketMetaCpuVec.size() * sizeof(BucketMetaCpu);
+    VkBuffer bucketMetaBuf; VkDeviceMemory bucketMetaMem;
+    CreateHostBuffer(bucketMetaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, bucketMetaBuf, bucketMetaMem, false);
+    UploadBuffer(bucketMetaMem, bucketMetaCpuVec.data(), bucketMetaSize);
 
     VkShaderModuleCreateInfo ssmci{};
     ssmci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -699,7 +724,7 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     VkShaderModule specModule = VK_NULL_HANDLE;
     ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &ssmci, nullptr, &specModule), VK_SUCCESS);
 
-    const std::array<VkDescriptorSetLayoutBinding, 3> specBindings = {bind(0), bind(1), bind(2)};
+    const std::array<VkDescriptorSetLayoutBinding, 4> specBindings = {bind(0), bind(1), bind(2), bind(3)};
     VkDescriptorSetLayoutCreateInfo sdslci{};
     sdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     sdslci.bindingCount = static_cast<uint32_t>(specBindings.size()); sdslci.pBindings = specBindings.data();
@@ -724,7 +749,7 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     VkPipeline specPipeline = VK_NULL_HANDLE;
     ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &scpci, nullptr, &specPipeline), VK_SUCCESS);
 
-    VkDescriptorPoolSize sPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3};
+    VkDescriptorPoolSize sPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
     VkDescriptorPoolCreateInfo sdpci{};
     sdpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     sdpci.maxSets = 1; sdpci.poolSizeCount = 1; sdpci.pPoolSizes = &sPoolSize;
@@ -738,8 +763,9 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &sdsai, &specSet), VK_SUCCESS);
 
     VkDescriptorBufferInfo specInstInfo{specInstBuf, 0, VK_WHOLE_SIZE};
-    VkDescriptorBufferInfo specMembersInfo{specMembersBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo specMembersInfo{idxBuf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo hitRecordInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo bucketMetaInfo{bucketMetaBuf, 0, VK_WHOLE_SIZE};
     auto wSpecBuf = [&](uint32_t b, VkDescriptorBufferInfo* info) {
         VkWriteDescriptorSet w{};
         w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -747,8 +773,9 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
         w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
         return w;
     };
-    const std::array<VkWriteDescriptorSet, 3> specWrites = {
-        wSpecBuf(0, &specInstInfo), wSpecBuf(1, &specMembersInfo), wSpecBuf(2, &hitRecordInfo),
+    const std::array<VkWriteDescriptorSet, 4> specWrites = {
+        wSpecBuf(0, &specInstInfo), wSpecBuf(1, &specMembersInfo),
+        wSpecBuf(2, &hitRecordInfo), wSpecBuf(3, &bucketMetaInfo),
     };
     vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(specWrites.size()), specWrites.data(), 0, nullptr);
 
@@ -761,10 +788,8 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     specPc.cameraPos = eye; specPc.cameraDir = camDir; specPc.fov = fovDeg;
     specPc.cameraUp = camUp; specPc.aspect = float(kScreenWidth) / float(kScreenHeight);
     specPc.cameraRight = camRight;
-    specPc.memberCount = instanceCount;
     specPc.screenWidth = kScreenWidth; specPc.screenHeight = kScreenHeight;
-    specPc.rectMinX = rectMinX; specPc.rectMinY = rectMinY;
-    specPc.boundRadius = entry.boundRadius; specPc.stepRelaxation = entry.stepRelaxation;
+    specPc.maxMembersPerBucket = kMaxMembersPerBucket; specPc.recipeId = kHotRecipeId;
 
     VkCommandBuffer cmd2 = VK_NULL_HANDLE;
     ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &cbai, &cmd2), VK_SUCCESS);
@@ -859,7 +884,7 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     vkDestroyDescriptorSetLayout(logicalDevice_, specDsl, nullptr);
     vkDestroyShaderModule(logicalDevice_, specModule, nullptr);
     vkDestroyBuffer(logicalDevice_, specInstBuf, nullptr); vkFreeMemory(logicalDevice_, specInstMem, nullptr);
-    vkDestroyBuffer(logicalDevice_, specMembersBuf, nullptr); vkFreeMemory(logicalDevice_, specMembersMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, bucketMetaBuf, nullptr); vkFreeMemory(logicalDevice_, bucketMetaMem, nullptr);
     vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
 
     vkDestroyDescriptorPool(logicalDevice_, bucketingPool, nullptr);

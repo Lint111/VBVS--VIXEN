@@ -56,6 +56,9 @@ trust these rects as a hard superset guarantee. · **Status:** OPEN, out of scop
 [[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2 (an analysis milestone, not a fix
 milestone for M1's shipped code) — the natural owner is whichever future increment revisits
 barrier-coalescing or otherwise builds a correctness-relevant decision on these coverage rects.
+
+---
+
 ## KI-036 — `test_shadow_correctness.cpp` dispatches only `BodyInstanceRayMarch.comp`, which no longer contains the shadow-shading code it exists to test
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c's SPV-consumer test-health

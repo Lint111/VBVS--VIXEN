@@ -275,3 +275,88 @@ the controller/user's scope decision — M1/M2 are NOT started or begun as part 
 the main sweep, `--gtest_filter=*Decoupling*` for the axis-isolation cases, or no filter for all 6
 cases. Every run prints its exact seed and the full per-recipe `m_i[]`/`k_i[]` arrays before
 executing, so any row above can be regenerated exactly.
+
+### Bucketed-dispatch re-measurement (Inc3 M3, post-M1 shared-descriptor-set change, 2026-07-16)
+
+**Full re-run of Inc2 M4's exact comparison** (`test_recipe_bucketing_perf.cpp`, same 3 GTest
+cases, same N=3/10/100, same non-overlapping-grid/100%-hot-promotion scene shape, same 30
+steady-state iterations/1 excluded warm-up), AFTER Inc3 M1's shared-SSBO + push-constant-shrink
+change (`vkCmdBindDescriptorSets` N→1; M2 made no code change, barrier count N−1 unchanged).
+**Physical device confirmed:** `NVIDIA GeForce RTX 3060 Laptop GPU` (discrete), same
+`PickPhysicalDevice()` discrete-first logic as M4, printed per test case.
+
+**Run 1 (primary) and Run 2 (repeat, same binary, back-to-back — reproducibility check):**
+
+| N | bucketed ms/iter (run1 / run2) | cold-stand-in ms/iter (run1 / run2) | speedup run1 | speedup run2 | **M4 baseline (2026-07-16, pre-Inc3)** |
+|---|---|---|---|---|---|
+| 3 | 1.002 / 1.666 | 0.333 / 0.498 | **0.332x** | 0.299x | 0.31x |
+| 10 | 1.615 / 2.282 | 0.358 / 0.553 | **0.221x** | 0.242x | 0.25x |
+| 100 | 12.840 / 13.475 | 0.518 / 0.566 | **0.040x** | 0.042x | 0.05x |
+
+(Run-to-run absolute ms/iter varies with machine load — same caveat M4 itself documented — but the
+speedup RATIO is stable within ~±0.02x across both runs at every N, confirming this isn't a fluke
+of one capture.)
+
+**HONEST FINDING: no meaningful improvement.** Bucketed dispatch is STILL slower than the
+cold-path stand-in at every N, by essentially the SAME margin M4 originally measured — N=3
+0.31x→0.30-0.33x (flat), N=10 0.25x→0.22-0.24x (flat to marginally worse, within noise), N=100
+0.05x→0.04-0.05x (flat, within noise). **M1's real, measured API-call reduction did not move the
+steady-state performance ratio in any detectable direction.**
+
+**Arithmetic sanity-check (per the plan's explicit requirement):** total Vulkan API calls per the
+grounding research are `5N−1` (4N per-bucket calls + N−1 barriers); M1 removed exactly the N−1
+`vkCmdBindDescriptorSets` calls (bind→1, not eliminated, so N−1 saved, not N).
+
+| N | total calls (5N−1) | calls removed by M1 (N−1) | fraction of TOTAL calls removed |
+|---|---|---|---|
+| 3 | 14 | 2 | 14.3% |
+| 10 | 49 | 9 | 18.4% |
+| 100 | 499 | 99 | 19.8% |
+
+M1 removed ~14-20% of the total per-bucket API call count (growing toward ~20% as N→∞, since
+descriptor binds are one of the four per-bucket call types), yet the measured speedup ratio is
+flat within run-to-run noise at every N. **This does NOT track — a ~15-20% reduction in total API
+call count did not produce anything close to a proportional (or even clearly non-zero) reduction
+in per-bucket overhead.** The most consistent explanation: `vkCmdBindDescriptorSets` was never a
+disproportionately expensive call relative to the other three per-bucket costs
+(`vkCmdBindPipeline`, `vkCmdPushConstants`, `vkCmdDispatchIndirect`) or the barrier — on this
+discrete NVIDIA GPU's driver, a descriptor-set bind against an already-resident, unchanging
+descriptor set is apparently cheap enough that removing N−1 of them is lost in the noise floor
+next to whatever IS dominating (most likely `vkCmdDispatchIndirect`'s own per-dispatch fixed cost,
+or the per-bucket pipeline switch `vkCmdBindPipeline` — both out of this increment's scope, the
+latter confirmed architecturally unavoidable). This is consistent with, not contradicted by, M1's
+own measured correctness/call-count result — the call-count reduction was real and verified, it
+just wasn't the fraction of the actual bottleneck this increment's framing assumed it might be.
+
+**No-regression sweep:** full RenderGraph/SVO/CashSystem test corpus (131 GTest binaries) run
+Windows-native on the same discrete GPU, validation layers on. 1769 individual test cases passed,
+0 assertion failures. 16 binaries reported a non-zero process exit or script-level timeout,
+cross-checked individually against this doc's own KI entries and this branch's `git diff main`
+(which touches only recipe-bucketing dispatch files, zero overlap with any of the 16): 2 are
+KI-034's named stale-push-constant-mirror files (`test_appflow_editor_toggle_render`,
+`test_recipe_pool_render`); 3 are KI-032's named empty-colorbuffer-readback files
+(`test_baked_vs_virtual_parity`, `test_mip_fallback_render`, plus `test_recipe_pool_render` shared
+with the above); 2 more are KI-034's named files bundled into other cmake targets
+(`test_tier_crossing_lod_residency` inside `test_rendergraph_criticalnodes_gpurender2`,
+`test_shadow_correctness` inside `..._gpurender2b`); the remainder
+(`test_rendergraph_criticalnodes_infra2`/`windowedcapture`, `test_rendergraph_nodes`,
+`test_ui_hud_smoke`, `test_cache_codec`, `test_rendergraph_criticalnodes_gpurender1`, plus 4 slow
+SDF-bake binaries already documented at Known-Issues.md:498 as multi-minute compute-heavy loops
+exceeding a short script timeout) are unrelated environment/infra issues (a Windows temp-file
+handle race, a missing EOS-overlay JSON, HUD/RML rendering, or genuinely long-running GPU batch
+loads) with zero code overlap with this branch's diff — none are new regressions introduced by
+Inc3 M1/M2/M3. **Zero new regressions.** The 4 tests this increment's OWN mechanism directly
+exercises — `test_recipe_instance_bucketing` (1/1), `test_recipe_bucketed_indirect_dispatch`
+(4/4), `test_recipe_multi_bucket_compositing` (2/2), `test_recipe_bucketing_perf` (3/3) — all pass
+cleanly, matching M1's own 16/16 baseline exactly.
+
+**Bottom line for Increment 3 as a whole:** M0 found tier-0's own N=100 knee is m_i/k_i-shaped,
+not switch-case-count-shaped (a separate, already-recorded finding, not overturned here). M1
+delivered a real, measured, verified API-call reduction (N→1 descriptor binds) with zero
+correctness regression. M2 found a theoretically-sound barrier-coalescing path blocked by a real,
+separately-filed precondition gap (KI-037). M3 (this section) closes the loop: the one change that
+did land (M1) does not move the bucketed-dispatch-vs-cold-path ratio in any measurable way at any
+tested N — the per-bucket fixed-cost bottleneck this increment targeted is dominated by something
+else (most plausibly `vkCmdDispatchIndirect` and/or `vkCmdBindPipeline`, both either unaddressed
+or confirmed out-of-scope-and-architecturally-unavoidable), not by descriptor-set binds. Bucketed
+dispatch remains substantially slower than a single fixed dispatch at every tested N.
