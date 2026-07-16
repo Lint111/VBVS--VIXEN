@@ -259,15 +259,27 @@ virtual capture (5.6).
 
 ## Phase 2 (dispatch after Phase-1 review with the user)
 
-## Milestone M6b — Mixed-provider capability bench (S–M) — the hybrid-frame gate
+## Milestone M6b — Hybrid-frame bench: mixed providers + delta modification (S–M)
 
-Rationale: the end-state frame composes procedural + stored bodies together; nothing
-currently benches or verifies that composition. Add a third bench variant: the Cornell
-scene with MIXED providers (e.g. walls stored/baked + sphere/box/light procedural, and
-the inverse split), `temp_bench/run_mixed.bat`. Gates: correct instIdx map for all 8
-bodies in both splits; per-pass timers within the sum-of-parts envelope; no
-provider-boundary artifacts (lighting/shadow rays crossing provider kinds). This becomes
-a STANDING gate for every later milestone (M7/M8 and the delta program inherit it).
+Rationale: the end-state frame composes procedural baseline + baked voxel deltas;
+nothing currently benches or verifies that composition. User-defined acceptance test
+(2026-07-16): virtual scene + a visible modification (hole/feature) on one element
+delivered via the stored/delta path.
+
+- [ ] Task 6b.1 — v1 "hole in the wall" (today's machinery): virtual Cornell with ONE
+  body flipped to PROVIDER_STORED whose bake is the MODIFIED shape (e.g. right wall
+  recipe minus a cylinder — `BakeRecipeInstructionsToSdfWorld` bakes arbitrary recipe
+  instructions, zero new engine work). New `temp_bench/run_hybrid.bat`.
+- [ ] Task 6b.2 — Mixed-provider splits: walls stored + objects procedural, and the
+  inverse (`temp_bench/run_mixed.bat`).
+- [ ] Task 6b.3 — v2 (if voxel-authoring path is ready per the dormant-work inventory):
+  the same hole applied as a RUNTIME voxel edit to the resident stored body, no rebake.
+
+**Gates:** hole/feature visibly correct (light passes through it: shadows + GI respond);
+instIdx map correct for all 8 bodies in every variant; per-pass timers within the
+sum-of-parts envelope; no provider-boundary artifacts where lighting/shadow rays cross
+provider kinds. These variants become STANDING gates for M7/M8 and regression tests for
+the delta program (v3, same-body delta-over-procedural, lives there — out of scope here).
 
 ## Milestone M7 — Boot parallel bake + serialize bulk path (M)
 
