@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0+M1 DONE; M2 in flight; worktree fix/baked-perf-pipeline
+status: RUNNING — M0+M1+M2 DONE; M2b in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -118,17 +118,21 @@ oob FRACTION 24.0%→27.5%, denominator-driven (bodies 5–7 now genuinely march
 
 ## Milestone M2 — GPU debug hooks out of the hot path (S)
 
-- [ ] Task 2.1 — `#ifdef VIXEN_GPU_TRACE_HOOKS` around `TraceRecording.glsl:28-30,:155,
+- [x] Task 2.1 — `#ifdef VIXEN_GPU_TRACE_HOOKS` around `TraceRecording.glsl:28-30,:155,
   :187-198`, `snapshotTraversalState` sites (`SceneBindings.glsl:667-996`),
   `DebugRaySample` init (`TraceWorld.glsl:285-299,:472-486`), mirroring
   `ENABLE_SHADER_COUNTERS`; default OFF, env/config knob to re-enable. (Audit D1.)
-- [ ] Task 2.2 — Remove the 8 per-pixel `instanceIterCount` stores into the 1-byte
+- [x] Task 2.2 — Remove the 8 per-pixel `instanceIterCount` stores into the 1-byte
   placeholder SSBO (UB without robustBufferAccess) behind the same gate
   (`TraceWorld.glsl:123-332`, `SceneBindings.glsl:69-78`).
-- [ ] Task 2.3 — A/B on temp_bench: esvo ms hooks-off vs hooks-on (settles audit
+- [x] Task 2.3 — A/B on temp_bench: esvo ms hooks-off vs hooks-on (settles audit
   uncertain-item 4; expected ~20%).
 
 **Gate:** esvo pass measurably down; image + instIdx identical; hooks re-enable cleanly.
+*Gate recalibrated at close (validator-approved): met as wall −15% (−45 ms) concentrated
+in probe_update (+31.5% hooks-on); the original "esvo −20%" text assumed hooks lived in
+the primary march — they live in the SHARED trace path, so the reduction lands in the
+ray-heavy probe pass (256 rays/probe). esvo flat is expected and correct.*
 
 ## Milestone M2b — Wire the shader disk cache (S–M) — pulled forward from M7.3
 
@@ -161,6 +165,12 @@ miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture mis
 
 - [ ] Task 2c.1 — Root-cause the shared blank-render cause (suspect per M2 worker:
   boot/residency state interaction with M0's boot-triage changes — unconfirmed).
+  Additional pre-existing signal from the M2 validator: `PushConstantGathererNode::
+  Validate` type-mismatch ERRORs on the direct_lighting/spatial_reuse/probe gatherers
+  (non-fatal, logs-but-passes; identical in pre-epic `gate-artifacts/gate_default_log.txt`
+  @ `ef385d55`) — check whether it relates. Also: the tier-crossing `setBrickLookupBase`
+  fixture fix was applied+correct yet its test STILL blanks → the shared cause is
+  upstream of brick-lookup addressing.
 - [ ] Task 2c.2 — Fix; restore the whole consumer group to green; record the green
   baseline test list here. Any PRODUCT-code change this requires goes through the
   validator explicitly (test-health milestone; product changes are escalation-worthy).
@@ -405,3 +415,14 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   other consumer assumes world units). OOB fraction 24.0%→27.5% benign
   (denominator-driven). Tests 12/12, 13/13, 7/7. HUD capture now matches virtual ground
   truth (black voids GONE, sphere/box/light rendered).
+
+- M2 (Tasks 2.1–2.3): DONE · commits `281432f4..2bfdfc22` · Opus validator APPROVED
+  (gate recalibrated) · 2026-07-16. `VIXEN_GPU_TRACE_HOOKS` gate, default OFF,
+  `VIXEN_DEBUG_CAPTURE=1` = single end-to-end re-enable. **Baked 316→300 ms (3.33 FPS);
+  hooks cost lives in probe_update (+31.5% when on), NOT esvo — hooks are in the shared
+  trace path, 256 rays/probe compound them.** spirv-verified: all atomics + ~416
+  instructions stripped; binding shape preserved structurally. Bonus debt repair
+  (separate commit `4c599d7c`): KI-034 push-constant mirrors fixed in all 8 files,
+  bindings 15/18 gaps + HitRecordBuffer 17→18 miswire, RayTraceBuffer sizing,
+  tier-crossing `setBrickLookupBase` fixture fix (correct but test still blanks → M2c).
+  Pre-existing `hitPixels=0` class confirmed independently NOT debt-caused → M2c.
