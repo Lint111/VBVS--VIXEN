@@ -154,26 +154,36 @@ This resolves two of the user's sub-ideas:
    **✅ SHIPPED 2026-07-15** ([[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]], merged main `bf8dfbf5`).
 2. **Async tier-1 promotion on usage** — hot-mark → background emit+compile → swap when ready →
    universal fallback. Requires the async-compile-and-swap machinery (frame never blocks).
-   **⚠️ SCOPING REVEALED A HARD BLOCKER (2026-07-15), design doc in progress, NOT YET a milestone
-   plan.** Today's renderer is ONE full-screen dispatch where every pixel-thread marches every
-   instance via an in-shader `switch(recipeId)` — there is no per-draw/per-dispatch seam for a
-   second pipeline to intercept. Two decompositions were considered: (A) per-recipe full-screen
-   re-dispatch + cross-pass compositing — REJECTED, at the real target scale (1000+ live recipes)
-   this is N full-framebuffer passes per frame, inverting the whole point of tier-1 promotion; (B)
-   **GPU instance bucketing** (partition instances by recipe pre-pass, indirect-dispatch each
-   bucket sized to its actual screen coverage) — SELECTED as the only approach that scales toward
-   1000+. See [[Recipe-GPU-Instance-Bucketing-Design-2026-07]] for the full design. **All 4 design
-   questions RESOLVED 2026-07-15**: view-proj matrix gap closed (mirror `CameraNode`'s
-   already-computed `projection*view`, expose as a new `CURRENT_VIEW_PROJ` output alongside the
-   existing `PREV_VIEW_PROJ`); cross-bucket depth/hit compositing resolved WITHOUT new atomics
-   (sequential `MultiDispatchNode`-style dispatches already get correct write-after-write barrier
-   serialization by default, so a plain read-compare-write against `HitRecord` is correct);
-   bucketing granularity resolved to exact-`recipeId` (not content-hash family — avoids coupling to
-   Increment 4's not-yet-designed normalization work); hotness-gating shape recommended (bucket
-   uniformly, gate pipeline assignment by hotness after bucketing). Only empirical validation (a
-   measurement spike) remains before a milestone-mapped implementation plan can be written. The
-   async-compile-and-swap half of this increment's original sketch still layers ON TOP of working
-   bucketed dispatch, not before it.
+   **Increment 2 (GPU instance bucketing, the routing mechanism half of this sketch item) ✅
+   SHIPPED 2026-07-16** ([[Recipe-GPU-Instance-Bucketing-Inc2-Plan-2026-07]], M1-M4 all DONE,
+   Opus-validated APPROVED on M1-M3, standalone-harness perf measurement on M4). See
+   [[Recipe-GPU-Instance-Bucketing-Design-2026-07]] for the full design — all 4 design questions
+   (view-proj gap, cross-bucket compositing, bucketing granularity, hotness-gating shape) were
+   RESOLVED 2026-07-15 and implemented as designed: `CameraNode::CURRENT_VIEW_PROJ`; a GPU
+   compute pre-pass buckets `bodyInstances[]` by exact `recipeId` with per-bucket screen-space
+   coverage; hot buckets (≥4 instances, placeholder threshold) get specialized single-recipe
+   pipelines dispatched via `vkCmdDispatchIndirect`; sequential `MultiDispatchNode` dispatch +
+   plain read-compare-write `HitRecord` compositing is proven correct and order-independent under
+   real screen-space overlap (M3, 0/65536 px differ between dispatch orderings).
+   **HONEST PERFORMANCE FINDING (Task 9, measured 2026-07-16, not cherry-picked):** at N=3/10/100
+   hot recipes, this increment's bucketed-dispatch mechanism is CONSISTENTLY SLOWER than a single
+   fixed dispatch covering the same load (0.31x, 0.25x, 0.05x — the gap widens with N), on the
+   confirmed discrete GPU (`NVIDIA GeForce RTX 3060 Laptop GPU`). Per-bucket fixed overhead
+   (N separate indirect dispatches + descriptor binds + `MultiDispatchNode` auto-barriers, each
+   against a small per-bucket rect) dominates and scales linearly with N; synchronous
+   specialized-pipeline compile (still on the critical path this increment, ~99-372 ms/recipe)
+   makes first-promotion latency worse still. Full numbers, methodology, and same-GPU-class
+   reasoning: [[Perf-Ledger]] "Bucketed-dispatch measurement (Inc2 M4, 2026-07-16)". **This does
+   NOT invalidate the epic's justification** (§8 below, the tier-0 SWITCH's own N=100 knee is
+   RE-CONFIRMED on the discrete GPU in the same M4 pass) — Increment 2 was explicitly scoped to
+   prove the ROUTING mechanism is correct, not to already be the optimized end state (plan doc
+   Risks: "Task 9's honesty requirement", anticipated in advance). **Sequencing implication for
+   Increment 3+:** async compile-and-swap alone will NOT close the measured gap (that gap is
+   steady-state, compile already excluded from the comparison) — per-bucket dispatch overhead
+   (barrier/bind cost per indirect dispatch) is the next thing to measure and address before
+   bucketed dispatch is competitive with the naive fixed-dispatch alternative, let alone the
+   tier-0 switch at low N. GPU-LRU eviction (Increment 3) and family normalization (Increment 4)
+   remain as originally scoped, layered on top of this now-proven-but-not-yet-fast mechanism.
 3. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
 4. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
    similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline.
@@ -189,6 +199,14 @@ structural recipes; full table in [[Perf-Ledger]] "Switch-scaling measurement"):
 | 10 | ~396 | clean (flat) |
 | 100 | ~51 | **~8× FPS collapse — runtime knee** |
 | 500 | hang | **driver `vkCreateComputePipelines` hangs ~14 min, ~28 GB RAM, no dump — hard ceiling** |
+
+**Re-confirmed on the discrete GPU (Inc2 M4, 2026-07-16):** the original table above predates the
+`DeviceNode` discrete-GPU-selection fix (main `0ee32428`, 2026-07-15) and its GPU class was never
+confirmed; re-captured on `NVIDIA GeForce RTX 3060 Laptop GPU` (discrete, confirmed via
+`vulkaninfo` + `DeviceNode::SelectPhysicalDevice()`'s deterministic logic): N=3 → 165.5 fps, N=10
+→ 171.6 fps (flat, as before), N=100 → 85.7 fps (~2x collapse vs N=10, same knee shape, milder in
+absolute terms than the original ~8x — see [[Perf-Ledger]] for the full re-capture). The knee is
+real on both GPU classes; only the severity differs.
 
 **Verdict: the universal switch degrades hard by N=100 and is UNUSABLE at N=500.** So:
 - **Tier-0 switch remains correct + sufficient for small N (≤~10–30).** Keep it; it's the instant

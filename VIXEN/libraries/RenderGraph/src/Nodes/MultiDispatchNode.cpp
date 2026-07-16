@@ -512,13 +512,23 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
                     );
                 }
 
-                // Dispatch
-                vkCmdDispatch(
-                    cmdBuffer,
-                    pass.workGroupCount.x,
-                    pass.workGroupCount.y,
-                    pass.workGroupCount.z
-                );
+                // Dispatch (Recipe GPU Instance Bucketing Inc2 M2 Task 4: indirect-buffer
+                // branch — strictly additive, the fixed-workgroup path below is
+                // byte-identical to pre-M2 behavior when indirectBuffer is unset)
+                if (pass.indirectBuffer.has_value()) {
+                    vkCmdDispatchIndirect(
+                        cmdBuffer,
+                        pass.indirectBuffer.value(),
+                        pass.indirectBufferOffset
+                    );
+                } else {
+                    vkCmdDispatch(
+                        cmdBuffer,
+                        pass.workGroupCount.x,
+                        pass.workGroupCount.y,
+                        pass.workGroupCount.z
+                    );
+                }
 
                 // Update overall statistics
                 ++stats_.dispatchCount;
@@ -608,13 +618,21 @@ void MultiDispatchNode::RecordDispatches(VkCommandBuffer cmdBuffer) {
                 );
             }
 
-            // Dispatch
-            vkCmdDispatch(
-                cmdBuffer,
-                pass.workGroupCount.x,
-                pass.workGroupCount.y,
-                pass.workGroupCount.z
-            );
+            // Dispatch (indirect-buffer branch, see grouped-dispatch path above for rationale)
+            if (pass.indirectBuffer.has_value()) {
+                vkCmdDispatchIndirect(
+                    cmdBuffer,
+                    pass.indirectBuffer.value(),
+                    pass.indirectBufferOffset
+                );
+            } else {
+                vkCmdDispatch(
+                    cmdBuffer,
+                    pass.workGroupCount.x,
+                    pass.workGroupCount.y,
+                    pass.workGroupCount.z
+                );
+            }
 
             // Update statistics
             ++stats_.dispatchCount;

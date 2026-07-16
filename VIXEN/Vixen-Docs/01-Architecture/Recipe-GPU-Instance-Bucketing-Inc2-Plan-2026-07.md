@@ -107,19 +107,43 @@ the granularity decision).
   bound spheres visibly overlap on screen, confirm nearest-hit wins); a minimal hotness gate
   (placeholder policy, not a real usage-history tracker) prevents promoting every single-instance
   recipe.
-  - [ ] Not started.
+  - [x] DONE — commit `9770c211`. Opus validator: **APPROVED**.
 - **M4 — Performance validation + no-regression sweep + doc closure** (Tasks 9-10) · **live-run
-  gate** · measured FPS/frame-time comparison (bucketed-dispatch path vs. tier-0-switch-only) at
-  increasing hot-recipe counts on real GPU, recorded in [[Perf-Ledger]] alongside the existing
-  switch-scaling table; full no-regression sweep; JIT direction doc's Increment 2 status flipped to
-  shipped (or, if the measurement shows the mechanism ISN'T actually a win yet, documented honestly
-  as a real, load-bearing finding — see Task 9's explicit instruction not to force a positive
-  result).
+  gate, DISCRETE GPU mandatory (see scoping note)** · measured FPS/frame-time comparison
+  (bucketed-dispatch path vs. tier-0-switch-only) at increasing hot-recipe counts on real GPU,
+  recorded in [[Perf-Ledger]] alongside the existing switch-scaling table; full no-regression sweep;
+  JIT direction doc's Increment 2 status flipped to shipped (or, if the measurement shows the
+  mechanism ISN'T actually a win yet, documented honestly as a real, load-bearing finding — see Task
+  9's explicit instruction not to force a positive result).
+  - [x] DONE — commits `06ecccdd`, `a6508d2e`. Opus validator: **APPROVED**. Full 4-milestone
+    increment ready for final review + merge.
 
 ### Progress Log
 
 (populated as milestones complete — one entry per milestone: commit hash, gate evidence, Opus
 validator verdict; follow the Recipe-Parameterization / Recipe-Pipeline-Cache plans' convention.)
+
+- Milestone 1 (Tasks 1-3): DONE · commit `1530b5a2` · Opus validator APPROVED · 2026-07-16.
+- Milestone 2 (Tasks 4-5): DONE · commits `b2d45afc`..`0a1ff8fe` (fix: reject-sphere center must use
+  registered `boundCenter`, not `worldPos`) · Opus validator APPROVED after one fix round · 2026-07-16.
+- Milestone 3 (Tasks 6-8): DONE · commit `9770c211` · Opus validator APPROVED · 2026-07-16. Task 8
+  overlap gate independently re-derived by the validator from bound-sphere geometry in Python
+  (1131 overlap px, A wins all, 2984 total hits) — exact match to the GPU result, not taken on
+  faith. Order-independence empirically proven (0/65536 px differ between dispatch orderings). Two
+  real bugs found+fixed in the test harness's own device/pipeline setup (wrong `VkPipelineLayout`
+  from `ComputePipelineCacher`'s fallback path; null `fpCmdPipelineBarrier2` from a hand-built
+  `VkDevice` bypassing `VulkanDevice::CreateDevice()`'s function-pointer resolution) — both scoped to
+  the test harness, not production code. **Scoped deviation, not a blocker**: M3 proves the
+  mechanism in a standalone GPU harness; bucketed dispatch is NOT wired into the live `VIXEN.exe`
+  render graph yet (the real tier-0 shader `BodyInstanceRayMarch.comp` has no mechanism to exclude
+  hot/bucketed instances and writes `HitRecord` unconditionally) — live-app integration is deferred
+  to a future increment, documented in the test file header + commit message. **Also newly noted**:
+  this milestone's test hand-selects its physical device (`PickPhysicalDevice()`) with no
+  discrete-vs-integrated preference — same bug class as the already-shipped `DeviceNode` fix (main
+  `0ee32428`) but never applied to this test's own device-selection code. Validator ran on the AMD
+  integrated GPU as a result; not a correctness blocker for M3 (mechanism/compositing proof is
+  GPU-vendor-agnostic), but flagged for M4 since M4 IS a performance measurement and needs to run on
+  the discrete NVIDIA GPU to be representative.
 
 ---
 
@@ -234,27 +258,61 @@ remaining design question," now built — do not skip or weaken this gate.
 
 ### M4 — Performance validation + no-regression sweep + doc closure
 
+**Scoping note (added post-M3, 2026-07-16):** M1-M3 deliberately proved the bucketing/dispatch/
+compositing mechanism in a standalone GTest harness (hand-built `VkInstance`/`VkDevice`, mirroring
+`test_hitrecord_readback.cpp`'s precedent), NOT wired into `VIXEN.exe`'s live render graph — see
+M3's Progress Log entry. Wiring live-app integration (`BuildRenderGraph.cpp`, replacing/augmenting
+the real tier-0 `BodyInstanceRayMarch.comp` dispatch) is out of proportion for this milestone and is
+deferred to a future increment; M4 stays consistent with M1-M3's own approach and extends the SAME
+standalone-harness pattern into a perf-measurement harness, instrumented the same way the existing
+switch-scaling table was captured (steady FPS, `cpu_frame_time_ms`, boot/steady bytes via the
+`PerfCsvWriter` convention — see [[Perf-Ledger]] "Switch-scaling measurement" table, M5, 2026-07-10).
+The existing tier-0-switch-only baseline (N=3/10/100/500, already captured in that table on real GPU)
+does NOT need to be re-captured — Task 9 only needs to capture THIS increment's bucketed-dispatch
+numbers at the same N values for a direct side-by-side.
+
+**Also carried forward from M3 (real, non-blocking finding — fix as part of M4, not deferred
+further):** M1-M3's test harnesses hand-select their Vulkan physical device
+(`PickPhysicalDevice()`/equivalent) with NO discrete-vs-integrated preference — same bug class as
+the already-shipped `DeviceNode::SelectPhysicalDevice()` fix (main `0ee32428`, prefers the first
+`VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU`) but never applied to this hand-rolled test pattern. M1-M3
+ran on whichever GPU enumerated first (confirmed AMD integrated on this machine) — harmless for
+correctness/mechanism proofs, but M4 is a PERFORMANCE measurement and must run on the discrete
+NVIDIA GPU to be representative and comparable against the existing switch-scaling table (which was
+captured on `AMD Radeon` per its own header — note this discrepancy explicitly when reporting M4's
+numbers: if the original switch-scaling baseline was ALSO captured on an integrated/different GPU
+than M4's bucketed-dispatch run, the comparison needs the SAME GPU for both sides, re-capturing the
+tier-0 baseline on this milestone's chosen GPU if the vendor/class differs from the original
+capture). **Task 9's harness setup must fix `PickPhysicalDevice()` (or add an explicit override) to
+force discrete-GPU selection before capturing any numbers**, and record which physical device
+(`vkGetPhysicalDeviceProperties.deviceName`) was actually used for every number reported.
+
 **Task 9 — Performance measurement.**
 Real GPU (Windows-native), validation layers on for correctness confirmation, then a SEPARATE
 release/perf-focused run for timing (matching the existing switch-scaling measurement's own
-methodology, see [[Perf-Ledger]] "Switch-scaling measurement" table format). Measure steady-state
-FPS/frame-time for: (a) the EXISTING tier-0-switch-only path at increasing distinct-recipe counts
-(reuse/extend the existing N=3/10/100 data if still comparable, or re-capture on this branch to
-control for any drift); (b) THIS increment's bucketed-dispatch path at the same N values, with a
-realistic mix of hot/cold recipes per Task 6's threshold. **Record the result honestly** — if
-bucketed dispatch is NOT actually faster at the tested N (e.g. the sequential-dispatch barrier
-overhead per bucket dominates at low N, and the win only appears at higher N, or doesn't appear at
-all in this synchronous-compile-only increment), document that as a real, load-bearing finding, not
-something to paper over. The epic's own justification (§8) was for N≥100; if this increment's
-mechanism doesn't show a win until async compile removes the promotion-latency cost, say so
-explicitly — that's valuable information for sequencing the async follow-on, not a failure of this
-increment (which was scoped to prove the ROUTING mechanism, not to be the fully-optimized end
-state).
+methodology, see [[Perf-Ledger]] "Switch-scaling measurement" table format). Fix the GPU-selection
+gap above FIRST, before capturing any numbers. Measure steady-state FPS/frame-time for: (a) the
+EXISTING tier-0-switch-only path at increasing distinct-recipe counts — reuse the existing
+N=3/10/100 data ONLY IF it was captured on the same GPU class (discrete) as this milestone's run;
+otherwise re-capture on the same discrete GPU to keep the comparison apples-to-apples (this is a
+new consideration this milestone must resolve, not assume away); (b) THIS increment's
+bucketed-dispatch path at the same N values, with a realistic mix of hot/cold recipes per Task 6's
+threshold, using the standalone-harness pattern (not live-app integration, per the scoping note
+above). **Record the result honestly** — if bucketed dispatch is NOT actually faster at the tested N
+(e.g. the sequential-dispatch barrier overhead per bucket dominates at low N, and the win only
+appears at higher N, or doesn't appear at all in this synchronous-compile-only increment), document
+that as a real, load-bearing finding, not something to paper over. The epic's own justification (§8)
+was for N≥100; if this increment's mechanism doesn't show a win until async compile removes the
+promotion-latency cost, say so explicitly — that's valuable information for sequencing the async
+follow-on, not a failure of this increment (which was scoped to prove the ROUTING mechanism, not to
+be the fully-optimized end state).
 
 **Task 10 — No-regression sweep + doc closure.**
 Full recipe/SVO/RenderGraph test suite, confirm zero regressions beyond whatever baseline is
 established by this point (check the most recent merge's confirmed-pre-existing failure list before
-assuming any new failure is unrelated — do not skip this verification). Update
+assuming any new failure is unrelated — do not skip this verification; KI-034's push-constant-
+mismatch class and the pre-existing view/hud codegen drift-guard failures the M3 validator confirmed
+are both expected background noise, not something to re-investigate). Update
 [[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]] §7 Increment 2's status to shipped (with
 the honest performance finding from Task 9, whatever it turns out to be) and this plan doc's own
 Milestone Map/Progress Log.

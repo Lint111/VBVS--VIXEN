@@ -193,6 +193,13 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     prevViewProj = projection * view;
     ctx.Out(CameraNodeConfig::PREV_VIEW_PROJ, const_cast<const glm::mat4&>(prevViewProj));
 
+    // Recipe Bucketing Inc2 M1: publish THIS (first) frame's view*proj under its own slot too
+    // -- same value as prevViewProj above (there is no real distinction on the very first
+    // frame), exposed under CURRENT_VIEW_PROJ for consumers that need "this frame's" matrix
+    // specifically (e.g. the bucketing pre-pass), not the deliberately-lagged PREV_VIEW_PROJ.
+    currentViewProj = projection * view;
+    ctx.Out(CameraNodeConfig::CURRENT_VIEW_PROJ, const_cast<const glm::mat4&>(currentViewProj));
+
     NODE_LOG_INFO("Camera data initialized successfully");
 }
 
@@ -291,8 +298,15 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(CameraNodeConfig::PREV_VIEW_PROJ, const_cast<const glm::mat4&>(prevViewProj));
 
     // Update camera data with current state (also updates prevViewProj <- this frame's
-    // projection*view, for the NEXT Execute to read as its own "previous").
+    // projection*view, for the NEXT Execute to read as its own "previous"; and currentViewProj
+    // <- this same frame's projection*view, for THIS Execute's CURRENT_VIEW_PROJ output below).
     UpdateCameraData(aspectRatio);
+
+    // Recipe Bucketing Inc2 M1: publish THIS frame's view*proj, computed fresh inside
+    // UpdateCameraData above (unlike PREV_VIEW_PROJ, published BEFORE the call on purpose --
+    // see that comment above -- this one is published AFTER, since it needs the value
+    // UpdateCameraData just computed for the current frame, not last frame's).
+    ctx.Out(CameraNodeConfig::CURRENT_VIEW_PROJ, const_cast<const glm::mat4&>(currentViewProj));
 
     // Output pointer to the camera data struct
     ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
@@ -375,6 +389,10 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     // of the old value happens before this call, so this store never clobbers a value
     // before it's been read out for the current frame).
     prevViewProj = projection * view;
+
+    // Recipe Bucketing Inc2 M1: same matrix, retained separately so ExecuteImpl can publish
+    // it under CURRENT_VIEW_PROJ (this frame's own view*proj, not the lagged "previous").
+    currentViewProj = projection * view;
 
     // DEBUG: Log camera state once
     static bool loggedCamera = false;

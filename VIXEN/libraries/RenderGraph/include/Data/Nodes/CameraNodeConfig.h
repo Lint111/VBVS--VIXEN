@@ -15,7 +15,7 @@ using CameraDataPtr = const CameraData*;
 // Compile-time slot counts
 namespace CameraNodeCounts {
     static constexpr size_t INPUTS = 4;  // Added INPUT_STATE
-    static constexpr size_t OUTPUTS = 2;  // CameraData struct + PREV_VIEW_PROJ (Sampled Lighting Inc2 M3)
+    static constexpr size_t OUTPUTS = 3;  // CameraData struct + PREV_VIEW_PROJ (Sampled Lighting Inc2 M3) + CURRENT_VIEW_PROJ (Recipe Bucketing Inc2 M1)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -26,7 +26,7 @@ namespace CameraNodeCounts {
  * Outputs a CameraData struct that can be used for push constants or uniform buffers.
  *
  * Inputs: 4 (VULKAN_DEVICE_IN, SWAPCHAIN_PUBLIC, IMAGE_INDEX, INPUT_STATE)
- * Outputs: 2 (CAMERA_DATA, PREV_VIEW_PROJ)
+ * Outputs: 3 (CAMERA_DATA, PREV_VIEW_PROJ, CURRENT_VIEW_PROJ)
  */
 CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
                       CameraNodeCounts::INPUTS,
@@ -58,7 +58,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
+    // ===== OUTPUTS (3) =====
     // Use generic OUTPUT_SLOT; lifetime (Persistent) is declared in INIT_OUTPUT_DESC
     OUTPUT_SLOT(CAMERA_DATA, const CameraData&, 0,
         SlotNullability::Required,
@@ -72,6 +72,16 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     // push-constant field anyway (see PrevCameraConfigNode, binding 21). Read every Execute
     // by PrevCameraConfigNode to upload into its own ring buffer.
     OUTPUT_SLOT(PREV_VIEW_PROJ, const glm::mat4&, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    // Recipe Bucketing Inc2 M1: THIS frame's view*projection matrix (world -> current-frame
+    // clip space), a sibling of PREV_VIEW_PROJ using the exact same OUTPUT_SLOT/INIT_OUTPUT_DESC
+    // pattern. No new computation -- CameraNode already computes `projection * view` every
+    // Compile/Execute (see prevViewProj's own assignment sites), this just exposes that same
+    // value under a new slot before it becomes "previous" next frame. Consumed by the recipe
+    // instance-bucketing pre-pass to project world-space bound spheres to screen space.
+    OUTPUT_SLOT(CURRENT_VIEW_PROJ, const glm::mat4&, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -139,6 +149,11 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         // fresh each frame, same convention as CAMERA_DATA itself).
         HandleDescriptor prevViewProjDesc{"glm::mat4"};
         INIT_OUTPUT_DESC(PREV_VIEW_PROJ, "prev_view_proj", ResourceLifetime::Persistent, prevViewProjDesc);
+
+        // Recipe Bucketing Inc2 M1: current-frame view*proj, re-published every Execute
+        // alongside PREV_VIEW_PROJ (same Persistent convention -- see that slot's comment).
+        HandleDescriptor currentViewProjDesc{"glm::mat4"};
+        INIT_OUTPUT_DESC(CURRENT_VIEW_PROJ, "current_view_proj", ResourceLifetime::Persistent, currentViewProjDesc);
     }
 
     // Automated config validation
@@ -151,6 +166,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(INPUT_STATE_Slot::index == 3, "INPUT_STATE must be at index 3");
     static_assert(CAMERA_DATA_Slot::index == 0, "CAMERA_DATA must be at index 0");
     static_assert(PREV_VIEW_PROJ_Slot::index == 1, "PREV_VIEW_PROJ must be at index 1");
+    static_assert(CURRENT_VIEW_PROJ_Slot::index == 2, "CURRENT_VIEW_PROJ must be at index 2");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -159,6 +175,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
     static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, const CameraData&>);
     static_assert(std::is_same_v<PREV_VIEW_PROJ_Slot::Type, const glm::mat4&>);
+    static_assert(std::is_same_v<CURRENT_VIEW_PROJ_Slot::Type, const glm::mat4&>);
 };
 
 } // namespace Vixen::RenderGraph
