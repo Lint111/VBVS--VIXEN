@@ -144,7 +144,10 @@ GPU (Windows-native) for every milestone.
 - **M2 — Barrier-coalescing correctness analysis + (if safe) reduction** (Task 3) · **live-run gate**
   · prove whether N−1 barriers can become fewer without weakening M3's write-after-write ordering
   proof; implement ONLY if a safe reduction is actually established, not assumed.
-  - [ ] Not started.
+  - [x] **DONE (analysis-only) 2026-07-16.** **Verdict: a safe reduction is theoretically sound in
+    principle but its soundness precondition is currently VIOLATED by an unrelated, real gap — NOT
+    implemented this milestone.** No code change. Full reasoning below; see Progress Log entry for
+    the complete writeup.
 - **M3 — Re-measurement + honest doc closure** (Task 4) · **live-run gate, discrete GPU mandatory** ·
   full M4-equivalent perf comparison re-run after M1/M2's changes, honestly reported (including a
   "still slower" outcome if that's what the data shows), plan/epic doc closure.
@@ -199,6 +202,61 @@ validator verdict.)
   N=100 knee; the knee is m_i/k_i-shaped, pointing more toward
   [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s single-dispatch-no-switch
   territory than toward reducing bucket-count overhead.
+
+- **M2 (2026-07-16):** barrier-coalescing correctness analysis (Task 3), analysis-only, no code
+  change. **Central finding, in two parts:**
+  (1) **The Vulkan memory-model fact that settles the general question**: a hazard (and therefore
+  the spec's requirement for an explicit dependency) exists between two commands only when they
+  access *overlapping memory* and at least one access is a write — this is defined per memory
+  location, not per buffer object. `VkMemoryBarrier2`'s access/stage masks are global in scope
+  (unlike `VkBufferMemoryBarrier2`/image-subresource barriers, which can scope to a byte range or
+  mip/array slice), but that only describes what a barrier, if present, synchronizes — it does NOT
+  mean the spec requires a barrier between two dispatches whose actual write sets are PROVABLY
+  disjoint index ranges of the same buffer. Separately, and just as load-bearing: Vulkan gives NO
+  implicit ordering between two compute dispatches recorded back-to-back in one command buffer with
+  no barrier between them — their invocations may execute concurrently on the device. So the
+  barrier's real job here is not "publish writes to a later reader," it's "prevent two dispatches
+  whose invocations can touch the same address from running concurrently." Given
+  `SpecializedRecipeShaderGlsl.h`'s write pattern (`hitIdx = pixelCoords.y * screenWidth +
+  pixelCoords.x`, and `pixelCoords` is hard-bounded to `[rectMinX, rectMinX+rectWidth) x [rectMinY,
+  rectMinY+rectHeight)` both by an explicit early-return check AND by the fact that the dispatch's
+  OWN workgroup count, written by `RecipeInstanceBucketing.comp`'s mode==2 finalize pass, is sized
+  exactly to that rect — the thread grid cannot even launch outside it): **if two buckets' coverage
+  rects are disjoint in screen space, their `HitRecord` write sets are structurally, provably
+  disjoint, and the spec does not require a barrier between those two dispatches.** This is the
+  precise mechanism M2's Task 3 asked to establish, and it checks out.
+  (2) **Why it is NOT implemented this milestone**: applying (1) requires the coverage rects
+  themselves to be a SOUND conservative superset of each bucket's true write footprint (rect ⊇
+  footprint must hold in every case, or "rects disjoint" stops implying "footprints disjoint").
+  Traced this precondition directly and found it is currently VIOLATED:
+  `RecipeInstanceBucketing.comp`'s `ProjectToPixel` (lines 134-144) computes the coverage rect by
+  projecting 7 world-space points (bound-sphere center + 6 axis extrema) and silently DROPPING any
+  point with `clip.w <= 0` (behind-camera) from the union (`if (clip.w <= 0.0) return false;`, no
+  contribution to minX/minY/maxX/maxY). For an instance whose bound sphere straddles the camera's
+  near/W=0 plane (center behind camera, some extremal points in front, or vice versa), this SHRINKS
+  the computed rect below the sphere's true on-screen footprint rather than growing it — the
+  opposite of the conservative direction the scheme needs. Confirmed via `grep` that no frustum/
+  near-plane culling exists anywhere upstream of this pass (`RecipeInstanceBucketing.comp` and
+  `MultiDispatchNode.cpp` both searched) — camera-straddling instances are a real, reachable,
+  currently-unguarded case in this pipeline, not a hypothetical. Implementing the barrier reduction
+  on top of this would mean: two buckets whose TRUE footprints overlap (because one has a
+  camera-straddling instance with an under-computed rect) could be classified "disjoint" by the
+  rect check and have their barrier incorrectly skipped — silently reintroducing the exact
+  write-after-write race M3 proved doesn't happen today. This is precisely the failure mode M2's
+  prompt and the plan's Risks section warned against forcing past. **Per the plan's own "if no safe
+  reduction is established" clause: this is a legitimate, honest outcome, not a forced optimization.
+  A safe reduction is NOT ruled out in general** (part 1's reasoning is sound and reusable) **— it
+  is blocked on a separate, currently-unfixed soundness gap in M1's coverage-rect computation.**
+  Fixing `ProjectToPixel`'s near-plane handling (e.g. clip the sphere against the near plane instead
+  of dropping w<=0 points, or fall back to full-screen coverage for any instance with a mixed-sign
+  W extremum) would be the prerequisite for a future increment to revisit this — that, plus the
+  separate (non-trivial) work of plumbing per-bucket screen-rect data into `MultiDispatchNode`
+  itself (which today has no concept of a dispatch's spatial extent — it sees an opaque
+  `DispatchPass` queue) so it could decide barrier-skip pairs, is out of THIS milestone's scope.
+  **No code changed; M1's improvement stands as this increment's real contribution, per the plan's
+  own explicit fallback.** Full regression suite not re-run for M2 specifically (no code change to
+  regress) — M1's 16/16 passing baseline stands unchanged; M3 will re-run the full suite alongside
+  its re-measurement pass regardless.
 
 - **M1 (2026-07-16):** shared-SSBO + push-constant-shrink refactor, implemented against
   `SpecializedRecipeShaderGlsl.h` (shader emission) and all 3 dispatch-phase test harnesses
