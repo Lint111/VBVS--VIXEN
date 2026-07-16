@@ -130,6 +130,23 @@ oob FRACTION 24.0%→27.5%, denominator-driven (bodies 5–7 now genuinely march
 
 **Gate:** esvo pass measurably down; image + instIdx identical; hooks re-enable cleanly.
 
+## Milestone M2b — Wire the shader disk cache (S–M) — pulled forward from M7.3
+
+Dormant-work inventory #3: `ShaderCacheManager` exists (and is tested) but the four
+live shader builders (`BuildRenderGraph.cpp:837-1031`) never call `EnableCaching` —
+every boot glslang-recompiles everything. The pipeline reboots dozens of times; this
+pays for itself immediately. **HAZARD:** the cache key MUST hash the final SPLICED
+composite source (`BuildRenderGraph.cpp:871-892`) + compile options, not source-file
+bytes — a stale-key bug silently serves outdated shaders and poisons every later A/B.
+
+- [ ] Task 2b.1 — Wire `EnableCaching` into the live builders, content-hash keyed on
+  spliced source + options.
+- [ ] Task 2b.2 — Prove it: warm-vs-cold boot delta; poisoning test (touch a spliced
+  fragment → key changes → recompile actually happens); bench output byte-identical
+  cached vs uncached.
+
+**Gate:** warm boot measurably faster; deliberate source touch busts the cache; 8 bodies.
+
 ## Milestone M3 — March-loop package (M) — target ~16 FPS
 
 - [ ] Task 3.1 — Single-brick trilinear fast path: `_loadSdfTrilinearCell`-style intra-brick
@@ -156,8 +173,11 @@ mirror tests green; no visual regression vs pre-milestone screenshot.
   payload, instance reject at entry-t > tmax, span clamped at light distance — a separate
   function, not a runtime flag (`TraceWorld.glsl:393-508,:495-502`,
   `SceneBindings.glsl:513-528`; audit C1/C2 / Top #7).
-- [ ] Task 4.3 — Skip the no-op DirectLighting dispatch CPU-side when
-  `reservoirEnabled=0` (audit C8).
+- [ ] Task 4.3 — Generic CPU-side no-op dispatch guard (audit C8 + inventory #1/#2):
+  a config-driven enable early-return in `ComputeStageNode::ExecuteImpl` — skips
+  `direct_lighting` when `reservoirEnabled=0` (today a dead full-screen dispatch +
+  submit every frame on ALL paths) and `probe_update` when `probeGridEnabled=0`
+  (default boot). Cornell force-enables the probe grid — it must keep running there.
 - [ ] Task 4.4 — Converged-probe sleep (audit C4) — **PROMOTED from stretch by M0's
   attribution: probe_update = 431.7 ms is the LARGEST baked pass.** Per-probe blend-delta
   sleep (skip probes whose last update changed below epsilon) + wake on scene-dirty;
@@ -212,7 +232,10 @@ Phase-2 backlog — extends the shipped SDF-Bake-Box-Tight work.
 
 - [ ] Task 5.1 — Record allocated-brick min/max AABB in `SerializeSdf`'s existing loop →
   `traceBoundsMin/Max` `OctreeConfig` fields (codegen path; backward-safe zero default)
-  (`SdfBake.h:399-406`, `ShellOctreeGpu.h:791-804`; audit B3 / Top #8; red branch reference).
+  (`SdfBake.h:399-406`, `ShellOctreeGpu.h:791-804`; audit B3 / Top #8; red branch
+  reference). In the same schema change, REPLACE the dead `gridMin/gridMax` fields
+  (uploaded but read by no dispatched shader — inventory #10): net-zero schema growth,
+  removes dead weight.
 - [ ] Task 5.2 — Shader-side: AABB cull + front-to-back entry reject using the bounds in
   `TraceWorld.glsl:234,:266-279` (+ shadow variant from M4).
 - [ ] Task 5.3 — Instance sort key: cube center (or bounds center), not min-corner
@@ -254,10 +277,20 @@ virtual capture (5.6).
   (`BlitNode.cpp:172-177`; audit E4) + compute-scoped stage masks replacing
   ALL_COMMANDS signals (audit pattern R7).
 - [ ] Task 6.4 — A/B with validation layers ON (sync changes never ship unvalidated).
+- [ ] Task 6.5 — Expose the widescreen render-scale dial (inventory #12): document
+  `VIXEN_RENDER_SCALE` in the bench rig and record a capability curve (1.0/0.75/0.5)
+  — a merged, validated 27%-dispatch-cut dial currently sitting unused at 1.0. Default
+  stays 1.0; the curve informs the realtime-target definition.
 
 **Gate:** zero new validation-layer errors; wall/GPU-span ratio improves; 8 bodies.
 
 ## Phase 2 (dispatch after Phase-1 review with the user)
+
+**Phase-2 backlog (from [[Dormant-Work-Inventory-2026-07]]):** instance-SSBO
+dirty-only upload (inventory #5, direction doc exists); dead-branch cleanup —
+MultiDispatchNode archive (#15), spec-constant plumbing feed-or-remove (#14);
+per-axis box bake grids (#8, the full far-hit/normals fix); tiered-ESVO stays dormant
+until multi-tier scenes exist (#9).
 
 ## Milestone M6b — Hybrid-frame bench: mixed providers + delta modification (S–M)
 
@@ -287,7 +320,11 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
   Gaia cross-world thread-safety smoke test FIRST — audit F1 + uncertain-11).
 - [ ] Task 7.2 — SerializeSdf bulk entity path (`getBrickEntitiesInto`/`getEntityFast`;
   audit F4) + skip double serialize/mip-bake (F5).
-- [ ] Task 7.3 — Wire shader cache (`EnableCaching`; audit F7).
+- [ ] Task 7.3 — ~~Wire shader cache~~ MOVED to M2b (pulled forward 2026-07-16).
+- [ ] Task 7.4 — Bake-artifact disk cache, design-first (inventory #7 clarification:
+  NO bake cache exists anywhere — the 87–190 s bake re-runs every boot; JIT Inc1's
+  content-hash cache is write-only recipe-bytecode dedup, unrelated). Key on
+  recipe+params+resolution → warm boots at file-load speed. Effort L.
 
 **Gate:** boot < 60 s; serialize output byte-identical (hash compare); tests green.
 
@@ -311,6 +348,7 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 | M0 | Measurement + boot triage | 0.1–0.5 | S | attribution + boot −70 s |
 | M1 | brickLookupBase + *subdiv + band | 1.1–1.4 | S–M | ~4 FPS, 8 bodies |
 | M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
+| M2b | Shader disk cache | 2b.1–2b.2 | S–M | boot cut, every bench run |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
 | M5 | Trace bounds + culling + lighting parity | 5.1–5.6 | M | **runs 3rd** — cull + DDGI un-poisoning |
 | M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
