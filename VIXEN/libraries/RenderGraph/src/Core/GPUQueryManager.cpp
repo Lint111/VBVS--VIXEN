@@ -325,6 +325,20 @@ float GPUQueryManager::GetElapsedMs(uint32_t frameIndex, QuerySlotHandle slot) c
     return static_cast<float>(ns) / 1'000'000.0f;
 }
 
+uint64_t GPUQueryManager::GetRawStartTicks(uint32_t frameIndex, QuerySlotHandle slot) const {
+    if (frameIndex >= framesInFlight_ || !IsSlotAllocated(slot) || !query_) {
+        return 0;
+    }
+    return query_->GetRawTimestampTicks(frameIndex, slots_[slot].startQueryIndex);
+}
+
+uint64_t GPUQueryManager::GetRawEndTicks(uint32_t frameIndex, QuerySlotHandle slot) const {
+    if (frameIndex >= framesInFlight_ || !IsSlotAllocated(slot) || !query_) {
+        return 0;
+    }
+    return query_->GetRawTimestampTicks(frameIndex, slots_[slot].endQueryIndex);
+}
+
 void GPUQueryManager::ReleaseGPUResources() {
     query_.reset();
 }

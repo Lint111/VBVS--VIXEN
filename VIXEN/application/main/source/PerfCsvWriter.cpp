@@ -11,7 +11,8 @@ PerfCsvWriter::PerfCsvWriter() {
 }
 
 void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
-                                uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded) {
+                                uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
+                                double wholeFrameGpuSpanMs) {
     if (!IsEnabled()) return;
 
     recentFrameTimesMs_[frameCounter_ % kFpsWindow] = cpuFrameTimeMs;
@@ -22,6 +23,7 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     row.cpuFrameTimeMs = cpuFrameTimeMs;
     row.bootBytesUploaded = bootBytesUploaded;
     row.steadyStateBytesUploaded = steadyStateBytesUploaded;
+    row.wholeFrameGpuSpanMs = wholeFrameGpuSpanMs;
 
     // Steady-state FPS: rolling average over the last kFpsWindow frames (or however many
     // have run so far, before the window fills) — mirrors VulkanApplicationBase::FrameTimer's
@@ -49,7 +51,8 @@ void PerfCsvWriter::Flush() {
 
     // Header. Per-pass columns are named from the first row (every row records the same
     // pass set — RecordFrame's caller passes the same `passes` vector every frame).
-    out << "frame,cpu_frame_time_ms,steady_state_fps,boot_bytes_uploaded,steady_state_bytes_uploaded";
+    out << "frame,cpu_frame_time_ms,steady_state_fps,boot_bytes_uploaded,steady_state_bytes_uploaded,"
+           "whole_frame_gpu_span_ms";
     if (!rows_.empty()) {
         for (const auto& [name, _] : rows_.front().passMs) {
             out << "," << name << "_ms";
@@ -59,7 +62,8 @@ void PerfCsvWriter::Flush() {
 
     for (const auto& row : rows_) {
         out << row.frameIndex << "," << row.cpuFrameTimeMs << "," << row.steadyStateFps << ","
-            << row.bootBytesUploaded << "," << row.steadyStateBytesUploaded;
+            << row.bootBytesUploaded << "," << row.steadyStateBytesUploaded << ","
+            << row.wholeFrameGpuSpanMs;
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }

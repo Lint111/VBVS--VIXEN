@@ -26,6 +26,7 @@ struct OctreeConfig {
     uint mipPoolBase;
     uint brickResident;
     uint tierRefTableBase;
-    uint _tailPad[17];
+    uint brickLookupBase;
+    uint _tailPad[16];
 };
 #endif // OCTREECONFIG_GLSL

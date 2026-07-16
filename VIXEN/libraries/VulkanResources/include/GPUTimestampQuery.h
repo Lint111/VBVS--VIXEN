@@ -130,6 +130,17 @@ public:
     float CalculateMraysPerSec(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery,
                                 uint32_t width, uint32_t height) const;
 
+    /**
+     * @brief Get the raw, absolute device timestamp (in ticks, NOT elapsed) for one query.
+     *
+     * Task 0.1 (whole-frame GPU span): unlike GetElapsedNs/GetElapsedMs (which subtract a
+     * PAIR of queries within the SAME slot), this returns one query's raw counter value so a
+     * caller can compare timestamps ACROSS slots/consumers — valid because every consumer
+     * shares one VkDevice's timestamp domain and one queue. @return 0 if unavailable/not
+     * yet written (same availability gating as GetElapsedNs).
+     */
+    uint64_t GetRawTimestampTicks(uint32_t frameIndex, uint32_t queryIndex) const;
+
 private:
     struct PerFrameData {
         VkQueryPool timestampPool = VK_NULL_HANDLE;

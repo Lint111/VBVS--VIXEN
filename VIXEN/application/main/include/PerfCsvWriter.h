@@ -37,8 +37,13 @@ public:
 
     // Call once per frame (from PostTick, after RenderFrame — matches CollectResults timing,
     // so GetLastDispatchMs() reflects the frame that just completed). No-op if disabled.
+    // wholeFrameGpuSpanMs: Task 0.1 -- first command-buffer start -> last command-buffer end
+    // across every GPU-timed pass this frame (computed by the caller from the SAME `passes`
+    // loggers' raw timestamps, since only the caller knows the full per-frame pass set and
+    // their relative submission order). 0.0 if not computed/unavailable.
     void RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
-                     uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded);
+                     uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
+                     double wholeFrameGpuSpanMs = 0.0);
 
     // Writes the accumulated rows to VIXEN_PERF_CSV. Safe to call once at shutdown; no-op if
     // disabled or already flushed (idempotent — DeInitialize() may run more than once-guarded,
@@ -52,6 +57,7 @@ private:
         double steadyStateFps = 0.0;
         uint64_t bootBytesUploaded = 0;
         uint64_t steadyStateBytesUploaded = 0;
+        double wholeFrameGpuSpanMs = 0.0;  // Task 0.1: first CB start -> last CB end, this frame
         std::vector<std::pair<std::string, double>> passMs;  // (columnName, ms) — same set every row
     };
 

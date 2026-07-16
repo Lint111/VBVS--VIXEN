@@ -120,12 +120,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 float c    = dot(oc, oc) - boundRadius * boundRadius;
                 float disc = b * b - c;
                 if (disc < 0.0) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 0u;
+#endif
                     continue;  // ray misses this instance's bound sphere entirely
                 }
                 float entryT = max(-b - sqrt(disc), 0.0);
                 if (entryT > bestT) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 0u;
+#endif
                     continue;  // nearest possible hit is already farther than bestT
                 }
 
@@ -145,7 +149,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 }
 
                 if (farSubPixel) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected
+#endif
                     pHit    = true;
                     pT      = entryT;
                     pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
@@ -164,7 +170,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
                     // early-reject fired," matching the ESVO branch's own convention exactly.
+#ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = pSteps;
+#endif
                 }
             }
 #endif
@@ -234,7 +242,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
 
         if (gridT.y < 0.0) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
             instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
+#endif
             continue;  // ray misses this instance's AABB
         }
 
@@ -274,7 +284,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // (below) cannot possibly produce the nearest hit. Skip it
                 // entirely: zero traversal iterations, not just a discarded
                 // result.
+#ifdef VIXEN_GPU_TRACE_HOOKS
                 instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
+#endif
                 continue;
             }
         }
@@ -329,7 +341,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
         hitT *= inst.renderScale;  // parameter-along-instDir -> true world distance (see comment above)
+#ifdef VIXEN_GPU_TRACE_HOOKS
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
+#endif
 
         if (instHit && hitT < bestT) {
             bestT           = hitT;

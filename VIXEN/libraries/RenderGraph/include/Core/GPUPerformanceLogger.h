@@ -96,6 +96,18 @@ public:
     float GetMaxDispatchMs() const;
     std::string GetPerformanceSummary() const;
 
+    /**
+     * @brief Raw absolute device timestamp (ticks) of this pass's last-collected start/end,
+     * as read by CollectResults(). Task 0.1 (whole-frame GPU span): lets a caller compare
+     * start/end ACROSS different passes' loggers (min start, max end) since every pass on
+     * this device shares one timestamp domain/queue. 0 if unavailable (timing unsupported,
+     * or no results collected yet for the frame this logger last ran CollectResults for).
+     */
+    uint64_t GetLastStartTicks() const { return lastStartTicks_; }
+    uint64_t GetLastEndTicks() const { return lastEndTicks_; }
+    /// Nanoseconds per device timestamp tick — multiply a tick DELTA by this to get ns.
+    float GetTimestampPeriodNs() const { return queryManager_ ? queryManager_->GetTimestampPeriod() : 0.0f; }
+
     // ========================================================================
     // MEMORY TRACKING
     // ========================================================================
@@ -154,6 +166,8 @@ private:
     // Current frame data
     float lastDispatchMs_ = 0.0f;
     float lastMraysPerSec_ = 0.0f;
+    uint64_t lastStartTicks_ = 0;  // raw absolute device ticks — see GetLastStartTicks()
+    uint64_t lastEndTicks_ = 0;
 
     // Rolling statistics
     std::deque<float> dispatchMsHistory_;

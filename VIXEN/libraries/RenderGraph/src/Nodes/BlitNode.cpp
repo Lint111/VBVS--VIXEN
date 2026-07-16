@@ -98,6 +98,31 @@ void BlitNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("[BlitNode::CompileImpl] Allocated " + std::to_string(cmdBufferCount) +
                   " command buffers (flight-ring depth; swapchain imageCount=" + std::to_string(imageCount) + ")");
+
+    // Task 0.1 (Baked-Content Perf Audit, top action #9): GPU timing via the centralized
+    // GPUQueryManager, same pattern as every other timed node. Only allocate once (CompileImpl
+    // can re-run on recompile; a second AllocateQuerySlot call would leak a slot).
+    if (!gpuPerfLogger_) {
+        auto* queryMgrPtr = static_cast<GPUQueryManager*>(GetDevice()->GetQueryManager());
+        if (queryMgrPtr) {
+            auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
+            gpuPerfLogger_->SetEnabled(true);
+            gpuPerfLogger_->SetLogFrequency(120);
+            gpuPerfLogger_->SetPrintToTerminal(false);
+            if (auto* nodeLogger = GetLogger()) {
+                nodeLogger->AddChild(gpuPerfLogger_);
+            }
+            if (gpuPerfLogger_->IsTimingSupported()) {
+                NODE_LOG_INFO("[BlitNode] GPU performance timing enabled (slot " +
+                             std::to_string(gpuPerfLogger_->GetQuerySlot()) + ")");
+            } else {
+                NODE_LOG_WARNING("[BlitNode] GPU timing not supported on this device");
+            }
+        } else {
+            NODE_LOG_WARNING("[BlitNode] GPUQueryManager not available from VulkanDevice");
+        }
+    }
 }
 
 // ============================================================================
@@ -137,10 +162,16 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
         vkResetFences(GetDevice()->device, 1, &inFlightFence);
     }
 
+    // Collect GPU performance results for this frame-in-flight (after fence wait) — same
+    // placement as ComputeDispatchNode::ExecuteImpl.
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->CollectResults(currentFrameIndex);
+    }
+
     // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
     // already waited; RecordBlitCommands still targets the physical swapchain image by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
-    RecordBlitCommands(ctx, cmd, imageIndex, leaveImageInGeneral);
+    RecordBlitCommands(ctx, cmd, imageIndex, currentFrameIndex, leaveImageInGeneral);
     commandBuffers_.MarkReady(currentFrameIndex);
 
     VkSemaphore timelineSem = ctx.In(BlitNodeConfig::TIMELINE_SEMAPHORE_IN);
@@ -208,10 +239,16 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD
 // ============================================================================
 
-void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t imageIndex, bool leaveImageInGeneral) {
+void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t imageIndex,
+                                  uint32_t frameIndex, bool leaveImageInGeneral) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("[BlitNode::RecordBlitCommands] vkBeginCommandBuffer failed");
+    }
+
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->BeginFrame(cmd, frameIndex);
+        gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
     }
 
     Vixen::Vulkan::Resources::IRenderTarget* imageReadTarget = ctx.In(BlitNodeConfig::IMAGE_READ);
@@ -234,6 +271,11 @@ void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t im
     SwapchainBarriers::BlitRenderTargetToSwapchain(GetDevice(), layoutTracking_, cmd,
                                                    imageReadTarget, swapchainImage,
                                                    swapchainInfo->GetExtent(), leaveImageInGeneral);
+
+    if (gpuPerfLogger_) {
+        VkExtent2D extent = swapchainInfo->GetExtent();
+        gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, extent.width, extent.height);
+    }
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
         throw std::runtime_error("[BlitNode::RecordBlitCommands] vkEndCommandBuffer failed");

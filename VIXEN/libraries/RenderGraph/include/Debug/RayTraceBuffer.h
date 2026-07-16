@@ -192,7 +192,13 @@ private:
     // IDebugCapture identity/state (see SetDebugName/SetBindingIndex above)
     std::string debugName_ = "RayTraceBuffer";
     uint32_t bindingIndex_ = 0;
-    bool captureEnabled_ = true;
+    // Task 0.2 (Baked-Content Perf Audit D2): default OFF -- when true, DebugBufferReaderNode's
+    // every-Nth-frame ExecuteImpl does a blocking vkWaitForFences(UINT64_MAX) pipeline drain +
+    // JSON export (see DebugBufferReaderNode.cpp's IsCaptureEnabled() gate), which perturbs
+    // every perf bench unless explicitly opted into via VIXEN_DEBUG_CAPTURE=1 (see
+    // BuildRenderGraph.cpp's debugCapture PARAM_AUTO_EXPORT wiring, which mirrors this same
+    // knob for the companion CPU-side auto-export toggle).
+    bool captureEnabled_ = false;
 
     // Helper to find suitable memory type
     static uint32_t FindMemoryType(

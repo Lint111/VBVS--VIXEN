@@ -200,10 +200,21 @@ add_custom_command(
             -I ${_brm_shader_dir}
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
             --target-env=vulkan1.3
+            # Baked-perf-pipeline M2 (audit D1, Task 2.2): test_body_instance_occlusion_reject.cpp
+            # and test_tier_crossing_lod_residency.cpp (both share this SPV, see
+            # body_instance_raymarch_spv's DEPENDS below) read back binding 14
+            # (InstanceIterDebugBuffer) and assert on real per-instance iteration counts --
+            # VIXEN_GPU_TRACE_HOOKS must be defined here so those stores are present in this
+            # SPV, matching the "tests compile the hooks-ON shader variant explicitly"
+            # approach (production's BuildRenderGraph.cpp compiles hooks-OFF by default; see
+            # SceneBindings.glsl's InstanceIterDebugBuffer comment). This is the ONLY SPV this
+            # custom command produces, and it is test-only infrastructure never loaded by the
+            # live app, so defining it unconditionally here does not affect production defaults.
+            -DVIXEN_GPU_TRACE_HOOKS=1
             ${_brm_src}
             -o ${_brm_spv}
     DEPENDS ${_brm_src} ${_brm_includes}
-    COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (bundled glslc)"
+    COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (bundled glslc, VIXEN_GPU_TRACE_HOOKS=1 for instanceIterCount readback tests)"
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
 

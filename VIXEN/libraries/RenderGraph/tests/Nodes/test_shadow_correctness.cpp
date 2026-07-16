@@ -66,6 +66,11 @@ namespace {
 // every hand-built-descriptor-layout test in this file family; the push constant
 // RANGE below still covers bytes 0-75, which is all any of these tests' shader paths
 // statically read).
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 96 bytes
+// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
+// work; std430 rounds the whole push-constant block up to a 16-byte multiple, so
+// SPIR-V reflection reports 96, not 92 -- see test_body_instance_raymarch_render.cpp's
+// PushConstants for the established fix pattern this mirrors).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -74,8 +79,12 @@ struct PushConstants {
     float   raySizeCoef;
     float   raySizeBias;
     int32_t instanceCount;
+    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment (real gap at offset [76,80))
+    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
+    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
+    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes (matches shader std430 push block)");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (matches shader std430 push block)");
 
 // Host-side mirror of Generated/LightingConfig.g.h (Sampled Lighting Inc0 M1) — a single
 // directional light, matching the field layout test_lightingconfig_sdi_parity.cpp proves.
@@ -389,9 +398,12 @@ protected:
                      std::vector<uint8_t>& outRgba) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
         // Procedural-only scene: octree/brick/materials/config/sdf/lookup/mip/tierref/iter

@@ -4,7 +4,8 @@ using Yeroket.Util.KernelFramework;
 // Offsets (must match ShellOctreeGpu.h): gridMin@32, gridMax@48, localToWorld@64,
 // worldToLocal@128, nodeArrayBase@192, formatId@200, brickStrideFloats@216, channels@224,
 // mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3), brickResident@356 (Inc1 M3 Task 7),
-// tierRefTableBase@360 (Tiered-ESVO Inc2 M1 Task 3).
+// tierRefTableBase@360 (Tiered-ESVO Inc2 M1 Task 3), brickLookupBase@364 (Baked-Perf M1
+// Task 1.1).
 [GpuStruct]
 public struct OctreeConfig
 {
@@ -58,5 +59,29 @@ public struct OctreeConfig
     // path (farBit==1 leaves) starts registering real entries.
     public uint tierRefTableBase; // @360
 
-    [GpuArray(17)] public uint _tailPad; // @364 (17 × 4 = 68 → ends 432)
+    // Baked-Perf M1 Task 1.1: element offset (in uint32 units, i.e. brickLookup[]
+    // table-entry units — NOT bytes) of this octree's own slice of the shared/
+    // concatenated brickLookup grid-lookup table. Mirrors mipPoolBase's/
+    // tierRefTableBase's convention exactly, but is NOT redundant with them: the
+    // brickLookup sub-table size is bpa^3 (bricksPerAxisSdf, a per-octree GRID
+    // dimension), which is unrelated to nodeCount/brickCount/tierRefCount, so it
+    // cannot be derived from nodeArrayBase/brickArrayBase/tierRefTableBase.
+    //
+    // WHY THIS FIELD EXISTS (do not delete/revert): before this field, the shader
+    // computed lookupBase as `octreeIdx * bpa^3` using the CURRENT octree's own
+    // bpa (StoredSdf.glsl _samplePoolVoxel/_sdfBrickAllocated) — silently assuming
+    // every concatenated octree shares the same bricksPerAxisSdf. The CPU-side
+    // concatenation (ConcatenateSdf/ConcatenateSdfWithMips) appends each octree's
+    // bpa^3-sized sub-table at a variable-size EXACT PREFIX SUM (mirrored
+    // correctly already in ShellDerive.h's DeriveShellPool loop). Cornell mixes
+    // bpa=16 walls with bpa=2 light/sphere/box bodies: octrees 5-7 read the
+    // WRONG base (uniform-bpa formula) and the shader silently walked garbage
+    // brickLookup entries -> those bodies rendered as unallocated/miss (vanished
+    // from the [CornellDiag] instIdx map) while walls (whose bpa matched the
+    // uniform assumption at index 0) stayed correct. Zero-default (existing
+    // scenes with a single uniform bpa, or octreeIdx==0) reproduces the old
+    // value exactly, since the old formula's octreeIdx==0 term is always 0 too.
+    public uint brickLookupBase; // @364
+
+    [GpuArray(16)] public uint _tailPad; // @368 (16 × 4 = 64 → ends 432)
 }

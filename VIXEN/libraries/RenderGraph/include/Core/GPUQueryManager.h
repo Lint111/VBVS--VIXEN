@@ -215,6 +215,17 @@ public:
     [[nodiscard]] float GetElapsedMs(uint32_t frameIndex, QuerySlotHandle slot) const;
 
     /**
+     * @brief Get a slot's raw absolute start/end device timestamps (in ticks, not elapsed).
+     *
+     * Task 0.1 (whole-frame GPU span): lets a caller compare timestamps ACROSS different
+     * consumers' slots (e.g. min start vs max end over every pass in a frame) — valid
+     * because all slots share one device's timestamp domain. TryReadTimestamps must have
+     * returned true for this frame/slot; returns 0 otherwise.
+     */
+    [[nodiscard]] uint64_t GetRawStartTicks(uint32_t frameIndex, QuerySlotHandle slot) const;
+    [[nodiscard]] uint64_t GetRawEndTicks(uint32_t frameIndex, QuerySlotHandle slot) const;
+
+    /**
      * @brief Release GPU resources (QueryPools) while device is still valid
      *
      * Call during cleanup phase BEFORE the VkDevice is destroyed.

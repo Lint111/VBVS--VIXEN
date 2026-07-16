@@ -75,6 +75,21 @@ layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
 // what the occlusion-reject unit test uses). Bound as a 1-byte placeholder in
 // production; the write is a single non-atomic store, negligible next to the
 // traversal it instruments.
+//
+// Baked-perf-pipeline M2 (audit D1, Task 2.2): the 7 instanceIterCount[] stores
+// in TraceWorld.glsl are UB when this buffer is bound as the 1-byte production
+// placeholder (robustBufferAccess is NOT enabled — see VulkanDevice's feature
+// setup) — the store address depends on instIdx, which can exceed byte 0. Gated
+// on VIXEN_GPU_TRACE_HOOKS (same define as TraceRecording.glsl/
+// snapshotTraversalState): the default-off path contains zero stores into this
+// buffer. Tests that read instanceIterCount back (test_body_instance_occlusion_
+// reject.cpp, test_tier_crossing_lod_residency.cpp) compile BodyInstanceRayMarch.comp
+// with VIXEN_GPU_TRACE_HOOKS defined (see body_instance_raymarch_spv's glslc -D flag)
+// and bind the buffer at its real size, so the UB case never arises in either
+// configuration. The SSBO declaration itself (this line) stays unconditional in
+// every variant -- only the writes are gated -- so the reflected descriptor
+// interface never changes shape (binding 14 always exists), unlike
+// ENABLE_SHADER_COUNTERS' binding-8 removal.
 layout(std430, binding = 14) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
 
 // ============================================================================
