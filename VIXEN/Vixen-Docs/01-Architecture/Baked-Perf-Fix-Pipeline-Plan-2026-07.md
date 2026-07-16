@@ -187,7 +187,18 @@ so mip A/Bs aren't confounded by a pre-existing shading defect.
 **Gate:** measurable probe/shadow ms reduction; no visible leak/darkening artifacts vs
 reference; 8 bodies; tests green.
 
-## Milestone M5 — Trace bounds + culling revival (M) — toward the 52-FPS ceiling
+## Milestone M5 — Trace bounds + culling + baked-lighting parity (M) — RUNS BEFORE M4/M4b
+
+Order change (2026-07-16, lighting-gap investigation): the baked demo's dimness vs
+virtual is NOT GI convergence — it is (1) grazing far-hits (oversized cube bake AABBs)
+writing corrupted `worldPos` into the DDGI gather (`SpatialReuseShade.comp:498`, probe
+cell clamps to grid edge at `:265`) and (2) coarse baked normals suppressing NdotL in
+every light term (`Brdf.glsl:71`, `ProbeUpdate.comp:236,251`) — objects near-black
+because subdiv=1 small bodies bake at ~1 voxel/world-unit. Color/emissive plumbing is
+proven identical across variants. Far-hit rejection needs the trace bounds from 5.1, so
+M5 executes after M3 and BEFORE M4/M4b (mip A/Bs must not be confounded by the shading
+defect). Full per-axis box-shaped bake grids (the complete fix for both causes) is
+Phase-2 backlog — extends the shipped SDF-Bake-Box-Tight work.
 
 - [ ] Task 5.1 — Record allocated-brick min/max AABB in `SerializeSdf`'s existing loop →
   `traceBoundsMin/Max` `OctreeConfig` fields (codegen path; backward-safe zero default)
@@ -197,8 +208,21 @@ reference; 8 bodies; tests green.
 - [ ] Task 5.3 — Instance sort key: cube center (or bounds center), not min-corner
   (`InstanceSort.h:26-34`; audit B3 corollary).
 - [ ] Task 5.4 — A/B bench + hole-hunt: grazing angles screenshot sweep.
+- [ ] Task 5.5 — Far-hit rejection (lighting-parity interim fix): using 5.1's tight
+  trace bounds, discard/clamp hits whose reconstructed `worldPos` falls outside the
+  body's bounds+ε before the HitRecord write (`BodyInstanceRayMarch.comp:246` area) —
+  stops corrupted `worldPos` from poisoning `gatherIndirectDiffuse`
+  (`SpatialReuseShade.comp:498`, edge-clamped probe cells at `:265`) and the cross-region
+  color bleed. Expect the OOB fraction (~27.5%) to collapse.
+- [ ] Task 5.6 — Small-body bake resolution bump (normals-parity interim fix): the
+  subdiv=1 bodies (light/sphere/box) bake at `kSmallN=16` ≈ 1 voxel/world-unit — the
+  coarsest normals in the scene, why they render near-black. Raise their bake resolution
+  (e.g. 16→32 or subdiv 1→2; small absolute memory/bake cost) and A/B the sphere/box
+  luminance vs the virtual capture.
 
-**Gate:** wall ms down; no new holes vs reference captures; 8 bodies.
+**Gate:** wall ms down; no new holes vs reference captures; 8 bodies; OOB fraction
+sharply down (5.5); sphere/box visibly lit, luminance qualitatively closer to the
+virtual capture (5.6).
 
 ## Milestone M6 — Sync/overlap package (M) — only what M0 attribution justifies
 
@@ -248,9 +272,9 @@ reference; 8 bodies; tests green.
 | M1 | brickLookupBase + *subdiv + band | 1.1–1.4 | S–M | ~4 FPS, 8 bodies |
 | M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
+| M5 | Trace bounds + culling + lighting parity | 5.1–5.6 | M | **runs 3rd** — cull + DDGI un-poisoning |
 | M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
-| M4b | Sparse-Mip for secondary rays | 4b.1–4b.3 | M | probe/shadow coarse-LOD |
-| M5 | Trace bounds + culling | 5.1–5.4 | M | toward ~40–52 FPS |
+| M4b | Sparse-Mip for secondary rays | 4b.1–4b.4 | M | probe/shadow coarse-LOD |
 | M6 | Sync/overlap | 6.1–6.4 | M | wall≈GPU span |
 | M7 | Boot parallel bake (Phase 2) | 7.1–7.3 | M | boot < 60 s |
 | M8 | 3D-texture pool proto (Phase 2) | 8.1–8.3 | L | 60+ decision |
