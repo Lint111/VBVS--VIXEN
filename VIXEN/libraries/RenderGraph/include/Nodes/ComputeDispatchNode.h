@@ -12,6 +12,13 @@
 
 namespace Vixen::RenderGraph {
 
+// The acquire semaphore belongs to the first submission that actually accesses the swapchain.
+// An offscreen-only dispatch must leave it for the later BlitNode; waiting it here cannot prove
+// acquired-image ownership to Present and leaves validation reporting MissingAcquireWait.
+[[nodiscard]] constexpr bool ComputeDispatchWaitsForSwapchainAcquire(bool writesNoImage) {
+    return !writesNoImage;
+}
+
 // DecideRenderTargetPriorLayoutAndUpdate (KI-007 fix) moved to
 // Nodes/Common/SwapchainBarriers.h (Sampled Lighting Inc3 M1) so ComputeStageNode's
 // IMAGE_WRITE role and the new BlitNode can reuse it too — this header still pulls it

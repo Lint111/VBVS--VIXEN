@@ -285,12 +285,16 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
-    // Binary acquire wait (imageAvailable is a WSI binary semaphore)
-    VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    acquireWait.semaphore = imageAvailableSemaphore;
-    acquireWait.value     = 0;  // binary semaphore: value ignored
-    acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    waits.push_back(acquireWait);
+    // The binary acquire wait must be consumed by the first submit that actually accesses the
+    // swapchain image. In the split baked path this dispatch writes HitRecord only, so BlitNode
+    // owns the wait. Swapchain-writing / self-blitting variants still consume it here.
+    if (ComputeDispatchWaitsForSwapchainAcquire(writesNoImage)) {
+        VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        acquireWait.semaphore = imageAvailableSemaphore;
+        acquireWait.value     = 0;  // binary semaphore: value ignored
+        acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        waits.push_back(acquireWait);
+    }
 
     // Timeline SIGNALS (compute is the producer): a group signals its OWN completion value once.
     // All of a producer's signalEdges carry the same timelineOffset (== the producer's groupId,

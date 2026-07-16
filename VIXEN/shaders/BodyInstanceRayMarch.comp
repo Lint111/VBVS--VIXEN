@@ -98,6 +98,11 @@ layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupan
 #include "recipe/SdfCoreKernels.glsl"
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
+// Ray-trace capture is a primary-view debugging feature.  Secondary lighting
+// shaders also include SceneBindings.glsl, but must not inherit binding 4 or
+// perform trace writes for probe/shadow rays.
+#define VIXEN_ENABLE_TRACE_RECORDING 1
+
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
 
 // ============================================================================

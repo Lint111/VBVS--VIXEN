@@ -68,6 +68,7 @@ add_executable(test_rendergraph_criticalnodes_infra1
     Nodes/test_frame_sync_node.cpp
     Nodes/test_render_target_node.cpp
     Nodes/test_compute_dispatch_node.cpp
+    Nodes/test_blit_node.cpp
     Nodes/test_blend_mode.cpp
 )
 target_link_libraries(test_rendergraph_criticalnodes_infra1 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
@@ -200,6 +201,7 @@ add_custom_command(
             -I ${_brm_shader_dir}
             -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
             --target-env=vulkan1.3
+            -DVIXEN_ENABLE_INSTANCE_ITER_DEBUG=1
             ${_brm_src}
             -o ${_brm_spv}
     DEPENDS ${_brm_src} ${_brm_includes}

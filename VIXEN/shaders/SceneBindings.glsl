@@ -68,14 +68,21 @@ layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
 // ============================================================================
 // PER-INSTANCE ITERATION DEBUG BUFFER (Inc1 M4b — binding 14)
 // ============================================================================
-// One uint per instance slot: the traversal iteration count that instance's
-// traverseOctreeInstanced call performed for the CURRENT pixel's ray, written
-// unconditionally each instance-loop iteration (last writer wins across the
-// dispatch — only meaningful for a single-pixel dispatch, which is exactly
-// what the occlusion-reject unit test uses). Bound as a 1-byte placeholder in
-// production; the write is a single non-atomic store, negligible next to the
-// traversal it instruments.
+// This is meaningful only to single-pixel GPU tests.  Production used to leave
+// the descriptor unbound while every ray still performed contested stores to
+// the same few uints.  The test SPIR-V opts in explicitly; production shaders
+// compile the binding and all stores away.
+#ifdef VIXEN_ENABLE_INSTANCE_ITER_DEBUG
 layout(std430, binding = 14) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
+void writeInstanceIterDebug(int instanceIndex, uint iterationCount) {
+    instanceIterCount[instanceIndex] = iterationCount;
+}
+#else
+void writeInstanceIterDebug(int instanceIndex, uint iterationCount) {
+    // Production no-op. Keep one call seam so test-only instrumentation cannot
+    // leak back into the hot instance loop through scattered raw SSBO writes.
+}
+#endif
 
 // ============================================================================
 // TIER-CROSSING REFERENCE TABLE (Tiered-ESVO Inc2 M3 — binding 15)
@@ -103,12 +110,14 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
+#ifdef VIXEN_ENABLE_TRACE_RECORDING
 layout(std430, binding = 4) buffer RayTraceBuffer {
     uint traceWriteIndex;
     uint traceCapacity;
     uint _padding[2];
     uint traceData[];
 };
+#endif
 
 // ============================================================================
 // OCTREE CONFIG SSBO (binding 5, std430, 432 B / element, N elements)
@@ -116,13 +125,8 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 // Struct layout must be byte-for-byte identical to the C++ OctreeConfig (432 B).
 //
 // LAYOUT NOTE (I3.2 — UBO→SSBO migration):
-//   Under std430, scalar arrays (float[], uint[]) stride at 4 B per element.
-//   The tail was previously `float _tailPad[5]` (80 B under std140's 16 B/elem stride).
-//   Under std430 that would be only 5*4=20 B, shrinking the struct to 372 B — WRONG.
-//   Fix: use `uvec4 _tailPad[5]` (vec4-aligned type, 16 B/elem under BOTH std140 and
-//   std430) → 5*16=80 B in both layouts → struct stays 432 B. ✓
-//   All other fields use vec4/mat4/uvec4 types that have identical alignment under
-//   both layouts (scalar ints/uints that are NOT in bare arrays are unaffected).
+//   The generated CPU and GLSL structs share one canonical schema. The reflected
+//   array stride and every live tail-field offset are checked by SDI parity tests.
 //
 // Byte offsets (std430 SSBO — identical to the old std140 UBO for all read fields):
 //   0   esvoMaxScale        int
@@ -146,7 +150,13 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
 //   216 brickStrideFloats   uint  ← floats per brick (sum over all channels)
 //   220 _padChannels        uint  ← explicit 4-byte pad (std430: arrays are 16-aligned)
 //   224 channels[8]         uvec4 ← 8*16=128 B → ends at byte 352
-//   352 _tailPad[5]         uvec4   5*16=80 B (uvec4 stride=16 under std430) → 432 B ✓
+//   352 mipPoolBase         uint
+//   356 brickResident       uint
+//   360 tierRefTableBase    uint
+//   364 brickLookupBase     uint
+//   368 traceBoundsMin      vec3  ← conservative allocated-brick AABB, root-local [0,1]
+//   384 traceBoundsMax      vec3
+//   396 _tailPad[9]         uint  ← reserved; record ends at byte 432
 // ============================================================================
 #include "Generated/OctreeConfig.glsl"   // generated single-source struct (Phase C); was an inline copy
 
@@ -458,6 +468,7 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
 bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
                                vec3 rayDir, float tBias,
                                inout StackEntry stack[STACK_SIZE],
+                               bool anyHitOnly,
                                out vec3 hitColor, out vec3 hitNormal, out float hitT,
                                out float hitRoughness,
                                out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
@@ -507,12 +518,18 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     // without a crossing, continues into real adjacent leaf bricks via the ESVO traversal
     // machinery (passed a LOCAL COPY of state/coef/stack so the outer loop is untouched).
     // sHit is the total arc-length from gridEntry across however many bricks were traversed.
-    vec3  nrm;
+    vec3 nrm = vec3(0.0, 1.0, 0.0);
     float sHit;
     ivec3 hitBrick;
-    if (!marchBrickSdf(g_octreeIdx, brick, gridEntry, gridDirN, state, coef, stack, nrm, sHit, hitBrick)) {
+    bool marched = anyHitOnly
+        ? marchBrickSdfAnyHit(g_octreeIdx, brick, gridEntry, gridDirN,
+                              state, coef, stack, sHit, hitBrick)
+        : marchBrickSdf(g_octreeIdx, brick, gridEntry, gridDirN,
+                        state, coef, stack, nrm, sHit, hitBrick);
+    if (!marched) {
         return false;
     }
+
     hitNormal = nrm;
 
     // hitT in the SAME parametrization as the binary leaf (tBias + local-t): convert
@@ -521,6 +538,10 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     float gridScale = float(bpa * 8);
     float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
     hitT = tBias + tHitLocal;
+
+    // Shadow/visibility rays consume only the boolean hit and hitT range. Avoid
+    // all normal and material-channel reads that their caller immediately discards.
+    if (anyHitOnly) return true;
 
     // Inc3 M3: sample per-voxel color and roughness at the hit grid position.
     vec3 gridHit = gridEntry + gridDirN * sHit;
@@ -618,6 +639,7 @@ void remapRayIntoChildFrame(vec3 parentLocalOrigin, vec3 parentLocalDir,
 bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                               vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                               float tWorldBase, float tLocalUnitWorld,
+                              bool anyHitOnly,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
                               out float hitRoughness,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
@@ -901,6 +923,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                     if (octreeConfig.formatId == FORMAT_STORED_SDF) {
                         leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
                                                             stack,
+                                                            anyHitOnly,
                                                             hitColor, hitNormal, hitT,
                                                             hitRoughness,
                                                             hitBrickIndex, hitVoxelLinearIdx);
@@ -1079,6 +1102,7 @@ const int MAX_TIER_HOPS = 5;
 
 bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                               vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
+                              bool anyHitOnly,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
                               out float hitRoughness,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
@@ -1133,6 +1157,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
         bool hit = traverseOctreeInstancedOnce(curRayOrigin, curRayDir, curRayOriginLocal, curRayDirLocal, curGridT,
                                                tWorldBase, tLocalUnitWorld,
+                                               anyHitOnly,
                                                hitColor, hitNormal, hitT, hitRoughness,
                                                hitBrickIndex, hitVoxelLinearIdx,
                                                tierCrossHit, tierCrossRefIndex,

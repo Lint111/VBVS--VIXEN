@@ -46,7 +46,15 @@ struct OctreeConfig {
     uint32_t mipPoolBase;
     uint32_t brickResident;
     uint32_t tierRefTableBase;
-    uint32_t _tailPad[17];
+    uint32_t brickLookupBase;
+    float traceBoundsMinX;
+    float traceBoundsMinY;
+    float traceBoundsMinZ;
+    uint8_t _pad2[4];
+    float traceBoundsMaxX;
+    float traceBoundsMaxY;
+    float traceBoundsMaxZ;
+    uint32_t _tailPad[9];
 };
 static_assert(sizeof(OctreeConfig) == 432, "OctreeConfig std430 size");
 static_assert(offsetof(OctreeConfig, esvoMaxScale) == 0, "esvoMaxScale@0");
@@ -73,5 +81,8 @@ static_assert(offsetof(OctreeConfig, channels) == 224, "channels@224");
 static_assert(offsetof(OctreeConfig, mipPoolBase) == 352, "mipPoolBase@352");
 static_assert(offsetof(OctreeConfig, brickResident) == 356, "brickResident@356");
 static_assert(offsetof(OctreeConfig, tierRefTableBase) == 360, "tierRefTableBase@360");
-static_assert(offsetof(OctreeConfig, _tailPad) == 364, "_tailPad@364");
+static_assert(offsetof(OctreeConfig, brickLookupBase) == 364, "brickLookupBase@364");
+static_assert(offsetof(OctreeConfig, traceBoundsMinX) == 368, "traceBoundsMinX@368");
+static_assert(offsetof(OctreeConfig, traceBoundsMaxX) == 384, "traceBoundsMaxX@384");
+static_assert(offsetof(OctreeConfig, _tailPad) == 396, "_tailPad@396");
 } // namespace Vixen::Gpu

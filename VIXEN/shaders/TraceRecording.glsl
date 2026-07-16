@@ -107,6 +107,7 @@ const uint TRACE_RAY_SIZE = TRACE_HEADER_SIZE + (MAX_TRACE_STEPS * TRACE_STEP_SI
 // THREAD-LOCAL TRACE STATE
 // ============================================================================
 
+#ifdef VIXEN_ENABLE_TRACE_RECORDING
 // These are stored in registers during traversal
 uint g_traceRaySlot = 0xFFFFFFFF;  // Slot in trace buffer (0xFFFFFFFF = not tracing)
 uint g_traceStepCount = 0;         // Current step count for this ray
@@ -125,8 +126,13 @@ bool shouldCaptureDebug(ivec2 pixelCoords) {
     if (pc.debugTargetPixel.x >= 0 && pixelCoords == pc.debugTargetPixel) return true;
 
     // Capture if pixel is on grid intersection
+#ifdef VIXEN_ENABLE_TRACE_GRID
     return (pixelCoords.x % DEBUG_GRID_SPACING == 0) &&
            (pixelCoords.y % DEBUG_GRID_SPACING == 0);
+#else
+    // Grid capture is an explicit diagnostic opt-in, not per-frame production work.
+    return false;
+#endif
 }
 
 // Reserved slot for the click-target pixel (TEMP DEBUG), bypassing the shared atomic counter.
@@ -213,5 +219,16 @@ void endRayTrace(bool hit) {
 
     traceData[offset + 3] = flags;
 }
+#else
+// Secondary lighting shaders share the traversal implementation but have no
+// reason to expose or touch the primary-view trace buffer.
+bool shouldCaptureDebug(ivec2 pixelCoords) { return false; }
+bool beginRayTrace(ivec2 pixelCoords) { return false; }
+void recordTraceStep(uint stepType, uint nodeIndex, int scale, uint octantMask,
+                     vec3 pos, float tMin, float tMax, uvec2 childDesc) {
+}
+void endRayTrace(bool hit) {
+}
+#endif
 
 #endif // TRACE_RECORDING_GLSL

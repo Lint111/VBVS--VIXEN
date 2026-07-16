@@ -46,6 +46,25 @@ struct WorldHit {
     uint  instIdx;
 };
 
+// Return the conservative allocated-brick AABB for this octree. Old cached
+// configs and non-SDF serializers leave the new fields zeroed; treat that as
+// the historical full-root bound so the schema extension is backward-safe.
+// `true` means the valid bound is genuinely tighter than [0,1]^3.
+bool getOctreeTraceBounds(uint octreeIdx, out vec3 boundsMin, out vec3 boundsMax) {
+    boundsMin = configs[octreeIdx].traceBoundsMin;
+    boundsMax = configs[octreeIdx].traceBoundsMax;
+    bool valid = all(greaterThan(boundsMax, boundsMin)) &&
+                 all(greaterThanEqual(boundsMin, vec3(0.0))) &&
+                 all(lessThanEqual(boundsMax, vec3(1.0)));
+    if (!valid) {
+        boundsMin = vec3(0.0);
+        boundsMax = vec3(1.0);
+        return false;
+    }
+    return any(greaterThan(boundsMin, vec3(0.0))) ||
+           any(lessThan(boundsMax, vec3(1.0)));
+}
+
 // ============================================================================
 // TraceWorld - nearest-hit across all body instances (procedural + ESVO)
 // ============================================================================
@@ -120,12 +139,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 float c    = dot(oc, oc) - boundRadius * boundRadius;
                 float disc = b * b - c;
                 if (disc < 0.0) {
-                    instanceIterCount[instIdx] = 0u;
+                    writeInstanceIterDebug(instIdx, 0u);
                     continue;  // ray misses this instance's bound sphere entirely
                 }
                 float entryT = max(-b - sqrt(disc), 0.0);
                 if (entryT > bestT) {
-                    instanceIterCount[instIdx] = 0u;
+                    writeInstanceIterDebug(instIdx, 0u);
                     continue;  // nearest possible hit is already farther than bestT
                 }
 
@@ -145,7 +164,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 }
 
                 if (farSubPixel) {
-                    instanceIterCount[instIdx] = 1u;  // flat-shaded, not a full march — nonzero proves it wasn't rejected
+                    writeInstanceIterDebug(instIdx, 1u);  // flat-shaded, not a full march — nonzero proves it wasn't rejected
                     pHit    = true;
                     pT      = entryT;
                     pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
@@ -164,7 +183,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
                     // early-reject fired," matching the ESVO branch's own convention exactly.
-                    instanceIterCount[instIdx] = pSteps;
+                    writeInstanceIterDebug(instIdx, pSteps);
                 }
             }
 #endif
@@ -234,8 +253,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
 
         if (gridT.y < 0.0) {
-            instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
-            continue;  // ray misses this instance's AABB
+            writeInstanceIterDebug(instIdx, 0u);  // proves zero traversal iterations (Inc1 M4b test)
+            continue;  // ray misses this instance's root AABB
         }
 
         // Inc1 M4b: instances are sorted front-to-back CPU-side (see
@@ -274,7 +293,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // (below) cannot possibly produce the nearest hit. Skip it
                 // entirely: zero traversal iterations, not just a discarded
                 // result.
-                instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
+                writeInstanceIterDebug(instIdx, 0u);  // proves zero traversal iterations (Inc1 M4b test)
                 continue;
             }
         }
@@ -325,11 +344,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
         bool instHit = traverseOctreeInstanced(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
+                                           false,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
         hitT *= inst.renderScale;  // parameter-along-instDir -> true world distance (see comment above)
-        instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
+        writeInstanceIterDebug(instIdx, dbg.iterationCount);  // Inc1 M4b occlusion-reject test hook
 
         if (instHit && hitT < bestT) {
             bestT           = hitT;
@@ -456,10 +476,16 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         // full ESVO descent.
         vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
         vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
-        vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
-        if (gridT.y < 0.0) {
-            continue;  // ray misses this instance's AABB entirely
+        vec3 traceBoundsMin, traceBoundsMax;
+        bool hasTightTraceBounds = getOctreeTraceBounds(oi, traceBoundsMin, traceBoundsMax);
+        vec2 traceT = rayAABBIntersection(localRayOrigin, localRayDir,
+                                          traceBoundsMin, traceBoundsMax);
+        if (traceT.y < 0.0) {
+            continue;  // ray misses every allocated brick in this instance
         }
+        vec2 gridT = hasTightTraceBounds
+            ? rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0))
+            : traceT;
 
         // NOTE: unlike TraceWorld, there is no "farther than bestT already
         // found" reject here -- any-hit semantics mean the FIRST occluder
@@ -492,8 +518,11 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         uint  hitBrick;
         uint  hitVoxel;
 
+        // The constant any-hit mode lets the compiler specialize this call without
+        // burdening the primary traversal with shadow-only control flow or state.
         bool instHit = traverseOctreeInstanced(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
+                                           true,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);

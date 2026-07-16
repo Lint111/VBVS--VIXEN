@@ -64,6 +64,11 @@ float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeId
 
     int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
     if (bpa <= 0) return 1e9;
+    int gridSide = bpa * 8;
+    if (any(lessThan(gridCoord, ivec3(0))) ||
+        any(greaterThanEqual(gridCoord, ivec3(gridSide)))) {
+        return 1e9;
+    }
 
     // Grid coordinate → brick coordinate (which 8^3 brick?)
     ivec3 brickCoord   = gridCoord / 8;
@@ -74,8 +79,8 @@ float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeId
     uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
     if (flatLookup == 0xFFFFFFFFu) return 1e9;  // out of grid
 
-    // Each octree's sub-table is bpa^3 entries; sub-tables are appended in order.
-    uint lookupBase = uint(octreeIdx) * uint(bpa) * uint(bpa) * uint(bpa);
+    // Sub-table sizes vary with bpa; concatenation records the exact prefix.
+    uint lookupBase = configs[octreeIdx].brickLookupBase;
     uint brickIdx   = brickLookup[lookupBase + flatLookup];
     if (brickIdx == 0xFFFFFFFFu) return 1e9;  // unallocated brick
 
@@ -153,72 +158,145 @@ vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
 }
 
 // ---------------------------------------------------------------------------
-// sampleSdfTrilinear: trilinear interpolation of the SDF at a fractional grid
-// position (in voxel units). The 8 corners are fetched via _sampleSdfVoxel.
-// gridPos is in octree grid-voxel coordinates (0..bpa*8 per axis).
+// Load one trilinear SDF cell. The four z=0 corners are packed in z0 as
+// (c000,c100,c010,c110), with the matching z=1 corners in z1. Keeping the
+// corners together lets the hit sample reuse them for the exact derivative.
 // ---------------------------------------------------------------------------
-float sampleSdfTrilinear(vec3 gridPos, int octreeIdx) {
-    vec3  f = fract(gridPos);
+bool _loadSdfTrilinearCell(uint base, vec3 gridPos, int octreeIdx,
+                           out vec3 f, out vec4 z0, out vec4 z1) {
+    f = fract(gridPos);
+    z0 = vec4(1e9);
+    z1 = vec4(1e9);
+    if (base == 0xFFFFFFFFu) return false;
+
     ivec3 i = ivec3(floor(gridPos));
+    int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    bool inGrid = bpa > 0 && all(greaterThanEqual(i, ivec3(0))) &&
+                  all(lessThan(i, ivec3(bpa * 8)));
+    ivec3 brickCoord = inGrid ? i / 8 : ivec3(-1);
+    ivec3 local = i - brickCoord * 8;
+    bool oneBrick = inGrid && all(lessThan(local, ivec3(7)));
 
-    float c000 = _sampleSdfVoxel(i + ivec3(0,0,0), octreeIdx);
-    float c100 = _sampleSdfVoxel(i + ivec3(1,0,0), octreeIdx);
-    float c010 = _sampleSdfVoxel(i + ivec3(0,1,0), octreeIdx);
-    float c110 = _sampleSdfVoxel(i + ivec3(1,1,0), octreeIdx);
-    float c001 = _sampleSdfVoxel(i + ivec3(0,0,1), octreeIdx);
-    float c101 = _sampleSdfVoxel(i + ivec3(1,0,1), octreeIdx);
-    float c011 = _sampleSdfVoxel(i + ivec3(0,1,1), octreeIdx);
-    float c111 = _sampleSdfVoxel(i + ivec3(1,1,1), octreeIdx);
+    if (oneBrick) {
+        uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
+        uint brickIdx = brickLookup[configs[octreeIdx].brickLookupBase + flatLookup];
+        if (brickIdx == 0xFFFFFFFFu) return false;
 
+        uint voxel000 = uint(local.z * 64 + local.y * 8 + local.x);
+        uint poolVoxelBase = configs[octreeIdx].poolBrickBase +
+                             brickIdx * configs[octreeIdx].brickStrideFloats + base;
+        z0 = vec4(channelPool[poolVoxelBase + voxel000],
+                  channelPool[poolVoxelBase + voxel000 + 1u],
+                  channelPool[poolVoxelBase + voxel000 + 8u],
+                  channelPool[poolVoxelBase + voxel000 + 9u]);
+        z1 = vec4(channelPool[poolVoxelBase + voxel000 + 64u],
+                  channelPool[poolVoxelBase + voxel000 + 65u],
+                  channelPool[poolVoxelBase + voxel000 + 72u],
+                  channelPool[poolVoxelBase + voxel000 + 73u]);
+    } else {
+        // A cell on a brick/grid boundary may span multiple lookup entries.
+        z0 = vec4(_samplePoolVoxel(base, i + ivec3(0,0,0), 0, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,0,0), 0, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(0,1,0), 0, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,1,0), 0, octreeIdx));
+        z1 = vec4(_samplePoolVoxel(base, i + ivec3(0,0,1), 0, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,0,1), 0, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(0,1,1), 0, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,1,1), 0, octreeIdx));
+    }
+    return true;
+}
+
+float _interpolateSdfCell(vec3 f, vec4 z0, vec4 z1) {
     return mix(
-        mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
-        mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y),
+        mix(mix(z0.x, z0.y, f.x), mix(z0.z, z0.w, f.x), f.y),
+        mix(mix(z1.x, z1.y, f.x), mix(z1.z, z1.w, f.x), f.y),
         f.z);
 }
 
-// Same sentinel threshold as marchBrickSdf's SENTINEL_D: a trilinear sample this large means
-// the stencil straddled into an unallocated neighbour brick (_samplePoolVoxel -> 1e9), not an
-// honest distance.
+float sampleSdfTrilinearAtBase(vec3 gridPos, int octreeIdx, uint base) {
+    vec3 f;
+    vec4 z0, z1;
+    if (!_loadSdfTrilinearCell(base, gridPos, octreeIdx, f, z0, z1)) return 1e9;
+    return _interpolateSdfCell(f, z0, z1);
+}
+
+// Public/general sampler. The hot marcher resolves SEM_SDF once and calls the
+// AtBase variant, avoiding a channel-descriptor scan at every sphere-trace step.
+float sampleSdfTrilinear(vec3 gridPos, int octreeIdx) {
+    return sampleSdfTrilinearAtBase(gridPos, octreeIdx, channelBaseFloats(SEM_SDF));
+}
+
+const float SDF_HIT_EPS = 0.01;
 const float SDF_GRAD_SENTINEL_D = 100.0;
 
-// ---------------------------------------------------------------------------
-// sdfGradientStored: central-difference gradient of the trilinear SDF field.
-// Step h = 0.5 voxel (fine enough for the interpolated field).
-// Returns a normalized gradient (normal pointing outward from the surface).
-//
-// Sentinel-aware per axis: a central-difference sample straddling a brick boundary can read an
-// unallocated neighbour (1e9 sentinel, see _samplePoolVoxel), which would otherwise blow up that
-// axis's component and corrupt the normal -- visible as speckled shading noise right along brick
-// seams (worst near a smooth-union fillet, where the iso-surface sits close to a brick face).
-// marchBrickSdf's own iso-search loop already guards against this (SENTINEL_D); this mirrors that
-// guard by falling back to a one-sided difference against the known-good on-surface sample
-// (d0, near-zero since gridPos is the just-found hit point) whenever a side is contaminated.
-// ---------------------------------------------------------------------------
-vec3 sdfGradientStored(vec3 gridPos, int octreeIdx) {
-    const float h = 0.5;
-    float d0 = sampleSdfTrilinear(gridPos, octreeIdx);
+vec3 _normalizeSdfGradient(vec3 g) {
+    float len = length(g);
+    return (len > 1e-6) ? g / len : vec3(0.0, 1.0, 0.0);
+}
 
-    float dxPlus  = sampleSdfTrilinear(gridPos + vec3(h,0,0), octreeIdx);
-    float dxMinus = sampleSdfTrilinear(gridPos - vec3(h,0,0), octreeIdx);
+// Rare fallback for a surface exactly on an unallocated/grid boundary. Normal
+// samples use the already-resolved SDF channel base and retain the old
+// sentinel-aware one-sided behavior.
+vec3 _sdfGradientFiniteDifference(vec3 gridPos, int octreeIdx, uint base) {
+    const float h = 0.5;
+    float d0 = sampleSdfTrilinearAtBase(gridPos, octreeIdx, base);
+
+    float dxPlus  = sampleSdfTrilinearAtBase(gridPos + vec3(h,0,0), octreeIdx, base);
+    float dxMinus = sampleSdfTrilinearAtBase(gridPos - vec3(h,0,0), octreeIdx, base);
     float gx = (abs(dxPlus) > SDF_GRAD_SENTINEL_D) ? (d0 - dxMinus) * 2.0
              : (abs(dxMinus) > SDF_GRAD_SENTINEL_D) ? (dxPlus - d0) * 2.0
              : (dxPlus - dxMinus);
 
-    float dyPlus  = sampleSdfTrilinear(gridPos + vec3(0,h,0), octreeIdx);
-    float dyMinus = sampleSdfTrilinear(gridPos - vec3(0,h,0), octreeIdx);
+    float dyPlus  = sampleSdfTrilinearAtBase(gridPos + vec3(0,h,0), octreeIdx, base);
+    float dyMinus = sampleSdfTrilinearAtBase(gridPos - vec3(0,h,0), octreeIdx, base);
     float gy = (abs(dyPlus) > SDF_GRAD_SENTINEL_D) ? (d0 - dyMinus) * 2.0
              : (abs(dyMinus) > SDF_GRAD_SENTINEL_D) ? (dyPlus - d0) * 2.0
              : (dyPlus - dyMinus);
 
-    float dzPlus  = sampleSdfTrilinear(gridPos + vec3(0,0,h), octreeIdx);
-    float dzMinus = sampleSdfTrilinear(gridPos - vec3(0,0,h), octreeIdx);
+    float dzPlus  = sampleSdfTrilinearAtBase(gridPos + vec3(0,0,h), octreeIdx, base);
+    float dzMinus = sampleSdfTrilinearAtBase(gridPos - vec3(0,0,h), octreeIdx, base);
     float gz = (abs(dzPlus) > SDF_GRAD_SENTINEL_D) ? (d0 - dzMinus) * 2.0
              : (abs(dzMinus) > SDF_GRAD_SENTINEL_D) ? (dzPlus - d0) * 2.0
              : (dzPlus - dzMinus);
 
-    vec3 g = vec3(gx, gy, gz);
-    float len = length(g);
-    return (len > 1e-6) ? g / len : vec3(0.0, 1.0, 0.0);
+    return _normalizeSdfGradient(vec3(gx, gy, gz));
+}
+
+// Exact derivative of the trilinear interpolant represented by this cell.
+// Unlike the old six-tap central difference, this consumes no additional pool
+// reads and cannot disagree with the field used for the hit decision.
+vec3 _sdfCellGradient(vec3 f, vec4 z0, vec4 z1) {
+    float gx = mix(mix(z0.y - z0.x, z0.w - z0.z, f.y),
+                   mix(z1.y - z1.x, z1.w - z1.z, f.y), f.z);
+    float gy = mix(mix(z0.z - z0.x, z0.w - z0.y, f.x),
+                   mix(z1.z - z1.x, z1.w - z1.y, f.x), f.z);
+    float gz = mix(mix(z1.x - z0.x, z1.y - z0.y, f.x),
+                   mix(z1.z - z0.z, z1.w - z0.w, f.x), f.y);
+    return _normalizeSdfGradient(vec3(gx, gy, gz));
+}
+
+bool _sdfCellContaminated(vec4 z0, vec4 z1) {
+    return any(greaterThan(abs(z0), vec4(SDF_GRAD_SENTINEL_D))) ||
+           any(greaterThan(abs(z1), vec4(SDF_GRAD_SENTINEL_D)));
+}
+
+vec3 sdfGradientStoredFromCell(vec3 gridPos, int octreeIdx,
+                               vec3 f, vec4 z0, vec4 z1) {
+    uint base = channelBaseFloats(SEM_SDF);
+    return _sdfCellContaminated(z0, z1)
+        ? _sdfGradientFiniteDifference(gridPos, octreeIdx, base)
+        : _sdfCellGradient(f, z0, z1);
+}
+
+vec3 sdfGradientStored(vec3 gridPos, int octreeIdx) {
+    uint base = channelBaseFloats(SEM_SDF);
+    vec3 f;
+    vec4 z0, z1;
+    if (!_loadSdfTrilinearCell(base, gridPos, octreeIdx, f, z0, z1)) {
+        return vec3(0.0, 1.0, 0.0);
+    }
+    return sdfGradientStoredFromCell(gridPos, octreeIdx, f, z0, z1);
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +310,7 @@ bool _sdfBrickAllocated(ivec3 brickCoord, int octreeIdx) {
     if (bpa <= 0) return false;
     uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
     if (flatLookup == 0xFFFFFFFFu) return false;  // out of grid
-    uint lookupBase = uint(octreeIdx) * uint(bpa) * uint(bpa) * uint(bpa);
+    uint lookupBase = configs[octreeIdx].brickLookupBase;
     return brickLookup[lookupBase + flatLookup] != 0xFFFFFFFFu;
 }
 
@@ -359,9 +437,11 @@ bool _advanceToNextSdfLeaf(inout TraversalState state, RayCoefficients coef,
 //               length is in voxel units and the 1/√3 Lipschitz step is exact).
 //   state/coef/stack : LOCAL COPIES of the outer traversal state, used to walk the
 //               REAL ESVO machinery to the next allocated leaf on a brick exit.
-// On hit: hitNormal = normalized SDF gradient (grid space), sHit = arc-length from
-// the ORIGINAL gridEntry to the iso-surface (voxel units), measured along gridDirN
-// across however many bricks were traversed. On miss (no crossing in any reachable
+// On hit: sHit = arc-length from the ORIGINAL gridEntry to the iso-surface
+// (voxel units), measured along gridDirN across however many bricks were traversed,
+// and hitBrick identifies the brick containing the crossing. Normal/material
+// reconstruction deliberately happens in the caller only for shading rays. On
+// miss (no crossing in any reachable
 // brick, or the ray left the octree) returns false, exactly as before.
 //
 // WHY THE OLD kFaceOvershoot HACK IS GONE: it peeked one voxel PAST this brick's
@@ -384,9 +464,11 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
     hitBrick  = brick;   // brick the crossing was actually found in (for the pick/ID buffer)
 
     int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    uint sdfBase = channelBaseFloats(SEM_SDF);
+    if (sdfBase == 0xFFFFFFFFu) return false;
 
     const int   MAX_STEPS = 96;    // one 8³ brick + sentinel probes — converges well within this
-    const float EPS       = 0.01;  // iso threshold (voxel fraction)
+    const float EPS       = SDF_HIT_EPS;  // iso threshold (voxel fraction)
     // Above this, a trilinear sample is sentinel-contaminated: at a brick face the 8-corner
     // stencil reached into an UNALLOCATED neighbour brick (_sampleSdfVoxel → 1e9). Real
     // in-leaf distances are ≤ a brick diagonal (~14), so anything large means "no honest
@@ -441,9 +523,13 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
         for (int i = 0; i < MAX_STEPS; ++i) {
             if (s > sMax) break;              // left the brick without crossing → try to continue
             vec3  p = curEntry + gridDirN * s;
-            float d = sampleSdfTrilinear(p, octreeIdx);
+            vec3 cellF;
+            vec4 cellZ0, cellZ1;
+            float d = _loadSdfTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1)
+                ? _interpolateSdfCell(cellF, cellZ0, cellZ1)
+                : 1e9;
             if (d < EPS) {                    // crossed (or reached) the iso-surface
-                hitNormal = sdfGradientStored(p, octreeIdx);
+                hitNormal = sdfGradientStoredFromCell(p, octreeIdx, cellF, cellZ0, cellZ1);
                 sHit      = sBase + s;
                 hitBrick  = curBrick;
                 return true;
@@ -473,6 +559,81 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
         curBrick = nextBrick;
     }
     return false;   // exhausted the hop budget without crossing → miss
+}
+
+// Visibility-specialized twin of marchBrickSdf. Keeping this as a distinct
+// function is intentional: passing a runtime "need normal" flag through the
+// large marcher made the GPU compiler retain the normal path and regressed the
+// primary dispatch. This version has no normal outputs, corner lifetimes, or
+// normalization work. Traversal/step semantics must remain synchronized with
+// marchBrickSdf; only the hit payload differs.
+bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
+                         TraversalState state, RayCoefficients coef,
+                         StackEntry stack[STACK_SIZE],
+                         out float sHit, out ivec3 hitBrick) {
+    sHit     = 0.0;
+    hitBrick = brick;
+
+    int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    uint sdfBase = channelBaseFloats(SEM_SDF);
+    if (sdfBase == 0xFFFFFFFFu) return false;
+
+    const int   MAX_STEPS      = 96;
+    const float EPS            = SDF_HIT_EPS;
+    const float SENTINEL_D     = 100.0;
+    const int   MAX_BRICK_HOPS = 2048;
+
+    float sBase = 0.0;
+    ivec3 curBrick = brick;
+
+    for (int hop = 0; hop < MAX_BRICK_HOPS; ++hop) {
+        vec3 curEntry = gridEntry + gridDirN * sBase;
+        vec3 bMin = vec3(curBrick) * 8.0;
+        vec3 bMax = bMin + vec3(8.0);
+
+        const float kAxisParallelSlabDist = 64.0;
+        vec3 invD = vec3(
+            abs(gridDirN.x) > 1e-8 ? 1.0 / gridDirN.x : 0.0,
+            abs(gridDirN.y) > 1e-8 ? 1.0 / gridDirN.y : 0.0,
+            abs(gridDirN.z) > 1e-8 ? 1.0 / gridDirN.z : 0.0);
+        bvec3 axisParallel = lessThanEqual(abs(gridDirN), vec3(1e-8));
+        vec3 t0 = mix((bMin - curEntry) * invD,
+                      vec3(-kAxisParallelSlabDist), axisParallel);
+        vec3 t1 = mix((bMax - curEntry) * invD,
+                      vec3(kAxisParallelSlabDist), axisParallel);
+        vec3 thi = max(t0, t1);
+        float sMax = max(min(min(thi.x, thi.y), thi.z), 0.0);
+
+        float s = 0.0;
+        for (int i = 0; i < MAX_STEPS; ++i) {
+            if (s > sMax) break;
+            vec3 p = curEntry + gridDirN * s;
+            float d = sampleSdfTrilinearAtBase(p, octreeIdx, sdfBase);
+            if (d < EPS) {
+                sHit     = sBase + s;
+                hitBrick = curBrick;
+                return true;
+            }
+            s += (d > SENTINEL_D) ? 1.0 : max(d * 0.5773503, EPS);
+        }
+
+        ivec3 nextBrick;
+        if (!_advanceToNextSdfLeaf(state, coef, stack, octreeIdx, bpa, nextBrick)) {
+            return false;
+        }
+
+        vec3 nMin = vec3(nextBrick) * 8.0;
+        vec3 nMax = nMin + vec3(8.0);
+        vec3 nt0 = mix((nMin - gridEntry) * invD,
+                       vec3(-kAxisParallelSlabDist), axisParallel);
+        vec3 nt1 = mix((nMax - gridEntry) * invD,
+                       vec3(kAxisParallelSlabDist), axisParallel);
+        vec3 ntlo = min(nt0, nt1);
+        float sEnter = max(max(max(ntlo.x, ntlo.y), ntlo.z), sBase);
+        sBase    = sEnter;
+        curBrick = nextBrick;
+    }
+    return false;
 }
 
 #endif // STORED_SDF_GLSL

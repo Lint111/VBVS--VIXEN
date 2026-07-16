@@ -44,11 +44,13 @@ namespace BlitNodeCounts {
  *
  * Architectural principle (per design review): this is a PRESENTATION node, kept separate
  * from the compute-stage nodes on purpose — the separation IS the point. It owns the WSI
- * contract (binary imageAvailable wait is NOT needed here — the upstream pass chain already
- * consumed the acquire; BlitNode signals renderComplete for Present, owns the in-flight
- * fence, and ends the swapchain image at the same leaveImageInGeneral-gated layout contract
- * ComputeDispatchNode's blit path already established) so that IMAGE_WRITE producers
- * upstream (ComputeStageNode) never need to touch WSI at all.
+ * contract: it is the first submit that accesses the swapchain in the split path, so it waits
+ * imageAvailable at the blit stage, and ends the image at the same leaveImageInGeneral-gated
+ * layout contract ComputeDispatchNode's blit path established. A terminal blit owns the WSI
+ * present signal and in-flight fence. When a downstream composite pass follows, it owns
+ * neither: the final UI submit signals its own present semaphore and fence. Emitting an
+ * unconsumed intermediate binary signal would make the next per-image signal illegal.
+ * IMAGE_WRITE producers upstream (ComputeStageNode) never need to touch WSI at all.
  *
  * IMAGE_READ pairs with an upstream ComputeStageNode's IMAGE_WRITE (ComputeStorageWrite) on
  * the SAME wired Resource* — the scheduler bakes a real SyncEdge (write->read hazard) off
@@ -126,7 +128,8 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief renderComplete binary semaphore array, indexed by image (this node signals it -> Present). */
+    /** @brief renderComplete binary semaphore array, indexed by image. Signalled only when this
+     * node is terminal; the final composite pass owns the present signal otherwise. */
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
         SlotNullability::Required,
         SlotRole::Dependency,
@@ -157,8 +160,7 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
      * wiring the upstream shading pass's RENDER_COMPLETE_SEMAPHORE here establishes the
      * TOPOLOGICAL execution order (shading-before-blit) the FrameSyncScheduler needs to bake
      * the IMAGE_READ/IMAGE_WRITE edge in the right direction — the binary semaphore VALUE
-     * itself is inert (this node does not wait it; see the class doc comment on why an
-     * explicit WSI acquire-wait is not needed here).
+     * itself is inert (this node does not wait it).
      */
     INPUT_SLOT(ORDERING_WAIT_SEMAPHORE, VkSemaphore, 10,
         SlotNullability::Optional,
@@ -166,20 +168,18 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief imageAvailable (acquire) binary semaphore array — only consulted if this node
-     * turns out to be the FIRST submit in some future graph shape; the default composite
-     * chain's acquire is already consumed upstream, so this is Optional and typically
-     * unconnected (mirrors ComputeStageNode's own imageAvailable contract for a non-first
-     * consumer, kept for shape-completeness rather than active use in M1's wiring). */
+    /** @brief Per-flight imageAvailable binary semaphore. Blit is the first swapchain-image
+     * access in the split render path and consumes this wait at VK_PIPELINE_STAGE_2_BLIT_BIT. */
     INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 11,
-        SlotNullability::Optional,
+        SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
 
-    /** @brief renderComplete semaphore for Present to wait on. */
+    /** @brief Terminal renderComplete semaphore for Present; VK_NULL_HANDLE when this is a
+     * topology-only composite-chain edge. */
     OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);

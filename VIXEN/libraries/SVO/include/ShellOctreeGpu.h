@@ -127,13 +127,13 @@ static_assert(sizeof(GPUMaterial) == 32, "GPUMaterial must be 32 bytes (matches 
  * point → garbage localToWorld/worldToLocal → the AABB cull failed → every body with
  * octreeIndex>0 silently drew NOTHING (only octree 0, at base offset 0, rendered).
  *
- * The shader reads fields only at byte offsets 0..199 (the header ints, gridMin/Max,
- * the two mat4s, and nodeArrayBase@192 / brickArrayBase@196); bytes 200..431 are
- * pure pad it never touches, so the ONLY constraint on the tail is that it makes the
- * struct exactly 432 bytes. (The `worldGridSize` convenience field that used to trail
- * this struct was removed — it was write-only here; the live readers use the SEPARATE
- * CashSystem::OctreeConfig.) Do NOT change the offset of any field at <200; keep the
- * struct exactly 432 bytes so the array stride matches the shader.
+ * The shader also reads the generated descriptor/tail fields at bytes 200..395:
+ * format/channel layout, pool prefixes, residency, and conservative trace bounds.
+ * Bytes 396..431 remain reserved. The `worldGridSize` convenience field that used
+ * to trail this struct was removed — it was write-only here; the live readers use
+ * the SEPARATE CashSystem::OctreeConfig. Do NOT change a generated offset without
+ * regenerating both artifacts and extending the SDI parity test; keep the struct
+ * exactly 432 bytes so the array stride matches the shader.
  */
 // OctreeConfig is generated from the canonical [GpuStruct] (Phase C). Its 432 B
 // std430 layout + full sizeof/offsetof static_assert battery live in the generated
@@ -222,6 +222,14 @@ inline uint32_t tierRefTableBaseOf(const OctreeConfig& c) {
 /// Write tierRefTableBase into the OctreeConfig tail.
 inline void setTierRefTableBase(OctreeConfig& c, uint32_t base) {
     c.tierRefTableBase = base;
+}
+/// Read the uint32-element offset of this octree's dense brick lookup table.
+inline uint32_t brickLookupBaseOf(const OctreeConfig& c) {
+    return c.brickLookupBase;
+}
+/// Write the uint32-element offset of this octree's dense brick lookup table.
+inline void setBrickLookupBase(OctreeConfig& c, uint32_t base) {
+    c.brickLookupBase = base;
 }
 
 // ===========================================================================
@@ -782,7 +790,10 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     out.materials.resize(palette.size() * sizeof(GPUMaterial));
     std::memcpy(out.materials.data(), palette.data(), out.materials.size());
 
-    // --- Dense grid→brick lookup: uint32[bpa^3].
+    // --- Dense grid→brick lookup: uint32[bpa^3], plus its conservative AABB.
+    glm::ivec3 traceBrickMin(oct->bricksPerAxis);
+    glm::ivec3 traceBrickMaxExclusive(0);
+    bool hasTraceBricks = false;
     {
         const int bpa = oct->bricksPerAxis;
         const uint32_t tableSize = static_cast<uint32_t>(bpa) *
@@ -800,6 +811,10 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
                                    + gz * static_cast<uint32_t>(bpa) * static_cast<uint32_t>(bpa);
             if (flatIdx < tableSize) {
                 lookupTable[flatIdx] = brickViewIdx;
+                hasTraceBricks = true;
+                const glm::ivec3 brickCoord(static_cast<int>(gx), static_cast<int>(gy), static_cast<int>(gz));
+                traceBrickMin = glm::min(traceBrickMin, brickCoord);
+                traceBrickMaxExclusive = glm::max(traceBrickMaxExclusive, brickCoord + glm::ivec3(1));
             }
         }
 
@@ -860,8 +875,25 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     setFormatId(c, STORED_SDF);
     setDescriptorBricksPerAxis(c, static_cast<uint32_t>(oct->bricksPerAxis));
     setSdfBrickArrayBase(c, 0u);  // poolBrickBase; ConcatenateSdf sets per-octree value
+    setBrickLookupBase(c, 0u);    // single-octree lookup begins at entry zero
     c.channelCount      = out.channelCount;
     c.brickStrideFloats = out.brickStrideFloats;
+
+    // Conservative reject bound in the SAME normalized [0,1] frame used by the
+    // shader's root AABB. It encloses complete allocated bricks, not just surface
+    // samples, so a ray rejected by this box cannot reach an ESVO leaf. Traversal
+    // still starts from the unchanged root cube after this cheap pre-test.
+    if (hasTraceBricks && oct->bricksPerAxis > 0) {
+        const float invBpa = 1.0f / static_cast<float>(oct->bricksPerAxis);
+        const glm::vec3 traceMin = glm::vec3(traceBrickMin) * invBpa;
+        const glm::vec3 traceMax = glm::vec3(traceBrickMaxExclusive) * invBpa;
+        c.traceBoundsMinX = traceMin.x;
+        c.traceBoundsMinY = traceMin.y;
+        c.traceBoundsMinZ = traceMin.z;
+        c.traceBoundsMaxX = traceMax.x;
+        c.traceBoundsMaxY = traceMax.y;
+        c.traceBoundsMaxZ = traceMax.z;
+    }
     for (uint32_t ci = 0; ci < out.channelCount && ci < kMaxChannels; ++ci) {
         c.channels[ci] = out.channels[ci];
     }
@@ -937,10 +969,8 @@ inline ConcatenatedOctrees Concatenate(const std::vector<const ShellOctree*>& oc
  * brickArrayBase convention (VoxelSceneCacher.cpp:740 pattern).
  *
  * brickGridLookup: the per-octree lookup tables are appended in order.
- * Each sub-table is uint32[bpa^3] for that octree (bpa may differ if octrees
- * have different bricksPerAxis, though in practice they match). M3 uploads
- * them together; the poolBrickBase offset in the descriptor is sufficient
- * for the shader to index the right sub-table if sizes are equal.
+ * Each sub-table is uint32[bpa^3] for that octree. brickLookupBase records
+ * the prefix sum explicitly, so adjacent octrees may use different bpa values.
  */
 inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*>& octrees) {
     ConcatenatedOctrees cat;
@@ -954,6 +984,7 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
     uint32_t brickBase   = 0;   // running brick offset
     uint32_t poolBase    = 0;   // running pool element offset (in floats)
     uint32_t tierRefBase = 0;   // running tier-ref-table element offset (Inc2 M1 Task 2)
+    uint32_t lookupBase  = 0;   // running brick-lookup offset (in uint32 entries)
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -966,6 +997,7 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);  // poolBrickBase = poolBase
+        setBrickLookupBase(s.config, lookupBase);
         // mipPoolBase is intentionally left at its default (0): SerializeSdf
         // never populates mip pools (opt-in, see MipBake.h), and this plain
         // ConcatenateSdf does not bake them either — ConcatenateSdfWithMips
@@ -1003,6 +1035,8 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         // poolBase advances by brickCount * brickStrideFloats (total floats per brick)
         poolBase  += s.brickCount * s.brickStrideFloats;
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        lookupBase +=
+            static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
 
     return cat;

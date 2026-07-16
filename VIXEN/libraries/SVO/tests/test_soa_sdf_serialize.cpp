@@ -220,6 +220,68 @@ TEST(SoaSdfSerialize, LookupUnallocatedCellsSentinel) {
     }
 }
 
+/**
+ * @test SoaSdfSerialize.TraceBoundsMatchAllocatedBrickRange
+ * @coverage SerializeSdf, OctreeConfig::traceBoundsMin, OctreeConfig::traceBoundsMax
+ * @category regression
+ * @owner SVO
+ * @added 2026-07-15
+ * @last-pass pending
+ */
+TEST(SoaSdfSerialize, TraceBoundsMatchAllocatedBrickRange) {
+    constexpr int n = 64;
+    const glm::vec3 center(32.0f);
+    auto thinSlabSdf = [center](const glm::vec3& p) {
+        const glm::vec3 halfExtent(2.0f, 100.0f, 100.0f);
+        const glm::vec3 q = glm::abs(p - center) - halfExtent;
+        const glm::vec3 qPos = glm::max(q, glm::vec3(0.0f));
+        const float outside = glm::length(qPos);
+        const float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+        return outside + inside;
+    };
+
+    SdfBakeResult baked = BakeSdfWorld(thinSlabSdf, center, n, 2.0f);
+    SdfBodyOctree body = BuildSdfBodyOctree(baked, 3);
+    SerializedOctree out = SerializeSdf(body);
+
+    const int bpa = body.octree->getOctree()->bricksPerAxis;
+    ASSERT_GT(bpa, 0);
+    const uint32_t tableSize = static_cast<uint32_t>(bpa * bpa * bpa);
+    ASSERT_EQ(out.brickGridLookup.size(), tableSize * sizeof(uint32_t));
+    std::vector<uint32_t> lookup(tableSize);
+    std::memcpy(lookup.data(), out.brickGridLookup.data(), out.brickGridLookup.size());
+
+    glm::ivec3 brickMin(bpa);
+    glm::ivec3 brickMaxExclusive(0);
+    bool found = false;
+    for (int z = 0; z < bpa; ++z) {
+        for (int y = 0; y < bpa; ++y) {
+            for (int x = 0; x < bpa; ++x) {
+                const uint32_t flat = static_cast<uint32_t>(z * bpa * bpa + y * bpa + x);
+                if (isBrickUnallocated(lookup[flat])) continue;
+                found = true;
+                brickMin = glm::min(brickMin, glm::ivec3(x, y, z));
+                brickMaxExclusive = glm::max(brickMaxExclusive, glm::ivec3(x + 1, y + 1, z + 1));
+            }
+        }
+    }
+    ASSERT_TRUE(found);
+
+    const glm::vec3 expectedMin = glm::vec3(brickMin) / static_cast<float>(bpa);
+    const glm::vec3 expectedMax = glm::vec3(brickMaxExclusive) / static_cast<float>(bpa);
+    const glm::vec3 actualMin(out.config.traceBoundsMinX,
+                              out.config.traceBoundsMinY,
+                              out.config.traceBoundsMinZ);
+    const glm::vec3 actualMax(out.config.traceBoundsMaxX,
+                              out.config.traceBoundsMaxY,
+                              out.config.traceBoundsMaxZ);
+
+    EXPECT_EQ(actualMin, expectedMin);
+    EXPECT_EQ(actualMax, expectedMax);
+    EXPECT_LT(actualMax.x - actualMin.x, 1.0f)
+        << "The thin-axis regression fixture must produce a genuinely tighter cull bound";
+}
+
 // Occupancy-based brick selection (commit 7db15496 — the brick-fleck root-cause fix):
 // interior bricks of a signed-distance body are SELECTED BY OCCUPANCY (not density>0), so
 // every active brick — including fully-interior ones (all voxels sd<=0) — is allocated.
@@ -306,6 +368,55 @@ TEST(SoaSdfSerialize, ConcatenateSdfBrickArrayBase) {
     // Both configs must carry formatId = STORED_SDF.
     EXPECT_EQ(formatIdOf(cat.configs[0]), STORED_SDF);
     EXPECT_EQ(formatIdOf(cat.configs[1]), STORED_SDF);
+}
+
+/**
+ * @test SoaSdfSerialize.ConcatenateSdfStoresVariableLookupPrefixes
+ * @coverage ConcatenateSdf, brickLookupBaseOf
+ * @category regression
+ * @owner SVO
+ * @added 2026-07-15
+ * @last-pass 2026-07-15
+ */
+TEST(SoaSdfSerialize, ConcatenateSdfStoresVariableLookupPrefixes) {
+    RecipeParams largeParams{10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult largeBake = BakeRecipeToSdfWorld(
+        RECIPE_SPHERE, glm::vec3(16.0f), largeParams, 32, 2.0f);
+    SdfBodyOctree largeBody = BuildSdfBodyOctree(largeBake, 3);
+
+    RecipeParams smallParams{6.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult smallBake = BakeRecipeToSdfWorld(
+        RECIPE_SPHERE, glm::vec3(8.0f), smallParams, 16, 2.0f);
+    SdfBodyOctree smallBody = BuildSdfBodyOctree(smallBake, 3);
+
+    const SerializedOctree large = SerializeSdf(largeBody);
+    const SerializedOctree smallSerialized = SerializeSdf(smallBody);
+    std::vector<const SdfBodyOctree*> bodies{&largeBody, &smallBody};
+    const ConcatenatedOctrees cat = ConcatenateSdf(bodies);
+
+    ASSERT_EQ(cat.configs.size(), 2u);
+    const uint32_t largeLookupEntries =
+        static_cast<uint32_t>(large.brickGridLookup.size() / sizeof(uint32_t));
+    const uint32_t smallLookupEntries =
+        static_cast<uint32_t>(smallSerialized.brickGridLookup.size() / sizeof(uint32_t));
+    ASSERT_NE(largeLookupEntries, smallLookupEntries)
+        << "Regression requires heterogeneous lookup-table sizes";
+
+    EXPECT_EQ(brickLookupBaseOf(cat.configs[0]), 0u);
+    EXPECT_EQ(brickLookupBaseOf(cat.configs[1]), largeLookupEntries)
+        << "Second lookup base must be the prefix sum of earlier tables";
+
+    const uint32_t legacyDerivedBase = smallLookupEntries;
+    EXPECT_NE(legacyDerivedBase, largeLookupEntries)
+        << "octreeIdx * current bpa^3 must not alias a variable-sized predecessor";
+
+    ASSERT_GE(cat.brickGridLookup.size(),
+              large.brickGridLookup.size() + smallSerialized.brickGridLookup.size());
+    EXPECT_EQ(std::memcmp(cat.brickGridLookup.data() + large.brickGridLookup.size(),
+                          smallSerialized.brickGridLookup.data(),
+                          smallSerialized.brickGridLookup.size()),
+              0)
+        << "The configured prefix must address the second serialized lookup verbatim";
 }
 
 // ---------------------------------------------------------------------------

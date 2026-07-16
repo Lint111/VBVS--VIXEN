@@ -2,9 +2,9 @@
 // Sampled Lighting Inc3 M1 (KI-018): presentation-only render-target->swapchain blit node.
 //
 // One node = one blit = one vkQueueSubmit2 = its OWN SubmitGroup. Mirrors ComputeStageNode's
-// consumer-role submit machinery (per-image command buffer, fence ownership, binary
-// renderComplete signal, timeline WAIT on the baked IMAGE_READ<-IMAGE_WRITE edge) but records
-// a blit (SwapchainBarriers::BlitRenderTargetToSwapchain) instead of a compute dispatch.
+// consumer-role submit machinery (per-frame command buffer and timeline WAIT on the baked
+// IMAGE_READ<-IMAGE_WRITE edge) but records a blit instead of a compute dispatch. A terminal
+// blit owns the fence + present semaphore; a composite blit leaves both to its final UI pass.
 
 #include "Nodes/BlitNode.h"
 #include "Core/NodeRegistration.h"
@@ -107,17 +107,21 @@ void BlitNode::CompileImpl(TypedCompileContext& ctx) {
 void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const bool leaveImageInGeneral =
         GetParameterValue<bool>(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
+    const BlitSubmissionPolicy submissionPolicy = ResolveBlitSubmissionPolicy(leaveImageInGeneral);
 
     const uint32_t imageIndex = ctx.In(BlitNodeConfig::IMAGE_INDEX);
     const uint32_t currentFrameIndex = ctx.In(BlitNodeConfig::CURRENT_FRAME_INDEX);
     VkFence inFlightFence = ctx.In(BlitNodeConfig::IN_FLIGHT_FENCE);
     const std::vector<VkSemaphore>& renderComplete = ctx.In(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& imageAvailable =
+        ctx.In(BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
 
     // Two separate bounds: the image-derived arrays are indexed by imageIndex (bounded by
     // renderComplete size), while the command-buffer ring is frame-indexed (bounded by its own
-    // flight-ring size).
+    // flight-ring size, as is imageAvailable).
     if (imageIndex == UINT32_MAX || imageIndex >= renderComplete.size() ||
-        currentFrameIndex >= commandBuffers_.size()) {
+        currentFrameIndex >= commandBuffers_.size() ||
+        (submissionPolicy.waitsForSwapchainAcquire && currentFrameIndex >= imageAvailable.size())) {
         NODE_LOG_WARNING("[BlitNode] Invalid image/frame index - skipping frame");
         return;
     }
@@ -133,7 +137,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // GPU ordering before UI is preserved regardless: both submit to the same device->queue in
     // executionOrder, so submission order already sequences them (a fence never orders GPU work).
     // Terminal blit (leaveImageInGeneral==false, no UI after it): Blit stays the sole fence owner.
-    if (!leaveImageInGeneral) {
+    if (submissionPolicy.ownsFrameFence) {
         vkResetFences(GetDevice()->device, 1, &inFlightFence);
     }
 
@@ -151,11 +155,18 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
+    // This is the first submission that touches the acquired swapchain image in the split path.
+    // Consume the WSI binary at the stage that performs that first access.
+    if (submissionPolicy.waitsForSwapchainAcquire) {
+        VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        acquireWait.semaphore = imageAvailable[currentFrameIndex];
+        acquireWait.value     = 0;
+        acquireWait.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
+        waits.push_back(acquireWait);
+    }
+
     // Timeline WAITS: one per baked waitEdge — the genuine fan-in wait proving the upstream
     // shading pass (IMAGE_WRITE) finished writing before this blit reads it (IMAGE_READ).
-    // No binary imageAvailable wait here: the upstream pass chain already consumed the WSI
-    // acquire (see BlitNodeConfig.h's class doc comment on why this node isn't the first
-    // submit in the default composite chain).
     if (timelineSem != VK_NULL_HANDLE) {
         const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
         if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
@@ -169,12 +180,17 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    // Binary signal (renderComplete, indexed by image) — Present waits on this.
-    VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    renderSig.semaphore = renderComplete[imageIndex];
-    renderSig.value     = 0;  // binary: value ignored
-    renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    signals.push_back(renderSig);
+    // Only a TERMINAL blit signals the binary semaphore that Present consumes. In the composite
+    // chain, UI owns that handoff. Signalling renderComplete here would leave it pending forever
+    // (the topology-only downstream slot does not wait it), then illegally signal it again when
+    // this swapchain image returns: VUID-vkQueueSubmit2-semaphore-03868.
+    if (submissionPolicy.signalsPresentSemaphore) {
+        VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        renderSig.semaphore = renderComplete[imageIndex];
+        renderSig.value     = 0;  // binary: value ignored
+        renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        signals.push_back(renderSig);
+    }
 
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
@@ -186,7 +202,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Composite (leaveImageInGeneral): downstream UI owns the frame fence, so submit with none —
     // see the fence-ownership comment above. Terminal blit: this is the last submit, own the fence.
-    VkFence submitFence = leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence;
+    VkFence submitFence = submissionPolicy.ownsFrameFence ? inFlightFence : VK_NULL_HANDLE;
 
     VkResult result;
     {
@@ -200,7 +216,10 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
                                  std::to_string(result));
     }
 
-    ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderComplete[imageIndex]);
+    // In composite mode this output is a topology edge only; publish the honest null value just
+    // like SkyProjectionNode's equivalent topology-only output.
+    ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+            submissionPolicy.signalsPresentSemaphore ? renderComplete[imageIndex] : VK_NULL_HANDLE);
     ctx.Out(BlitNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
 

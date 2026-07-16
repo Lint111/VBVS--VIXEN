@@ -198,13 +198,9 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
     // ---- Build brickIndex -> grid-coord from the dense grid lookup (invert it).
     // brickGridLookup for this octree is uint32[bpa^3], flat = gx + gy*bpa + gz*bpa^2,
     // value == source brick index, 0xFFFFFFFF == empty. The per-octree tables are
-    // concatenated; slice out THIS octree's table by summing prior tables' sizes.
+    // concatenated; brickLookupBase stores this table's exact prefix.
     const uint32_t tableSize = bpa * bpa * bpa;
-    uint32_t tableFloatOffset = 0u;   // in uint32 units within brickGridLookup
-    for (uint32_t k = 0; k < octreeIdx; ++k) {
-        const uint32_t bpaK = cat.configs[k].bricksPerAxis;
-        tableFloatOffset += bpaK * bpaK * bpaK;
-    }
+    const uint32_t tableFloatOffset = brickLookupBaseOf(cfg);
     const uint32_t* lookup =
         reinterpret_cast<const uint32_t*>(cat.brickGridLookup.data());
     const size_t lookupCount = cat.brickGridLookup.size() / sizeof(uint32_t);
@@ -387,7 +383,7 @@ struct ShellPool {
 // pools stay correct. Multi-octree safe: each octree's compact bricks are
 // appended and its poolBrickBase rewritten to the running compact offset; its
 // grid remap sub-table (grid->LOCAL shellSlot) is appended so the shader's
-// per-octree lookupBase (octreeIdx*bpa^3) addressing is preserved.
+// recorded per-octree brickLookupBase prefix remains exact.
 // ---------------------------------------------------------------------------
 inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
                                  const ShellDeriveParams& params = {}) {
@@ -406,12 +402,14 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
     const size_t srcPoolFloatCount = src.channelPool.size() / sizeof(float);
 
     uint32_t runningPoolBase = 0u;  // float offset into the compact pool
+    uint32_t runningLookupBase = 0u;
     for (uint32_t oi = 0; oi < src.count; ++oi) {
         const OctreeConfig& cfg = src.configs[oi];
         const uint32_t stride = cfg.brickStrideFloats;
         const uint32_t bpa    = static_cast<uint32_t>(cfg.bricksPerAxis);
         const uint32_t bcount = src.brickCounts[oi];
         const uint32_t tableSize = bpa * bpa * bpa;
+        setBrickLookupBase(out.compact.configs[oi], runningLookupBase);
 
         // Detect a Stored-SDF octree (has an SDF channel + non-zero stride).
         bool hasSdf = false;
@@ -429,8 +427,7 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
                 out.compact.channelPool.insert(out.compact.channelPool.end(), vb, vb + sizeof(float));
             }
             // Grid sub-table: copy the source octree's uint32[bpa^3] slice verbatim.
-            uint32_t off = 0u;
-            for (uint32_t k = 0; k < oi; ++k) { uint32_t b=src.configs[k].bricksPerAxis; off += b*b*b; }
+            const uint32_t off = brickLookupBaseOf(cfg);
             const uint32_t* srcLU = reinterpret_cast<const uint32_t*>(src.brickGridLookup.data());
             const size_t luCount = src.brickGridLookup.size() / sizeof(uint32_t);
             for (uint32_t flat = 0; flat < tableSize; ++flat) {
@@ -440,6 +437,7 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
             }
             out.perOctree.push_back(ShellDeriveResult{});
             runningPoolBase += bcount * stride;
+            runningLookupBase += tableSize;
             continue;
         }
 
@@ -458,6 +456,7 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
                                            r.shellGridLookup.begin(), r.shellGridLookup.end());
 
         runningPoolBase += r.shellBrickCount * stride;
+        runningLookupBase += tableSize;
         out.perOctree.push_back(std::move(r));
     }
 

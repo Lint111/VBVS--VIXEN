@@ -332,6 +332,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
     uint32_t poolBase    = 0;
     uint32_t mipPoolBase = 0;
     uint32_t tierRefBase = 0;  // Inc2 M1 Task 2 — mirrors mipPoolBase's bookkeeping
+    uint32_t lookupBase  = 0;  // uint32-entry prefix into brickGridLookup
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -348,6 +349,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         setSdfBrickArrayBase(s.config, poolBase);
         setMipPoolBase(s.config, mipPoolBase);
         setTierRefTableBase(s.config, tierRefBase);
+        setBrickLookupBase(s.config, lookupBase);
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;
@@ -372,6 +374,8 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         poolBase  += s.brickCount * s.brickStrideFloats;
         mipPoolBase += s.nodeCount * s.channelCount;
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        lookupBase +=
+            static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
 
     return cat;

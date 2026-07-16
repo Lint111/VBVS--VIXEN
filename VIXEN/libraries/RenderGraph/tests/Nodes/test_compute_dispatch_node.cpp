@@ -73,3 +73,11 @@ TEST(DecideRenderTargetPriorLayoutAndUpdate, UpdatesTrackedStateToTheNewLayout) 
     EXPECT_EQ(tracked.at(img), VK_IMAGE_LAYOUT_GENERAL)
         << "the map must be updated to the layout just transitioned to, not left at the old value";
 }
+
+TEST(ComputeDispatchAcquirePolicy, OffscreenOnlyPassDoesNotConsumeSwapchainAcquire) {
+    EXPECT_FALSE(ComputeDispatchWaitsForSwapchainAcquire(true));
+}
+
+TEST(ComputeDispatchAcquirePolicy, SwapchainPassConsumesSwapchainAcquire) {
+    EXPECT_TRUE(ComputeDispatchWaitsForSwapchainAcquire(false));
+}

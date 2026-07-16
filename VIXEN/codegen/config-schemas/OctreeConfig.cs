@@ -4,7 +4,9 @@ using Yeroket.Util.KernelFramework;
 // Offsets (must match ShellOctreeGpu.h): gridMin@32, gridMax@48, localToWorld@64,
 // worldToLocal@128, nodeArrayBase@192, formatId@200, brickStrideFloats@216, channels@224,
 // mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3), brickResident@356 (Inc1 M3 Task 7),
-// tierRefTableBase@360 (Tiered-ESVO Inc2 M1 Task 3).
+// tierRefTableBase@360 (Tiered-ESVO Inc2 M1 Task 3), brickLookupBase@364
+// (Stored-SDF heterogeneous lookup-table prefix), traceBoundsMin@368,
+// traceBoundsMax@384 (conservative occupied-brick cull bounds in root-local [0,1]).
 [GpuStruct]
 public struct OctreeConfig
 {
@@ -58,5 +60,21 @@ public struct OctreeConfig
     // path (farBit==1 leaves) starts registering real entries.
     public uint tierRefTableBase; // @360
 
-    [GpuArray(17)] public uint _tailPad; // @364 (17 × 4 = 68 → ends 432)
+    // Element offset (in uint32 entries) of this octree's dense brick-grid
+    // lookup table within the shared concatenated brickLookup buffer.
+    // Unlike octreeIdx*bpa^3, this remains valid when adjacent octrees use
+    // different grid resolutions.
+    public uint brickLookupBase; // @364
+
+    // Conservative root-local AABB enclosing every allocated stored-SDF brick.
+    // The shader uses this only as a reject/ordering bound before traversing the
+    // unchanged [0,1]^3 ESVO root, so brick-level quantization cannot remove hits.
+    // Legacy/uninitialized zero bounds deliberately fall back to the full root.
+    public Float3 traceBoundsMin; // @368 (16-byte std430 slot)
+    public Float3 traceBoundsMax; // @384 (16-byte std430 slot)
+
+    // Keep the long-standing 432-byte array stride. traceBoundsMax's three scalar
+    // lanes end at byte 396 in C++; nine uints fill the record exactly to byte 432.
+    // GLSL's std430 vec3 slot remains 16-byte aligned at its byte-384 start.
+    [GpuArray(9)] public uint _tailPad; // @396 (9 × 4 = 36 → ends 432)
 }

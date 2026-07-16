@@ -26,6 +26,9 @@ struct OctreeConfig {
     uint mipPoolBase;
     uint brickResident;
     uint tierRefTableBase;
-    uint _tailPad[17];
+    uint brickLookupBase;
+    vec3 traceBoundsMin;
+    vec3 traceBoundsMax;
+    uint _tailPad[9];
 };
 #endif // OCTREECONFIG_GLSL

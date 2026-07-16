@@ -39,14 +39,6 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // ============================================================================
 // BUFFER BINDINGS
 // ============================================================================
-// This pass no longer WRITES outputImage (SpatialReuseShade.comp owns that write,
-// M5) but still binds it read-only at binding 0, EXCLUSIVELY for imageSize() —
-// the same "declared but only for extent" convention BodyInstanceRayMarch.comp's
-// own binding-0 already established pre-M5 (see that shader's MAIN comment) —
-// so this pass's dispatch extent always matches the real render target under
-// VIXEN_RENDER_SCALE with no new push-constant field needed.
-layout(rgba8, binding = 0) uniform readonly image2D outputImage;
-
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
 
 // ============================================================================
@@ -209,7 +201,10 @@ ReservoirRecord reservoirBuildFromLightTree(vec3 shadingPos, inout uint rngState
 
 void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 imgSize      = imageSize(outputImage);  // read-only binding, extent only (see above)
+    // worldPosHistoryImage follows the render-target extent and is already a real input to this
+    // pass. Using it avoids touching outputImage before SpatialReuse performs that fresh ring
+    // image's first UNDEFINED->GENERAL transition.
+    ivec2 imgSize = imageSize(worldPosHistoryImage);
 
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
 

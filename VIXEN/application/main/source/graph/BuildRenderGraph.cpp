@@ -3114,7 +3114,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
             auto makeWorldSpaceEval = [](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
                 return [&prog, bodyWorldCenter, n, subdiv](const glm::vec3& pRaw) {
                     const glm::vec3 world = bodyWorldCenter + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
-                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world);
+                    // BakeSdfWorld stores distances in grid-voxel units. evalRecipe returns a
+                    // world-space distance, and one world unit spans `subdiv` grid voxels here.
+                    // Convert at the adapter boundary so the shared stored-SDF marcher and its
+                    // occupancy-band tests see the same units as every grid-authored bake.
+                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world)
+                           * static_cast<float>(subdiv);
                 };
             };
             // Bake each body with a FLAT WHITE per-voxel color (Cornell M3 round 7 fix):
@@ -4843,11 +4848,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // DirectLighting's descriptor bindings: the scene SSBOs (octree/brick/instance/shell/mip/
     // tier-ref) are READ-ONLY in both the march and DirectLighting — read-read is not a hazard, so
     // they're wired the same way as the march's own gatherer (plain DescriptorResourceGathererNode
-    // bindings, no sync slot needed), mirroring bindings 1/2/3/5/10/11/12/13/15/16/18/19/20/21
+    // bindings, no sync slot needed), mirroring bindings 1/2/3/5/10/11/12/13/15/16/18/19/21
     // above. Binding 17 (HitRecord) is the genuine cross-submit hazard — wired below via the sync
-    // slots, not here. Binding 0 (outputImage) is the genuine write hazard — also wired below via
-    // IMAGE_WRITE, not here (it needs the render target's CURRENT view, same as the march's own
-    // binding-0 wiring further up).
+    // slots, not here. This pass no longer binds outputImage; its existing world-position history
+    // image has the same live extent.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
                           directLightingGatherer, VoxelRayMarch::esvoNodes::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
@@ -4938,15 +4942,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
                           directLightingGatherer, 26,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 0 (outputImage): Sampled Lighting Inc3 M5 — DirectLighting no longer WRITES this
-    // (SpatialReuseNode below is the genuine writer now); DirectLighting.comp keeps a read-only
-    // binding purely for imageSize() (see that shader's own binding-0 comment), so it still needs
-    // the descriptor bound — same renderTargetNode::CURRENT_VIEW source, just no sync-slot hazard
-    // paired with it any more (moved to SpatialReuseNode's own IMAGE_WRITE below).
-    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
-                          directLightingGatherer, 0,
-                          SlotRoleModifier(SlotRole::Execute));
 
     // Binding 17 (HitRecord): DirectLighting READS what the march WROTE — the genuine cross-submit
     // hazard this whole milestone exists to correctly bake. Descriptor binding (plain gatherer,
@@ -5482,6 +5477,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   blitNode, BlitNodeConfig::IMAGE_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   blitNode, BlitNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  blitNode, BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   blitNode, BlitNodeConfig::IN_FLIGHT_FENCE)
          .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
@@ -5512,14 +5509,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // class bugs. So we keep these connections purely as ORDERING edges (their documented secondary
     // purpose, mirroring UIRenderNodeConfig's own SWAPCHAIN/COMPOSITE_WAIT convention exactly): the
     // binary semaphores they carry are INERT — the march no longer signals a real renderComplete in
-    // composite (writesNoImage + leaveImageInGeneral), BlitNode's own renderComplete output is
-    // real (it owns the fence) but SkyProjectionNode never WAITS its COMPOSITE_WAIT_SEMAPHORE
-    // input, and UIRenderNode no longer waits compositeWait either (the M3 binary handoff was
+    // composite (writesNoImage + leaveImageInGeneral), BlitNode publishes VK_NULL_HANDLE because
+    // it neither owns the fence nor signals a present semaphore in composite mode, and
+    // UIRenderNode no longer waits compositeWait either (the M3 binary handoff was
     // dropped from its submit). With the edges in the right direction the scheduler bakes
     // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->sky-projection(GENERAL)->UI(GENERAL)
     // timeline edges, tags the UI group as present (its render pass owns GENERAL->PRESENT_SRC,
     // unchanged), and the timeline alone — not a binary handoff — orders every pass. WSI acquire
-    // (march waits imageAvailable) and present (UI signals its uiComplete) stay binary, unchanged.
+    // (Blit waits imageAvailable) and present (UI signals its uiComplete) stay binary.
     batch.Connect(blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
     batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,

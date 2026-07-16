@@ -208,8 +208,9 @@ public:
     RefResult referenceMarch(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn) const;
     bool brickAllocated(const glm::ivec3& b) const {
         const uint32_t fl = gridToLookupIdx(b, m_bpaSdf);
-        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return false;
-        return m_lookup[fl] != 0xFFFFFFFFu;
+        const uint32_t idx = m_cfg.brickLookupBase + fl;
+        if (fl == 0xFFFFFFFFu || idx >= m_lookupCount) return false;
+        return m_lookup[idx] != 0xFFFFFFFFu;
     }
     // Diagnostic accessors (root-cause probe): the RAW lookup value at a brick coord
     // (0xFFFFFFFF unallocated sentinel / else a real brick index), the grid side, and a
@@ -217,10 +218,34 @@ public:
     int      bpaSdf() const { return m_bpaSdf; }
     uint32_t lookupRaw(const glm::ivec3& b) const {
         const uint32_t fl = gridToLookupIdx(b, m_bpaSdf);
-        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return 0xFFFFFFFFu;  // out of grid
-        return m_lookup[fl];
+        const uint32_t idx = m_cfg.brickLookupBase + fl;
+        if (fl == 0xFFFFFFFFu || idx >= m_lookupCount) return 0xFFFFFFFFu;
+        return m_lookup[idx];
     }
     float sampleSdfVoxelPub(const glm::ivec3& gridCoord) const { return sampleSdfVoxel(gridCoord); }
+    float sampleSdfTrilinearPub(const glm::vec3& gridPos) const {
+        return sampleSdfTrilinear(gridPos);
+    }
+    glm::vec3 sdfGradientStoredPub(const glm::vec3& gridPos) const {
+        return sdfGradientStored(gridPos);
+    }
+    float sampleSdfTrilinearGenericPub(const glm::vec3& gridPos) const {
+        const uint32_t base = channelBaseFloats(SEM_SDF);
+        const glm::vec3 f = glm::fract(gridPos);
+        const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
+        const float c000 = samplePoolVoxel(base, i + glm::ivec3(0,0,0), 0);
+        const float c100 = samplePoolVoxel(base, i + glm::ivec3(1,0,0), 0);
+        const float c010 = samplePoolVoxel(base, i + glm::ivec3(0,1,0), 0);
+        const float c110 = samplePoolVoxel(base, i + glm::ivec3(1,1,0), 0);
+        const float c001 = samplePoolVoxel(base, i + glm::ivec3(0,0,1), 0);
+        const float c101 = samplePoolVoxel(base, i + glm::ivec3(1,0,1), 0);
+        const float c011 = samplePoolVoxel(base, i + glm::ivec3(0,1,1), 0);
+        const float c111 = samplePoolVoxel(base, i + glm::ivec3(1,1,1), 0);
+        return glm::mix(
+            glm::mix(glm::mix(c000, c100, f.x), glm::mix(c010, c110, f.x), f.y),
+            glm::mix(glm::mix(c001, c101, f.x), glm::mix(c011, c111, f.x), f.y),
+            f.z);
+    }
     // Did the ESVO traversal visit a leaf whose brick == `want` for this ray?
     bool esvoVisitsBrick(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn, const glm::ivec3& want) const;
 
@@ -521,13 +546,16 @@ private:
         if (channelBase == 0xFFFFFFFFu) return kSdfSentinel;
         const int bpa = m_bpaSdf;
         if (bpa <= 0) return kSdfSentinel;
+        const int gridSide = bpa * 8;
+        if (gridCoord.x < 0 || gridCoord.y < 0 || gridCoord.z < 0 ||
+            gridCoord.x >= gridSide || gridCoord.y >= gridSide || gridCoord.z >= gridSide)
+            return kSdfSentinel;
         // GLSL ivec3 `/ 8` truncates toward zero; mirror exactly via component div.
         const glm::ivec3 bc(gridCoord.x / 8, gridCoord.y / 8, gridCoord.z / 8);
         const glm::ivec3 voxelInBrick = gridCoord - bc * 8;
         const uint32_t flatLookup = gridToLookupIdx(bc, bpa);
         if (flatLookup == 0xFFFFFFFFu) return kSdfSentinel;  // out of grid
-        const uint32_t lookupBase = 0u * static_cast<uint32_t>(bpa) * bpa * bpa;  // octreeIdx 0
-        const uint32_t lookupIdx = lookupBase + flatLookup;
+        const uint32_t lookupIdx = m_cfg.brickLookupBase + flatLookup;
         if (lookupIdx >= m_lookupCount) return kSdfSentinel;
         const uint32_t brickIdx = m_lookup[lookupIdx];
         if (brickIdx == kBrickUnalloc) return kSdfSentinel;  // unallocated brick
@@ -544,16 +572,52 @@ private:
     // An empty corner reads +kSdfSentinel, so a stencil straddling empty space blends to a
     // large positive MAGNITUDE that marchBrickSdf detects (d>SENTINEL_D) and steps through.
     float sampleSdfTrilinear(const glm::vec3& gridPos) const {
+        const uint32_t base = channelBaseFloats(SEM_SDF);
+        if (base == 0xFFFFFFFFu) return kSdfSentinel;
         const glm::vec3 f = glm::fract(gridPos);
         const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
-        const float c000 = sampleSdfVoxel(i + glm::ivec3(0,0,0));
-        const float c100 = sampleSdfVoxel(i + glm::ivec3(1,0,0));
-        const float c010 = sampleSdfVoxel(i + glm::ivec3(0,1,0));
-        const float c110 = sampleSdfVoxel(i + glm::ivec3(1,1,0));
-        const float c001 = sampleSdfVoxel(i + glm::ivec3(0,0,1));
-        const float c101 = sampleSdfVoxel(i + glm::ivec3(1,0,1));
-        const float c011 = sampleSdfVoxel(i + glm::ivec3(0,1,1));
-        const float c111 = sampleSdfVoxel(i + glm::ivec3(1,1,1));
+        float c000, c100, c010, c110, c001, c101, c011, c111;
+
+        const int gridSide = m_bpaSdf * 8;
+        const bool inGrid = m_bpaSdf > 0 &&
+            i.x >= 0 && i.y >= 0 && i.z >= 0 &&
+            i.x < gridSide && i.y < gridSide && i.z < gridSide;
+        const glm::ivec3 brickCoord = inGrid ? i / 8 : glm::ivec3(-1);
+        const glm::ivec3 local = i - brickCoord * 8;
+        const bool oneBrick = inGrid && local.x < 7 && local.y < 7 && local.z < 7;
+
+        if (oneBrick) {
+            const uint32_t flatLookup = gridToLookupIdx(brickCoord, m_bpaSdf);
+            const uint32_t lookupIdx = m_cfg.brickLookupBase + flatLookup;
+            const uint32_t brickIdx = lookupIdx < m_lookupCount
+                ? m_lookup[lookupIdx]
+                : kBrickUnalloc;
+            if (brickIdx == kBrickUnalloc) return kSdfSentinel;
+
+            const uint32_t voxel000 = static_cast<uint32_t>(
+                local.z * 64 + local.y * 8 + local.x);
+            const size_t poolVoxelBase = static_cast<size_t>(m_poolBrickBase) +
+                static_cast<size_t>(brickIdx) * m_brickStride + base;
+            if (poolVoxelBase + voxel000 + 73u >= m_poolFloats)
+                return kSdfSentinel;
+            c000 = m_pool[poolVoxelBase + voxel000];
+            c100 = m_pool[poolVoxelBase + voxel000 + 1u];
+            c010 = m_pool[poolVoxelBase + voxel000 + 8u];
+            c110 = m_pool[poolVoxelBase + voxel000 + 9u];
+            c001 = m_pool[poolVoxelBase + voxel000 + 64u];
+            c101 = m_pool[poolVoxelBase + voxel000 + 65u];
+            c011 = m_pool[poolVoxelBase + voxel000 + 72u];
+            c111 = m_pool[poolVoxelBase + voxel000 + 73u];
+        } else {
+            c000 = samplePoolVoxel(base, i + glm::ivec3(0,0,0), 0);
+            c100 = samplePoolVoxel(base, i + glm::ivec3(1,0,0), 0);
+            c010 = samplePoolVoxel(base, i + glm::ivec3(0,1,0), 0);
+            c110 = samplePoolVoxel(base, i + glm::ivec3(1,1,0), 0);
+            c001 = samplePoolVoxel(base, i + glm::ivec3(0,0,1), 0);
+            c101 = samplePoolVoxel(base, i + glm::ivec3(1,0,1), 0);
+            c011 = samplePoolVoxel(base, i + glm::ivec3(0,1,1), 0);
+            c111 = samplePoolVoxel(base, i + glm::ivec3(1,1,1), 0);
+        }
         return glm::mix(
             glm::mix(glm::mix(c000, c100, f.x), glm::mix(c010, c110, f.x), f.y),
             glm::mix(glm::mix(c001, c101, f.x), glm::mix(c011, c111, f.x), f.y),
@@ -566,17 +630,51 @@ private:
     float sampleSdfTrilinearRaw(const glm::vec3& gridPos) const {
         return sampleSdfTrilinear(gridPos);
     }
-    // 1:1 port of StoredSdf.glsl sdfGradientStored — central-difference gradient of the
-    // trilinear SDF field (step h = 0.5 voxel), normalized outward.
+    // 1:1 port of StoredSdf.glsl sdfGradientStored: exact derivative of the
+    // current trilinear cell, with the old sentinel-aware finite difference kept
+    // only as a rare boundary fallback.
     glm::vec3 sdfGradientStored(const glm::vec3& gridPos) const {
-        const float h = 0.5f;
-        const float gx = sampleSdfTrilinear(gridPos + glm::vec3(h,0,0))
-                       - sampleSdfTrilinear(gridPos - glm::vec3(h,0,0));
-        const float gy = sampleSdfTrilinear(gridPos + glm::vec3(0,h,0))
-                       - sampleSdfTrilinear(gridPos - glm::vec3(0,h,0));
-        const float gz = sampleSdfTrilinear(gridPos + glm::vec3(0,0,h))
-                       - sampleSdfTrilinear(gridPos - glm::vec3(0,0,h));
-        glm::vec3 g(gx, gy, gz);
+        const uint32_t base = channelBaseFloats(SEM_SDF);
+        const glm::vec3 f = glm::fract(gridPos);
+        const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
+        const float c000 = samplePoolVoxel(base, i + glm::ivec3(0,0,0), 0);
+        const float c100 = samplePoolVoxel(base, i + glm::ivec3(1,0,0), 0);
+        const float c010 = samplePoolVoxel(base, i + glm::ivec3(0,1,0), 0);
+        const float c110 = samplePoolVoxel(base, i + glm::ivec3(1,1,0), 0);
+        const float c001 = samplePoolVoxel(base, i + glm::ivec3(0,0,1), 0);
+        const float c101 = samplePoolVoxel(base, i + glm::ivec3(1,0,1), 0);
+        const float c011 = samplePoolVoxel(base, i + glm::ivec3(0,1,1), 0);
+        const float c111 = samplePoolVoxel(base, i + glm::ivec3(1,1,1), 0);
+
+        constexpr float sentinel = 100.0f;
+        const bool contaminated =
+            std::abs(c000) > sentinel || std::abs(c100) > sentinel ||
+            std::abs(c010) > sentinel || std::abs(c110) > sentinel ||
+            std::abs(c001) > sentinel || std::abs(c101) > sentinel ||
+            std::abs(c011) > sentinel || std::abs(c111) > sentinel;
+
+        glm::vec3 g;
+        if (contaminated) {
+            constexpr float h = 0.5f;
+            const float d0 = sampleSdfTrilinear(gridPos);
+            auto axisGradient = [&](const glm::vec3& e) {
+                const float plus = sampleSdfTrilinear(gridPos + e);
+                const float minus = sampleSdfTrilinear(gridPos - e);
+                if (std::abs(plus) > sentinel) return (d0 - minus) * 2.0f;
+                if (std::abs(minus) > sentinel) return (plus - d0) * 2.0f;
+                return plus - minus;
+            };
+            g = glm::vec3(axisGradient(glm::vec3(h,0,0)),
+                          axisGradient(glm::vec3(0,h,0)),
+                          axisGradient(glm::vec3(0,0,h)));
+        } else {
+            g.x = glm::mix(glm::mix(c100-c000, c110-c010, f.y),
+                           glm::mix(c101-c001, c111-c011, f.y), f.z);
+            g.y = glm::mix(glm::mix(c010-c000, c110-c100, f.x),
+                           glm::mix(c011-c001, c111-c101, f.x), f.z);
+            g.z = glm::mix(glm::mix(c001-c000, c101-c100, f.x),
+                           glm::mix(c011-c010, c111-c110, f.x), f.y);
+        }
         const float len = glm::length(g);
         return (len > 1e-6f) ? g / len : glm::vec3(0.0f, 1.0f, 0.0f);
     }
@@ -1014,8 +1112,7 @@ ConcatScene BakeConcatDemo() {
 // Build a SerializedOctree that the SdfMarchMirror can consume, viewing octree
 // `k` of a concatenation. The mirror addresses nodes via (nodeArrayBase + idx)
 // into the FULL concatenated node buffer, and pool via (poolBrickBase +
-// brickIdx*stride + ...). Its lookup, however, hardcodes sub-table 0
-// (lookupBase = 0*bpa^3) — so we hand it ONLY octree-k's lookup sub-table.
+// brickIdx*stride + ...), and uses brickLookupBase against the full lookup.
 SerializedOctree ViewConcatOctree(const ConcatScene& s, uint32_t k) {
     const OctreeConfig& cfg = s.cat.configs[k];
     SerializedOctree v;
@@ -1027,13 +1124,7 @@ SerializedOctree ViewConcatOctree(const ConcatScene& s, uint32_t k) {
     v.channelCount = cfg.channelCount;
     for (uint32_t i = 0; i < cfg.channelCount && i < kMaxChannels; ++i)
         v.channels[i] = cfg.channels[i];
-    // Slice octree-k's lookup sub-table (bpa^3 uint32) out of the concatenated lookup.
-    const int bpa = static_cast<int>(cfg.bricksPerAxisSdf);
-    const size_t subEntries = static_cast<size_t>(bpa) * bpa * bpa;
-    const size_t subBytes   = subEntries * sizeof(uint32_t);
-    const size_t off        = static_cast<size_t>(k) * subBytes;
-    v.brickGridLookup.assign(s.cat.brickGridLookup.begin() + off,
-                             s.cat.brickGridLookup.begin() + off + subBytes);
+    v.brickGridLookup = s.cat.brickGridLookup;
     return v;
 }
 
@@ -1085,6 +1176,71 @@ static SweepStats SweepHoles(SdfMarchMirror& mirror, const AnalyticBody& body, f
     st.leafHits = mirror.m_leafHits;
     st.brickDisagree = mirror.m_brickDisagree;
     return st;
+}
+
+/**
+ * @test StoredSdfMarchMirror.SingleLookupFastPathMatchesGenericSampler
+ * @coverage StoredSdf.glsl::sampleSdfTrilinear
+ * @category regression
+ * @owner SVO
+ * @added 2026-07-15
+ * @last-pass 2026-07-15
+ */
+TEST(StoredSdfMarchMirror, SingleLookupFastPathMatchesGenericSampler) {
+    BakedScene scene = BakeScene(RECIPE_SPHERE, 0.0f, 0.0f);
+    SdfMarchMirror mirror(scene.serialized);
+    const glm::vec3 probes[] = {
+        {32.25f, 32.50f, 32.75f}, // one-brick fast path
+        {31.75f, 32.50f, 32.75f}, // x brick boundary
+        {39.25f, 39.50f, 39.75f}, // xyz brick boundary
+        {9.25f, 32.50f, 32.75f},  // near the sphere surface
+        {-0.25f, 12.50f, 12.75f}, // negative grid edge sentinel
+        {63.75f, 12.50f, 12.75f}, // positive grid edge sentinel
+    };
+
+    for (const glm::vec3& p : probes) {
+        EXPECT_FLOAT_EQ(mirror.sampleSdfTrilinearPub(p),
+                        mirror.sampleSdfTrilinearGenericPub(p))
+            << "gridPos=(" << p.x << "," << p.y << "," << p.z << ")";
+    }
+}
+
+/**
+ * @test StoredSdfMarchMirror.GradientMatchesLocalTrilinearDerivative
+ * @coverage StoredSdf.glsl::sdfGradientStored
+ * @category regression
+ * @owner SVO
+ * @added 2026-07-15
+ * @last-pass 2026-07-15
+ */
+TEST(StoredSdfMarchMirror, GradientMatchesLocalTrilinearDerivative) {
+    BakedScene scene = BakeScene(RECIPE_DISPLACED_SPHERE, 2.7f, 0.375f);
+    SdfMarchMirror mirror(scene.serialized);
+    const glm::vec3 probes[] = {
+        {41.63f, 47.87f, 50.21f},
+        {18.19f, 39.37f, 52.73f},
+        {49.41f, 13.23f, 34.67f},
+    };
+
+    // Within one trilinear cell, a small symmetric difference is an oracle for
+    // the interpolant's exact derivative. Keep every probe farther than eps from
+    // an integer cell boundary so the oracle cannot cross into another cell.
+    constexpr float eps = 0.01f;
+    for (const glm::vec3& p : probes) {
+        const glm::vec3 numerical(
+            mirror.sampleSdfTrilinearPub(p + glm::vec3(eps, 0, 0)) -
+                mirror.sampleSdfTrilinearPub(p - glm::vec3(eps, 0, 0)),
+            mirror.sampleSdfTrilinearPub(p + glm::vec3(0, eps, 0)) -
+                mirror.sampleSdfTrilinearPub(p - glm::vec3(0, eps, 0)),
+            mirror.sampleSdfTrilinearPub(p + glm::vec3(0, 0, eps)) -
+                mirror.sampleSdfTrilinearPub(p - glm::vec3(0, 0, eps)));
+        ASSERT_GT(glm::length(numerical), 1e-5f);
+        const glm::vec3 expected = glm::normalize(numerical);
+        const glm::vec3 actual = mirror.sdfGradientStoredPub(p);
+        EXPECT_NEAR(actual.x, expected.x, 2e-4f) << "p.x=" << p.x;
+        EXPECT_NEAR(actual.y, expected.y, 2e-4f) << "p.y=" << p.y;
+        EXPECT_NEAR(actual.z, expected.z, 2e-4f) << "p.z=" << p.z;
+    }
 }
 
 // ===========================================================================

@@ -14,6 +14,25 @@
 namespace Vixen::RenderGraph {
 
 /**
+ * @brief Binary-WSI ownership for a blit submission.
+ *
+ * A terminal blit is the frame-final submit and therefore owns both the in-flight fence and
+ * the binary semaphore consumed by Present. A composite blit has downstream sky/UI submits;
+ * signalling a binary semaphore there is not merely redundant: because nobody waits it, the
+ * next signal of the same per-image semaphore is invalid (VUID-vkQueueSubmit2-semaphore-03868).
+ */
+struct BlitSubmissionPolicy {
+    bool ownsFrameFence = false;
+    bool signalsPresentSemaphore = false;
+    bool waitsForSwapchainAcquire = true;
+};
+
+[[nodiscard]] constexpr BlitSubmissionPolicy ResolveBlitSubmissionPolicy(bool leaveImageInGeneral) {
+    const bool isTerminal = !leaveImageInGeneral;
+    return {isTerminal, isTerminal, true};
+}
+
+/**
  * @brief Node type for the presentation-only blit node.
  */
 class BlitNodeType : public TypedNodeType<BlitNodeConfig> {

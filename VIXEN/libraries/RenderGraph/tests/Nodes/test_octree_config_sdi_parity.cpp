@@ -128,6 +128,9 @@ TEST(OctreeConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         {"poolBrickBase",     offsetof(OctreeConfig, poolBrickBase)},     // 208
         {"channelCount",      offsetof(OctreeConfig, channelCount)},      // 212
         {"brickStrideFloats", offsetof(OctreeConfig, brickStrideFloats)}, // 216
+        {"brickLookupBase",   offsetof(OctreeConfig, brickLookupBase)},   // 364
+        {"traceBoundsMin",    offsetof(OctreeConfig, traceBoundsMinX)},   // 368
+        {"traceBoundsMax",    offsetof(OctreeConfig, traceBoundsMaxX)},   // 384
     };
     for (const auto& f : fields) {
         const SpirvStructMember* sm = FindSubMember(*configs, f.name);
