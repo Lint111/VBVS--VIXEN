@@ -204,6 +204,16 @@ GPU (Windows-native) for every milestone.
     territory (addressing m_i/k_i-shaped cost directly) than further per-bucket-call-count
     reduction, since this increment's entire premise (per-bucket API call count is the dominant
     cost) is now measured, not just theorized, to be false or at least not the dominant factor.
+    **Opus validator: APPROVED — full M0-M3 increment ready for final review + merge.**
+    Independently re-ran the perf harness twice (own results: 0.280x/0.253x/0.054x and
+    0.311x/0.253x/0.042x at N=3/10/100 — squarely in the reported band; one own-run number at
+    N=3 landed BELOW the reported figure, direct evidence against positive spin). Verified the
+    5N−1/N−1 arithmetic exactly. Directly opened `Known-Issues.md` and confirmed every one of the
+    16 non-clean binaries is literally named in KI-034/KI-032, with zero overlap against this
+    branch's diff (confirmed the diff touches only `SpecializedRecipeShaderGlsl.h` + 4 test files +
+    cmake + docs). Confirmed all three doc-closure files (this plan, JIT epic §7, Perf-Ledger) carry
+    identical numbers with no drift. Confirmed `git diff M1..HEAD` on non-test production code is
+    empty — M1 remains the increment's ONE and ONLY shipped code change, exactly as claimed.
 
 ### Progress Log
 
