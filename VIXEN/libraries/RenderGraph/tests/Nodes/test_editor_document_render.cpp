@@ -619,9 +619,10 @@ protected:
         VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
         ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
 
-        // M2c fix: outHitPixels reads HitRecordBuffer (still written post-KI-018) instead of
-        // the dead colorImg — see this file's HitRecordCpu comment. outRgba is still returned
-        // (some callers write it to PNG for inspection) but no longer drives the hit count.
+        // M2c fix: outHitPixels reads HitRecordBuffer (still written post-784adff7/KI-018)
+        // instead of the dead colorImg — DO NOT revert to a colorImg readback; see this file's
+        // HitRecordCpu comment. outRgba is still returned (some callers write it to PNG for
+        // inspection) but no longer drives the hit count.
         double ms = 0.0;
         std::vector<HitRecordCpu> localHitRecords;
         std::vector<HitRecordCpu>& hitRecords = outHitRecords ? *outHitRecords : localHitRecords;
@@ -673,8 +674,9 @@ TEST_F(EditorDocumentRenderTest, GoldenDocumentAllLayersRendersVisibleBody) {
     ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeResult.pool), pc, kW, kH, rgba, hitPixels, &hitRecords));
 
     {
-        // M2c fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not the
-        // dead colorImg, so it stays visually meaningful for inspection.
+        // M2c fix: PNG rendered from HitRecord.albedo (still written post-784adff7/KI-018),
+        // not the dead colorImg — DO NOT revert this to a colorImg readback — so it stays
+        // visually meaningful for inspection.
         std::vector<uint8_t> rgb(size_t(kW)*kH*3);
         for (uint32_t i = 0; i < kW*kH; ++i) {
             const HitRecordCpu& rec = hitRecords[i];
@@ -734,8 +736,9 @@ TEST_F(EditorDocumentRenderTest, DisablingCutLayerChangesTopFaceSilhouette) {
     ASSERT_TRUE(bakeNoCut.ok) << bakeNoCut.err;
 
     // M2c fix: hitWithCut/hitNoCut and the centre-diff both read HitRecordBuffer (still
-    // written post-KI-018) instead of the dead colorImg — see this file's HitRecordCpu
-    // comment. PNGs rendered from albedo so they stay visually meaningful.
+    // written post-784adff7/KI-018) instead of the dead colorImg — DO NOT revert to a
+    // colorImg readback; see this file's HitRecordCpu comment. PNGs rendered from albedo
+    // so they stay visually meaningful.
     std::vector<uint8_t> rgbaWithCut, rgbaNoCut;
     std::vector<HitRecordCpu> hitRecordsWithCut, hitRecordsNoCut;
     int hitWithCut = 0, hitNoCut = 0;

@@ -1056,7 +1056,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
                 eye.x, eye.y, eye.z, dist, spanX);
 
     // M2c fix: classify by HitRecord.albedo (the raw, unshaded material tint this shader
-    // still writes) instead of the dead colorImg — see this file's HitRecordCpu comment.
+    // still writes) instead of the dead colorImg — DO NOT revert to a colorImg readback here.
+    // 784adff7 (Sampled Lighting Inc3 M1, KI-018) permanently stopped BodyInstanceRayMarch.comp
+    // from writing outputImage/binding 0; see this file's HitRecordCpu comment for the full story.
     // Reading the RAW material tint is actually cleaner than the old lit-pixel heuristic
     // (no more "robust to Lambert dimming" hedging needed — there is no shading in this
     // buffer to begin with), but the same three-way hue classification still applies.
@@ -1190,8 +1192,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
 
     // Render ONE Stored-SDF body (octreeIdx) alone, save a PNG, return its RGBA + HitRecords.
     // M2c fix: hit/no-hole classification reads HitRecordBuffer (the buffer this shader still
-    // writes post-KI-018 — see this file's HitRecordCpu comment) instead of the dead colorImg;
-    // the PNG is still rendered from HitRecord.albedo so it stays visually meaningful.
+    // writes post-784adff7/KI-018 — see this file's HitRecordCpu comment) instead of the dead
+    // colorImg; DO NOT revert to a colorImg readback. The PNG is still rendered from
+    // HitRecord.albedo so it stays visually meaningful.
     auto renderBody = [&](uint32_t octreeIdx, const char* pngPath,
                           std::vector<HitRecordCpu>& outHitRecords) {
         node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, octreeIdx, 1.0f, 1.0f, 1.0f) });
@@ -1331,8 +1334,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     ASSERT_NE(inst, VK_NULL_HANDLE);
 
     // M2c fix: hit/hole/color-variation all read HitRecordBuffer (the buffer this shader
-    // still writes post-KI-018) instead of the dead colorImg — see this file's HitRecordCpu
-    // comment. albedo is the RAW unshaded material tint, so it's actually a BETTER oracle
+    // still writes post-784adff7/KI-018) instead of the dead colorImg — DO NOT revert to a
+    // colorImg readback; see this file's HitRecordCpu comment. albedo is the RAW unshaded
+    // material tint, so it's actually a BETTER oracle
     // for "does per-voxel color reach the shader" than the old lit-pixel readback (no risk
     // of lighting washing out/masking the band variation).
     std::vector<uint8_t> rgba; double renderMs = 0.0;
@@ -1523,8 +1527,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(inst, VK_NULL_HANDLE);
 
-    // M2c fix: hit/hole oracle reads HitRecordBuffer (still written post-KI-018) instead of
-    // the dead colorImg — see this file's HitRecordCpu comment. PNG rendered from albedo.
+    // M2c fix: hit/hole oracle reads HitRecordBuffer (still written post-784adff7/KI-018)
+    // instead of the dead colorImg — DO NOT revert to a colorImg readback; see this file's
+    // HitRecordCpu comment. PNG rendered from albedo.
     std::vector<uint8_t> rgba; double ms = 0.0;
     std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
@@ -1648,8 +1653,9 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
         ASSERT_NE(b.sdf, VK_NULL_HANDLE);
         ASSERT_NE(inst,  VK_NULL_HANDLE);
 
-        // M2c fix: width/hit oracle reads HitRecordBuffer (still written post-KI-018) instead
-        // of the dead colorImg — see this file's HitRecordCpu comment. PNG from albedo.
+        // M2c fix: width/hit oracle reads HitRecordBuffer (still written post-784adff7/KI-018)
+        // instead of the dead colorImg — DO NOT revert to a colorImg readback; see this file's
+        // HitRecordCpu comment. PNG from albedo.
         std::vector<uint8_t> rgba; double ms = 0.0;
         std::vector<HitRecordCpu> hitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,

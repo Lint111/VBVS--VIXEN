@@ -602,8 +602,9 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     const glm::vec3 eye = centroid + glm::normalize(glm::vec3(0.0f, 0.2f, 1.0f)) * dist;
     const PushConstants pc = MakeCamera(eye, centroid, kW, kH, int32_t(instances.size()));
 
-    // M2c fix: PNG + hit/band counts all read HitRecordBuffer (still written post-KI-018)
-    // instead of the dead colorImg — see this file's HitRecordCpu comment.
+    // M2c fix: PNG + hit/band counts all read HitRecordBuffer (still written post-784adff7/
+    // KI-018) instead of the dead colorImg — DO NOT revert to a colorImg readback; see this
+    // file's HitRecordCpu comment.
     std::vector<uint8_t> rgba; double ms = 0.0;
     std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,

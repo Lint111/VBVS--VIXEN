@@ -642,8 +642,9 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
         // no-op (default is eager).
         nd->RequestBrickResidency(true);
 
-        // M2c fix: pixel count reads HitRecordBuffer (still written post-KI-018) instead of
-        // the dead colorImg — see this file's HitRecordCpu comment.
+        // M2c fix: pixel count reads HitRecordBuffer (still written post-784adff7/KI-018)
+        // instead of the dead colorImg — DO NOT revert to a colorImg readback; see this
+        // file's HitRecordCpu comment.
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
                 VkBuffer inst, VkBuffer sdf, VkBuffer lk) {
@@ -686,8 +687,9 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
             ASSERT_NE(cfg,  VK_NULL_HANDLE);
             ASSERT_NE(inst, VK_NULL_HANDLE);
 
-            // M2c fix: pixel count + PNG both read HitRecordBuffer (still written post-KI-018)
-            // instead of the dead colorImg — see this file's HitRecordCpu comment.
+            // M2c fix: pixel count + PNG both read HitRecordBuffer (still written post-
+            // 784adff7/KI-018) instead of the dead colorImg — DO NOT revert to a colorImg
+            // readback; see this file's HitRecordCpu comment.
             std::vector<uint8_t> rgba; double ms = 0.0;
             std::vector<HitRecordCpu> hitRecords;
             ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,sdf,lk,sharedPc,kW,kH,rgba,ms,&hitRecords));
@@ -768,8 +770,9 @@ TEST_F(RecipeAuthoringGateTest, DefaultSceneRegression) {
         const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * dist;
         const PushConstants pc = MakeCamera(eye, centre, kW, kH, int32_t(instances.size()));
 
-        // M2c fix: hitPixels + PNG both read HitRecordBuffer (still written post-KI-018)
-        // instead of the dead colorImg — see this file's HitRecordCpu comment.
+        // M2c fix: hitPixels + PNG both read HitRecordBuffer (still written post-784adff7/
+        // KI-018) instead of the dead colorImg — DO NOT revert to a colorImg readback; see
+        // this file's HitRecordCpu comment.
         std::vector<uint8_t> rgba; double ms = 0.0;
         std::vector<HitRecordCpu> hitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,

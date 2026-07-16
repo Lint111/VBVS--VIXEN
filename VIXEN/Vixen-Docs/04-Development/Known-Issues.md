@@ -38,23 +38,50 @@ built to prove) has had ZERO live-shader test coverage since `784adff7` landed (
 test still runs and still fails, but even before this M2c investigation it was failing for the wrong
 reason (dead colour buffer) hiding an even deeper gap (wrong shader dispatched entirely).
 
-**Fix options:** (a) the honest fix — extend this harness to dispatch `DirectLighting.comp` (the pass
-that actually calls `TraceWorldShadow`) as a genuine second stage after `BodyInstanceRayMarch.comp`,
-reading the shadow-relevant reservoir/lighting output it produces; nontrivial — `DirectLighting.comp`
-has grown to 25+ bindings (`ReservoirConfig`, `LightTreeBuffer`, `worldPosHistoryImage`, real
-cross-dispatch hazard-sync per its own header comment) since the M1 split, so this is a materially
-larger harness than the single-pass ones KI-032/KI-034 fixed; (b) retarget the test at a CPU-mirror
-of `TraceWorldShadow` instead of the live GPU shader (the `gpu-shader-debug` skill's established
-pattern, already used elsewhere in this codebase, e.g. `test_traceworld_mirror.cpp` per this file's
-own header comment) — narrower coverage (proves the algorithm, not the compiled shader) but far
-cheaper than (a) and immediately restorable.
+**Net effect: shadow-shading correctness (`TraceWorldShadow`/`computeLightingWithShadows`) has had
+ZERO automated test coverage of any kind since `784adff7` landed (2026-07-11) — not degraded coverage,
+none.** No test in this codebase currently exercises the live, compiled `DirectLighting.comp` shadow
+path end-to-end; the only thing standing between "shadow rendering is correct" and "nobody would
+notice if it silently broke" is manual/visual inspection. This is a real gap, not a cosmetic one —
+flagging explicitly so it isn't lost in the general "test debt" bucket.
 
-**Severity:** Medium (a real correctness gate has silently had zero coverage for ~5 days;  not a
+**Fix options:**
+(a) **the durable fix — a graph-level integration test through the real `RenderGraph`**, not another
+hand-rolled single/double-pass harness duplicating `BuildRenderGraph.cpp`'s wiring (the exact
+fragile-duplication pattern KI-034 already burned this codebase on once). Stand up the actual
+production graph (or the minimal demo-graph variant, e.g. the `VIXEN_TIER_OBSERVABLE_DEMO`/Cornell
+harness precedent) with a scene that reproduces this test's occluder/target/litControl setup, run it
+through the graph's own pass-chaining/barrier logic (so `DirectLighting.comp`'s real cross-dispatch
+hazard-sync is exercised as shipped, not reinvented), and assert shadow/lit classification from the
+graph's real output. This is the option that actually restores coverage of the SHIPPED path, not an
+approximation of it.
+(b) retarget the test at a CPU-mirror of `TraceWorldShadow` instead of the live GPU shader (the
+`gpu-shader-debug` skill's established pattern, already used elsewhere in this codebase, e.g.
+`test_traceworld_mirror.cpp` per this file's own header comment) — narrower coverage (proves the
+algorithm, not the compiled shader/graph-wiring), cheaper to land, but does NOT close the "does the
+real graph still wire shadows correctly" gap (a) closes; treat as a stopgap at best, not a substitute.
+(c) hand-extend this standalone harness to dispatch `DirectLighting.comp` as a second stage —
+considered and explicitly NOT recommended: `DirectLighting.comp` has grown to 25+ bindings
+(`ReservoirConfig`, `LightTreeBuffer`, `worldPosHistoryImage`, real cross-dispatch hazard-sync per its
+own header comment) since the M1 split, so this would mean re-deriving a nontrivial slice of
+`RenderGraph`'s real pass-chaining/sync logic a second time in test code — the same
+duplication-drifts-from-the-real-thing risk (a) is designed to avoid.
+
+**Do not treat M4's live A/B evidence as a substitute for this coverage.** Milestone M4 (shadow/probe
+economy work, this same pipeline) will produce before/after screenshots and GPU-ms deltas showing
+shadows visually behave correctly under that milestone's changes — that is real, valuable signal, but
+it is a manual, one-time spot-check of ONE code state at ONE moment, not a regression gate. It proves
+"shadows looked right when M4's author looked," not "shadows stay right as the codebase keeps
+changing." This KI stays open until an automated test (option (a), ideally) exists that would actually
+fail on a future shadow regression without a human looking at a screenshot.
+
+**Severity:** Medium (a real correctness gate has silently had zero coverage for ~5 days; not a
 production runtime bug — shadow rendering itself may well be correct, this is purely a test-coverage
 gap) · **Status:** OPEN — NOT fixed by [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c (that milestone's
-own gate treats standing up the full `DirectLighting.comp` pass as out of proportion for a test-health
-restoration pass; deliberately left as a Known Issue rather than silently patched with a check that
-doesn't test what the test claims to test) — needs its own dedicated session to choose (a) vs (b).
+own gate treats standing up the full `DirectLighting.comp` pass, or a graph-level integration test, as
+out of proportion for a test-health restoration pass; deliberately left as a Known Issue rather than
+silently patched with a check that doesn't test what the test claims to test) — needs its own
+dedicated session to implement option (a).
 
 ---
 

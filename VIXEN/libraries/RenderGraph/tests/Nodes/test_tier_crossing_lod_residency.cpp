@@ -880,9 +880,10 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
     ASSERT_NO_FATAL_FAILURE(runScene(false, iterNonResident, rgbaNonResident, markedNonResident, hitRecordsNonResident));
 
     // M2c fix: count magenta pixels (child's unmistakable colour: R,B high, G~0) by reading
-    // HitRecord.albedo (the raw, unshaded material tint) instead of the dead colorImg — see
-    // this file's HitRecordCpu comment. A miss pixel never counts as magenta regardless of
-    // its (stale/zeroed) albedo value.
+    // HitRecord.albedo (the raw, unshaded material tint) instead of the dead colorImg — the
+    // colorImg readback died permanently in 784adff7 (Sampled Lighting Inc3 M1, KI-018); DO
+    // NOT revert to it. See this file's HitRecordCpu comment. A miss pixel never counts as
+    // magenta regardless of its (stale/zeroed) albedo value.
     auto countMagenta = [](const std::vector<HitRecordCpu>& recs) {
         int count = 0;
         for (const auto& rec : recs) {
@@ -1006,10 +1007,12 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     ASSERT_EQ(iterCounts.size(), 1u);
     std::printf("[TIER-CROSSING LOD] instance iteration count with huge raySizeCoef=%u\n", iterCounts[0]);
 
-    // M2c fix: read HitRecord.albedo instead of the dead colorImg (see this file's
-    // HitRecordCpu comment) — this is the check that used to pass VACUOUSLY (an
-    // all-black colorImg trivially satisfies magentaCount==0 regardless of whether the
-    // LOD gate actually fired); reading real albedo data makes this a genuine check again.
+    // M2c fix: read HitRecord.albedo instead of the dead colorImg — colorImg has been
+    // permanently unwritten since 784adff7 (Sampled Lighting Inc3 M1, KI-018); DO NOT
+    // revert to it (see this file's HitRecordCpu comment). This is the check that used to
+    // pass VACUOUSLY (an all-black colorImg trivially satisfies magentaCount==0 regardless
+    // of whether the LOD gate actually fired); reading real albedo data makes this a
+    // genuine check again.
     auto countMagenta = [](const std::vector<HitRecordCpu>& recs) {
         int count = 0;
         for (const auto& rec : recs) {
