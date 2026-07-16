@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0+M1+M2+M2b DONE; M2c in flight; worktree fix/baked-perf-pipeline
+status: RUNNING — M0+M1+M2+M2b+M2c DONE; M2d in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -163,7 +163,7 @@ push-constant mirrors (7 files), missing bindings 15/18 + a 17-vs-18 HitRecordBu
 miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture missing
 `setBrickLookupBase` (M1 follow-up). These tests are gate inputs for M3+.
 
-- [ ] Task 2c.1 — Root-cause the shared blank-render cause (suspect per M2 worker:
+- [x] Task 2c.1 — Root-cause the shared blank-render cause (suspect per M2 worker:
   boot/residency state interaction with M0's boot-triage changes — unconfirmed).
   Additional pre-existing signal from the M2 validator: `PushConstantGathererNode::
   Validate` type-mismatch ERRORs on the direct_lighting/spatial_reuse/probe gatherers
@@ -171,7 +171,7 @@ miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture mis
   @ `ef385d55`) — check whether it relates. Also: the tier-crossing `setBrickLookupBase`
   fixture fix was applied+correct yet its test STILL blanks → the shared cause is
   upstream of brick-lookup addressing.
-- [ ] Task 2c.2 — Fix; restore the whole consumer group to green; record the green
+- [x] Task 2c.2 — Fix; restore the whole consumer group to green; record the green
   baseline test list here. Any PRODUCT-code change this requires goes through the
   validator explicitly (test-health milestone; product changes are escalation-worthy).
 
@@ -349,7 +349,11 @@ MultiDispatchNode archive (#15), spec-constant plumbing feed-or-remove (#14);
 per-axis box bake grids (#8, the full far-hit/normals fix); tiered-ESVO stays dormant
 until multi-tier scenes exist (#9); shader-cache hygiene (M2b carry-forward): rename
 misnamed `ComputeSHA256Hex`→`ComputeFNV1a64`, fix `currentCacheSizeBytes` never
-incremented on Store (size eviction can never fire).
+incremented on Store (size eviction can never fire); **KI-035 per-octree residency
+plumbing** (M2c finding: `CreateOctreeBuffers` stamps one whole-pool `brickResident`
+scalar — real product gap, off the critical path since M3–M6b use uniform residency);
+**KI-036 shadow-shading test coverage** (graph-level integration test through the real
+RenderGraph).
 
 ## Milestone M6b — Hybrid-frame bench: mixed providers + delta modification (S–M)
 
@@ -468,3 +472,20 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   (raw-source-as-filename + missing target versions). Carry-forward (Phase-2 cleanup):
   (a) rename `ComputeSHA256Hex`→`ComputeFNV1a64`; (b) pre-existing ShaderCacheManager
   defect — `currentCacheSizeBytes` never incremented on Store, size eviction never fires.
+
+- M2c (Tasks 2c.1–2c.2): DONE · commits `a969615f` + `1538bdba` (comment tail) · Opus
+  validator APPROVED · 2026-07-16. **Root cause: KI-018 pass-split `784adff7` moved all
+  color writes to SpatialReuseShade.comp; 7 single-pass harnesses asserted a
+  never-written image** (matches pre-existing KI-032). Fix: HitRecordBuffer-based
+  assertions (byte-exact CPU mirror, real falsifiable checks, incl. the previously
+  VACUOUS SubPixel test). Second bug class fixed: 4 tests missing
+  `RequestBrickResidency(true)` → mip-fallback instead of the SDF path under test.
+  Result: 15 green / 2 red, both KI-filed — KI-035 (per-octree residency clobber,
+  `BodyOctreeSceneNode.cpp:660-662`, REAL product gap → Phase-2 backlog; M3–M6b need
+  only uniform residency) + KI-036 (shadow test dispatches a shader that no longer
+  shades; zero shadow-shading coverage since `784adff7`). Zero product code touched.
+  Handed to M2d as warm-ups: pattern-copy for `test_baked_vs_virtual_parity` +
+  `test_mip_fallback_render` (same bug, KI-032 documents the shape) and the
+  pre-existing HUD `[View]` schema-drift reds (`view_hud_writer_check`/
+  `view_hud_blob_check` — stale checked-in `Hud.view.g.cs`/`Hud.blob.g.h`/
+  `hud.viewblob` goldens) that would bite M2d's build gate.
