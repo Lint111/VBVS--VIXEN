@@ -190,19 +190,32 @@ struct RecipeBoundSphereCpu {
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
 // Byte-identical to the specialized shader's Push block (SpecializedRecipeShaderGlsl.h).
+// Inc3 M1: shrunk to camera/screen fields plus a single recipeId selector --
+// memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation moved to the shared BucketMetaBuffer
+// SSBO (see BucketMetaCpu below), indexed by recipeId.
 struct SpecializedPush {
     glm::vec3 cameraPos; float _p0;
     glm::vec3 cameraDir; float fov;
     glm::vec3 cameraUp;  float aspect;
     glm::vec3 cameraRight; float _p1;
-    uint32_t  memberCount;
     uint32_t  screenWidth;
     uint32_t  screenHeight;
-    uint32_t  rectMinX;
-    uint32_t  rectMinY;
-    float     boundRadius;
-    float     stepRelaxation;
+    uint32_t  maxMembersPerBucket;
+    uint32_t  recipeId;
 };
+
+// Byte-identical to the specialized shader's BucketMeta struct (SpecializedRecipeShaderGlsl.h).
+// One shared SSBO, one entry per recipeId -- Inc3 M1's replacement for the old per-bucket
+// push-constant scalar fields.
+struct BucketMetaCpu {
+    uint32_t memberCount;
+    uint32_t rectMinX;
+    uint32_t rectMinY;
+    float    boundRadius;
+    float    stepRelaxation;
+    uint32_t _pad[3];
+};
+static_assert(sizeof(BucketMetaCpu) == 32, "BucketMetaCpu std430 mirror size");
 
 // Byte-identical to the cold-path shader's Push block (ColdRecipeMarchGlsl, below) — same
 // camera fields as SpecializedPush, but a full-screen fixed dispatch (no rect offset) and a
@@ -972,10 +985,12 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     ASSERT_NE(pipelineCacher, nullptr);
 
     // Shared descriptor set layout + pipeline layout for both specialized shaders (Task 5's own
-    // binding namespace: 0=bodyInstances, 1=bucketMembers, 2=hitRecords — identical shape for
-    // every recipe, so ONE VkDescriptorSetLayout/VkPipelineLayout genuinely serves both; only
-    // the compiled SPIR-V module differs per recipe).
-    const std::array<VkDescriptorSetLayoutBinding, 3> specBindings = {bind(0), bind(1), bind(2)};
+    // binding namespace: 0=bodyInstances, 1=bucketMembers, 2=hitRecords, 3=bucketMeta (Inc3 M1,
+    // NEW) — identical shape for every recipe, so ONE VkDescriptorSetLayout/VkPipelineLayout
+    // genuinely serves both; only the compiled SPIR-V module differs per recipe. Inc3 M1: also now
+    // ONE shared VkDescriptorSet (not one per recipe) since bucketMembers/bucketMeta are now
+    // shared buffers too — see STEP 4 below.
+    const std::array<VkDescriptorSetLayoutBinding, 4> specBindings = {bind(0), bind(1), bind(2), bind(3)};
     VkDescriptorSetLayoutCreateInfo sdslci{};
     sdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     sdslci.bindingCount = static_cast<uint32_t>(specBindings.size()); sdslci.pBindings = specBindings.data();
@@ -1230,26 +1245,24 @@ void main() {
     ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &ccpci, nullptr, &coldPipeline), VK_SUCCESS);
 
     // ======================================================================
-    // STEP 4: shared GPU resources for the dispatch phase (instance buffers, member-list slices,
-    // HitRecord SSBO, descriptor sets) — built ONCE, reused across both ordering runs below (each
-    // ordering re-zeros HitRecord and re-runs, so results are directly comparable).
+    // STEP 4: shared GPU resources for the dispatch phase (instance buffers, HitRecord SSBO,
+    // descriptor sets) — built ONCE, reused across both ordering runs below (each ordering
+    // re-zeros HitRecord and re-runs, so results are directly comparable).
+    //
+    // Inc3 M1: `idxBuf` (bucketIndices[], STEP 1's own shared row-major output) is bound DIRECTLY
+    // here for BOTH recipe A and recipe B's dispatches, instead of being read back and re-uploaded
+    // per-bucket into membersABuf/membersBBuf — that CPU-side readback+slice+reupload loop is
+    // exactly the per-bucket overhead this milestone targets. A NEW shared BucketMetaBuffer
+    // (bucketMetaBuf) replaces the old per-bucket push-constant scalar fields
+    // (memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation), indexed by recipeId. setA and
+    // setB are now the SAME VkDescriptorSet (sharedSpecSet) — both recipes' specialized dispatches
+    // read the identical shared buffers, differing only by the recipeId push-constant selector.
     // ======================================================================
-    VkBuffer specInstBuf, membersABuf, membersBBuf, coldInstBuf, hitRecordBuf;
-    VkDeviceMemory specInstMem, membersAMem, membersBMem, coldInstMem, hitRecordMem;
+    VkBuffer specInstBuf, coldInstBuf, hitRecordBuf;
+    VkDeviceMemory specInstMem, coldInstMem, hitRecordMem;
 
     CreateHostBuffer(instSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, specInstBuf, specInstMem, false);
     UploadBuffer(specInstMem, hotInstances.data(), instSize);
-
-    std::vector<uint32_t> membersA(bucketIndices.begin() + kRecipeA * kMaxMembersPerBucket,
-                                    bucketIndices.begin() + kRecipeA * kMaxMembersPerBucket + bucketCounts[kRecipeA]);
-    std::vector<uint32_t> membersB(bucketIndices.begin() + kRecipeB * kMaxMembersPerBucket,
-                                    bucketIndices.begin() + kRecipeB * kMaxMembersPerBucket + bucketCounts[kRecipeB]);
-    const VkDeviceSize membersASize = membersA.size() * sizeof(uint32_t);
-    const VkDeviceSize membersBSize = membersB.size() * sizeof(uint32_t);
-    CreateHostBuffer(membersASize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, membersABuf, membersAMem, false);
-    UploadBuffer(membersAMem, membersA.data(), membersASize);
-    CreateHostBuffer(membersBSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, membersBBuf, membersBMem, false);
-    UploadBuffer(membersBMem, membersB.data(), membersBSize);
 
     const VkDeviceSize coldInstSize = coldInstanceCount * sizeof(ColdInstanceCpu);
     CreateHostBuffer(coldInstSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, coldInstBuf, coldInstMem, false);
@@ -1258,10 +1271,31 @@ void main() {
     const VkDeviceSize hitRecordSize = static_cast<VkDeviceSize>(kScreenWidth) * kScreenHeight * sizeof(HitRecordCpu);
     CreateHostBuffer(hitRecordSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hitRecordBuf, hitRecordMem, true);
 
-    VkDescriptorPoolSize dPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 + 3 + 2};
+    // One BucketMetaCpu entry per POSSIBLE recipeId (indexed the same way boundBuf/idxBuf already
+    // are: by raw recipeId), populated for kRecipeA/kRecipeB only.
+    std::vector<BucketMetaCpu> bucketMetaCpuVec(kMaxBuckets, BucketMetaCpu{});
+    {
+        BucketMetaCpu metaA{};
+        metaA.memberCount = bucketCounts[kRecipeA]; metaA.rectMinX = rectAMinX; metaA.rectMinY = rectAMinY;
+        metaA.boundRadius = entryA.boundRadius; metaA.stepRelaxation = entryA.stepRelaxation;
+        bucketMetaCpuVec[kRecipeA] = metaA;
+
+        BucketMetaCpu metaB{};
+        metaB.memberCount = bucketCounts[kRecipeB]; metaB.rectMinX = rectBMinX; metaB.rectMinY = rectBMinY;
+        metaB.boundRadius = entryB.boundRadius; metaB.stepRelaxation = entryB.stepRelaxation;
+        bucketMetaCpuVec[kRecipeB] = metaB;
+    }
+    const VkDeviceSize bucketMetaSize = bucketMetaCpuVec.size() * sizeof(BucketMetaCpu);
+    VkBuffer bucketMetaBuf; VkDeviceMemory bucketMetaMem;
+    CreateHostBuffer(bucketMetaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, bucketMetaBuf, bucketMetaMem, false);
+    UploadBuffer(bucketMetaMem, bucketMetaCpuVec.data(), bucketMetaSize);
+
+    // ONE descriptor pool sized for ONE shared specialized-dispatch set + the cold set (was 3 sets:
+    // setA/setB/setCold, 3+3+2 descriptors) -- Inc3 M1's actual per-bucket-allocation elimination.
+    VkDescriptorPoolSize dPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 + 2};
     VkDescriptorPoolCreateInfo dpci{};
     dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    dpci.maxSets = 3; dpci.poolSizeCount = 1; dpci.pPoolSizes = &dPoolSize;
+    dpci.maxSets = 2; dpci.poolSizeCount = 1; dpci.pPoolSizes = &dPoolSize;
     VkDescriptorPool dispatchPool = VK_NULL_HANDLE;
     ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &dpci, nullptr, &dispatchPool), VK_SUCCESS);
 
@@ -1273,13 +1307,13 @@ void main() {
         vkAllocateDescriptorSets(logicalDevice_, &dsai, &set);
         return set;
     };
-    VkDescriptorSet setA = allocSet(specDsl), setB = allocSet(specDsl), setCold = allocSet(coldDsl);
+    VkDescriptorSet sharedSpecSet = allocSet(specDsl), setCold = allocSet(coldDsl);
 
     VkDescriptorBufferInfo specInstInfo{specInstBuf, 0, VK_WHOLE_SIZE};
-    VkDescriptorBufferInfo membersAInfo{membersABuf, 0, VK_WHOLE_SIZE};
-    VkDescriptorBufferInfo membersBInfo{membersBBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo memberInfo{idxBuf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo coldInstInfo{coldInstBuf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo hitRecordInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo bucketMetaInfo{bucketMetaBuf, 0, VK_WHOLE_SIZE};
     auto wSet = [&](VkDescriptorSet set, uint32_t b, VkDescriptorBufferInfo* info) {
         VkWriteDescriptorSet w{};
         w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1287,21 +1321,20 @@ void main() {
         w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
         return w;
     };
-    const std::array<VkWriteDescriptorSet, 8> dispatchWrites = {
-        wSet(setA, 0, &specInstInfo), wSet(setA, 1, &membersAInfo), wSet(setA, 2, &hitRecordInfo),
-        wSet(setB, 0, &specInstInfo), wSet(setB, 1, &membersBInfo), wSet(setB, 2, &hitRecordInfo),
+    const std::array<VkWriteDescriptorSet, 6> dispatchWrites = {
+        wSet(sharedSpecSet, 0, &specInstInfo), wSet(sharedSpecSet, 1, &memberInfo),
+        wSet(sharedSpecSet, 2, &hitRecordInfo), wSet(sharedSpecSet, 3, &bucketMetaInfo),
         wSet(setCold, 0, &coldInstInfo), wSet(setCold, 1, &hitRecordInfo),
     };
     vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(dispatchWrites.size()), dispatchWrites.data(), 0, nullptr);
 
     SpecializedPush pcA{};
     pcA.cameraPos = eye; pcA.cameraDir = camDir; pcA.fov = fovDeg; pcA.cameraUp = camUp; pcA.aspect = aspect; pcA.cameraRight = camRight;
-    pcA.memberCount = bucketCounts[kRecipeA]; pcA.screenWidth = kScreenWidth; pcA.screenHeight = kScreenHeight;
-    pcA.rectMinX = rectAMinX; pcA.rectMinY = rectAMinY; pcA.boundRadius = entryA.boundRadius; pcA.stepRelaxation = entryA.stepRelaxation;
+    pcA.screenWidth = kScreenWidth; pcA.screenHeight = kScreenHeight;
+    pcA.maxMembersPerBucket = kMaxMembersPerBucket; pcA.recipeId = kRecipeA;
 
     SpecializedPush pcB = pcA;
-    pcB.memberCount = bucketCounts[kRecipeB]; pcB.rectMinX = rectBMinX; pcB.rectMinY = rectBMinY;
-    pcB.boundRadius = entryB.boundRadius; pcB.stepRelaxation = entryB.stepRelaxation;
+    pcB.recipeId = kRecipeB;
 
     ColdPush pcCold{};
     pcCold.cameraPos = eye; pcCold.cameraDir = camDir; pcCold.fov = fovDeg; pcCold.cameraUp = camUp; pcCold.aspect = aspect; pcCold.cameraRight = camRight;
@@ -1344,47 +1377,64 @@ void main() {
         node->Setup();
         EXPECT_NO_THROW(node->Compile());
 
-        DispatchPass passA;
-        passA.pipeline = compiledA.pipeline; passA.layout = compiledA.layout;
-        passA.descriptorSets = {setA};
-        passA.indirectBuffer = indirectBuf; passA.indirectBufferOffset = kRecipeA * 3 * sizeof(uint32_t);
-        {
+        // Inc3 M1: passA/passB now share ONE descriptor set (sharedSpecSet, bound above) instead
+        // of distinct setA/setB. `passCold` uses a DIFFERENT, unrelated VkPipelineLayout
+        // (coldLayout != specDsl's layout), so it is never layout-compatible with the specialized
+        // passes' set 0 — a bind is required whenever a specialized pass is the FIRST dispatch to
+        // need sharedSpecSet since the last time some OTHER descriptor set was bound at set 0
+        // (i.e., the first specialized pass in program order after a cold pass, or the very first
+        // dispatch overall). Once sharedSpecSet is bound, subsequent specialized passes (same
+        // layout, same set) can leave descriptorSets empty per the spec's pipeline-layout-
+        // compatibility rule (verified: vkCmdBindPipeline never disturbs bound descriptor sets;
+        // MultiDispatchNode::RecordDispatches' `if (!pass.descriptorSets.empty())` guard skips the
+        // call when left empty).
+        auto makePassA = [&](bool bindSet) {
+            DispatchPass passA;
+            passA.pipeline = compiledA.pipeline; passA.layout = compiledA.layout;
+            if (bindSet) passA.descriptorSets = {sharedSpecSet};
+            passA.indirectBuffer = indirectBuf; passA.indirectBufferOffset = kRecipeA * 3 * sizeof(uint32_t);
             PushConstantData pcData; pcData.data.resize(sizeof(SpecializedPush));
             std::memcpy(pcData.data.data(), &pcA, sizeof(SpecializedPush));
             passA.pushConstants = pcData;
-        }
-        passA.debugName = "RecipeA_Specialized";
-
-        DispatchPass passB;
-        passB.pipeline = compiledB.pipeline; passB.layout = compiledB.layout;
-        passB.descriptorSets = {setB};
-        passB.indirectBuffer = indirectBuf; passB.indirectBufferOffset = kRecipeB * 3 * sizeof(uint32_t);
-        {
+            passA.debugName = "RecipeA_Specialized";
+            return passA;
+        };
+        auto makePassB = [&](bool bindSet) {
+            DispatchPass passB;
+            passB.pipeline = compiledB.pipeline; passB.layout = compiledB.layout;
+            if (bindSet) passB.descriptorSets = {sharedSpecSet};
+            passB.indirectBuffer = indirectBuf; passB.indirectBufferOffset = kRecipeB * 3 * sizeof(uint32_t);
             PushConstantData pcData; pcData.data.resize(sizeof(SpecializedPush));
             std::memcpy(pcData.data.data(), &pcB, sizeof(SpecializedPush));
             passB.pushConstants = pcData;
-        }
-        passB.debugName = "RecipeB_Specialized";
-
-        DispatchPass passCold;
-        passCold.pipeline = coldPipeline; passCold.layout = coldLayout;
-        passCold.descriptorSets = {setCold};
-        passCold.workGroupCount = {(kScreenWidth + 7) / 8, (kScreenHeight + 7) / 8, 1};
-        {
+            passB.debugName = "RecipeB_Specialized";
+            return passB;
+        };
+        auto makePassCold = [&]() {
+            DispatchPass passCold;
+            passCold.pipeline = coldPipeline; passCold.layout = coldLayout;
+            passCold.descriptorSets = {setCold};
+            passCold.workGroupCount = {(kScreenWidth + 7) / 8, (kScreenHeight + 7) / 8, 1};
             PushConstantData pcData; pcData.data.resize(sizeof(ColdPush));
             std::memcpy(pcData.data.data(), &pcCold, sizeof(ColdPush));
             passCold.pushConstants = pcData;
-        }
-        passCold.debugName = "ColdRecipe_TierZeroEquivalent";
+            passCold.debugName = "ColdRecipe_TierZeroEquivalent";
+            return passCold;
+        };
 
         if (hotFirst) {
-            node->QueueDispatch(std::move(passA));
-            node->QueueDispatch(std::move(passB));
-            node->QueueDispatch(std::move(passCold));
+            // A (first dispatch overall -> must bind), B (immediately follows A, same set -> skip
+            // bind), cold (different layout/set -> its own bind, unaffected by this change).
+            node->QueueDispatch(makePassA(/*bindSet=*/true));
+            node->QueueDispatch(makePassB(/*bindSet=*/false));
+            node->QueueDispatch(makePassCold());
         } else {
-            node->QueueDispatch(std::move(passCold));
-            node->QueueDispatch(std::move(passA));
-            node->QueueDispatch(std::move(passB));
+            // cold (first dispatch, its own set), A (first SPECIALIZED pass after cold -> must
+            // rebind sharedSpecSet, since cold's set was bound last), B (follows A, same set ->
+            // skip bind).
+            node->QueueDispatch(makePassCold());
+            node->QueueDispatch(makePassA(/*bindSet=*/true));
+            node->QueueDispatch(makePassB(/*bindSet=*/false));
         }
 
         EXPECT_NO_THROW(node->Execute());
@@ -1525,8 +1575,7 @@ void main() {
     vkDestroyShaderModule(logicalDevice_, compiledA.module, nullptr);
     vkDestroyShaderModule(logicalDevice_, compiledB.module, nullptr);
     vkDestroyBuffer(logicalDevice_, specInstBuf, nullptr); vkFreeMemory(logicalDevice_, specInstMem, nullptr);
-    vkDestroyBuffer(logicalDevice_, membersABuf, nullptr); vkFreeMemory(logicalDevice_, membersAMem, nullptr);
-    vkDestroyBuffer(logicalDevice_, membersBBuf, nullptr); vkFreeMemory(logicalDevice_, membersBMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, bucketMetaBuf, nullptr); vkFreeMemory(logicalDevice_, bucketMetaMem, nullptr);
     vkDestroyBuffer(logicalDevice_, coldInstBuf, nullptr); vkFreeMemory(logicalDevice_, coldInstMem, nullptr);
     vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
 

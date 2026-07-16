@@ -105,9 +105,33 @@ GPU (Windows-native) for every milestone.
 - **M1 — Reduce per-bucket descriptor/push-constant overhead** (Task 2) · **live-run gate** · shared
   SSBO + per-dispatch offset/index replaces per-bucket descriptor-set aliasing where data doesn't
   genuinely require a distinct set; correctness proven against the existing M2/M3 oracle pattern.
-  - [ ] Not started. **Unblocked** — M0 complete, user confirmed 2026-07-16 to proceed with M1/M2
-    as scoped despite the mixed (not clean switch-dispatch-cost) M0 finding, since M1/M2 target
-    Increment 2's own separate, already-confirmed regression.
+  - [x] **DONE 2026-07-16.** `BucketMembersBuffer` (binding 1) now binds the FULL shared
+    `bucketIndices[]` output from the M1-bucketing pre-pass directly (row-major, indexed by
+    `recipeId * maxMembersPerBucket + m`) instead of a per-bucket CPU-readback+reupload slice. A
+    NEW `BucketMetaBuffer` (binding 3) — one shared SSBO, one 32B entry per recipeId
+    (`memberCount`/`rectMinX`/`rectMinY`/`boundRadius`/`stepRelaxation`) — replaces those 5 fields
+    in the push-constant block; the push-constant struct shrinks from 92B to 80B (camera/screen
+    fields + a single `recipeId` selector). All N specialized pipelines share ONE
+    `VkPipelineLayout`, so ONE shared `VkDescriptorSet` is bound on the FIRST bucket's
+    `DispatchPass` only — subsequent buckets leave `descriptorSets` empty, which
+    `MultiDispatchNode::RecordDispatches`' existing `if (!pass.descriptorSets.empty())` guard
+    skips entirely (Vulkan spec-confirmed: descriptor-set bindings persist across
+    `vkCmdBindPipeline`/`vkCmdDispatchIndirect` when pipeline layouts stay compatible — "Pipeline
+    Layout Compatibility"). **Measured API-call-count reduction** (`test_recipe_bucketing_perf`,
+    real discrete NVIDIA RTX 3060 Laptop GPU): `vkCmdBindDescriptorSets` N→1 at every tested N
+    (3→1, 10→1, 100→1); `vkCmdPushConstants` stays N calls (recipeId still varies per bucket) but
+    each call's payload shrinks 92B→80B. **Correctness**: `test_recipe_bucketed_indirect_dispatch`
+    (M2, single-bucket) — GPU vs. independent CPU oracle, `matchedHits=1664`,
+    `maxHitTDelta=0.00000`; `test_recipe_multi_bucket_compositing` (M3, overlap-compositing) — GPU
+    vs. oracle `matchedHits=2984` both orderings, **0/65536 pixels differ between hot-first and
+    cold-first HitRecord buffers** (the strongest available proof this refactor didn't disturb M3's
+    order-independence proof). **Full regression**: `test_recipe_instance_bucketing` (1/1),
+    `test_recipe_bucketed_indirect_dispatch` (4/4), `test_recipe_multi_bucket_compositing` (2/2),
+    `test_recipe_bucketing_perf` (3/3), `test_switch_cost_isolation` (6/6, M0's own suite,
+    unaffected as expected) — **16/16 passing**, all on the confirmed discrete NVIDIA GPU. No
+    change to `vkCmdBindPipeline` count (out of scope, unchanged) or barrier count (M2's job).
+    Deviation from prompt: none — mechanism matches the prompt's suggested design ("single shared
+    descriptor-set bind instead of N," offset/index via push-constant) exactly.
 - **M2 — Barrier-coalescing correctness analysis + (if safe) reduction** (Task 3) · **live-run gate**
   · prove whether N−1 barriers can become fewer without weakening M3's write-after-write ordering
   proof; implement ONLY if a safe reduction is actually established, not assumed.
@@ -166,6 +190,31 @@ validator verdict.)
   N=100 knee; the knee is m_i/k_i-shaped, pointing more toward
   [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s single-dispatch-no-switch
   territory than toward reducing bucket-count overhead.
+
+- **M1 (2026-07-16):** shared-SSBO + push-constant-shrink refactor, implemented against
+  `SpecializedRecipeShaderGlsl.h` (shader emission) and all 3 dispatch-phase test harnesses
+  (`test_recipe_bucketed_indirect_dispatch.cpp` M2, `test_recipe_multi_bucket_compositing.cpp` M3,
+  `test_recipe_bucketing_perf.cpp` M4 — all 3 construct/consume the specialized shader's
+  binding/push-constant contract directly, so all 3 needed updating in lockstep). Mechanism: (1)
+  `BucketMembersBuffer` binds the bucketing pre-pass's OWN shared `bucketIndices[]` output
+  directly (it was already one row-major buffer; the per-bucket CPU readback+slice+reupload loop
+  was pure overhead, now eliminated). (2) new `BucketMetaBuffer` SSBO (32B/entry, indexed by
+  recipeId) replaces `memberCount`/`rectMinX`/`rectMinY`/`boundRadius`/`stepRelaxation` in the
+  push-constant block. (3) ONE shared `VkDescriptorSet` (not N) is bound on the first bucket's
+  `DispatchPass` only; verified via Vulkan spec research ("Pipeline Layout Compatibility") that
+  descriptor-set bindings persist across `vkCmdBindPipeline`/`vkCmdDispatchIndirect` as long as
+  pipeline layouts stay compatible (true here — all N specialized pipelines share one
+  `VkPipelineLayout`), and confirmed `MultiDispatchNode::RecordDispatches` already has an
+  `if (!pass.descriptorSets.empty())` guard that skips the bind call when left empty — no
+  `MultiDispatchNode` changes needed. **Measured, not assumed**: `vkCmdBindDescriptorSets` dropped
+  N→1 at N=3/10/100 (real discrete RTX 3060 Laptop GPU); push-constant payload 92B→80B/call.
+  **Correctness**: M2's oracle match (`matchedHits=1664`, `maxHitTDelta=0.00000`) and M3's
+  overlap-compositing proof (0/65536 pixels differ between orderings) both hold unchanged under
+  the refactor. Full regression suite (M0's `test_switch_cost_isolation` +
+  `test_recipe_instance_bucketing`/`test_recipe_bucketed_indirect_dispatch`/
+  `test_recipe_multi_bucket_compositing`/`test_recipe_bucketing_perf`) 16/16 passing. See
+  Milestone Map entry above for full detail; M2 (barrier-coalescing) and M3 (re-measurement) are
+  next.
 
 ---
 

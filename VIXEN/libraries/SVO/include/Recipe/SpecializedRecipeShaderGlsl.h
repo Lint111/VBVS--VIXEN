@@ -21,7 +21,7 @@ namespace Vixen::SVO::Recipe {
 //   - main() is dispatched via vkCmdDispatchIndirect (Task 4) sized to THIS recipe's bucket's
 //     screen-space coverage rect (RecipeInstanceBucketing.comp's mode==2 output) — one thread
 //     per pixel WITHIN that rect (not the full screen), offset by the rect's own minX/minY
-//     (bound via a small push-constant, see below).
+//     (looked up from the shared BucketMetaBuffer via this dispatch's recipeId, see below).
 //   - loops ONLY this bucket's compacted member instance list (RecipeInstanceBucketing.comp's
 //     bucketIndices[] slice for this recipeId) — never touches bodyInstances[] entries outside
 //     this bucket, unlike the tier-0 switch's full-instance loop.
@@ -31,14 +31,30 @@ namespace Vixen::SVO::Recipe {
 //     other bucket's dispatch touching the same HitRecord SSBO (write-after-write hazard,
 //     FrameSyncScheduler::NeedsSync) — no atomics needed, see the design doc for the full proof.
 //
+// Recipe Bucketed-Dispatch Overhead Inc3 M1 (descriptor/push-constant overhead reduction):
+// `BucketMembersBuffer` (binding 1) is now the FULL shared bucketIndices[] output from
+// RecipeInstanceBucketing.comp (row-major, stride maxMembersPerBucket), not a per-bucket-aliased
+// slice — every specialized dispatch, for every recipe, binds the SAME descriptor set pointing at
+// the SAME buffer; the per-bucket row is selected by `pc.recipeId * pc.maxMembersPerBucket + m`
+// inside the loop instead of by which buffer/descriptor-set was bound. Likewise `BucketMetaBuffer`
+// (binding 3, NEW) replaces the old per-bucket `memberCount`/`rectMinX`/`rectMinY`/`boundRadius`/
+// `stepRelaxation` push-constant fields — one shared SSBO, one entry per recipeId, indexed the
+// same way. The push-constant block shrinks to the camera/screen fields (identical across every
+// bucket in a frame) plus a single `recipeId` selector — the only thing that actually varies
+// per-dispatch. This lets the CALLER (MultiDispatchNode's per-bucket DispatchPass loop) bind the
+// shared descriptor set ONCE for the whole batch (Vulkan descriptor-set bindings persist across
+// vkCmdBindPipeline/vkCmdDispatchIndirect within a command buffer as long as pipeline layouts stay
+// compatible, which they do here — all N specialized pipelines share one VkPipelineLayout), instead
+// of re-binding + rewriting a distinct descriptor set N times.
+//
 // Self-contained binding namespace starting at 0 (mirrors RecipeInstanceBucketing.comp's own
 // "does not depend on the uber-shader splice chain" precedent) — this shader does NOT #include
 // SceneBindings.glsl (that pulls in the ENTIRE tier-0 traversal machinery, including the very
-// switch this specialized shader exists to avoid). It needs only: this bucket's compacted
-// instance-index list + bodyInstances[] (for worldPos/recipeParams), the camera basis (own
-// push-constant block, same fields as SceneBindings.glsl's PushConstants for the ray-gen math),
-// and the shared HitRecord SSBO (binding 18, the SAME binding the tier-0 path writes, so both
-// paths composite into ONE shared per-pixel record).
+// switch this specialized shader exists to avoid). It needs only: the shared compacted
+// instance-index list + bodyInstances[] (for worldPos/recipeParams), the shared per-recipe bucket
+// metadata, the camera basis (own push-constant block, same fields as SceneBindings.glsl's
+// PushConstants for the ray-gen math), and the shared HitRecord SSBO (binding 18, the SAME binding
+// the tier-0 path writes, so both paths composite into ONE shared per-pixel record).
 //
 // `sdfCoreKernelsGlsl` is the VERBATIM content of libraries/SVO/shaders/recipe/SdfCoreKernels.glsl
 // (the SdfCore_* kernel set the emitted field function calls), passed in and textually inlined
@@ -92,9 +108,11 @@ struct BodyInstance {
 };
 layout(std430, binding = 0) readonly buffer BodyInstanceBuffer { BodyInstance bodyInstances[]; };
 
-// This recipe's compacted member instance-index list (RecipeInstanceBucketing.comp's
-// bucketIndices[] slice for THIS recipeId, uploaded/aliased at binding 1 — one flat array of
-// instance indices, memberCount entries valid).
+// Inc3 M1: the FULL shared bucketIndices[] output from RecipeInstanceBucketing.comp (row-major,
+// stride maxMembersPerBucket) — every recipe's compacted member list lives in ONE buffer, ONE
+// descriptor set, bound once for the whole N-bucket dispatch batch. This dispatch's own row is
+// selected inside main() via `pc.recipeId * pc.maxMembersPerBucket + m`, not by which buffer was
+// bound (there is only ever one).
 layout(std430, binding = 1) readonly buffer BucketMembersBuffer { uint bucketMembers[]; };
 
 #ifndef HITRECORD_GLSL
@@ -112,6 +130,19 @@ struct HitRecord {
 #endif
 layout(std430, binding = 2) buffer HitRecordBuffer { HitRecord hitRecords[]; };
 
+// Inc3 M1: per-recipe bucket metadata, ONE shared SSBO indexed by recipeId, replacing the old
+// per-bucket memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation push-constant fields.
+// std430 layout — matches the CPU-side BucketMetaCpu mirror exactly (32 B/entry).
+struct BucketMeta {
+    uint  memberCount;
+    uint  rectMinX;
+    uint  rectMinY;
+    float boundRadius;
+    float stepRelaxation;
+    uint  _pad[3];
+};
+layout(std430, binding = 3) readonly buffer BucketMetaBuffer { BucketMeta bucketMeta[]; };
+
 layout(push_constant) uniform Push {
     vec3  cameraPos;
     float _p0;
@@ -121,13 +152,10 @@ layout(push_constant) uniform Push {
     float aspect;
     vec3  cameraRight;
     float _p1;
-    uint  memberCount;   // valid entries in bucketMembers[]
     uint  screenWidth;   // FULL screen width (for HitRecord's row-major index, NOT the rect width)
     uint  screenHeight;  // FULL screen height
-    uint  rectMinX;      // this bucket's coverage rect origin (indirect dispatch is offset by this)
-    uint  rectMinY;
-    float boundRadius;   // this recipe's bound-sphere radius (world-space, sphere-march bound)
-    float stepRelaxation;// this recipe's registered step relaxation (0.0 < r <= 1.0)
+    uint  maxMembersPerBucket; // bucketMembers[] row stride (same for every recipe)
+    uint  recipeId;      // THIS dispatch's bucket selector into BucketMetaBuffer/bucketMembers[]
 } pc;
 
 vec3 getRayDir(vec2 uv) {
@@ -140,8 +168,9 @@ vec3 getRayDir(vec2 uv) {
 
 )";
     out << "void main() {\n";
+    out << "    BucketMeta meta = bucketMeta[pc.recipeId];\n";
     out << "    ivec2 rectCoord = ivec2(gl_GlobalInvocationID.xy);\n";
-    out << "    ivec2 pixelCoords = rectCoord + ivec2(int(pc.rectMinX), int(pc.rectMinY));\n";
+    out << "    ivec2 pixelCoords = rectCoord + ivec2(int(meta.rectMinX), int(meta.rectMinY));\n";
     out << "    if (pixelCoords.x >= int(pc.screenWidth) || pixelCoords.y >= int(pc.screenHeight)) return;\n";
     out << "    if (pixelCoords.x < 0 || pixelCoords.y < 0) return;\n\n";
     out << "    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(float(pc.screenWidth), float(pc.screenHeight));\n";
@@ -151,8 +180,9 @@ vec3 getRayDir(vec2 uv) {
     out << "    float bestT  = 1e30;\n";
     out << "    vec3  bestNormal = vec3(0.0, 1.0, 0.0);\n";
     out << "    vec3  bestColor  = vec3(1.0);\n\n";
-    out << "    for (uint m = 0u; m < pc.memberCount; ++m) {\n";
-    out << "        uint instIdx = bucketMembers[m];\n";
+    out << "    uint bucketBase = pc.recipeId * pc.maxMembersPerBucket;\n";
+    out << "    for (uint m = 0u; m < meta.memberCount; ++m) {\n";
+    out << "        uint instIdx = bucketMembers[bucketBase + m];\n";
     out << "        BodyInstance inst = bodyInstances[instIdx];\n";
     out << "        // Bound-sphere reject center matches tier-0's getRecipeBoundSphere EXACTLY:\n";
     out << "        // this recipe's REGISTERED boundCenter, baked as a compile-time constant --\n";
@@ -169,7 +199,7 @@ vec3 getRayDir(vec2 uv) {
         << f(entry.boundCenter.y) << ", " << f(entry.boundCenter.z) << ");\n\n";
     out << "        vec3  oc = rayOrigin - boundCenter;\n";
     out << "        float b  = dot(oc, rayDir);\n";
-    out << "        float c  = dot(oc, oc) - pc.boundRadius * pc.boundRadius;\n";
+    out << "        float c  = dot(oc, oc) - meta.boundRadius * meta.boundRadius;\n";
     out << "        float disc = b * b - c;\n";
     out << "        if (disc < 0.0) continue;\n";
     out << "        float sq = sqrt(disc);\n";
@@ -196,7 +226,7 @@ vec3 getRayDir(vec2 uv) {
     out << "                }\n";
     out << "                break;\n";
     out << "            }\n";
-    out << "            t += d * pc.stepRelaxation;\n";
+    out << "            t += d * meta.stepRelaxation;\n";
     out << "            if (t > tFar) break;\n";
     out << "        }\n";
     out << "    }\n\n";

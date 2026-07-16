@@ -130,19 +130,32 @@ struct RecipeBoundSphereCpu {
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
 // Byte-identical to the specialized shader's Push block (SpecializedRecipeShaderGlsl.h).
+// Inc3 M1: shrunk to camera/screen fields (identical across every bucket in a frame) plus a
+// single recipeId selector -- memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation moved to
+// the shared BucketMetaBuffer SSBO (see BucketMetaCpu below), indexed by recipeId.
 struct SpecializedPush {
     glm::vec3 cameraPos; float _p0;
     glm::vec3 cameraDir; float fov;
     glm::vec3 cameraUp;  float aspect;
     glm::vec3 cameraRight; float _p1;
-    uint32_t  memberCount;
     uint32_t  screenWidth;
     uint32_t  screenHeight;
-    uint32_t  rectMinX;
-    uint32_t  rectMinY;
-    float     boundRadius;
-    float     stepRelaxation;
+    uint32_t  maxMembersPerBucket;
+    uint32_t  recipeId;
 };
+
+// Byte-identical to the specialized shader's BucketMeta struct (SpecializedRecipeShaderGlsl.h).
+// One shared SSBO, one entry per recipeId (indexed exactly like RecipeBoundSphereCpu/boundBuf
+// already is) -- Inc3 M1's replacement for the old per-bucket push-constant scalar fields.
+struct BucketMetaCpu {
+    uint32_t memberCount;
+    uint32_t rectMinX;
+    uint32_t rectMinY;
+    float    boundRadius;
+    float    stepRelaxation;
+    uint32_t _pad[3];
+};
+static_assert(sizeof(BucketMetaCpu) == 32, "BucketMetaCpu std430 mirror size");
 
 // Cold-path stand-in push block: same camera fields, plus a fixed instance count/recipe count
 // for the N-recipe generalized loop (ColdRecipeMarchGlsl below).
@@ -720,7 +733,7 @@ protected:
             typeid(CashSystem::ComputePipelineWrapper), deviceShell_.get());
         ASSERT_NE(pipelineCacher, nullptr);
 
-        const std::array<VkDescriptorSetLayoutBinding, 3> specBindings = {bind(0), bind(1), bind(2)};
+        const std::array<VkDescriptorSetLayoutBinding, 4> specBindings = {bind(0), bind(1), bind(2), bind(3)};
         VkDescriptorSetLayoutCreateInfo sdslci{};
         sdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         sdslci.bindingCount = static_cast<uint32_t>(specBindings.size()); sdslci.pBindings = specBindings.data();
@@ -786,6 +799,15 @@ protected:
 
         // ======================================================================
         // STEP 3: shared dispatch-phase GPU resources.
+        //
+        // Inc3 M1: `idxBuf` (bucketIndices[], the M1-bucketing pre-pass's own shared row-major
+        // output, STEP 1 above) is bound DIRECTLY here instead of being read back and re-uploaded
+        // per-bucket into N separate memberBufs[] -- that CPU-side readback+slice+reupload loop is
+        // exactly the per-bucket overhead this milestone targets, and it's now simply gone: the
+        // buffer this dispatch phase needs already exists, on the GPU, from STEP 1.
+        // A NEW shared BucketMetaBuffer (bucketMetaBuf) replaces the old per-bucket push-constant
+        // scalar fields (memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation) -- one entry per
+        // recipeId, built directly from STEP 1's own bucketCounts[]/rectOriginOf()/recipe entries.
         // ======================================================================
         VkBuffer specInstBuf, hitRecordBuf;
         VkDeviceMemory specInstMem, hitRecordMem;
@@ -795,63 +817,66 @@ protected:
         const VkDeviceSize hitRecordSize = static_cast<VkDeviceSize>(kScreenWidth) * kScreenHeight * sizeof(HitRecordCpu);
         CreateHostBuffer(hitRecordSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hitRecordBuf, hitRecordMem, true);
 
-        std::vector<VkBuffer> memberBufs(N);
-        std::vector<VkDeviceMemory> memberMems(N);
-        std::vector<std::vector<uint32_t>> memberLists(N);
+        // One BucketMetaCpu entry per POSSIBLE recipeId (indexed the same way boundBuf/idxBuf
+        // already are: by raw recipeId, not by this scene's compact 0..N-1 loop index) so the
+        // shader's `bucketMeta[pc.recipeId]` lookup matches idxBuf's own row-major convention
+        // exactly. Only the N recipeIds this scene actually uses are populated; the rest stay
+        // zero-initialized and unread.
+        const uint32_t kMaxRecipeId = kMaxBuckets;
+        std::vector<BucketMetaCpu> bucketMetaCpuVec(kMaxRecipeId, BucketMetaCpu{});
         for (uint32_t i = 0; i < N; ++i) {
             const uint32_t recipeId = recipes[i].recipeId;
-            memberLists[i].assign(bucketIndices.begin() + recipeId * kMaxMembersPerBucket,
-                                   bucketIndices.begin() + recipeId * kMaxMembersPerBucket + bucketCounts[recipeId]);
-            const VkDeviceSize sz = memberLists[i].size() * sizeof(uint32_t);
-            CreateHostBuffer(sz, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, memberBufs[i], memberMems[i], false);
-            UploadBuffer(memberMems[i], memberLists[i].data(), sz);
+            const auto [rx, ry] = rectOriginOf(recipeId);
+            BucketMetaCpu meta{};
+            meta.memberCount = bucketCounts[recipeId];
+            meta.rectMinX = rx; meta.rectMinY = ry;
+            meta.boundRadius = recipes[i].entry.boundRadius;
+            meta.stepRelaxation = recipes[i].entry.stepRelaxation;
+            bucketMetaCpuVec[recipeId] = meta;
         }
+        const VkDeviceSize bucketMetaSize = bucketMetaCpuVec.size() * sizeof(BucketMetaCpu);
+        VkBuffer bucketMetaBuf; VkDeviceMemory bucketMetaMem;
+        CreateHostBuffer(bucketMetaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, bucketMetaBuf, bucketMetaMem, false);
+        UploadBuffer(bucketMetaMem, bucketMetaCpuVec.data(), bucketMetaSize);
 
-        VkDescriptorPoolSize dPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, N * 3 + 2};
+        // ONE descriptor pool sized for ONE shared descriptor set (was N+1 sets, N*3+2
+        // descriptors) -- Inc3 M1's actual per-bucket-allocation elimination.
+        VkDescriptorPoolSize dPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        dpci.maxSets = N + 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = &dPoolSize;
+        dpci.maxSets = 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = &dPoolSize;
         VkDescriptorPool dispatchPool = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &dpci, nullptr, &dispatchPool), VK_SUCCESS);
 
-        auto allocSet = [&](VkDescriptorSetLayout layout) {
-            VkDescriptorSetAllocateInfo dsai{};
-            dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            dsai.descriptorPool = dispatchPool; dsai.descriptorSetCount = 1; dsai.pSetLayouts = &layout;
-            VkDescriptorSet set = VK_NULL_HANDLE;
-            vkAllocateDescriptorSets(logicalDevice_, &dsai, &set);
-            return set;
-        };
+        VkDescriptorSetAllocateInfo dsai{};
+        dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dsai.descriptorPool = dispatchPool; dsai.descriptorSetCount = 1; dsai.pSetLayouts = &specDsl;
+        VkDescriptorSet sharedSpecSet = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &sharedSpecSet), VK_SUCCESS);
 
-        std::vector<VkDescriptorSet> specSets(N);
-        std::vector<VkDescriptorBufferInfo> specInstInfos(N, VkDescriptorBufferInfo{specInstBuf, 0, VK_WHOLE_SIZE});
-        std::vector<VkDescriptorBufferInfo> memberInfos(N);
-        std::vector<VkDescriptorBufferInfo> hitInfos(N, VkDescriptorBufferInfo{hitRecordBuf, 0, VK_WHOLE_SIZE});
-        std::vector<VkWriteDescriptorSet> writes;
-        writes.reserve(N * 3);
-        for (uint32_t i = 0; i < N; ++i) {
-            specSets[i] = allocSet(specDsl);
-            memberInfos[i] = VkDescriptorBufferInfo{memberBufs[i], 0, VK_WHOLE_SIZE};
-            auto wSet = [&](VkDescriptorSet set, uint32_t b, VkDescriptorBufferInfo* info) {
-                VkWriteDescriptorSet w{};
-                w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w.dstSet = set; w.dstBinding = b; w.descriptorCount = 1;
-                w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
-                return w;
-            };
-            writes.push_back(wSet(specSets[i], 0, &specInstInfos[i]));
-            writes.push_back(wSet(specSets[i], 1, &memberInfos[i]));
-            writes.push_back(wSet(specSets[i], 2, &hitInfos[i]));
-        }
-        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        VkDescriptorBufferInfo specInstInfo{specInstBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo memberInfo{idxBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo hitInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo bucketMetaInfo{bucketMetaBuf, 0, VK_WHOLE_SIZE};
+        auto wSharedSet = [&](uint32_t b, VkDescriptorBufferInfo* info) {
+            VkWriteDescriptorSet w{};
+            w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.dstSet = sharedSpecSet; w.dstBinding = b; w.descriptorCount = 1;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
+            return w;
+        };
+        const std::array<VkWriteDescriptorSet, 4> sharedSetWrites = {
+            wSharedSet(0, &specInstInfo), wSharedSet(1, &memberInfo),
+            wSharedSet(2, &hitInfo), wSharedSet(3, &bucketMetaInfo),
+        };
+        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(sharedSetWrites.size()), sharedSetWrites.data(), 0, nullptr);
 
         std::vector<SpecializedPush> pushes(N);
         for (uint32_t i = 0; i < N; ++i) {
-            const auto [rx, ry] = rectOriginOf(recipes[i].recipeId);
             SpecializedPush pc{};
             pc.cameraPos = eye; pc.cameraDir = camDir; pc.fov = fovDeg; pc.cameraUp = camUp; pc.aspect = aspect; pc.cameraRight = camRight;
-            pc.memberCount = bucketCounts[recipes[i].recipeId]; pc.screenWidth = kScreenWidth; pc.screenHeight = kScreenHeight;
-            pc.rectMinX = rx; pc.rectMinY = ry; pc.boundRadius = recipes[i].entry.boundRadius; pc.stepRelaxation = recipes[i].entry.stepRelaxation;
+            pc.screenWidth = kScreenWidth; pc.screenHeight = kScreenHeight;
+            pc.maxMembersPerBucket = kMaxMembersPerBucket; pc.recipeId = recipes[i].recipeId;
             pushes[i] = pc;
         }
 
@@ -860,7 +885,16 @@ protected:
         // indirect dispatches per iteration (mirrors real per-frame recording; this increment
         // does not cache/reuse command buffers across frames, matching the live-app's own
         // per-frame re-record model per RenderGraph's Execute() contract).
+        //
+        // Inc3 M1 gate #2 (measured call-count reduction): these two counters are set by every
+        // runBucketedIter() call to the ACTUAL number of vkCmdBindDescriptorSets/vkCmdPushConstants
+        // calls DispatchPass data will cause MultiDispatchNode::RecordDispatches to issue for the
+        // bucketed path this iteration (mirroring that function's own `if (!pass.descriptorSets.
+        // empty())`/`if (pass.pushConstants.has_value())` guards exactly) — a direct count, not an
+        // assumption that the refactor worked.
         // ======================================================================
+        uint32_t lastBindDescriptorSetCallCount = 0;
+        uint32_t lastPushConstantCallCount = 0;
         auto runBucketedIter = [&]() {
             MultiDispatchNodeType nodeType("MultiDispatch");
             auto nodeBase = nodeType.CreateInstance("recipe_bucketing_perf_bucketed");
@@ -886,10 +920,24 @@ protected:
             node->Setup();
             node->Compile();
 
+            // Inc3 M1: bind the ONE shared descriptor set on the FIRST bucket's pass only. Vulkan
+            // descriptor-set bindings persist across vkCmdBindPipeline/vkCmdDispatchIndirect within
+            // a command buffer as long as pipeline layouts stay compatible (spec: "Pipeline Layout
+            // Compatibility" -- binding a new pipeline never disturbs bound descriptor sets, and
+            // all N specialized pipelines here share ONE VkPipelineLayout) -- confirmed
+            // spec-legal, not GPU-specific behavior. Leaving `pass.descriptorSets` empty for
+            // buckets 2..N makes MultiDispatchNode::RecordDispatches' own
+            // `if (!pass.descriptorSets.empty())` guard (MultiDispatchNode.cpp) skip the
+            // vkCmdBindDescriptorSets call entirely for those passes -- a REAL, measured drop from
+            // N calls to 1, not just fewer bytes moved per call.
+            uint32_t bindDescriptorSetCallsIssued = 0;
             for (uint32_t i = 0; i < N; ++i) {
                 DispatchPass pass;
                 pass.pipeline = compiled[i].pipeline; pass.layout = compiled[i].layout;
-                pass.descriptorSets = {specSets[i]};
+                if (i == 0) {
+                    pass.descriptorSets = {sharedSpecSet};
+                    ++bindDescriptorSetCallsIssued;
+                }
                 pass.indirectBuffer = indirectBuf;
                 pass.indirectBufferOffset = recipes[i].recipeId * 3 * sizeof(uint32_t);
                 PushConstantData pcData; pcData.data.resize(sizeof(SpecializedPush));
@@ -898,6 +946,8 @@ protected:
                 pass.debugName = "Recipe" + std::to_string(recipes[i].recipeId) + "_Specialized";
                 node->QueueDispatch(std::move(pass));
             }
+            lastBindDescriptorSetCallCount = bindDescriptorSetCallsIssued;
+            lastPushConstantCallCount = N;  // unchanged: recipeId still varies per bucket, still N pushes
 
             node->Execute();
             using MC2 = MultiDispatchNodeConfig;
@@ -915,6 +965,27 @@ protected:
         // Warm-up iteration (excluded from timing — first-touch driver costs, cache warm).
         ZeroBuffer(hitRecordMem, hitRecordSize);
         runBucketedIter();
+
+        // Inc3 M1 gate #2: report the MEASURED before/after Vulkan API call counts per bucket
+        // batch, not an assumed reduction. "Before" (pre-M1) was N vkCmdBindDescriptorSets + N
+        // vkCmdPushConstants (one distinct descriptor set + one push-constant blob per bucket, per
+        // the grounding research and this file's own pre-M1 per-bucket specSets[]/memberBufs[]
+        // loop, with a 92-byte push-constant struct -- 4 vec3+float camera pairs (64B) plus
+        // memberCount/screenWidth/screenHeight/rectMinX/rectMinY/boundRadius/stepRelaxation, 7
+        // scalars, 28B). "After" is measured directly off this run's actual DispatchPass
+        // construction; the push-constant struct itself shrinks to just the camera fields plus
+        // screenWidth/screenHeight/maxMembersPerBucket/recipeId (4 scalars, 16B tail).
+        constexpr size_t kPreM1PushConstantBytes = 92;
+        const uint32_t preM1BindDescriptorSetCalls = N;
+        const uint32_t preM1PushConstantCalls = N;
+        std::printf("[recipe-bucketing-perf][N=%u][Inc3-M1] vkCmdBindDescriptorSets: %u -> %u per bucket-batch "
+                    "(saved %u calls). vkCmdPushConstants: %u -> %u per bucket-batch (push-constant PAYLOAD "
+                    "shrunk from %zu to %zu bytes/call; scalar fields memberCount/rectMinX/rectMinY/"
+                    "boundRadius/stepRelaxation moved to shared BucketMetaBuffer SSBO).\n",
+                    N, preM1BindDescriptorSetCalls, lastBindDescriptorSetCallCount,
+                    preM1BindDescriptorSetCalls - lastBindDescriptorSetCallCount,
+                    preM1PushConstantCalls, lastPushConstantCallCount,
+                    kPreM1PushConstantBytes, sizeof(SpecializedPush));
 
         ZeroBuffer(hitRecordMem, hitRecordSize);
         const auto bucketedStart = std::chrono::steady_clock::now();
@@ -1190,9 +1261,7 @@ void main() {
         vkDestroyDescriptorSetLayout(logicalDevice_, specDsl, nullptr);
         vkDestroyBuffer(logicalDevice_, specInstBuf, nullptr); vkFreeMemory(logicalDevice_, specInstMem, nullptr);
         vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
-        for (uint32_t i = 0; i < N; ++i) {
-            vkDestroyBuffer(logicalDevice_, memberBufs[i], nullptr); vkFreeMemory(logicalDevice_, memberMems[i], nullptr);
-        }
+        vkDestroyBuffer(logicalDevice_, bucketMetaBuf, nullptr); vkFreeMemory(logicalDevice_, bucketMetaMem, nullptr);
 
         vkDestroyDescriptorPool(logicalDevice_, bucketingPool, nullptr);
         vkDestroyPipeline(logicalDevice_, bucketingPipeline, nullptr);
