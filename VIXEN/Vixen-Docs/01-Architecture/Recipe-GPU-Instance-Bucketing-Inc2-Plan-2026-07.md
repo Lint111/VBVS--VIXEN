@@ -107,7 +107,7 @@ the granularity decision).
   bound spheres visibly overlap on screen, confirm nearest-hit wins); a minimal hotness gate
   (placeholder policy, not a real usage-history tracker) prevents promoting every single-instance
   recipe.
-  - [ ] Not started.
+  - [x] DONE — commit `9770c211`. Opus validator: **APPROVED**.
 - **M4 — Performance validation + no-regression sweep + doc closure** (Tasks 9-10) · **live-run
   gate** · measured FPS/frame-time comparison (bucketed-dispatch path vs. tier-0-switch-only) at
   increasing hot-recipe counts on real GPU, recorded in [[Perf-Ledger]] alongside the existing
@@ -120,6 +120,28 @@ the granularity decision).
 
 (populated as milestones complete — one entry per milestone: commit hash, gate evidence, Opus
 validator verdict; follow the Recipe-Parameterization / Recipe-Pipeline-Cache plans' convention.)
+
+- Milestone 1 (Tasks 1-3): DONE · commit `1530b5a2` · Opus validator APPROVED · 2026-07-16.
+- Milestone 2 (Tasks 4-5): DONE · commits `b2d45afc`..`0a1ff8fe` (fix: reject-sphere center must use
+  registered `boundCenter`, not `worldPos`) · Opus validator APPROVED after one fix round · 2026-07-16.
+- Milestone 3 (Tasks 6-8): DONE · commit `9770c211` · Opus validator APPROVED · 2026-07-16. Task 8
+  overlap gate independently re-derived by the validator from bound-sphere geometry in Python
+  (1131 overlap px, A wins all, 2984 total hits) — exact match to the GPU result, not taken on
+  faith. Order-independence empirically proven (0/65536 px differ between dispatch orderings). Two
+  real bugs found+fixed in the test harness's own device/pipeline setup (wrong `VkPipelineLayout`
+  from `ComputePipelineCacher`'s fallback path; null `fpCmdPipelineBarrier2` from a hand-built
+  `VkDevice` bypassing `VulkanDevice::CreateDevice()`'s function-pointer resolution) — both scoped to
+  the test harness, not production code. **Scoped deviation, not a blocker**: M3 proves the
+  mechanism in a standalone GPU harness; bucketed dispatch is NOT wired into the live `VIXEN.exe`
+  render graph yet (the real tier-0 shader `BodyInstanceRayMarch.comp` has no mechanism to exclude
+  hot/bucketed instances and writes `HitRecord` unconditionally) — live-app integration is deferred
+  to a future increment, documented in the test file header + commit message. **Also newly noted**:
+  this milestone's test hand-selects its physical device (`PickPhysicalDevice()`) with no
+  discrete-vs-integrated preference — same bug class as the already-shipped `DeviceNode` fix (main
+  `0ee32428`) but never applied to this test's own device-selection code. Validator ran on the AMD
+  integrated GPU as a result; not a correctness blocker for M3 (mechanism/compositing proof is
+  GPU-vendor-agnostic), but flagged for M4 since M4 IS a performance measurement and needs to run on
+  the discrete NVIDIA GPU to be representative.
 
 ---
 
