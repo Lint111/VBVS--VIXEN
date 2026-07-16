@@ -86,6 +86,10 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
     // Calculate timing from query manager
     lastDispatchMs_ = queryManager_->GetElapsedMs(frameIndex, querySlot_);
 
+    // Task 0.1: raw absolute ticks for cross-pass whole-frame GPU span computation.
+    lastStartTicks_ = queryManager_->GetRawStartTicks(frameIndex, querySlot_);
+    lastEndTicks_ = queryManager_->GetRawEndTicks(frameIndex, querySlot_);
+
     // Calculate Mrays/sec
     uint64_t elapsedNs = queryManager_->GetElapsedNs(frameIndex, querySlot_);
     if (elapsedNs > 0 && width > 0 && height > 0) {

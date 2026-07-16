@@ -6,6 +6,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "State/StatefulContainer.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/ComputeStageNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
@@ -49,7 +50,7 @@ protected:
 
 private:
     void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer,
-                               uint32_t imageIndex, bool isConsumer);
+                               uint32_t imageIndex, uint32_t frameIndex, bool isConsumer);
     void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline,
                              VkPipelineLayout layout, VkDescriptorSet descriptorSet);
     void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout);
@@ -75,6 +76,17 @@ private:
     // layouts — already keyed by VkImage (not by slot), so N simultaneous images need
     // zero type changes here, only a loop over them in RecordComputeCommands.
     std::unordered_map<VkImage, VkImageLayout> imageWriteLayouts_;
+
+    // Task 0.1 (Baked-Content Perf Audit, top action #9): per-pass GPU timing, same
+    // centralized-GPUQueryManager pattern ComputeDispatchNode/UIRenderNode already use — lets
+    // direct_lighting/spatial_reuse/probe_update each get their own PerfCsvWriter column
+    // instead of only the ESVO march pass being GPU-timed.
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+public:
+    /// Get GPU performance logger for external metrics extraction (e.g. PerfCsvWriter).
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
+    [[nodiscard]] GPUPerformanceLogger* GetGPUPerformanceLogger() const { return gpuPerfLogger_.get(); }
 };
 
 } // namespace Vixen::RenderGraph

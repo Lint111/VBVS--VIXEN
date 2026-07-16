@@ -33,6 +33,8 @@
 #include "Nodes/InputNode.h"
 #include "Nodes/BodyOctreeSceneNode.h"        // M-wire: SetBodyInstances() downcast target (gaia — before UIRenderNode.h)
 #include "Nodes/ComputeDispatchNode.h"         // Inc1 M4 Task 6b: GetGPUPerformanceLogger() for the perf-CSV writer
+#include "Nodes/ComputeStageNode.h"            // Task 0.1: GetGPUPerformanceLogger() for direct_lighting/spatial_reuse/probe_update columns
+#include "Nodes/BlitNode.h"                    // Task 0.1: GetGPUPerformanceLogger() for the render_target_blit column
 #include "Nodes/CameraNode.h"                 // Sparse-Mip ESVO LOD Inc1 M4c: GetCurrentCameraData() downcast target
 #include "Nodes/UIRenderNode.h"               // GetUiRenderNode() downcast target (RmlUi — after BodyOctreeSceneNode.h)
 #include "Nodes/UISelectionProviderNode.h"    // GetUiSelectionProviderNode() downcast target
@@ -500,12 +502,60 @@ void VulkanGraphApplication::PostTick() {
     const double cpuFrameTimeMs = std::chrono::duration<double, std::milli>(now - lastPostTickTime_).count();
     lastPostTickTime_ = now;
 
-    // Today's only GPU-timed pass is the single ESVO-traverse+shade compute dispatch
-    // ("test_dispatch" — see BuildRenderGraph.cpp). A future split traverse/shade or
-    // recipe-eval pass adds another {name, node} pair here.
+    // Task 0.1 (Baked-Content Perf Audit, top action #9): the ESVO-traverse+shade march plus
+    // every other GPU-timed pass in the graph, so a frame's whole GPU cost is attributable
+    // instead of only 1 of 7 submits being visible. Node names are BuildRenderGraph.cpp's own
+    // (see its Phase G / Sampled Lighting Inc3-4 node construction).
     std::vector<PerfCsvWriter::PassSource> passes;
     if (auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetNodeByName("test_dispatch"))) {
         passes.push_back({"esvo_traverse_shade", dispatch->GetGPUPerformanceLogger()});
+    }
+    if (auto* directLighting = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("direct_lighting"))) {
+        passes.push_back({"direct_lighting", directLighting->GetGPUPerformanceLogger()});
+    }
+    if (auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse"))) {
+        passes.push_back({"spatial_reuse", spatialReuse->GetGPUPerformanceLogger()});
+    }
+    if (auto* probeUpdate = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_update"))) {
+        passes.push_back({"probe_update", probeUpdate->GetGPUPerformanceLogger()});
+    }
+    if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
+        passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});
+    }
+    if (auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetNodeByName("ui_composite_render"))) {
+        passes.push_back({"ui_composite_render", uiComposite->GetGPUPerformanceLogger()});
+    }
+
+    // Whole-frame GPU span: earliest RecordDispatchStart -> latest RecordDispatchEnd across
+    // every pass collected above. Valid because all these passes' GPUPerformanceLoggers share
+    // ONE VulkanDevice's GPUQueryManager (one timestamp domain, one queue) — see
+    // GPUPerformanceLogger::GetLastStart/EndTicks()'s own doc comment. 0.0 when no pass has a
+    // valid reading yet (e.g. the first couple of frames before queries have completed a
+    // reset->write->submit->read cycle).
+    double wholeFrameGpuSpanMs = 0.0;
+    {
+        uint64_t minStartTicks = 0, maxEndTicks = 0;
+        bool haveAny = false;
+        float periodNs = 0.0f;
+        for (const auto& pass : passes) {
+            if (!pass.logger) continue;
+            const uint64_t startTicks = pass.logger->GetLastStartTicks();
+            const uint64_t endTicks = pass.logger->GetLastEndTicks();
+            if (startTicks == 0 && endTicks == 0) continue;  // no valid reading this frame
+            if (!haveAny) {
+                minStartTicks = startTicks;
+                maxEndTicks = endTicks;
+                periodNs = pass.logger->GetTimestampPeriodNs();
+                haveAny = true;
+            } else {
+                minStartTicks = std::min(minStartTicks, startTicks);
+                maxEndTicks = std::max(maxEndTicks, endTicks);
+            }
+        }
+        if (haveAny && maxEndTicks > minStartTicks && periodNs > 0.0f) {
+            const uint64_t deltaTicks = maxEndTicks - minStartTicks;
+            wholeFrameGpuSpanMs = static_cast<double>(deltaTicks) * static_cast<double>(periodNs) / 1'000'000.0;
+        }
     }
 
     uint64_t bootBytes = 0, steadyBytes = 0;
@@ -514,7 +564,7 @@ void VulkanGraphApplication::PostTick() {
         steadyBytes = bodyScene->SteadyStateBytesUploaded();
     }
 
-    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes);
+    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs);
 }
 
 void VulkanGraphApplication::Update() {

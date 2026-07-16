@@ -6,6 +6,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "State/StatefulContainer.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/BlitNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
@@ -49,7 +50,8 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t imageIndex, bool leaveImageInGeneral);
+    void RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t imageIndex,
+                            uint32_t frameIndex, bool leaveImageInGeneral);
 
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
 
@@ -61,6 +63,15 @@ private:
     // KI-007-fix pattern ComputeDispatchNode's own renderTargetImageLayouts_ uses, and the
     // same map SwapchainBarriers::BlitRenderTargetToSwapchain expects a caller to own).
     std::unordered_map<VkImage, VkImageLayout> layoutTracking_;
+
+    // Task 0.1 (Baked-Content Perf Audit, top action #9): GPU timing for the presentation
+    // blit, same centralized-GPUQueryManager pattern as every other timed node.
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+public:
+    /// Get GPU performance logger for external metrics extraction (e.g. PerfCsvWriter).
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized.
+    [[nodiscard]] GPUPerformanceLogger* GetGPUPerformanceLogger() const { return gpuPerfLogger_.get(); }
 };
 
 } // namespace Vixen::RenderGraph
