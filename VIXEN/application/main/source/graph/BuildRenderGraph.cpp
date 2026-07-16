@@ -3111,10 +3111,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // authoring (now a single shared world-space source, BuildCornellWorldSpaceBodies) --
             // subdivision no longer needs to be pre-baked into the recipe's own half-extents/
             // positions the way the pre-unification gridBoxAt did.
+            // Baked-Perf M1 Task 1.2 (grid-unit contract fix): the shared shader march
+            // (StoredSdf.glsl marchBrickSdf) sphere-traces in GRID-VOXEL arc-length,
+            // stepping s += d*(1/sqrt(3)) and treating the stored Density AS a grid-voxel
+            // distance (its gradient w.r.t. the grid must be 1). evalRecipe(world) returns
+            // a TRUE WORLD-space distance -- its gradient w.r.t. the grid coordinate is
+            // 1/subdiv (world = bodyWorldCenter + (pRaw-n/2)/subdiv), so storing it
+            // unscaled understeps the march by subdiv x (4x for kWallSubdiv=4 walls) and
+            // bakes the occupancy band subdiv x too thick (Task 1.3 fixes the band
+            // separately). Multiplying by subdiv here converts the stored Density to a
+            // grid-unit distance, matching the grid-unit convention SdfRecipes.h's
+            // evalSdf/BakeRecipeToSdfWorld (the OTHER bake path, and
+            // test_stored_sdf_march_mirror) already use -- so the shared march is
+            // correct for ALL bodies with NO shader change. subdiv=1 bodies (light/
+            // sphere/box, kSmallSubdiv) are byte-identical (*1 is a no-op).
+            //
+            // Proven ~3.8x FPS win on fix/baked-sdf-perf-rootfix (see
+            // Baked-SDF-Perf-Rootfix-2026-07.md); that attempt alone made bodies 5/6/7
+            // vanish from the [CornellDiag] instIdx map because of the brickLookupBase
+            // mis-addressing bug (Task 1.1, landed first and validated separately) --
+            // NOT because of this multiply. Do not revert this without re-checking 1.1.
             auto makeWorldSpaceEval = [](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
                 return [&prog, bodyWorldCenter, n, subdiv](const glm::vec3& pRaw) {
                     const glm::vec3 world = bodyWorldCenter + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
-                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world);
+                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world) * static_cast<float>(subdiv);
                 };
             };
             // Bake each body with a FLAT WHITE per-voxel color (Cornell M3 round 7 fix):
