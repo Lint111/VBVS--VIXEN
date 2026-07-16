@@ -1,0 +1,220 @@
+---
+title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
+status: awaiting milestone-map confirmation
+created: 2026-07-16
+---
+
+# Baked-Perf Fix Pipeline — Execution Plan (2026-07-16)
+
+Executes the verified findings of [[Baked-Content-Perf-Audit-2026-07]] toward the
+end-state in [[Baked-Content-Perf-Consolidation-2026-07]] §0: **Cornell-class scenes at
+realtime, benchmarked Windows-native**. Run under the `post-brainstorm-context-manager`
+pipeline: thin controller, fresh Sonnet-medium implementer per milestone, Opus-high
+validator per milestone, progress persisted here (this doc is the pipeline's memory —
+a /clear loses nothing).
+
+## Ground rules (pipeline-wide)
+
+- **Isolation:** ONE worktree for the whole pipeline: `.claude/worktrees/baked-perf-pipeline`,
+  branch `fix/baked-perf-pipeline` off main. Single consolidated branch (per the
+  per-increment-worktrees lesson); merge to main only at pipeline Finish. Pre-bless the
+  worktree-isolated tier at setup so workers run unattended.
+- **Build/test Windows-native** per repo build rules + `vixen-build-policy` (machine-wide
+  build lock; ONE build at a time; drive via `.bat` + `cmd.exe /c`). Workers watch long
+  builds with a foreground ~15–30 s poll loop — NEVER blind-wait, NEVER switch to
+  ScheduleWakeup/Monitor/background callbacks mid-wait.
+- **Live-run gate is authoritative** (static review has repeatedly missed GPU bugs):
+  every milestone runs `temp_bench/run_capability_bench.bat` (or the baked half) and the
+  validator judges from fresh output, not claims.
+- **Correctness rig (every milestone):** `[CornellDiag]` instIdx map at tick 150 must show
+  ALL 8 bodies (0–7); OOB counter not materially above the ~40081 baseline; virtual-variant
+  screenshot is ground truth. "Fast but missing bodies" is the standing failure mode.
+- **Numbers discipline:** never trust another session's absolute FPS — every A/B toggles
+  the change on the same machine/session. CSV gotcha: `steady_state_fps` is cumulative;
+  use mean `cpu_frame_time_ms` over frames 31+.
+- **Reference implementations:** `fix/baked-perf-red-experiments` @ `6568c3ee` contains
+  unvalidated prototypes for M3/M5 items (fast-path cell load, trace bounds, sync fixes).
+  Workers may consult it but must re-derive against main and re-validate; never
+  cherry-pick blind.
+- **Codegen boundary:** `OctreeConfig` schema changes (M1, M5) go through
+  `codegen/config-schemas/OctreeConfig.cs` + the kernel-framework codegen + drift guards
+  (`kernel-framework` skill) — never hand-edit `.g.h`/`.glsl`.
+- **Escalation ladder:** 1st failure → re-dispatch Sonnet-medium with findings; 2nd
+  consecutive failure on the same milestone → Opus-max with full context from both
+  attempts; if that fails → stop and ask the user. Validators always Opus-high.
+
+## Baseline (main `e92acf44`, Windows-native, 2026-07-16)
+
+| Metric | Virtual | Baked |
+|---|---|---|
+| wall ms/frame (31–160) | 6.49 (154 FPS) | 877.5 (1.1 FPS) |
+| esvo_traverse_shade GPU ms | 2.8 | 222.4 |
+| boot to render loop | fast | ~4.3 min |
+| instIdx map | 8 bodies | 8 bodies (bar to preserve) |
+
+Targets per trajectory: M1 ≈ 4 FPS → M3 ≈ 16 FPS → M5 ≈ 40–52 FPS → Phase 2 (M8) 60+.
+
+---
+
+## Milestone M0 — Measurement infrastructure + boot triage (S)
+
+Rationale: full frame attribution before touching sync or shaders; boot cut multiplies
+every subsequent A/B (the pipeline itself runs the bench dozens of times).
+
+- [ ] Task 0.1 — Per-pass GPU timers: add `PerfCsvWriter::PassSource` columns for
+  `direct_lighting`, `spatial_reuse`, `probe_update`, blit/UI (each node already owns a
+  `GPUPerformanceLogger`), plus a whole-frame GPU span (first CB start → last CB end).
+  (`VulkanGraphApplication.cpp:505-508`, `BuildRenderGraph.cpp:337-665`,
+  `FrameSyncNode.cpp:149`; audit Top #9, pattern R12.)
+- [ ] Task 0.2 — Debug-capture off by default: `AUTO_EXPORT=false` +
+  `RayTraceBuffer.h:195` `captureEnabled_` default false, re-enable via env knob
+  (`VIXEN_DEBUG_CAPTURE=1`). Kills the every-10th-frame `vkWaitForFences` drain + JSON
+  export in benches. (`BuildRenderGraph.cpp:3927-3930`, `DebugBufferReaderNode.cpp:103-106`;
+  audit D2.)
+- [ ] Task 0.3 — Delete the TEMP DIAG re-serialize loop (23 s measured;
+  `BuildRenderGraph.cpp:3283-3301`; audit F2).
+- [ ] Task 0.4 — Gate rebuild Phase 4 (DXT/normals/materials) on `m_signedDistanceField`
+  (~50 s; `SVORebuild.cpp:646-765`; consumed only by disabled raster path; audit F3).
+- [ ] Task 0.5 — Re-baseline: run `temp_bench` both variants; record per-pass attribution
+  table + boot time in Progress Log.
+
+**Gate:** build green; Σ(per-pass GPU ms) ≈ whole-frame GPU span (attribution closes);
+boot ≥ 70 s faster; 8 bodies present; baked FPS not below baseline.
+
+## Milestone M1 — Correctness unblock + land the proven fix (S–M) — target ~4 FPS
+
+- [ ] Task 1.1 — `brickLookupBase` exact-prefix: add field to `OctreeConfig.cs` schema
+  (codegen path), stamp the prefix sum in `ConcatenateSdf`/`ConcatenateSdfWithMips`
+  (`ShellOctreeGpu.h:993`, `MipBake.h:361`; `ShellDerive.h:433` has the correct formula),
+  read it in `_samplePoolVoxel` + `_sdfBrickAllocated` (`StoredSdf.glsl:78,:235`).
+  (Audit B1 / Top #1 — prime suspect for vanishing bodies.)
+- [ ] Task 1.2 — `*subdiv` grid-unit fix in Cornell `makeWorldSpaceEval`
+  (`BuildRenderGraph.cpp:3090` area; proven ~3.8× in rootfix doc §2).
+- [ ] Task 1.3 — Grid-unit occupancy band: `kBand` world→grid conversion
+  (`BuildRenderGraph.cpp:3114-3119`, `SdfBake.h:121,:172`; audit B2).
+- [ ] Task 1.4 — Validation run: instIdx map MUST show bodies 5/6/7 (the previous
+  attempt's failure mode); OOB counter ≤ ~40081; mirror + serialize + bake tests green.
+
+**Gate:** all 8 bodies present; baked ≥ ~3.5× baseline FPS; tests green
+(`test_stored_sdf_march_mirror`, `test_soa_sdf_serialize`, `test_sdf_bake`).
+
+## Milestone M2 — GPU debug hooks out of the hot path (S)
+
+- [ ] Task 2.1 — `#ifdef VIXEN_GPU_TRACE_HOOKS` around `TraceRecording.glsl:28-30,:155,
+  :187-198`, `snapshotTraversalState` sites (`SceneBindings.glsl:667-996`),
+  `DebugRaySample` init (`TraceWorld.glsl:285-299,:472-486`), mirroring
+  `ENABLE_SHADER_COUNTERS`; default OFF, env/config knob to re-enable. (Audit D1.)
+- [ ] Task 2.2 — Remove the 8 per-pixel `instanceIterCount` stores into the 1-byte
+  placeholder SSBO (UB without robustBufferAccess) behind the same gate
+  (`TraceWorld.glsl:123-332`, `SceneBindings.glsl:69-78`).
+- [ ] Task 2.3 — A/B on temp_bench: esvo ms hooks-off vs hooks-on (settles audit
+  uncertain-item 4; expected ~20%).
+
+**Gate:** esvo pass measurably down; image + instIdx identical; hooks re-enable cleanly.
+
+## Milestone M3 — March-loop package (M) — target ~16 FPS
+
+- [ ] Task 3.1 — Single-brick trilinear fast path: `_loadSdfTrilinearCell`-style intra-brick
+  cell load (1 lookup + 8 contiguous pool loads `+{0,1,8,9,64,65,72,73}`), slow path only on
+  brick-boundary cells; hoist `channelBaseFloats(SEM_SDF)` to march entry
+  (`StoredSdf.glsl:160-177,:94-96,:45-50,:62-88`; audit A1 / Top #6; red branch reference).
+- [ ] Task 3.2 — Analytic gradient from the hit cell's 8 already-loaded corners, replacing
+  the 7-trilinear-sample `sdfGradientStored` incl. redundant d0
+  (`StoredSdf.glsl:197-222,:446`; audit A2 / Top #4; red `sdfGradientStoredFromCell`).
+- [ ] Task 3.3 — Hit-shading cell reuse: color + roughness resolve the corner cell once,
+  not 4× (`StoredSdf.glsl:137-151,:103-123`; audit A3).
+- [ ] Task 3.4 — Update the CPU mirror test in parity (`test_stored_sdf_march_mirror` —
+  gpu-shader-debug mirror discipline) + A/B bench.
+
+**Gate:** esvo GPU ms substantially down (order 3×+ on the march-dominated pass); 8 bodies;
+mirror tests green; no visual regression vs pre-milestone screenshot.
+
+## Milestone M4 — Shadow/probe economy (S–M)
+
+- [ ] Task 4.1 — NdotL/BRDF gate BEFORE shadow traces (3-line reorder;
+  `SpatialReuseShade.comp:326-334,:470-474`; `ProbeUpdate.comp:236-241` is the idiom;
+  audit C3 / Top #3).
+- [ ] Task 4.2 — True any-hit shadow/probe march variant: no gradient/color/roughness
+  payload, instance reject at entry-t > tmax, span clamped at light distance — a separate
+  function, not a runtime flag (`TraceWorld.glsl:393-508,:495-502`,
+  `SceneBindings.glsl:513-528`; audit C1/C2 / Top #7).
+- [ ] Task 4.3 — Skip the no-op DirectLighting dispatch CPU-side when
+  `reservoirEnabled=0` (audit C8).
+- [ ] Task 4.4 — A/B with M0's per-pass timers: spatial_reuse + probe_update ms deltas.
+
+**Gate:** lighting-pass GPU ms down; shadowed image matches pre-milestone reference
+(soft-compare screenshot); 8 bodies.
+
+## Milestone M5 — Trace bounds + culling revival (M) — toward the 52-FPS ceiling
+
+- [ ] Task 5.1 — Record allocated-brick min/max AABB in `SerializeSdf`'s existing loop →
+  `traceBoundsMin/Max` `OctreeConfig` fields (codegen path; backward-safe zero default)
+  (`SdfBake.h:399-406`, `ShellOctreeGpu.h:791-804`; audit B3 / Top #8; red branch reference).
+- [ ] Task 5.2 — Shader-side: AABB cull + front-to-back entry reject using the bounds in
+  `TraceWorld.glsl:234,:266-279` (+ shadow variant from M4).
+- [ ] Task 5.3 — Instance sort key: cube center (or bounds center), not min-corner
+  (`InstanceSort.h:26-34`; audit B3 corollary).
+- [ ] Task 5.4 — A/B bench + hole-hunt: grazing angles screenshot sweep.
+
+**Gate:** wall ms down; no new holes vs reference captures; 8 bodies.
+
+## Milestone M6 — Sync/overlap package (M) — only what M0 attribution justifies
+
+- [ ] Task 6.1 — Decouple the march submit from the WSI acquire semaphore (first real
+  swapchain writer waits instead; verify cross-frame HitRecord hazard)
+  (`ComputeDispatchNode.cpp:288-293`; audit E2).
+- [ ] Task 6.2 — Blit exit barrier: return render target TRANSFER_SRC→GENERAL at frame
+  edge (spec-violation fix; red `layout_sync` was best-wall) (`SwapchainBarriers.h:184,
+  :100-103` vs `ComputeStageNode.cpp:348`; audit E3).
+- [ ] Task 6.3 — Fix the orphaned per-image semaphore re-signal in composite mode
+  (`BlitNode.cpp:172-177`; audit E4) + compute-scoped stage masks replacing
+  ALL_COMMANDS signals (audit pattern R7).
+- [ ] Task 6.4 — A/B with validation layers ON (sync changes never ship unvalidated).
+
+**Gate:** zero new validation-layer errors; wall/GPU-span ratio improves; 8 bodies.
+
+## Phase 2 (dispatch after Phase-1 review with the user)
+
+## Milestone M7 — Boot parallel bake + serialize bulk path (M)
+
+- [ ] Task 7.1 — Parallelize the 8 independent per-body bakes (`std::async` per body;
+  Gaia cross-world thread-safety smoke test FIRST — audit F1 + uncertain-11).
+- [ ] Task 7.2 — SerializeSdf bulk entity path (`getBrickEntitiesInto`/`getEntityFast`;
+  audit F4) + skip double serialize/mip-bake (F5).
+- [ ] Task 7.3 — Wire shader cache (`EnableCaching`; audit F7).
+
+**Gate:** boot < 60 s; serialize output byte-identical (hash compare); tests green.
+
+## Milestone M8 — 3D-texture brick pool prototype + relaxed stepping (L) — the 60+ lever
+
+- [ ] Task 8.1 — Phase-1 prototype: dense per-octree R16F 3D texture for the 5 walls,
+  march via `textureLod` hardware trilinear; A/B vs M3's SSBO fast path (audit A6 /
+  pattern R1; settles uncertain-6).
+- [ ] Task 8.2 — Over-relaxed sphere tracing (ω≈1.4–1.6 + unbounding-sphere overlap
+  test) in the march loop (pattern R2).
+- [ ] Task 8.3 — Decision doc: phase-2 sparse atlas + aprons go/no-go from measured delta.
+
+**Gate:** measured esvo delta recorded; correctness rig; decision documented.
+
+---
+
+## Milestone Map
+
+| # | Name | Tasks | Effort | Target |
+|---|---|---|---|---|
+| M0 | Measurement + boot triage | 0.1–0.5 | S | attribution + boot −70 s |
+| M1 | brickLookupBase + *subdiv + band | 1.1–1.4 | S–M | ~4 FPS, 8 bodies |
+| M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
+| M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
+| M4 | Shadow/probe economy | 4.1–4.4 | S–M | lighting passes cut |
+| M5 | Trace bounds + culling | 5.1–5.4 | M | toward ~40–52 FPS |
+| M6 | Sync/overlap | 6.1–6.4 | M | wall≈GPU span |
+| M7 | Boot parallel bake (Phase 2) | 7.1–7.3 | M | boot < 60 s |
+| M8 | 3D-texture pool proto (Phase 2) | 8.1–8.3 | L | 60+ decision |
+
+Model policy: implementers Sonnet-5 medium; validators Opus high; controller thin.
+Fable only on explicit user request. Escalation ladder per Ground rules.
+
+## Progress Log
+
+*(pipeline appends here; one line per milestone close)*
