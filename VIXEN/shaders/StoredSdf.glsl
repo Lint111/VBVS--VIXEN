@@ -101,84 +101,273 @@ float _sampleSdfVoxel(ivec3 gridCoord, int octreeIdx) {
 }
 
 // ---------------------------------------------------------------------------
+// _loadTrilinearCell: load the 8 corners of the trilinear stencil at gridPos
+// for channel `base` component `comp`, taking a SINGLE-FETCH fast path when
+// the whole 2x2x2 cell lies inside one brick (audit A1 / Top action #6).
+//
+// ~(7/8)^3 ≈ 67% of cells satisfy this: local (voxel-in-brick) coordinate on
+// EVERY axis in [0,6] guarantees local+1 stays in [0,7], so the +1 neighbour
+// on every axis is still inside the SAME brick — one brickLookup fetch gives
+// brickIdx, and all 8 corners are then contiguous pool reads at fixed offsets
+// {0,1,8,9,64,65,72,73} from the cell's base voxel (voxelIdx formula is
+// z*64+y*8+x, so +1/+8/+64 step exactly one voxel along x/y/z).
+//
+// Falls back to the original 8 independent _samplePoolVoxel calls (each doing
+// its own brickCoord/brickLookup resolution) when the cell straddles a brick
+// boundary — those corners may live in different bricks (or an unallocated
+// neighbour, preserved as the 1e9 sentinel per corner exactly as before).
+//
+// `brickIdxOut`/`localOut`/`oneBrickOut` return the resolved brick index
+// (0xFFFFFFFFu if unresolved/unallocated), local voxel coordinate, and
+// whether the fast path applied, so multi-component callers (color) can
+// reuse the SAME brick resolution across components instead of re-running
+// _gridToLookupIdx + the brickLookup fetch per component (audit A3).
+// ---------------------------------------------------------------------------
+void _loadTrilinearCellComp(uint base, vec3 gridPos, int comp, int octreeIdx,
+                            out vec3 f, out vec4 z0, out vec4 z1,
+                            out uint brickIdxOut, out ivec3 localOut, out bool oneBrickOut) {
+    f = fract(gridPos);
+    ivec3 i = ivec3(floor(gridPos));
+    brickIdxOut = 0xFFFFFFFFu;
+    localOut    = ivec3(0);
+    oneBrickOut = false;
+
+    if (base == 0xFFFFFFFFu) {
+        z0 = vec4(1e9);
+        z1 = vec4(1e9);
+        return;
+    }
+
+    int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    bool inGrid = bpa > 0 &&
+                  all(greaterThanEqual(i, ivec3(0))) &&
+                  all(lessThan(i, ivec3(bpa * 8)));
+    ivec3 brickCoord = inGrid ? (i / 8) : ivec3(-1);
+    ivec3 local       = i - brickCoord * 8;
+    // Entirely intra-brick iff local+1 stays in [0,7] on every axis, i.e. local<=6.
+    bool oneBrick = inGrid && all(lessThanEqual(local, ivec3(6)));
+    localOut    = local;
+    oneBrickOut = oneBrick;
+
+    if (oneBrick) {
+        uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
+        uint brickIdx   = brickLookup[configs[octreeIdx].brickLookupBase + flatLookup];
+        brickIdxOut = brickIdx;
+        if (brickIdx == 0xFFFFFFFFu) {
+            z0 = vec4(1e9);
+            z1 = vec4(1e9);
+            return;  // unallocated brick — same sentinel as the slow path
+        }
+
+        uint voxel000 = uint(local.z * 64 + local.y * 8 + local.x);
+        uint poolBase = configs[octreeIdx].poolBrickBase +
+                        brickIdx * configs[octreeIdx].brickStrideFloats +
+                        base + uint(comp) * VX_VOXELS_PER_BRICK + voxel000;
+        z0 = vec4(channelPool[poolBase],
+                  channelPool[poolBase + 1u],
+                  channelPool[poolBase + 8u],
+                  channelPool[poolBase + 9u]);
+        z1 = vec4(channelPool[poolBase + 64u],
+                  channelPool[poolBase + 65u],
+                  channelPool[poolBase + 72u],
+                  channelPool[poolBase + 73u]);
+    } else {
+        // Brick-boundary (or out-of-grid) cell: corners may span multiple bricks —
+        // keep the original per-corner resolution (each with its own sentinel check).
+        z0 = vec4(_samplePoolVoxel(base, i + ivec3(0,0,0), comp, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,0,0), comp, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(0,1,0), comp, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,1,0), comp, octreeIdx));
+        z1 = vec4(_samplePoolVoxel(base, i + ivec3(0,0,1), comp, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,0,1), comp, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(0,1,1), comp, octreeIdx),
+                  _samplePoolVoxel(base, i + ivec3(1,1,1), comp, octreeIdx));
+    }
+}
+
+// Scalar (comp=0) convenience wrapper — the common case (SDF, roughness, ...).
+void _loadTrilinearCell(uint base, vec3 gridPos, int octreeIdx,
+                        out vec3 f, out vec4 z0, out vec4 z1) {
+    uint brickIdxOut; ivec3 localOut; bool oneBrickOut;
+    _loadTrilinearCellComp(base, gridPos, 0, octreeIdx, f, z0, z1, brickIdxOut, localOut, oneBrickOut);
+}
+
+// z0 = (c000,c100,c010,c110), z1 = (c001,c101,c011,c111) — see _loadTrilinearCell.
+float _interpolateTrilinearCell(vec3 f, vec4 z0, vec4 z1) {
+    return mix(
+        mix(mix(z0.x, z0.y, f.x), mix(z0.z, z0.w, f.x), f.y),
+        mix(mix(z1.x, z1.y, f.x), mix(z1.z, z1.w, f.x), f.y),
+        f.z);
+}
+
+// ---------------------------------------------------------------------------
 // sampleChannelScalarTrilinear: trilinear interpolation of a scalar channel
 // at a fractional grid position (in voxel units).
 // Returns `missing` when the channel is absent.
+//
+// Uses the same single-brick fast path as the SDF sampler (audit A3): the
+// cell's brick resolution is shared with sampleChannelVec3Trilinear's inner
+// loop via _loadTrilinearCellComp, so a hit-shading call site that samples
+// both roughness and color resolves the brick lookup on the FIRST call only
+// when they hit the same cell (both are called at the SAME gridHit).
 // ---------------------------------------------------------------------------
 float sampleChannelScalarTrilinear(uint sem, vec3 gridPos, float missing) {
     uint base = channelBaseFloats(sem);
     if (base == 0xFFFFFFFFu) return missing;
 
-    vec3  f = fract(gridPos);
-    ivec3 i = ivec3(floor(gridPos));
-
-    float c000 = _samplePoolVoxel(base, i + ivec3(0,0,0), 0, g_octreeIdx);
-    float c100 = _samplePoolVoxel(base, i + ivec3(1,0,0), 0, g_octreeIdx);
-    float c010 = _samplePoolVoxel(base, i + ivec3(0,1,0), 0, g_octreeIdx);
-    float c110 = _samplePoolVoxel(base, i + ivec3(1,1,0), 0, g_octreeIdx);
-    float c001 = _samplePoolVoxel(base, i + ivec3(0,0,1), 0, g_octreeIdx);
-    float c101 = _samplePoolVoxel(base, i + ivec3(1,0,1), 0, g_octreeIdx);
-    float c011 = _samplePoolVoxel(base, i + ivec3(0,1,1), 0, g_octreeIdx);
-    float c111 = _samplePoolVoxel(base, i + ivec3(1,1,1), 0, g_octreeIdx);
-
-    return mix(
-        mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
-        mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y),
-        f.z);
+    vec3 f; vec4 z0, z1; uint brickIdxOut; ivec3 localOut; bool oneBrickOut;
+    _loadTrilinearCellComp(base, gridPos, 0, g_octreeIdx, f, z0, z1, brickIdxOut, localOut, oneBrickOut);
+    return _interpolateTrilinearCell(f, z0, z1);
 }
 
 // ---------------------------------------------------------------------------
 // sampleChannelVec3Trilinear: trilinear interpolation of a 3-component channel
 // (e.g. SEM_COLOR). Returns `missing` when the channel is absent.
+//
+// Resolves the cell's brick/local coordinate ONCE (component 0), then reuses
+// that SAME brick index + local-voxel addressing for components 1 and 2 —
+// the old version re-ran the full corner resolution (brickCoord math +
+// brickLookup fetch) independently per component; 16 of 24 corner chains were
+// pure duplicate work since only the `comp*512` pool offset differs (audit A3).
 // ---------------------------------------------------------------------------
 vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
     uint base = channelBaseFloats(sem);
     if (base == 0xFFFFFFFFu) return missing;
 
-    vec3  f = fract(gridPos);
-    ivec3 i = ivec3(floor(gridPos));
+    vec3 f; vec4 z0, z1; uint brickIdx; ivec3 local; bool oneBrick;
+    _loadTrilinearCellComp(base, gridPos, 0, g_octreeIdx, f, z0, z1, brickIdx, local, oneBrick);
 
     vec3 result;
-    for (int comp = 0; comp < 3; ++comp) {
-        float c000 = _samplePoolVoxel(base, i + ivec3(0,0,0), comp, g_octreeIdx);
-        float c100 = _samplePoolVoxel(base, i + ivec3(1,0,0), comp, g_octreeIdx);
-        float c010 = _samplePoolVoxel(base, i + ivec3(0,1,0), comp, g_octreeIdx);
-        float c110 = _samplePoolVoxel(base, i + ivec3(1,1,0), comp, g_octreeIdx);
-        float c001 = _samplePoolVoxel(base, i + ivec3(0,0,1), comp, g_octreeIdx);
-        float c101 = _samplePoolVoxel(base, i + ivec3(1,0,1), comp, g_octreeIdx);
-        float c011 = _samplePoolVoxel(base, i + ivec3(0,1,1), comp, g_octreeIdx);
-        float c111 = _samplePoolVoxel(base, i + ivec3(1,1,1), comp, g_octreeIdx);
+    result.x = _interpolateTrilinearCell(f, z0, z1);
 
-        result[comp] = mix(
-            mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
-            mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y),
-            f.z);
+    if (oneBrick) {
+        // brickIdx/local already resolved above — remaining components are pure
+        // contiguous pool reads at the same voxel offsets, no re-lookup.
+        if (brickIdx == 0xFFFFFFFFu) return vec3(1e9);  // unallocated brick (matches per-corner path)
+        uint voxel000 = uint(local.z * 64 + local.y * 8 + local.x);
+        for (int comp = 1; comp < 3; ++comp) {
+            uint poolBase = configs[g_octreeIdx].poolBrickBase +
+                            brickIdx * configs[g_octreeIdx].brickStrideFloats +
+                            base + uint(comp) * VX_VOXELS_PER_BRICK + voxel000;
+            vec4 cz0 = vec4(channelPool[poolBase],
+                            channelPool[poolBase + 1u],
+                            channelPool[poolBase + 8u],
+                            channelPool[poolBase + 9u]);
+            vec4 cz1 = vec4(channelPool[poolBase + 64u],
+                            channelPool[poolBase + 65u],
+                            channelPool[poolBase + 72u],
+                            channelPool[poolBase + 73u]);
+            result[comp] = _interpolateTrilinearCell(f, cz0, cz1);
+        }
+    } else {
+        // Brick-boundary cell: fall back to the original independent per-component
+        // resolution (corners may span multiple bricks per component lookup).
+        for (int comp = 1; comp < 3; ++comp) {
+            vec3 cf; vec4 cz0, cz1; uint cBrickIdx; ivec3 cLocal; bool cOneBrick;
+            _loadTrilinearCellComp(base, gridPos, comp, g_octreeIdx, cf, cz0, cz1, cBrickIdx, cLocal, cOneBrick);
+            result[comp] = _interpolateTrilinearCell(cf, cz0, cz1);
+        }
     }
     return result;
 }
 
 // ---------------------------------------------------------------------------
+// sampleHitShadingChannels: resolve color (SEM_COLOR, 3 comp) AND roughness
+// (SEM_ROUGHNESS, 1 comp) at the SAME hit grid position, sharing ONE brick-
+// address resolution across both channels (audit A3: the per-channel entry
+// points above each independently resolve brickCoord/flatLookup/brickIdx for
+// the identical gridPos; brick addressing depends only on gridPos + bpa, not
+// on which channel's data is being read, so the hit-shading call site can
+// resolve it once and read all 4 components — color's 3 + roughness's 1 —
+// from that single resolved brick).
+// ---------------------------------------------------------------------------
+void sampleHitShadingChannels(vec3 gridPos, vec3 missingColor, float missingRoughness,
+                              out vec3 outColor, out float outRoughness) {
+    uint colorBase = channelBaseFloats(SEM_COLOR);
+    uint roughBase = channelBaseFloats(SEM_ROUGHNESS);
+    outColor     = missingColor;
+    outRoughness = missingRoughness;
+    if (colorBase == 0xFFFFFFFFu && roughBase == 0xFFFFFFFFu) return;
+
+    // Resolve the shared brick address ONCE using whichever channel is present
+    // (brick addressing itself doesn't depend on `base`); component 0 of that
+    // channel comes along for free from the same fetch.
+    uint primaryBase = (colorBase != 0xFFFFFFFFu) ? colorBase : roughBase;
+    vec3 f; vec4 z0, z1; uint brickIdx; ivec3 local; bool oneBrick;
+    _loadTrilinearCellComp(primaryBase, gridPos, 0, g_octreeIdx, f, z0, z1, brickIdx, local, oneBrick);
+
+    if (!oneBrick) {
+        // Brick-boundary cell: no shared addressing to reuse — fall back to the
+        // independent per-channel resolution (each channel's corners may span
+        // different neighbour bricks).
+        if (colorBase != 0xFFFFFFFFu) outColor = sampleChannelVec3Trilinear(SEM_COLOR, gridPos, missingColor);
+        if (roughBase != 0xFFFFFFFFu) outRoughness = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridPos, missingRoughness);
+        return;
+    }
+    if (brickIdx == 0xFFFFFFFFu) {
+        // Unallocated brick: matches the per-corner path's 1e9 sentinel behavior.
+        if (colorBase != 0xFFFFFFFFu) outColor = vec3(1e9);
+        if (roughBase != 0xFFFFFFFFu) outRoughness = 1e9;
+        return;
+    }
+
+    uint voxel000 = uint(local.z * 64 + local.y * 8 + local.x);
+    uint stride    = configs[g_octreeIdx].brickStrideFloats;
+    uint poolBrick = configs[g_octreeIdx].poolBrickBase + brickIdx * stride;
+
+    if (colorBase != 0xFFFFFFFFu) {
+        vec3 c;
+        // Component 0 already loaded above iff colorBase was the primary channel;
+        // otherwise (roughness was primary) fetch color's component 0 too.
+        if (primaryBase == colorBase) {
+            c.x = _interpolateTrilinearCell(f, z0, z1);
+        } else {
+            uint pb0 = poolBrick + colorBase + voxel000;
+            vec4 cz0 = vec4(channelPool[pb0], channelPool[pb0+1u], channelPool[pb0+8u], channelPool[pb0+9u]);
+            vec4 cz1 = vec4(channelPool[pb0+64u], channelPool[pb0+65u], channelPool[pb0+72u], channelPool[pb0+73u]);
+            c.x = _interpolateTrilinearCell(f, cz0, cz1);
+        }
+        for (int comp = 1; comp < 3; ++comp) {
+            uint pb = poolBrick + colorBase + uint(comp) * VX_VOXELS_PER_BRICK + voxel000;
+            vec4 cz0 = vec4(channelPool[pb], channelPool[pb+1u], channelPool[pb+8u], channelPool[pb+9u]);
+            vec4 cz1 = vec4(channelPool[pb+64u], channelPool[pb+65u], channelPool[pb+72u], channelPool[pb+73u]);
+            c[comp] = _interpolateTrilinearCell(f, cz0, cz1);
+        }
+        outColor = c;
+    }
+    if (roughBase != 0xFFFFFFFFu) {
+        if (primaryBase == roughBase) {
+            outRoughness = _interpolateTrilinearCell(f, z0, z1);
+        } else {
+            uint pb = poolBrick + roughBase + voxel000;
+            vec4 rz0 = vec4(channelPool[pb], channelPool[pb+1u], channelPool[pb+8u], channelPool[pb+9u]);
+            vec4 rz1 = vec4(channelPool[pb+64u], channelPool[pb+65u], channelPool[pb+72u], channelPool[pb+73u]);
+            outRoughness = _interpolateTrilinearCell(f, rz0, rz1);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// sampleSdfTrilinearAtBase: trilinear interpolation of the SDF at a fractional
+// grid position, given an ALREADY-RESOLVED channel base (hoisted out of the
+// per-step march loop — audit A1's channelBaseFloats(SEM_SDF) linear scan).
+// ---------------------------------------------------------------------------
+float sampleSdfTrilinearAtBase(vec3 gridPos, int octreeIdx, uint sdfBase) {
+    vec3 f;
+    vec4 z0, z1;
+    _loadTrilinearCell(sdfBase, gridPos, octreeIdx, f, z0, z1);
+    return _interpolateTrilinearCell(f, z0, z1);
+}
+
+// ---------------------------------------------------------------------------
 // sampleSdfTrilinear: trilinear interpolation of the SDF at a fractional grid
-// position (in voxel units). The 8 corners are fetched via _sampleSdfVoxel.
-// gridPos is in octree grid-voxel coordinates (0..bpa*8 per axis).
+// position (in voxel units). gridPos is in octree grid-voxel coordinates
+// (0..bpa*8 per axis). Resolves the SEM_SDF channel base itself — callers on
+// the hot march-step path should prefer sampleSdfTrilinearAtBase with a
+// hoisted base instead.
 // ---------------------------------------------------------------------------
 float sampleSdfTrilinear(vec3 gridPos, int octreeIdx) {
-    vec3  f = fract(gridPos);
-    ivec3 i = ivec3(floor(gridPos));
-
-    float c000 = _sampleSdfVoxel(i + ivec3(0,0,0), octreeIdx);
-    float c100 = _sampleSdfVoxel(i + ivec3(1,0,0), octreeIdx);
-    float c010 = _sampleSdfVoxel(i + ivec3(0,1,0), octreeIdx);
-    float c110 = _sampleSdfVoxel(i + ivec3(1,1,0), octreeIdx);
-    float c001 = _sampleSdfVoxel(i + ivec3(0,0,1), octreeIdx);
-    float c101 = _sampleSdfVoxel(i + ivec3(1,0,1), octreeIdx);
-    float c011 = _sampleSdfVoxel(i + ivec3(0,1,1), octreeIdx);
-    float c111 = _sampleSdfVoxel(i + ivec3(1,1,1), octreeIdx);
-
-    return mix(
-        mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
-        mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y),
-        f.z);
+    return sampleSdfTrilinearAtBase(gridPos, octreeIdx, channelBaseFloats(SEM_SDF));
 }
 
 // Same sentinel threshold as marchBrickSdf's SENTINEL_D: a trilinear sample this large means
@@ -186,44 +375,102 @@ float sampleSdfTrilinear(vec3 gridPos, int octreeIdx) {
 // honest distance.
 const float SDF_GRAD_SENTINEL_D = 100.0;
 
-// ---------------------------------------------------------------------------
-// sdfGradientStored: central-difference gradient of the trilinear SDF field.
-// Step h = 0.5 voxel (fine enough for the interpolated field).
-// Returns a normalized gradient (normal pointing outward from the surface).
-//
-// Sentinel-aware per axis: a central-difference sample straddling a brick boundary can read an
-// unallocated neighbour (1e9 sentinel, see _samplePoolVoxel), which would otherwise blow up that
-// axis's component and corrupt the normal -- visible as speckled shading noise right along brick
-// seams (worst near a smooth-union fillet, where the iso-surface sits close to a brick face).
-// marchBrickSdf's own iso-search loop already guards against this (SENTINEL_D); this mirrors that
-// guard by falling back to a one-sided difference against the known-good on-surface sample
-// (d0, near-zero since gridPos is the just-found hit point) whenever a side is contaminated.
-// ---------------------------------------------------------------------------
-vec3 sdfGradientStored(vec3 gridPos, int octreeIdx) {
-    const float h = 0.5;
-    float d0 = sampleSdfTrilinear(gridPos, octreeIdx);
+vec3 _normalizeSdfGradient(vec3 g) {
+    float len = length(g);
+    return (len > 1e-6) ? g / len : vec3(0.0, 1.0, 0.0);
+}
 
-    float dxPlus  = sampleSdfTrilinear(gridPos + vec3(h,0,0), octreeIdx);
-    float dxMinus = sampleSdfTrilinear(gridPos - vec3(h,0,0), octreeIdx);
+// ---------------------------------------------------------------------------
+// _sdfGradientFiniteDifference: the ORIGINAL central-difference gradient (6
+// extra trilinear samples), kept as the fallback for the rare cell whose own
+// 8-corner stencil is sentinel-contaminated (straddles an unallocated
+// neighbour brick) -- the analytic cell gradient below has no well-defined
+// derivative there, so this preserves the exact old degenerate-cell behavior.
+// ---------------------------------------------------------------------------
+vec3 _sdfGradientFiniteDifference(vec3 gridPos, int octreeIdx, uint sdfBase) {
+    const float h = 0.5;
+    float d0 = sampleSdfTrilinearAtBase(gridPos, octreeIdx, sdfBase);
+
+    float dxPlus  = sampleSdfTrilinearAtBase(gridPos + vec3(h,0,0), octreeIdx, sdfBase);
+    float dxMinus = sampleSdfTrilinearAtBase(gridPos - vec3(h,0,0), octreeIdx, sdfBase);
     float gx = (abs(dxPlus) > SDF_GRAD_SENTINEL_D) ? (d0 - dxMinus) * 2.0
              : (abs(dxMinus) > SDF_GRAD_SENTINEL_D) ? (dxPlus - d0) * 2.0
              : (dxPlus - dxMinus);
 
-    float dyPlus  = sampleSdfTrilinear(gridPos + vec3(0,h,0), octreeIdx);
-    float dyMinus = sampleSdfTrilinear(gridPos - vec3(0,h,0), octreeIdx);
+    float dyPlus  = sampleSdfTrilinearAtBase(gridPos + vec3(0,h,0), octreeIdx, sdfBase);
+    float dyMinus = sampleSdfTrilinearAtBase(gridPos - vec3(0,h,0), octreeIdx, sdfBase);
     float gy = (abs(dyPlus) > SDF_GRAD_SENTINEL_D) ? (d0 - dyMinus) * 2.0
              : (abs(dyMinus) > SDF_GRAD_SENTINEL_D) ? (dyPlus - d0) * 2.0
              : (dyPlus - dyMinus);
 
-    float dzPlus  = sampleSdfTrilinear(gridPos + vec3(0,0,h), octreeIdx);
-    float dzMinus = sampleSdfTrilinear(gridPos - vec3(0,0,h), octreeIdx);
+    float dzPlus  = sampleSdfTrilinearAtBase(gridPos + vec3(0,0,h), octreeIdx, sdfBase);
+    float dzMinus = sampleSdfTrilinearAtBase(gridPos - vec3(0,0,h), octreeIdx, sdfBase);
     float gz = (abs(dzPlus) > SDF_GRAD_SENTINEL_D) ? (d0 - dzMinus) * 2.0
              : (abs(dzMinus) > SDF_GRAD_SENTINEL_D) ? (dzPlus - d0) * 2.0
              : (dzPlus - dzMinus);
 
-    vec3 g = vec3(gx, gy, gz);
-    float len = length(g);
-    return (len > 1e-6) ? g / len : vec3(0.0, 1.0, 0.0);
+    return _normalizeSdfGradient(vec3(gx, gy, gz));
+}
+
+// ---------------------------------------------------------------------------
+// _sdfCellGradient: exact analytic gradient of the trilinear interpolant
+// represented by the cell's 8 already-loaded corners (z0/z1, see
+// _loadTrilinearCell) -- the partial derivatives of
+//   mix(mix(mix(z0.x,z0.y,fx),mix(z0.z,z0.w,fx),fy), mix(mix(z1.x,z1.y,fx),mix(z1.z,z1.w,fx),fy), fz)
+// w.r.t. fx/fy/fz respectively (audit A2: replaces 7 full trilinear samples,
+// including a redundant re-sample of d0, with zero additional pool reads --
+// the hit sample already loaded these exact corners).
+// ---------------------------------------------------------------------------
+vec3 _sdfCellGradient(vec3 f, vec4 z0, vec4 z1) {
+    float gx = mix(mix(z0.y - z0.x, z0.w - z0.z, f.y),
+                   mix(z1.y - z1.x, z1.w - z1.z, f.y), f.z);
+    float gy = mix(mix(z0.z - z0.x, z0.w - z0.y, f.x),
+                   mix(z1.z - z1.x, z1.w - z1.y, f.x), f.z);
+    float gz = mix(mix(z1.x - z0.x, z1.y - z0.y, f.x),
+                   mix(z1.z - z0.z, z1.w - z0.w, f.x), f.y);
+    return _normalizeSdfGradient(vec3(gx, gy, gz));
+}
+
+bool _sdfCellContaminated(vec4 z0, vec4 z1) {
+    return any(greaterThan(abs(z0), vec4(SDF_GRAD_SENTINEL_D))) ||
+           any(greaterThan(abs(z1), vec4(SDF_GRAD_SENTINEL_D)));
+}
+
+// ---------------------------------------------------------------------------
+// sdfGradientStoredFromCell: gradient of the trilinear SDF field at gridPos,
+// given the cell (f, z0, z1) the caller ALREADY loaded for the hit sample --
+// no extra pool reads on the honest-cell path. Falls back to the original
+// sentinel-aware central-difference (_sdfGradientFiniteDifference) exactly
+// when any of the 8 corners is sentinel-contaminated, preserving the old
+// degenerate-cell (brick-seam) behavior described below.
+//
+// Sentinel-aware per axis (fallback path only): a central-difference sample straddling a brick
+// boundary can read an unallocated neighbour (1e9 sentinel, see _samplePoolVoxel), which would
+// otherwise blow up that axis's component and corrupt the normal -- visible as speckled shading
+// noise right along brick seams (worst near a smooth-union fillet, where the iso-surface sits
+// close to a brick face). marchBrickSdf's own iso-search loop already guards against this
+// (SENTINEL_D); the fallback mirrors that guard by falling back to a one-sided difference against
+// the known-good on-surface sample (d0, near-zero since gridPos is the just-found hit point)
+// whenever a side is contaminated.
+// ---------------------------------------------------------------------------
+vec3 sdfGradientStoredFromCell(vec3 gridPos, int octreeIdx, vec3 f, vec4 z0, vec4 z1) {
+    return _sdfCellContaminated(z0, z1)
+        ? _sdfGradientFiniteDifference(gridPos, octreeIdx, channelBaseFloats(SEM_SDF))
+        : _sdfCellGradient(f, z0, z1);
+}
+
+// ---------------------------------------------------------------------------
+// sdfGradientStored: gradient of the trilinear SDF field at gridPos, re-loading
+// the cell itself. Callers that already have the hit cell's (f, z0, z1) on hand
+// (the march loop) should use sdfGradientStoredFromCell instead to avoid the
+// redundant reload.
+// ---------------------------------------------------------------------------
+vec3 sdfGradientStored(vec3 gridPos, int octreeIdx) {
+    uint sdfBase = channelBaseFloats(SEM_SDF);
+    vec3 f;
+    vec4 z0, z1;
+    _loadTrilinearCell(sdfBase, gridPos, octreeIdx, f, z0, z1);
+    return sdfGradientStoredFromCell(gridPos, octreeIdx, f, z0, z1);
 }
 
 // ---------------------------------------------------------------------------
@@ -391,6 +638,11 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
     hitBrick  = brick;   // brick the crossing was actually found in (for the pick/ID buffer)
 
     int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    // Hoisted out of the per-step/per-corner path (audit A1): channelBaseFloats scans
+    // octreeConfig.channels[] linearly, so resolving it once per march (not once per
+    // trilinear sample) removes a redundant scan from every one of up to MAX_STEPS*
+    // MAX_BRICK_HOPS step evaluations.
+    uint sdfBase = channelBaseFloats(SEM_SDF);
 
     const int   MAX_STEPS = 96;    // one 8³ brick + sentinel probes — converges well within this
     const float EPS       = 0.01;  // iso threshold (voxel fraction)
@@ -448,9 +700,16 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
         for (int i = 0; i < MAX_STEPS; ++i) {
             if (s > sMax) break;              // left the brick without crossing → try to continue
             vec3  p = curEntry + gridDirN * s;
-            float d = sampleSdfTrilinear(p, octreeIdx);
+            // Load the cell ONCE per step: the single-brick fast path (audit A1/#6) resolves
+            // it in 1 brickLookup fetch + 8 contiguous pool loads for ~67% of cells; a hit
+            // reuses these SAME corners for the analytic gradient below (audit A2) instead of
+            // re-sampling 7 more trilinear points.
+            vec3 cellF;
+            vec4 cellZ0, cellZ1;
+            _loadTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1);
+            float d = _interpolateTrilinearCell(cellF, cellZ0, cellZ1);
             if (d < EPS) {                    // crossed (or reached) the iso-surface
-                hitNormal = sdfGradientStored(p, octreeIdx);
+                hitNormal = sdfGradientStoredFromCell(p, octreeIdx, cellF, cellZ0, cellZ1);
                 sHit      = sBase + s;
                 hitBrick  = curBrick;
                 return true;

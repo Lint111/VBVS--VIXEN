@@ -540,24 +540,60 @@ private:
     float sampleSdfVoxel(const glm::ivec3& gridCoord) const {
         return samplePoolVoxel(channelBaseFloats(SEM_SDF), gridCoord, 0);
     }
-    // 1:1 port of StoredSdf.glsl sampleSdfTrilinear — PLAIN trilinear blend of the 8 corners.
+
+    // 1:1 port of StoredSdf.glsl _loadTrilinearCell (M3 perf package, audit A1/#6):
+    // single-fetch fast path when the whole 2x2x2 cell lies inside one brick (local
+    // voxel-in-brick coordinate <=6 on every axis), else falls back to the original
+    // 8 independent samplePoolVoxel calls (brick-boundary / out-of-grid cells).
+    // z0 = (c000,c100,c010,c110), z1 = (c001,c101,c011,c111).
+    void loadTrilinearCell(const glm::vec3& gridPos, glm::vec3& f, glm::vec4& z0, glm::vec4& z1) const {
+        f = glm::fract(gridPos);
+        const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
+        const uint32_t base = channelBaseFloats(SEM_SDF);
+        if (base == 0xFFFFFFFFu) { z0 = glm::vec4(kSdfSentinel); z1 = glm::vec4(kSdfSentinel); return; }
+
+        const bool inGrid = m_bpaSdf > 0 &&
+            i.x >= 0 && i.y >= 0 && i.z >= 0 &&
+            i.x < m_bpaSdf * 8 && i.y < m_bpaSdf * 8 && i.z < m_bpaSdf * 8;
+        const glm::ivec3 brickCoord = inGrid ? glm::ivec3(i.x / 8, i.y / 8, i.z / 8) : glm::ivec3(-1);
+        const glm::ivec3 local = i - brickCoord * 8;
+        const bool oneBrick = inGrid && local.x <= 6 && local.y <= 6 && local.z <= 6;
+
+        if (oneBrick) {
+            const uint32_t flatLookup = gridToLookupIdx(brickCoord, m_bpaSdf);
+            const uint32_t lookupIdx = flatLookup;  // octreeIdx 0
+            const uint32_t brickIdx = (lookupIdx >= m_lookupCount) ? kBrickUnalloc : m_lookup[lookupIdx];
+            if (brickIdx == kBrickUnalloc) { z0 = glm::vec4(kSdfSentinel); z1 = glm::vec4(kSdfSentinel); return; }
+
+            const uint32_t voxel000 = static_cast<uint32_t>(local.z * 64 + local.y * 8 + local.x);
+            const uint32_t poolBase = m_poolBrickBase + brickIdx * m_brickStride + base + voxel000;
+            auto rd = [&](uint32_t off) -> float {
+                const uint32_t fi = poolBase + off;
+                return (fi >= m_poolFloats) ? kSdfSentinel : m_pool[fi];
+            };
+            z0 = glm::vec4(rd(0), rd(1), rd(8), rd(9));
+            z1 = glm::vec4(rd(64), rd(65), rd(72), rd(73));
+        } else {
+            z0 = glm::vec4(sampleSdfVoxel(i + glm::ivec3(0,0,0)), sampleSdfVoxel(i + glm::ivec3(1,0,0)),
+                           sampleSdfVoxel(i + glm::ivec3(0,1,0)), sampleSdfVoxel(i + glm::ivec3(1,1,0)));
+            z1 = glm::vec4(sampleSdfVoxel(i + glm::ivec3(0,0,1)), sampleSdfVoxel(i + glm::ivec3(1,0,1)),
+                           sampleSdfVoxel(i + glm::ivec3(0,1,1)), sampleSdfVoxel(i + glm::ivec3(1,1,1)));
+        }
+    }
+    // 1:1 port of StoredSdf.glsl _interpolateTrilinearCell.
+    static float interpolateTrilinearCell(const glm::vec3& f, const glm::vec4& z0, const glm::vec4& z1) {
+        return glm::mix(
+            glm::mix(glm::mix(z0.x, z0.y, f.x), glm::mix(z0.z, z0.w, f.x), f.y),
+            glm::mix(glm::mix(z1.x, z1.y, f.x), glm::mix(z1.z, z1.w, f.x), f.y),
+            f.z);
+    }
+    // 1:1 port of StoredSdf.glsl sampleSdfTrilinear — resolves the cell then interpolates.
     // An empty corner reads +kSdfSentinel, so a stencil straddling empty space blends to a
     // large positive MAGNITUDE that marchBrickSdf detects (d>SENTINEL_D) and steps through.
     float sampleSdfTrilinear(const glm::vec3& gridPos) const {
-        const glm::vec3 f = glm::fract(gridPos);
-        const glm::ivec3 i = glm::ivec3(glm::floor(gridPos));
-        const float c000 = sampleSdfVoxel(i + glm::ivec3(0,0,0));
-        const float c100 = sampleSdfVoxel(i + glm::ivec3(1,0,0));
-        const float c010 = sampleSdfVoxel(i + glm::ivec3(0,1,0));
-        const float c110 = sampleSdfVoxel(i + glm::ivec3(1,1,0));
-        const float c001 = sampleSdfVoxel(i + glm::ivec3(0,0,1));
-        const float c101 = sampleSdfVoxel(i + glm::ivec3(1,0,1));
-        const float c011 = sampleSdfVoxel(i + glm::ivec3(0,1,1));
-        const float c111 = sampleSdfVoxel(i + glm::ivec3(1,1,1));
-        return glm::mix(
-            glm::mix(glm::mix(c000, c100, f.x), glm::mix(c010, c110, f.x), f.y),
-            glm::mix(glm::mix(c001, c101, f.x), glm::mix(c011, c111, f.x), f.y),
-            f.z);
+        glm::vec3 f; glm::vec4 z0, z1;
+        loadTrilinearCell(gridPos, f, z0, z1);
+        return interpolateTrilinearCell(f, z0, z1);
     }
     // Oracle trilinear used by the reference march — identical reconstruction to
     // sampleSdfTrilinear so the "is there a real crossing" verdict matches the field the
@@ -566,19 +602,63 @@ private:
     float sampleSdfTrilinearRaw(const glm::vec3& gridPos) const {
         return sampleSdfTrilinear(gridPos);
     }
-    // 1:1 port of StoredSdf.glsl sdfGradientStored — central-difference gradient of the
-    // trilinear SDF field (step h = 0.5 voxel), normalized outward.
-    glm::vec3 sdfGradientStored(const glm::vec3& gridPos) const {
+    // 1:1 port of StoredSdf.glsl's SDF_GRAD_SENTINEL_D / _sdfCellContaminated.
+    static bool sdfCellContaminated(const glm::vec4& z0, const glm::vec4& z1) {
+        const float T = 100.0f;
+        return std::abs(z0.x) > T || std::abs(z0.y) > T || std::abs(z0.z) > T || std::abs(z0.w) > T ||
+               std::abs(z1.x) > T || std::abs(z1.y) > T || std::abs(z1.z) > T || std::abs(z1.w) > T;
+    }
+    // 1:1 port of StoredSdf.glsl _sdfGradientFiniteDifference — the ORIGINAL central-difference
+    // gradient (6 extra trilinear samples), used only as the sentinel-contaminated-cell fallback.
+    glm::vec3 sdfGradientFiniteDifference(const glm::vec3& gridPos) const {
         const float h = 0.5f;
-        const float gx = sampleSdfTrilinear(gridPos + glm::vec3(h,0,0))
-                       - sampleSdfTrilinear(gridPos - glm::vec3(h,0,0));
-        const float gy = sampleSdfTrilinear(gridPos + glm::vec3(0,h,0))
-                       - sampleSdfTrilinear(gridPos - glm::vec3(0,h,0));
-        const float gz = sampleSdfTrilinear(gridPos + glm::vec3(0,0,h))
-                       - sampleSdfTrilinear(gridPos - glm::vec3(0,0,h));
+        const float d0 = sampleSdfTrilinear(gridPos);
+        const float dxPlus  = sampleSdfTrilinear(gridPos + glm::vec3(h,0,0));
+        const float dxMinus = sampleSdfTrilinear(gridPos - glm::vec3(h,0,0));
+        const float gx = (std::abs(dxPlus) > 100.0f) ? (d0 - dxMinus) * 2.0f
+                        : (std::abs(dxMinus) > 100.0f) ? (dxPlus - d0) * 2.0f
+                        : (dxPlus - dxMinus);
+        const float dyPlus  = sampleSdfTrilinear(gridPos + glm::vec3(0,h,0));
+        const float dyMinus = sampleSdfTrilinear(gridPos - glm::vec3(0,h,0));
+        const float gy = (std::abs(dyPlus) > 100.0f) ? (d0 - dyMinus) * 2.0f
+                        : (std::abs(dyMinus) > 100.0f) ? (dyPlus - d0) * 2.0f
+                        : (dyPlus - dyMinus);
+        const float dzPlus  = sampleSdfTrilinear(gridPos + glm::vec3(0,0,h));
+        const float dzMinus = sampleSdfTrilinear(gridPos - glm::vec3(0,0,h));
+        const float gz = (std::abs(dzPlus) > 100.0f) ? (d0 - dzMinus) * 2.0f
+                        : (std::abs(dzMinus) > 100.0f) ? (dzPlus - d0) * 2.0f
+                        : (dzPlus - dzMinus);
         glm::vec3 g(gx, gy, gz);
         const float len = glm::length(g);
         return (len > 1e-6f) ? g / len : glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    // 1:1 port of StoredSdf.glsl _sdfCellGradient — exact analytic gradient of the trilinear
+    // interpolant represented by the cell's 8 already-loaded corners (M3 perf package, audit A2).
+    static glm::vec3 sdfCellGradient(const glm::vec3& f, const glm::vec4& z0, const glm::vec4& z1) {
+        const float gx = glm::mix(glm::mix(z0.y - z0.x, z0.w - z0.z, f.y),
+                                  glm::mix(z1.y - z1.x, z1.w - z1.z, f.y), f.z);
+        const float gy = glm::mix(glm::mix(z0.z - z0.x, z0.w - z0.y, f.x),
+                                  glm::mix(z1.z - z1.x, z1.w - z1.y, f.x), f.z);
+        const float gz = glm::mix(glm::mix(z1.x - z0.x, z1.y - z0.y, f.x),
+                                  glm::mix(z1.z - z0.z, z1.w - z0.w, f.x), f.y);
+        glm::vec3 g(gx, gy, gz);
+        const float len = glm::length(g);
+        return (len > 1e-6f) ? g / len : glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    // 1:1 port of StoredSdf.glsl sdfGradientStoredFromCell — reuses the hit sample's ALREADY
+    // loaded corners for the analytic gradient (M3 perf package, audit A2); falls back to the
+    // original sentinel-aware central-difference exactly when the cell is contaminated.
+    glm::vec3 sdfGradientStoredFromCell(const glm::vec3& gridPos, const glm::vec3& f,
+                                        const glm::vec4& z0, const glm::vec4& z1) const {
+        return sdfCellContaminated(z0, z1) ? sdfGradientFiniteDifference(gridPos) : sdfCellGradient(f, z0, z1);
+    }
+    // 1:1 port of StoredSdf.glsl sdfGradientStored — gradient of the trilinear SDF field at
+    // gridPos, re-loading the cell itself (callers with the hit cell on hand should prefer
+    // sdfGradientStoredFromCell, exactly as marchBrickSdf below does).
+    glm::vec3 sdfGradientStored(const glm::vec3& gridPos) const {
+        glm::vec3 f; glm::vec4 z0, z1;
+        loadTrilinearCell(gridPos, f, z0, z1);
+        return sdfGradientStoredFromCell(gridPos, f, z0, z1);
     }
 
     // ====================================================================
@@ -616,12 +696,16 @@ private:
         // 1:1 port of StoredSdf.glsl marchBrickSdf. An unallocated-brick stencil reads the
         // single positive sentinel, so a contaminated sample is large-positive (d>SENTINEL_D)
         // and the 1/√3 Lipschitz step degrades to a bounded 1-voxel probe through it.
+        // M3 perf package: load the cell ONCE per step and reuse its corners for the
+        // analytic gradient at a hit (audit A1/A2), instead of a separate sdfGradientStored call.
         float s = 0.0f;
         for (int i = 0; i < MAX_STEPS; ++i) {
             if (s > sMax) return false;
             const glm::vec3 p = gridEntry + gridDirN * s;
-            const float d = sampleSdfTrilinear(p);
-            if (d < EPS) { hitNormal = sdfGradientStored(p); sHit = s; return true; }
+            glm::vec3 cellF; glm::vec4 cellZ0, cellZ1;
+            loadTrilinearCell(p, cellF, cellZ0, cellZ1);
+            const float d = interpolateTrilinearCell(cellF, cellZ0, cellZ1);
+            if (d < EPS) { hitNormal = sdfGradientStoredFromCell(p, cellF, cellZ0, cellZ1); sHit = s; return true; }
             s += (d > SENTINEL_D) ? 1.0f : glm::max(d * 0.5773503f, EPS);
         }
         return false;
