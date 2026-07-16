@@ -115,7 +115,7 @@ the granularity decision).
   JIT direction doc's Increment 2 status flipped to shipped (or, if the measurement shows the
   mechanism ISN'T actually a win yet, documented honestly as a real, load-bearing finding — see Task
   9's explicit instruction not to force a positive result).
-  - [x] DONE — commit TBD (uncommitted at time of writing). Opus validator: pending.
+  - [x] DONE — commit `06ecccdd`. Opus validator: pending.
 
 ### Progress Log
 
@@ -143,7 +143,7 @@ validator verdict; follow the Recipe-Parameterization / Recipe-Pipeline-Cache pl
   integrated GPU as a result; not a correctness blocker for M3 (mechanism/compositing proof is
   GPU-vendor-agnostic), but flagged for M4 since M4 IS a performance measurement and needs to run on
   the discrete NVIDIA GPU to be representative.
-- Milestone 4 (Tasks 9-10): DONE · commit TBD (uncommitted at time of writing) · 2026-07-16.
+- Milestone 4 (Tasks 9-10): DONE · commit `06ecccdd` · 2026-07-16.
   **GPU-selection fix applied FIRST** (Task 9 prerequisite): new perf harness
   (`test_recipe_bucketing_perf.cpp`)'s `PickPhysicalDevice()` mirrors
   `DeviceNode::SelectPhysicalDevice()` exactly (discrete-first, integrated fallback, software
