@@ -91,17 +91,23 @@ GPU (Windows-native) for every milestone.
   proceeds as planned. Supersedes an earlier "identical-trivial vs. real-differing" binary design
   (2-point comparison) per user correction 2026-07-16: a single combined, randomized, swept
   experiment is a strictly better isolation of the same question than two hand-picked extremes.
-  - [x] **DONE 2026-07-16.** Finding: MIXED m_i+k_i correlation, N (switch-case count) ruled OUT
-    as an independent driver — see Perf-Ledger.md "Switch-cost isolation (Inc3 M0...)" for full
-    swept data + axis-decoupling proof. Decision: M1/M2 as currently scoped (per-bucket dispatch-
-    COUNT overhead) do NOT address what this measurement found actually drives tier-0's own N=100
-    knee (m_i/k_i-shaped, not switch-dispatch-shaped) — flagged to controller/user for a scope
-    decision before M1/M2 proceed, NOT unilaterally started or skipped by this milestone.
+  - [x] **DONE 2026-07-16, commit `2e6a4f51`, Opus validator APPROVED (independently re-derived the
+    same conclusion, found an even cleaner single-axis isolation than the implementer's own
+    headline evidence).** Finding: MIXED m_i+k_i correlation, N (switch-case count) ruled OUT as an
+    independent driver — see Perf-Ledger.md "Switch-cost isolation (Inc3 M0...)" for full swept
+    data + axis-decoupling proof. **USER SCOPE DECISION 2026-07-16: proceed with M1/M2 as
+    originally scoped.** M1/M2 target Increment 2's own separately-confirmed regression (bucketed
+    dispatch is measurably slower than tier-0 at every N, M4's finding) — that is a real, distinct
+    problem worth fixing on its own merits regardless of what drives tier-0's SEPARATE m_i/k_i-
+    shaped scaling problem. The m_i/k_i finding does NOT block M1/M2; it is carried forward as
+    grounding for a FUTURE increment (informing
+    [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]], not this one's scope).
 - **M1 — Reduce per-bucket descriptor/push-constant overhead** (Task 2) · **live-run gate** · shared
   SSBO + per-dispatch offset/index replaces per-bucket descriptor-set aliasing where data doesn't
   genuinely require a distinct set; correctness proven against the existing M2/M3 oracle pattern.
-  - [ ] Not started. **Conditional on M0** — do not start until M0's finding is in and confirms this
-    class of fix is worth pursuing (see M0's Task 1 decision gate).
+  - [ ] Not started. **Unblocked** — M0 complete, user confirmed 2026-07-16 to proceed with M1/M2
+    as scoped despite the mixed (not clean switch-dispatch-cost) M0 finding, since M1/M2 target
+    Increment 2's own separate, already-confirmed regression.
 - **M2 — Barrier-coalescing correctness analysis + (if safe) reduction** (Task 3) · **live-run gate**
   · prove whether N−1 barriers can become fewer without weakening M3's write-after-write ordering
   proof; implement ONLY if a safe reduction is actually established, not assumed.
