@@ -176,6 +176,13 @@ so mip A/Bs aren't confounded by a pre-existing shading defect.
 - [ ] Task 4b.3 — A/B with per-pass timers: probe_update + spatial_reuse deltas;
   correctness: primary-ray instIdx map unchanged; image soft-compare vs full-res
   reference — watch for light leaks / over-darkening in the closed box.
+- [ ] Task 4b.4 (stretch, knob-gated OFF by default) — Footprint-driven mip selection
+  for PRIMARY rays: reuse the existing `RaySizeCoefNode` ray-size term
+  (`size = coef·t + bias`, already used for ESVO descent termination) to pick the brick
+  mip level in `marchBrickSdf`. Accept only if the image gate shows no visible popping /
+  iso-surface regression (level blending may be required — if so, document and defer to
+  Phase 2 rather than half-land it). Expected small in room-scale Cornell (footprints
+  ≈ mip 0); the real payoff is tiered/orbit scenes.
 
 **Gate:** measurable probe/shadow ms reduction; no visible leak/darkening artifacts vs
 reference; 8 bodies; tests green.
