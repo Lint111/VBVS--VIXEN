@@ -132,6 +132,15 @@ GPU (Windows-native) for every milestone.
     change to `vkCmdBindPipeline` count (out of scope, unchanged) or barrier count (M2's job).
     Deviation from prompt: none — mechanism matches the prompt's suggested design ("single shared
     descriptor-set bind instead of N," offset/index via push-constant) exactly.
+    **Opus validator: APPROVED.** Independently confirmed the load-bearing spec claim, not taken
+    on faith — traced `PipelineLayoutCacher::ComputeKey` to prove all N specialized pipelines
+    resolve to the IDENTICAL `VkPipelineLayout` handle (cache hit, not merely "compatible"), and
+    confirmed the implementer correctly re-binds the descriptor set in M3's cold-first ordering
+    (after an incompatible cold pipeline runs) rather than naively binding once — the 0/65536
+    order-independence re-run is empirical proof this is right. Zero validation-layer errors across
+    every reproduced run (had the persistence assumption been wrong, `VK_LAYER_KHRONOS_validation`
+    would have flagged a descriptor-set VUID immediately). Independently re-ran all 16 tests
+    fresh, confirmed freshly-relinked binaries (no stale-pass risk). Cleared to proceed to M2.
 - **M2 — Barrier-coalescing correctness analysis + (if safe) reduction** (Task 3) · **live-run gate**
   · prove whether N−1 barriers can become fewer without weakening M3's write-after-write ordering
   proof; implement ONLY if a safe reduction is actually established, not assumed.
