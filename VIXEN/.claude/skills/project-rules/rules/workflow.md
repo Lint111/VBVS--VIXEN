@@ -7,6 +7,15 @@
 Use `coding-partner` agent for all development work.
 It delegates to specialized agents automatically.
 
+## Preferred Execution Path for Plans
+
+Once a plan exists and is approved, prefer executing it through the
+`post-brainstorm-context-manager` skill rather than running milestones inline in the main
+conversation. It chunks the plan into milestones, dispatches fresh model-tiered workers per
+milestone, validates with Opus, and persists progress to the plan doc — keeping the controller's
+context thin. Default to it for any multi-milestone plan; skip it only for work small enough that
+the overhead isn't worth it (a single-file fix, no distinct milestones).
+
 ## File Paths
 
 **Always use absolute Windows paths with drive letters:**

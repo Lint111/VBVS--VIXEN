@@ -40,8 +40,6 @@ long-running wait, do not assume the worker already internalized it from this fi
 | `shader-debugger` | GLSL/SPIR-V problems | Opus |
 | `data-scientist` | Data analysis, trends, visualization | Opus |
 | `ui-ux-engineer` | UI/UX design, DX optimization, accessibility | Opus |
-| `hacknplan-manager` | HacknPlan tasks, sprints, time logging | Sonnet |
-| `obsidian-manager` | Vault docs, search, cross-references | Sonnet |
 | `word-manager` | Word documents, reports, PDF export | Sonnet |
 | `excel-manager` | Excel spreadsheets, data tables, formatting | Sonnet |
 | `unity-manager` | Unity Editor operations, scripts, tests | Sonnet |
@@ -50,38 +48,6 @@ long-running wait, do not assume the worker already internalized it from this fi
 ## MCP Delegation Agents
 
 These agents handle MCP tools to reduce main conversation context load:
-
-### hacknplan-manager (Sonnet)
-**Exclusive access to**: All `mcp__hacknplan__*` tools
-
-**Delegate when**:
-- Creating/updating/querying work items
-- Managing sprints, boards, milestones
-- Logging work sessions and time
-- Updating task status
-- Breaking features into tracked subtasks
-
-**Example triggers**:
-- "Create a task for..."
-- "Log 2 hours on..."
-- "What's in the current sprint?"
-- "Mark task X as complete"
-
-### obsidian-manager (Sonnet)
-**Exclusive access to**: All `mcp__obsidian-vault__*` and `mcp__hacknplan-obsidian-glue__*` tools
-
-**Delegate when**:
-- Creating/updating vault documentation
-- Searching vault for information
-- Generating cross-references
-- Managing session notes
-- Syncing vault with HacknPlan
-
-**Example triggers**:
-- "Document the new feature"
-- "Search vault for ESVO"
-- "Update architecture docs"
-- "Generate session summary"
 
 ### word-manager (Sonnet)
 **Exclusive access to**: All `mcp__word__*` tools
@@ -245,13 +211,6 @@ Skills are invoked with the `Skill` tool or `/skill-name` slash command. They ex
 - Whole-codebase analysis in single context
 - Security audits and pattern verification
 
-### hacknplan-docs / obsidian-docs
-**Invocation**: `/hacknplan-docs` or `/obsidian-docs`
-
-**Purpose**:
-- Quick documentation for HacknPlan/Obsidian MCP usage
-- Should delegate to hacknplan-manager/obsidian-manager agents instead
-
 ### project-rules
 **Invocation**: `Skill("project-rules")` (auto-invoked by hook)
 
@@ -273,7 +232,7 @@ Skills are invoked with the `Skill` tool or `/skill-name` slash command. They ex
 **Purpose**:
 - Generates comprehensive handoff documentation
 - Captures file changes, decisions, insights, next steps
-- Updates Obsidian vault and HacknPlan with progress
+- Updates Vixen-Docs directly with progress
 - Auto-commits changes with detailed message
 
 ### session-setup
@@ -287,9 +246,7 @@ Skills are invoked with the `Skill` tool or `/skill-name` slash command. They ex
 
 **Purpose**:
 - Standardized session initialization
-- HacknPlan sprint check and task selection
-- Design element verification
-- Obsidian context gathering
+- Memory bank quick check and Vixen-Docs context gathering
 - Sets up working context for the session
 
 ### collaborative-development
@@ -304,7 +261,7 @@ Skills are invoked with the `Skill` tool or `/skill-name` slash command. They ex
 **Purpose**:
 - Multi-agent collaborative workflow
 - Orchestrates planning, implementation, peer review
-- HacknPlan/Obsidian integration with design element linking
+- Direct Vixen-Docs updates for feature plans and progress
 - Iterative refinement with user approval
 
 ### red-green-test-cycle
@@ -336,5 +293,20 @@ Skills are invoked with the `Skill` tool or `/skill-name` slash command. They ex
 - Enables CPU-side step-through debugging
 - Unit testing for shader logic
 - Systematic bug fixing then port back to GLSL
+
+### post-brainstorm-context-manager
+**Invocation**: `Skill("post-brainstorm-context-manager")`
+
+**Trigger**:
+- A plan exists and has been approved (e.g. output of `writing-plans`)
+- Ready to execute a multi-milestone plan
+
+**Purpose**:
+- **Preferred default execution path** for approved plans
+- Runs the plan as a milestone-chunked, model-tiered, context-budget-aware pipeline
+- Fresh Sonnet/Haiku workers implement each milestone; Opus validates
+- Persists progress to the plan doc; discards each milestone's worker context to keep the
+  controller thin
+- Skip only for work too small to have distinct milestones
 
 </rule>

@@ -10,34 +10,33 @@ Invoke `collaborative-development` skill when:
 - Task requires **architectural decisions**
 - User explicitly asks for "collaborative", "iterative", or "group effort" approach
 
-## Pre-Workflow Requirements (MANDATORY)
+## Pre-Workflow Requirements
 
 Before starting ANY collaborative work:
 
-### 1. Verify HacknPlan Task
-- Check if matching task exists
-- If not, create with full metadata
-- Get task ID for tracking
+### Vixen-Docs Documentation
 
-### 2. Ensure Design Element
-**Every task MUST have a linked design element.**
-- Check if task has `designElementId`
-- If not, create design element (System=9, Mechanic=10, Object=12)
-- Link to work item
-
-### 3. Vault Documentation
-- Create/verify vault doc exists for the design element
-- Link vault doc to HacknPlan via glue
-- Feature docs go in `Vixen-Docs/05-Progress/features/`
+- Check whether a feature doc already exists for this work in `Vixen-Docs/05-Progress/features/`
+- If not, create one directly using the template at
+  `collaborative-development/templates/feature-plan.md`
 
 ## Required Workflow
 
 ### Phase Flow
 ```
-Pre-Setup → Discovery → Plan → Refine → Implement → Review → Test → Complete
-     ↓           ↓         ↓        ↓          ↓         ↓       ↓        ↓
-  Task/DE    Arch doc   User OK  QA review  HP track  Comments  Tests   Log time
+Discovery → Plan → Refine → Implement → Review → Test → Complete
+    ↓         ↓        ↓          ↓         ↓       ↓        ↓
+ Arch doc   User OK  QA review  Progress  Comments  Tests   Log time
 ```
+
+### Preferred Execution Path
+
+Once a plan is approved, the **default** way to execute it is the `post-brainstorm-context-manager`
+skill: it runs the plan as a milestone-chunked, model-tiered, context-budget-aware pipeline — fresh
+Sonnet/Haiku workers implement each milestone, Opus validates, progress persists to the plan doc,
+and each milestone's worker context is discarded to keep the controller thin. Invoke it right after
+plan approval instead of executing milestones inline in the main conversation, unless the task is
+small enough that the overhead isn't worth it (e.g. a single-file fix with no distinct milestones).
 
 ### User Approval Checkpoints
 
@@ -52,16 +51,12 @@ Pre-Setup → Discovery → Plan → Refine → Implement → Review → Test �
 
 - Create feature plan in `Vixen-Docs/05-Progress/features/`
 - Use template from `collaborative-development/templates/feature-plan.md`
-- Link to HacknPlan work item and design element
-- Update progress log after each phase
-- Update `activeContext.md` on completion
+- Update the progress log after each phase, directly in the doc
 
 ## Agent Coordination
 
 | Task Type | Agent | Model |
 |-----------|-------|-------|
-| HacknPlan ops | hacknplan-manager | Haiku |
-| Obsidian ops | obsidian-manager | Haiku |
 | Discovery | architecture-critic | Opus |
 | Complex logic | coding-partner | Opus |
 | Repetitive changes | intern-army-refactor | Haiku |
@@ -77,10 +72,8 @@ Pre-Setup → Discovery → Plan → Refine → Implement → Review → Test �
 ## Unit of Work Completion
 
 After completing each subtask:
-1. Create commit with `[HP-<id>]` reference
-2. Log work session via hacknplan-manager
-3. Update vault progress doc
-4. Update task stage if needed
+1. Create commit describing the change
+2. Update the Vixen-Docs feature doc's progress log directly
 
 ## Review Cycle
 
@@ -103,21 +96,16 @@ After implementation complete:
 
 ## Completion Protocol
 
-1. Log final work session to HacknPlan
-2. Add completion comment with commit hash, files changed
-3. Update design element with final implementation notes
-4. Mark task complete (stageId=4, isCompleted=true)
-5. Update vault feature doc status to COMPLETE
-6. Archive to `Vixen-Docs/05-Progress/completed/`
+1. Add completion notes to the feature doc (commit hash, files changed)
+2. Update the feature doc status to COMPLETE
+3. Archive to `Vixen-Docs/05-Progress/completed/`
 
 ## Forbidden Shortcuts
 
-- NEVER skip pre-workflow setup (task + design element)
-- NEVER skip discovery phase
+- NEVER skip the discovery phase
 - NEVER implement before plan approval
 - NEVER skip review cycle
 - NEVER mark complete with failing tests
 - NEVER make architectural choices without user input
-- NEVER leave tasks without design element links
 
 </rule>

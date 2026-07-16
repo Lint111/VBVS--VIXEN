@@ -12,7 +12,7 @@ Invoke this skill to load behavioral rules. Rules are split into sub-files for m
 
 Before EVERY response:
 1. Identify task type (coding, building, testing, reviewing, etc.)
-2. Load ALWAYS rules: `communication.md`, `engineering.md`, `obsidian-first.md`, `logging.md`, `hacknplan-workflow.md`
+2. Load ALWAYS rules: `communication.md`, `engineering.md`, `obsidian-first.md`, `logging.md`
 3. Load task-relevant rules based on context
 4. Display loaded rules at response start
 
@@ -24,10 +24,9 @@ Before EVERY response:
 |------|-----------|---------|
 | `rules/obsidian-first.md` | always | Vixen-Docs documentation lookup workflow |
 | `rules/logging.md` | always | VIXEN Logger system, NODE_LOG macros |
-| `rules/hacknplan-workflow.md` | always | Task-driven development workflow |
 | `rules/code-review.md` | task:code-review | Review standards, severity levels |
 | `rules/workflow.md` | task:coding | Agent selection, file paths |
-| `rules/session.md` | situational:new-conversation | Memory bank checklist, HacknPlan init |
+| `rules/session.md` | situational:new-conversation | Memory bank checklist |
 | `rules/agents.md` | task:agent-launch | Agent descriptions and delegation |
 | `rules/commands.md` | task:building,testing | Build/test commands (cmake) |
 | `rules/troubleshooting.md` | situational:build-error | Build and Vulkan runtime fixes |
@@ -41,6 +40,5 @@ Before EVERY response:
 - engineering: No quick fixes | Fix root causes
 - obsidian-first: Search Obsidian -> Codebase -> Document
 - logging: Log to file | Never console | Structured format
-- hacknplan-workflow: Task tracking | Stage updates | Time logging
 - [task-relevant rules...]
 ```

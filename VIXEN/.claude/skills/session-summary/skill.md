@@ -1,7 +1,7 @@
 ---
 name: session-summary
 description: Generate comprehensive session handoff documentation. Use when ending a work session to create a detailed summary for the next engineer. Captures changes, errors, decisions, insights, and next steps.
-allowed-tools: Read, Grep, Glob, Bash, mcp__obsidian-vault__*, mcp__hacknplan__*, Write, Edit
+allowed-tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
 # Session Summary Skill
@@ -20,7 +20,6 @@ Generate a detailed session handoff document that enables another engineer to co
 Create the summary in:
 1. `Vixen-Docs/Sessions/YYYY-MM-DD-summary.md` (permanent archive)
 2. `memory-bank/activeContext.md` (quick reference for next session)
-3. **HacknPlan** - Update work items with session progress
 
 ## Required Sections
 
@@ -152,26 +151,17 @@ When generating summary:
    - `memory-bank/activeContext.md`
    - `memory-bank/progress.md`
 
-3. **HacknPlan Status**
-   ```javascript
-   // Get in-progress tasks
-   mcp__hacknplan__list_work_items({
-     projectId: 230809,
-     stageId: 2  // In Progress
-   })
-   ```
-
-4. **Scan for TODOs Added**
+3. **Scan for TODOs Added**
    ```bash
    git diff HEAD~5 | grep -E "^\+.*TODO"
    ```
 
-5. **Check Build State**
+4. **Check Build State**
    ```bash
    cmake --build build --config Debug 2>&1 | tail -20
    ```
 
-6. **Review Conversation Context**
+5. **Review Conversation Context**
    - Extract decisions from discussion
    - Note error patterns encountered
    - Capture rationale for approaches taken
@@ -238,7 +228,6 @@ Before finalizing summary, verify:
 - [ ] Next steps are actionable (not vague)
 - [ ] Continuation guide enables cold start
 - [ ] No assumptions about reader's prior knowledge
-- [ ] HacknPlan work items updated with session progress
 
 ---
 
@@ -332,145 +321,3 @@ Implement VoxelAABBCacher for hardware RT pipeline
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 ```
 
----
-
-## HacknPlan Sync
-
-After generating the session summary, **sync progress to HacknPlan**:
-
-### 1. Query Active Work Items
-```javascript
-mcp__hacknplan__list_work_items({
-  projectId: 230809,
-  stageId: 2  // In Progress
-})
-```
-
-### 2. Update Each Active Task with Session Progress
-```javascript
-mcp__hacknplan__add_comment({
-  projectId: 230809,
-  workItemId: <id>,
-  text: `## Session Progress: ${DATE}
-
-**Commits:**
-${COMMIT_LIST}
-
-**Files Changed:**
-${FILE_LIST}
-
-**Status:** ${STATUS}
-
-**Time Spent:** ~X hours`
-})
-```
-
-### 3. Move Completed Tasks
-If task was completed during session:
-```javascript
-mcp__hacknplan__update_work_item({
-  projectId: 230809,
-  workItemId: <id>,
-  stageId: 4,  // Completed
-  isCompleted: true
-})
-```
-
-### 4. Create New Tasks for Discovered Work
-If session revealed new tasks:
-```javascript
-mcp__hacknplan__create_work_item({
-  projectId: 230809,
-  title: "[Component] New task discovered",
-  categoryId: 1,  // Programming
-  boardId: 649644,
-  stageId: 1,  // Planned
-  description: "Discovered during session YYYY-MM-DD\n\n## Context\n..."
-})
-```
-
-### 5. Link Session to HacknPlan
-Add to session summary:
-```markdown
-## HacknPlan Updates
-
-| Work Item | Action | Link |
-|-----------|--------|------|
-| #123 | Progress comment | [View](https://app.hacknplan.com/p/230809/workitems/123) |
-| #124 | Completed | [View](https://app.hacknplan.com/p/230809/workitems/124) |
-| #125 | Created (new) | [View](https://app.hacknplan.com/p/230809/workitems/125) |
-```
-
-### Git ↔ HacknPlan Cross-Reference
-
-In git commits, reference HacknPlan:
-```
-feat(component): Description [HP-123]
-```
-
-In HacknPlan comments, reference git:
-```markdown
-**Commits:**
-- `abc1234` - feat(component): Description
-- `def5678` - fix(component): Bug fix
-```
-
----
-
-## Session Summary Template (Updated)
-
-```markdown
-# Session Summary: {{DATE}}
-
-**Branch:** `{{BRANCH}}`
-**Focus:** {{MAIN_OBJECTIVE}}
-**Status:** {{BUILD_STATE}} | {{TEST_STATE}}
-**HacknPlan Tasks:** {{ACTIVE_TASK_IDS}}
-
----
-
-## Files Changed
-
-{{FILE_CHANGES_TABLE}}
-
----
-
-## Git Commits This Session
-
-{{COMMIT_LIST_WITH_HP_REFS}}
-
----
-
-## HacknPlan Updates
-
-{{HACKNPLAN_UPDATES_TABLE}}
-
----
-
-## Outstanding Issues
-
-{{ERRORS_AND_ISSUES}}
-
----
-
-## Design Decisions
-
-{{DECISIONS}}
-
----
-
-## Next Steps
-
-{{PRIORITIZED_TODOS}}
-
----
-
-## Continuation Guide
-
-{{HANDOFF_INSTRUCTIONS}}
-
----
-
-*Generated: {{TIMESTAMP}}*
-*By: Claude Code (session-summary skill)*
-```
