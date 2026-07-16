@@ -9,6 +9,7 @@
 #include "MainCacher.h"
 #include "VoxelSceneCacher.h"
 #include <cmath>
+#include <cstdlib>  // Task 0.2: std::getenv("VIXEN_DEBUG_CAPTURE")
 #include <cstring>
 #include <fstream>
 #include <span>
@@ -191,6 +192,13 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         // export filename/log lines and GetBindingIndex() for its own diagnostics.
         debugCaptureResource_->SetDebugName(GetInstanceName() + "_rayTrace");
         debugCaptureResource_->SetBindingIndex(4u);
+        // Task 0.2 (Baked-Content Perf Audit D2): captureEnabled_ defaults false (RayTraceBuffer.h)
+        // so DebugBufferReaderNode's every-Nth-frame vkWaitForFences(UINT64_MAX) drain + export
+        // stays off during perf benches; VIXEN_DEBUG_CAPTURE=1 re-enables it for an actual
+        // debugging session (same knob BuildRenderGraph.cpp uses for the companion AUTO_EXPORT
+        // parameter -- both must agree, since DebugBufferReaderNode checks IsCaptureEnabled() in
+        // addition to its own AUTO_EXPORT gate).
+        debugCaptureResource_->SetCaptureEnabled(std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr);
         if (!debugCaptureResource_->Create(vulkanDevice->device, *vulkanDevice->gpu)) {
             NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] FATAL: Failed to create ray trace buffer (binding 4)");
             throw std::runtime_error("[VoxelGridNode] Failed to create ray trace buffer - shader binding 4 would be null");

@@ -3922,9 +3922,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
         pcLogger->SetTerminalOutput(false);
     }
 
+    // Task 0.2 (Baked-Content Perf Audit D2): default OFF -- the every-10th-frame combination of
+    // this auto-export AND RayTraceBuffer's own captureEnabled_ (RayTraceBuffer.h, default now
+    // also false) is what drives DebugBufferReaderNode's blocking vkWaitForFences(UINT64_MAX)
+    // pipeline drain + JSON export, which perturbs every perf bench. VIXEN_DEBUG_CAPTURE=1
+    // re-enables both for an actual debugging session (mirrors the VIXEN_* env-knob convention
+    // used throughout this file). The [CornellDiag] tick-150 instIdx-map diagnostic
+    // (VulkanGraphApplication.cpp) is UNAFFECTED -- it reads hit_record_buffer directly via its
+    // own vkDeviceWaitIdle + MapForReadback, with no dependency on this node's capture path.
+    const bool debugCaptureEnabled = std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr;
     auto* debugCapture = static_cast<DebugBufferReaderNode*>(renderGraph->GetInstance(debugCaptureNode));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, 1000u);
-    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, true);
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, debugCaptureEnabled);
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(DebugExportFormat::JSON));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries/compute_debug_output"));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, 10u);
