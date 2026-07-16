@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: awaiting milestone-map confirmation
+status: RUNNING — M0 DONE; M1 in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -31,7 +31,10 @@ a /clear loses nothing).
   screenshot is ground truth. "Fast but missing bodies" is the standing failure mode.
 - **Numbers discipline:** never trust another session's absolute FPS — every A/B toggles
   the change on the same machine/session. CSV gotcha: `steady_state_fps` is cumulative;
-  use mean `cpu_frame_time_ms` over frames 31+.
+  use mean `cpu_frame_time_ms` over frames 31+. **Warm-run rule (M0 lesson): the first
+  launch of a freshly-built exe is cold-cache (boot +100 s, inflated frames) — always
+  bench the SECOND run**, and beware the tick-150/151 CornellDiag+capture spike when
+  averaging (use median or exclude frame 151).
 - **Reference implementations:** `fix/baked-perf-red-experiments` @ `6568c3ee` contains
   unvalidated prototypes for M3/M5 items (fast-path cell load, trace bounds, sync fixes).
   Workers may consult it but must re-derive against main and re-validate; never
@@ -61,21 +64,21 @@ Targets per trajectory: M1 ≈ 4 FPS → M3 ≈ 16 FPS → M5 ≈ 40–52 FPS �
 Rationale: full frame attribution before touching sync or shaders; boot cut multiplies
 every subsequent A/B (the pipeline itself runs the bench dozens of times).
 
-- [ ] Task 0.1 — Per-pass GPU timers: add `PerfCsvWriter::PassSource` columns for
+- [x] Task 0.1 — Per-pass GPU timers: add `PerfCsvWriter::PassSource` columns for
   `direct_lighting`, `spatial_reuse`, `probe_update`, blit/UI (each node already owns a
   `GPUPerformanceLogger`), plus a whole-frame GPU span (first CB start → last CB end).
   (`VulkanGraphApplication.cpp:505-508`, `BuildRenderGraph.cpp:337-665`,
   `FrameSyncNode.cpp:149`; audit Top #9, pattern R12.)
-- [ ] Task 0.2 — Debug-capture off by default: `AUTO_EXPORT=false` +
+- [x] Task 0.2 — Debug-capture off by default: `AUTO_EXPORT=false` +
   `RayTraceBuffer.h:195` `captureEnabled_` default false, re-enable via env knob
   (`VIXEN_DEBUG_CAPTURE=1`). Kills the every-10th-frame `vkWaitForFences` drain + JSON
   export in benches. (`BuildRenderGraph.cpp:3927-3930`, `DebugBufferReaderNode.cpp:103-106`;
   audit D2.)
-- [ ] Task 0.3 — Delete the TEMP DIAG re-serialize loop (23 s measured;
+- [x] Task 0.3 — Delete the TEMP DIAG re-serialize loop (23 s measured;
   `BuildRenderGraph.cpp:3283-3301`; audit F2).
-- [ ] Task 0.4 — Gate rebuild Phase 4 (DXT/normals/materials) on `m_signedDistanceField`
+- [x] Task 0.4 — Gate rebuild Phase 4 (DXT/normals/materials) on `m_signedDistanceField`
   (~50 s; `SVORebuild.cpp:646-765`; consumed only by disabled raster path; audit F3).
-- [ ] Task 0.5 — Re-baseline: run `temp_bench` both variants; record per-pass attribution
+- [x] Task 0.5 — Re-baseline: run `temp_bench` both variants; record per-pass attribution
   table + boot time in Progress Log.
 
 **Gate:** build green; Σ(per-pass GPU ms) ≈ whole-frame GPU span (attribution closes);
@@ -140,7 +143,11 @@ mirror tests green; no visual regression vs pre-milestone screenshot.
   `SceneBindings.glsl:513-528`; audit C1/C2 / Top #7).
 - [ ] Task 4.3 — Skip the no-op DirectLighting dispatch CPU-side when
   `reservoirEnabled=0` (audit C8).
-- [ ] Task 4.4 — A/B with M0's per-pass timers: spatial_reuse + probe_update ms deltas.
+- [ ] Task 4.4 — Converged-probe sleep (audit C4) — **PROMOTED from stretch by M0's
+  attribution: probe_update = 431.7 ms is the LARGEST baked pass.** Per-probe blend-delta
+  sleep (skip probes whose last update changed below epsilon) + wake on scene-dirty;
+  `ProbeUpdate.comp:406,:241`, `ProbeGridConfigNode.cpp:58-72`.
+- [ ] Task 4.5 — A/B with M0's per-pass timers: spatial_reuse + probe_update ms deltas.
 
 **Gate:** lighting-pass GPU ms down; shadowed image matches pre-milestone reference
 (soft-compare screenshot); 8 bodies.
@@ -218,3 +225,12 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
 ## Progress Log
 
 *(pipeline appends here; one line per milestone close)*
+
+- M0 (Tasks 0.1–0.5): DONE · commits `53a20709..bf1101cf` · Opus validator APPROVED ·
+  2026-07-16. **New baked attribution (worktree binary, frames 31–160): probe_update
+  431.7 + esvo_traverse_shade 264.4 + spatial_reuse 160.3 ≈ 857 ms ≈ GPU span ≈ wall —
+  frame is pure GPU work, no sync stall; probe_update is the LARGEST pass** (audit C4
+  promoted into M4). Warm boot 123.1 s (−36% vs 191.7 s baseline; first cold run was
+  262.5 s — see warm-run rule). Virtual without VIXEN_PERF_CSV: 5.56 ms/frame (beats
+  6.49 baseline; timers are bench-only overhead, discipline verified: 64-bit,
+  availability-polled, one frame late). 8 bodies intact in both runs.
