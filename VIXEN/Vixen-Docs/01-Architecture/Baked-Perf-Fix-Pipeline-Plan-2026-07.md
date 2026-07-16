@@ -207,7 +207,15 @@ Phase-2 backlog — extends the shipped SDF-Bake-Box-Tight work.
   `TraceWorld.glsl:234,:266-279` (+ shadow variant from M4).
 - [ ] Task 5.3 — Instance sort key: cube center (or bounds center), not min-corner
   (`InstanceSort.h:26-34`; audit B3 corollary).
-- [ ] Task 5.4 — A/B bench + hole-hunt: grazing angles screenshot sweep.
+- [ ] Task 5.4 — A/B bench + hole-hunt: grazing angles screenshot sweep. **Includes the
+  user-reported wall-thickness-step repro (2026-07-16, screenshot at
+  `temp_bench/reference/wall-thickness-steps-2026-07-16.png` in the worktree): silhouette
+  steps at the LEFT-WALL TOP and the FLOOR FRONT-RIGHT EDGE — both grazing regions.
+  Ranked suspects: (1) far-hit silhouette extrusion (fixed by 5.5 — verify these two
+  spots specifically), (2) brick/band allocation quantization at 2-world-unit brick
+  granularity (sentinel face probe-crawl), (3) box-tight bake-region boundary snapping
+  (`cd9e1362` pow2 round-up) crossing the wall. Gate: both marked steps gone or
+  root-caused with evidence.**
 - [ ] Task 5.5 — Far-hit rejection (lighting-parity interim fix): using 5.1's tight
   trace bounds, discard/clamp hits whose reconstructed `worldPos` falls outside the
   body's bounds+ε before the HitRecord write (`BodyInstanceRayMarch.comp:246` area) —
