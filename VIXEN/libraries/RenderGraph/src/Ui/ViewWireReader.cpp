@@ -20,6 +20,9 @@ struct Cursor {
         uint32_t v = static_cast<uint8_t>(p[at]) | (static_cast<uint8_t>(p[at+1])<<8)
                    | (static_cast<uint8_t>(p[at+2])<<16) | (static_cast<uint8_t>(p[at+3])<<24);
         at += 4; return v; }
+    uint64_t U64() { if (!Need(8)) return 0;
+        uint64_t v = 0; for (int i = 0; i < 8; ++i) v |= (static_cast<uint64_t>(static_cast<uint8_t>(p[at+i])) << (8*i));
+        at += 8; return v; }
     int32_t I32() { return static_cast<int32_t>(U32()); }
     float F32() { uint32_t u = U32(); float f; std::memcpy(&f, &u, 4); return f; }
     bool Bool() { return U8() != 0; }
@@ -74,6 +77,12 @@ bool ViewWireReader::Apply(std::span<const std::byte> wire, ViewStore& store) {
                 store.SetScalar(f.name, ViewValue::Vec(v));
                 break;
             }
+            case ViewKind::SubjectRef: {
+                uint8_t kind = c.U8(); if (!c.ok) break;
+                uint64_t instance = c.U64(); if (!c.ok) break;
+                store.SetScalar(f.name, ViewValue::Subject(SubjectRef{kind, instance}));
+                break;
+            }
             case ViewKind::ArrayOfStruct: {
                 uint32_t rows = c.U32();
                 if (!c.ok) break;
@@ -90,6 +99,12 @@ bool ViewWireReader::Apply(std::span<const std::byte> wire, ViewStore& store) {
                                 h.Set(r, ef.name, ViewValue::Vec(v));
                                 break;
                             }
+                            case ViewKind::SubjectRef: {
+                                uint8_t kind = c.U8(); if (!c.ok) break;
+                                uint64_t instance = c.U64(); if (!c.ok) break;
+                                h.Set(r, ef.name, ViewValue::Subject(SubjectRef{kind, instance}));
+                                break;
+                            }
                             default: c.ok = false; break;   // nested arrays unsupported in the kind catalogue
                         }
                         if (!c.ok) break;
@@ -97,6 +112,7 @@ bool ViewWireReader::Apply(std::span<const std::byte> wire, ViewStore& store) {
                 }
                 break;
             }
+            default: c.ok = false; break;   // unrecognized top-level ViewKind
         }
         if (!c.ok) break;
     }
