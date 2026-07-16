@@ -11,7 +11,7 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-037 — `test_baked_vs_virtual_parity`'s `readparam_sphere` corpus entry applies its `ReadParam` snapshot in the WRONG coordinate space on the baked path, producing a genuine (not KI-032) IoU failure
+## KI-038 — `test_baked_vs_virtual_parity`'s `readparam_sphere` corpus entry applies its `ReadParam` snapshot in the WRONG coordinate space on the baked path, producing a genuine (not KI-032) IoU failure
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2d's warm-up A
 (pattern-copying the KI-032 `HitRecordBuffer` readback fix into `test_baked_vs_virtual_parity.cpp`).
