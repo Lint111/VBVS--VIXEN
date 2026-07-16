@@ -11,6 +11,54 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-037 — `RecipeInstanceBucketing.comp`'s `ProjectToPixel` silently drops behind-camera bound-sphere extrema, shrinking (not growing) the coverage rect for camera-straddling instances
+
+**Discovered:** 2026-07-16, during [[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2's
+barrier-coalescing correctness analysis — root-caused while establishing whether M1's per-bucket
+screen-space coverage rects are a sound (true-superset) basis for a barrier-skip optimization
+between spatially-disjoint bucket pairs.
+
+**Symptom (latent, not yet observed in a failing test):** `RecipeInstanceBucketing.comp`'s
+`ProjectToPixel` (lines 134-144) projects 7 world-space points (a recipe's bound-sphere center
+plus 6 axis-extremal points) and returns `false` — contributing nothing to the coverage union —
+for any point with `clip.w <= 0` (behind the camera). For an instance whose bound sphere straddles
+the camera's near/W=0 plane (center behind the camera with some extremal points in front, or the
+reverse), this DROPS legitimate in-frustum extrema from the union, producing a coverage rect
+SMALLER than the sphere's true on-screen footprint — the opposite of the conservative
+("over-cover, not under-cover") direction the file's own header comment (lines 220-225) documents
+as the design intent.
+
+**Root cause:** `ProjectToPixel` has no near-plane clipping — it's an all-or-nothing per-point
+test (`if (clip.w <= 0.0) return false;`), not a sphere-vs-near-plane clip that would produce a
+correctly-expanded partial footprint.
+
+**Impact today:** none observed — no test in the current suite constructs a camera-straddling hot
+-recipe instance, so `RecipeInstanceBucketing.comp`'s coverage rects have always been a true
+superset in every scene exercised so far (confirmed: `test_recipe_multi_bucket_compositing`'s
+camera at `eye=(0,0,20)` looking at the origin, all instances well in front). **This is a latent
+soundness gap, not an active bug** — but it is exactly the kind of gap that matters for correctness
+-critical work built ON TOP of these coverage rects: Inc3 M2 needed the rects to be a sound
+conservative superset to justify skipping `MultiDispatchNode`'s inter-bucket barrier between
+provably-disjoint buckets, and this gap is precisely why that reduction was NOT implemented (see
+[[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2's Progress Log for the full reasoning).
+Any FUTURE consumer of these coverage rects for a correctness-relevant decision (not just this
+barrier-skip idea) should check this entry first.
+
+**Fix options:** (a) clip the bound sphere against the camera's near plane before projecting
+(replace the 6-axis-extrema approximation with a near-plane-aware version, or fall back to
+full-screen coverage for any instance whose extrema have mixed-sign `clip.w`); (b) simpler/more
+conservative: detect the mixed-sign-w case explicitly and emit the full-screen rect as a safe
+fallback for that bucket only, rather than trying to compute a tight partial rect.
+
+**Severity:** Low today (no observed failure, no current consumer relies on the soundness
+property) but **blocking** for any future barrier-coalescing/spatial-culling work that wants to
+trust these rects as a hard superset guarantee. · **Status:** OPEN, out of scope for
+[[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2 (an analysis milestone, not a fix
+milestone for M1's shipped code) — the natural owner is whichever future increment revisits
+barrier-coalescing or otherwise builds a correctness-relevant decision on these coverage rects.
+
+---
+
 ## KI-034 — 8 test files hand-mirror `BodyInstanceRayMarch.comp`'s push-constant struct at a stale 76 bytes, now 92; blocks ~30+ render tests
 
 **Discovered:** 2026-07-15, during [[Recipe-GPU-Instance-Bucketing-Inc2-Plan-2026-07]] M1's Opus

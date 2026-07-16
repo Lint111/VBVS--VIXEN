@@ -177,16 +177,31 @@ This resolves two of the user's sub-ideas:
    NOT invalidate the epic's justification** (§8 below, the tier-0 SWITCH's own N=100 knee is
    RE-CONFIRMED on the discrete GPU in the same M4 pass) — Increment 2 was explicitly scoped to
    prove the ROUTING mechanism is correct, not to already be the optimized end state (plan doc
-   Risks: "Task 9's honesty requirement", anticipated in advance). **Sequencing implication for
-   Increment 3+:** async compile-and-swap alone will NOT close the measured gap (that gap is
+   Risks: "Task 9's honesty requirement", anticipated in advance). **Sequencing implication —
+   acted on 2026-07-16:** async compile-and-swap alone will NOT close the measured gap (that gap is
    steady-state, compile already excluded from the comparison) — per-bucket dispatch overhead
    (barrier/bind cost per indirect dispatch) is the next thing to measure and address before
    bucketed dispatch is competitive with the naive fixed-dispatch alternative, let alone the
-   tier-0 switch at low N. GPU-LRU eviction (Increment 3) and family normalization (Increment 4)
-   remain as originally scoped, layered on top of this now-proven-but-not-yet-fast mechanism.
-3. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
-4. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
-   similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline.
+   tier-0 switch at low N. **Increment numbering renumbered accordingly** (the original
+   GPU-LRU-eviction "Increment 3" below is pushed to Increment 4; per-bucket overhead is now
+   Increment 3, since it's the more urgent, directly-motivated-by-M4's-own-finding next step, not
+   eviction of a mechanism that isn't yet fast enough to be worth caching).
+3. **Per-bucket dispatch overhead reduction** — directly closes the gap M4 measured. Scoped as
+   [[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] (2026-07-16, NOT YET STARTED). Opens
+   with a gating measurement spike (M0): isolate whether the ORIGINAL tier-0 switch's own N=100
+   knee is switch-dispatch-cost-shaped or register-pressure/icache-shaped — an open question
+   [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]] flagged as load-bearing and
+   unmeasured anywhere in the repo. If switch-dispatch-shaped, proceeds to reduce the confirmed
+   5N−1 Vulkan-API-call overhead (shared-SSBO descriptor/push-constant reduction, correctness-first
+   barrier-coalescing analysis) and re-measures against M4's exact baseline. If NOT
+   switch-dispatch-shaped, the plan's own M0 requires an honest pivot rather than continuing to fix
+   the wrong target — see that plan's Risks section.
+4. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
+   Renumbered from Increment 3 (2026-07-16) — deferred behind the per-bucket-overhead fix above,
+   since evicting a mechanism that isn't yet fast enough to be worth caching is premature.
+5. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
+   similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline. Renumbered from
+   Increment 4.
 
 ## 8. Decision gate — ✅ MEASURED 2026-07-10, EPIC IS DATA-JUSTIFIED FOR HIGH N
 
