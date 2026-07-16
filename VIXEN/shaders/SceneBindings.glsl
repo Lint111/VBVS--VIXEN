@@ -538,9 +538,11 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     hitT = tBias + tHitLocal;
 
     // Inc3 M3: sample per-voxel color and roughness at the hit grid position.
+    // M3 perf package (audit A3): resolve the cell's brick address ONCE and read
+    // both channels from it, instead of two independent trilinear gathers each
+    // re-deriving the same brickCoord/brickLookup for the identical gridHit.
     vec3 gridHit = gridEntry + gridDirN * sHit;
-    hitColor     = sampleChannelVec3Trilinear(SEM_COLOR, gridHit, vec3(1.0));
-    hitRoughness = sampleChannelScalarTrilinear(SEM_ROUGHNESS, gridHit, 0.5);
+    sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness);
 
     // Best-effort pick/ID: the flat grid index of the brick the crossing was ACTUALLY found in
     // (hitBrick, which may be an adjacent brick reached via the seam-spanning continuation), not
