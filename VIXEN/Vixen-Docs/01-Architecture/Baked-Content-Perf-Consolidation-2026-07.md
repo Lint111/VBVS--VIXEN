@@ -32,10 +32,19 @@ mean over frames 31–160):**
 | Virtual analytic | 6.49 | **~154** | 2.8 ms | ground truth |
 | Baked stored-SDF | 877.5 | **~1.1** | 222.4 ms | **all 8 bodies present** in instIdx map (0–7) — preserve this; OOB far-hit pixels still present (hitT≈77.5) |
 
-Gap: ~135× wall, ~80× GPU. Even baked's wall (877 ms) is ~4× its GPU pass (222 ms) →
-sync/CPU overhead on top of the shader cost. debug_capture exported 256 ray traces to
-JSON **15 times in the 160-frame run** (~every 10 frames, each a GPU→CPU readback).
-Realtime target: 60 FPS ⇒ ~55× needed from 1.1 FPS.
+Gap: ~135× wall, ~80× GPU. The 877−222=655 ms remainder is NOT mostly sync/readback:
+the CSV instruments only the `test_dispatch` ESVO pass; the graph runs 3 more
+un-instrumented compute passes (DirectLighting + 2 probe-atlas stages) whose
+lighting/GI rays march the SAME stored SDF — most of the remainder is other GPU
+passes paying the same brick-march tax (⇒ a march fix multiplies across all passes).
+The debug_capture readback (checked 2026-07-16): fires every 10th frame only
+(`PARAM_FRAMES_PER_EXPORT=10`, `BuildRenderGraph.cpp:3930`; early-return otherwise at
+`DebugBufferReaderNode.cpp:75`), but on those frames does a blocking
+`vkWaitForFences(UINT64_MAX)` pipeline drain + 256-trace JSON export
+(`DebugBufferReaderNode.cpp:105`) — bounded ≈10% of the run, NOT the root cause
+(exp-A hit 52 FPS with it running); must be gated off for capability benches.
+Cheap follow-up: add the other 3 passes as PerfCsvWriter columns for full frame
+attribution. Realtime target: 60 FPS ⇒ ~55× needed from 1.1 FPS.
 
 Historical session numbers (older mains, WSL-launched):
 
