@@ -51,6 +51,11 @@ namespace {
 
 // Byte-identical to BodyInstanceRayMarch.comp's PushConstants block (see
 // test_body_instance_raymarch_render.cpp's own copy for the layout derivation).
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 96 bytes
+// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
+// work; std430 rounds the whole push-constant block up to a 16-byte multiple, so
+// SPIR-V reflection reports 96, not 92 -- see test_body_instance_raymarch_render.cpp's
+// PushConstants for the established fix pattern this mirrors).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -59,8 +64,12 @@ struct PushConstants {
     float   raySizeCoef;
     float   raySizeBias;
     int32_t instanceCount;
+    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment (real gap at offset [76,80))
+    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
+    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
+    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
 
 // Host-side mirror of shaders/HitRecord.glsl's std430 layout — see
 // test_hitrecord_sdi_parity.cpp for the SPIR-V-reflection proof this matches the shader.
@@ -313,9 +322,13 @@ protected:
                                  std::vector<HitRecordCpu>& outHitRecords) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation of
+        // why a 256-byte placeholder is UB once this SPV compiles with VIXEN_GPU_TRACE_HOOKS.
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
         VkBuffer dummySdf = VK_NULL_HANDLE, dummyLookup = VK_NULL_HANDLE, dummyMip = VK_NULL_HANDLE,
@@ -326,6 +339,12 @@ protected:
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLookup, dummyLookupMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyIter, dummyIterMem, true);
+
+        // Baked-perf-pipeline M2: binding 15 (TierRefTableBuffer) placeholder -- see this
+        // file's bindings-array comment above for the fuller citation.
+        VkBuffer dummyTierRef = VK_NULL_HANDLE;
+        VkDeviceMemory dummyTierRefMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyTierRef, dummyTierRefMem, true);
 
         // Sampled Lighting Inc1 M3: the HitRecordBuffer under test (binding 17), sized w*h,
         // zero-initialised so an untouched slot is trivially distinguishable from a real write.
@@ -359,12 +378,15 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        // Bindings 0-14 mirror test_body_instance_raymarch_render.cpp's layout exactly; binding
-        // 17 (HitRecordBuffer) is this test's own addition — 15/16 (TierRefTable/LightingConfig)
-        // are omitted, matching the SAME pre-existing gap in every other hand-built layout in
-        // this file (test_body_instance_raymarch_render.cpp / test_body_instance_occlusion_reject.cpp
-        // / test_tier_crossing_lod_residency.cpp all stop at 14 or 15 too) — not this test's scope.
-        const std::array<VkDescriptorSetLayoutBinding, 14> bindings = {
+        // Bindings 0-14 mirror test_body_instance_raymarch_render.cpp's layout.
+        // Baked-perf-pipeline M2: binding 15 (TierRefTableBuffer) is a real SSBO the shader has
+        // declared since before this M2's own work -- this test's layout never picked it up,
+        // exposed by a from-scratch rebuild (see test_body_instance_occlusion_reject.cpp's
+        // identical fix for the fuller citation). NOTE: this test's own comment previously
+        // labeled binding 17 as "HitRecordBuffer" -- that's WRONG, binding 17 is
+        // LightingConfigSSBO; the real HitRecordBuffer is at 18 (verified against
+        // BodyInstanceRayMarch.comp's own layout declarations directly).
+        const std::array<VkDescriptorSetLayoutBinding, 15> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -378,7 +400,8 @@ protected:
             bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: HitRecordBuffer
+            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
+            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: HitRecordBuffer (real, under test)
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -406,7 +429,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 12},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -434,6 +457,7 @@ protected:
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo iterInfo{dummyIter, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo hitRecordInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo tierRefInfo{dummyTierRef, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -449,7 +473,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 14> writes = {
+        const std::array<VkWriteDescriptorSet, 15> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -463,7 +487,8 @@ protected:
             wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
             wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
             wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
-            wBuf(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
+            wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),  // TierRefTableBuffer (placeholder)
+            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),  // HitRecordBuffer (real, under test; was wrongly 17)
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -586,6 +611,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyMip, nullptr);    vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyIter, nullptr);   vkFreeMemory(logicalDevice_, dummyIterMem, nullptr);
         vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyTierRef, nullptr); vkFreeMemory(logicalDevice_, dummyTierRefMem, nullptr);
     }
 };
 

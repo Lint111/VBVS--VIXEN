@@ -59,6 +59,18 @@ namespace {
 
 // Byte-identical to BodyInstanceRayMarch.comp's PushConstants block (see
 // test_body_instance_raymarch_render.cpp's own copy for the layout derivation).
+//
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 92 bytes
+// (debugTargetPixel + accumFrameCount were added after this mirror was last synced --
+// see SceneBindings.glsl:239-246, dating to 47eccd64/Inc2 M2 -- well before this M2's
+// own work). A from-scratch rebuild of body_instance_raymarch_spv makes glslc emit
+// OpMemberDecorate for the FULL declared struct regardless of which members the
+// shader body actually reads, so vkCreateComputePipelines rejects the old 76-byte
+// VkPushConstantRange (VUID-VkComputePipelineCreateInfo-layout-10069) the moment this
+// SPV is rebuilt clean -- caught when M2's CMake change (-DVIXEN_GPU_TRACE_HOOKS=1)
+// forced exactly that rebuild. Fixed here at the root: sync the mirror to the real
+// struct; pcr.size/vkCmdPushConstants below already derive from sizeof(PushConstants)
+// so no other change is needed.
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -67,8 +79,12 @@ struct PushConstants {
     float   raySizeCoef;
     float   raySizeBias;
     int32_t instanceCount;
+    int32_t _pad0;  // GLSL std430 aligns ivec2 to 8 bytes (offset 80); a plain C++ struct
+                    // packs debugTargetPixel at offset 76 without this explicit filler.
+    glm::ivec2 debugTargetPixel;
+    uint32_t   accumFrameCount;
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes");
+static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -302,9 +318,19 @@ protected:
                                  std::vector<uint32_t>& instanceIterCounts) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder --
+        // TraceRecording.glsl's grid-capture (DEBUG_GRID_SPACING=64) writes into it at every
+        // 64th pixel whenever the shader is compiled with VIXEN_GPU_TRACE_HOOKS (which this
+        // SPV now always is, since binding 14 readback tests share the SPV -- see
+        // body_instance_raymarch_spv's glslc -D flag). A 256-byte placeholder is UB the moment
+        // ANY grid sample or the reserved click-target slot (255) writes a real TraceStep
+        // (48 B) into it -- 256 bytes holds essentially nothing of one ray's 16 B header +
+        // 64*48 B of steps, let alone the 256 possible slots. Size for the worst case: every
+        // slot, including the reserved click-target slot 255, may be written.
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
         VkBuffer dummySdf = VK_NULL_HANDLE, dummyLookup = VK_NULL_HANDLE, dummyMip = VK_NULL_HANDLE;
@@ -312,6 +338,18 @@ protected:
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySdf, dummySdfMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLookup, dummyLookupMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
+
+        // Baked-perf-pipeline M2: bindings 15 (TierRefTableBuffer) and 18 (HitRecordBuffer)
+        // are real SSBOs the shader has declared since before this M2's own work (Tiered-ESVO
+        // Inc2 M3 / M-wire Task 8 respectively) -- this test's descriptor layout/pool/writes
+        // never picked them up, which only became visible once a from-scratch rebuild of
+        // BodyInstanceRayMarch.comp (forced by M2's CMake change) made vkCreateComputePipelines
+        // validate against the shader's REAL current reflected interface instead of a stale
+        // cached .spv. Same 256-byte placeholder pattern as dummySdf/dummyLookup/dummyMip above.
+        VkBuffer dummyTierRef = VK_NULL_HANDLE, dummyHitRecord = VK_NULL_HANDLE;
+        VkDeviceMemory dummyTierRefMem = VK_NULL_HANDLE, dummyHitRecordMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyTierRef, dummyTierRefMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyHitRecord, dummyHitRecordMem, true);
 
         // Inc1 M4b: the new per-instance iteration debug buffer (binding 14).
         const VkDeviceSize iterBufSize = static_cast<VkDeviceSize>(maxInstances) * sizeof(uint32_t);
@@ -344,7 +382,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 13> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 15> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -358,6 +396,8 @@ protected:
             bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
+            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
+            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -385,7 +425,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -412,6 +452,8 @@ protected:
         VkDescriptorBufferInfo lookupInfo{dummyLookup, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo iterInfo{iterBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo tierRefInfo{dummyTierRef, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo hitRecordInfo{dummyHitRecord, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -427,7 +469,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 13> writes = {
+        const std::array<VkWriteDescriptorSet, 15> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -441,6 +483,8 @@ protected:
             wBuf(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
             wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
             wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
+            wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
+            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -518,6 +562,8 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyMip, nullptr);    vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
         vkDestroyBuffer(logicalDevice_, iterBuf, nullptr);     vkFreeMemory(logicalDevice_, iterMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyTierRef, nullptr);   vkFreeMemory(logicalDevice_, dummyTierRefMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyHitRecord, nullptr); vkFreeMemory(logicalDevice_, dummyHitRecordMem, nullptr);
     }
 };
 
@@ -642,6 +688,7 @@ TEST_F(BodyInstanceOcclusionRejectTest, OccludedInstanceHasZeroTraversalIteratio
     pc.cameraRight = right; pc.debugMode = 0;
     pc.raySizeCoef = 0.0f; pc.raySizeBias = 0.0f;
     pc.instanceCount = static_cast<int32_t>(instances.size());
+    pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
     std::vector<uint32_t> iterCounts;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
@@ -728,6 +775,7 @@ TEST_F(BodyInstanceOcclusionRejectTest, NonOccludedInstancesStillTraverse) {
     pc.cameraRight = right; pc.debugMode = 0;
     pc.raySizeCoef = 0.0f; pc.raySizeBias = 0.0f;
     pc.instanceCount = static_cast<int32_t>(instances.size());
+    pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
     std::vector<uint32_t> iterCounts;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(

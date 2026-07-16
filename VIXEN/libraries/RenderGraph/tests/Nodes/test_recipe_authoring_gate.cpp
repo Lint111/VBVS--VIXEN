@@ -79,14 +79,23 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 96 bytes
+// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
+// work; std430 rounds the whole push-constant block up to a 16-byte multiple, so
+// SPIR-V reflection reports 96, not 92 -- see test_body_instance_raymarch_render.cpp's
+// PushConstants for the established fix pattern this mirrors).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;
     glm::vec3 cameraUp;    float aspect;
     glm::vec3 cameraRight; int32_t debugMode;
     float raySizeCoef; float raySizeBias; int32_t instanceCount;
+    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment (real gap at offset [76,80))
+    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
+    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
+    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -290,9 +299,12 @@ protected:
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms) {
         ASSERT_TRUE(softwareConfirmed_);
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf=VK_NULL_HANDLE, ctrBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf,   ctrMem,   true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE;
         VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE;
@@ -300,6 +312,12 @@ protected:
         if (sdf    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySdf,dSdfMem,true); sdf=dummySdf; }
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup=dummyLookup; }
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true);
+        // Baked-perf-pipeline M2: bindings 15/18 (TierRefTableBuffer/HitRecordBuffer) placeholders
+        // -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        VkBuffer dummyTierRef=VK_NULL_HANDLE, dummyHitRecord=VK_NULL_HANDLE;
+        VkDeviceMemory dTierRefMem=VK_NULL_HANDLE, dHitRecordMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyTierRef,dTierRefMem,true);
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
 
         VkImage cImg=VK_NULL_HANDLE, iImg=VK_NULL_HANDLE;
         VkDeviceMemory cMem=VK_NULL_HANDLE, iMem=VK_NULL_HANDLE;
@@ -319,7 +337,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,13> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,15> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -333,6 +351,8 @@ protected:
             bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
+            bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
+            bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount=uint32_t(bindings.size()); dslci.pBindings=bindings.data();
@@ -354,7 +374,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -371,7 +391,8 @@ protected:
             mI{mats,0,VK_WHOLE_SIZE}, trI{traceBuf,0,VK_WHOLE_SIZE}, cI{cfg,0,VK_WHOLE_SIZE},
             ctI{ctrBuf,0,VK_WHOLE_SIZE}, inI{inst,0,VK_WHOLE_SIZE},
             sdI{sdf,0,VK_WHOLE_SIZE}, lkI{lookup,0,VK_WHOLE_SIZE}, mpI{dummyMip,0,VK_WHOLE_SIZE},
-            itI{dummyIter,0,VK_WHOLE_SIZE};
+            itI{dummyIter,0,VK_WHOLE_SIZE},
+            tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE};
 
         auto wI2 = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -383,10 +404,11 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,13> writes = {
+        const std::array<VkWriteDescriptorSet,15> writes = {
             wI2(0,&colI), wB2(1,&nI), wB2(2,&brI), wB2(3,&mI), wB2(4,&trI),
             wB2(5,&cI), wB2(8,&ctI), wI2(9,&idI), wB2(10,&inI), wB2(11,&sdI), wB2(12,&lkI), wB2(13,&mpI),
-            wB2(14,&itI)  // Inc1 M4b: per-instance iteration debug
+            wB2(14,&itI),  // Inc1 M4b: per-instance iteration debug
+            wB2(15,&tierRefI), wB2(18,&hitRecordI)
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -456,6 +478,8 @@ protected:
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
         vkDestroyBuffer(logicalDevice_,dummyMip,nullptr); vkFreeMemory(logicalDevice_,dMipMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyTierRef,nullptr);   vkFreeMemory(logicalDevice_,dTierRefMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyHitRecord,nullptr); vkFreeMemory(logicalDevice_,dHitRecordMem,nullptr);
     }
 
     // Run a node lifecycle (Setup → Compile → Execute → read outputs → call fn → Cleanup).

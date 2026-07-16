@@ -437,10 +437,18 @@ protected:
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
-        // traceCapacity stays 0 (zeroed) so beginRayTrace() is a no-op.
+        // Baked-perf-pipeline M2 CORRECTION: the comment this replaces claimed zeroing
+        // traceCapacity makes beginRayTrace() a no-op -- that's WRONG. traceCapacity
+        // (SceneBindings.glsl) is declared but never actually READ by any shader code;
+        // beginRayTrace's real gate is shouldCaptureDebug's grid-spacing/click-target check
+        // (TraceRecording.glsl), which fires regardless of traceCapacity's value. A 256-byte
+        // placeholder is UB the moment a grid sample or the reserved click-target slot writes
+        // a real TraceStep into it -- see test_body_instance_occlusion_reject.cpp's identical
+        // fix for the fuller citation. Size for the worst case (all 256 slots writable).
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
         // SDF (11) + brick-lookup (12) bindings the shader statically declares. For binary

@@ -77,6 +77,11 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 namespace {
 
 // Byte-identical to BodyInstanceRayMarch.comp's PushConstants block.
+//
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 92 bytes
+// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
+// work -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller
+// citation of why a from-scratch shader rebuild surfaces this mirror's staleness).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -85,8 +90,12 @@ struct PushConstants {
     float   raySizeCoef;
     float   raySizeBias;
     int32_t instanceCount;
+    int32_t _pad0;  // GLSL std430 aligns ivec2 to 8 bytes (offset 80); a plain C++ struct
+                    // packs debugTargetPixel at offset 76 without this explicit filler.
+    glm::ivec2 debugTargetPixel;
+    uint32_t   accumFrameCount;
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes");
+static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -323,9 +332,14 @@ protected:
                                  std::vector<uint8_t>& rgba) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation of
+        // why a 256-byte placeholder is UB once this SPV compiles with VIXEN_GPU_TRACE_HOOKS
+        // (grid-capture fires at every 64th pixel of this test's 500x500 dispatch).
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
         VkBuffer dummySdf = VK_NULL_HANDLE, dummyLookup = VK_NULL_HANDLE, dummyMip = VK_NULL_HANDLE;
@@ -333,6 +347,17 @@ protected:
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySdf, dummySdfMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLookup, dummyLookupMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
+
+        // Baked-perf-pipeline M2: binding 18 (HitRecordBuffer) is a real SSBO the shader has
+        // declared since before this M2's own work (M-wire Task 8) -- this test's descriptor
+        // layout/pool/writes never picked it up, which only became visible once a
+        // from-scratch rebuild of BodyInstanceRayMarch.comp (forced by M2's CMake change)
+        // made vkCreateComputePipelines validate against the shader's REAL current reflected
+        // interface instead of a stale cached .spv. Same 256-byte placeholder pattern as
+        // dummySdf/dummyLookup/dummyMip above.
+        VkBuffer dummyHitRecord = VK_NULL_HANDLE;
+        VkDeviceMemory dummyHitRecordMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyHitRecord, dummyHitRecordMem, true);
 
         const VkDeviceSize iterBufSize = static_cast<VkDeviceSize>(maxInstances) * sizeof(uint32_t);
         VkBuffer iterBuf = VK_NULL_HANDLE; VkDeviceMemory iterMem = VK_NULL_HANDLE;
@@ -364,7 +389,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 14> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 15> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -379,6 +404,7 @@ protected:
             bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M4: TierRefTableBuffer
+            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -406,7 +432,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 12},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -434,6 +460,7 @@ protected:
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo iterInfo{iterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo tierRefInfo{tierRefTableBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo hitRecordInfo{dummyHitRecord, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -449,7 +476,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 14> writes = {
+        const std::array<VkWriteDescriptorSet, 15> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -464,6 +491,7 @@ protected:
             wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
             wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
             wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
+            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -562,6 +590,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyMip, nullptr);    vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
         vkDestroyBuffer(logicalDevice_, iterBuf, nullptr);     vkFreeMemory(logicalDevice_, iterMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyHitRecord, nullptr); vkFreeMemory(logicalDevice_, dummyHitRecordMem, nullptr);
     }
 };
 
@@ -662,13 +691,22 @@ TierCrossingScene BuildTierCrossingScene(bool residentChild) {
     cat.tierRefCounts.resize(2);
 
     SerializedOctree* octs[2] = {&parentSer, &childSer};
-    uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0;
+    uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0, brickLookupBase = 0;
     for (int k = 0; k < 2; ++k) {
         SerializedOctree& s = *octs[k];
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);
         setTierRefTableBase(s.config, tierRefBase);
+        // Baked-perf-pipeline M2: exact-prefix brickLookupBase, mirroring
+        // ShellOctreeGpu.h::ConcatenateSdf's own stamp+advance exactly (M1 Task 1.1's
+        // fix landed there; this test's hand-rolled concatenation never picked it up,
+        // leaving brickLookupBase at its zero default for the child octree -- the child
+        // sphere's StoredSdf.glsl brick lookups read through the PARENT's own sub-table
+        // offset instead of the child's, which is why NonResidentChildNeverCrossesResidentChildDoes
+        // rendered zero magenta pixels for the resident-child case despite the crossing
+        // itself firing correctly).
+        setBrickLookupBase(s.config, brickLookupBase);
 
         cat.configs[k]       = s.config;
         cat.nodeCounts[k]    = s.nodeCount;
@@ -689,6 +727,10 @@ TierCrossingScene BuildTierCrossingScene(bool residentChild) {
         brickBase   += s.brickCount;
         poolBase    += s.brickCount * s.brickStrideFloats;
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        // Advances by THIS octree's own bpa^3 (its just-appended sub-table's element
+        // count), not a uniform assumption across octrees -- same discipline as
+        // ConcatenateSdf's own advance.
+        brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
 
     return {std::move(cat), markedCount};
@@ -771,6 +813,7 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         pc.raySizeCoef = 0.0f;  // LOD disabled -- residency is the only variable
         pc.raySizeBias = 0.0f;
         pc.instanceCount = 1;
+        pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
         ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
             nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
@@ -896,6 +939,7 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     pc.raySizeCoef = kHugeRaySizeCoef;
     pc.raySizeBias = 0.0f;
     pc.instanceCount = 1;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
     std::vector<uint32_t> iterCounts;
     std::vector<uint8_t> rgba;

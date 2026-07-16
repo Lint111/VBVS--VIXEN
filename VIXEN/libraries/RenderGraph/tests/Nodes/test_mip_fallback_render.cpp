@@ -389,9 +389,12 @@ protected:
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms) {
         ASSERT_TRUE(deviceConfirmed_);
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE, dummyTierRef=VK_NULL_HANDLE, dummyOccGrid=VK_NULL_HANDLE;
         VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE, dTierRefMem=VK_NULL_HANDLE, dOccGridMem=VK_NULL_HANDLE;
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyIter,dIterMem,true);  // Inc1 M4b binding 14
