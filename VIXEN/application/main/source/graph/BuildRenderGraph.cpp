@@ -129,6 +129,51 @@
 #include "Nodes/WindowNode.h"
 
 namespace {
+
+// Baked-perf-pipeline M2 (audit D1, Task 2.1): reads a shader source file and, when
+// VIXEN_DEBUG_CAPTURE is set, injects "#define VIXEN_GPU_TRACE_HOOKS 1\n" -- the same
+// textual-#define-injection technique Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource
+// already uses for VIXEN_UBER_RECIPE_SPLICED (UberShaderSplice.h), reused here because
+// ShaderBundleBuilder::SetStageDefines cannot drive a new #ifdef (it substitutes existing
+// token occurrences, it does not inject a #define line -- see BodyInstanceRayMarch.comp's
+// registration above for the fuller citation). Used to convert DirectLighting.comp/
+// SpatialReuseShade.comp/ProbeUpdate.comp from AddStageFromFile (which reads the file
+// internally, leaving no C++-side string to prepend into) to AddStage(source text) --
+// mechanically identical to what AddStageFromFile does internally (ShaderBundleBuilder.cpp),
+// so this preserves #include-path resolution (still driven by the explicit AddIncludePath
+// calls at each site, not by sourcePath) and behavior for every existing (non-gated) shader
+// text. Throws std::runtime_error if the file cannot be read, matching each call site's
+// existing empty-compPath error-handling contract.
+//
+// CORRECTNESS: every shader in this codebase starts with "#version 460" as its literal
+// FIRST line -- GLSL requires #version to be the first non-whitespace line in the
+// translation unit (glslang: "'#version' : must occur first in shader"), so naively
+// prepending the #define at position 0 pushes #version to line 2 and fails compilation
+// (caught live: ProbeUpdate.comp failed exactly this way on first real end-to-end run
+// with VIXEN_DEBUG_CAPTURE=1, glslc's own -D flag masked this because it doesn't touch
+// the source text at all -- unlike this C++-side prepend). Insert the #define after the
+// FIRST LINE instead (i.e. right after #version), which is always legal for a #define.
+std::string ReadShaderSourceWithTraceHooksGate(const std::filesystem::path& compPath,
+                                                const char* shaderName) {
+    std::ifstream file(compPath);
+    if (!file) {
+        throw std::runtime_error(std::string(shaderName) + " could not be opened at " + compPath.string());
+    }
+    std::ostringstream buf;
+    buf << file.rdbuf();
+    std::string source = buf.str();
+    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+        const size_t firstNewline = source.find('\n');
+        const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
+        if (firstNewline == std::string::npos) {
+            source += "\n" + defineLine;
+        } else {
+            source.insert(firstNewline + 1, defineLine);
+        }
+    }
+    return source;
+}
+
 // Sampled Lighting Cornell Box Demo M2: never-baked proof for VIXEN_DDGI_CORNELL_VIRTUAL_DEMO's
 // 8 RENDERED bodies (mirrors test_baked_vs_virtual_parity.cpp's own g_bakeCallCount technique).
 // Deliberately does NOT count the light-tree's own small side bake (see the M2 scene block's
@@ -901,6 +946,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
             bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
         }
 
+        // Baked-perf-pipeline M2 (audit D1, Task 2.1): VIXEN_GPU_TRACE_HOOKS gates
+        // TraceRecording.glsl's grid-capture recording, snapshotTraversalState's per-step
+        // debug-visualization writes (ESVOTraversal.glsl), and the instanceIterCount[]
+        // stores (TraceWorld.glsl) -- all dead weight paid every pixel/iteration when
+        // nothing consumes them. Reuses VIXEN_DEBUG_CAPTURE (already the CPU-side knob for
+        // RayTraceBuffer readback/export, see the debugCaptureEnabled wiring below) as the
+        // SINGLE end-to-end toggle for the whole trace-recording feature, rather than a
+        // second env var the user would also need to set: with only the CPU-side capture
+        // enabled but the GPU-side writes still gated off, DebugBufferReaderNode would read
+        // back an empty buffer -- one flag now drives both halves consistently.
+        // Textual #define injection (NOT ShaderBundleBuilder::SetStageDefines, which does
+        // token substitution on EXISTING text and cannot create a new #ifdef-driving
+        // #define -- see the ShaderCounters/binding-8 comment a few lines below); cache key
+        // is the full post-splice source text (ShaderBundleBuilder::Build), so this
+        // insertion automatically produces a distinct .spv cache entry -- no manual
+        // cache-bust needed. Inserted after the FIRST LINE (i.e. after "#version 460"), NOT
+        // prepended at position 0 -- GLSL requires #version to be the literal first line
+        // (glslang: "'#version' : must occur first in shader"); a naive prepend pushes it to
+        // line 2 and fails compilation (caught live: ProbeUpdate.comp failed exactly this way
+        // on the first real VIXEN_DEBUG_CAPTURE=1 end-to-end run).
+        if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+            const size_t firstNewline = splicedSource.find('\n');
+            const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
+            if (firstNewline == std::string::npos) {
+                splicedSource += "\n" + defineLine;
+            } else {
+                splicedSource.insert(firstNewline + 1, defineLine);
+            }
+        }
+
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -976,6 +1051,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
+        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -985,7 +1061,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
 
@@ -1011,6 +1087,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
+        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -1020,7 +1097,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
 
@@ -1046,6 +1123,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
+        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -1055,7 +1133,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
 
