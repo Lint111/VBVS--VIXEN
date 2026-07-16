@@ -3280,25 +3280,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     &leftWallBody, &rightWallBody, &backWallBody, &floorBody, &ceilingBody,
                     &lightBody, &sphereObjBody, &boxObjBody,
                 };
-                // TEMP DIAG (root-causing invisible walls): per-body node/brick counts +
-                // world-frame bounds before concatenation, to rule out a degenerate
-                // (zero-node or wrongly-bounded) octree despite non-empty voxel bake batches.
-                {
-                    const char* names[] = {"leftWall","rightWall","backWall","floor","ceiling","light","sphereObj","boxObj"};
-                    for (size_t di = 0; di < octreesForCat.size(); ++di) {
-                        const Vixen::SVO::Octree* diagOct = octreesForCat[di]->octree->getOctree();
-                        if (diagOct == nullptr) {
-                            mainLogger->Info(std::string("[BuildRenderGraph] CORNELL DIAG body=") + names[di] + " octree=NULL");
-                            continue;
-                        }
-                        Vixen::SVO::SerializedOctree diagSer = Vixen::SVO::SerializeSdf(*octreesForCat[di]);
-                        mainLogger->Info(std::string("[BuildRenderGraph] CORNELL DIAG body=") + names[di] +
-                                          " nodeCount=" + std::to_string(diagSer.nodeCount) +
-                                          " brickCount=" + std::to_string(diagSer.brickCount) +
-                                          " gridMin=(" + std::to_string(diagSer.config.gridMinX) + "," + std::to_string(diagSer.config.gridMinY) + "," + std::to_string(diagSer.config.gridMinZ) + ")" +
-                                          " gridMax=(" + std::to_string(diagSer.config.gridMaxX) + "," + std::to_string(diagSer.config.gridMaxY) + "," + std::to_string(diagSer.config.gridMaxZ) + ")");
-                    }
-                }
+                // Task 0.3 (Baked-Content Perf Audit F2): the TEMP DIAG block that used to sit
+                // here (root-causing invisible walls, now resolved) re-serialized all 8 bodies via
+                // SerializeSdf a SECOND time (ConcatenateSdfWithMips below does its own real
+                // serialization pass) purely to log nodeCount/brickCount/bounds -- 23.0 s measured
+                // on a fresh boot. Those counts are derived by WALKING the octree during
+                // serialization (descriptors.size()/brickViews.size() in ShellOctreeGpu.h), not
+                // stored as an O(1) field on Octree itself, so there is no cheap equivalent to
+                // preserve -- deleted rather than fabricating an approximate substitute.
                 Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
 
                 auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos, float renderScale) {
