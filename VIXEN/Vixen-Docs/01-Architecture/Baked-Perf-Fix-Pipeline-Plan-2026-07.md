@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0+M1+M2 DONE; M2b in flight; worktree fix/baked-perf-pipeline
+status: RUNNING — M0+M1+M2+M2b DONE; M2c in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -143,9 +143,9 @@ pays for itself immediately. **HAZARD:** the cache key MUST hash the final SPLIC
 composite source (`BuildRenderGraph.cpp:871-892`) + compile options, not source-file
 bytes — a stale-key bug silently serves outdated shaders and poisons every later A/B.
 
-- [ ] Task 2b.1 — Wire `EnableCaching` into the live builders, content-hash keyed on
+- [x] Task 2b.1 — Wire `EnableCaching` into the live builders, content-hash keyed on
   spliced source + options.
-- [ ] Task 2b.2 — Prove it: warm-vs-cold boot delta; poisoning test (touch a spliced
+- [x] Task 2b.2 — Prove it: warm-vs-cold boot delta; poisoning test (touch a spliced
   fragment → key changes → recompile actually happens); bench output byte-identical
   cached vs uncached.
 
@@ -321,7 +321,9 @@ virtual capture (5.6).
 dirty-only upload (inventory #5, direction doc exists); dead-branch cleanup —
 MultiDispatchNode archive (#15), spec-constant plumbing feed-or-remove (#14);
 per-axis box bake grids (#8, the full far-hit/normals fix); tiered-ESVO stays dormant
-until multi-tier scenes exist (#9).
+until multi-tier scenes exist (#9); shader-cache hygiene (M2b carry-forward): rename
+misnamed `ComputeSHA256Hex`→`ComputeFNV1a64`, fix `currentCacheSizeBytes` never
+incremented on Store (size eviction can never fire).
 
 ## Milestone M6b — Hybrid-frame bench: mixed providers + delta modification (S–M)
 
@@ -426,3 +428,16 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   bindings 15/18 gaps + HitRecordBuffer 17→18 miswire, RayTraceBuffer sizing,
   tier-crossing `setBrickLookupBase` fixture fix (correct but test still blanks → M2c).
   Pre-existing `hitPixels=0` class confirmed independently NOT debt-caused → M2c.
+
+- M2b (Tasks 2b.1–2b.2): DONE · commits `241b6819..7cc1c941` · Opus validator APPROVED ·
+  2026-07-16. Gate met as scoped to the shader-compile window (all shaders touch):
+  cold 5.105 s (misses=4) → warm 3.716 s (hits=4) = **−27.2% / −1.389 s**, byte-identical
+  output (25×25 instIdx map + OOB worldPos bit-identical cold/warm, 8 bodies). Poison
+  test passes: `VIXEN_DEBUG_CAPTURE` flip busts the cache (misses=4, 4 distinct new
+  .spv), re-run reuses it (hits=4). Total boot unchanged — dominated by the ~90 s ECS
+  bake (M7.4). Key = 64-bit FNV-1a (helper MISNAMED `ComputeSHA256Hex`) over
+  post-splice/post-#include source + stage/entry/opts/Vulkan+SPIR-V target versions;
+  collision risk negligible at this scale. Also fixed pre-existing key bug
+  (raw-source-as-filename + missing target versions). Carry-forward (Phase-2 cleanup):
+  (a) rename `ComputeSHA256Hex`→`ComputeFNV1a64`; (b) pre-existing ShaderCacheManager
+  defect — `currentCacheSizeBytes` never incremented on Store, size eviction never fires.
