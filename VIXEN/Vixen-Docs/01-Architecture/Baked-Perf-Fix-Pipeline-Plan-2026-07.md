@@ -147,6 +147,27 @@ bytes — a stale-key bug silently serves outdated shaders and poisons every lat
 
 **Gate:** warm boot measurably faster; deliberate source touch busts the cache; 8 bodies.
 
+## Milestone M2c — SPV-consumer test-health restoration (investigation, S–M)
+
+Rationale (found during M2, 2026-07-16): forcing the first clean rebuild of the shared
+`body_instance_raymarch_spv` surfaced a PRE-EXISTING blank-render (`hitPixels=0`)
+failure class across its consumer tests (EditorDocumentRender ×2, most
+BodyInstanceRayMarchRender, RecipeAuthoringGate, ShadowCorrectness, 1
+TierCrossingLodResidency case, RecipePoolRender) — proven pre-existing via git-blame +
+an M1-baseline compile. Also fixed during M2 as mechanical debt: KI-034 stale 76-byte
+push-constant mirrors (7 files), missing bindings 15/18 + a 17-vs-18 HitRecordBuffer
+miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture missing
+`setBrickLookupBase` (M1 follow-up). These tests are gate inputs for M3+.
+
+- [ ] Task 2c.1 — Root-cause the shared blank-render cause (suspect per M2 worker:
+  boot/residency state interaction with M0's boot-triage changes — unconfirmed).
+- [ ] Task 2c.2 — Fix; restore the whole consumer group to green; record the green
+  baseline test list here. Any PRODUCT-code change this requires goes through the
+  validator explicitly (test-health milestone; product changes are escalation-worthy).
+
+**Gate:** SPV-consumer test group green, or each remaining red individually
+root-caused + filed as a Known Issue with evidence.
+
 ## Milestone M3 — March-loop package (M) — target ~16 FPS
 
 - [ ] Task 3.1 — Single-brick trilinear fast path: `_loadSdfTrilinearCell`-style intra-brick
@@ -349,6 +370,7 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 | M1 | brickLookupBase + *subdiv + band | 1.1–1.4 | S–M | ~4 FPS, 8 bodies |
 | M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
 | M2b | Shader disk cache | 2b.1–2b.2 | S–M | boot cut, every bench run |
+| M2c | SPV-consumer test health | 2c.1–2c.2 | S–M | restore green gate baseline for M3+ |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
 | M5 | Trace bounds + culling + lighting parity | 5.1–5.6 | M | **runs 3rd** — cull + DDGI un-poisoning |
 | M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
