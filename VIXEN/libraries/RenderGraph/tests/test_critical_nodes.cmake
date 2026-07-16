@@ -732,3 +732,39 @@ message(STATUS "[RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatc
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_bucketed_indirect_dispatch — no glslc runnable on this platform found")
 endif()
+
+# ===========================================================================
+# Recipe GPU Instance Bucketing Inc2 M3 — multi-recipe cross-bucket compositing live-run gate.
+# Shares recipe_instance_bucketing_spv (M1's bucketing shader) exactly like the M2 target above —
+# kept inside the SAME if(VIXEN_GLSLC) block since it depends on that custom-command target. Both
+# the specialized single-recipe shaders (Task 5, looped for 2 hot recipes) AND the standalone
+# cold-path shader (this milestone's own tier-0-equivalent, see the .cpp file's header comment for
+# why the REAL BodyInstanceRayMarch.comp is out of scope here) are emitted/compiled AT TEST
+# RUNTIME via ShaderManagement::ShaderCompiler — mirrors M2's own runtime-compile pattern, no
+# second add_custom_command needed beyond the shared SdfCoreKernels.glsl path.
+# ===========================================================================
+if(VIXEN_GLSLC)
+add_executable(test_recipe_multi_bucket_compositing
+    Nodes/test_recipe_multi_bucket_compositing.cpp
+)
+add_dependencies(test_recipe_multi_bucket_compositing recipe_instance_bucketing_spv)
+target_link_libraries(test_recipe_multi_bucket_compositing PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+if(TARGET SVO)
+    target_link_libraries(test_recipe_multi_bucket_compositing PRIVATE SVO)
+endif()
+target_compile_definitions(test_recipe_multi_bucket_compositing PRIVATE
+    RECIPE_BUCKETING_SPV="${_recipebucketing_spv}"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+if(VIXEN_WSL_DZN_ICD)
+    target_compile_definitions(test_recipe_multi_bucket_compositing PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+endif()
+
+set_target_properties(test_recipe_multi_bucket_compositing PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_recipe_multi_bucket_compositing
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 120)
+
+message(STATUS "[RenderGraph Tests] Added: test_recipe_multi_bucket_compositing (Recipe GPU Instance Bucketing Inc2 M3 live-run gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_recipe_multi_bucket_compositing — no glslc runnable on this platform found")
+endif()
