@@ -95,6 +95,29 @@ struct PushConstants {
 };
 static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
 
+// ---------------------------------------------------------------------------
+// KI-032 fix: this file's colorImg (binding 0) readback went permanently dark when
+// commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp -- this
+// shader now writes ONLY HitRecordBuffer (binding 18) and idOutputImage (binding 9),
+// never outputImage. The silhouette/coverage checks below now read HitRecord instead --
+// same mirror struct test_hitrecord_readback.cpp/test_recipe_pool_render.cpp already
+// established (see KI-032's "Status: PARTIALLY RESOLVED" entry in Known-Issues.md).
+// DO NOT revert to a colorImg readback (784adff7) -- see KI-032.
+// ---------------------------------------------------------------------------
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];  // std430 tail padding -- see test_hitrecord_readback.cpp's identical mirror
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
+
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f) return {};
@@ -387,7 +410,8 @@ protected:
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
                       const PushConstants& pc, uint32_t w, uint32_t h,
-                      std::vector<uint8_t>& rgba, double& ms) {
+                      std::vector<uint8_t>& rgba, double& ms,
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
         ASSERT_TRUE(deviceConfirmed_);
         // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
         // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
@@ -563,6 +587,15 @@ protected:
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
 
+        // KI-032 fix: barrier the HitRecord SSBO (shader write -> host read) before the host
+        // reads it below -- same pattern test_recipe_pool_render.cpp's identical fix uses.
+        VkBufferMemoryBarrier hitRecordBarrier{}; hitRecordBarrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; hitRecordBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hitRecordBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer=dummyHitRecord; hitRecordBarrier.offset=0; hitRecordBarrier.size=VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0,0,nullptr,1,&hitRecordBarrier,0,nullptr);
+
         VkImageMemoryBarrier toSrc{}; toSrc.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout=VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         toSrc.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; toSrc.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
@@ -589,6 +622,14 @@ protected:
         void* mapped=nullptr; ASSERT_EQ(vkMapMemory(logicalDevice_,rbMem,0,rbSz,0,&mapped), VK_SUCCESS);
         rgba.assign(size_t(w)*h*4, 0); std::memcpy(rgba.data(), mapped, size_t(rbSz));
         vkUnmapMemory(logicalDevice_, rbMem);
+
+        if (outHitRecords != nullptr) {
+            void* hrMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, dHitRecordMem, 0, hitRecordBufSize, 0, &hrMapped), VK_SUCCESS);
+            outHitRecords->assign(size_t(w) * h, HitRecordCpu{});
+            std::memcpy(outHitRecords->data(), hrMapped, size_t(hitRecordBufSize));
+            vkUnmapMemory(logicalDevice_, dHitRecordMem);
+        }
 
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_,rb,nullptr); vkFreeMemory(logicalDevice_,rbMem,nullptr);
@@ -723,13 +764,20 @@ protected:
         const PushConstants pc = MakeCamera(eye, bodyCentre, kW, kH, 1);
 
         std::vector<uint8_t> rgba; double ms = 0.0;
+        std::vector<HitRecordCpu> hitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                             sdfBuf, lookBuf, mipBuf, pc, kW, kH, rgba, ms));
+                                             sdfBuf, lookBuf, mipBuf, pc, kW, kH, rgba, ms, &hitRecords));
 
+        // KI-032 fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not the
+        // dead colorImg -- see this file's HitRecordCpu comment.
         {
             std::vector<uint8_t> rgb(size_t(kW)*kH*3);
             for (uint32_t i = 0; i < kW*kH; ++i) {
-                rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+                const HitRecordCpu& rec = hitRecords[i];
+                const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+                rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+                rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+                rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
             }
             stbi_write_png(outPath, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
         }
@@ -739,12 +787,13 @@ protected:
         // on screen should be hit almost everywhere along y in this band.
         // Edge column band: x in [0, kW*0.05) — outside a centered sphere's radius,
         // should be almost entirely sky (near-zero hits) for a proper round shape.
+        // KI-032 fix: hit test reads HitRecordBuffer.flags instead of the dead colorImg.
         const uint32_t centerXLo = uint32_t(kW*0.45f), centerXHi = uint32_t(kW*0.55f);
         const uint32_t edgeXHi   = uint32_t(kW*0.05f);
         for (uint32_t y = 0; y < kH; ++y) {
             for (uint32_t x = 0; x < kW; ++x) {
                 const uint32_t i = y*kW + x;
-                const bool hit = rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40;
+                const bool hit = (hitRecords[i].flags & kHitRecordFlagHit) != 0u;
                 if (!hit) continue;
                 ++stats.hitPixels;
                 if (x >= centerXLo && x < centerXHi) ++stats.centerColBandHits;
@@ -846,16 +895,23 @@ protected:
 
         auto measure = [&](const char* outPath, RenderStats& stats) {
             std::vector<uint8_t> rgba; double ms = 0.0;
+            std::vector<HitRecordCpu> hitRecords;
             ASSERT_NO_FATAL_FAILURE(RenderToRgba(
                 buf(C::OCTREE_NODES_BUFFER_Slot::index), buf(C::OCTREE_BRICKS_BUFFER_Slot::index),
                 buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), buf(C::OCTREE_CONFIG_BUFFER_Slot::index),
                 buf(C::INSTANCE_BUFFER_Slot::index), buf(C::OCTREE_SDF_BUFFER_Slot::index),
                 buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
-                pc, kW, kH, rgba, ms));
+                pc, kW, kH, rgba, ms, &hitRecords));
+            // KI-032 fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not
+            // the dead colorImg -- see this file's HitRecordCpu comment.
             {
                 std::vector<uint8_t> rgb(size_t(kW)*kH*3);
                 for (uint32_t i = 0; i < kW*kH; ++i) {
-                    rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+                    const HitRecordCpu& rec = hitRecords[i];
+                    const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+                    rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+                    rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+                    rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
                 }
                 stbi_write_png(outPath, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
             }
@@ -865,7 +921,7 @@ protected:
             for (uint32_t y = 0; y < kH; ++y) {
                 for (uint32_t x = 0; x < kW; ++x) {
                     const uint32_t i = y*kW + x;
-                    const bool hit = rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40;
+                    const bool hit = (hitRecords[i].flags & kHitRecordFlagHit) != 0u;
                     if (!hit) continue;
                     ++stats.hitPixels;
                     if (x >= centerXLo && x < centerXHi) ++stats.centerColBandHits;

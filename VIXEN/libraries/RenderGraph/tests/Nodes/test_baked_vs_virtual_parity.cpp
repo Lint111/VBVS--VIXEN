@@ -119,6 +119,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <span>
@@ -186,6 +187,29 @@ struct PushConstants {
                                // matches that so sizeof(pc) == the real VkPushConstantRange.
 };
 static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
+
+// ---------------------------------------------------------------------------
+// KI-032 fix: this file's colorImg (binding 0) readback went permanently dark when
+// commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp -- this
+// shader now writes ONLY HitRecordBuffer (binding 18) and idOutputImage (binding 9),
+// never outputImage. The silhouette/coverage checks below now read HitRecord instead --
+// same mirror struct test_hitrecord_readback.cpp/test_recipe_pool_render.cpp already
+// established (see KI-032's "Status: PARTIALLY RESOLVED" entry in Known-Issues.md).
+// DO NOT revert to a colorImg readback (784adff7) -- see KI-032.
+// ---------------------------------------------------------------------------
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];  // std430 tail padding -- see test_hitrecord_readback.cpp's identical mirror
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
 
 std::string ReadFile(const std::string& path) {
     std::ifstream f(path);
@@ -654,7 +678,8 @@ protected:
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
                       VkBuffer tierRef, VkBuffer occGrid,
                       const PushConstants& pc, uint32_t w, uint32_t h,
-                      std::vector<uint8_t>& rgba, double& ms) {
+                      std::vector<uint8_t>& rgba, double& ms,
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
         ASSERT_TRUE(deviceConfirmed_);
         VkBuffer traceBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE;
@@ -831,6 +856,15 @@ protected:
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
 
+        // KI-032 fix: barrier the HitRecord SSBO (shader write -> host read) before the host
+        // reads it below -- same pattern test_recipe_pool_render.cpp's identical fix uses.
+        VkBufferMemoryBarrier hitRecordBarrier{}; hitRecordBarrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; hitRecordBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hitRecordBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer=dummyHitRecord; hitRecordBarrier.offset=0; hitRecordBarrier.size=VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0,0,nullptr,1,&hitRecordBarrier,0,nullptr);
+
         VkImageMemoryBarrier toSrc{}; toSrc.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout=VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         toSrc.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; toSrc.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
@@ -856,6 +890,14 @@ protected:
         void* mapped=nullptr; ASSERT_EQ(vkMapMemory(logicalDevice_,rbMem,0,rbSz,0,&mapped), VK_SUCCESS);
         rgba.assign(size_t(w)*h*4, 0); std::memcpy(rgba.data(), mapped, size_t(rbSz));
         vkUnmapMemory(logicalDevice_, rbMem);
+
+        if (outHitRecords != nullptr) {
+            void* hrMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, dHitRecordMem, 0, hitRecordBufSize, 0, &hrMapped), VK_SUCCESS);
+            outHitRecords->assign(size_t(w) * h, HitRecordCpu{});
+            std::memcpy(outHitRecords->data(), hrMapped, size_t(hitRecordBufSize));
+            vkUnmapMemory(logicalDevice_, dHitRecordMem);
+        }
 
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_,rb,nullptr); vkFreeMemory(logicalDevice_,rbMem,nullptr);
@@ -883,14 +925,15 @@ protected:
         vkDestroyBuffer(logicalDevice_,dummyPrevCam,nullptr);    vkFreeMemory(logicalDevice_,dPrevCamMem,nullptr);
     }
 
-    // Coverage mask + count. A pixel counts as "hit" using the SAME luminance threshold both
-    // the mip-fallback and recipe-pool render gates already use (rgba[.]>24/24/40 — the sky
-    // color is (0.02,0.02,0.06)*falloff, well under this).
-    static std::vector<uint8_t> CoverageMask(const std::vector<uint8_t>& rgba, uint32_t w, uint32_t h, int& hitCount) {
+    // Coverage mask + count. KI-032 fix: a pixel counts as "hit" using HitRecordBuffer's
+    // flags (still written post-KI-018) instead of the dead colorImg luminance threshold
+    // the mip-fallback/recipe-pool render gates used to share -- see this file's
+    // HitRecordCpu comment. DO NOT revert to a colorImg readback (784adff7) -- see KI-032.
+    static std::vector<uint8_t> CoverageMask(const std::vector<HitRecordCpu>& hitRecords, uint32_t w, uint32_t h, int& hitCount) {
         std::vector<uint8_t> mask(size_t(w)*h, 0);
         hitCount = 0;
         for (uint32_t i = 0; i < w*h; ++i) {
-            const bool hit = rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40;
+            const bool hit = (hitRecords[i].flags & kHitRecordFlagHit) != 0u;
             mask[i] = hit ? 1 : 0;
             if (hit) ++hitCount;
         }
@@ -908,10 +951,16 @@ protected:
         return double(inter) / double(uni);
     }
 
-    void SavePng(const char* path, const std::vector<uint8_t>& rgba, uint32_t w, uint32_t h) {
+    // KI-032 fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not the
+    // dead colorImg, so it stays visually meaningful for inspection.
+    void SavePng(const char* path, const std::vector<HitRecordCpu>& hitRecords, uint32_t w, uint32_t h) {
         std::vector<uint8_t> rgb(size_t(w)*h*3);
         for (uint32_t i = 0; i < w*h; ++i) {
-            rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+            rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
         }
         stbi_write_png(path, int(w), int(h), 3, rgb.data(), int(w)*3);
     }
@@ -919,7 +968,7 @@ protected:
     // ---- BAKED path: build octree pool via BakeRecipeInstructionsToSdfWorld (via the
     // counted wrapper), render through BodyOctreeSceneNode::SetRecipePool. ----
     void RenderBaked(const ParityRecipe& r, std::vector<uint8_t>& rgba, uint32_t kW, uint32_t kH,
-                     const PushConstants& pc) {
+                     const PushConstants& pc, std::vector<HitRecordCpu>& hitRecords) {
         using C = BodyOctreeSceneNodeConfig;
 
         auto baked = CountedBake(r.localSpaceProgram.data(), uint32_t(r.localSpaceProgram.size()),
@@ -962,7 +1011,7 @@ protected:
             buf(C::INSTANCE_BUFFER_Slot::index), buf(C::OCTREE_SDF_BUFFER_Slot::index),
             buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
             buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index), buf(C::OCTREE_OCCUPANCYGRID_BUFFER_Slot::index),
-            pc, kW, kH, rgba, ms));
+            pc, kW, kH, rgba, ms, &hitRecords));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -971,7 +1020,7 @@ protected:
     // ---- VIRTUAL path: register in a RecipeRegistry, splice+runtime-compile, render a
     // PROVIDER_PROCEDURAL BodyInstance. ZERO bake calls. ----
     void RenderVirtual(const ParityRecipe& r, std::vector<uint8_t>& rgba, uint32_t kW, uint32_t kH,
-                       const PushConstants& pc) {
+                       const PushConstants& pc, std::vector<HitRecordCpu>& hitRecords) {
         using C = BodyOctreeSceneNodeConfig;
 
         Vixen::SVO::RecipeRegistry registry;
@@ -1057,7 +1106,7 @@ protected:
             buf(C::INSTANCE_BUFFER_Slot::index), buf(C::OCTREE_SDF_BUFFER_Slot::index),
             buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
             buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index), buf(C::OCTREE_OCCUPANCYGRID_BUFFER_Slot::index),
-            pc, kW, kH, rgba, ms));
+            pc, kW, kH, rgba, ms, &hitRecords));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -1123,25 +1172,27 @@ TEST_F(BakedVsVirtualParityTest, VirtualRendersGeometricallyEquivalentToBaked) {
         // --- Baked render ---
         const uint32_t bakeCallsBefore = g_bakeCallCount;
         std::vector<uint8_t> bakedRgba;
-        ASSERT_NO_FATAL_FAILURE(RenderBaked(r, bakedRgba, kW, kH, pc));
+        std::vector<HitRecordCpu> bakedHitRecords;
+        ASSERT_NO_FATAL_FAILURE(RenderBaked(r, bakedRgba, kW, kH, pc, bakedHitRecords));
         EXPECT_EQ(g_bakeCallCount, bakeCallsBefore + 1u)
             << "baked path should call BakeRecipeInstructionsToSdfWorld exactly once";
-        SavePng(("/tmp/parity_" + r.name + "_baked.png").c_str(), bakedRgba, kW, kH);
+        SavePng(("/tmp/parity_" + r.name + "_baked.png").c_str(), bakedHitRecords, kW, kH);
 
         // --- Virtual render (NEVER-BAKED PROOF: counter must not move) ---
         const uint32_t bakeCallsBeforeVirtual = g_bakeCallCount;
         std::vector<uint8_t> virtualRgba;
-        ASSERT_NO_FATAL_FAILURE(RenderVirtual(r, virtualRgba, kW, kH, pc));
+        std::vector<HitRecordCpu> virtualHitRecords;
+        ASSERT_NO_FATAL_FAILURE(RenderVirtual(r, virtualRgba, kW, kH, pc, virtualHitRecords));
         EXPECT_EQ(g_bakeCallCount, bakeCallsBeforeVirtual)
             << "VIRTUAL path must call zero bake functions — this is the whole point of Inc0";
-        SavePng(("/tmp/parity_" + r.name + "_virtual.png").c_str(), virtualRgba, kW, kH);
+        SavePng(("/tmp/parity_" + r.name + "_virtual.png").c_str(), virtualHitRecords, kW, kH);
 
         if (!r.expectOccupancyGrid) sawDomainModifierRecipe = true;
 
         // --- Non-vacuity: both renders must show real geometry, independently ---
         int bakedHits = 0, virtualHits = 0;
-        auto bakedMask   = CoverageMask(bakedRgba,   kW, kH, bakedHits);
-        auto virtualMask = CoverageMask(virtualRgba, kW, kH, virtualHits);
+        auto bakedMask   = CoverageMask(bakedHitRecords,   kW, kH, bakedHits);
+        auto virtualMask = CoverageMask(virtualHitRecords, kW, kH, virtualHits);
 
         EXPECT_GT(bakedHits, kMinSilhouettePixels)
             << "baked render's own silhouette must be non-trivial (floor=" << kMinSilhouettePixels << ")";

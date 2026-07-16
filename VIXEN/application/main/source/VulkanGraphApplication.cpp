@@ -1328,7 +1328,14 @@ void VulkanGraphApplication::Update() {
         // needs: if the walls are baked at the wrong world scale (renderScale/localToWorld
         // mismatch), the hit positions read back here will disagree with
         // CornellBoxSceneDefinition.h's own world-unit box bounds ([kBoxCenter +/- kBoxHalfExtent]).
-        if (renderGraph && std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
+        //
+        // Baked-Perf-Fix-Pipeline M2d: also fires under VIXEN_DDGI_CORNELL_VIRTUAL_DEMO, same OR
+        // idiom BuildRenderGraph.cpp's shared camera-preset block already uses (both demo
+        // variants read hit_record_buffer identically post-KI-018 -- see this milestone's
+        // compare_parity.py, which needs a [CornellDiag] instIdx map from BOTH providers to
+        // quantify the virtual<->baked lighting divergence the cross_path mode reports).
+        if (renderGraph && (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") ||
+                            std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO"))) {
             static long cornellDiagTick = 0;
             ++cornellDiagTick;
             constexpr long kCornellDiagReadTick = 150;  // matches the camera-pose diagnostic's own settle tick
