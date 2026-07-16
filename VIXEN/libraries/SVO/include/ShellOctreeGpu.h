@@ -223,6 +223,25 @@ inline uint32_t tierRefTableBaseOf(const OctreeConfig& c) {
 inline void setTierRefTableBase(OctreeConfig& c, uint32_t base) {
     c.tierRefTableBase = base;
 }
+/// Read the brickLookupBase (Baked-Perf M1 Task 1.1) from OctreeConfig.
+/// Element offset (in brickLookup[] uint32 TABLE-ENTRY units, i.e. bpa^3
+/// units — NOT bytes, NOT related to poolBrickBase's float-element units)
+/// of this octree's own slice of the concatenated brickGridLookup table.
+/// Mirrors mipPoolBase's/tierRefTableBase's convention, but is NOT
+/// derivable from them: the brickLookup sub-table size is this octree's
+/// OWN bpa^3 (a grid dimension), unrelated to nodeCount/brickCount. Before
+/// this field existed, the shader assumed every concatenated octree shared
+/// one uniform bpa and computed lookupBase = octreeIdx*bpa^3 with its OWN
+/// bpa — wrong the instant octrees differ (Cornell mixes bpa=16 walls with
+/// bpa=2 bodies), silently indexing garbage brickLookup entries for every
+/// octree after the first mismatched one.
+inline uint32_t brickLookupBaseOf(const OctreeConfig& c) {
+    return c.brickLookupBase;
+}
+/// Write brickLookupBase into the OctreeConfig tail.
+inline void setBrickLookupBase(OctreeConfig& c, uint32_t base) {
+    c.brickLookupBase = base;
+}
 
 // ===========================================================================
 // Serialized output
@@ -950,10 +969,11 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
     cat.brickCounts.resize(octrees.size());
     cat.tierRefCounts.resize(octrees.size());
 
-    uint32_t nodeBase    = 0;   // running node element offset
-    uint32_t brickBase   = 0;   // running brick offset
-    uint32_t poolBase    = 0;   // running pool element offset (in floats)
-    uint32_t tierRefBase = 0;   // running tier-ref-table element offset (Inc2 M1 Task 2)
+    uint32_t nodeBase        = 0;   // running node element offset
+    uint32_t brickBase       = 0;   // running brick offset
+    uint32_t poolBase        = 0;   // running pool element offset (in floats)
+    uint32_t tierRefBase     = 0;   // running tier-ref-table element offset (Inc2 M1 Task 2)
+    uint32_t brickLookupBase = 0;   // running brickGridLookup element offset (Baked-Perf M1 Task 1.1)
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -966,6 +986,10 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);  // poolBrickBase = poolBase
+        // brickLookupBase: EXACT prefix sum over each octree's own bpa^3 (not a
+        // uniform-bpa assumption — see brickLookupBaseOf's doc comment). s's own
+        // sub-table size (just serialized above) is authoritative here.
+        setBrickLookupBase(s.config, brickLookupBase);
         // mipPoolBase is intentionally left at its default (0): SerializeSdf
         // never populates mip pools (opt-in, see MipBake.h), and this plain
         // ConcatenateSdf does not bake them either — ConcatenateSdfWithMips
@@ -1003,6 +1027,9 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
         // poolBase advances by brickCount * brickStrideFloats (total floats per brick)
         poolBase  += s.brickCount * s.brickStrideFloats;
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        // brickLookupBase advances by THIS octree's own bpa^3 (its just-appended
+        // sub-table's element count), not a uniform assumption across octrees.
+        brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
 
     return cat;
