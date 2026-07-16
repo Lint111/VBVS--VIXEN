@@ -178,6 +178,32 @@ miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture mis
 **Gate:** SPV-consumer test group green, or each remaining red individually
 root-caused + filed as a Known Issue with evidence.
 
+## Milestone M2d — Automated visual-parity gate (S–M) — user-directed 2026-07-16
+
+Rationale (user): visual certainty without a human in the loop — divergence between the
+paths should be machine-detected. Corrected formulation: bit-exact virtual==baked is
+impossible by construction (baked = discretized reconstruction; plus known ~1-cell
+near-tie nondeterminism across launches), so the gate is two-tier:
+Tier 1 same-path GOLDEN hash (hard gate) + Tier 2 cross-path parity metrics
+(tracked now, enforced from M5's lighting-parity close onward).
+
+- [ ] Task 2d.1 — Parity tool `VIXEN/tools/bench/compare_parity.py` (tracked, not under
+  the gitignored bench-output dirs): consumes two bench run dirs (run.log + perf.csv +
+  hud_capture png); emits JSON + one PASS/FAIL line. Metrics: instIdx-map SHA + cell
+  agreement % + bodies-present sets (from `[CornellDiag]` in run.log); OOB counts;
+  image luminance stats (mean abs delta, p99, % pixels over threshold) between captures;
+  per-pass ms deltas. Thresholds in a committed config file.
+- [ ] Task 2d.2 — Golden baselines + wiring: commit the current accepted baked + virtual
+  instIdx maps as goldens (text) + thresholds; `temp_bench/run_parity_check.bat` runs the
+  tool post-capture. Policy encoded in the config: Tier 1 (same-path vs golden,
+  tolerance ≤2/625 cells) = HARD GATE for every subsequent milestone validator;
+  Tier 2 (virtual↔baked) = REPORT-ONLY until M5 closes, then enforced.
+
+**Gate:** tool PASSes on M2b's cold/warm artifact pair (same-path, byte-identical);
+tool correctly REPORTS the known virtual↔baked lighting divergence on current captures
+(i.e., detects the M5 target, doesn't mask it); goldens + thresholds committed; every
+later milestone's validator instruction includes running it.
+
 ## Milestone M3 — March-loop package (M) — target ~16 FPS
 
 - [ ] Task 3.1 — Single-brick trilinear fast path: `_loadSdfTrilinearCell`-style intra-brick
@@ -383,6 +409,7 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 | M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
 | M2b | Shader disk cache | 2b.1–2b.2 | S–M | boot cut, every bench run |
 | M2c | SPV-consumer test health | 2c.1–2c.2 | S–M | restore green gate baseline for M3+ |
+| M2d | Automated visual-parity gate | 2d.1–2d.2 | S–M | golden-hash + cross-path divergence detector |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
 | M5 | Trace bounds + culling + lighting parity | 5.1–5.6 | M | **runs 3rd** — cull + DDGI un-poisoning |
 | M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
