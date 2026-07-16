@@ -1,0 +1,23 @@
+{
+  "_comment": "Baked-Perf-Fix-Pipeline M2d (Vixen-Docs/01-Architecture/Baked-Perf-Fix-Pipeline-Plan-2026-07.md). Two modes: same_path is a HARD GATE for every milestone from M2d onward (bit-exact virtual==baked is impossible by construction, so this checks a run against its own golden, not the two providers against each other). cross_path is REPORT-ONLY until M5's baked-lighting-parity work closes the known virtual<->baked lighting divergence -- 'enforced' flips true only when M5 marks it so in this file.",
+  "same_path": {
+    "_comment": "Golden vs a fresh same-provider run (e.g. baked vs baked). The pipeline plan documents a possible ~1-cell near-tie nondeterminism across launches, but every same-path measurement taken while building this gate (M2b cold-vs-warm artifact pair) was byte-identical (0/625 cells differing) -- so the tolerance is set to REQUIRE hash equality (0 cells) rather than pre-emptively budgeting slack that has not actually been observed. If a future run legitimately hits near-tie 1-cell jitter, widen this deliberately (with the observed run pair cited in the commit) rather than loosening it speculatively -- a wide tolerance would let a genuine 1-cell body-identity corruption (a real regression, not jitter) silently pass, which is exactly the failure mode this gate exists to catch (see the tamper-test proof in this milestone's report).",
+    "enforced": true,
+    "instidx_max_differing_cells": 0,
+    "instidx_total_cells": 625,
+    "require_bodies_match": true,
+    "oob_count_max_relative_delta": 0.05,
+    "luminance_p99_max_delta": 2.0
+  },
+  "cross_path": {
+    "_comment": "Baked vs virtual -- the two providers are expected to diverge today (baked lighting is not yet parity-matched to virtual's). This mode REPORTS the divergence so it is machine-quantified and tracked, but does not fail the gate. M5 (Baked-Perf-Fix-Pipeline-Plan-2026-07.md Milestone M5) flips 'enforced' to true once baked-lighting-parity closes -- do not flip this by hand without that milestone's sign-off.",
+    "enforced": false,
+    "instidx_agreement_pct_target": 90.0,
+    "require_bodies_match": true,
+    "luminance_mean_abs_delta_budget": 40.0,
+    "luminance_p99_delta_budget": 120.0,
+    "pct_pixels_over_threshold_budget": 60.0
+  },
+  "pixel_diff_threshold": 24,
+  "instidx_grid_size": 25
+}
