@@ -53,6 +53,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -127,6 +128,33 @@ struct PushConstants {
                             // reflection reports 96 bytes total, not 92.
 };
 static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
+
+// ---------------------------------------------------------------------------
+// M2c fix: this file's colorImg (binding 0) readback went permanently dark when
+// commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp —
+// this shader now writes ONLY HitRecordBuffer (binding 18) and idOutputImage
+// (binding 9), never outputImage. Every assertion in this file that used to
+// read `rgba[i*4+...]` for "was this pixel hit" / "what color is it" now reads
+// the HitRecord it actually wrote instead — same host-side mirror struct
+// test_hitrecord_readback.cpp already established (see that file's own comment
+// citing test_hitrecord_sdi_parity.cpp for the SPIR-V-reflection proof this
+// matches HitRecord.glsl exactly). albedo carries the RAW (unshaded) material
+// tint (TraceWorld.glsl's WorldHit.color/"tinted color" comment), so it stands
+// in for the old color-classification checks too, not just hit/miss.
+// ---------------------------------------------------------------------------
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];  // std430 tail padding — see test_hitrecord_readback.cpp's identical mirror
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
 
 // ---------------------------------------------------------------------------
 // Read a compiled SPIR-V file into a uint32 vector.
@@ -433,7 +461,8 @@ protected:
                       VkBuffer configBuf, VkBuffer instanceBuf,
                       VkBuffer sdfBuf, VkBuffer brickLookupBuf,
                       const PushConstants& pc, uint32_t w, uint32_t h,
-                      std::vector<uint8_t>& outRgba /*w*h*4*/, double& outRenderMs) {
+                      std::vector<uint8_t>& outRgba /*w*h*4*/, double& outRenderMs,
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
@@ -501,8 +530,9 @@ protected:
         // geometry/color output, not shading — LightingConfig/ShadowConfig/AccumulationConfig
         // are bound as zeroed placeholders (accumulationConfig.enabled==0 keeps the temporal
         // accumulation seam a pure passthrough; shadowConfig with enabled==0 skips shadow
-        // rays), HitRecord is round-tripped internally but not read by this test's own
-        // pass/fail signal, and PrevCameraConfig/historyImage are unused this milestone scope.
+        // rays); PrevCameraConfig/historyImage are unused this milestone scope. HitRecord IS
+        // read back when outHitRecords!=nullptr (M2c fix — see this file's HitRecordCpu comment):
+        // it's the buffer this shader actually still writes post-KI-018.
         VkBuffer dummyLighting = VK_NULL_HANDLE, dummyHitRecord = VK_NULL_HANDLE,
                  dummyShadow = VK_NULL_HANDLE, dummyAccum = VK_NULL_HANDLE, dummyPrevCam = VK_NULL_HANDLE;
         VkDeviceMemory dummyLightingMem = VK_NULL_HANDLE, dummyHitRecordMem = VK_NULL_HANDLE,
@@ -716,6 +746,20 @@ protected:
         vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w + 7) / 8, (h + 7) / 8, 1);
 
+        // M2c fix: barrier the HitRecord SSBO (shader write -> host read) before the host
+        // reads it below — same pattern test_body_instance_occlusion_reject.cpp's iteration
+        // debug buffer already uses. dummyHitRecord is already HOST_VISIBLE|HOST_COHERENT
+        // (CreateHostBuffer), so no copy-to-buffer stage is needed, just ordering.
+        VkBufferMemoryBarrier hitRecordBarrier{};
+        hitRecordBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        hitRecordBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer = dummyHitRecord; hitRecordBarrier.offset = 0; hitRecordBarrier.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                             0, 0, nullptr, 1, &hitRecordBarrier, 0, nullptr);
+
         VkImageMemoryBarrier toSrc{};
         toSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout = VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -754,6 +798,14 @@ protected:
         outRgba.assign(static_cast<size_t>(w) * h * 4, 0);
         std::memcpy(outRgba.data(), mapped, static_cast<size_t>(rbSize));
         vkUnmapMemory(logicalDevice_, rbMem);
+
+        if (outHitRecords != nullptr) {
+            void* hrMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, dummyHitRecordMem, 0, hitRecordBufSize, 0, &hrMapped), VK_SUCCESS);
+            outHitRecords->assign(static_cast<size_t>(w) * h, HitRecordCpu{});
+            std::memcpy(outHitRecords->data(), hrMapped, static_cast<size_t>(hitRecordBufSize));
+            vkUnmapMemory(logicalDevice_, dummyHitRecordMem);
+        }
 
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_, rbBuf, nullptr);    vkFreeMemory(logicalDevice_, rbMem, nullptr);
@@ -890,17 +942,27 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
     const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
     const PushConstants pc = MakeCamera(eye, focus, kW, kH, static_cast<int32_t>(instances.size()));
 
+    // M2c fix: BodyInstanceRayMarch.comp stopped writing colorImg (binding 0) when shading
+    // moved to DirectLighting.comp/SpatialReuseShade.comp (784adff7, KI-018) — colorImg is
+    // now permanently black, so "hit" is read from HitRecordBuffer (the buffer this shader
+    // still writes) instead. The PNG is rendered from HitRecord.albedo (the raw, unshaded
+    // material tint) so it stays visually meaningful for inspection.
     std::vector<uint8_t> rgba; double renderMs = 0.0;
+    std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,  // binary: dummy SDF/lookup
-                                         pc, kW, kH, rgba, renderMs));
+                                         pc, kW, kH, rgba, renderMs, &hitRecords));
 
     std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
     int hitPixels = 0;
     for (uint32_t i = 0; i < kW * kH; ++i) {
-        const uint8_t r = rgba[i * 4 + 0], g = rgba[i * 4 + 1], bb = rgba[i * 4 + 2];
-        rgb[i * 3 + 0] = r; rgb[i * 3 + 1] = g; rgb[i * 3 + 2] = bb;
-        if (r > 24 || g > 24 || bb > 40) ++hitPixels;   // brighter than darkest sky
+        const HitRecordCpu& rec = hitRecords[i];
+        const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+        const uint8_t r  = static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+        const uint8_t g  = static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+        const uint8_t bb = static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
+        rgb[i * 3 + 0] = hit ? r : 0; rgb[i * 3 + 1] = hit ? g : 0; rgb[i * 3 + 2] = hit ? bb : 0;
+        if (hit) ++hitPixels;
     }
     const char* outPath = "/tmp/glsl_shader_near.png";
     EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
@@ -993,25 +1055,33 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
                 c0.x, ShaderBodyCentre(instances[1]).x, c2.x, centre.x, centre.y, centre.z,
                 eye.x, eye.y, eye.z, dist, spanX);
 
+    // M2c fix: classify by HitRecord.albedo (the raw, unshaded material tint this shader
+    // still writes) instead of the dead colorImg — see this file's HitRecordCpu comment.
+    // Reading the RAW material tint is actually cleaner than the old lit-pixel heuristic
+    // (no more "robust to Lambert dimming" hedging needed — there is no shading in this
+    // buffer to begin with), but the same three-way hue classification still applies.
     std::vector<uint8_t> rgba; double renderMs = 0.0;
+    std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,  // binary: dummy SDF/lookup
-                                         pc, kW, kH, rgba, renderMs));
+                                         pc, kW, kH, rgba, renderMs, &hitRecords));
 
-    // Per-kind hit classification by material hue (robust to Lambert dimming):
+    // Per-kind hit classification by material hue:
     //   kind 0 = RED-dominant   (palette idx1 {0.75,0.1,0.1}) → r >> g,b
     //   kind 1 = GREEN-dominant (palette idx2 {0.1,0.75,0.1}) → g >> r,b
     //   kind 2 = GRAY/white     (palette idx3 {0.9,0.9,0.9})  → balanced channels (neither r- nor
-    //            g-dominant). Classifying gray as "channels balanced" rather than "all > 90" makes
-    //            it survive the lit-side shading that the strict-white test was missing.
+    //            g-dominant).
     std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
     int redPixels = 0, greenPixels = 0, grayPixels = 0, anyBody = 0;
     for (uint32_t i = 0; i < kW * kH; ++i) {
-        const int r = rgba[i * 4 + 0], g = rgba[i * 4 + 1], bl = rgba[i * 4 + 2];
-        rgb[i * 3 + 0] = static_cast<uint8_t>(r);
-        rgb[i * 3 + 1] = static_cast<uint8_t>(g);
-        rgb[i * 3 + 2] = static_cast<uint8_t>(bl);
-        const bool body = (r > 24 || g > 24 || bl > 40);   // brighter than darkest sky
+        const HitRecordCpu& rec = hitRecords[i];
+        const bool body = (rec.flags & kHitRecordFlagHit) != 0u;
+        const int r  = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+        const int g  = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+        const int bl = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
+        rgb[i * 3 + 0] = body ? static_cast<uint8_t>(r)  : 0;
+        rgb[i * 3 + 1] = body ? static_cast<uint8_t>(g)  : 0;
+        rgb[i * 3 + 2] = body ? static_cast<uint8_t>(bl) : 0;
         if (!body) continue;
         ++anyBody;
         if      (r > g + 25 && r > bl + 25) ++redPixels;       // kind 0 (star, red mat)
@@ -1086,6 +1156,14 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     // Seed with one body so Compile's ring allocation is valid; bake as Stored-SDF.
     node->SetInstances({ frameInst });
     node->Setup();
+    // M2c fix: Stored-SDF octrees baked here are mip-capable (channelCount>0 + baked mips),
+    // so DeriveResidencyDefaultIfUnset (BodyOctreeSceneNode.cpp:216) derives LAZY residency
+    // (Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4 — ResidencyDefault.h:52) unless asked
+    // otherwise BEFORE the first Compile(). This test's whole premise is proving the eager
+    // ESVO-leaf-hit SDF traversal has no holes — lazy residency would instead route through
+    // the mip-fallback shading path (SceneBindings.glsl's brickResident==0u branch), never
+    // exercising StoredSdf.glsl at all. Request eager residency explicitly.
+    node->RequestBrickResidency(true);
     SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");   // node bakes SDF in EnsureOctreesBuilt
     ASSERT_NO_THROW(node->Compile());
     UnsetTestEnv("VIXEN_STORED_SDF_DEMO");                       // clean for any later (binary) test
@@ -1110,23 +1188,30 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
     const PushConstants pc = MakeCamera(eye, focus, kW, kH, 1);
 
-    // Render ONE Stored-SDF body (octreeIdx) alone, save a PNG, return its RGBA.
+    // Render ONE Stored-SDF body (octreeIdx) alone, save a PNG, return its RGBA + HitRecords.
+    // M2c fix: hit/no-hole classification reads HitRecordBuffer (the buffer this shader still
+    // writes post-KI-018 — see this file's HitRecordCpu comment) instead of the dead colorImg;
+    // the PNG is still rendered from HitRecord.albedo so it stays visually meaningful.
     auto renderBody = [&](uint32_t octreeIdx, const char* pngPath,
-                          std::vector<uint8_t>& outRgba) {
+                          std::vector<HitRecordCpu>& outHitRecords) {
         node->SetInstances({ MakeInstance(0.0f, 0.0f, 0.0f, kRS, octreeIdx, 1.0f, 1.0f, 1.0f) });
         frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
         node->Execute();
         VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         ASSERT_NE(inst, VK_NULL_HANDLE);
         double ms = 0.0;
+        std::vector<uint8_t> outRgba;
         RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
-                     b.sdf, b.brickLookup, pc, kW, kH, outRgba, ms);
+                     b.sdf, b.brickLookup, pc, kW, kH, outRgba, ms, &outHitRecords);
         std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
         int bodyPx = 0;
         for (uint32_t i = 0; i < kW * kH; ++i) {
-            const uint8_t r = outRgba[i*4+0], g = outRgba[i*4+1], bl = outRgba[i*4+2];
-            rgb[i*3+0]=r; rgb[i*3+1]=g; rgb[i*3+2]=bl;
-            if (r > 24 || g > 24 || bl > 40) ++bodyPx;
+            const HitRecordCpu& rec = outHitRecords[i];
+            const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+            rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
+            if (hit) ++bodyPx;
         }
         EXPECT_NE(stbi_write_png(pngPath, kW, kH, 3, rgb.data(), kW * 3), 0)
             << "stbi_write_png failed for " << pngPath;
@@ -1135,7 +1220,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     };
 
     // --- Smooth sphere (octree 0): STRICT solid-silhouette (no-holes) oracle ---
-    std::vector<uint8_t> smooth;
+    std::vector<HitRecordCpu> smooth;
     ASSERT_NO_FATAL_FAILURE(renderBody(0u, "/tmp/glsl_sdf_smooth_near.png", smooth));
 
     uint64_t totalBody = 0, totalSpan = 0;
@@ -1143,8 +1228,8 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     for (uint32_t y = 0; y < kH; ++y) {
         int first = -1, last = -1, cnt = 0;
         for (uint32_t x = 0; x < kW; ++x) {
-            const uint8_t* px = &smooth[(static_cast<size_t>(y) * kW + x) * 4];
-            if (px[0] > 24 || px[1] > 24 || px[2] > 40) { if (first < 0) first = int(x); last = int(x); ++cnt; }
+            const HitRecordCpu& rec = smooth[static_cast<size_t>(y) * kW + x];
+            if ((rec.flags & kHitRecordFlagHit) != 0u) { if (first < 0) first = int(x); last = int(x); ++cnt; }
         }
         if (first >= 0) { totalBody += cnt; totalSpan += (last - first + 1); ++bodyRows; bodyPixels += cnt; }
     }
@@ -1158,12 +1243,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
         << " < 0.97) — the ESVO-leaf-hit redesign did not close the brick-aligned gaps.";
 
     // --- Displaced sphere (octree 1): lenient coverage + PNG for inspection ---
-    std::vector<uint8_t> displaced;
+    std::vector<HitRecordCpu> displaced;
     ASSERT_NO_FATAL_FAILURE(renderBody(1u, "/tmp/glsl_sdf_displaced_near.png", displaced));
     int dispBody = 0;
     for (uint32_t i = 0; i < kW * kH; ++i) {
-        const uint8_t r = displaced[i*4+0], g = displaced[i*4+1], bl = displaced[i*4+2];
-        if (r > 24 || g > 24 || bl > 40) ++dispBody;
+        if ((displaced[i].flags & kHitRecordFlagHit) != 0u) ++dispBody;
     }
     EXPECT_GT(dispBody, 20000) << "Stored-SDF displaced sphere barely rendered — body not hit.";
 
@@ -1210,6 +1294,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
 
     node->SetInstances({ frameInst });
     node->Setup();
+    // M2c fix: request eager brick residency BEFORE Compile — see RenderStoredSdfBodiesNoHoles's
+    // identical comment. Without this, this mip-capable Stored-SDF octree defaults to lazy
+    // residency and the shader shades from the mip fallback instead of the SDF channel data
+    // this test exists to prove reaches the shader.
+    node->RequestBrickResidency(true);
     SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());
     UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
@@ -1241,9 +1330,15 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(inst, VK_NULL_HANDLE);
 
+    // M2c fix: hit/hole/color-variation all read HitRecordBuffer (the buffer this shader
+    // still writes post-KI-018) instead of the dead colorImg — see this file's HitRecordCpu
+    // comment. albedo is the RAW unshaded material tint, so it's actually a BETTER oracle
+    // for "does per-voxel color reach the shader" than the old lit-pixel readback (no risk
+    // of lighting washing out/masking the band variation).
     std::vector<uint8_t> rgba; double renderMs = 0.0;
+    std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
-                                          b.sdf, b.brickLookup, pc, kW, kH, rgba, renderMs));
+                                          b.sdf, b.brickLookup, pc, kW, kH, rgba, renderMs, &hitRecords));
 
     // ------------------------------------------------------------------
     // (a) SDF solid: fillRatio > 0.97 (no-regression oracle)
@@ -1253,8 +1348,8 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     for (uint32_t y = 0; y < kH; ++y) {
         int first = -1, last = -1, cnt = 0;
         for (uint32_t x = 0; x < kW; ++x) {
-            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
-            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+            const HitRecordCpu& rec = hitRecords[static_cast<size_t>(y) * kW + x];
+            if ((rec.flags & kHitRecordFlagHit) != 0u) {
                 if (first < 0) first = int(x); last = int(x); ++cnt;
             }
         }
@@ -1279,8 +1374,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     for (uint32_t y = kH / 4; y < 3 * kH / 4; ++y) {
         int cnt = 0;
         for (uint32_t x = 0; x < kW; ++x) {
-            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
-            if (px[0] > 24 || px[1] > 24 || px[2] > 40) ++cnt;
+            if ((hitRecords[static_cast<size_t>(y) * kW + x].flags & kHitRecordFlagHit) != 0u) ++cnt;
         }
         if (cnt > bestCnt) { bestCnt = cnt; bestRow = y; }
     }
@@ -1290,12 +1384,12 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     float blMin = 1.0f, blMax = 0.0f;
     int rowBodyPx = 0;
     for (uint32_t x = 0; x < kW; ++x) {
-        const uint8_t* px = &rgba[(static_cast<size_t>(bestRow) * kW + x) * 4];
-        if (!(px[0] > 24 || px[1] > 24 || px[2] > 40)) continue;
+        const HitRecordCpu& rec = hitRecords[static_cast<size_t>(bestRow) * kW + x];
+        if ((rec.flags & kHitRecordFlagHit) == 0u) continue;
         ++rowBodyPx;
-        const float rf  = px[0] / 255.0f;
-        const float gf  = px[1] / 255.0f;
-        const float bff = px[2] / 255.0f;
+        const float rf  = std::clamp(rec.albedo[0], 0.0f, 1.0f);
+        const float gf  = std::clamp(rec.albedo[1], 0.0f, 1.0f);
+        const float bff = std::clamp(rec.albedo[2], 0.0f, 1.0f);
         if (rf  < rMin)  rMin  = rf;   if (rf  > rMax)  rMax  = rf;
         if (gf  < gMin)  gMin  = gf;   if (gf  > gMax)  gMax  = gf;
         if (bff < blMin) blMin = bff;  if (bff > blMax) blMax = bff;
@@ -1314,13 +1408,15 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
         << ") -- color channel is NOT reaching the shader (flat tint / color not wired).";
 
     // ------------------------------------------------------------------
-    // (c) Write PNG for visual inspection
+    // (c) Write PNG for visual inspection (from HitRecord.albedo, not the dead colorImg)
     // ------------------------------------------------------------------
     std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
     for (uint32_t i = 0; i < kW * kH; ++i) {
-        rgb[i * 3 + 0] = rgba[i * 4 + 0];
-        rgb[i * 3 + 1] = rgba[i * 4 + 1];
-        rgb[i * 3 + 2] = rgba[i * 4 + 2];
+        const HitRecordCpu& rec = hitRecords[i];
+        const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+        rgb[i * 3 + 0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+        rgb[i * 3 + 1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+        rgb[i * 3 + 2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
     }
     const char* outPath = "/tmp/glsl_sdf_multichannel.png";
     EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
@@ -1392,6 +1488,10 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     });
 
     node->Setup();
+    // M2c fix: request eager brick residency BEFORE Compile — see RenderStoredSdfBodiesNoHoles's
+    // identical comment. This recipe-baked octree is mip-capable too, so it would otherwise
+    // default to lazy residency and never exercise the SDF traversal this test proves out.
+    node->RequestBrickResidency(true);
     SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
     ASSERT_NO_THROW(node->Compile());
     UnsetTestEnv("VIXEN_STORED_SDF_DEMO");
@@ -1423,16 +1523,23 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(inst, VK_NULL_HANDLE);
 
+    // M2c fix: hit/hole oracle reads HitRecordBuffer (still written post-KI-018) instead of
+    // the dead colorImg — see this file's HitRecordCpu comment. PNG rendered from albedo.
     std::vector<uint8_t> rgba; double ms = 0.0;
+    std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
-                                         b.sdf, b.brickLookup, pc, kW, kH, rgba, ms));
+                                         b.sdf, b.brickLookup, pc, kW, kH, rgba, ms, &hitRecords));
 
     // Write PNG (controller reads this to verify visually).
     const char* outPath = "/tmp/glsl_sdf_recipe_peanut.png";
     {
         std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
         for (uint32_t i = 0; i < kW * kH; ++i) {
-            rgb[i*3+0] = rgba[i*4+0]; rgb[i*3+1] = rgba[i*4+1]; rgb[i*3+2] = rgba[i*4+2];
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+            rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
         }
         EXPECT_NE(stbi_write_png(outPath, kW, kH, 3, rgb.data(), kW * 3), 0)
             << "stbi_write_png failed for " << outPath;
@@ -1444,8 +1551,8 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     for (uint32_t y = 0; y < kH; ++y) {
         int first = -1, last = -1, cnt = 0;
         for (uint32_t x = 0; x < kW; ++x) {
-            const uint8_t* px = &rgba[(static_cast<size_t>(y) * kW + x) * 4];
-            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+            const HitRecordCpu& rec = hitRecords[static_cast<size_t>(y) * kW + x];
+            if ((rec.flags & kHitRecordFlagHit) != 0u) {
                 if (first < 0) first = int(x); last = int(x); ++cnt;
             }
         }
@@ -1509,6 +1616,13 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
     node->SetBakeRecipe({ makeSph({0.0f, 0.0f, 0.0f}, 18.0f) });
 
     node->Setup();
+    // M2c fix: request eager brick residency BEFORE the first Compile — see
+    // RenderStoredSdfBodiesNoHoles's identical comment (this recipe-baked octree is
+    // mip-capable too, defaulting to lazy residency otherwise). residencyExplicitlyRequested_
+    // latches this as an explicit grant, which survives the post-edit Rematerialize() below
+    // by design (BodyOctreeSceneNode.h's own doc comment on that field) — so one call here
+    // covers both A and B renders.
+    node->RequestBrickResidency(true);
     // Keep STORED_SDF_DEMO set across BOTH executes — the edit Execute's Rematerialize()
     // re-runs EnsureOctreesBuilt(), which gates on this env var.
     SetTestEnv("VIXEN_STORED_SDF_DEMO", "1");
@@ -1534,21 +1648,28 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
         ASSERT_NE(b.sdf, VK_NULL_HANDLE);
         ASSERT_NE(inst,  VK_NULL_HANDLE);
 
+        // M2c fix: width/hit oracle reads HitRecordBuffer (still written post-KI-018) instead
+        // of the dead colorImg — see this file's HitRecordCpu comment. PNG from albedo.
         std::vector<uint8_t> rgba; double ms = 0.0;
+        std::vector<HitRecordCpu> hitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
-                                             b.sdf, b.brickLookup, pc, kW, kH, rgba, ms));
+                                             b.sdf, b.brickLookup, pc, kW, kH, rgba, ms, &hitRecords));
         {
             std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
             for (uint32_t i = 0; i < kW * kH; ++i) {
-                rgb[i*3+0] = rgba[i*4+0]; rgb[i*3+1] = rgba[i*4+1]; rgb[i*3+2] = rgba[i*4+2];
+                const HitRecordCpu& rec = hitRecords[i];
+                const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+                rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+                rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+                rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
             }
             EXPECT_NE(stbi_write_png(png, kW, kH, 3, rgb.data(), kW*3), 0)
                 << "stbi_write_png failed for " << png;
         }
         int minX = int(kW), maxX = -1, bodyPx = 0;
         for (uint32_t y = 0; y < kH; ++y) for (uint32_t x = 0; x < kW; ++x) {
-            const uint8_t* px = &rgba[(static_cast<size_t>(y)*kW + x)*4];
-            if (px[0] > 24 || px[1] > 24 || px[2] > 40) {
+            const HitRecordCpu& rec = hitRecords[static_cast<size_t>(y)*kW + x];
+            if ((rec.flags & kHitRecordFlagHit) != 0u) {
                 if (int(x) < minX) minX = int(x);
                 if (int(x) > maxX) maxX = int(x);
                 ++bodyPx;

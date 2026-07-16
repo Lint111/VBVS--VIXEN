@@ -657,12 +657,23 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
 
 // ---------------------------------------------------------------------------
 // The decisive test: a real render of one body, comparing the HitRecordBuffer's
-// per-pixel content against the shader's OWN colour/ID outputs — which were
-// themselves derived by reading the SAME buffer back inside the shader (see
+// per-pixel content against the shader's OWN ID output — which was itself
+// derived by reading the SAME buffer back inside the shader (see
 // BodyInstanceRayMarch.comp main()'s HitRecord round-trip comment). If the SSBO
-// pack/write/read/unpack were lossy, the colour image (driven by the shader's
+// pack/write/read/unpack were lossy, the ID image (driven by the shader's
 // in-shader readback) and this test's own CPU-side readback of the identical
 // buffer would disagree.
+//
+// M2c fix: this test used to ALSO cross-check HitRecord.flags against the
+// colour image (`imgLooksHit`) — that check went permanently red when commit
+// 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp;
+// this shader stopped writing colorImg (binding 0) entirely, so `imgLooksHit`
+// was always false regardless of the real hit data (confirmed: this run showed
+// hit=1350/miss=2746 real hits in HitRecord, all failing the colour cross-check).
+// The colour-image cross-check is removed — it now tests a contract this shader
+// no longer implements. The ID-buffer cross-check below is untouched and still
+// valid: idOutputImage IS still written by this shader (main()'s pickID write).
 // ---------------------------------------------------------------------------
 TEST_F(HitRecordReadbackTest, HitRecordMatchesShaderColorAndIdOutput) {
     std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
@@ -721,16 +732,6 @@ TEST_F(HitRecordReadbackTest, HitRecordMatchesShaderColorAndIdOutput) {
             const uint32_t idx = y * kW + x;
             const HitRecordCpu& rec = hitRecords[idx];
             const bool recHit = (rec.flags & kHitRecordFlagHit) != 0u;
-
-            const uint8_t r = rgba[idx * 4 + 0], g = rgba[idx * 4 + 1], b = rgba[idx * 4 + 2];
-            // Same "brighter than darkest sky" heuristic test_body_instance_raymarch_render.cpp
-            // uses to classify a pixel as "body" vs "sky" from the shader's OWN colour output.
-            const bool imgLooksHit = (r > 24 || g > 24 || b > 40);
-
-            EXPECT_EQ(recHit, imgLooksHit)
-                << "pixel (" << x << "," << y << "): HitRecord.flags hit=" << recHit
-                << " but shader colour output looks " << (imgLooksHit ? "hit" : "miss")
-                << " (rgb=" << int(r) << "," << int(g) << "," << int(b) << ")";
 
             if (recHit) {
                 ++checkedHit;

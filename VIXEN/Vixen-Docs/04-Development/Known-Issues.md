@@ -11,6 +11,108 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-036 — `test_shadow_correctness.cpp` dispatches only `BodyInstanceRayMarch.comp`, which no longer contains the shadow-shading code it exists to test
+
+**Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c's SPV-consumer test-health
+restoration sweep (root-causing the shared blank-render class KI-032/KI-034 already partially cover).
+
+**Symptom:** `ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay` fails — it asserts a
+pixel's occlusion state (read from the shaded colour output) matches an independent CPU-traced
+reference shadow ray, but the colour buffer it reads is permanently black (same colorImg/binding-0
+dead-buffer bug as KI-032/KI-034).
+
+**Root cause — a layer deeper than KI-032/KI-034's colorImg fix covers:** unlike the other files in
+that bug class, simply swapping this test's readback to `HitRecordBuffer` (KI-032's fix option (b),
+applied to 6 sibling files this same session) CANNOT restore this test's intent, because
+`TraceWorldShadow` — the function under test — is not even CALLED from `BodyInstanceRayMarch.comp`
+anymore. Confirmed by grep: `TraceWorldShadow` appears only in `DirectLighting.comp` (comment at
+`:27` explains why: "needs the FULL scene traversal machinery to cast an any-hit occlusion ray"). The
+KI-018/M1 pass-split (`784adff7`) moved ALL shading — including shadow-ray casting — out of
+`BodyInstanceRayMarch.comp` into `DirectLighting.comp`. `HitRecord` (what this shader still writes)
+carries only geometric hit data (albedo/normal/hitT/worldPos/flags) — no shadow/occlusion
+classification exists in it. This test's single-pass harness structurally cannot exercise shadow
+logic anymore, regardless of which buffer it reads back.
+
+**Impact:** shadow-ray-vs-CPU-reference correctness (the Sampled Lighting Inc1 M4 gate this test was
+built to prove) has had ZERO live-shader test coverage since `784adff7` landed (2026-07-11) — the
+test still runs and still fails, but even before this M2c investigation it was failing for the wrong
+reason (dead colour buffer) hiding an even deeper gap (wrong shader dispatched entirely).
+
+**Fix options:** (a) the honest fix — extend this harness to dispatch `DirectLighting.comp` (the pass
+that actually calls `TraceWorldShadow`) as a genuine second stage after `BodyInstanceRayMarch.comp`,
+reading the shadow-relevant reservoir/lighting output it produces; nontrivial — `DirectLighting.comp`
+has grown to 25+ bindings (`ReservoirConfig`, `LightTreeBuffer`, `worldPosHistoryImage`, real
+cross-dispatch hazard-sync per its own header comment) since the M1 split, so this is a materially
+larger harness than the single-pass ones KI-032/KI-034 fixed; (b) retarget the test at a CPU-mirror
+of `TraceWorldShadow` instead of the live GPU shader (the `gpu-shader-debug` skill's established
+pattern, already used elsewhere in this codebase, e.g. `test_traceworld_mirror.cpp` per this file's
+own header comment) — narrower coverage (proves the algorithm, not the compiled shader) but far
+cheaper than (a) and immediately restorable.
+
+**Severity:** Medium (a real correctness gate has silently had zero coverage for ~5 days;  not a
+production runtime bug — shadow rendering itself may well be correct, this is purely a test-coverage
+gap) · **Status:** OPEN — NOT fixed by [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c (that milestone's
+own gate treats standing up the full `DirectLighting.comp` pass as out of proportion for a test-health
+restoration pass; deliberately left as a Known Issue rather than silently patched with a check that
+doesn't test what the test claims to test) — needs its own dedicated session to choose (a) vs (b).
+
+---
+
+## KI-035 — `BodyOctreeSceneNode::CreateOctreeBuffers` cannot express per-octree brick residency; a whole-pool `brickResident` stamp clobbers any caller's hand-set per-octree value
+
+**Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c, while restoring
+`test_tier_crossing_lod_residency.cpp`'s tests after fixing the colorImg dead-buffer bug (KI-032/
+KI-034 class) — with real `HitRecordBuffer` data flowing correctly (proven by the sibling test in the
+same file, `SubPixelFootprintSkipsCrossingEvenWhenChildResident`, now passing as a genuine, non-vacuous
+check), `TierCrossingLodResidencyTest.NonResidentChildNeverCrossesResidentChildDoes` STILL fails —
+differently this time: both the "resident child" and "non-resident child" scenes now show
+IDENTICAL results (`magentaResident=0, magentaNonResident=0`), meaning the test's `residentChild`
+parameter has zero effect on the actual GPU-visible outcome.
+
+**Root cause:** `BuildTierCrossingScene` (`test_tier_crossing_lod_residency.cpp:730-731`) hand-stamps
+per-octree residency directly on the `ConcatenatedOctrees` configs before `SetRecipePool`
+(`setBrickResident(childSer.config, residentChild); setBrickResident(parentSer.config, true);`). This
+survives `EnsureOctreesBuilt()` (`BodyOctreeSceneNode.cpp:270,489-490`, which copies the provided pool
+intact) but is then unconditionally CLOBBERED by `CreateOctreeBuffers` (`BodyOctreeSceneNode.cpp:
+660-662`):
+```cpp
+for (auto& cfg : concatenated_.configs) {
+    Vixen::SVO::setBrickResident(cfg, brickPoolUploaded_);
+}
+```
+`brickPoolUploaded_` is ONE scalar for the WHOLE node (derived from `residencyRequested_`, itself
+either explicit via `RequestBrickResidency(bool)` or capability-derived via
+`DeriveResidencyDefaultIfUnset`/`ResidencyDefault.h:52`) — there is currently no mechanism in
+`BodyOctreeSceneNode` to make one octree in a concatenated pool resident while a sibling is not.
+Every config in the pool gets the same value, silently overwriting whatever the caller (or a fixture)
+stamped per-octree beforehand.
+
+**Impact:** any per-octree residency policy — mixed resident/non-resident octrees in one concatenated
+pool — is currently impossible to achieve via `BodyOctreeSceneNode`'s public API, not just in this
+test. This is the mechanism the test's own header comment (lines ~22-30) already suspected ("no
+existing mechanism to make one octree resident while a sibling is not") but incorrectly believed the
+direct-config-stamping workaround solved — it doesn't, because `CreateOctreeBuffers` re-stamps
+afterward. `brickLookupBase` addressing (a previously-suspected cause per this same milestone's own
+plan doc) is CONFIRMED CORRECT and not implicated — verified byte-for-byte against `ShellOctreeGpu.h::
+ConcatenateSdf`'s identical stamp-then-advance formula.
+
+**Fix options:** (a) make `CreateOctreeBuffers`'s residency stamp per-config-aware — e.g. skip
+overwriting a config whose `brickResident` was already explicitly set by the caller (mirrring the
+`residencyExplicitlyRequested_` latch pattern `RequestBrickResidency` already uses at the node level,
+but per-octree instead of whole-node); (b) extend `RequestBrickResidency`'s signature (or add a new
+API) to accept a per-octree-index residency map instead of a single bool, threading it through
+`CreateOctreeBuffers`'s loop. Neither investigated further this session — this is real product code,
+escalation-worthy per this milestone's own gate rule (test-health milestone; product changes need
+explicit validator sign-off), not something to patch speculatively inside a test-restoration pass.
+
+**Severity:** Medium (blocks one specific test scenario — mixed-residency tier-crossing — from ever
+passing as designed; no evidence yet this affects any live/production scene, since production scenes
+observed so far use uniform residency policy per pool) · **Status:** OPEN — NOT fixed by
+[[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c (flagged per that milestone's own escalation rule rather
+than patched) — needs a deliberate product-code change + validator review, not a drive-by fix.
+
+---
+
 ## KI-034 — 8 test files hand-mirror `BodyInstanceRayMarch.comp`'s push-constant struct at a stale 76 bytes, now 92; blocks ~30+ render tests
 
 **Discovered:** 2026-07-15, during [[Recipe-GPU-Instance-Bucketing-Inc2-Plan-2026-07]] M1's Opus
@@ -147,10 +249,21 @@ between (a)/(b) deliberately, not as a drive-by inside a future unrelated milest
 
 **Severity:** Medium (three real geometry-correctness gates are currently unable to assert anything —
 not a production runtime bug, but a meaningful loss of test coverage that predates and is unrelated to
-this branch) · **Status:** OPEN (item 2 only — item 1, the binding-8 VUID, is RESOLVED this milestone,
-commit range TBD at merge) · out of scope for [[Recipe-Parameterization-Plan-2026-07]] to fully fix (a
-RenderGraph/shader-pass-chaining problem, not a recipe/param-VM one) — Task 11's corpus entry and
-wiring are provably correct and ready to pass once either fix option above lands.
+this branch) · **Status:** PARTIALLY RESOLVED — `test_recipe_pool_render` fixed 2026-07-16 during
+[[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c (fix option (b) applied: pixel-count/PNG readback switched
+from `colorImg` to `HitRecordBuffer.flags`/`.albedo`, plus the same fix landed across 6 sibling files
+sharing this exact bug — `test_body_instance_raymarch_render.cpp` (6 tests), `test_hitrecord_readback.cpp`,
+`test_editor_document_render.cpp` (2 tests), `test_recipe_authoring_gate.cpp` (2 tests),
+`test_tier_crossing_lod_residency.cpp` (1 of 2 tests — see KI-035 for the other). `test_baked_vs_virtual_
+parity` and `test_mip_fallback_render` are STILL OPEN — not touched by M2c (out of that milestone's file
+list) but confirmed to share the identical root cause; applying the same option-(b) pattern (see the
+fixed files above for the established shape: add a `HitRecordCpu` mirror struct + `kHitRecordFlagHit`,
+size the existing HitRecordBuffer dummy to real `w*h*64` instead of a 256-byte placeholder, barrier
+shader-write→host-read, read it back into an output param, swap `rgba[i*4+...]` threshold checks for
+`(flags & kHitRecordFlagHit)`/`.albedo` reads) should resolve both quickly · out of scope for
+[[Recipe-Parameterization-Plan-2026-07]] to fully fix (a RenderGraph/shader-pass-chaining problem, not a
+recipe/param-VM one) — Task 11's corpus entry and wiring are provably correct and ready to pass once
+`test_baked_vs_virtual_parity` gets the same fix.
 
 ---
 

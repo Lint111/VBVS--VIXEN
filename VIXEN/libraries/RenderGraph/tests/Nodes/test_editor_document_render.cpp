@@ -57,6 +57,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -97,6 +98,28 @@ struct PushConstants {
     uint32_t   accumFrameCount;
 };
 static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
+
+// ---------------------------------------------------------------------------
+// M2c fix: this file's colorImg (binding 0) readback went permanently dark when
+// commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp —
+// this shader now writes ONLY HitRecordBuffer (binding 18) and idOutputImage
+// (binding 9), never outputImage. Hit/color checks now read HitRecord instead —
+// same mirror struct test_hitrecord_readback.cpp/test_body_instance_raymarch_
+// render.cpp already established.
+// ---------------------------------------------------------------------------
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];  // std430 tail padding — see test_hitrecord_readback.cpp's identical mirror
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -325,7 +348,8 @@ protected:
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
                       const PushConstants& pc, uint32_t w, uint32_t h,
-                      std::vector<uint8_t>& rgba, double& ms) {
+                      std::vector<uint8_t>& rgba, double& ms,
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
         ASSERT_TRUE(softwareConfirmed_);
         // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
         // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation of
@@ -354,7 +378,11 @@ protected:
         VkBuffer dummyTierRef=VK_NULL_HANDLE, dummyHitRecord=VK_NULL_HANDLE;
         VkDeviceMemory dTierRefMem=VK_NULL_HANDLE, dHitRecordMem=VK_NULL_HANDLE;
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyTierRef,dTierRefMem,true);
-        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
+        // M2c fix: sized for real w*h*64 (not a 256-byte placeholder) and read back below —
+        // this is now the buffer the hit/color checks read (see this file's HitRecordCpu
+        // comment; colorImg/binding 0 is never written post-KI-018).
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
+        CreateHostBuffer(hitRecordBufSize,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
 
         VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
         VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
@@ -472,6 +500,16 @@ protected:
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
 
+        // M2c fix: barrier the HitRecord SSBO (shader write -> host read) before the host
+        // reads it below — same pattern test_body_instance_occlusion_reject.cpp's iteration
+        // debug buffer already uses.
+        VkBufferMemoryBarrier hitRecordBarrier{}; hitRecordBarrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; hitRecordBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hitRecordBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer=dummyHitRecord; hitRecordBarrier.offset=0; hitRecordBarrier.size=VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0,0,nullptr,1,&hitRecordBarrier,0,nullptr);
+
         VkImageMemoryBarrier toSrc{}; toSrc.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout=VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         toSrc.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; toSrc.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
@@ -499,6 +537,14 @@ protected:
         rgba.assign(size_t(w)*h*4, 0); std::memcpy(rgba.data(), mapped, size_t(rbSz));
         vkUnmapMemory(logicalDevice_, rbMem);
 
+        if (outHitRecords != nullptr) {
+            void* hrMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, dHitRecordMem, 0, hitRecordBufSize, 0, &hrMapped), VK_SUCCESS);
+            outHitRecords->assign(size_t(w) * h, HitRecordCpu{});
+            std::memcpy(outHitRecords->data(), hrMapped, size_t(hitRecordBufSize));
+            vkUnmapMemory(logicalDevice_, dHitRecordMem);
+        }
+
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_,rb,nullptr); vkFreeMemory(logicalDevice_,rbMem,nullptr);
         vkDestroyDescriptorPool(logicalDevice_,pool2,nullptr);
@@ -524,7 +570,8 @@ protected:
     // camera, and returns the RGBA readback + hit-pixel count (threshold matches
     // test_recipe_pool_render.cpp's non-background heuristic).
     void RenderPool(Vixen::SVO::ConcatenatedOctrees pool, const PushConstants& pc,
-                     uint32_t w, uint32_t h, std::vector<uint8_t>& outRgba, int& outHitPixels) {
+                     uint32_t w, uint32_t h, std::vector<uint8_t>& outRgba, int& outHitPixels,
+                     std::vector<HitRecordCpu>* outHitRecords = nullptr) {
         using C = BodyOctreeSceneNodeConfig;
         BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
         auto nodeBase = nodeType.CreateInstance("editor_doc_render_test");
@@ -572,13 +619,18 @@ protected:
         VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
         ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
 
+        // M2c fix: outHitPixels reads HitRecordBuffer (still written post-KI-018) instead of
+        // the dead colorImg — see this file's HitRecordCpu comment. outRgba is still returned
+        // (some callers write it to PNG for inspection) but no longer drives the hit count.
         double ms = 0.0;
+        std::vector<HitRecordCpu> localHitRecords;
+        std::vector<HitRecordCpu>& hitRecords = outHitRecords ? *outHitRecords : localHitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                             sdfBuf, lookBuf, pc, w, h, outRgba, ms));
+                                             sdfBuf, lookBuf, pc, w, h, outRgba, ms, &hitRecords));
 
         outHitPixels = 0;
         for (uint32_t i = 0; i < w*h; ++i) {
-            if (outRgba[i*4+0]>24 || outRgba[i*4+1]>24 || outRgba[i*4+2]>40) ++outHitPixels;
+            if ((hitRecords[i].flags & kHitRecordFlagHit) != 0u) ++outHitPixels;
         }
 
         vkDeviceWaitIdle(logicalDevice_);
@@ -617,12 +669,19 @@ TEST_F(EditorDocumentRenderTest, GoldenDocumentAllLayersRendersVisibleBody) {
     const PushConstants pc = MakeCamera(eye, target, kW, kH, 1);
 
     std::vector<uint8_t> rgba; int hitPixels = 0;
-    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeResult.pool), pc, kW, kH, rgba, hitPixels));
+    std::vector<HitRecordCpu> hitRecords;
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeResult.pool), pc, kW, kH, rgba, hitPixels, &hitRecords));
 
     {
+        // M2c fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not the
+        // dead colorImg, so it stays visually meaningful for inspection.
         std::vector<uint8_t> rgb(size_t(kW)*kH*3);
         for (uint32_t i = 0; i < kW*kH; ++i) {
-            rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+            rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
         }
         stbi_write_png("/tmp/editor_document_render_with_cut.png", int(kW), int(kH), 3, rgb.data(), int(kW)*3);
     }
@@ -674,32 +733,48 @@ TEST_F(EditorDocumentRenderTest, DisablingCutLayerChangesTopFaceSilhouette) {
     auto bakeNoCut = FlattenAndBake(view, &enabledOverride, blobNoCut);
     ASSERT_TRUE(bakeNoCut.ok) << bakeNoCut.err;
 
+    // M2c fix: hitWithCut/hitNoCut and the centre-diff both read HitRecordBuffer (still
+    // written post-KI-018) instead of the dead colorImg — see this file's HitRecordCpu
+    // comment. PNGs rendered from albedo so they stay visually meaningful.
     std::vector<uint8_t> rgbaWithCut, rgbaNoCut;
+    std::vector<HitRecordCpu> hitRecordsWithCut, hitRecordsNoCut;
     int hitWithCut = 0, hitNoCut = 0;
-    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeWithCut.pool), pc, kW, kH, rgbaWithCut, hitWithCut));
-    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeNoCut.pool),  pc, kW, kH, rgbaNoCut,  hitNoCut));
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeWithCut.pool), pc, kW, kH, rgbaWithCut, hitWithCut, &hitRecordsWithCut));
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(bakeNoCut.pool),  pc, kW, kH, rgbaNoCut,  hitNoCut, &hitRecordsNoCut));
 
-    auto writePng = [&](const char* path, const std::vector<uint8_t>& rgba) {
+    auto writePng = [&](const char* path, const std::vector<HitRecordCpu>& recs) {
         std::vector<uint8_t> rgb(size_t(kW)*kH*3);
         for (uint32_t i = 0; i < kW*kH; ++i) {
-            rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+            const HitRecordCpu& rec = recs[i];
+            const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+            rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
         }
         stbi_write_png(path, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
     };
-    writePng("/tmp/editor_document_render_with_cut.png", rgbaWithCut);
-    writePng("/tmp/editor_document_render_without_cut.png", rgbaNoCut);
+    writePng("/tmp/editor_document_render_with_cut.png", hitRecordsWithCut);
+    writePng("/tmp/editor_document_render_without_cut.png", hitRecordsNoCut);
 
     // Sample a small region around screen-centre (where the camera looks straight down through
-    // the bore) and count differing pixels between the two renders.
+    // the bore) and count differing pixels between the two renders. A hit/miss flip counts as
+    // a difference even before comparing albedo (with-cut=void/miss, no-cut=solid/hit is
+    // exactly this case — the simplest possible "differs").
     int centreDiffPixels = 0;
     constexpr uint32_t kRegionHalf = 40;
     for (uint32_t y = kH/2 - kRegionHalf; y < kH/2 + kRegionHalf; ++y) {
         for (uint32_t x = kW/2 - kRegionHalf; x < kW/2 + kRegionHalf; ++x) {
             const uint32_t i = y*kW + x;
-            const int dr = int(rgbaWithCut[i*4+0]) - int(rgbaNoCut[i*4+0]);
-            const int dg = int(rgbaWithCut[i*4+1]) - int(rgbaNoCut[i*4+1]);
-            const int db = int(rgbaWithCut[i*4+2]) - int(rgbaNoCut[i*4+2]);
-            if (std::abs(dr) > 16 || std::abs(dg) > 16 || std::abs(db) > 16) ++centreDiffPixels;
+            const HitRecordCpu& recCut = hitRecordsWithCut[i];
+            const HitRecordCpu& recNoCut = hitRecordsNoCut[i];
+            const bool hitCut = (recCut.flags & kHitRecordFlagHit) != 0u;
+            const bool hitNoCutPx = (recNoCut.flags & kHitRecordFlagHit) != 0u;
+            if (hitCut != hitNoCutPx) { ++centreDiffPixels; continue; }
+            if (!hitCut) continue;  // both miss: no difference to measure
+            const float dr = std::abs(recCut.albedo[0] - recNoCut.albedo[0]);
+            const float dg = std::abs(recCut.albedo[1] - recNoCut.albedo[1]);
+            const float db = std::abs(recCut.albedo[2] - recNoCut.albedo[2]);
+            if (dr > 16.0f/255.0f || dg > 16.0f/255.0f || db > 16.0f/255.0f) ++centreDiffPixels;
         }
     }
 
