@@ -24,6 +24,21 @@ source of truth for what is proven, what is refuted, and where every piece of wo
 
 ## 1. The gap (validated numbers)
 
+**Fresh Windows-native baseline on main `1e853511` (2026-07-16, `temp_bench/` rig,
+mean over frames 31–160):**
+
+| Variant | wall ms/frame | FPS | GPU esvo pass | Correctness |
+|---|---|---|---|---|
+| Virtual analytic | 6.49 | **~154** | 2.8 ms | ground truth |
+| Baked stored-SDF | 877.5 | **~1.1** | 222.4 ms | **all 8 bodies present** in instIdx map (0–7) — preserve this; OOB far-hit pixels still present (hitT≈77.5) |
+
+Gap: ~135× wall, ~80× GPU. Even baked's wall (877 ms) is ~4× its GPU pass (222 ms) →
+sync/CPU overhead on top of the shader cost. debug_capture exported 256 ray traces to
+JSON **15 times in the 160-frame run** (~every 10 frames, each a GPU→CPU readback).
+Realtime target: 60 FPS ⇒ ~55× needed from 1.1 FPS.
+
+Historical session numbers (older mains, WSL-launched):
+
 | Variant | FPS | Source |
 |---|---|---|
 | Virtual analytic Cornell | ~126 | rootfix doc, uncontested |
