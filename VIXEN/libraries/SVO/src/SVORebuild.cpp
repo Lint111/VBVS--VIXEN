@@ -642,8 +642,17 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     // ========================================================================
     // 8. PHASE 4: DXT Compression (Week 3)
     // Phase B.1: Geometric normals computed from voxel topology
+    //
+    // Task 0.4 (Baked-Content Perf Audit F3): gated on m_signedDistanceField (set before
+    // rebuild — see SdfBake.h) because this phase's output (compressedColors/
+    // compressedNormals/brickMaterialData) is consumed ONLY by the disabled raster path
+    // (VoxelSceneCacher/VoxelGridNode — see LaineKarrasOctree.cpp's own .empty()-guarded
+    // accessors, which degrade cleanly to "nothing to save/query" when left unpopulated).
+    // The live compute/SDF march path never reads these fields. ~40M hash/ECS lookups,
+    // ~50s of the boot bake window for the baked Cornell demo (8 SDF bodies) — skipped
+    // entirely for stored-SDF bodies, still runs for legacy (non-SDF) voxel content.
     // ========================================================================
-    {
+    if (!m_signedDistanceField) {
         const size_t numBricks = m_octree->root->brickViews.size();
         const size_t blocksPerBrick = 32;
         const int brickSize = 8;  // 8x8x8 voxels per brick

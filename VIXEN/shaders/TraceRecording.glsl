@@ -14,6 +14,15 @@
 //
 // Dependencies:
 //   - RayTraceBuffer (binding 4)
+//
+// Baked-perf-pipeline M2 (audit D1): the recording functions below (grid-based
+// capture gate + atomicAdd slot allocation + 48 B/step writes into RayTraceBuffer)
+// cost every pixel an unread atomicAdd and up to MAX_TRACE_STEPS SSBO writes for a
+// consumer (CPU trace readback / TraceViewer) the live app never uses. Gated on
+// VIXEN_GPU_TRACE_HOOKS, mirroring ShaderCounters.glsl's existing #ifdef/#else
+// no-op-stub pattern exactly (same file, same mechanism) -- define it before
+// including this file to get the real recording bodies back; the no-op stubs
+// below are zero cost (empty function bodies, no atomics, no buffer touches).
 // ============================================================================
 
 #ifndef TRACE_RECORDING_GLSL
@@ -115,6 +124,8 @@ uint g_traceStepCount = 0;         // Current step count for this ray
 // TRACE RECORDING FUNCTIONS
 // ============================================================================
 
+#ifdef VIXEN_GPU_TRACE_HOOKS
+
 // Returns true if this pixel should capture debug data (grid-based sampling)
 // PERFORMANCE: Set DEBUG_GRID_SPACING to large value for benchmarking
 bool shouldCaptureDebug(ivec2 pixelCoords) {
@@ -213,5 +224,15 @@ void endRayTrace(bool hit) {
 
     traceData[offset + 3] = flags;
 }
+
+#else
+// No-op stubs when VIXEN_GPU_TRACE_HOOKS is not defined (zero overhead: no
+// atomicAdd, no SSBO writes, g_traceRaySlot stays permanently "not tracing").
+bool shouldCaptureDebug(ivec2 pixelCoords) { return false; }
+bool beginRayTrace(ivec2 pixelCoords) { return false; }
+void recordTraceStep(uint stepType, uint nodeIndex, int scale, uint octantMask,
+                     vec3 pos, float tMin, float tMax, uvec2 childDesc) {}
+void endRayTrace(bool hit) {}
+#endif // VIXEN_GPU_TRACE_HOOKS
 
 #endif // TRACE_RECORDING_GLSL

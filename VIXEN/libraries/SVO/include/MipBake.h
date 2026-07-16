@@ -327,11 +327,12 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
     cat.brickCounts.resize(octrees.size());
     cat.tierRefCounts.resize(octrees.size());
 
-    uint32_t nodeBase    = 0;
-    uint32_t brickBase   = 0;
-    uint32_t poolBase    = 0;
-    uint32_t mipPoolBase = 0;
-    uint32_t tierRefBase = 0;  // Inc2 M1 Task 2 — mirrors mipPoolBase's bookkeeping
+    uint32_t nodeBase        = 0;
+    uint32_t brickBase       = 0;
+    uint32_t poolBase        = 0;
+    uint32_t mipPoolBase     = 0;
+    uint32_t tierRefBase     = 0;  // Inc2 M1 Task 2 — mirrors mipPoolBase's bookkeeping
+    uint32_t brickLookupBase = 0;  // Baked-Perf M1 Task 1.1 — mirrors mipPoolBase's bookkeeping
 
     for (size_t k = 0; k < octrees.size(); ++k) {
         if (octrees[k] == nullptr) {
@@ -348,6 +349,10 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         setSdfBrickArrayBase(s.config, poolBase);
         setMipPoolBase(s.config, mipPoolBase);
         setTierRefTableBase(s.config, tierRefBase);
+        // brickLookupBase: exact prefix sum over each octree's own bpa^3 — see
+        // ShellOctreeGpu.h::ConcatenateSdf (same formula, mirrored here per this
+        // file's own bookkeeping convention).
+        setBrickLookupBase(s.config, brickLookupBase);
 
         cat.configs[k]     = s.config;
         cat.nodeCounts[k]  = s.nodeCount;
@@ -372,6 +377,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         poolBase  += s.brickCount * s.brickStrideFloats;
         mipPoolBase += s.nodeCount * s.channelCount;
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
 
     return cat;

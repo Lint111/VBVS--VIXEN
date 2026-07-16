@@ -468,15 +468,28 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         // Check cache if enabled
         std::string cacheKey;
         if (cacheManager_) {
-            // Generate cache key from source + options
+            // Baked-perf-pipeline M2b (Task 2b.1): cache key is a HASH of the final effective
+            // source (sourceToCompile is post-preprocess -- ShaderPreprocessor::ProcessRecursive
+            // textually inlines every #include, see ShaderPreprocessor.cpp -- so a changed
+            // #include naturally changes sourceToCompile and busts the cache) plus every
+            // compile-affecting option. Previously this used the raw concatenated key string
+            // itself as the cache key, which ShaderCacheManager uses directly as a filename
+            // component (cacheKey + ".spv") -- multi-KB/MB of GLSL source text as a filename
+            // silently fails Store/Lookup on real filesystems (path length limits) the moment a
+            // shader's source is nontrivial. Hashing also lets us fold in targetVulkanVersion/
+            // targetSpirvVersion, which the previous key omitted entirely -- the same source
+            // compiled for two different Vulkan/SPIR-V targets must not collide on one entry.
             std::ostringstream keyStream;
             keyStream << sourceToCompile << "|"
                       << static_cast<int>(stageSource.stage) << "|"
                       << stageSource.entryPoint << "|"
                       << stageSource.options.optimizePerformance << "|"
                       << stageSource.options.optimizeSize << "|"
-                      << stageSource.options.generateDebugInfo;
-            cacheKey = keyStream.str();
+                      << stageSource.options.generateDebugInfo << "|"
+                      << stageSource.options.targetVulkanVersion << "|"
+                      << stageSource.options.targetSpirvVersion;
+            const std::string keyContent = keyStream.str();
+            cacheKey = ComputeSHA256Hex(keyContent.data(), keyContent.size());
 
             auto cached = cacheManager_->Lookup(cacheKey);
             if (cached) {

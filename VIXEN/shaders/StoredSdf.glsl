@@ -74,8 +74,13 @@ float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeId
     uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
     if (flatLookup == 0xFFFFFFFFu) return 1e9;  // out of grid
 
-    // Each octree's sub-table is bpa^3 entries; sub-tables are appended in order.
-    uint lookupBase = uint(octreeIdx) * uint(bpa) * uint(bpa) * uint(bpa);
+    // Each octree's sub-table is bpa^3 entries; sub-tables are appended at an
+    // EXACT PREFIX SUM stamped by the CPU concatenation (ConcatenateSdf/
+    // ConcatenateSdfWithMips) into brickLookupBase — NOT octreeIdx*bpa^3, which
+    // silently assumed every concatenated octree shared one uniform bpa (wrong
+    // whenever bpa differs across octrees, e.g. Cornell's bpa=16 walls mixed
+    // with bpa=2 bodies — see OctreeConfig.brickLookupBase's doc comment).
+    uint lookupBase = configs[octreeIdx].brickLookupBase;
     uint brickIdx   = brickLookup[lookupBase + flatLookup];
     if (brickIdx == 0xFFFFFFFFu) return 1e9;  // unallocated brick
 
@@ -232,7 +237,9 @@ bool _sdfBrickAllocated(ivec3 brickCoord, int octreeIdx) {
     if (bpa <= 0) return false;
     uint flatLookup = _gridToLookupIdx(brickCoord, bpa);
     if (flatLookup == 0xFFFFFFFFu) return false;  // out of grid
-    uint lookupBase = uint(octreeIdx) * uint(bpa) * uint(bpa) * uint(bpa);
+    // See _samplePoolVoxel's matching comment: exact-prefix brickLookupBase,
+    // not a uniform-bpa octreeIdx*bpa^3 assumption.
+    uint lookupBase = configs[octreeIdx].brickLookupBase;
     return brickLookup[lookupBase + flatLookup] != 0xFFFFFFFFu;
 }
 

@@ -42,6 +42,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -63,14 +64,45 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 namespace {
 
 // Push-constant block — byte-identical to BodyInstanceRayMarch.comp (same as raymarch_render test).
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 96 bytes
+// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
+// work; std430 rounds the whole push-constant block up to a 16-byte multiple, so
+// SPIR-V reflection reports 96, not 92 -- see test_body_instance_raymarch_render.cpp's
+// PushConstants for the established fix pattern this mirrors).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;
     glm::vec3 cameraUp;    float aspect;
     glm::vec3 cameraRight; int32_t debugMode;
     float raySizeCoef; float raySizeBias; int32_t instanceCount;
+    int32_t _pad0;  // std430 forces ivec2 to 8-byte alignment (real gap at offset [76,80))
+    glm::ivec2 debugTargetPixel = glm::ivec2(-1, -1);  // Inc1 M4b (bytes 80-87); (-1,-1) disables
+    uint32_t   accumFrameCount = 1u;                    // Sampled Lighting Inc2 M2 (bytes 88-91)
+    uint32_t   _pad1 = 0u;  // std430 push-constant block rounds up to a 16-byte multiple
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
+
+// ---------------------------------------------------------------------------
+// M2c fix: this file's colorImg (binding 0) readback went permanently dark when
+// commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp —
+// this shader now writes ONLY HitRecordBuffer (binding 18) and idOutputImage
+// (binding 9), never outputImage. Pixel-count checks now read HitRecord instead —
+// same mirror struct test_hitrecord_readback.cpp/test_body_instance_raymarch_
+// render.cpp already established.
+// ---------------------------------------------------------------------------
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];  // std430 tail padding — see test_hitrecord_readback.cpp's identical mirror
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -269,11 +301,15 @@ protected:
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
                       const PushConstants& pc, uint32_t w, uint32_t h,
-                      std::vector<uint8_t>& rgba, double& ms) {
+                      std::vector<uint8_t>& rgba, double& ms,
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
         ASSERT_TRUE(softwareConfirmed_);
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf=VK_NULL_HANDLE, ctrBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE, ctrMem=VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ctrBuf, ctrMem, true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE;
         VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE;
@@ -281,6 +317,16 @@ protected:
         if (sdf    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySdf,dSdfMem,true); sdf = dummySdf; }
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup = dummyLookup; }
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true);
+        // Baked-perf-pipeline M2: bindings 15/18 (TierRefTableBuffer/HitRecordBuffer) placeholders
+        // -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        VkBuffer dummyTierRef=VK_NULL_HANDLE, dummyHitRecord=VK_NULL_HANDLE;
+        VkDeviceMemory dTierRefMem=VK_NULL_HANDLE, dHitRecordMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyTierRef,dTierRefMem,true);
+        // M2c fix: sized for real w*h*64 (not a 256-byte placeholder) and read back below —
+        // this is now the buffer the pixel-count checks read (colorImg/binding 0 is never
+        // written post-KI-018 — see this file's HitRecordCpu comment).
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
+        CreateHostBuffer(hitRecordBufSize,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
 
         VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
         VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
@@ -300,7 +346,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,13> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,15> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -314,6 +360,8 @@ protected:
             bindL(12,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(13,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
+            bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
+            bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -335,7 +383,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -351,7 +399,8 @@ protected:
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
-            sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{dummyMip,0,VK_WHOLE_SIZE};
+            sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{dummyMip,0,VK_WHOLE_SIZE},
+            tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -363,10 +412,11 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,13> writes = {
+        const std::array<VkWriteDescriptorSet,15> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
-            wB(14,&iterI)  // Inc1 M4b: per-instance iteration debug
+            wB(14,&iterI),  // Inc1 M4b: per-instance iteration debug
+            wB(15,&tierRefI), wB(18,&hitRecordI)
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -392,6 +442,16 @@ protected:
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1, &ds, 0, nullptr);
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
+
+        // M2c fix: barrier the HitRecord SSBO (shader write -> host read) before the host
+        // reads it below — same pattern test_body_instance_occlusion_reject.cpp's iteration
+        // debug buffer already uses.
+        VkBufferMemoryBarrier hitRecordBarrier{}; hitRecordBarrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; hitRecordBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; hitRecordBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer=dummyHitRecord; hitRecordBarrier.offset=0; hitRecordBarrier.size=VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0,0,nullptr,1,&hitRecordBarrier,0,nullptr);
 
         VkImageMemoryBarrier toSrc{}; toSrc.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout=VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -420,6 +480,14 @@ protected:
         rgba.assign(size_t(w)*h*4, 0); std::memcpy(rgba.data(), mapped, size_t(rbSz));
         vkUnmapMemory(logicalDevice_, rbMem);
 
+        if (outHitRecords != nullptr) {
+            void* hrMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, dHitRecordMem, 0, hitRecordBufSize, 0, &hrMapped), VK_SUCCESS);
+            outHitRecords->assign(size_t(w) * h, HitRecordCpu{});
+            std::memcpy(outHitRecords->data(), hrMapped, size_t(hitRecordBufSize));
+            vkUnmapMemory(logicalDevice_, dHitRecordMem);
+        }
+
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_,rb,nullptr); vkFreeMemory(logicalDevice_,rbMem,nullptr);
         vkDestroyDescriptorPool(logicalDevice_,pool2,nullptr);
@@ -436,6 +504,8 @@ protected:
         if (dummyLookup != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr); vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
         vkDestroyBuffer(logicalDevice_,dummyMip,nullptr); vkFreeMemory(logicalDevice_,dMipMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyTierRef,nullptr);   vkFreeMemory(logicalDevice_,dTierRefMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummyHitRecord,nullptr); vkFreeMemory(logicalDevice_,dHitRecordMem,nullptr);
     }
 };
 
@@ -532,9 +602,13 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     const glm::vec3 eye = centroid + glm::normalize(glm::vec3(0.0f, 0.2f, 1.0f)) * dist;
     const PushConstants pc = MakeCamera(eye, centroid, kW, kH, int32_t(instances.size()));
 
+    // M2c fix: PNG + hit/band counts all read HitRecordBuffer (still written post-784adff7/
+    // KI-018) instead of the dead colorImg — DO NOT revert to a colorImg readback; see this
+    // file's HitRecordCpu comment.
     std::vector<uint8_t> rgba; double ms = 0.0;
+    std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                         sdfBuf, lookBuf, pc, kW, kH, rgba, ms));
+                                         sdfBuf, lookBuf, pc, kW, kH, rgba, ms, &hitRecords));
 
     // 7) Write PNG, total hit count, AND per-x-band hits (1 band per octreeIndex slot).
     //    4 bands of 128px each; each body centre falls in a distinct band so a zero
@@ -544,7 +618,11 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     {
         std::vector<uint8_t> rgb(size_t(kW)*kH*3);
         for (uint32_t i = 0; i < kW*kH; ++i) {
-            rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool hit = (rec.flags & kHitRecordFlagHit) != 0u;
+            rgb[i*3+0] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+1] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f) : 0;
+            rgb[i*3+2] = hit ? static_cast<uint8_t>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f) : 0;
         }
         stbi_write_png(outPath, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
     }
@@ -554,7 +632,7 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     for (uint32_t y = 0; y < kH; ++y) {
         for (uint32_t x = 0; x < kW; ++x) {
             const uint32_t i = y*kW + x;
-            if (rgba[i*4+0]>24 || rgba[i*4+1]>24 || rgba[i*4+2]>40) {
+            if ((hitRecords[i].flags & kHitRecordFlagHit) != 0u) {
                 ++hitPixels;
                 ++bandHits[x / (kW/4)];   // 4 equal horizontal bands
             }

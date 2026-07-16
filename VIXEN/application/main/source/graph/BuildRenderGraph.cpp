@@ -129,6 +129,51 @@
 #include "Nodes/WindowNode.h"
 
 namespace {
+
+// Baked-perf-pipeline M2 (audit D1, Task 2.1): reads a shader source file and, when
+// VIXEN_DEBUG_CAPTURE is set, injects "#define VIXEN_GPU_TRACE_HOOKS 1\n" -- the same
+// textual-#define-injection technique Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource
+// already uses for VIXEN_UBER_RECIPE_SPLICED (UberShaderSplice.h), reused here because
+// ShaderBundleBuilder::SetStageDefines cannot drive a new #ifdef (it substitutes existing
+// token occurrences, it does not inject a #define line -- see BodyInstanceRayMarch.comp's
+// registration above for the fuller citation). Used to convert DirectLighting.comp/
+// SpatialReuseShade.comp/ProbeUpdate.comp from AddStageFromFile (which reads the file
+// internally, leaving no C++-side string to prepend into) to AddStage(source text) --
+// mechanically identical to what AddStageFromFile does internally (ShaderBundleBuilder.cpp),
+// so this preserves #include-path resolution (still driven by the explicit AddIncludePath
+// calls at each site, not by sourcePath) and behavior for every existing (non-gated) shader
+// text. Throws std::runtime_error if the file cannot be read, matching each call site's
+// existing empty-compPath error-handling contract.
+//
+// CORRECTNESS: every shader in this codebase starts with "#version 460" as its literal
+// FIRST line -- GLSL requires #version to be the first non-whitespace line in the
+// translation unit (glslang: "'#version' : must occur first in shader"), so naively
+// prepending the #define at position 0 pushes #version to line 2 and fails compilation
+// (caught live: ProbeUpdate.comp failed exactly this way on first real end-to-end run
+// with VIXEN_DEBUG_CAPTURE=1, glslc's own -D flag masked this because it doesn't touch
+// the source text at all -- unlike this C++-side prepend). Insert the #define after the
+// FIRST LINE instead (i.e. right after #version), which is always legal for a #define.
+std::string ReadShaderSourceWithTraceHooksGate(const std::filesystem::path& compPath,
+                                                const char* shaderName) {
+    std::ifstream file(compPath);
+    if (!file) {
+        throw std::runtime_error(std::string(shaderName) + " could not be opened at " + compPath.string());
+    }
+    std::ostringstream buf;
+    buf << file.rdbuf();
+    std::string source = buf.str();
+    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+        const size_t firstNewline = source.find('\n');
+        const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
+        if (firstNewline == std::string::npos) {
+            source += "\n" + defineLine;
+        } else {
+            source.insert(firstNewline + 1, defineLine);
+        }
+    }
+    return source;
+}
+
 // Sampled Lighting Cornell Box Demo M2: never-baked proof for VIXEN_DDGI_CORNELL_VIRTUAL_DEMO's
 // 8 RENDERED bodies (mirrors test_baked_vs_virtual_parity.cpp's own g_bakeCallCount technique).
 // Deliberately does NOT count the light-tree's own small side bake (see the M2 scene block's
@@ -901,6 +946,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
             bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
         }
 
+        // Baked-perf-pipeline M2 (audit D1, Task 2.1): VIXEN_GPU_TRACE_HOOKS gates
+        // TraceRecording.glsl's grid-capture recording, snapshotTraversalState's per-step
+        // debug-visualization writes (ESVOTraversal.glsl), and the instanceIterCount[]
+        // stores (TraceWorld.glsl) -- all dead weight paid every pixel/iteration when
+        // nothing consumes them. Reuses VIXEN_DEBUG_CAPTURE (already the CPU-side knob for
+        // RayTraceBuffer readback/export, see the debugCaptureEnabled wiring below) as the
+        // SINGLE end-to-end toggle for the whole trace-recording feature, rather than a
+        // second env var the user would also need to set: with only the CPU-side capture
+        // enabled but the GPU-side writes still gated off, DebugBufferReaderNode would read
+        // back an empty buffer -- one flag now drives both halves consistently.
+        // Textual #define injection (NOT ShaderBundleBuilder::SetStageDefines, which does
+        // token substitution on EXISTING text and cannot create a new #ifdef-driving
+        // #define -- see the ShaderCounters/binding-8 comment a few lines below); cache key
+        // is the full post-splice source text (ShaderBundleBuilder::Build), so this
+        // insertion automatically produces a distinct .spv cache entry -- no manual
+        // cache-bust needed. Inserted after the FIRST LINE (i.e. after "#version 460"), NOT
+        // prepended at position 0 -- GLSL requires #version to be the literal first line
+        // (glslang: "'#version' : must occur first in shader"); a naive prepend pushes it to
+        // line 2 and fails compilation (caught live: ProbeUpdate.comp failed exactly this way
+        // on the first real VIXEN_DEBUG_CAPTURE=1 end-to-end run).
+        if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+            const size_t firstNewline = splicedSource.find('\n');
+            const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
+            if (firstNewline == std::string::npos) {
+                splicedSource += "\n" + defineLine;
+            } else {
+                splicedSource.insert(firstNewline + 1, defineLine);
+            }
+        }
+
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -918,6 +993,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
+               // Baked-perf-pipeline M2b (Task 2b.1): splicedSource here is ALREADY the final
+               // effective source (post-recipe-splice, post-VIXEN_GPU_TRACE_HOOKS #define
+               // injection above) -- Build() hashes exactly this text (plus stage/entry/
+               // options) for the cache key, so either input changing busts the cache with no
+               // extra plumbing.
+               .EnableCaching(&shaderCacheManager_)
                .AddStage(ShaderManagement::ShaderStage::Compute, splicedSource, "main");
 
         // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
@@ -976,6 +1057,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
+        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -985,7 +1067,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
+               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
+               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
+               // stage/entry/options) for the cache key, so toggling that env var naturally
+               // produces a distinct cache entry.
+               .EnableCaching(&shaderCacheManager_)
+               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
 
@@ -1011,6 +1099,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
+        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -1020,7 +1109,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
+               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
+               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
+               // stage/entry/options) for the cache key, so toggling that env var naturally
+               // produces a distinct cache entry.
+               .EnableCaching(&shaderCacheManager_)
+               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
 
@@ -1046,6 +1141,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
+        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -1055,7 +1151,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
+               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
+               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
+               // stage/entry/options) for the cache key, so toggling that env var naturally
+               // produces a distinct cache entry.
+               .EnableCaching(&shaderCacheManager_)
+               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
 
@@ -3111,10 +3213,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // authoring (now a single shared world-space source, BuildCornellWorldSpaceBodies) --
             // subdivision no longer needs to be pre-baked into the recipe's own half-extents/
             // positions the way the pre-unification gridBoxAt did.
+            // Baked-Perf M1 Task 1.2 (grid-unit contract fix): the shared shader march
+            // (StoredSdf.glsl marchBrickSdf) sphere-traces in GRID-VOXEL arc-length,
+            // stepping s += d*(1/sqrt(3)) and treating the stored Density AS a grid-voxel
+            // distance (its gradient w.r.t. the grid must be 1). evalRecipe(world) returns
+            // a TRUE WORLD-space distance -- its gradient w.r.t. the grid coordinate is
+            // 1/subdiv (world = bodyWorldCenter + (pRaw-n/2)/subdiv), so storing it
+            // unscaled understeps the march by subdiv x (4x for kWallSubdiv=4 walls) and
+            // bakes the occupancy band subdiv x too thick (Task 1.3 fixes the band
+            // separately). Multiplying by subdiv here converts the stored Density to a
+            // grid-unit distance, matching the grid-unit convention SdfRecipes.h's
+            // evalSdf/BakeRecipeToSdfWorld (the OTHER bake path, and
+            // test_stored_sdf_march_mirror) already use -- so the shared march is
+            // correct for ALL bodies with NO shader change. subdiv=1 bodies (light/
+            // sphere/box, kSmallSubdiv) are byte-identical (*1 is a no-op).
+            //
+            // Proven ~3.8x FPS win on fix/baked-sdf-perf-rootfix (see
+            // Baked-SDF-Perf-Rootfix-2026-07.md); that attempt alone made bodies 5/6/7
+            // vanish from the [CornellDiag] instIdx map because of the brickLookupBase
+            // mis-addressing bug (Task 1.1, landed first and validated separately) --
+            // NOT because of this multiply. Do not revert this without re-checking 1.1.
             auto makeWorldSpaceEval = [](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
                 return [&prog, bodyWorldCenter, n, subdiv](const glm::vec3& pRaw) {
                     const glm::vec3 world = bodyWorldCenter + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
-                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world);
+                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world) * static_cast<float>(subdiv);
                 };
             };
             // Bake each body with a FLAT WHITE per-voxel color (Cornell M3 round 7 fix):
@@ -3280,25 +3402,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     &leftWallBody, &rightWallBody, &backWallBody, &floorBody, &ceilingBody,
                     &lightBody, &sphereObjBody, &boxObjBody,
                 };
-                // TEMP DIAG (root-causing invisible walls): per-body node/brick counts +
-                // world-frame bounds before concatenation, to rule out a degenerate
-                // (zero-node or wrongly-bounded) octree despite non-empty voxel bake batches.
-                {
-                    const char* names[] = {"leftWall","rightWall","backWall","floor","ceiling","light","sphereObj","boxObj"};
-                    for (size_t di = 0; di < octreesForCat.size(); ++di) {
-                        const Vixen::SVO::Octree* diagOct = octreesForCat[di]->octree->getOctree();
-                        if (diagOct == nullptr) {
-                            mainLogger->Info(std::string("[BuildRenderGraph] CORNELL DIAG body=") + names[di] + " octree=NULL");
-                            continue;
-                        }
-                        Vixen::SVO::SerializedOctree diagSer = Vixen::SVO::SerializeSdf(*octreesForCat[di]);
-                        mainLogger->Info(std::string("[BuildRenderGraph] CORNELL DIAG body=") + names[di] +
-                                          " nodeCount=" + std::to_string(diagSer.nodeCount) +
-                                          " brickCount=" + std::to_string(diagSer.brickCount) +
-                                          " gridMin=(" + std::to_string(diagSer.config.gridMinX) + "," + std::to_string(diagSer.config.gridMinY) + "," + std::to_string(diagSer.config.gridMinZ) + ")" +
-                                          " gridMax=(" + std::to_string(diagSer.config.gridMaxX) + "," + std::to_string(diagSer.config.gridMaxY) + "," + std::to_string(diagSer.config.gridMaxZ) + ")");
-                    }
-                }
+                // Task 0.3 (Baked-Content Perf Audit F2): the TEMP DIAG block that used to sit
+                // here (root-causing invisible walls, now resolved) re-serialized all 8 bodies via
+                // SerializeSdf a SECOND time (ConcatenateSdfWithMips below does its own real
+                // serialization pass) purely to log nodeCount/brickCount/bounds -- 23.0 s measured
+                // on a fresh boot. Those counts are derived by WALKING the octree during
+                // serialization (descriptors.size()/brickViews.size() in ShellOctreeGpu.h), not
+                // stored as an O(1) field on Octree itself, so there is no cheap equivalent to
+                // preserve -- deleted rather than fabricating an approximate substitute.
                 Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
 
                 auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos, float renderScale) {
@@ -3922,9 +4033,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
         pcLogger->SetTerminalOutput(false);
     }
 
+    // Task 0.2 (Baked-Content Perf Audit D2): default OFF -- the every-10th-frame combination of
+    // this auto-export AND RayTraceBuffer's own captureEnabled_ (RayTraceBuffer.h, default now
+    // also false) is what drives DebugBufferReaderNode's blocking vkWaitForFences(UINT64_MAX)
+    // pipeline drain + JSON export, which perturbs every perf bench. VIXEN_DEBUG_CAPTURE=1
+    // re-enables both for an actual debugging session (mirrors the VIXEN_* env-knob convention
+    // used throughout this file). The [CornellDiag] tick-150 instIdx-map diagnostic
+    // (VulkanGraphApplication.cpp) is UNAFFECTED -- it reads hit_record_buffer directly via its
+    // own vkDeviceWaitIdle + MapForReadback, with no dependency on this node's capture path.
+    const bool debugCaptureEnabled = std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr;
     auto* debugCapture = static_cast<DebugBufferReaderNode*>(renderGraph->GetInstance(debugCaptureNode));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, 1000u);
-    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, true);
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, debugCaptureEnabled);
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(DebugExportFormat::JSON));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries/compute_debug_output"));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, 10u);

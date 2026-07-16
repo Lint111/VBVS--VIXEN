@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0+M1+M2 DONE; M2b in flight; worktree fix/baked-perf-pipeline
+status: RUNNING — M0+M1+M2+M2b+M2c DONE; M2d in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -143,9 +143,9 @@ pays for itself immediately. **HAZARD:** the cache key MUST hash the final SPLIC
 composite source (`BuildRenderGraph.cpp:871-892`) + compile options, not source-file
 bytes — a stale-key bug silently serves outdated shaders and poisons every later A/B.
 
-- [ ] Task 2b.1 — Wire `EnableCaching` into the live builders, content-hash keyed on
+- [x] Task 2b.1 — Wire `EnableCaching` into the live builders, content-hash keyed on
   spliced source + options.
-- [ ] Task 2b.2 — Prove it: warm-vs-cold boot delta; poisoning test (touch a spliced
+- [x] Task 2b.2 — Prove it: warm-vs-cold boot delta; poisoning test (touch a spliced
   fragment → key changes → recompile actually happens); bench output byte-identical
   cached vs uncached.
 
@@ -163,7 +163,7 @@ push-constant mirrors (7 files), missing bindings 15/18 + a 17-vs-18 HitRecordBu
 miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture missing
 `setBrickLookupBase` (M1 follow-up). These tests are gate inputs for M3+.
 
-- [ ] Task 2c.1 — Root-cause the shared blank-render cause (suspect per M2 worker:
+- [x] Task 2c.1 — Root-cause the shared blank-render cause (suspect per M2 worker:
   boot/residency state interaction with M0's boot-triage changes — unconfirmed).
   Additional pre-existing signal from the M2 validator: `PushConstantGathererNode::
   Validate` type-mismatch ERRORs on the direct_lighting/spatial_reuse/probe gatherers
@@ -171,12 +171,38 @@ miswire, undersized RayTraceBuffer placeholders, and a tier-crossing fixture mis
   @ `ef385d55`) — check whether it relates. Also: the tier-crossing `setBrickLookupBase`
   fixture fix was applied+correct yet its test STILL blanks → the shared cause is
   upstream of brick-lookup addressing.
-- [ ] Task 2c.2 — Fix; restore the whole consumer group to green; record the green
+- [x] Task 2c.2 — Fix; restore the whole consumer group to green; record the green
   baseline test list here. Any PRODUCT-code change this requires goes through the
   validator explicitly (test-health milestone; product changes are escalation-worthy).
 
 **Gate:** SPV-consumer test group green, or each remaining red individually
 root-caused + filed as a Known Issue with evidence.
+
+## Milestone M2d — Automated visual-parity gate (S–M) — user-directed 2026-07-16
+
+Rationale (user): visual certainty without a human in the loop — divergence between the
+paths should be machine-detected. Corrected formulation: bit-exact virtual==baked is
+impossible by construction (baked = discretized reconstruction; plus known ~1-cell
+near-tie nondeterminism across launches), so the gate is two-tier:
+Tier 1 same-path GOLDEN hash (hard gate) + Tier 2 cross-path parity metrics
+(tracked now, enforced from M5's lighting-parity close onward).
+
+- [ ] Task 2d.1 — Parity tool `VIXEN/tools/bench/compare_parity.py` (tracked, not under
+  the gitignored bench-output dirs): consumes two bench run dirs (run.log + perf.csv +
+  hud_capture png); emits JSON + one PASS/FAIL line. Metrics: instIdx-map SHA + cell
+  agreement % + bodies-present sets (from `[CornellDiag]` in run.log); OOB counts;
+  image luminance stats (mean abs delta, p99, % pixels over threshold) between captures;
+  per-pass ms deltas. Thresholds in a committed config file.
+- [ ] Task 2d.2 — Golden baselines + wiring: commit the current accepted baked + virtual
+  instIdx maps as goldens (text) + thresholds; `temp_bench/run_parity_check.bat` runs the
+  tool post-capture. Policy encoded in the config: Tier 1 (same-path vs golden,
+  tolerance ≤2/625 cells) = HARD GATE for every subsequent milestone validator;
+  Tier 2 (virtual↔baked) = REPORT-ONLY until M5 closes, then enforced.
+
+**Gate:** tool PASSes on M2b's cold/warm artifact pair (same-path, byte-identical);
+tool correctly REPORTS the known virtual↔baked lighting divergence on current captures
+(i.e., detects the M5 target, doesn't mask it); goldens + thresholds committed; every
+later milestone's validator instruction includes running it.
 
 ## Milestone M3 — March-loop package (M) — target ~16 FPS
 
@@ -321,7 +347,13 @@ virtual capture (5.6).
 dirty-only upload (inventory #5, direction doc exists); dead-branch cleanup —
 MultiDispatchNode archive (#15), spec-constant plumbing feed-or-remove (#14);
 per-axis box bake grids (#8, the full far-hit/normals fix); tiered-ESVO stays dormant
-until multi-tier scenes exist (#9).
+until multi-tier scenes exist (#9); shader-cache hygiene (M2b carry-forward): rename
+misnamed `ComputeSHA256Hex`→`ComputeFNV1a64`, fix `currentCacheSizeBytes` never
+incremented on Store (size eviction can never fire); **KI-035 per-octree residency
+plumbing** (M2c finding: `CreateOctreeBuffers` stamps one whole-pool `brickResident`
+scalar — real product gap, off the critical path since M3–M6b use uniform residency);
+**KI-036 shadow-shading test coverage** (graph-level integration test through the real
+RenderGraph).
 
 ## Milestone M6b — Hybrid-frame bench: mixed providers + delta modification (S–M)
 
@@ -381,6 +413,7 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 | M2 | GPU debug hooks gated | 2.1–2.3 | S | esvo −~20% |
 | M2b | Shader disk cache | 2b.1–2b.2 | S–M | boot cut, every bench run |
 | M2c | SPV-consumer test health | 2c.1–2c.2 | S–M | restore green gate baseline for M3+ |
+| M2d | Automated visual-parity gate | 2d.1–2d.2 | S–M | golden-hash + cross-path divergence detector |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
 | M5 | Trace bounds + culling + lighting parity | 5.1–5.6 | M | **runs 3rd** — cull + DDGI un-poisoning |
 | M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
@@ -426,3 +459,33 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   bindings 15/18 gaps + HitRecordBuffer 17→18 miswire, RayTraceBuffer sizing,
   tier-crossing `setBrickLookupBase` fixture fix (correct but test still blanks → M2c).
   Pre-existing `hitPixels=0` class confirmed independently NOT debt-caused → M2c.
+
+- M2b (Tasks 2b.1–2b.2): DONE · commits `241b6819..7cc1c941` · Opus validator APPROVED ·
+  2026-07-16. Gate met as scoped to the shader-compile window (all shaders touch):
+  cold 5.105 s (misses=4) → warm 3.716 s (hits=4) = **−27.2% / −1.389 s**, byte-identical
+  output (25×25 instIdx map + OOB worldPos bit-identical cold/warm, 8 bodies). Poison
+  test passes: `VIXEN_DEBUG_CAPTURE` flip busts the cache (misses=4, 4 distinct new
+  .spv), re-run reuses it (hits=4). Total boot unchanged — dominated by the ~90 s ECS
+  bake (M7.4). Key = 64-bit FNV-1a (helper MISNAMED `ComputeSHA256Hex`) over
+  post-splice/post-#include source + stage/entry/opts/Vulkan+SPIR-V target versions;
+  collision risk negligible at this scale. Also fixed pre-existing key bug
+  (raw-source-as-filename + missing target versions). Carry-forward (Phase-2 cleanup):
+  (a) rename `ComputeSHA256Hex`→`ComputeFNV1a64`; (b) pre-existing ShaderCacheManager
+  defect — `currentCacheSizeBytes` never incremented on Store, size eviction never fires.
+
+- M2c (Tasks 2c.1–2c.2): DONE · commits `a969615f` + `1538bdba` (comment tail) · Opus
+  validator APPROVED · 2026-07-16. **Root cause: KI-018 pass-split `784adff7` moved all
+  color writes to SpatialReuseShade.comp; 7 single-pass harnesses asserted a
+  never-written image** (matches pre-existing KI-032). Fix: HitRecordBuffer-based
+  assertions (byte-exact CPU mirror, real falsifiable checks, incl. the previously
+  VACUOUS SubPixel test). Second bug class fixed: 4 tests missing
+  `RequestBrickResidency(true)` → mip-fallback instead of the SDF path under test.
+  Result: 15 green / 2 red, both KI-filed — KI-035 (per-octree residency clobber,
+  `BodyOctreeSceneNode.cpp:660-662`, REAL product gap → Phase-2 backlog; M3–M6b need
+  only uniform residency) + KI-036 (shadow test dispatches a shader that no longer
+  shades; zero shadow-shading coverage since `784adff7`). Zero product code touched.
+  Handed to M2d as warm-ups: pattern-copy for `test_baked_vs_virtual_parity` +
+  `test_mip_fallback_render` (same bug, KI-032 documents the shape) and the
+  pre-existing HUD `[View]` schema-drift reds (`view_hud_writer_check`/
+  `view_hud_blob_check` — stale checked-in `Hud.view.g.cs`/`Hud.blob.g.h`/
+  `hud.viewblob` goldens) that would bite M2d's build gate.

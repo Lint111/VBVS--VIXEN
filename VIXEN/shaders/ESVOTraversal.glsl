@@ -69,7 +69,17 @@ uvec2 fetchESVONode(uint nodeIndex) {
 // DEBUG STATE SNAPSHOT
 // ============================================================================
 
-// Snapshot current traversal state for debug visualization
+// Snapshot current traversal state for debug visualization. Called up to 8x per
+// traversal loop iteration (see traverseOctreeInstancedOnce in SceneBindings.glsl) --
+// none of its output fields (scale/stateIdx/tMin/tMax/scaleExp2/posMirrored/localNorm)
+// are read by the live shading path (baked-perf-pipeline M2, audit D1); only
+// debugInfo.iterationCount (set directly by the call sites, NOT by this function) and
+// debugInfo.hitFlag/exitCode/instIdx-adjacent bookkeeping stay live, since
+// instanceIterCount[] readback is a real test dependency (Inc1 M4b occlusion-reject +
+// tier-crossing tests). Gated on VIXEN_GPU_TRACE_HOOKS, same mechanism as
+// TraceRecording.glsl -- the no-op stub below skips computeLocalNorm's branch+clamp
+// work and the 6 struct-field writes entirely.
+#ifdef VIXEN_GPU_TRACE_HOOKS
 void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout DebugRaySample info) {
     info.scale = state.scale;
     info.stateIdx = uint(max(state.idx, 0));
@@ -79,6 +89,9 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
     info.posMirrored = state.pos;
     info.localNorm = computeLocalNorm(state.pos, state.scale_exp2, coef.octant_mask);
 }
+#else
+void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout DebugRaySample info) {}
+#endif // VIXEN_GPU_TRACE_HOOKS
 
 // ============================================================================
 // TRAVERSAL STATE INITIALIZATION

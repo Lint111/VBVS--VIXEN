@@ -177,13 +177,15 @@ This resolves two of the user's sub-ideas:
    NOT invalidate the epic's justification** (§8 below, the tier-0 SWITCH's own N=100 knee is
    RE-CONFIRMED on the discrete GPU in the same M4 pass) — Increment 2 was explicitly scoped to
    prove the ROUTING mechanism is correct, not to already be the optimized end state (plan doc
-   Risks: "Task 9's honesty requirement", anticipated in advance). **Sequencing implication for
-   Increment 3+:** async compile-and-swap alone will NOT close the measured gap (that gap is
+   Risks: "Task 9's honesty requirement", anticipated in advance). **Sequencing implication —
+   acted on 2026-07-16:** async compile-and-swap alone will NOT close the measured gap (that gap is
    steady-state, compile already excluded from the comparison) — per-bucket dispatch overhead
    (barrier/bind cost per indirect dispatch) is the next thing to measure and address before
    bucketed dispatch is competitive with the naive fixed-dispatch alternative, let alone the
-   tier-0 switch at low N. GPU-LRU eviction (Increment 3) and family normalization (Increment 4)
-   remain as originally scoped, layered on top of this now-proven-but-not-yet-fast mechanism.
+   tier-0 switch at low N. **Increment numbering renumbered accordingly** (the original
+   GPU-LRU-eviction "Increment 3" below is pushed to Increment 4; per-bucket overhead is now
+   Increment 3, since it's the more urgent, directly-motivated-by-M4's-own-finding next step, not
+   eviction of a mechanism that isn't yet fast enough to be worth caching).
    **Increment 3 (Recipe Bucketed-Dispatch Overhead — per-bucket dispatch overhead reduction,
    the sequencing implication directly above) ✅ RUN 2026-07-16, RESULT: real-but-insufficient**
    ([[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]], M0-M3 all DONE, Opus-validated
@@ -214,9 +216,12 @@ This resolves two of the user's sub-ideas:
    territory (addressing m_i/k_i-shaped cost directly) rather than further per-bucket-call-count
    reduction — this increment's own premise (per-bucket API call count is the dominant cost) is
    now measured, not just theorized, to be insufficient on its own.
-3. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
-4. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
-   similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline.
+4. **GPU-LRU eviction** of cold specialized pipelines (the Sparse-Mip M4 re-open, with M5 data).
+   Renumbered from Increment 3 (2026-07-16) — deferred behind the per-bucket-overhead work above,
+   since evicting a mechanism that isn't yet fast enough to be worth caching is premature.
+5. **Shape/literal normalization → parameterized family pipelines** (depends on §5 shipped): group
+   similar recipes onto one parameterized pipeline; batched dispatch-by-pipeline. Renumbered from
+   Increment 4.
 
 ## 8. Decision gate — ✅ MEASURED 2026-07-10, EPIC IS DATA-JUSTIFIED FOR HIGH N
 

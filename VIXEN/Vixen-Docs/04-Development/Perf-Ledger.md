@@ -354,7 +354,7 @@ cleanly, matching M1's own 16/16 baseline exactly.
 not switch-case-count-shaped (a separate, already-recorded finding, not overturned here). M1
 delivered a real, measured, verified API-call reduction (N→1 descriptor binds) with zero
 correctness regression. M2 found a theoretically-sound barrier-coalescing path blocked by a real,
-separately-filed precondition gap (KI-035). M3 (this section) closes the loop: the one change that
+separately-filed precondition gap (KI-037). M3 (this section) closes the loop: the one change that
 did land (M1) does not move the bucketed-dispatch-vs-cold-path ratio in any measurable way at any
 tested N — the per-bucket fixed-cost bottleneck this increment targeted is dominated by something
 else (most plausibly `vkCmdDispatchIndirect` and/or `vkCmdBindPipeline`, both either unaddressed

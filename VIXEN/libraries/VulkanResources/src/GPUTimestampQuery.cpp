@@ -264,6 +264,19 @@ uint64_t GPUTimestampQuery::GetElapsedNs(uint32_t frameIndex, uint32_t startQuer
     return static_cast<uint64_t>(static_cast<double>(deltaTicks) * static_cast<double>(timestampPeriod_));
 }
 
+uint64_t GPUTimestampQuery::GetRawTimestampTicks(uint32_t frameIndex, uint32_t queryIndex) const {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_) {
+        return 0;
+    }
+
+    const auto& frame = frameData_[frameIndex];
+    if (!frame.resultsValid || queryIndex >= maxTimestamps_ || !frame.available[queryIndex]) {
+        return 0;
+    }
+
+    return frame.results[queryIndex];
+}
+
 float GPUTimestampQuery::CalculateMraysPerSec(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery,
                                               uint32_t width, uint32_t height) const {
     float elapsedMs = GetElapsedMs(frameIndex, startQuery, endQuery);

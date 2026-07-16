@@ -120,6 +120,32 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("[ComputeStageNode::CompileImpl] Allocated " + std::to_string(cmdBufferCount) +
                   " command buffers (flight-ring depth; swapchain imageCount=" + std::to_string(imageCount) + ")");
+
+    // Task 0.1 (Baked-Content Perf Audit, top action #9): GPU timing via the centralized
+    // GPUQueryManager, same pattern as ComputeDispatchNode/UIRenderNode — lets direct_lighting/
+    // spatial_reuse/probe_update each get their own PerfCsvWriter column. Only allocate once
+    // (CompileImpl can re-run on recompile; a second AllocateQuerySlot call would leak a slot).
+    if (!gpuPerfLogger_) {
+        auto* queryMgrPtr = static_cast<GPUQueryManager*>(GetDevice()->GetQueryManager());
+        if (queryMgrPtr) {
+            auto queryManager = std::shared_ptr<GPUQueryManager>(queryMgrPtr, [](GPUQueryManager*){});
+            gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(GetInstanceName(), queryManager);
+            gpuPerfLogger_->SetEnabled(true);
+            gpuPerfLogger_->SetLogFrequency(120);  // ~2s at 60fps, matches ComputeDispatchNode
+            gpuPerfLogger_->SetPrintToTerminal(false);
+            if (auto* nodeLogger = GetLogger()) {
+                nodeLogger->AddChild(gpuPerfLogger_);
+            }
+            if (gpuPerfLogger_->IsTimingSupported()) {
+                NODE_LOG_INFO("[ComputeStageNode] GPU performance timing enabled (slot " +
+                             std::to_string(gpuPerfLogger_->GetQuerySlot()) + ")");
+            } else {
+                NODE_LOG_WARNING("[ComputeStageNode] GPU timing not supported on this device");
+            }
+        } else {
+            NODE_LOG_WARNING("[ComputeStageNode] GPUQueryManager not available from VulkanDevice");
+        }
+    }
 }
 
 // ============================================================================
@@ -150,6 +176,12 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
         vkResetFences(GetDevice()->device, 1, &inFlightFence);
     }
 
+    // Collect GPU performance results for this frame-in-flight (after fence wait) — same
+    // placement as ComputeDispatchNode::ExecuteImpl.
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->CollectResults(currentFrameIndex);
+    }
+
     // Re-record on input change (always re-record to refresh push constants each frame).
     VkPipeline currentPipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout currentLayout = ctx.In(ComputeStageNodeConfig::PIPELINE_LAYOUT);
@@ -165,7 +197,7 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
     // already waited; RecordComputeCommands still selects its image-derived values by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
-    RecordComputeCommands(ctx, cmd, imageIndex, isConsumer);
+    RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer);
     commandBuffers_.MarkReady(currentFrameIndex);
 
     // P5b: timeline primitives from FrameSyncNode (Optional — VK_NULL_HANDLE / 0 if not wired).
@@ -266,10 +298,15 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // ============================================================================
 
 void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
-                                             uint32_t imageIndex, bool isConsumer) {
+                                             uint32_t imageIndex, uint32_t frameIndex, bool isConsumer) {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] vkBeginCommandBuffer failed");
+    }
+
+    // Begin GPU timing frame (reset this slot's queries) — mirrors ComputeDispatchNode.
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->BeginFrame(cmd, frameIndex);
     }
 
     VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);
@@ -375,7 +412,14 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // pass transitions/writes stay imageIndex-selected.
     BindComputePipeline(cmd, pipeline, layout, descriptorSets[setIndex]);
     SetPushConstants(ctx, cmd, layout);
+
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
+    }
     vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, dispatchX * 8, dispatchY * 8);
+    }
 
     // Consumer is the last writer of the swapchain image → hand it to Present.
     if (isConsumer && swapchainInfo) {

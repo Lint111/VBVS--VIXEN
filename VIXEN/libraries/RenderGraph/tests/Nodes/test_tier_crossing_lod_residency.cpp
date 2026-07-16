@@ -53,6 +53,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -77,6 +78,11 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 namespace {
 
 // Byte-identical to BodyInstanceRayMarch.comp's PushConstants block.
+//
+// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 92 bytes
+// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
+// work -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller
+// citation of why a from-scratch shader rebuild surfaces this mirror's staleness).
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -85,8 +91,36 @@ struct PushConstants {
     float   raySizeCoef;
     float   raySizeBias;
     int32_t instanceCount;
+    int32_t _pad0;  // GLSL std430 aligns ivec2 to 8 bytes (offset 80); a plain C++ struct
+                    // packs debugTargetPixel at offset 76 without this explicit filler.
+    glm::ivec2 debugTargetPixel;
+    uint32_t   accumFrameCount;
 };
-static_assert(sizeof(PushConstants) == 76, "PushConstants must be 76 bytes");
+static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
+
+// ---------------------------------------------------------------------------
+// M2c fix: this file's colorImg (binding 0) readback went permanently dark when
+// commit 784adff7 (Sampled Lighting Inc3 M1, KI-018) split shading out of
+// BodyInstanceRayMarch.comp into DirectLighting.comp/SpatialReuseShade.comp —
+// this shader now writes ONLY HitRecordBuffer (binding 18) and idOutputImage
+// (binding 9), never outputImage. The magenta-child-color check now reads
+// HitRecord.albedo (the raw, unshaded material tint — see TraceWorld.glsl's
+// WorldHit.color/"tinted color" comment) instead — same mirror struct
+// test_hitrecord_readback.cpp/test_body_instance_raymarch_render.cpp already
+// established.
+// ---------------------------------------------------------------------------
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];  // std430 tail padding — see test_hitrecord_readback.cpp's identical mirror
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -320,12 +354,18 @@ protected:
                                  const PushConstants& pc, uint32_t w, uint32_t h,
                                  uint32_t maxInstances,
                                  std::vector<uint32_t>& instanceIterCounts,
-                                 std::vector<uint8_t>& rgba) {
+                                 std::vector<uint8_t>& rgba,
+                                 std::vector<HitRecordCpu>& outHitRecords) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
+        // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
+        // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation of
+        // why a 256-byte placeholder is UB once this SPV compiles with VIXEN_GPU_TRACE_HOOKS
+        // (grid-capture fires at every 64th pixel of this test's 500x500 dispatch).
+        constexpr VkDeviceSize kRayTraceBufferSize = 16 /*header*/ + 256 /*slots*/ * (16 + 64 * 48) /*TRACE_RAY_SIZE*/;
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
         VkDeviceMemory traceMem = VK_NULL_HANDLE, counterMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
         VkBuffer dummySdf = VK_NULL_HANDLE, dummyLookup = VK_NULL_HANDLE, dummyMip = VK_NULL_HANDLE;
@@ -333,6 +373,20 @@ protected:
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySdf, dummySdfMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLookup, dummyLookupMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
+
+        // Baked-perf-pipeline M2: binding 18 (HitRecordBuffer) is a real SSBO the shader has
+        // declared since before this M2's own work (M-wire Task 8) -- this test's descriptor
+        // layout/pool/writes never picked it up, which only became visible once a
+        // from-scratch rebuild of BodyInstanceRayMarch.comp (forced by M2's CMake change)
+        // made vkCreateComputePipelines validate against the shader's REAL current reflected
+        // interface instead of a stale cached .spv.
+        // M2c fix: sized for real w*h*64 (not a 256-byte placeholder) and read back below —
+        // this is now the buffer the magenta-child-color check reads (see this file's
+        // HitRecordCpu comment; colorImg/binding 0 is never written post-KI-018).
+        VkBuffer dummyHitRecord = VK_NULL_HANDLE;
+        VkDeviceMemory dummyHitRecordMem = VK_NULL_HANDLE;
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
+        CreateHostBuffer(hitRecordBufSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyHitRecord, dummyHitRecordMem, true);
 
         const VkDeviceSize iterBufSize = static_cast<VkDeviceSize>(maxInstances) * sizeof(uint32_t);
         VkBuffer iterBuf = VK_NULL_HANDLE; VkDeviceMemory iterMem = VK_NULL_HANDLE;
@@ -364,7 +418,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 14> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 15> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -379,6 +433,7 @@ protected:
             bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M4: TierRefTableBuffer
+            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -406,7 +461,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 12},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -434,6 +489,7 @@ protected:
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo iterInfo{iterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo tierRefInfo{tierRefTableBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo hitRecordInfo{dummyHitRecord, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -449,7 +505,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 14> writes = {
+        const std::array<VkWriteDescriptorSet, 15> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -464,6 +520,7 @@ protected:
             wBuf(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
             wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
             wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
+            wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -506,6 +563,18 @@ protected:
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
                              0, 0, nullptr, 1, &iterBarrier, 0, nullptr);
 
+        // M2c fix: barrier the HitRecord SSBO (shader write -> host read), same pattern as
+        // iterBarrier above — it's the buffer the magenta-child-color check now reads.
+        VkBufferMemoryBarrier hitRecordBarrier{};
+        hitRecordBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        hitRecordBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer = dummyHitRecord; hitRecordBarrier.offset = 0; hitRecordBarrier.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                             0, 0, nullptr, 1, &hitRecordBarrier, 0, nullptr);
+
         VkImageMemoryBarrier toSrc{};
         toSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout = VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -545,6 +614,12 @@ protected:
         std::memcpy(rgba.data(), mappedRgba, static_cast<size_t>(rgbaSize));
         vkUnmapMemory(logicalDevice_, rgbaMem);
 
+        void* mappedHitRecord = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, dummyHitRecordMem, 0, hitRecordBufSize, 0, &mappedHitRecord), VK_SUCCESS);
+        outHitRecords.assign(static_cast<size_t>(w) * h, HitRecordCpu{});
+        std::memcpy(outHitRecords.data(), mappedHitRecord, static_cast<size_t>(hitRecordBufSize));
+        vkUnmapMemory(logicalDevice_, dummyHitRecordMem);
+
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_, rgbaBuf, nullptr); vkFreeMemory(logicalDevice_, rgbaMem, nullptr);
         vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);
@@ -562,6 +637,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyMip, nullptr);    vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
         vkDestroyBuffer(logicalDevice_, iterBuf, nullptr);     vkFreeMemory(logicalDevice_, iterMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummyHitRecord, nullptr); vkFreeMemory(logicalDevice_, dummyHitRecordMem, nullptr);
     }
 };
 
@@ -662,13 +738,22 @@ TierCrossingScene BuildTierCrossingScene(bool residentChild) {
     cat.tierRefCounts.resize(2);
 
     SerializedOctree* octs[2] = {&parentSer, &childSer};
-    uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0;
+    uint32_t nodeBase = 0, brickBase = 0, poolBase = 0, tierRefBase = 0, brickLookupBase = 0;
     for (int k = 0; k < 2; ++k) {
         SerializedOctree& s = *octs[k];
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);
         setTierRefTableBase(s.config, tierRefBase);
+        // Baked-perf-pipeline M2: exact-prefix brickLookupBase, mirroring
+        // ShellOctreeGpu.h::ConcatenateSdf's own stamp+advance exactly (M1 Task 1.1's
+        // fix landed there; this test's hand-rolled concatenation never picked it up,
+        // leaving brickLookupBase at its zero default for the child octree -- the child
+        // sphere's StoredSdf.glsl brick lookups read through the PARENT's own sub-table
+        // offset instead of the child's, which is why NonResidentChildNeverCrossesResidentChildDoes
+        // rendered zero magenta pixels for the resident-child case despite the crossing
+        // itself firing correctly).
+        setBrickLookupBase(s.config, brickLookupBase);
 
         cat.configs[k]       = s.config;
         cat.nodeCounts[k]    = s.nodeCount;
@@ -689,6 +774,10 @@ TierCrossingScene BuildTierCrossingScene(bool residentChild) {
         brickBase   += s.brickCount;
         poolBase    += s.brickCount * s.brickStrideFloats;
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        // Advances by THIS octree's own bpa^3 (its just-appended sub-table's element
+        // count), not a uniform assumption across octrees -- same discipline as
+        // ConcatenateSdf's own advance.
+        brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
 
     return {std::move(cat), markedCount};
@@ -711,7 +800,8 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
     using C = BodyOctreeSceneNodeConfig;
 
     auto runScene = [&](bool residentChild, std::vector<uint32_t>& iterCounts,
-                        std::vector<uint8_t>& rgba, uint32_t& markedCount) {
+                        std::vector<uint8_t>& rgba, uint32_t& markedCount,
+                        std::vector<HitRecordCpu>& hitRecords) {
         BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
         auto nodeBase = nodeType.CreateInstance(residentChild ? "tcr_resident" : "tcr_nonresident");
         auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
@@ -771,10 +861,11 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         pc.raySizeCoef = 0.0f;  // LOD disabled -- residency is the only variable
         pc.raySizeBias = 0.0f;
         pc.instanceCount = 1;
+        pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
         ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
             nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
-            pc, kW, kH, 1u, iterCounts, rgba));
+            pc, kW, kH, 1u, iterCounts, rgba, hitRecords));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -783,21 +874,29 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
 
     std::vector<uint32_t> iterResident, iterNonResident;
     std::vector<uint8_t> rgbaResident, rgbaNonResident;
+    std::vector<HitRecordCpu> hitRecordsResident, hitRecordsNonResident;
     uint32_t markedResident = 0, markedNonResident = 0;
-    ASSERT_NO_FATAL_FAILURE(runScene(true,  iterResident,    rgbaResident,    markedResident));
-    ASSERT_NO_FATAL_FAILURE(runScene(false, iterNonResident, rgbaNonResident, markedNonResident));
+    ASSERT_NO_FATAL_FAILURE(runScene(true,  iterResident,    rgbaResident,    markedResident,    hitRecordsResident));
+    ASSERT_NO_FATAL_FAILURE(runScene(false, iterNonResident, rgbaNonResident, markedNonResident, hitRecordsNonResident));
 
-    // Count magenta pixels (child's unmistakable colour: R,B high, G~0) in each capture.
-    auto countMagenta = [](const std::vector<uint8_t>& rgba) {
+    // M2c fix: count magenta pixels (child's unmistakable colour: R,B high, G~0) by reading
+    // HitRecord.albedo (the raw, unshaded material tint) instead of the dead colorImg — the
+    // colorImg readback died permanently in 784adff7 (Sampled Lighting Inc3 M1, KI-018); DO
+    // NOT revert to it. See this file's HitRecordCpu comment. A miss pixel never counts as
+    // magenta regardless of its (stale/zeroed) albedo value.
+    auto countMagenta = [](const std::vector<HitRecordCpu>& recs) {
         int count = 0;
-        for (size_t i = 0; i + 3 < rgba.size(); i += 4) {
-            const int r = rgba[i], g = rgba[i+1], b = rgba[i+2];
+        for (const auto& rec : recs) {
+            if ((rec.flags & kHitRecordFlagHit) == 0u) continue;
+            const int r = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+            const int g = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+            const int b = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
             if (r > 180 && b > 180 && g < 60) ++count;
         }
         return count;
     };
-    const int magentaResident    = countMagenta(rgbaResident);
-    const int magentaNonResident = countMagenta(rgbaNonResident);
+    const int magentaResident    = countMagenta(hitRecordsResident);
+    const int magentaNonResident = countMagenta(hitRecordsNonResident);
     std::printf("[TIER-CROSSING RESIDENCY] resident child magenta px=%d, non-resident child magenta px=%d\n",
                 magentaResident, magentaNonResident);
 
@@ -896,25 +995,36 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     pc.raySizeCoef = kHugeRaySizeCoef;
     pc.raySizeBias = 0.0f;
     pc.instanceCount = 1;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
     std::vector<uint32_t> iterCounts;
     std::vector<uint8_t> rgba;
+    std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
         nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
-        pc, kW, kH, 1u, iterCounts, rgba));
+        pc, kW, kH, 1u, iterCounts, rgba, hitRecords));
 
     ASSERT_EQ(iterCounts.size(), 1u);
     std::printf("[TIER-CROSSING LOD] instance iteration count with huge raySizeCoef=%u\n", iterCounts[0]);
 
-    auto countMagenta = [](const std::vector<uint8_t>& rgba) {
+    // M2c fix: read HitRecord.albedo instead of the dead colorImg — colorImg has been
+    // permanently unwritten since 784adff7 (Sampled Lighting Inc3 M1, KI-018); DO NOT
+    // revert to it (see this file's HitRecordCpu comment). This is the check that used to
+    // pass VACUOUSLY (an all-black colorImg trivially satisfies magentaCount==0 regardless
+    // of whether the LOD gate actually fired); reading real albedo data makes this a
+    // genuine check again.
+    auto countMagenta = [](const std::vector<HitRecordCpu>& recs) {
         int count = 0;
-        for (size_t i = 0; i + 3 < rgba.size(); i += 4) {
-            const int r = rgba[i], g = rgba[i+1], b = rgba[i+2];
+        for (const auto& rec : recs) {
+            if ((rec.flags & kHitRecordFlagHit) == 0u) continue;
+            const int r = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+            const int g = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+            const int b = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
             if (r > 180 && b > 180 && g < 60) ++count;
         }
         return count;
     };
-    const int magentaCount = countMagenta(rgba);
+    const int magentaCount = countMagenta(hitRecords);
     std::printf("[TIER-CROSSING LOD] magenta px=%d\n", magentaCount);
 
     // THE decisive assertion: a sub-pixel footprint at the marked leaf must NEVER

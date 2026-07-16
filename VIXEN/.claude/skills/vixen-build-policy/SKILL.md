@@ -37,6 +37,9 @@ cmd.exe /c "C:\cpp\VBVS--VIXEN\build.bat build vixen-ninja VixenApp"
 This threads through as `cmake --build --preset <preset> --target <name> -- -k 0 -j <N>` —
 same lock, same parallelism caps, same `-k 0`/FAILED-summary behavior, just scoped to that
 target's subgraph. Calling `run_build_with_summary.ps1` directly, the flag is `-Target <name>`.
+**`VixenApp` (shown above) is a library target, not the executable** — it's the right scope for a
+compile-only iteration loop, but it does NOT relink `VIXEN.exe`; see the `VixenApp`-only-relinks-
+the-static-lib gotcha below before using this if you actually intend to RUN the result.
 
 ## The three layers
 
@@ -442,3 +445,16 @@ output) remains the authoritative source for full output/failures, same as befor
   meaning to build a worktree's source), you silently build/gate the WRONG tree's code. This
   also bit the same M2 validation session. Double-check the absolute path you invoke resolves
   inside the worktree you actually intend to build.
+- **Scoping a build to `VixenApp` only relinks the STATIC LIBRARY, never `VIXEN.exe`.** `VixenApp`
+  is a `.lib` target that the real executable target (`VIXEN`, `application/main/CMakeLists.txt:
+  add_executable(VIXEN ...)`) links against — `build.bat build vixen-ninja VixenApp` builds and
+  relinks only that lib; ninja has no reason to also relink `VIXEN.exe` unless something else in
+  the same invocation asks for it. The build reports success (exit 0, "Linking ... VixenApp.lib")
+  and LOOKS like it did the job, but the actual binary you'd go on to run/gate is untouched — same
+  false-pass shape as the missing-reconfigure gotcha above, just via a different mechanism (wrong
+  scoped target, not a stale ninja graph). Caught 2026-07-13 (Sampled-Lighting Cornell-demo M1):
+  an implementer burned a full run+capture cycle before noticing the linked binary's mtime
+  predated the just-recompiled `.obj`. **Rule: when you need the actual executable rebuilt
+  (anything you're about to RUN, not just compile-check), target `VIXEN` (or omit the target
+  argument entirely to build everything), never `VixenApp` alone.** `VixenApp` is still the right
+  scope for a compile-only iteration loop on library code with no intent to run the result yet.
