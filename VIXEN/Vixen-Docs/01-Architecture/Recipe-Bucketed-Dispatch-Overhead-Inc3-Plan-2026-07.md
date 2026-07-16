@@ -144,10 +144,24 @@ GPU (Windows-native) for every milestone.
 - **M2 — Barrier-coalescing correctness analysis + (if safe) reduction** (Task 3) · **live-run gate**
   · prove whether N−1 barriers can become fewer without weakening M3's write-after-write ordering
   proof; implement ONLY if a safe reduction is actually established, not assumed.
-  - [x] **DONE (analysis-only) 2026-07-16.** **Verdict: a safe reduction is theoretically sound in
-    principle but its soundness precondition is currently VIOLATED by an unrelated, real gap — NOT
-    implemented this milestone.** No code change. Full reasoning below; see Progress Log entry for
-    the complete writeup.
+  - [x] **DONE (analysis-only) 2026-07-16, commit `5394c889`.** **Verdict: a safe reduction is
+    theoretically sound in principle but its soundness precondition is currently VIOLATED by an
+    unrelated, real gap — NOT implemented this milestone.** No code change. Filed as **KI-035**
+    (`ProjectToPixel` silently drops camera-straddling points, shrinking coverage rects below their
+    true footprint — the wrong direction for the scheme's "always over-cover" requirement; latent,
+    no current test constructs a camera-straddling hot instance, but blocks a rect-disjointness-
+    based barrier skip). **Opus validator: APPROVED.** Independently re-derived the Vulkan
+    memory-model reasoning from scratch (confirmed accurate: hazards are per-memory-location, no
+    implicit ordering between un-barriered dispatches), traced the actual shader code and
+    numerically confirmed the near-plane bug is real, and specifically checked whether the
+    all-or-nothing refusal was overly conservative — confirmed a narrower "skip only for
+    non-straddling pairs" scheme would STILL require plumbing spatial extent into
+    `MultiDispatchNode` (which has zero concept of dispatch spatial extent today) plus a sound
+    straddling-detection path, both genuinely beyond this analysis milestone's scope. One advisory
+    refinement caught for a future implementer: the write-set-disjointness basis should compare
+    8px-workgroup-rounded footprints, not raw coverage rects, since the dispatch grid rounds up to
+    workgroup multiples (reinforces, doesn't weaken, the milestone's conclusion). 16/16 regression
+    suite reproduced independently, zero new regressions. Cleared to proceed to M3.
 - **M3 — Re-measurement + honest doc closure** (Task 4) · **live-run gate, discrete GPU mandatory** ·
   full M4-equivalent perf comparison re-run after M1/M2's changes, honestly reported (including a
   "still slower" outcome if that's what the data shows), plan/epic doc closure.
