@@ -19,7 +19,8 @@ REM present at authoring time -- python 3.13.7 + Pillow 12.1.1). No WSL bridge n
 REM this script is plain Windows-native, unlike the kernel-framework codegen's WSL-bridge
 REM cases -- compare_parity.py is pure Python 3 stdlib + Pillow, no cross-OS ELF concerns.
 
-set VIXEN_ROOT=C:\cpp\VBVS--VIXEN\.claude\worktrees\baked-perf-pipeline
+REM Path-agnostic: temp_bench\ sits one level under the repo root, wherever this checkout lives.
+for %%I in ("%~dp0..") do set VIXEN_ROOT=%%~fI
 set BENCH_DIR=%VIXEN_ROOT%\temp_bench
 set TOOLS_DIR=%VIXEN_ROOT%\VIXEN\tools\bench
 
