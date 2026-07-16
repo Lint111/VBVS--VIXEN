@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0+M1+M2+M2b+M2c DONE; M2d in flight; worktree fix/baked-perf-pipeline
+status: RUNNING — M0+M1+M2+M2b+M2c+M2d DONE; M3 in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -192,13 +192,13 @@ near-tie nondeterminism across launches), so the gate is two-tier:
 Tier 1 same-path GOLDEN hash (hard gate) + Tier 2 cross-path parity metrics
 (tracked now, enforced from M5's lighting-parity close onward).
 
-- [ ] Task 2d.1 — Parity tool `VIXEN/tools/bench/compare_parity.py` (tracked, not under
+- [x] Task 2d.1 — Parity tool `VIXEN/tools/bench/compare_parity.py` (tracked, not under
   the gitignored bench-output dirs): consumes two bench run dirs (run.log + perf.csv +
   hud_capture png); emits JSON + one PASS/FAIL line. Metrics: instIdx-map SHA + cell
   agreement % + bodies-present sets (from `[CornellDiag]` in run.log); OOB counts;
   image luminance stats (mean abs delta, p99, % pixels over threshold) between captures;
   per-pass ms deltas. Thresholds in a committed config file.
-- [ ] Task 2d.2 — Golden baselines + wiring: commit the current accepted baked + virtual
+- [x] Task 2d.2 — Golden baselines + wiring: commit the current accepted baked + virtual
   instIdx maps as goldens (text) + thresholds; `temp_bench/run_parity_check.bat` runs the
   tool post-capture. Policy encoded in the config: Tier 1 (same-path vs golden,
   tolerance ≤2/625 cells) = HARD GATE for every subsequent milestone validator;
@@ -494,3 +494,19 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   pre-existing HUD `[View]` schema-drift reds (`view_hud_writer_check`/
   `view_hud_blob_check` — stale checked-in `Hud.view.g.cs`/`Hud.blob.g.h`/
   `hud.viewblob` goldens) that would bite M2d's build gate.
+
+- M2d (Tasks 2d.1–2d.2 + warm-ups): DONE · commits `d3a212f6..7a2faf12` · Opus validator
+  APPROVED · 2026-07-16. Automated visual-parity gate (`compare_parity.py`,
+  `parity_thresholds.json`) landed with two modes. same_path is the HARD gate
+  (hash-equality, 0/625 cells, exit 1 on drift; tamper-proofed: body-swap → FAIL 9/625;
+  tightening over the plan's ≤2-cell slack validator-approved — near-tie jitter was
+  cross-config only, same-config runs are byte-identical). cross_path is report-only
+  until M5. **Cross-path baseline (baked vs virtual, HEAD `7a2faf12`): 95.0% cell
+  agreement, 8/8 bodies match, luminance mean-abs 1.59 / p99 38.77, 2.9% pixels over
+  threshold; baked 3.3 FPS (probe_update 140 ms-dominated) vs virtual 155.6 FPS.**
+  Warm-ups: KI-032 readback pattern-copied into mip_fallback (4/4) and
+  baked_vs_virtual_parity (3/4, IoU sphere .876 / csg .866 / twist .924; readparam_sphere
+  IoU .606 = genuine corpus bug → KI-038); HUD goldens regenerated for real schema drift
+  0x55D27B8C→0x7F78462D (branch build fully green). Tool already caught a rig bug: env
+  leak made "virtual" silently re-render baked (impossible 100%/0.00 reading).
+  **EVERY subsequent milestone validator runs `temp_bench/run_parity_check.bat`.**
