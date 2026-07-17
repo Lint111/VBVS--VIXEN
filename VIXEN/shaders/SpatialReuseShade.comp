@@ -322,6 +322,14 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
         Light light = lighting.lights[i];
         vec3 lightDir = normalize(light.direction_or_position);
 
+        // NdotL gate BEFORE the shadow trace (audit C3 / Top #3): evalBRDF's return is
+        // (diffuse + specular) * NdotL (Brdf.glsl:71), so NdotL <= 0 makes the light's
+        // entire contribution provably zero regardless of the trace result -- skip the
+        // scene march for a light this surface point faces away from. Mirrors the idiom
+        // already used by ProbeUpdate.comp's sampleDirectLitRadiance (:236-241).
+        float NdotL = max(dot(normal, lightDir), 0.0);
+        if (NdotL <= 0.0) continue;
+
         float shadowFactor = 1.0;
         if (shadowConfig.enabled != 0u) {
             vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
@@ -463,19 +471,25 @@ void main() {
             float dist2 = max(dot(toLight, toLight), 1e-4);
             vec3 lightDir = toLight * inversesqrt(dist2);
 
-            float shadowFactor = 1.0;
-            if (shadowConfig.enabled != 0u) {
-                vec3 shadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
-                float lightDist = sqrt(dist2);
-                bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
-                shadowFactor = occluded ? 0.0 : 1.0;
-            }
-
+            // NdotL/W gate BEFORE the shadow trace (audit C3 / Top #3): both factors
+            // multiply the final contribution below, so either being zero makes the
+            // whole term provably zero -- skip the scene march in that case. Same idiom
+            // as computeLightingWithShadows above and ProbeUpdate.comp:236-241.
             float NdotL = max(dot(bestNormal, lightDir), 0.0);
-            float emittedPower = chosen.intensity * chosen.coverage *
-                (chosen.worldExtent * chosen.worldExtent * chosen.worldExtent);
             float W = reservoirUnbiasedWeight(current);
-            outColor += bestColor * (emittedPower / dist2) * NdotL * shadowFactor * W;
+            if (NdotL > 0.0 && W > 0.0) {
+                float shadowFactor = 1.0;
+                if (shadowConfig.enabled != 0u) {
+                    vec3 shadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
+                    float lightDist = sqrt(dist2);
+                    bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
+                    shadowFactor = occluded ? 0.0 : 1.0;
+                }
+
+                float emittedPower = chosen.intensity * chosen.coverage *
+                    (chosen.worldExtent * chosen.worldExtent * chosen.worldExtent);
+                outColor += bestColor * (emittedPower / dist2) * NdotL * shadowFactor * W;
+            }
         }
     }
 

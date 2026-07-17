@@ -741,4 +741,95 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
     return false;   // exhausted the hop budget without crossing → miss
 }
 
+// ---------------------------------------------------------------------------
+// marchBrickSdfAnyHit (Baked-Perf M4 Task 4.2 / audit C1-C2 / Top #7): any-hit
+// occlusion variant of marchBrickSdf above -- identical brick-hop + sphere-trace
+// stepping (same crossing test, same step formula, same brick-to-brick
+// continuation via _advanceToNextSdfLeaf), but:
+//   (a) never computes the analytic gradient (sdfGradientStoredFromCell) --
+//       a shadow/probe-occlusion ray only needs "did the ray cross the
+//       iso-surface," never the surface normal;
+//   (b) never calls sampleHitShadingChannels (color/roughness trilinear, ~32
+//       pool reads for the two channels combined) -- the caller (TraceWorldShadow)
+//       discards everything but the boolean;
+//   (c) is handed sMaxLimit, the remaining arc-length budget to the caller's
+//       tmax (light distance), converted to this SAME grid-arc-length unit by
+//       the caller -- once curEntry's own arc-length exceeds it, no further
+//       brick can contain an occluder within [tmin,tmax], so the hop loop
+//       exits early instead of continuing to march/hop past the light.
+// Returns true the instant ANY crossing is found within [0, sMaxLimit] (never
+// mind which brick); sHit is returned for the caller's tmax re-check (the
+// per-brick sMax test only bounds "did we walk far enough to give up", the
+// actual sHit vs tmax comparison still happens once at the true crossing --
+// same two-tier discipline TraceWorldShadow already applies to hitT below).
+// ---------------------------------------------------------------------------
+bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
+                         float sMaxLimit,
+                         TraversalState state, RayCoefficients coef, StackEntry stack[STACK_SIZE],
+                         out float sHit) {
+    sHit = 0.0;
+
+    int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    uint sdfBase = channelBaseFloats(SEM_SDF);
+
+    const int   MAX_STEPS   = 96;
+    const float EPS         = 0.01;
+    const float SENTINEL_D  = 100.0;
+    const int   MAX_BRICK_HOPS = 2048;
+
+    float sBase = 0.0;
+    ivec3 curBrick = brick;
+
+    for (int hop = 0; hop < MAX_BRICK_HOPS; ++hop) {
+        if (sBase > sMaxLimit) return false;  // walked past the light distance -- no occluder can matter beyond here
+
+        vec3 curEntry = gridEntry + gridDirN * sBase;
+        vec3 bMin = vec3(curBrick) * 8.0;
+        vec3 bMax = bMin + vec3(8.0);
+
+        const float kAxisParallelSlabDist = 64.0;
+        vec3 invD = vec3(
+            abs(gridDirN.x) > 1e-8 ? 1.0 / gridDirN.x : 0.0,
+            abs(gridDirN.y) > 1e-8 ? 1.0 / gridDirN.y : 0.0,
+            abs(gridDirN.z) > 1e-8 ? 1.0 / gridDirN.z : 0.0);
+        bvec3 axisParallel = lessThanEqual(abs(gridDirN), vec3(1e-8));
+        vec3  t0   = mix((bMin - curEntry) * invD, vec3(-kAxisParallelSlabDist), axisParallel);
+        vec3  t1   = mix((bMax - curEntry) * invD, vec3( kAxisParallelSlabDist), axisParallel);
+        vec3  thi  = max(t0, t1);
+        float sMax = max(min(min(thi.x, thi.y), thi.z), 0.0);
+        float sMaxClamped = min(sMax, sMaxLimit - sBase);  // don't step past the light within this brick either
+
+        float s = 0.0;
+        for (int i = 0; i < MAX_STEPS; ++i) {
+            if (s > sMaxClamped) break;
+            vec3  p = curEntry + gridDirN * s;
+            vec3 cellF;
+            vec4 cellZ0, cellZ1;
+            _loadTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1);
+            float d = _interpolateTrilinearCell(cellF, cellZ0, cellZ1);
+            if (d < EPS) {
+                sHit = sBase + s;
+                return true;
+            }
+            s += (d > SENTINEL_D) ? 1.0 : max(d * 0.5773503, EPS);
+        }
+        if (sBase + s > sMaxLimit) return false;  // exited the clamped span without a crossing -- no occluder in range
+
+        ivec3 nextBrick;
+        if (!_advanceToNextSdfLeaf(state, coef, stack, octreeIdx, bpa, nextBrick)) {
+            return false;
+        }
+
+        vec3 nMin = vec3(nextBrick) * 8.0;
+        vec3 nMax = nMin + vec3(8.0);
+        vec3 nt0  = mix((nMin - gridEntry) * invD, vec3(-kAxisParallelSlabDist), axisParallel);
+        vec3 nt1  = mix((nMax - gridEntry) * invD, vec3( kAxisParallelSlabDist), axisParallel);
+        vec3 ntlo = min(nt0, nt1);
+        float sEnter = max(max(max(ntlo.x, ntlo.y), ntlo.z), sBase);
+        sBase    = sEnter;
+        curBrick = nextBrick;
+    }
+    return false;
+}
+
 #endif // STORED_SDF_GLSL

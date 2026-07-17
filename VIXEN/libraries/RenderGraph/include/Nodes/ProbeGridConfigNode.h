@@ -23,6 +23,21 @@ namespace Vixen::RenderGraph {
 uint32_t ResolveDdgiAmortizationFactor();
 
 /**
+ * @brief Resolves whether the DDGI probe grid is enabled: default false,
+ * overridden by VIXEN_PROBE_GRID_CONFIG_ENABLED if set (same env var/
+ * precedence ProbeGridConfigNode's own MakeDefaultProbeGridConfig uses to
+ * fill ProbeGridConfig::probeGridEnabled).
+ *
+ * Baked-Perf M4 Task 4.3: single-source-of-truth accessor so
+ * BuildRenderGraph.cpp's CPU-side probe_update dispatch-skip guard
+ * (ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED) and ProbeGridConfigNode's
+ * own per-frame GPU-side config upload agree on the SAME value without
+ * duplicating the env-var-read/default logic in two places -- mirrors
+ * ResolveDdgiAmortizationFactor's own rationale exactly.
+ */
+bool ResolveProbeGridEnabled();
+
+/**
  * @brief Node type for ProbeGridConfigNode.
  */
 class ProbeGridConfigNodeType : public TypedNodeType<ProbeGridConfigNodeConfig> {

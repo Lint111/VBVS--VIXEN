@@ -559,46 +559,36 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
             continue;  // ray misses this instance's AABB entirely
         }
 
-        // NOTE: unlike TraceWorld, there is no "farther than bestT already
-        // found" reject here -- any-hit semantics mean the FIRST occluder
-        // found (in instance-loop order, not necessarily nearest) is enough
-        // to prove occlusion. Skipping the reject also means we don't need
-        // TraceWorld's world-space entry-distance reprojection math for
-        // instances that are behind an already-found occluder; we simply
-        // never get there because we've already returned true.
+        // Baked-Perf M4 Task 4.2 (audit C1/C2 / Top #7): instance reject at entry-t > tmax --
+        // this instance's AABB entry point cannot possibly hold an occluder within [tmin,tmax]
+        // if the entry itself is already farther than tmax (the light). Same world-space
+        // entry-distance reprojection TraceWorld's own entryTWorld reject uses (that function's
+        // identical block has the full derivation); skipped when the ray already starts inside
+        // this instance's AABB (gridT.x < 0.0), matching TraceWorld's own skip condition there.
+        if (gridT.x >= 0.0) {
+            vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
+            vec3 entryPointWorldInstSpace =
+                (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale;
+            if (entryTWorld > tmax) {
+                continue;  // no occluder in this instance can be nearer than the light itself
+            }
+        }
 
-        DebugRaySample dbg;
-        dbg.pixel         = uvec2(ivec2(gl_GlobalInvocationID.xy));
-        dbg.rayDir        = rayDir;
-        dbg.octantMask    = 0u;
-        dbg.hitFlag       = 0u;
-        dbg.exitCode      = DEBUG_EXIT_NONE;
-        dbg.lastStepMask  = 0u;
-        dbg.iterationCount = 0u;
-        dbg.scale         = configs[oi].esvoMaxScale;
-        dbg.stateIdx      = 0u;
-        dbg.tMin          = 0.0;
-        dbg.tMax          = 0.0;
-        dbg.scaleExp2     = 0.0;
-        dbg.posMirrored   = vec3(0.0);
-        dbg.localNorm     = vec3(0.0);
-
-        vec3  hitColor;
-        vec3  hitNormal;
-        float hitT;
-        float hitRoughness;
-        uint  hitBrick;
-        uint  hitVoxel;
-
-        bool instHit = traverseOctreeInstanced(instOrigin, instDir,
+        // Any-hit occlusion march (Task 4.2): no gradient/color/roughness payload, no
+        // DebugRaySample threading (TraceWorldShadow has no pixel/dbg concept to snapshot --
+        // see traverseOctreeInstancedAnyHit's own header). tmin/tmax are converted into the
+        // SAME de-instanced (÷renderScale) shrunk frame traverseOctreeInstanced's hitT lives
+        // in before its own `*= inst.renderScale` conversion below -- i.e. divide, not
+        // multiply, the world-space [tmin,tmax] by renderScale to match.
+        float instTmin = tmin / inst.renderScale;
+        float instTmax = tmax / inst.renderScale;
+        bool instHit = traverseOctreeInstancedAnyHit(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
-                                           hitColor, hitNormal, hitT,
-                                           hitRoughness,
-                                           hitBrick, hitVoxel, dbg);
-        hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see TraceWorld)
+                                           instTmin, instTmax);
 
-        if (instHit && hitT >= tmin && hitT <= tmax) {
-            return true;  // any-hit: confirmed occluder, stop immediately
+        if (instHit) {
+            return true;  // any-hit: confirmed occluder, stop immediately (already tmin/tmax-checked inside)
         }
     }
 
