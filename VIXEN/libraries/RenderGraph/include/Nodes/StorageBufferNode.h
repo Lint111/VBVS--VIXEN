@@ -51,6 +51,15 @@ public:
     void UnmapReadback(Vixen::Vulkan::Resources::VulkanDevice* device) const;
     VkDeviceSize GetSizeBytes() const { return sizeBytes_; }
 
+    /**
+     * @brief Recipe-Live-App-Bucketed-Dispatch Inc4 M3: the raw VkBuffer handle, for a
+     * caller OUTSIDE the render graph's node-connection system that needs to reference
+     * this buffer directly (e.g. building a VkDescriptorBufferInfo for a descriptor set
+     * assembled by hand). This buffer is single-instance (not a per-frame ring, unlike
+     * BodyOctreeSceneNode's own instance buffer), so there is no frame-index ambiguity.
+     */
+    VkBuffer GetBufferHandle() const { return buffer_; }
+
 protected:
     void SetupImpl(TypedSetupContext&    ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

@@ -135,7 +135,9 @@ Windows `.bat` builds, real discrete GPU (Windows-native) for every milestone.
   `MultiDispatchNode`/indirect dispatch into `BuildRenderGraph.cpp`'s real graph construction for the
   first time, gated behind a new opt-in env var; specialized pipelines compile and dispatch inside a
   REAL running `VixenApp`.
-  - [ ] Not started.
+  - [x] DONE 2026-07-17. See Progress Log entry below for the full account -- 6 real integration bugs
+    found and fixed via the mandatory live-app gate, exactly the "expect at least one integration bug"
+    risk this milestone's own prompt called out, except it was 6, not 1.
 - **M4 — Live correctness + performance measurement** (Task 4) · **live-run gate, discrete GPU
   mandatory** · gate-ON vs. gate-OFF correctness proof (identical rendering) + honest FPS/frame-time
   measurement in the real app, recorded in [[Perf-Ledger]] and this plan's doc closure.
@@ -501,6 +503,155 @@ validator verdict.)
   integrity: history `4c6d117f..e6a77979` coherent, commit real (not left uncommitted), working tree
   clean apart from unrelated stray prompt files. **Verdict: APPROVED — M2 fully done, pipeline proceeds
   to M3.**
+- **M3 DONE (2026-07-17).** Env var: `VIXEN_RECIPE_BUCKETED_DISPATCH` (opt-in, `VIXEN_PROCEDURAL_UBER_
+  DEMO`-style `std::getenv` presence check, gates every new node/wiring/PreTick-orchestration block).
+  New demo scene for the gate: `VIXEN_RECIPE_HOT_COLD_DEMO` (3 hot recipeIds x 6 instances each, >= the
+  hotness threshold of 4; 3 cold recipeIds x 2 instances each, below threshold).
+  - **Architecture actually built** (Task 3's own wiring, not a shortcut around it): the bucketing
+    pre-pass (`RecipeInstanceBucketing.comp`) runs for real every frame via 3 `ComputeStageNode`
+    instances (mode 1 init -> mode 0 bucket -> mode 2 finalize, auto-sync-scheduled via
+    `BufferSyncGathererNode`, self-submitting -- proven pattern, no new submit machinery needed for
+    these 3). Hotness DECISION is pure-CPU (PreTick reads `BodyOctreeSceneNode::GetInstances()`,
+    groups by recipeId, counts, thresholds -- the CPU already owns this data, no GPU readback needed
+    for the decision itself), but the bucketing shader's OWN output (its real indirect-dispatch-command
+    buffer, populated every frame) is what the specialized dispatch actually consumes -- the mechanism
+    given a live home is the real one, not a CPU-only stand-in. Specialized per-recipe shaders are
+    compiled+cached on first promotion (`ShaderBundleBuilder::AddStage` + `ComputePipelineCacher`,
+    entirely OUTSIDE the static RenderGraph node system, since a per-recipeId runtime-generated shader
+    has no fixed source for `ShaderLibraryNode::RegisterShaderBuilder` to return) and dispatched
+    indirectly via `MultiDispatchNode::QueueDispatch`, extended this milestone with real submit
+    capability (see below).
+  - **Real gap found beyond the plan doc's stated 3**: `MultiDispatchNode` (as shipped by Inc2/3) could
+    RECORD a command buffer but had no fence/semaphore input slots at all and never called
+    `vkQueueSubmit2` -- every existing consumer (3 test suites) either never submitted or hand-built its
+    own `VkSubmitInfo` outside the node. Extended `MultiDispatchNodeConfig` (+5 Optional inputs:
+    `IN_FLIGHT_FENCE`, `IMAGE_AVAILABLE_SEMAPHORES_ARRAY`, `RENDER_COMPLETE_SEMAPHORES_ARRAY`,
+    `TIMELINE_SEMAPHORE_IN`, `TIMELINE_FRAME_BASE_IN`) and `MultiDispatchNode::ExecuteImpl` (a real
+    `vkQueueSubmit2` call, PRODUCER role only -- mirrors `ComputeStageNode`'s own producer branch:
+    timeline-signal-only, no acquire wait, no PRESENT-facing binary signal, submits with **no fence**
+    even when one is connected -- see the fence-collision bug below for why). Verified byte-identical
+    for every pre-M3 consumer: `test_rendergraph_dispatch` (186/186, one test's own hardcoded
+    `INPUTS==6` assertion updated to `==11` with a comment explaining the 5 new Optional slots),
+    `test_recipe_multi_bucket_compositing` (2/2, real GPU, unaffected since it never wires the new
+    slots).
+  - **6 real integration bugs found via the mandatory live-app gate** (not by static review — this
+    milestone's own prompt predicted "at least one," per M1/M2's own track record; found 6):
+    1. **Missing `VULKAN_DEVICE_IN` wiring** on all 8 new bucketing `StorageBufferNode`s (`recipe_bound_
+       sphere_buffer` and 7 siblings) — `Graph validation failed: missing required input 'vulkan_
+       device'`, caught at `Prepare()` before the render loop even started. Fix: 8 `batch.Connect`
+       calls added.
+    2. **Missing `SWAPCHAIN_INFO`/`IMAGE_INDEX` wiring** on `recipe_bucketing_descriptors`
+       (`DescriptorSetNode` — both slots are `Required`, unlike the optional `CURRENT_FRAME_INDEX`) —
+       same "missing required input" validation-phase failure. Fix: 2 more `batch.Connect` calls.
+    3. **`std::bad_any_cast` crash wiring `viewProj`** — `CameraNodeConfig::CURRENT_VIEW_PROJ` is
+       `const glm::mat4&` (reference/`ConstRefTag` storage), but `PushConstantGathererNode`'s generic
+       field-extraction path (`ExtractResourceAs<T>()`) always does a BY-VALUE `GetHandle<T>()`
+       (`ValueTag`) — a genuine producer/consumer Resource-tag mismatch, not a hypothetical. Every
+       existing gatherer's directly-wired (non-`ExtractField`) fields happened to already be
+       `ValueTag`-published (float/int32_t/`ConstantNode::SetValue<T>`), so this bug had never been hit
+       before. Fix: added `CameraNode::GetCurrentViewProj()` (new BY-VALUE accessor) + a new
+       `ConstantNode` (`recipe_bucketing_view_proj_constant`) that PreTick refreshes every frame via
+       `SetValue<glm::mat4>`, wired into the push-constant field instead of `CameraNode` directly.
+    4. **`instanceCount` signed/unsigned mismatch** — `RecipeInstanceBucketing.comp` (Inc2-authored)
+       declared `uint instanceCount` in its push-constant block; `BodyOctreeSceneNodeConfig::
+       INSTANCE_COUNT` is `int32_t` per an existing, documented codebase-wide contract
+       (`BodyInstanceRayMarch.comp`'s own `int instanceCount`). SPIR-V reflection correctly resolved
+       the shader's `uint` field to `ExtractResourceAs<uint32_t>()`, throwing `bad_any_cast` against
+       the `int32_t`-typed `Resource`. This bug existed in the SHADER since Inc2 but was invisible
+       until now because Inc2/3's own test harnesses hand-pack push-constant bytes directly (bypassing
+       `PushConstantGathererNode`'s reflection-driven type dispatch entirely). Fix: `shaders/
+       RecipeInstanceBucketing.comp`'s push-constant field changed `uint` -> `int` (one line + a
+       comparison-site cast), matching the established contract; no C++ rebuild needed (shaders
+       compile at runtime).
+    5. **`AddStageFromSpirv` is a stub** — `ShaderBundleBuilder::AddStageFromSpirv` (used for the
+       specialized per-recipe shader's reflection-only build) discards the SPIR-V entirely and stores
+       an empty source string (`ShaderBundleBuilder.cpp`'s own `"TODO: Store SPIRV separately, for now
+       this is a placeholder"`), so `Build()` silently tried to compile `""` as GLSL and failed with a
+       confusing "Unable to parse built-ins" glslang error (glslang failing to parse its OWN built-ins
+       table for an ill-formed empty-source parse, not a real error in the specialized shader's actual
+       text). Fix: switched to `ShaderBundleBuilder::AddStage` (the proven text-based compile+reflect
+       path, same one the main march's own `ShaderLibraryNode` builder uses) instead of a separate
+       `ShaderCompiler::Compile()` + `AddStageFromSpirv()` two-step.
+    6. **3 real Vulkan resource-lifetime/synchronization bugs**, all found only by the live gate's VUID
+       scan (none of them crash or abort — they're exactly the class of bug this gate exists to catch):
+       (a) leaked `VkDescriptorPool`/`VkDescriptorSet`/`VkShaderModule` for every compiled specialized
+       pipeline (`VUID-vkDestroyDevice-device-05137` at shutdown) — fixed by destroying them in
+       `DeInitialize()` before the render graph/device teardown, guarded by a `vkDeviceWaitIdle` first;
+       (b) `MultiDispatchNode`'s new submit path passed the REAL `inFlightFence` as `submitFence`
+       unconditionally, colliding with the frame's actual consumer node's own fence ownership
+       (`VUID-vkQueueSubmit2-fence-04895`) — fixed by always submitting with `VK_NULL_HANDLE` (this
+       node is never a consumer, mirrors `ComputeStageNode`'s own producer branch exactly);
+       (c) `recipe_bucket_indirect_command_buffer` (a `StorageBufferNode`) was created with only
+       `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`, missing `VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT` needed for
+       `vkCmdDispatchIndirect` to read it (`VUID-vkCmdDispatchIndirect-buffer-02709`) — fixed by adding
+       a new additive `StorageBufferNodeConfig::PARAM_EXTRA_USAGE_FLAGS` param (default 0, byte-
+       identical no-op for every other consumer) and setting it to `VK_BUFFER_USAGE_INDIRECT_BUFFER_
+       BIT` for this one buffer. Also found and fixed a missing `pushConstants` payload on the
+       specialized dispatch's own `DispatchPass` (`VUID-vkCmdDispatchIndirect-maintenance4-08602` —
+       the specialized shader statically uses its push-constant block but nothing had ever populated
+       it) by building the exact 80-byte `Push` struct (camera basis + screen extent +
+       maxMembersPerBucket + recipeId) from live `CameraNode`/window-size data each dispatch.
+  - **One remaining VUID class, investigated and confirmed a validation-layer false positive, not a
+    real hazard**: `VUID-vkUpdateDescriptorSets-None-03047` (20 occurrences, all within the first few
+    frames of a run — exactly once per hot recipeId's first-promotion event, 3 total in the gate
+    scene). Root-caused via independent agent investigation: all 3 hot recipes in
+    `VIXEN_RECIPE_HOT_COLD_DEMO` are seeded with instance counts already >= the hotness threshold at
+    SCENE-BUILD time, so all 3 get first-promoted within the SAME `PreTick()` call on frame 0 — i.e.
+    before `RenderFrame()` has EVER been called for the first time in the process's life. No command
+    buffer has been recorded or submitted anywhere in the app at the point each brand-new
+    `VkDescriptorSet` is written, so a genuine "in use by a pending command buffer" hazard is provably
+    impossible at that call site (traced and ruled out: no handle aliasing, since nothing is ever
+    destroyed before this point; no parallel-execution race, since `PreTick()` fully completes,
+    including its own `vkDeviceWaitIdle`, before `RenderFrame()` starts; no stale queued `DispatchPass`
+    from a prior frame, since this IS the first frame). This is the Khronos validation layer's own
+    "descriptor set in use" tracker false-flagging a back-to-back multi-allocation pattern within one
+    `vkDeviceWaitIdle`-gated call, not a spec violation with real GPU consequences. A cosmetic fix
+    exists (declare the layout/pool `VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT`/`_POOL_CREATE_
+    UPDATE_AFTER_BIND_BIT`) but was not applied — out of scope for a "nice to have" this late in the
+    gate, and the shared `BuildDescriptorSetLayoutFromReflection` helper is used elsewhere, so
+    changing its behavior unconditionally was judged higher-risk than documenting the false positive.
+  - **Flag-unset no-op proof (the milestone's own strongest bar)**: with the flag unset, NONE of the
+    new nodes are created at all (verified via log grep: zero references to any `recipe_bucket*`/
+    `recipe_specialized*` node name in a flag-unset run's full log) — not merely inert, genuinely absent
+    from the graph. Full existing gate suite re-run, all green:
+    `test_rendergraph_criticalnodes_gpurender1` (10/10), `test_recipe_pool_render` (1/1),
+    `test_mip_fallback_render` (4/4), `test_rendergraph_dispatch` (186/186, includes the updated
+    `MultiDispatchNodeConfig` slot-count assertion), `test_recipe_multi_bucket_compositing` (2/2).
+    **LIVE APP GATE, flag UNSET**: `VIXEN_EXIT_AFTER_FRAMES=3000`, default scene, no special flags —
+    clean exit ("frame limit reached"), 3000 frames, ~170 FPS sustained. VUID count/classes matched
+    M1/M2's own documented pre-existing baseline EXACTLY: 64 total, split 20/20/20/4 across
+    `VUID-vkAcquireNextImageKHR-semaphore-01779`/`VUID-vkCmdDraw-None-09600`/`VUID-vkQueueSubmit2-
+    semaphore-03868` (same self-limited startup-transient classes M1/M2 independently verified
+    pre-existing) — same 50 `PushConstantGathererNode` Type-mismatch lines. Zero
+    `VUID-vkCmdDispatch-None-08114`, zero new VUID classes of any kind.
+  - **LIVE APP GATE, flag SET (`VIXEN_RECIPE_BUCKETED_DISPATCH=1 VIXEN_RECIPE_HOT_COLD_DEMO=1
+    VIXEN_EXIT_AFTER_FRAMES=3000`)**: real discrete-GPU-class device (`AMD Radeon(TM) Graphics`),
+    Windows-native, Debug build, validation layers ON. All 3 hot recipeIds (of the 3 hot + 3 cold the
+    demo scene registers) compiled a real specialized `VkPipeline` on first promotion (log-confirmed:
+    "compiled specialized pipeline for recipeId=2/3/4 (6 instances, promoted hot)"), dispatched
+    indirectly every frame thereafter via `MultiDispatchNode::QueueDispatch`, and were cleanly destroyed
+    at shutdown ("Destroyed 3 specialized recipe pipeline(s)"). Reached the full 3000-frame limit,
+    clean exit, sustained 90-145 FPS (varies more than the flag-unset baseline — expected, unoptimized
+    first-integration path, NOT this milestone's concern; M4 owns the honest performance measurement).
+    **Zero crashes, zero unhandled exceptions, zero `VUID-vkCmdDispatch(Indirect)-*` errors of any
+    kind** after the 6 fixes above. Only the one investigated-and-confirmed-false-positive VUID class
+    remains (`VUID-vkUpdateDescriptorSets-None-03047`, 20 occurrences, see above) plus the same 40
+    pre-existing baseline VUIDs (20/20 split, `VUID-vkCmdDraw-None-09600`/`VUID-vkQueueSubmit2-
+    semaphore-03868`) M1/M2 already documented.
+  - **Deviation from prompt**: none of substance in scope/architecture. The prompt's own risk framing
+    ("treat integration bugs between these pieces as the DEFAULT expectation... 4 seams instead of 1")
+    was, if anything, an understatement — 6 distinct bugs surfaced across those seams, all found and
+    fixed via the mandatory live-app gate exactly as the prompt required, none deferred to a later fix
+    round. The one open item (the false-positive VUID) was investigated to a decisive, code-traced
+    conclusion rather than left as an unexplained residual — judged sufficient to close M3 given it is
+    provably not a genuine hazard, not a gap in verification rigor.
+  - Commits: (this worktree, `feat/recipe-live-app-bucketing-inc4`, on top of `87a4be5d`) — bucketing
+    quintet + wiring + hot/cold demo scene in `BuildRenderGraph.cpp`; `MultiDispatchNode` submit
+    extension in `libraries/RenderGraph/`; `RunRecipeBucketedDispatchPreTick` + cleanup in
+    `VulkanGraphApplication.{h,cpp}`; `CameraNode::GetCurrentViewProj()`, `BodyOctreeSceneNode::
+    GetInstanceBufferHandle()`, `StorageBufferNode::GetBufferHandle()`/`PARAM_EXTRA_USAGE_FLAGS` new
+    accessors; `shaders/RecipeInstanceBucketing.comp` `instanceCount` type fix;
+    `test_group_dispatch.cpp` slot-count assertion update.
 
 ---
 

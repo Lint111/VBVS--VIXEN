@@ -63,6 +63,7 @@
 #include "Data/Nodes/ProbeAtlasNodeConfig.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
 #include "Data/Nodes/ImageSyncGathererNodeConfig.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Data/Nodes/StorageBufferNodeConfig.h"        // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs
+#include "Data/Nodes/MultiDispatchNodeConfig.h"        // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SkyProjectionNodeConfig.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Data/Nodes/SwapChainNodeConfig.h"
@@ -119,6 +120,7 @@
 #include "Nodes/ShaderLibraryNode.h"
 #include "Nodes/SkyProjectionNode.h"  // Tiered ESVO Inc1 M3: address-derived sky-point composite pass
 #include "Nodes/StorageBufferNode.h"  // Sampled Lighting Inc1 M3: HitRecord SSBO (binding 17), extent-driven
+#include "Nodes/MultiDispatchNode.h"  // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/UIRenderNode.h"  // S0: composite-HUD render node (RmlUi) — AFTER BodyOctreeSceneNode.h
@@ -631,6 +633,133 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // placeholder, so production and tests share one no-op convention instead of two.
     NodeHandle instanceSkipMaskBuffer = renderGraph->AddNode<StorageBufferNodeType>("instance_skip_mask_buffer");
 
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: gated behind VIXEN_RECIPE_BUCKETED_DISPATCH
+    // (opt-in, following the VIXEN_PROCEDURAL_UBER_DEMO/VIXEN_UI_DEMO convention -- read once here
+    // so every node-creation/wiring decision below is consistent for this whole function's build).
+    // When UNSET (default): none of the nodes below are created at all -- the graph builds EXACTLY
+    // as it did pre-M3, satisfying the milestone's own "flag-unset is a genuine, provable no-op"
+    // bar at the strongest level (no new node, not just an inert one).
+    const bool recipeBucketedDispatchEnabled = (std::getenv("VIXEN_RECIPE_BUCKETED_DISPATCH") != nullptr);
+    recipeBucketedDispatchEnabled_ = recipeBucketedDispatchEnabled;  // stored for PreTick's live orchestration
+
+    NodeHandle recipeBucketCountBuffer{};
+    NodeHandle recipeBucketIndicesBuffer{};
+    NodeHandle recipeBucketCoverageMinXBuffer{};
+    NodeHandle recipeBucketCoverageMinYBuffer{};
+    NodeHandle recipeBucketCoverageMaxXBuffer{};
+    NodeHandle recipeBucketCoverageMaxYBuffer{};
+    NodeHandle recipeBucketIndirectCommandBuffer{};
+    NodeHandle recipeBoundSphereBuffer{};
+    NodeHandle recipeBucketingShaderLib{};
+    NodeHandle recipeBucketingDescGatherer{};
+    NodeHandle recipeBucketingDescriptorSet{};
+    NodeHandle recipeBucketingPipeline{};
+    NodeHandle recipeBucketingModeInit{};   // mode==1: reset extrema/counts
+    NodeHandle recipeBucketingModeBucket{}; // mode==0: bucket + coverage (one thread per instance)
+    NodeHandle recipeBucketingModeFinal{};  // mode==2: emit per-bucket indirect command
+    NodeHandle recipeBucketingBufSyncW{};   // BufferSyncGathererNode: mode0/1's write set
+    NodeHandle recipeBucketingBufSyncR{};   // BufferSyncGathererNode: mode2's read set (coverage)
+    NodeHandle recipeBucketMetaBuffer{};     // shared per-recipeId BucketMeta SSBO (specialized shader binding 3)
+    NodeHandle recipeSpecializedDispatch{}; // MultiDispatchNode (Inc4 M3-extended, indirect dispatch)
+    NodeHandle recipeBucketingModeInitPushGatherer{};
+    NodeHandle recipeBucketingModeBucketPushGatherer{};
+    NodeHandle recipeBucketingModeFinalPushGatherer{};
+    NodeHandle recipeBucketingModeInitConstant{};
+    NodeHandle recipeBucketingModeBucketConstant{};
+    NodeHandle recipeBucketingModeFinalConstant{};
+    NodeHandle recipeBucketingMaxBucketsConstant{};
+    NodeHandle recipeBucketingMaxMembersConstant{};
+    NodeHandle recipeBucketingViewProjConstant{};
+
+    if (recipeBucketedDispatchEnabled) {
+        mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_BUCKETED_DISPATCH set -- wiring the "
+                         "bucketing pre-pass + specialized-pipeline indirect dispatch into the "
+                         "real graph (Recipe-Live-App-Bucketed-Dispatch Inc4 M3)");
+
+        // --- Bucketing pre-pass SSBOs (shaders/RecipeInstanceBucketing.comp bindings 0-8) ---
+        // Binding 0 (BodyInstanceBuffer) reuses bodyOctreeSceneNode's own INSTANCE_BUFFER --
+        // no new node needed, same buffer the march already reads at its own binding 10.
+        recipeBoundSphereBuffer        = renderGraph->AddNode<StorageBufferNodeType>("recipe_bound_sphere_buffer");
+        recipeBucketCountBuffer        = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_count_buffer");
+        recipeBucketIndicesBuffer      = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_indices_buffer");
+        recipeBucketCoverageMinXBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_coverage_minx_buffer");
+        recipeBucketCoverageMinYBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_coverage_miny_buffer");
+        recipeBucketCoverageMaxXBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_coverage_maxx_buffer");
+        recipeBucketCoverageMaxYBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_coverage_maxy_buffer");
+        recipeBucketIndirectCommandBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_indirect_command_buffer");
+
+        // --- Bucketing shader quintet (self-contained binding namespace 0-8, own descriptor set,
+        // independent from the march's shader/pipeline/descriptor chain) ---
+        recipeBucketingShaderLib    = renderGraph->AddNode<ShaderLibraryNodeType>("recipe_bucketing_shader_lib");
+        recipeBucketingDescGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("recipe_bucketing_desc_gatherer");
+        recipeBucketingDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("recipe_bucketing_descriptors");
+        recipeBucketingPipeline    = renderGraph->AddNode<ComputePipelineNodeType>("recipe_bucketing_pipeline");
+        // Three ComputeStageNode instances (mode 1 -> mode 0 -> mode 2), same shader/pipeline/
+        // descriptor set, distinguished only by their own PUSH_CONSTANT_DATA (mode field) and
+        // dispatch dims -- each is self-submitting (proven ComputeStageNode pattern, matches
+        // directLightingNode/probeUpdateNode) so no new submit machinery is needed for these 3.
+        // Auto-sync (BufferSyncGathererNode, below) bakes the required mode1->mode0->mode2 memory
+        // barriers instead of hand-rolled vkCmdPipelineBarrier2 calls.
+        recipeBucketingModeInit   = renderGraph->AddNode<ComputeStageNodeType>("recipe_bucketing_mode_init");
+        recipeBucketingModeBucket = renderGraph->AddNode<ComputeStageNodeType>("recipe_bucketing_mode_bucket");
+        recipeBucketingModeFinal  = renderGraph->AddNode<ComputeStageNodeType>("recipe_bucketing_mode_final");
+        recipeBucketingBufSyncW = renderGraph->AddNode<BufferSyncGathererNodeType>("recipe_bucketing_bufsync_write");
+        recipeBucketingBufSyncR = renderGraph->AddNode<BufferSyncGathererNodeType>("recipe_bucketing_bufsync_read");
+
+        // Each mode stage needs its OWN PushConstantGathererNode (the `mode` field differs) and
+        // its own ConstantNode supplying that literal -- mirrors raySizeBiasConstant's own
+        // "ConstantNode feeds a fixed literal into a reflected push-constant field" convention.
+        recipeBucketingModeInitPushGatherer   = renderGraph->AddNode<PushConstantGathererNodeType>("recipe_bucketing_mode_init_pc_gatherer");
+        recipeBucketingModeBucketPushGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("recipe_bucketing_mode_bucket_pc_gatherer");
+        recipeBucketingModeFinalPushGatherer  = renderGraph->AddNode<PushConstantGathererNodeType>("recipe_bucketing_mode_final_pc_gatherer");
+        recipeBucketingModeInitConstant   = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_mode_init_constant");
+        recipeBucketingModeBucketConstant = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_mode_bucket_constant");
+        recipeBucketingModeFinalConstant  = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_mode_final_constant");
+        recipeBucketingMaxBucketsConstant = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_max_buckets_constant");
+        recipeBucketingMaxMembersConstant = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_max_members_constant");
+        // viewProj needs a BY-VALUE (not const glm::mat4&) source for PushConstantGathererNode's
+        // generic ExtractResourceAs<T>()/GetHandle<T>() path -- CameraNodeConfig::CURRENT_VIEW_PROJ
+        // is reference-typed (ConstRefTag), which is a producer/consumer Resource-tag mismatch
+        // against a variadic field's ValueTag expectation (throws std::bad_any_cast at Execute --
+        // found live during this milestone's own gate run). A ConstantNode set every frame from
+        // PreTick (via CameraNode::GetCurrentViewProj(), a new by-value accessor) sidesteps this:
+        // ConstantNode::SetValue<T> always stores via ValueTag, matching what the gatherer expects.
+        recipeBucketingViewProjConstant = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_view_proj_constant");
+
+        // --- Specialized per-recipe indirect dispatch (runtime-compiled GLSL per hot recipeId,
+        // EmitSpecializedRecipeComputeShader -- see PreTick's per-frame orchestration). Unlike
+        // the bucketing shader above (a fixed source file, known at graph-build time), a
+        // per-recipeId specialized shader's source doesn't exist until a scene has actually
+        // registered that recipe -- there is no single fixed shader for a ShaderLibraryNode's
+        // RegisterShaderBuilder to return. So this path deliberately does NOT use the static
+        // ShaderLibraryNode->DescriptorResourceGathererNode->DescriptorSetNode->
+        // ComputePipelineNode chain at all: PreTick compiles each hot recipeId's shader via
+        // ShaderCompiler+ShaderBundleBuilder::AddStageFromSpirv (reflection without a node),
+        // builds its descriptor set/pipeline layout via CashSystem's reflection-driven
+        // BuildDescriptorSetLayoutFromReflection/ExtractPushConstantsFromReflection free
+        // functions, and creates the VkPipeline via ComputePipelineCacher::GetOrCreate directly
+        // -- all fully outside RenderGraph's node system (confirmed safe: RenderGraph forbids
+        // AddNode/ConnectNodes after Compile(), but building Vulkan objects OUTSIDE the graph at
+        // any time, then handing the resulting handles to an already-compiled node's imperative
+        // API, is exactly MultiDispatchNode::QueueDispatch's own designed use case -- DispatchPass
+        // is plain Vulkan handles with no provenance requirement). recipeSpecializedDispatch is
+        // the only node instance needed for this; PreTick queues its DispatchPasses every frame.
+        recipeBucketMetaBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_meta_buffer");
+        recipeSpecializedDispatch = renderGraph->AddNode<MultiDispatchNodeType>("recipe_specialized_dispatch");
+    }
+    recipeBucketCountBuffer_ = recipeBucketCountBuffer;
+    recipeBucketIndicesBuffer_ = recipeBucketIndicesBuffer;
+    recipeBucketCoverageMinXBuffer_ = recipeBucketCoverageMinXBuffer;
+    recipeBucketCoverageMinYBuffer_ = recipeBucketCoverageMinYBuffer;
+    recipeBucketCoverageMaxXBuffer_ = recipeBucketCoverageMaxXBuffer;
+    recipeBucketCoverageMaxYBuffer_ = recipeBucketCoverageMaxYBuffer;
+    recipeBucketIndirectCommandBuffer_ = recipeBucketIndirectCommandBuffer;
+    recipeBoundSphereBuffer_ = recipeBoundSphereBuffer;
+    recipeBucketMetaBuffer_ = recipeBucketMetaBuffer;
+    recipeBucketingViewProjConstant_ = recipeBucketingViewProjConstant;
+    recipeSpecializedDispatch_ = recipeSpecializedDispatch;
+    instanceSkipMaskBuffer_ = instanceSkipMaskBuffer;
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -838,6 +967,93 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // path is identical in production and in every test.
     auto* instanceSkipMaskInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(instanceSkipMaskBuffer));
     instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 256u);
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing-pass SSBO sizing, matching
+    // shaders/RecipeInstanceBucketing.comp's own push-constant caps (kRecipeMaxBuckets,
+    // kRecipeMaxMembersPerBucket below) so every buffer's byte size agrees with what the
+    // shader's own indexing math expects. Stored as app-lifetime members (not locals) since
+    // PreTick's per-frame orchestration re-derives the same caps from these same constants.
+    if (recipeBucketedDispatchEnabled) {
+        auto* boundSphereInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBoundSphereBuffer));
+        boundSphereInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+            kRecipeBucketingMaxBuckets * 32u);  // RecipeBoundSphere: 32B (vec3+float+float+pad[3])
+
+        auto* bucketCountInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCountBuffer));
+        bucketCountInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+            kRecipeBucketingMaxBuckets * 4u);  // uint per bucket
+
+        auto* bucketIndicesInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketIndicesBuffer));
+        bucketIndicesInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+            kRecipeBucketingMaxBuckets * kRecipeBucketingMaxMembersPerBucket * 4u);  // uint per [bucket][slot]
+
+        auto* covMinXInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCoverageMinXBuffer));
+        covMinXInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kRecipeBucketingMaxBuckets * 4u);
+        auto* covMinYInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCoverageMinYBuffer));
+        covMinYInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kRecipeBucketingMaxBuckets * 4u);
+        auto* covMaxXInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCoverageMaxXBuffer));
+        covMaxXInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kRecipeBucketingMaxBuckets * 4u);
+        auto* covMaxYInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCoverageMaxYBuffer));
+        covMaxYInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kRecipeBucketingMaxBuckets * 4u);
+
+        auto* indirectCmdInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketIndirectCommandBuffer));
+        indirectCmdInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+            kRecipeBucketingMaxBuckets * 12u);  // VkDispatchIndirectCommand: 3x uint32, per bucket
+        // The specialized dispatch's own vkCmdDispatchIndirect (PreTick's QueueDispatch) reads
+        // this buffer directly -- needs VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT in addition to the
+        // STORAGE_BUFFER_BIT the bucketing shader's mode==2 pass writes it with (found live via
+        // VUID-vkCmdDispatchIndirect-buffer-02709 during this milestone's own gate run).
+        indirectCmdInst->SetParameter(StorageBufferNodeConfig::PARAM_EXTRA_USAGE_FLAGS,
+            static_cast<uint32_t>(VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT));
+
+        // SpecializedRecipeShaderGlsl.h's BucketMeta struct: 32B/entry (matches BucketMetaCpu's
+        // own static_assert in the Inc2/3 test harnesses), one entry per recipeId.
+        auto* bucketMetaInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketMetaBuffer));
+        bucketMetaInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kRecipeBucketingMaxBuckets * 32u);
+
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] Recipe bucketing SSBOs sized: maxBuckets=" +
+                             std::to_string(kRecipeBucketingMaxBuckets) + " maxMembersPerBucket=" +
+                             std::to_string(kRecipeBucketingMaxMembersPerBucket));
+        }
+
+        // Mode literals: mode 1 (init) -> mode 0 (bucket) -> mode 2 (finalize), matching
+        // RecipeInstanceBucketing.comp's own push-constant `mode` semantics exactly.
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeInitConstant))->SetValue<uint32_t>(1u);
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeBucketConstant))->SetValue<uint32_t>(0u);
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingModeFinalConstant))->SetValue<uint32_t>(2u);
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingMaxBucketsConstant))->SetValue<uint32_t>(kRecipeBucketingMaxBuckets);
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingMaxMembersConstant))->SetValue<uint32_t>(kRecipeBucketingMaxMembersPerBucket);
+        // Default-initialized to identity; PreTick overwrites this every frame with the live
+        // camera view-proj (see RunRecipeBucketedDispatchPreTick) before this frame's dispatch.
+        static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingViewProjConstant))->SetValue<glm::mat4>(glm::mat4(1.0f));
+
+        // mode-init/mode-final dispatch one thread per BUCKET SLOT (fixed at graph-build time);
+        // mode-bucket dispatches one thread per INSTANCE, sized generously fixed
+        // (kRecipeBucketingMaxMembersPerBucket * kRecipeBucketingMaxBuckets/local_size_x is
+        // overkill -- use a simpler, still-safely-oversized fixed bound: the shader's own
+        // `if (gid >= pc.instanceCount) return;` guard makes any dispatch >= actual instance
+        // count safe, so a fixed generous cap avoids needing a live-instance-count-driven
+        // dispatch dim, which ComputeStageNode's fixed PARAM_DISPATCH_X/Y/Z does not support).
+        constexpr uint32_t kRecipeBucketingLocalSizeX = 64;  // matches shader's local_size_x
+        constexpr uint32_t kRecipeBucketingMaxInstancesDispatch = 4096;  // generous fixed cap
+        auto* modeInitStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(recipeBucketingModeInit));
+        modeInitStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X,
+            (kRecipeBucketingMaxBuckets + kRecipeBucketingLocalSizeX - 1u) / kRecipeBucketingLocalSizeX);
+        modeInitStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+        modeInitStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        auto* modeBucketStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(recipeBucketingModeBucket));
+        modeBucketStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X,
+            (kRecipeBucketingMaxInstancesDispatch + kRecipeBucketingLocalSizeX - 1u) / kRecipeBucketingLocalSizeX);
+        modeBucketStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+        modeBucketStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        auto* modeFinalStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(recipeBucketingModeFinal));
+        modeFinalStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X,
+            (kRecipeBucketingMaxBuckets + kRecipeBucketingLocalSizeX - 1u) / kRecipeBucketingLocalSizeX);
+        modeFinalStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+        modeFinalStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    }
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -1184,6 +1400,49 @@ void VulkanGraphApplication::BuildRenderGraph() {
                .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
         return builder;
     });
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: RecipeInstanceBucketing.comp registration.
+    // Same search-path pattern as DirectLighting.comp/ProbeUpdate.comp above -- a plain static
+    // shader FILE (unlike the march's own recipe-splice path), so no per-recipe text splicing
+    // is needed here; the shader's own bindings 0-8 are self-contained (does not #include
+    // SceneBindings.glsl), so this shader-lib instance is entirely independent of the main
+    // march's descriptor namespace.
+    if (recipeBucketedDispatchEnabled) {
+        auto* recipeBucketingShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(recipeBucketingShaderLib));
+        recipeBucketingShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+            ShaderManagement::ShaderBundleBuilder builder;
+            constexpr const char* shaderName = "RecipeInstanceBucketing.comp";
+            constexpr const char* programName = "RecipeInstanceBucketing";
+            std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName
+            };
+            std::filesystem::path compPath;
+            for (const auto& path : possiblePaths) {
+                if (std::filesystem::exists(path)) { compPath = path; break; }
+            }
+            if (compPath.empty()) {
+                throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
+            }
+            const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+            builder.SetProgramName(programName)
+                   .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                   .SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_)
+                   .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
+            return builder;
+        });
+    }
 
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
     // PRESENT_SRC). Sampled Lighting Inc3 M5: this pass no longer owns IMAGE_WRITE (moved to
@@ -2002,6 +2261,91 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: seeded " +
                                  std::to_string(n) + " zero-bake procedural body instances "
                                  "(0 BakeSdfWorld/BuildSdfBodyOctree calls for these bodies)");
+            }
+        } else if (std::getenv("VIXEN_RECIPE_HOT_COLD_DEMO")) {
+            // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live-gate scene construction --
+            // registers a mix of "hot" recipes (>= kRecipeBucketingHotnessThreshold instances
+            // each, so VIXEN_RECIPE_BUCKETED_DISPATCH's bucketing pass promotes them) and "cold"
+            // recipes (1-2 instances each, staying below threshold, handled by tier-0 only).
+            // Reuses VIXEN_PROCEDURAL_UBER_DEMO's own zero-bake construction convention
+            // (RegisterProceduralRecipe + BodyOctreeSceneNode::SetInstances, no octree bake) --
+            // this demo's own scope is just "produce a real hot+cold instance-count
+            // distribution," not a new construction mechanism.
+            constexpr int kHotRecipeCount    = 3;  // distinct recipeIds that go hot
+            constexpr int kColdRecipeCount   = 3;  // distinct recipeIds that stay cold
+            constexpr int kInstancesPerHot   = 6;  // >= kRecipeBucketingHotnessThreshold(4)
+            constexpr int kInstancesPerCold  = 2;  // < kRecipeBucketingHotnessThreshold(4)
+            constexpr float kSpacingX = 30.0f;
+            constexpr float kSpacingZ = 40.0f;
+            constexpr float kBaseZ    = 30.0f;
+            const glm::vec3 kHotColors[kHotRecipeCount] = {
+                glm::vec3(1.00f, 0.30f, 0.30f),  // hot recipe 0: red
+                glm::vec3(0.30f, 1.00f, 0.30f),  // hot recipe 1: green
+                glm::vec3(0.30f, 0.45f, 1.00f),  // hot recipe 2: blue
+            };
+            const glm::vec3 kColdColors[kColdRecipeCount] = {
+                glm::vec3(1.00f, 1.00f, 0.30f),  // cold recipe 0: yellow
+                glm::vec3(1.00f, 0.30f, 1.00f),  // cold recipe 1: magenta
+                glm::vec3(0.30f, 1.00f, 1.00f),  // cold recipe 2: cyan
+            };
+
+            std::vector<Vixen::SVO::BodyInstanceGpu> hotColdBodies;
+            uint32_t nextRecipeId = 2;
+            int totalInstances = 0;
+
+            auto registerAndSeed = [&](uint32_t recipeId, const glm::vec3& tint, float centerX, int instanceCount) {
+                using Vixen::SVO::Recipe::SdfOpCode;
+                using Vixen::SVO::Recipe::SdfInstruction;
+                SdfInstruction sphere{};
+                sphere.opCode = static_cast<uint8_t>(SdfOpCode::Sphere);
+                sphere.data[0] = centerX; sphere.data[1] = 64.0f; sphere.data[2] = kBaseZ;
+                sphere.data[3] = 6.0f;
+
+                Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                entry.bytecode = { sphere };
+                entry.boundCenter = glm::vec3(centerX, 64.0f, kBaseZ);
+                entry.boundRadius = 8.0f;
+
+                auto regResult = RegisterProceduralRecipe(recipeId, entry);
+                if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_RECIPE_HOT_COLD_DEMO: "
+                                     "RegisterProceduralRecipe(" + std::to_string(recipeId) +
+                                     ") failed, code " + std::to_string(static_cast<int>(regResult)));
+                    return;
+                }
+                for (int k = 0; k < instanceCount; ++k) {
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.renderScale = 1.0f;
+                    inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
+                    inst.octreeIndex = 0u;
+                    inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                    inst.recipeId = recipeId;
+                    // Each instance's own world Z offset so N>1 instances of one recipe are
+                    // screen-space-separated rather than perfectly overlapping (still all within
+                    // the recipe's shared boundCenter/boundRadius footprint above -- overlapping
+                    // bound SPHERES are fine, that's just conservative bucketing coverage).
+                    inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f;
+                    inst.worldPos[2] = static_cast<float>(k) * 3.0f;
+                    hotColdBodies.push_back(inst);
+                    ++totalInstances;
+                }
+            };
+
+            for (int h = 0; h < kHotRecipeCount; ++h) {
+                registerAndSeed(nextRecipeId++, kHotColors[h], 40.0f + static_cast<float>(h) * kSpacingX, kInstancesPerHot);
+            }
+            for (int c = 0; c < kColdRecipeCount; ++c) {
+                registerAndSeed(nextRecipeId++, kColdColors[c], 40.0f + static_cast<float>(kHotRecipeCount + c) * kSpacingX, kInstancesPerCold);
+            }
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(hotColdBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_HOT_COLD_DEMO: seeded " +
+                                 std::to_string(totalInstances) + " instances across " +
+                                 std::to_string(kHotRecipeCount) + " hot recipes (" +
+                                 std::to_string(kInstancesPerHot) + " instances each) + " +
+                                 std::to_string(kColdRecipeCount) + " cold recipes (" +
+                                 std::to_string(kInstancesPerCold) + " instances each)");
             }
         } else if (std::getenv("VIXEN_TIER_CHAIN_DEMO")) {
             // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
@@ -4289,6 +4633,236 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL);
 
+    // --- Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing pre-pass + specialized dispatch ---
+    if (recipeBucketedDispatchEnabled) {
+        // Descriptor/pipeline plumbing for the bucketing shader (bindings 0-8, own namespace).
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketingShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketingPipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      recipeBucketingDescGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(recipeBucketingDescGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+             .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      recipeBucketingPipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(recipeBucketingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                      recipeBucketingPipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
+             // DescriptorSetNode requires SWAPCHAIN_INFO/IMAGE_INDEX (it reads swapChainImageCount
+             // during Compile to size its descriptor-set ring, same shape computeDescriptorSet's
+             // own wiring above uses) -- CURRENT_FRAME_INDEX stays unwired (optional; only needed
+             // when a node wants frame-indexed set selection instead of image-indexed, per
+             // ComputeStageNode::RecordComputeCommands' own frameIndexWired fallback comment).
+             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+
+        // Binding 0: BodyInstanceBuffer -- reuses bodyOctreeSceneNode's own INSTANCE_BUFFER
+        // (the SAME buffer the march reads at its own binding 10) -- no new instance data node.
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                      recipeBucketingDescGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Binding 1: RecipeBoundSphereBuffer.
+        batch.Connect(recipeBoundSphereBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 1,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Binding 2: BucketCountBuffer.
+        batch.Connect(recipeBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 2,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Binding 3: BucketIndicesBuffer.
+        batch.Connect(recipeBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 3,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Bindings 4-7: coverage AABB extrema.
+        batch.Connect(recipeBucketCoverageMinXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 4,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMinYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 5,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMaxXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 6,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 7,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Binding 8: BucketIndirectCommandBuffer.
+        batch.Connect(recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 8,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+        // Three ComputeStageNode instances share the SAME pipeline/descriptor set (the shader's
+        // push-constant `mode` field, not a different pipeline, selects behavior) -- each is its
+        // own self-submitting node (producer role, PARAM_IS_CONSUMER=false: none of these touch
+        // the swapchain). Dispatch dims are fixed (not swapchain-derived): mode 1/2 dispatch one
+        // thread per BUCKET (kRecipeBucketingMaxBuckets), mode 0 dispatches one thread per
+        // INSTANCE (bodyOctreeSceneNode's own live instance count -- but ComputeStageNode's
+        // PARAM_DISPATCH_X/Y/Z are fixed at graph-build time, not re-derived from a live
+        // instance count each frame; the shader's own `if (gid >= pc.instanceCount) return;`
+        // guard, same convention the main march already relies on for its own instanceCount vs.
+        // dispatch-size slack, makes an over-sized fixed dispatch safe -- oversized threads
+        // early-return, never touch out-of-range indices).
+        for (NodeHandle stageNode : {recipeBucketingModeInit, recipeBucketingModeBucket, recipeBucketingModeFinal}) {
+            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                          stageNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
+                 .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                          stageNode, ComputeStageNodeConfig::COMMAND_POOL)
+                 .Connect(recipeBucketingPipeline, ComputePipelineNodeConfig::PIPELINE,
+                          stageNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+                 .Connect(recipeBucketingPipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                          stageNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+                 .Connect(recipeBucketingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                          stageNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+                 .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                          stageNode, ComputeStageNodeConfig::IMAGE_INDEX)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                          stageNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                          stageNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                          stageNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+                 .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                          stageNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+                 .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          stageNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                          stageNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                          stageNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+        }
+
+        // Push-constant wiring: each mode stage's own PushConstantGathererNode reflects
+        // RecipeInstanceBucketing.comp's Push block (viewProj, instanceCount, maxBuckets,
+        // maxMembersPerBucket, screenWidth, screenHeight, mode) via the shared shader bundle,
+        // and each field is wired from the same live source the main march already uses for the
+        // equivalent value (camera view-proj, live instance count, render-target extent), so a
+        // camera move or a live-resize is reflected correctly without any extra plumbing --
+        // ONLY the `mode` field differs per stage (via each stage's own ConstantNode above).
+        struct BucketingPcStage { NodeHandle stage; NodeHandle pcGatherer; NodeHandle modeConstant; };
+        const BucketingPcStage bucketingPcStages[] = {
+            { recipeBucketingModeInit,   recipeBucketingModeInitPushGatherer,   recipeBucketingModeInitConstant },
+            { recipeBucketingModeBucket, recipeBucketingModeBucketPushGatherer, recipeBucketingModeBucketConstant },
+            { recipeBucketingModeFinal,  recipeBucketingModeFinalPushGatherer,  recipeBucketingModeFinalConstant },
+        };
+        for (const auto& s : bucketingPcStages) {
+            batch.Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          s.pcGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(s.pcGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                          s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
+                 .Connect(s.pcGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                          s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
+                 // field 0: mat4 viewProj -- via recipeBucketingViewProjConstant (a ConstantNode
+                 // PreTick updates every frame from CameraNode::GetCurrentViewProj()), NOT
+                 // CameraNodeConfig::CURRENT_VIEW_PROJ directly: that slot is `const glm::mat4&`
+                 // (reference/ConstRefTag), which throws std::bad_any_cast when wired straight
+                 // into a variadic push-constant field (PushConstantGathererNode's generic
+                 // extraction path always does a by-VALUE GetHandle<T>() -- see this node's own
+                 // creation-site comment for the full account of this bug, found live).
+                 .Connect(recipeBucketingViewProjConstant, ConstantNodeConfig::OUTPUT,
+                          s.pcGatherer, 0, SlotRoleModifier(SlotRole::Execute))
+                 // field 1: uint instanceCount (SAME live source as the march's own binding-10
+                 // instanceCount push-constant field -- bodyOctreeSceneNode's own live count).
+                 .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          s.pcGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                 // field 2: uint maxBuckets (fixed literal, matches SSBO sizing above).
+                 .Connect(recipeBucketingMaxBucketsConstant, ConstantNodeConfig::OUTPUT,
+                          s.pcGatherer, 2, SlotRoleModifier(SlotRole::Execute))
+                 // field 3: uint maxMembersPerBucket (fixed literal, matches SSBO sizing above).
+                 .Connect(recipeBucketingMaxMembersConstant, ConstantNodeConfig::OUTPUT,
+                          s.pcGatherer, 3, SlotRoleModifier(SlotRole::Execute))
+                 // fields 4/5: uint screenWidth/screenHeight (render-target's live extent, same
+                 // source the main march's dispatch sizing derives from).
+                 .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                          s.pcGatherer, 4, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                 .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                          s.pcGatherer, 5, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                 // field 6: uint mode (THIS stage's own literal -- 1/0/2 for init/bucket/final).
+                 .Connect(s.modeConstant, ConstantNodeConfig::OUTPUT,
+                          s.pcGatherer, 6, SlotRoleModifier(SlotRole::Execute));
+        }
+
+        // Auto-sync hazard declarations: mode-init/mode-bucket WRITE the counters/indices/
+        // coverage buffers; mode-final READS the (by-then-final) coverage extrema and WRITES
+        // the indirect-command buffer. Declaring these bakes the required
+        // modeInit -> modeBucket -> modeFinal memory-visibility edges (FrameSyncScheduler),
+        // exactly the "auto-sync P4" mechanism DirectLighting->SpatialReuse's own reservoir
+        // hand-off (above) already relies on -- no hand-rolled vkCmdPipelineBarrier2 needed.
+        batch.Connect(recipeBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMinXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMinYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 3, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMaxXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 4, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 5, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketingBufSyncW, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      recipeBucketingModeBucket, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        batch.Connect(recipeBucketCoverageMinXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncR, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMinYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncR, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMaxXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncR, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncR, 3, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketingBufSyncR, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      recipeBucketingModeFinal, ComputeStageNodeConfig::BUFFER_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        // mode-final also WRITES the indirect-command buffer -- a second write-array gatherer
+        // on the SAME modeFinal node would collide with BUFFER_WRITE_ARRAY's single-slot shape
+        // used by modeBucket above; instead declare it via a dedicated 1-entry gatherer.
+        NodeHandle recipeBucketingFinalWriteGatherer =
+            renderGraph->AddNode<BufferSyncGathererNodeType>("recipe_bucketing_final_write_gatherer");
+        batch.Connect(recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingFinalWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipeBucketingFinalWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      recipeBucketingModeFinal, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        // --- Specialized per-recipe indirect dispatch (VkPipeline/VkDescriptorSet built
+        // outside the graph by PreTick per hot recipeId -- see the node-creation comment above
+        // for why no static ShaderLibraryNode/DescriptorSetNode/ComputePipelineNode chain exists
+        // for this path) ---
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::COMMAND_POOL)
+             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::SWAPCHAIN_INFO)
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::CURRENT_FRAME_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::IN_FLIGHT_FENCE)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+             .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+        // instanceSkipMaskBuffer is populated with REAL content for the first time by PreTick
+        // (VulkanGraphApplication.cpp) when this flag is set -- no additional graph wiring is
+        // needed here since Inc4 M1's fix round already wired binding 35 into all 4 gatherers;
+        // only the buffer's CONTENT changes (via MapForReadback/UnmapReadback, same "de-facto
+        // upload" pattern the DDGI leak-gate debug buffer already uses).
+    }
+
     // --- Ray Marching Resource Connections ---
     // Camera node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -4530,6 +5104,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ddgiLeakGateDebugBuffer immediately above).
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   instanceSkipMaskBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing-pass SSBOs — device only, same
+    // fixed-size (NO SWAPCHAIN_INFO) shape as instanceSkipMaskBuffer/ddgiLeakGateDebugBuffer
+    // above (all 8 buffers are sized by kRecipeBucketingMaxBuckets, not by swapchain extent).
+    if (recipeBucketedDispatchEnabled) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBoundSphereBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketCountBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketIndicesBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketCoverageMinXBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketCoverageMinYBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketCoverageMaxXBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipeBucketMetaBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+    }
 
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields

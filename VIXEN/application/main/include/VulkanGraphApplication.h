@@ -15,6 +15,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <unordered_map>  // Inc4 M3: recipeSpecializedPipelineCache_
 #include <utility>
 #include <vector>
 #include <glm/glm.hpp>
@@ -216,6 +217,11 @@ protected:
     void UpdateBodySceneResidency();
 
 private:
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: per-frame orchestration for the opt-in
+    // bucketed-dispatch path, called from PreTick() only when recipeBucketedDispatchEnabled_
+    // is true. See its own definition (VulkanGraphApplication.cpp) for the full account.
+    void RunRecipeBucketedDispatchPreTick();
+
     // ====== Engine (AR#7) ======
     // EngineContext OWNS the core graph subsystems (registry, bus, graph, and the autonomous
     // CalibrationStore). The app keeps non-owning views named as before so the existing call
@@ -308,6 +314,55 @@ private:
     // caching outright (e.g. for a clean-recompile A/B) without deleting the directory.
     ShaderManagement::ShaderCacheManager shaderCacheManager_{ MakeShaderCacheConfig() };
     NodeHandle computeShaderLibNode_{};              // stored so RecompileProceduralShader can MarkNodeNeedsRecompile
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration state for the opt-in
+    // VIXEN_RECIPE_BUCKETED_DISPATCH gate. Node handles are default-constructed/invalid when
+    // the flag is unset (BuildRenderGraph.cpp never creates these nodes in that case) --
+    // PreTick's orchestration hook (VulkanGraphApplication.cpp) checks
+    // recipeBucketedDispatchEnabled_ FIRST and is a complete no-op when false, so touching an
+    // invalid NodeHandle never happens on the default path.
+    // Matches shaders/RecipeInstanceBucketing.comp's own push-constant caps exactly -- BOTH
+    // BuildRenderGraph.cpp (SSBO sizing) and VulkanGraphApplication.cpp's PreTick (per-frame
+    // orchestration/readback indexing) must agree on these, so they're declared once here
+    // rather than duplicated as file-local constants in each .cpp.
+    static constexpr uint32_t kRecipeBucketingMaxBuckets = 256;
+    static constexpr uint32_t kRecipeBucketingMaxMembersPerBucket = 64;
+    // Inc2 M3's own placeholder hotness threshold (test_recipe_multi_bucket_compositing.cpp) --
+    // NOT tuned/benchmarked, explicitly a stand-in for a future real usage-history tracker (see
+    // that test file's own comment) -- reused here verbatim rather than inventing a second
+    // placeholder policy for the same not-yet-real decision.
+    static constexpr uint32_t kRecipeBucketingHotnessThreshold = 4;
+
+    bool recipeBucketedDispatchEnabled_ = false;
+    NodeHandle recipeBucketCountBuffer_{};
+    NodeHandle recipeBucketIndicesBuffer_{};
+    NodeHandle recipeBucketCoverageMinXBuffer_{};
+    NodeHandle recipeBucketCoverageMinYBuffer_{};
+    NodeHandle recipeBucketCoverageMaxXBuffer_{};
+    NodeHandle recipeBucketCoverageMaxYBuffer_{};
+    NodeHandle recipeBucketIndirectCommandBuffer_{};
+    NodeHandle recipeBoundSphereBuffer_{};
+    NodeHandle recipeBucketMetaBuffer_{};
+    NodeHandle recipeSpecializedDispatch_{};
+    NodeHandle recipeBucketingViewProjConstant_{};  // ConstantNode PreTick refreshes every frame (see .cpp)
+    NodeHandle instanceSkipMaskBuffer_{};             // Inc4 M1's placeholder buffer, populated live by PreTick when Inc4 M3's flag is set
+
+    // Per-recipeId compiled specialized pipeline cache (Inc4 M3): avoids recompiling the same
+    // recipe's shader every frame it stays hot. Key = recipeId; value = the compiled
+    // VkPipeline/VkPipelineLayout/VkDescriptorSet triple (owned here, outliving any single
+    // frame) plus the VkShaderModule/VkDescriptorPool/VkDescriptorSetLayout needed to destroy
+    // it cleanly at shutdown. Populated by PreTick's orchestration hook on first promotion of
+    // a given recipeId; never evicted this milestone (GPU-LRU eviction is explicitly deferred
+    // to a future increment per the plan doc's own scope boundary).
+    struct SpecializedRecipePipeline {
+        VkShaderModule        shaderModule = VK_NULL_HANDLE;
+        VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+        VkDescriptorPool      descriptorPool = VK_NULL_HANDLE;
+        VkDescriptorSet       descriptorSet = VK_NULL_HANDLE;
+        VkPipelineLayout      pipelineLayout = VK_NULL_HANDLE;
+        VkPipeline            pipeline = VK_NULL_HANDLE;
+    };
+    std::unordered_map<uint32_t, SpecializedRecipePipeline> recipeSpecializedPipelineCache_;
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live

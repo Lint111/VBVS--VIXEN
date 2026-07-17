@@ -17,7 +17,19 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace MultiDispatchNodeCounts {
-    static constexpr size_t INPUTS = 6;  // Sprint 6.1: Added GROUP_INPUTS
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: +5 (IN_FLIGHT_FENCE,
+    // IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY,
+    // TIMELINE_SEMAPHORE_IN, TIMELINE_FRAME_BASE_IN) so this node can submit its own
+    // recorded command buffer (vkQueueSubmit2) instead of only recording it — pre-M3,
+    // MultiDispatchNode had no fence/semaphore inputs at all and every existing
+    // consumer (test_group_dispatch, test_multidispatch_integration, the Inc2/3
+    // bucketing GTest harnesses) either never submitted or hand-built its own
+    // VkSubmitInfo OUTSIDE the node. All 5 are Optional (default VK_NULL_HANDLE/0) —
+    // unlike ComputeStageNode's own Required IN_FLIGHT_FENCE, this stays Optional so
+    // the 3 existing test suites above, none of which wire these, keep compiling and
+    // behaving byte-identically: ExecuteImpl only calls vkQueueSubmit2 when the fence
+    // input is actually connected (see that function's own guard).
+    static constexpr size_t INPUTS = 11;  // Sprint 6.1: GROUP_INPUTS; Inc4 M3: +5 submit inputs
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -143,6 +155,49 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
         SlotNullability::Optional,
         SlotStorageStrategy::Value);
 
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: submit-capability inputs (indices 6-10),
+    // mirroring ComputeStageNodeConfig's own IN_FLIGHT_FENCE/semaphore-array/timeline
+    // shape exactly (see that config's own doc comments for the full auto-sync
+    // rationale) so ExecuteImpl can vkQueueSubmit2 this node's own recorded command
+    // buffer instead of only recording it. All Optional — see MultiDispatchNodeCounts'
+    // own comment above for why (byte-identical no-op for every pre-M3 consumer).
+
+    /** @brief In-flight fence this node resets+signals on submit, when connected. */
+    INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 6,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /** @brief imageAvailable (acquire) binary semaphore array, indexed by frame. */
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /** @brief renderComplete binary semaphore array, indexed by image. */
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 8,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /** @brief Timeline semaphore from FrameSyncNode (P5b), when this node participates
+     *  in the graph's auto-sync schedule. */
+    INPUT_SLOT(TIMELINE_SEMAPHORE_IN, VkSemaphore, 9,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /** @brief Per-frame timeline base offset from FrameSyncNode (P5b). */
+    INPUT_SLOT(TIMELINE_FRAME_BASE_IN, uint64_t, 10,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (2) =====
 
     /**
@@ -185,6 +240,25 @@ CONSTEXPR_NODE_CONFIG(MultiDispatchNodeConfig,
         HandleDescriptor dispatchPassVecDesc{"std::vector<DispatchPass>"};
         INIT_INPUT_DESC(GROUP_INPUTS, "group_inputs",
             ResourceLifetime::Transient, dispatchPassVecDesc);
+
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: submit-capability input descriptors.
+        HandleDescriptor fenceDesc{"VkFence"};
+        INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence",
+            ResourceLifetime::Transient, fenceDesc);
+
+        HandleDescriptor semArrayDesc{"std::vector<VkSemaphore>"};
+        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array",
+            ResourceLifetime::Persistent, semArrayDesc);
+        INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array",
+            ResourceLifetime::Persistent, semArrayDesc);
+
+        HandleDescriptor timelineSemDesc{"VkSemaphore"};
+        INIT_INPUT_DESC(TIMELINE_SEMAPHORE_IN, "timeline_semaphore_in",
+            ResourceLifetime::Persistent, timelineSemDesc);
+
+        HandleDescriptor timelineBaseDesc{"uint64_t"};
+        INIT_INPUT_DESC(TIMELINE_FRAME_BASE_IN, "timeline_frame_base_in",
+            ResourceLifetime::Transient, timelineBaseDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

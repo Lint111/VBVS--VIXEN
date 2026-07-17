@@ -106,6 +106,19 @@ public:
     const std::vector<Vixen::SVO::BodyInstanceGpu>& GetInstances() const { return instances_; }
 
     /**
+     * @brief Recipe-Live-App-Bucketed-Dispatch Inc4 M3: read the per-body instance ring
+     * buffer's VkBuffer handle for a given ring slot (defaults to slot 0), for a caller
+     * OUTSIDE the render graph's own per-frame Execute cycle (e.g. PreTick's specialized-
+     * pipeline descriptor-set wiring, which runs before FrameSyncNode advances the live
+     * frame index this frame). Same underlying accessor ExecuteImpl itself uses
+     * (perFrame_.GetUniformBuffer(frameIndex)) — this is a read-only convenience, not a
+     * new upload/write path; the ring slot's CONTENT is still written only by ExecuteImpl.
+     */
+    VkBuffer GetInstanceBufferHandle(uint32_t ringSlot = 0) const {
+        return perFrame_.GetUniformBuffer(ringSlot % kRingSize);
+    }
+
+    /**
      * @brief Inject an SdfInstruction recipe for octree 0's bake.
      *
      * When non-empty and VIXEN_STORED_SDF_DEMO is set, octree 0 is baked via
