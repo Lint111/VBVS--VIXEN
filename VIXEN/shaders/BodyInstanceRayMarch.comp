@@ -228,30 +228,24 @@ void main() {
     bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
 
     // -----------------------------------------------------------------------
-    // Baked-Perf M5 Task 5.4 (far-hit rejection) -- IMPLEMENTED BUT DISABLED,
-    // NOT SHIPPED THIS MILESTONE. Using the winning instance's TIGHT trace
-    // bounds (Task 5.1), the design discards hits whose reconstructed worldPos
-    // falls outside the body's own allocated-brick AABB (+eps): backWall's
-    // (octreeIndex 2) live diagnostic hits show worldPos.z far outside the
-    // wall's true surface (e.g. z=-27 instead of the true z=4-6) across NEARLY
-    // ITS ENTIRE VISIBLE REGION, not just grazing/silhouette edges -- i.e. the
-    // underlying traversal corruption this task targets is severe enough for
-    // backWall specifically that rejecting every corrupted hit also rejects
-    // effectively the whole body (verified live: enabling this block drops
-    // backWall to 0 visible pixels; every OTHER body's far-hit corruption
-    // (~1% residual OOB) is fixed correctly by the SAME logic below with a
-    // one-brick-footprint epsilon -- see the retained implementation's own
-    // comment for that derivation). A per-body/per-axis exemption or epsilon
-    // special-case would be a band-aid on top of a real, deeper problem: this
-    // needs the traversal-level fix (Task 5.2's cull genuinely CONSTRAINING
-    // the march, not just fast-rejecting before it -- blocked this milestone
-    // by a separate ESVO ray-setup coordinate-frame issue, see Task 5.2's own
-    // comment) or the Phase-2 per-axis box bake grids already on the backlog.
-    // Disabled (not deleted) so the correct logic ships pre-validated for
-    // whoever picks up the real fix -- flip this back to `if (anyHit ...)`
-    // once backWall's corruption is fixed at the traversal level, and this
-    // block will then finish the OOB cleanup for the whole scene.
-    if (false && anyHit && worldHit.instIdx != 0xFFFFFFFFu) {
+    // Baked-Perf M5 Task 5.4 / M5b Task 5b.2 (far-hit rejection) -- ENABLED.
+    // Using the winning instance's TIGHT trace bounds (Task 5.1), discard hits
+    // whose reconstructed worldPos falls outside the body's own allocated-brick
+    // AABB (+eps), so a corrupted far-hit never poisons the DDGI gather.
+    //
+    // M5b (2026-07-17): the reason this stayed DISABLED under M5 -- that enabling
+    // it blanked backWall entirely -- was itself a SYMPTOM of the real bug, now
+    // FIXED at the source: the ESVO ray setup received a NON-unit instDir at
+    // renderScale!=1, inflating state.t_min by renderScale and placing backWall's
+    // whole visible region at a spurious z~=-27 (outside its bounds), so the
+    // rejection correctly rejected the entire -- corrupted -- body. With the unit-
+    // direction fix (TraceWorld.glsl), backWall now hits its true interior face at
+    // z~=6 (in bounds), the scene-wide OOB fraction already collapsed 28% -> 0,
+    // and this rejection is now a cheap belt-and-braces guard: it rejects nothing
+    // in the healthy Cornell scene (verified: 8 bodies incl. backWall all present
+    // with OOB=0 both before and after this flip) while still catching any future
+    // stray far-hit before the HitRecord write.
+    if (anyHit && worldHit.instIdx != 0xFFFFFFFFu) {
         BodyInstance winner = bodyInstances[worldHit.instIdx];
         if (winner.providerKind == PROVIDER_STORED) {
             uint winnerOi = winner.octreeIndex;

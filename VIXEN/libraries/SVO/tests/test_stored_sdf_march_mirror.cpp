@@ -33,6 +33,7 @@
 
 #include "SdfBake.h"
 #include "ShellOctreeGpu.h"
+#include "MipBake.h"
 #include "SdfRecipes.h"
 #include "VoxelChannelFormat.h"
 
@@ -95,6 +96,8 @@ public:
     mutable long long m_brickDisagree = 0; // of those, floor-brick != ESVO-leaf-brick
     bool m_dumpDisagree = false;           // print the first few disagreements
     bool m_useEsvoBrick = false;           // (probe) bound the march to the ESVO leaf brick
+    bool m_useHopContinuation = false;     // M5b: exercise the shader's seam-hop marchBrickSdf
+    mutable int m_lastHops = 0;            // M5b: hop count of the last hop-continuation march
 
     explicit SdfMarchMirror(const SerializedOctree& s)
         : m_cfg(s.config) {
@@ -114,10 +117,16 @@ public:
         m_channelCount = s.channelCount;
     }
 
+    // M5b: when true, do NOT normalize the incoming direction — reproduces the GPU shader,
+    // which passes the non-unit instDir (=rayDir/renderScale) straight into initRayCoefficients
+    // (BodyInstanceRayMarch.comp:269 -> traverseOctreeInstancedOnce -> initRayCoefficients).
+    // The default (normalize) is the CPU-mirror's proven-correct behavior.
+    bool m_skipNormalize = false;
+
     // Port of traverseOctreeInstanced(): cast a WORLD-space ray, return the hit.
     Hit castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirIn) const {
         Hit out;
-        const glm::vec3 rayDir = glm::normalize(rayDirIn);
+        const glm::vec3 rayDir = m_skipNormalize ? rayDirIn : glm::normalize(rayDirIn);
 
         const glm::vec3 rayOriginLocal = glm::vec3(m_cfg.worldToLocal * glm::vec4(rayOrigin, 1.0f));
         const glm::vec3 rayDirLocal    = glm::mat3(m_cfg.worldToLocal) * rayDir;
@@ -157,7 +166,7 @@ public:
             if (checkChildValidity(state, coef, validMask, leafMask, isLeaf, tv_max,
                                    tx_center, ty_center, tz_center)) {
                 if (isLeaf) {
-                    if (handleLeafHitSdf(state, coef, rayDir, tEntryWorld, rayOrigin, out)) {
+                    if (handleLeafHitSdf(state, coef, rayDir, tEntryWorld, rayOrigin, stack, out)) {
                         out.hit = true;
                         out.exitCode = 1;
                         out.iterations = iter + 1;
@@ -716,7 +725,7 @@ private:
     // ====================================================================
     bool handleLeafHitSdf(const TraversalState& state, const RayCoefficients& coef,
                           const glm::vec3& rayDir, float tBias, const glm::vec3& rayOrigin,
-                          Hit& out) const {
+                          StackEntry stack[kStackSize], Hit& out) const {
         const int bpa = m_bpaSdf;
         if (bpa <= 0) return false;
         const float gridScale = static_cast<float>(bpa * 8);
@@ -754,7 +763,15 @@ private:
         }
 
         glm::vec3 nrm; float sHit; glm::ivec3 hitBrick;
-        if (!marchBrickSdf(gridEntry, gridDirN, esvoBrick, nrm, sHit, hitBrick)) {
+        bool marched;
+        if (m_useHopContinuation) {
+            // Shader path (SceneBindings.glsl handleLeafHitInstancedSdf): the brick passed to
+            // marchBrickSdf is the ESVO leaf brick (round of unmirrored state.pos), NOT the floor.
+            marched = marchBrickSdfHop(esvoBrick, gridEntry, gridDirN, state, coef, stack, nrm, sHit, hitBrick);
+        } else {
+            marched = marchBrickSdf(gridEntry, gridDirN, esvoBrick, nrm, sHit, hitBrick);
+        }
+        if (!marched) {
             out.leavesVisited += 1;   // we DID visit an allocated leaf, but it missed
             return false;
         }
@@ -765,6 +782,105 @@ private:
         out.sHit = sHit;
         out.hitBrick = hitBrick;
         return true;
+    }
+
+    // M5b: brick-hop-continuation variant of marchBrickSdf — a 1:1 port of the CURRENT
+    // shader StoredSdf.glsl:633 marchBrickSdf (Inc2 M6 seam-continuation), which the
+    // single-brick march above does NOT model. Enabled via m_useHopContinuation (public,
+    // near m_useEsvoBrick) so the default single-brick tests are unchanged. state/coef/stack
+    // are LOCAL COPIES (by value), exactly as the shader passes them.
+    bool marchBrickSdfHop(const glm::ivec3& firstBrick, const glm::vec3& gridEntry, const glm::vec3& gridDirN,
+                          TraversalState state, RayCoefficients coef, StackEntry stack[kStackSize],
+                          glm::vec3& hitNormal, float& sHit, glm::ivec3& hitBrick) const {
+        hitNormal = glm::vec3(0.0f, 1.0f, 0.0f);
+        sHit = 0.0f;
+        hitBrick = firstBrick;
+        const int bpa = m_bpaSdf;
+        const int   MAX_STEPS = 96;
+        const float EPS = 0.01f, SENTINEL_D = 100.0f;
+        const int MAX_BRICK_HOPS = 2048;
+        float sBase = 0.0f;
+        glm::ivec3 curBrick = firstBrick;
+        for (int hop = 0; hop < MAX_BRICK_HOPS; ++hop) {
+            m_lastHops = hop;
+            const glm::vec3 curEntry = gridEntry + gridDirN * sBase;
+            const glm::vec3 bMin = glm::vec3(curBrick) * 8.0f, bMax = bMin + glm::vec3(8.0f);
+            const float kAxis = 64.0f;
+            const glm::vec3 invD(std::abs(gridDirN.x)>1e-8f?1.0f/gridDirN.x:0.0f,
+                                 std::abs(gridDirN.y)>1e-8f?1.0f/gridDirN.y:0.0f,
+                                 std::abs(gridDirN.z)>1e-8f?1.0f/gridDirN.z:0.0f);
+            const glm::bvec3 ap(std::abs(gridDirN.x)<=1e-8f, std::abs(gridDirN.y)<=1e-8f, std::abs(gridDirN.z)<=1e-8f);
+            const glm::vec3 t0 = glm::mix((bMin-curEntry)*invD, glm::vec3(-kAxis), ap);
+            const glm::vec3 t1 = glm::mix((bMax-curEntry)*invD, glm::vec3( kAxis), ap);
+            const glm::vec3 thi = glm::max(t0, t1);
+            const float sMax = glm::max(glm::min(glm::min(thi.x, thi.y), thi.z), 0.0f);
+            float s = 0.0f;
+            for (int i = 0; i < MAX_STEPS; ++i) {
+                if (s > sMax) break;
+                const glm::vec3 p = curEntry + gridDirN * s;
+                glm::vec3 cellF; glm::vec4 z0, z1;
+                loadTrilinearCell(p, cellF, z0, z1);
+                const float d = interpolateTrilinearCell(cellF, z0, z1);
+                if (d < EPS) { hitNormal = sdfGradientStoredFromCell(p, cellF, z0, z1); sHit = sBase + s; hitBrick = curBrick; return true; }
+                s += (d > SENTINEL_D) ? 1.0f : glm::max(d * 0.5773503f, EPS);
+            }
+            glm::ivec3 nextBrick;
+            if (!advanceToNextSdfLeaf(state, coef, stack, bpa, nextBrick)) return false;
+            const glm::vec3 nMin = glm::vec3(nextBrick) * 8.0f, nMax = nMin + glm::vec3(8.0f);
+            const glm::vec3 nt0 = glm::mix((nMin-gridEntry)*invD, glm::vec3(-kAxis), ap);
+            const glm::vec3 nt1 = glm::mix((nMax-gridEntry)*invD, glm::vec3( kAxis), ap);
+            const glm::vec3 ntlo = glm::min(nt0, nt1);
+            const float sEnter = glm::max(glm::max(glm::max(ntlo.x, ntlo.y), ntlo.z), sBase);
+            sBase = sEnter;
+            curBrick = nextBrick;
+        }
+        return false;
+    }
+    // 1:1 port of StoredSdf.glsl _stateToSdfBrick.
+    glm::ivec3 stateToSdfBrick(const glm::vec3& pos, float scaleExp2, int octantMask, int bpa) const {
+        glm::vec3 bom = pos;
+        if ((octantMask & 1) == 0) bom.x = 3.0f - scaleExp2 - bom.x;
+        if ((octantMask & 2) == 0) bom.y = 3.0f - scaleExp2 - bom.y;
+        if ((octantMask & 4) == 0) bom.z = 3.0f - scaleExp2 - bom.z;
+        glm::ivec3 b = glm::ivec3(glm::round((bom - glm::vec3(1.0f)) * static_cast<float>(bpa)));
+        return glm::clamp(b, glm::ivec3(0), glm::ivec3(bpa - 1));
+    }
+    bool sdfBrickAllocated(const glm::ivec3& b) const {
+        const uint32_t fl = gridToLookupIdx(b, m_bpaSdf);
+        if (fl == 0xFFFFFFFFu || fl >= m_lookupCount) return false;
+        return m_lookup[fl] != kBrickUnalloc;
+    }
+    // 1:1 port of StoredSdf.glsl _advanceToNextSdfLeaf.
+    bool advanceToNextSdfLeaf(TraversalState& state, RayCoefficients coef,
+                              StackEntry stack[kStackSize], int bpa, glm::ivec3& nextBrick) const {
+        nextBrick = glm::ivec3(0);
+        {
+            bool isLeaf0; float tv0, a0, b0, c0;
+            const ChildDescriptor p0 = fetchNode(state.parentPtr);
+            const uint32_t vm0 = getValidMask(p0), lm0 = getLeafMask(p0);
+            if (checkChildValidity(state, coef, vm0, lm0, isLeaf0, tv0, a0, b0, c0)) state.t_min = tv0;
+            else state.t_min = state.t_max;
+        }
+        for (int it = 0; it < kMaxIters; ++it) {
+            int step_mask;
+            const int ar = executeAdvancePhase(state, coef, step_mask);
+            if (ar == 0) { if (state.scale < m_cfg.esvoMaxScale) state.t_max = stack[state.scale + 1].t_max; }
+            else { if (executePopPhase(state, coef, stack, step_mask) == 1) return false; }
+            if (state.scale > m_cfg.esvoMaxScale) return false;
+            for (int desc = 0; desc < kStackSize + 1; ++desc) {
+                const ChildDescriptor parent = fetchNode(state.parentPtr);
+                const uint32_t vm = getValidMask(parent), lm = getLeafMask(parent), cp = getChildPointer(parent);
+                bool isLeaf; float tv, a, b, c;
+                if (!checkChildValidity(state, coef, vm, lm, isLeaf, tv, a, b, c)) break;
+                if (isLeaf) {
+                    const glm::ivec3 bk = stateToSdfBrick(state.pos, state.scale_exp2, coef.octant_mask, bpa);
+                    if (sdfBrickAllocated(bk)) { nextBrick = bk; return true; }
+                    state.t_min = tv; break;
+                }
+                executePushPhase(state, coef, stack, vm, lm, cp, tv, a, b, c);
+            }
+        }
+        return false;
     }
 
     // The brick coordinate the ESVO traversal actually descended to (the leaf node).
@@ -1931,4 +2047,402 @@ TEST(StoredSdfMarchMirror, RootCause_SentinelContaminationOrigin) {
                 hitBrickBand, hitBrickActiveNotBand, hitBrickInactive);
 
     SUCCEED();
+}
+
+// ===========================================================================
+// M5b BACKWALL FAR-HIT REPRO — bake a backWall-like world-space slab EXACTLY
+// as the Cornell baked demo does (n=128, subdiv=4, thin-Z, box-tight region),
+// then cast the true Cornell backWall camera ray de-instanced through the
+// mirror. The GPU reports worldPos.z ~= -27 for the whole backWall region vs.
+// a true surface at z in [4,6]; this reproduces (or refutes) that on the CPU.
+// ===========================================================================
+namespace {
+
+// Cornell scene constants (CornellBoxSceneDefinition.h) — duplicated here so the
+// SVO test target need not depend on the application include tree.
+constexpr glm::vec3 kCornBoxCenter(16.0f, 16.0f, 16.0f);
+constexpr float     kCornKb            = 10.0f;   // interior half-size
+constexpr float     kCornWallThick     = 1.0f;    // wall slab half-thickness
+constexpr float     kCornWallSpan      = kCornKb + kCornWallThick;   // 11
+constexpr float     kCornRounding      = 0.15f;
+constexpr float     kCornFovDeg        = 60.0f;
+constexpr float     kCornOrbitDist     = 34.0f;
+// Bake params (BuildRenderGraph.cpp Cornell baked block).
+constexpr int       kCornWallN         = 128;
+constexpr int       kCornWallSubdiv    = 4;
+constexpr float     kCornBand          = 2.0f;
+constexpr float     kCornWorldGridSize = 10.0f;
+
+// backWall world center = boxCenter + (0,0,-kb-thick).
+constexpr glm::vec3 kBackWallCenter(kCornBoxCenter.x, kCornBoxCenter.y,
+                                    kCornBoxCenter.z - kCornKb - kCornWallThick); // z=5
+
+// Rounded-box SDF in TRUE world units (matches Recipe::RoundedBox semantics:
+// he half-extents, rounding radius). Positive outside, negative inside.
+float worldRoundedBox(const glm::vec3& p, const glm::vec3& c, const glm::vec3& he, float rounding) {
+    const glm::vec3 q = glm::abs(p - c) - he + glm::vec3(rounding);
+    const float outside = glm::length(glm::max(q, glm::vec3(0.0f)));
+    const float inside   = glm::min(glm::max(q.x, glm::max(q.y, q.z)), 0.0f);
+    return outside + inside - rounding;
+}
+
+// bodyWorldPos/bodyRenderScale — EXACTLY BuildRenderGraph.cpp's Cornell lambdas.
+glm::vec3 cornBodyWorldPos(const glm::vec3& c, int n, int subdiv) {
+    return c - glm::vec3(static_cast<float>(n) / (2.0f * static_cast<float>(subdiv)));
+}
+float cornBodyRenderScale(int n, int subdiv) {
+    return static_cast<float>(n) / (static_cast<float>(subdiv) * kCornWorldGridSize);
+}
+
+// Bake the backWall slab, mirroring bakeWorldSpaceBody (thin-Z box-tight region,
+// subdiv-scaled world-space eval).
+BakedScene BakeBackWall() {
+    const glm::vec3 he(kCornWallSpan, kCornWallSpan, kCornWallThick);  // wide X/Y, thin Z
+    const int n = kCornWallN, subdiv = kCornWallSubdiv;
+    auto eval = [&](const glm::vec3& pRaw) {
+        const glm::vec3 world = kBackWallCenter +
+            (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
+        return worldRoundedBox(world, kBackWallCenter, he, kCornRounding) * static_cast<float>(subdiv);
+    };
+    // Box-tight bakeRegion: thin axis = Z (index 2). Same formula as bakeWorldSpaceBody.
+    const glm::vec3 worldHalfExtent(kCornWallSpan, kCornWallSpan, kCornWallThick);
+    glm::ivec3 bakeRegion(0);
+    constexpr int kBrickSide = 8;
+    for (int a = 0; a < 3; ++a) {
+        const float hi = static_cast<float>(n) * 0.5f + (worldHalfExtent[a] + kCornBand) * static_cast<float>(subdiv);
+        const int hiUp = ((static_cast<int>(std::ceil(hi)) + kBrickSide - 1) / kBrickSide) * kBrickSide;
+        bakeRegion[a] = std::min(hiUp, n);
+    }
+    SdfBakeResult baked = BakeSdfWorld(eval, kBackWallCenter, n, kCornBand, 3,
+                                       NoEmission,
+                                       [](const glm::vec3&) { return glm::vec3(1.0f); },
+                                       bakeRegion);
+    BakedScene s;
+    s.body = BuildSdfBodyOctree(baked, 3);
+    s.serialized = SerializeSdf(s.body);
+    return s;
+}
+
+// Cornell camera (CORRECTED): the runtime orbit convention is yaw=0 == camera at +Z
+// looking toward -Z (BuildRenderGraph.cpp:1303-1309), NOT the -Z-side I first assumed.
+// eye = boxCenter + (0,0,+orbitDist); dir = -Z. fov 60.
+constexpr glm::vec3 kCornEye(kCornBoxCenter.x, kCornBoxCenter.y, kCornBoxCenter.z + kCornOrbitDist); // z=+50
+Camera MakeCornellCamera(uint32_t w, uint32_t h) {
+    const glm::vec3 eye = kCornEye;
+    Camera c;
+    c.eye = eye;
+    c.dir = glm::normalize(kCornBoxCenter - eye);  // -Z
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+    c.right = glm::normalize(glm::cross(c.dir, worldUp));
+    c.up    = glm::normalize(glm::cross(c.right, c.dir));
+    c.fovDeg = kCornFovDeg;
+    c.aspect = static_cast<float>(w) / static_cast<float>(h);
+    return c;
+}
+
+// De-instance a true-world ray into the backWall base-octree frame.
+InstRay DeInstanceBackWall(const glm::vec3& eye, const glm::vec3& rayDir) {
+    const glm::vec3 worldPos = cornBodyWorldPos(kBackWallCenter, kCornWallN, kCornWallSubdiv);
+    const float rs = cornBodyRenderScale(kCornWallN, kCornWallSubdiv);
+    const float inv = 1.0f / rs;
+    return InstRay{ (eye - worldPos) * inv, rayDir * inv };
+}
+
+}  // namespace
+
+TEST(StoredSdfMarchMirror, M5bBackWallFarHitRepro) {
+    const glm::vec3 worldPos = cornBodyWorldPos(kBackWallCenter, kCornWallN, kCornWallSubdiv);
+    const float rs = cornBodyRenderScale(kCornWallN, kCornWallSubdiv);
+    const glm::vec3 cubeMin = worldPos;
+    const glm::vec3 cubeMax = worldPos + kCornWorldGridSize * rs;
+    const glm::vec3 eye = kCornEye;
+    std::printf("\n[M5B] backWall center=(%.2f,%.2f,%.2f) worldPos=(%.2f,%.2f,%.2f) renderScale=%.3f\n",
+                kBackWallCenter.x, kBackWallCenter.y, kBackWallCenter.z,
+                worldPos.x, worldPos.y, worldPos.z, rs);
+    std::printf("[M5B] base cube world span = [%.2f,%.2f]x[%.2f,%.2f]x[%.2f,%.2f]  camera=(%.2f,%.2f,%.2f)\n",
+                cubeMin.x, cubeMax.x, cubeMin.y, cubeMax.y, cubeMin.z, cubeMax.z, eye.x, eye.y, eye.z);
+    std::printf("[M5B] true backWall slab: x,y in [%.1f,%.1f], z in [%.1f,%.1f]\n",
+                kBackWallCenter.x - kCornWallSpan, kBackWallCenter.x + kCornWallSpan,
+                kBackWallCenter.z - kCornWallThick, kBackWallCenter.z + kCornWallThick);
+
+    BakedScene scene = BakeBackWall();
+    const OctreeConfig& cfg = scene.serialized.config;
+    std::printf("[M5B] cfg: bricksPerAxisSdf=%u esvoMaxScale=%d userMaxLevels=%d bricksPerAxis=%u brickStride=%u\n",
+                cfg.bricksPerAxisSdf, cfg.esvoMaxScale, cfg.userMaxLevels,
+                cfg.bricksPerAxis, scene.serialized.brickStrideFloats);
+    std::printf("[M5B] cfg traceBounds local: min=(%.4f,%.4f,%.4f) max=(%.4f,%.4f,%.4f)\n",
+                cfg.traceBoundsMinX, cfg.traceBoundsMinY, cfg.traceBoundsMinZ,
+                cfg.traceBoundsMaxX, cfg.traceBoundsMaxY, cfg.traceBoundsMaxZ);
+
+    SdfMarchMirror mirror(scene.serialized);
+    constexpr uint32_t kW = 500, kH = 500;
+    const Camera cam = MakeCornellCamera(kW, kH);
+
+    // Sample the same center row the GPU diag dumps (py=250), a few X positions.
+    struct PX { int px, py; const char* tag; };
+    const PX probes[] = {
+        {150, 250, "gpu z=-27.0"},
+        {250, 250, "center gpu z=-26.99"},
+        {350, 250, "gpu z=-27.0"},
+        {250, 125, "upper (gpu OOB region)"},
+    };
+    for (const PX& q : probes) {
+        const float u = (q.px + 0.5f) / kW, v = (q.py + 0.5f) / kH;
+        const glm::vec3 rd = getRayDir(cam, u, v);
+        const InstRay ir = DeInstanceBackWall(eye, rd);
+        const SdfMarchMirror::Hit h = mirror.castRay(ir.origin, ir.dir);
+        // hitT is a parameter along instDir; convert back to true world distance *renderScale.
+        const float worldT = h.t * rs;
+        const glm::vec3 worldHit = eye + rd * worldT;
+        std::printf("\n[M5B %s] px=(%d,%d) rd=(%.4f,%.4f,%.4f)\n", q.tag, q.px, q.py, rd.x, rd.y, rd.z);
+        std::printf("   hit=%d exitCode=%d iters=%d localHitT=%.4f worldT=%.4f worldHit=(%.3f,%.3f,%.3f)\n",
+                    h.hit, h.exitCode, h.iterations, h.t, worldT, worldHit.x, worldHit.y, worldHit.z);
+        std::printf("   hitBrick=(%d,%d,%d) sHit=%.4f normal=(%.3f,%.3f,%.3f)\n",
+                    h.hitBrick.x, h.hitBrick.y, h.hitBrick.z, h.sHit, h.normal.x, h.normal.y, h.normal.z);
+    }
+    SUCCEED();
+}
+
+// ===========================================================================
+// M5b BACKWALL CONCATENATED-VIEW REPRO — the single-octree bake gives the
+// CORRECT z=4 hit, refuting the traversal-frame hypothesis. This exercises the
+// MULTI-OCTREE addressing (nodeArrayBase / poolBrickBase / brickLookupBase all
+// non-zero for backWall at concat index 2) that the single-octree mirror cannot
+// reach — the exact class the M1 brickLookupBase fix targeted. If the far-hit
+// only shows here, it is an addressing/concat bug, not a traversal bug.
+// ===========================================================================
+namespace {
+
+// Bake a Cornell wall body (thin on `thinAxis`) at its true world center.
+SdfBodyOctree BakeCornellWall(const glm::vec3& worldCenter, int thinAxis) {
+    const int n = kCornWallN, subdiv = kCornWallSubdiv;
+    glm::vec3 he(kCornWallSpan);
+    he[thinAxis] = kCornWallThick;
+    auto eval = [&](const glm::vec3& pRaw) {
+        const glm::vec3 world = worldCenter +
+            (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
+        return worldRoundedBox(world, worldCenter, he, kCornRounding) * static_cast<float>(subdiv);
+    };
+    glm::vec3 worldHalfExtent(kCornWallSpan);
+    worldHalfExtent[thinAxis] = kCornWallThick;
+    glm::ivec3 bakeRegion(0);
+    constexpr int kBrickSide = 8;
+    for (int a = 0; a < 3; ++a) {
+        const float hi = static_cast<float>(n) * 0.5f + (worldHalfExtent[a] + kCornBand) * static_cast<float>(subdiv);
+        const int hiUp = ((static_cast<int>(std::ceil(hi)) + kBrickSide - 1) / kBrickSide) * kBrickSide;
+        bakeRegion[a] = std::min(hiUp, n);
+    }
+    SdfBakeResult baked = BakeSdfWorld(eval, worldCenter, n, kCornBand, 3, NoEmission,
+                                       [](const glm::vec3&) { return glm::vec3(1.0f); }, bakeRegion);
+    return BuildSdfBodyOctree(baked, 3);
+}
+
+}  // namespace
+
+TEST(StoredSdfMarchMirror, M5bBackWallConcatViewRepro) {
+    // Build the 5 walls (leftWall, rightWall, backWall, floor, ceiling) exactly as the
+    // Cornell demo order, so backWall lands at concat index 2 with non-zero bases.
+    using namespace Vixen::SVO;
+    constexpr float kb = kCornKb, tk = kCornWallThick;
+    const glm::vec3 boxC = kCornBoxCenter;
+    std::vector<SdfBodyOctree> bodies;
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x - kb - tk, boxC.y, boxC.z), 0)); // leftWall thin-X
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x + kb + tk, boxC.y, boxC.z), 0)); // rightWall thin-X
+    bodies.push_back(BakeCornellWall(kBackWallCenter, 2));                             // backWall thin-Z (idx 2)
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x, boxC.y - kb - tk, boxC.z), 1)); // floor thin-Y
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x, boxC.y + kb + tk, boxC.z), 1)); // ceiling thin-Y
+
+    std::vector<const SdfBodyOctree*> ptrs;
+    for (const auto& b : bodies) ptrs.push_back(&b);
+    ConcatenatedOctrees cat = ConcatenateSdf(ptrs);
+
+    constexpr uint32_t kBack = 2;
+    const OctreeConfig& bcfg = cat.configs[kBack];
+    std::printf("\n[M5B-CONCAT] backWall concat cfg: nodeArrayBase=%u poolBrickBase=%u brickLookupBase=%u "
+                "bricksPerAxisSdf=%u\n",
+                bcfg.nodeArrayBase, bcfg.poolBrickBase, brickLookupBaseOf(bcfg), bcfg.bricksPerAxisSdf);
+
+    // Build a SerializedOctree viewing concat octree 2. The mirror hardcodes lookupBase=0,
+    // so hand it octree-2's own lookup sub-table sliced at brickLookupBase (the exact-prefix
+    // sum ConcatenateSdf stamps) — this is what the mirror needs to match the shader, which
+    // instead reads configs[oi].brickLookupBase into the FULL concatenated lookup.
+    SerializedOctree v;
+    v.config           = bcfg;
+    v.nodes            = cat.nodes;
+    v.nodeCount        = static_cast<uint32_t>(cat.nodes.size() / sizeof(ChildDescriptor));
+    v.channelPool      = cat.channelPool;
+    v.brickStrideFloats = bcfg.brickStrideFloats;
+    v.channelCount     = bcfg.channelCount;
+    for (uint32_t i = 0; i < bcfg.channelCount && i < kMaxChannels; ++i) v.channels[i] = bcfg.channels[i];
+    const int bpa = static_cast<int>(bcfg.bricksPerAxisSdf);
+    const size_t subEntries = static_cast<size_t>(bpa) * bpa * bpa;
+    const size_t subBytes   = subEntries * sizeof(uint32_t);
+    const size_t off        = static_cast<size_t>(brickLookupBaseOf(bcfg)) * sizeof(uint32_t);
+    v.brickGridLookup.assign(cat.brickGridLookup.begin() + off,
+                             cat.brickGridLookup.begin() + off + subBytes);
+
+    SdfMarchMirror mirror(v);
+    const float rs = cornBodyRenderScale(kCornWallN, kCornWallSubdiv);
+    const glm::vec3 eye = kCornEye;
+    constexpr uint32_t kW = 500, kH = 500;
+    const Camera cam = MakeCornellCamera(kW, kH);
+
+    struct PX { int px, py; const char* tag; };
+    const PX probes[] = {
+        {250, 250, "center (gpu z=-26.99)"},
+        {150, 250, "gpu z=-27.0"},
+        {350, 250, "gpu z=-27.0"},
+    };
+    for (const PX& q : probes) {
+        const float u = (q.px + 0.5f) / kW, vv = (q.py + 0.5f) / kH;
+        const glm::vec3 rd = getRayDir(cam, u, vv);
+        const InstRay ir = DeInstanceBackWall(eye, rd);
+        const SdfMarchMirror::Hit h = mirror.castRay(ir.origin, ir.dir);
+        const float worldT = h.t * rs;
+        const glm::vec3 worldHit = eye + rd * worldT;
+        std::printf("[M5B-CONCAT %s] px=(%d,%d) hit=%d exit=%d worldT=%.4f worldHit=(%.3f,%.3f,%.3f) "
+                    "hitBrick=(%d,%d,%d) normal=(%.2f,%.2f,%.2f)\n",
+                    q.tag, q.px, q.py, h.hit, h.exitCode, worldT, worldHit.x, worldHit.y, worldHit.z,
+                    h.hitBrick.x, h.hitBrick.y, h.hitBrick.z, h.normal.x, h.normal.y, h.normal.z);
+    }
+    SUCCEED();
+}
+
+// ===========================================================================
+// M5b BACKWALL WITH SEAM-HOP CONTINUATION — the single-brick mirror gives the
+// correct z=4 hit, but the current SHADER marchBrickSdf continues across bricks
+// via _advanceToNextSdfLeaf (Inc2 M6), which the mirror above does NOT model.
+// This enables the ported hop continuation to test whether IT produces the far
+// hit the GPU reports (z ~= -27).
+// ===========================================================================
+// ===========================================================================
+// M5b FULL 8-BODY ConcatenateSdfWithMips REPRO — matches the REAL Cornell demo
+// exactly: all 8 bodies, ConcatenateSdfWithMips (not plain ConcatenateSdf),
+// hop-continuation enabled. This is the closest CPU proxy to the runtime.
+// ===========================================================================
+namespace {
+constexpr int kCornSmallN = 32, kCornSmallSubdiv = 1;
+// sphere/box object centers (CornellBoxSceneDefinition.h)
+const glm::vec3 kSphereObjCenter(kCornBoxCenter.x - 5.0f, kCornBoxCenter.y - 6.5f, kCornBoxCenter.z - 2.0f);
+const glm::vec3 kBoxObjCenter(kCornBoxCenter.x + 5.0f, kCornBoxCenter.y - 7.0f, kCornBoxCenter.z + 3.0f);
+const glm::vec3 kLightObjCenter(kCornBoxCenter.x, kCornBoxCenter.y + kCornKb - 1.5f, kCornBoxCenter.z);
+
+SdfBodyOctree BakeCornSphere(const glm::vec3& c, float r, int n, int subdiv) {
+    auto eval = [&](const glm::vec3& pRaw) {
+        const glm::vec3 world = c + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
+        return (glm::length(world - c) - r) * static_cast<float>(subdiv);
+    };
+    SdfBakeResult baked = BakeSdfWorld(eval, c, n, kCornBand, 3, NoEmission,
+                                       [](const glm::vec3&) { return glm::vec3(1.0f); }, glm::ivec3(0));
+    return BuildSdfBodyOctree(baked, 3);
+}
+SdfBodyOctree BakeCornBoxObj(const glm::vec3& c, const glm::vec3& he, int n, int subdiv) {
+    auto eval = [&](const glm::vec3& pRaw) {
+        const glm::vec3 world = c + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
+        return worldRoundedBox(world, c, he, kCornRounding) * static_cast<float>(subdiv);
+    };
+    SdfBakeResult baked = BakeSdfWorld(eval, c, n, kCornBand, 3, NoEmission,
+                                       [](const glm::vec3&) { return glm::vec3(1.0f); }, glm::ivec3(0));
+    return BuildSdfBodyOctree(baked, 3);
+}
+}  // namespace
+
+TEST(StoredSdfMarchMirror, M5bFull8BodyWithMipsRepro) {
+    using namespace Vixen::SVO;
+    constexpr float kb = kCornKb, tk = kCornWallThick;
+    const glm::vec3 boxC = kCornBoxCenter;
+    std::vector<SdfBodyOctree> bodies;
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x - kb - tk, boxC.y, boxC.z), 0)); // 0 leftWall
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x + kb + tk, boxC.y, boxC.z), 0)); // 1 rightWall
+    bodies.push_back(BakeCornellWall(kBackWallCenter, 2));                             // 2 backWall
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x, boxC.y - kb - tk, boxC.z), 1)); // 3 floor
+    bodies.push_back(BakeCornellWall(glm::vec3(boxC.x, boxC.y + kb + tk, boxC.z), 1)); // 4 ceiling
+    bodies.push_back(BakeCornBoxObj(kLightObjCenter, glm::vec3(3.0f, 0.2f, 3.0f), kCornSmallN, kCornSmallSubdiv)); // 5 light (approx)
+    bodies.push_back(BakeCornSphere(kSphereObjCenter, 2.5f, kCornSmallN, kCornSmallSubdiv)); // 6 sphere
+    bodies.push_back(BakeCornBoxObj(kBoxObjCenter, glm::vec3(2.5f), kCornSmallN, kCornSmallSubdiv)); // 7 box
+
+    std::vector<const SdfBodyOctree*> ptrs;
+    for (const auto& b : bodies) ptrs.push_back(&b);
+    ConcatenatedOctrees cat = ConcatenateSdfWithMips(ptrs);
+
+    constexpr uint32_t kBack = 2;
+    const OctreeConfig& bcfg = cat.configs[kBack];
+    std::printf("\n[M5B-FULL8] backWall cfg: nodeArrayBase=%u poolBrickBase=%u brickLookupBase=%u "
+                "bpaSdf=%u brickResident=%d\n",
+                bcfg.nodeArrayBase, bcfg.poolBrickBase, brickLookupBaseOf(bcfg),
+                bcfg.bricksPerAxisSdf, (int)brickResidentOf(bcfg));
+
+    // View octree 2 with its own sliced lookup sub-table.
+    SerializedOctree v;
+    v.config = bcfg; v.nodes = cat.nodes;
+    v.nodeCount = static_cast<uint32_t>(cat.nodes.size() / sizeof(ChildDescriptor));
+    v.channelPool = cat.channelPool; v.brickStrideFloats = bcfg.brickStrideFloats;
+    v.channelCount = bcfg.channelCount;
+    for (uint32_t i = 0; i < bcfg.channelCount && i < kMaxChannels; ++i) v.channels[i] = bcfg.channels[i];
+    const int bpa = static_cast<int>(bcfg.bricksPerAxisSdf);
+    const size_t subBytes = static_cast<size_t>(bpa) * bpa * bpa * sizeof(uint32_t);
+    const size_t off = static_cast<size_t>(brickLookupBaseOf(bcfg)) * sizeof(uint32_t);
+    v.brickGridLookup.assign(cat.brickGridLookup.begin() + off, cat.brickGridLookup.begin() + off + subBytes);
+
+    SdfMarchMirror mirror(v);
+    mirror.m_useHopContinuation = true;   // match the shader
+    const float rs = cornBodyRenderScale(kCornWallN, kCornWallSubdiv);
+    const glm::vec3 eye = kCornEye;
+    constexpr uint32_t kW = 500, kH = 500;
+    const Camera cam = MakeCornellCamera(kW, kH);
+    struct PX { int px, py; const char* tag; };
+    const PX probes[] = { {250,250,"center"}, {150,250,"left"}, {350,250,"right"}, {250,125,"upper"} };
+    for (const PX& q : probes) {
+        const float u = (q.px + 0.5f) / kW, vv = (q.py + 0.5f) / kH;
+        const glm::vec3 rd = getRayDir(cam, u, vv);
+        const InstRay ir = DeInstanceBackWall(eye, rd);
+        const SdfMarchMirror::Hit h = mirror.castRay(ir.origin, ir.dir);
+        const float worldT = h.t * rs;
+        const glm::vec3 wh = eye + rd * worldT;
+        std::printf("[M5B-FULL8 %s] hit=%d worldT=%.3f worldHit=(%.3f,%.3f,%.3f) hitBrick=(%d,%d,%d) n=(%.2f,%.2f,%.2f)\n",
+                    q.tag, h.hit, worldT, wh.x, wh.y, wh.z, h.hitBrick.x, h.hitBrick.y, h.hitBrick.z,
+                    h.normal.x, h.normal.y, h.normal.z);
+    }
+    SUCCEED();
+}
+
+TEST(StoredSdfMarchMirror, M5bBackWallHopContinuationRepro) {
+    BakedScene scene = BakeBackWall();
+    SdfMarchMirror mirror(scene.serialized);
+    mirror.m_useHopContinuation = true;   // <-- exercise the shader's seam-hop path
+    // M5b: the mirror's default (normalize) matches the FIXED shader (TraceWorld.glsl passes a
+    // UNIT instDir into the ESVO ray setup). Flipping m_skipNormalize=true reproduces the
+    // pre-fix GPU far-hit (z=-27); this test asserts the fixed (normalized) path lands the
+    // backWall's interior face at z~=6 with a +Z normal.
+    const float rs = cornBodyRenderScale(kCornWallN, kCornWallSubdiv);
+    const glm::vec3 eye = kCornEye;
+    constexpr uint32_t kW = 500, kH = 500;
+    const Camera cam = MakeCornellCamera(kW, kH);
+
+    // Center pixel: ray from (16,16,50) along -Z. The backWall interior (+Z-facing) face is
+    // at world z=6. FIXED path (normalize, the mirror default and the shader's post-fix
+    // behavior) must land there; the pre-fix path (skipNormalize, non-unit instDir) lands the
+    // renderScale-inflated far-hit at z~=-27. This is the M5b regression guard.
+    const float u = (250 + 0.5f) / kW, vv = (250 + 0.5f) / kH;
+    const glm::vec3 rd = getRayDir(cam, u, vv);
+    const InstRay ir = DeInstanceBackWall(eye, rd);
+
+    // FIXED (unit direction): correct interior-face hit at z~=6, normal +Z.
+    mirror.m_skipNormalize = false;
+    const SdfMarchMirror::Hit fixedHit = mirror.castRay(ir.origin, ir.dir);
+    const glm::vec3 fixedWorld = eye + rd * (fixedHit.t * rs);
+    std::printf("[M5B-HOP fixed]  hit=%d worldZ=%.3f normalZ=%.2f (expect z~6, n=+1)\n",
+                fixedHit.hit, fixedWorld.z, fixedHit.normal.z);
+    EXPECT_TRUE(fixedHit.hit);
+    EXPECT_NEAR(fixedWorld.z, 6.0f, 0.5f);       // backWall interior face
+    EXPECT_GT(fixedHit.normal.z, 0.9f);           // faces +Z toward the camera
+
+    // PRE-FIX (non-unit instDir): reproduces the GPU far-hit at z~=-27 (renderScale-inflated).
+    mirror.m_skipNormalize = true;
+    const SdfMarchMirror::Hit bugHit = mirror.castRay(ir.origin, ir.dir);
+    const glm::vec3 bugWorld = eye + rd * (bugHit.t * rs);
+    std::printf("[M5B-HOP prefix] hit=%d worldZ=%.3f (expect the pre-fix far-hit z~-27)\n",
+                bugHit.hit, bugWorld.z);
+    EXPECT_TRUE(bugHit.hit);
+    EXPECT_LT(bugWorld.z, -20.0f);                // the far-hit the fix eliminates
 }
