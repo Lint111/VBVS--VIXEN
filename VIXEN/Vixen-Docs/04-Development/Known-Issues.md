@@ -11,6 +11,22 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-041 — Intermittent late-frame Vulkan-validation crash (~1-in-3 to 1-in-2 bench runs) + lingering `VIXEN.exe` survives the crash and poisons the next run
+
+**Discovered:** 2026-07-17, by the Baked-Perf M8 Task 8.2 implementer while pixel-diffing OMEGA=1.0 vs 1.5 renders (needed many clean runs, so the flakiness was frequent enough to characterize).
+
+**Symptom:** roughly 1-in-3 to 1-in-2 baked-Cornell bench runs crash LATE (near/after the tick-150 capture) with one of a few Vulkan-validation signatures: a `ui_composite_render`/RmlUi one-shot error, a `probe_update`/`ComputeStageNode` error, or an `InstanceSkipMaskBuffer never updated` dispatch-validation error. Sometimes the crashed `VIXEN.exe` process SURVIVES (does not fully exit), holding a file lock / GPU resources that interfere with the NEXT run (stale binary lock at copy-to-binaries; contended capture).
+
+**Root cause:** not isolated. Occurs IDENTICALLY at OMEGA=1.0 and OMEGA=1.5 (confirmed by the M8 implementer running both extensively), so it is PRE-EXISTING and unrelated to the over-relaxed-march change — a latent late-frame sync/validation issue in the compute→UI-composite tail of the frame. Plausibly related to the KI-033/KI-039 boot-recompile sync family, but the trigger here is late-frame, not boot-recompile, so it may be distinct.
+
+**Impact:** MEDIUM for the bench/validation workflow — it makes clean captures flaky and can silently poison a follow-on run via the lingering process. Mitigations in use: `taskkill /F /IM VIXEN.exe` before each run (clears the lingering process), and re-running captures until a clean "frame limit reached" exit is observed. No evidence of incorrect RENDERED output when a run completes cleanly (the parity + pixel-diff gates pass on clean runs); the risk is a crashed/partial run being mistaken for a real result, or a screenshot taken near a crash state showing transient visual weirdness unrelated to the actual render logic.
+
+**Fix options:** isolate which of the three signatures dominates (instrument with validation layers ON + capture the full VUID + the frame/pass it fires in); check the `ui_composite_render` one-shot and the `InstanceSkipMaskBuffer` dispatch guard for a missing barrier / uninitialized-buffer-on-some-frames hazard; ensure the app fully tears down `VIXEN.exe` on a validation-abort so no lingering process survives.
+
+**Severity:** Medium (bench-workflow flakiness + poisons follow-on runs; no confirmed correctness impact on clean completions) · **Status:** OPEN · pre-existing (reproduces identically at OMEGA=1.0), NOT introduced by M8 Task 8.2 · surfaced during M8 validation. Natural owner: a late-frame sync-hygiene pass (same territory as M6, KI-033/KI-039).
+
+---
+
 ## KI-040 — `BakeArtifactCache::LoadBakeArtifact` resizes buffers from an UNVALIDATED length prefix → a corrupt `.bake` file crashes with `bad_alloc` instead of the promised silent miss
 
 **Discovered:** 2026-07-17, by the Task 7.6 Opus validator while empirically closing the v1-cache-rejection gap (planting a garbage file at the current cache key to exercise the loader's reject path).
