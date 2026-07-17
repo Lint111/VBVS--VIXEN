@@ -654,6 +654,18 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   unit + 13/13 serialize + 7/7 bake green. HARNESS NOTES (not M6 defects): `win_build.bat`
   targets a nonexistent `vixen_benchmark` and cd's to MAIN not the worktree — build from
   the worktree's VIXEN dir; `run_parity_check.bat` overwrites `baked/run.log` per run.
+  **POST-MERGE VERIFY (main `e94f4769`, 2026-07-17):** clean build; parity run 1 PASS
+  (0/625), run 2 FAIL (59/625) — but run 2 fired WHILE a concurrent session's `ninja`
+  build contended for the machine. Root-caused the 59-cell diff: NOT scattered corruption
+  but a COHERENT whole-scene sub-cell registration shift (total hits 183540→180224; every
+  body silhouette translated <1 cell, aliased by the 20px grid). On a QUIET machine, 3/3
+  fresh baked captures are byte-identical to the golden (hits=183540, cell_diff=0, same
+  grid SHA `0e63e208`). Confirms the implementer's flagged 2/6 drift + validator's
+  "contended-machine artifact" call — M6 touches zero geometry/camera code. NEW latent
+  finding for the capture rig (candidate KI): under CPU/GPU contention the tick-150
+  capture lands on a slightly different scene registration; the same_path hard gate is
+  contention-sensitive → run parity on a quiet machine (or add a contention guard /
+  multi-sample mode).
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
