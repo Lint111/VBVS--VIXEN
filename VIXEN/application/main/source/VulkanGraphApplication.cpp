@@ -1913,6 +1913,49 @@ void VulkanGraphApplication::Update() {
                                 mainLogger->Info("[CornellDiag] |" + row + "|");
                             }
                         }
+
+                        // SEAM-INVESTIGATION (2026-07-17): 1px-resolution instIdx window over
+                        // the box/floor seam (coarse 25x25 grid disagreed with virtual at exactly
+                        // one cell -- pixel(290,390) baked=floor(3) virtual=boxObj(7)). Dump the
+                        // true per-pixel winner over a window centered on that seam so the real
+                        // extent of the disagreement (single-pixel aliasing vs a contiguous wrong
+                        // wedge) is visible from the log alone. Legend identical to the 25x25 map.
+                        if (std::getenv("VIXEN_CORNELL_SEAM_WINDOW")) {
+                            constexpr int wx0 = 250, wx1 = 340, wy0 = 355, wy1 = 405;
+                            mainLogger->Info("[CornellDiag] SEAM window instIdx (x=" +
+                                             std::to_string(wx0) + ".." + std::to_string(wx1) +
+                                             " y=" + std::to_string(wy0) + ".." + std::to_string(wy1) +
+                                             "; 3=floor 7=box .=miss):");
+                            for (int py = wy0; py <= wy1; ++py) {
+                                std::string row;
+                                for (int px = wx0; px <= wx1; ++px) {
+                                    const size_t idx = static_cast<size_t>(py) * kImgSize + static_cast<size_t>(px);
+                                    if (idx >= recordCount) { row += ' '; continue; }
+                                    uint32_t f;
+                                    std::memcpy(&f, bytes + idx * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                    if ((f & 0x1u) == 0u) { row += '.'; continue; }
+                                    uint32_t wi;
+                                    std::memcpy(&wi, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                                    row += (wi <= 7u) ? static_cast<char>('0' + wi) : '?';
+                                }
+                                mainLogger->Info("[CornellDiag] SW y=" + std::to_string(py) + " |" + row + "|");
+                            }
+                            // Per-pixel hitT + worldPos along the seam's key column (x=290, the
+                            // disagreeing cell's center) so box-vs-floor depth ordering is visible.
+                            for (int py = wy0; py <= wy1; ++py) {
+                                const size_t idx = static_cast<size_t>(py) * kImgSize + 290;
+                                if (idx >= recordCount) continue;
+                                uint32_t f; std::memcpy(&f, bytes + idx * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                if ((f & 0x1u) == 0u) continue;
+                                uint32_t wi; std::memcpy(&wi, bytes + idx * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                                float ht; std::memcpy(&ht, bytes + idx * kHitRecordStride + kHitTOffset, sizeof(float));
+                                float wp[3]; std::memcpy(wp, bytes + idx * kHitRecordStride + kWorldPosOffset, sizeof(wp));
+                                mainLogger->Info("[CornellDiag] SWcol x=290 y=" + std::to_string(py) +
+                                                 " instIdx=" + std::to_string(wi) +
+                                                 " hitT=" + std::to_string(ht) +
+                                                 " wp=(" + std::to_string(wp[0]) + "," + std::to_string(wp[1]) + "," + std::to_string(wp[2]) + ")");
+                            }
+                        }
                         hrBuf->UnmapReadback(cornellDev);
                     }
                 } else if (mainLogger) {
