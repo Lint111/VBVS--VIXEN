@@ -426,8 +426,26 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
   2026-07-17): a dense texture only wins where sparseness is already near-zero. Cheap —
   the bake already knows these counts.
 
+- [ ] Task 7.6 — **Brick dedup by reference (content-addressed brick pool)** (user idea
+  2026-07-17, distinct from 7.4's cross-boot cache — this attacks IN-POOL duplication):
+  hash each baked 8³ brick payload; keep a brick-content-hash → pool-slot map; when a new
+  ESVO leaf would upload a brick whose content already exists, point that leaf's
+  `brickLookupBase` at the EXISTING slot instead of uploading a duplicate. Kills
+  intra-scene + inter-body brick redundancy (flat wall-slab interiors are the same brick
+  repeated; the 5 Cornell walls share many identical bricks) → smaller pool (VRAM +
+  upload bandwidth) + less serialize work. CORRECTNESS BAR (the M1 `brickLookupBase`
+  addressing bug was exactly this surface): a shared brick must be BIT-identical incl. all
+  addressing assumptions, and each referencing leaf must keep its own correct base/scale
+  even when the payload is shared — reference-count slots so nothing is freed while
+  referenced. Composes with 7.4 (orthogonal axes) AND is the sparseness-preserving
+  foundation for M8's packed-atlas fallback (dense-texture compactness WITHOUT losing
+  octree empty-space skipping) AND with the delta renderer (a delta sharing unchanged
+  bricks by reference). Gate: pool slot count drops (report the dedup ratio); rendered
+  output + serialize hash BYTE-IDENTICAL (dedup must be invisible to the image); parity PASS.
+
 **Gate:** boot < 60 s; serialize output byte-identical (hash compare); tests green;
-per-body occupancy stats recorded for the M8 decision.
+per-body occupancy stats recorded for the M8 decision; brick-dedup ratio reported with
+byte-identical output preserved.
 
 ## Milestone M8 — 3D-texture brick pool prototype + relaxed stepping (L) — the 60+ lever
 
@@ -441,6 +459,9 @@ per-body occupancy stats recorded for the M8 decision.
 > If dense proves wrong even for walls, the sparse-preserving fallback is a packed brick
 > ATLAS with 1-voxel aprons still marched through the octree — hardware filtering WITHOUT
 > dense allocation (this was M8's own phase-2; pull it forward if 8.1 disappoints).
+> **M7 Task 7.6 (content-addressed dedup'd brick pool) is the concrete foundation for
+> that atlas** — reference-counted content-addressed slots are already the packed,
+> sparseness-preserving pool this fallback needs; M8 would add aprons + hw filtering on top.
 
 - [ ] Task 8.1 — Phase-1 prototype: dense per-octree R16F 3D texture for the 5 walls,
   march via `textureLod` hardware trilinear; A/B vs M3's SSBO fast path (audit A6 /
