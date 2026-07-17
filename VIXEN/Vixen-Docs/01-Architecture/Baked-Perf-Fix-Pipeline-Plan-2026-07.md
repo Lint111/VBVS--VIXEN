@@ -380,11 +380,18 @@ delivered via the stored/delta path.
   ceiling/leftWall/backWall corner and floor/rightWall corner (the SAME junction as the
   golden's row-21 cross-binary near-tie flip). Root cause hypothesis: two abutting
   Cornell slabs return near-equal hitT and per-pixel float noise flips the per-instance
-  bestT winner. Fix DETERMINISTICALLY (relative-epsilon tie-band + stable
-  instance-index preference in the TraceWorld.glsl winner compare), not a depth-bias
-  hack. Gate: checkered patches gone at both corners; cross_path agreement does not
-  regress; same_path golden re-blessed if the map legitimately changes (expect near-tie
-  flips to disappear — the ≤2/625 slack may become unnecessary; note it if so).
+  bestT winner. Fix DETERMINISTICALLY, not a depth-bias hack, with **depth as the primary
+  arbiter** (user directive 2026-07-17): `if (|tA−tB| > eps*max(|t|,1)) winner = NEARER;
+  else winner = lower instance index`. The stable-index tiebreak fires ONLY inside the
+  RELATIVE band (`eps*max(|t|,1)`, NOT a fixed absolute epsilon — a 0.1-unit gap is
+  coincident at hitT≈26 but resolvable at hitT≈1). Do NOT break ties by index
+  unconditionally: a baked/stored DELTA in front of/behind a procedural baseline must
+  still win on depth — that's the exact hybrid case M6b supports. Provider-priority-in-band
+  (delta overrides baseline when truly coincident) is OUT of scope → delta program. Gate:
+  checkered patches gone at both corners; cross_path agreement does not regress (run
+  QUIET — same_path gate is contention-sensitive, see M6 verify note); same_path golden
+  re-blessed ONLY if the map change is exactly seam cells becoming coherent (expect
+  near-tie flips to disappear — the ≤2/625 slack may become unnecessary; note it if so).
 - [ ] Task 6b.1 — v1 "hole in the wall" (today's machinery): virtual Cornell with ONE
   body flipped to PROVIDER_STORED whose bake is the MODIFIED shape (e.g. right wall
   recipe minus a cylinder — `BakeRecipeInstructionsToSdfWorld` bakes arbitrary recipe
