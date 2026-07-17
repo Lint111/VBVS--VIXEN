@@ -40,12 +40,21 @@
 // Lower-instIdx-wins is an arbitrary but STABLE rule -- every pixel along a
 // seam resolves the same way regardless of float noise, so the seam becomes
 // a coherent boundary instead of a checkerboard. Epsilon is relative
-// (scaled by max(|t|,1.0)) so it stays tight at both near and far distances
-// without swallowing genuinely different depths -- 1e-4 relative is far
-// tighter than any real depth gap between non-abutting geometry in this
-// scene (Cornell box spans ~O(10) world units) but wide enough to cover the
-// float noise a seam actually produces (observed noise is sub-1e-5 relative).
-#define SEAM_TIE_EPS_REL 1e-4
+// (scaled by max(|t|,1.0)) so it stays tight at both near and far distances.
+//
+// M9 Task 9.1 (2026-07-17, user hw eval, Screenshot_246): 1e-4 was TOO WIDE.
+// At the DIAGONAL wall/ceiling and wall/floor corners (two slabs meeting at
+// ~45 degrees) the true depth gap between the slabs along the seam can be
+// SMALLER than a 1e-4-relative band (~2.6e-3 world units at Cornell
+// hitT~26) while still being a real, resolvable difference -- so the band
+// swallowed a genuine depth gap and handed the lower-index instance (a
+// wall) a whole wedge of pixels that geometrically belonged to the
+// higher-index ceiling/floor. Tightened to 1e-5 relative, matching this
+// same comment's own prior admission that the float noise a true coincident
+// seam actually produces is sub-1e-5 relative -- tight enough that a real
+// (even shallow, grazing-corner) depth difference resolves by depth, but
+// still wide enough to cover sub-ULP noise at a genuinely coincident seam.
+#define SEAM_TIE_EPS_REL 1e-5
 
 bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint bestInstIdx) {
     float tieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
