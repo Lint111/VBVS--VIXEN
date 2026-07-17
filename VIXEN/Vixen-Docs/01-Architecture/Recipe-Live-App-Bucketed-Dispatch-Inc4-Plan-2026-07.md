@@ -128,7 +128,9 @@ Windows `.bat` builds, real discrete GPU (Windows-native) for every milestone.
   `TraceWorldShadow`'s actual write paths, proven correct via the SAME rigor Inc2 M3 used (real
   overlap scene, both dispatch orderings, byte-identical `HitRecord` comparison) but against the REAL
   shader this time, not a stand-in.
-  - [ ] Not started.
+  - [x] DONE 2026-07-17. See Progress Log entry below for the full account, including a scope
+    correction (`TraceWorldShadow` has no `HitRecord` write to retrofit — it's a pure any-hit `bool`
+    occlusion test) and a mid-milestone design fix the gate test itself caught.
 - **M3 — Production indirect-dispatch wiring + env-var gate** (Task 3) · **live-run gate** · introduce
   `MultiDispatchNode`/indirect dispatch into `BuildRenderGraph.cpp`'s real graph construction for the
   first time, gated behind a new opt-in env var; specialized pipelines compile and dispatch inside a
@@ -287,6 +289,96 @@ validator verdict.)
     the unreferenced binding; only 3 of 4 gatherers genuinely needed the wire. Confirmed harmless
     (the extra wire is silently ignored, zero errors in the live run) but flagged for future cleanup.
     **Correctness-blocking issues: NONE.** M1 is APPROVED, cleared to proceed to M2.
+- **M2 DONE (2026-07-17).** Commits (this worktree, `feat/recipe-live-app-bucketing-inc4`, on top of
+  M1): `shaders/BodyInstanceRayMarch.comp` (conditional nearest-hit-wins `HitRecord` write, replacing
+  the unconditional `hitRecords[idx] = rec`), `shaders/SceneBindings.glsl` (new `anyInstanceSkipped()`
+  helper), `libraries/RenderGraph/tests/Nodes/test_body_instance_raymarch_render.cpp` (new gate test
+  + a `RenderToRgba` pre-seed parameter to support it).
+  - **Scope correction vs. the prompt/plan text:** "`TraceWorldShadow`'s equivalent write" does not
+    exist to retrofit — direct inspection of `TraceWorld.glsl:491-625` confirms `TraceWorldShadow`
+    returns a plain `bool` (any-hit occlusion test for shadow rays, called from `ProbeUpdate.comp`/
+    `SpatialReuseShade.comp`) and never reads or writes `hitRecords[]` at all. The ONLY real
+    unconditional `HitRecord` write in production code is `BodyInstanceRayMarch.comp:319`. No shader
+    change was needed or made for `TraceWorldShadow`.
+  - **A real design gap the plan doc didn't anticipate, found BEFORE writing any shader code:**
+    `HitRecordBuffer` (binding 18, `StorageBufferNode`) is zero-initialized ONCE at creation and never
+    cleared per-frame (`StorageBufferNode::ExecuteImpl` is a literal no-op) — today's UNCONDITIONAL
+    write is the only thing that ever refreshes it every frame (full-image dispatch coverage, hit or
+    miss, every frame). Inc2 M3's proven condition (`myHitT < existing.hitT || existing.flags==0u`)
+    is only safe when the buffer is freshly re-zeroed before each comparison (the M3 harness does
+    this) — ported literally, a fresh MISS (flags=0u, hitT=1e30 sentinel) would lose to ANY stale
+    leftover hit from a prior frame (both disjuncts false), permanently freezing stale HitRecord data
+    at a pixel that should have gone empty (camera pan, object moved away) — a real regression, not a
+    no-op. Confirmed via two independent code-reading passes (no frame index in push constants, no
+    clear/fill pass anywhere in the render graph, `TraceWorld.glsl:93`'s `bestT=1e30` sentinel).
+  - **First fix attempt (asymmetric: miss always unconditional, hit conditional) was WRONG, caught by
+    the gate test itself, not by review.** Writing the mandated "real overlap scene, both dispatch
+    orderings" gate test (below) immediately produced a real failure: with instance 1 (green)
+    skip-masked and a stubbed second-writer pre-seeding a real hit for green's pixels, tier-0's own
+    miss at those pixels (correct — it skipped the only body there) unconditionally clobbered the
+    stub's hit under the first fix. Root cause: a miss from a NON-exhaustive tier-0 (some instance
+    skip-masked) doesn't mean "nothing is here," it means "I didn't check this" — the bucketed pass is
+    authoritative for that pixel, not tier-0's miss.
+  - **Final fix (two-regime split, using the skip mask itself as the missing per-frame signal — no
+    new plumbing, no generation counter):** added `anyInstanceSkipped()` to `SceneBindings.glsl`
+    (word-scans the ≤6-word skip mask once per invocation — cheap, bounded by `TraceWorld`'s own
+    `3*64` instance cap). `BodyInstanceRayMarch.comp`'s write: if NO instance is skip-masked this
+    frame, tier-0 is exhaustive and a miss unconditionally clears the slot (today's exact behavior,
+    byte-identical — this is the only state possible until M3 wires a real second writer, and the
+    only state gate-OFF ever produces). If ANY instance is skip-masked, a miss defers to an existing
+    hit (does NOT clobber it); a hit still applies Inc2 M3's nearest-hit-wins compare unchanged.
+    Considered (and rejected, see plan doc's own Progress Log discussion during the milestone) adding
+    a true monotonic per-frame generation counter (`RenderGraph::globalFrameIndex` exists at
+    `RenderGraph.h:992` but doesn't reach push constants) — fully general but real new plumbing (new
+    push-constant field + new node-output wiring in `BuildRenderGraph.cpp`) more properly scoped to M3
+    (which already owns introducing the real second-writer/barrier contract); the skip-mask-based
+    signal is fully correct for every case M1-M2's own scope can produce and adds zero new surface.
+  - **Gate-OFF no-op proof:** new test `HitRecordCompositingRealShaderBothOrderingsMatchOracle`
+    (`test_body_instance_raymarch_render.cpp`) — two independent renders of the same 3-instance
+    scene/camera with no skip mask: `memcmp==0` (byte-identical `HitRecord` buffers, decisive — not
+    just matching pixel counts). Full existing suite re-run (Windows-native, real GPU, post-fix):
+    `test_rendergraph_criticalnodes_gpurender1` (9/9 PASS, includes the new gate test),
+    `test_recipe_pool_render` (1/1), `test_mip_fallback_render` (4/4), `test_gpu_parity` (7/7),
+    `test_rendergraph_shadermirrors` (25/25) — all ALL PASS, zero behavior change. The same 4
+    pre-existing failures M1 documented were independently re-confirmed byte-identical this round too
+    (`test_baked_vs_virtual_parity` 0/1: same `bakedHits=5808/virtualHits=9580/IoU=0.6063`;
+    `test_rendergraph_criticalnodes_gpurender2` 6/7: same `magenta px=0/0`;
+    `test_rendergraph_criticalnodes_gpurender2b` 2/3: same `luma=0`; `test_appflow_editor_toggle_render`
+    0/1: same failure) — confirmed unrelated to this milestone's change.
+  - **Real-overlap gate (reproducing Inc2 M3's exact proof against the REAL shader):** same
+    `HitRecordCompositingRealShaderBothOrderingsMatchOracle` test. Scene: 3 instances (red/green/gray),
+    instance 1 (green) skip-masked out of tier-0's march. Stub "second writer" built from green's own
+    baseline `HitRecord` output (17804 pixels), split into 8902 "closer" + 8902 "farther" stub `hitT`
+    variants so both branches of the nearest-hit-wins compare are exercised. Ordering A
+    (second-writer-pre-seeded-then-tier-0-dispatches) vs. an independent third-render oracle
+    (tier-0-only output with the stub composited in via the SAME rule, computed from scratch, not
+    reused from either ordering): `memcmp==0`. Ordering A vs. ordering B
+    (tier-0-dispatches-into-fresh-buffer-then-stub-composites-after): **0/196608 pixels differ**
+    (`kW=768, kH=256`) — order-independent, matching Inc2 M3's own "0/65536 pixels differ" rigor,
+    now against the real production shader instead of a hand-rolled stand-in.
+  - **LIVE APP GATE (the most important result):** ran the real `VIXEN.exe` (Windows-native, discrete
+    GPU `AMD Radeon(TM) Graphics`, Debug build, Vulkan validation layers confirmed ON via the build's
+    own configure log), default scene/graph, no special flags, `VIXEN_EXIT_AFTER_FRAMES=25000` —
+    reached frame ~24960 in ~3 minutes at 120-175 FPS (frame-timer log), clean exit code 0, clean
+    teardown. **Zero occurrences of `VUID-vkCmdDispatch-None-08114` or any NEW validation-error
+    class.** VUID/error counts matched M1's own documented pre-existing baseline exactly: 50
+    `PushConstantGathererNode::Validate` "Type mismatch" lines, 40 total VUID string occurrences
+    split 20/20 between `VUID-vkCmdDraw-None-09600` and `VUID-vkQueueSubmit2-semaphore-03868` (same
+    self-limited startup-transient class M1 independently verified pre-existing against the pre-M1
+    baseline). Confirmed binding 35 (skip mask) and binding 18 (HitRecord) both correctly wired into
+    the live production graph via the startup log lines
+    (`[BuildRenderGraph] Connected instance skip mask at binding 35`,
+    `[BuildRenderGraph] Connected HitRecord SSBO at binding 18`).
+  - **Deviation from prompt:** (1) `TraceWorldShadow` scope correction, see above — not a deviation in
+    spirit, the function genuinely has nothing to retrofit. (2) The compositing rule is NOT Inc2 M3's
+    literal fully-symmetric condition — see the design-gap/fix account above for the full reasoning;
+    this was flagged to the controller mid-milestone before implementing, and confirmed necessary by
+    the gate test itself catching a real bug in the first (more literal) attempt. Everything else
+    matches the prompt.
+  - Plan-doc sync: copied this file to the main checkout's
+    `VIXEN/Vixen-Docs/01-Architecture/Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07.md` (a copy
+    already existed there from M1's dispatch, per the prompt's own note) — not committed there, left
+    for the controller to review/commit.
 
 ---
 

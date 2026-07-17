@@ -168,6 +168,30 @@ bool isInstanceSkipped(int instIdx) {
     return (skipMask[wordIdx] & (1u << bitIdx)) != 0u;
 }
 
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M2: true iff ANY instance is currently skip-masked
+// (word-scanned, not per-instance — cheap since the mask covers at most 3*64=192 instances,
+// i.e. 6 words, matching TraceWorld's own instance-count cap). Used by BodyInstanceRayMarch.comp
+// to decide whether tier-0's own instance loop is exhaustive this frame: with the mask entirely
+// empty (every word zero — the always-true case until M3 wires a real second writer), tier-0
+// marches every instance and its own hit/miss determination is authoritative, so a miss must
+// unconditionally clear any stale prior-frame HitRecord content. The MOMENT any instance is
+// skip-masked, tier-0 is no longer exhaustive — a miss at a pixel whose only geometry was a
+// skipped instance is NOT "nothing is here," it's "I didn't check this," and must defer to
+// whatever a same-frame second writer (the skipped instance's own bucketed-dispatch pass)
+// already wrote, rather than clobbering it. See BodyInstanceRayMarch.comp's HitRecord write for
+// the full derivation (a test scene with a skip-masked instance + a stubbed second writer caught
+// this exact miss-clobbers-hit bug during Inc4 M2's gate).
+bool anyInstanceSkipped() {
+    uint wordCount = skipMask.length();
+    // 3*64=192 instances / 32 bits-per-word = 6 words covers TraceWorld's own instance-count cap;
+    // clamp defensively in case a future caller ever binds a larger buffer.
+    uint scanWords = min(wordCount, 6u);
+    for (uint w = 0u; w < scanWords; ++w) {
+        if (skipMask[w] != 0u) return true;
+    }
+    return false;
+}
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 

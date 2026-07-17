@@ -316,7 +316,47 @@ void main() {
     rec._pad0       = uint[3](worldHit.instIdx, 0u, 0u);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
-    hitRecords[hitRecordIdx] = rec;
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M2: conditional nearest-hit-wins write, retrofitting
+    // Inc2 M3's proven cross-bucket compositing scheme (test_recipe_multi_bucket_compositing.cpp
+    // Task 8) onto this REAL production shader. Applied UNCONDITIONALLY (not gated behind any
+    // flag): once a second writer to HitRecord can exist in some frames (M3's future bucketed-
+    // dispatch work), an unconditional tier-0 overwrite is unsafe in any frame where write
+    // ordering between two dispatches isn't guaranteed.
+    //
+    // Deliberately NOT a direct port of Inc2 M3's fully-symmetric `myHitT < existing.hitT ||
+    // existing.flags==0u` condition — that's only safe when the buffer is freshly re-zeroed before
+    // each comparison (the M3 harness does this). HitRecordBuffer (binding 18) is zero-initialized
+    // ONCE at creation and never cleared per-frame — today's unconditional write is the only thing
+    // that refreshes it every frame, and there's no per-frame generation/parity signal anywhere
+    // (confirmed absent from push constants and the render graph) to tell "stale prior-frame
+    // content" apart from "a same-frame second writer already claimed this pixel."
+    //
+    // The tier-0-exhaustiveness rule below resolves this WITHOUT new plumbing, using a signal that
+    // already exists: M1's skip mask. Two regimes:
+    //   - No instance is skip-masked this frame (anyInstanceSkipped()==false — the only case
+    //     possible until M3 wires a real second writer, and the only case gate-OFF ever produces):
+    //     tier-0's own instance loop marches EVERY instance, so its hit/miss verdict is fully
+    //     authoritative — a miss unconditionally clears whatever was there (stale or not), exactly
+    //     today's behavior, byte-identical.
+    //   - Some instance IS skip-masked: tier-0 is no longer exhaustive. A miss at such a pixel does
+    //     NOT mean "nothing is here" — it can mean "the only body here was one I was told to skip,"
+    //     so it must NOT clobber an existing hit (deferring to whatever a same-frame second writer,
+    //     i.e. the skipped instance's own bucketed pass, already wrote). A hit still applies Inc2
+    //     M3's nearest-hit-wins compare, unchanged. (Caught live: an earlier version of this fix
+    //     let a skip-masked-pixel miss unconditionally clobber a stubbed second-writer's hit —
+    //     exactly the bug this two-regime split closes; see the Inc4 M2 gate test.)
+    HitRecord existing = hitRecords[hitRecordIdx];
+    bool tier0Exhaustive = !anyInstanceSkipped();
+    if (!anyHit) {
+        if (tier0Exhaustive || existing.flags == 0u) {
+            hitRecords[hitRecordIdx] = rec;
+        }
+        // else: tier-0 missed but is NOT exhaustive this frame and something else already claimed
+        // this pixel with a real hit — defer to it, don't clobber.
+    } else if (rec.hitT < existing.hitT || existing.flags == 0u) {
+        hitRecords[hitRecordIdx] = rec;
+    }
 
     HitRecord recReadback = hitRecords[hitRecordIdx];
 
