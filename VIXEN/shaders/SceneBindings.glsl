@@ -554,6 +554,113 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
 }
 
 // ============================================================================
+// ANY-HIT LEAF HANDLERS (Baked-Perf M4 Task 4.2 / audit C1-C2 / Top #7)
+// ============================================================================
+// Occlusion-only counterparts of handleLeafHitInstanced/handleLeafHitInstancedSdf
+// above: same leaf resolution + brick addressing, but never compute a gradient,
+// color, or roughness -- TraceWorldShadow (TraceWorld.glsl) only ever needs the
+// boolean "is there an occluder here," and both original handlers do real work
+// (a full analytic gradient, or up to 32 pool reads for the color+roughness
+// trilinear channels) that a shadow/probe-occlusion ray discards immediately.
+// hitT is still returned (needed for the caller's [tmin,tmax] span check).
+
+bool handleLeafHitInstancedAnyHit(TraversalState state, RayCoefficients coef,
+                                   vec3 rayDir, float tBias,
+                                   uvec2 parentDescriptor, uint validMask, uint leafMask,
+                                   out float hitT) {
+    hitT = 0.0;
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
+
+    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+    if (localChildIdx < 0 || localChildIdx > 7) return false;
+
+    uint leafDescriptorIndex = resolveLeafDescriptorIndex(parentDescriptor, validMask, leafMask,
+                                                          localChildIdx);
+    uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);
+    uint  localBrickIdx  = getContourPointer(leafDescriptor);
+    if (localBrickIdx == SVO_INVALID_INDEX) return false;
+
+    // Same leaf-entry bridging as handleLeafHitInstanced (identical math, needed to
+    // find the DDA's starting voxel) -- only the shading outputs are dropped below.
+    float tHit        = state.t_min;
+    vec3  rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    vec3  hitPos12    = coef.normOrigin + rayDirLocal * tHit;
+
+    vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2,
+                                        coef.octant_mask, BRICK_SIZE_VAL);
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_VAL) - 0.001));
+
+    // marchBrickInstanced's DDA is already a bare occupancy test (no gradient work) --
+    // its color/normal/axisMask/voxel outputs are simply discarded here, unused by any
+    // any-hit caller.
+    vec3 discardColor, discardNormal;
+    uint discardAxisMask, discardVoxelIdx;
+    vec3 discardBrickLocalPos;
+    if (marchBrickInstanced(rayDir, posInBrick, localBrickIdx,
+                            discardColor, discardNormal, discardAxisMask,
+                            discardBrickLocalPos, discardVoxelIdx)) {
+        hitT = tBias + tHit;
+        return true;
+    }
+    return false;
+}
+
+// SDF variant: mirrors handleLeafHitInstancedSdf's leaf-entry bridging exactly
+// (needed to compute gridEntry/gridDirN correctly), but calls marchBrickSdfAnyHit
+// instead of marchBrickSdf -- no gradient, no sampleHitShadingChannels.
+// sMaxLimitWorld is the caller's remaining [tmin,tmax] budget in WORLD units;
+// converted to this brick's grid-arc-length unit the same way marchBrickSdf's
+// caller converts sHit back to t (hitT = tBias + t_min + sHit/(dirLen*gridScale)),
+// inverted here to bound the march before it ever crosses the light.
+bool handleLeafHitInstancedSdfAnyHit(TraversalState state, RayCoefficients coef,
+                                     vec3 rayDir, float tBias, float tmax,
+                                     inout StackEntry stack[STACK_SIZE],
+                                     out float hitT) {
+    hitT = 0.0;
+
+    int bpa = int(octreeConfig.bricksPerAxisSdf);
+    if (bpa <= 0) return false;
+    const int BRICK_SIZE_SDF = 8;
+
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    vec3 hitPos12    = coef.normOrigin + rayDirLocal * state.t_min;
+    float dirLen     = length(rayDirLocal);
+    if (dirLen < 1e-12) return false;
+    vec3 gridDirN    = rayDirLocal / dirLen;
+
+    vec3 brickOriginMirrored = state.pos;
+    if ((coef.octant_mask & 1) == 0) brickOriginMirrored.x = 3.0 - state.scale_exp2 - brickOriginMirrored.x;
+    if ((coef.octant_mask & 2) == 0) brickOriginMirrored.y = 3.0 - state.scale_exp2 - brickOriginMirrored.y;
+    if ((coef.octant_mask & 4) == 0) brickOriginMirrored.z = 3.0 - state.scale_exp2 - brickOriginMirrored.z;
+    ivec3 brick = ivec3(round((brickOriginMirrored - vec3(1.0)) * float(bpa)));
+    brick = clamp(brick, ivec3(0), ivec3(bpa - 1));
+
+    vec3 posInBrick = computePosInBrick(hitPos12, state.pos, state.scale_exp2,
+                                        coef.octant_mask, BRICK_SIZE_SDF);
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_SDF) - 0.001));
+    vec3 gridEntry = brickLocalToGrid(posInBrick, brick, BRICK_SIZE_SDF);
+
+    // tmax (world/local-t units, same frame as tBias+t_min) -> remaining grid-arc-length
+    // budget, inverting marchBrickSdf's own hitT = tBias + t_min + sHit/(dirLen*gridScale):
+    //   sMaxLimit = (tmax - tBias - t_min) * dirLen * gridScale
+    // tmax <= 0 (disabled/unbounded caller) maps to a large sentinel span (no clamp).
+    float gridScale = float(bpa * 8);
+    float sMaxLimit = (tmax > 0.0)
+        ? max((tmax - tBias - state.t_min) * dirLen * gridScale, 0.0)
+        : 1e6;
+    if (tmax > 0.0 && sMaxLimit <= 0.0) return false;  // light is at/behind this leaf's entry -- no room for an occluder
+
+    float sHit;
+    if (!marchBrickSdfAnyHit(g_octreeIdx, brick, gridEntry, gridDirN, sMaxLimit, state, coef, stack, sHit)) {
+        return false;
+    }
+
+    float tHitLocal = state.t_min + sHit / (dirLen * gridScale);
+    hitT = tBias + tHitLocal;
+    return true;
+}
+
+// ============================================================================
 // TRAVERSAL LOOP (instanced + LOD)
 // ============================================================================
 // Mirrors traverseOctree() from VoxelRayMarch.comp, extended with:
@@ -1029,6 +1136,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
     return false;
 }
 
+
 // ============================================================================
 // TRAVERSAL-RESTART WRAPPER (Tiered-ESVO Inc2 M3 Task 7; generalized to a
 // bounded hop LOOP by Inc3 M3 Task 5)
@@ -1296,6 +1404,306 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         }
         return false;
     }
+    g_octreeIdx      = originOctreeIdx;
+    g_esvoNodeBase   = originEsvoNodeBase;
+    g_brickArrayBase = originBrickArrayBase;
+    return false;
+}
+
+// ============================================================================
+// ANY-HIT TRAVERSAL (Baked-Perf M4 Task 4.2 / audit C1-C2 / Top #7)
+// ============================================================================
+// Occlusion-only counterpart of traverseOctreeInstancedOnce above: SAME control
+// flow (leaf/non-leaf dispatch, tier-crossing detection, LOD cutoff, PUSH/
+// ADVANCE/POP state machine -- all reused verbatim via the shared
+// checkChildValidity/executePushPhase/executeAdvancePhase/executePopPhase
+// helpers), but:
+//   (a) leaf hits go through the any-hit leaf handlers (no gradient/color/
+//       roughness payload) instead of handleLeafHitInstanced[Sdf];
+//   (b) the streaming-grace and LOD-cutoff mip-fallback cases use
+//       mipHasCoverage (one float read) instead of shadeFromMipSample (which
+//       also reads+returns a color sample this caller would discard);
+//   (c) tmax is a REAL parameter here (traverseOctreeInstancedOnce's callers
+//       never passed one -- TraceWorld's nearest-hit accumulation used its own
+//       bestT reject instead): a leaf/mip hit whose hitT falls outside
+//       [tmin,tmax] is not reported as an occluder, matching TraceWorldShadow's
+//       existing post-hoc tmin/tmax check but catching it at the SOURCE so the
+//       any-hit march itself is bounded by the light distance, not just its
+//       return value discarded after a full unbounded march (audit C2's own
+//       "span clamped at light distance" spec).
+// No debugInfo/DebugRaySample threading -- any-hit shadow/probe rays are not a
+// debug-visualization target (TraceWorldShadow's own contract already has no
+// pixel/dbg concept to snapshot); recordTraceStep/beginRayTrace/endRayTrace are
+// simply omitted rather than passed a synthesized dummy.
+// ============================================================================
+bool traverseOctreeInstancedOnceAnyHit(vec3 rayOrigin, vec3 rayDir,
+                              vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
+                              float tmin, float tmax,
+                              float tWorldBase, float tLocalUnitWorld,
+                              out bool tierCrossHit, out uint tierCrossRefIndex,
+                              out vec3 tierCrossParentLocalOrigin, out vec3 tierCrossParentLocalDir,
+                              out float tierCrossWorldT) {
+    tierCrossHit       = false;
+    tierCrossRefIndex  = 0u;
+    tierCrossParentLocalOrigin = vec3(0.0);
+    tierCrossParentLocalDir    = vec3(0.0);
+    tierCrossWorldT            = 0.0;
+
+    if (gridT.y < 0.0) return false;
+
+    bool rayStartsInside = (gridT.x < 0.0);
+    vec3 rayStartWorld;
+    float tEntryWorld = 0.0;
+    if (rayStartsInside) {
+        rayStartWorld = rayOrigin;
+        tEntryWorld   = 0.0;
+    } else {
+        vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + EPSILON);
+        rayStartWorld = (octreeConfig.localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+        tEntryWorld   = length(rayStartWorld - rayOrigin);
+    }
+
+    RayCoefficients coef  = initRayCoefficients(rayDir, rayStartWorld);
+
+    StackEntry stack[STACK_SIZE];
+    TraversalState state = initTraversalState(coef, stack, rayStartsInside);
+
+    if (state.t_min >= state.t_max) return false;
+
+    int iter = 0;
+    for (; iter < MAX_ITERS && state.scale <= octreeConfig.esvoMaxScale; ++iter) {
+
+        uvec2 parent_descriptor = fetchESVONode(state.parentPtr);
+        uint validMask   = getValidMask(parent_descriptor);
+        uint leafMask    = getLeafMask(parent_descriptor);
+        uint childPointer = getChildPointer(parent_descriptor);
+
+        bool isLeaf;
+        float tv_max, tx_center, ty_center, tz_center;
+
+        if (checkChildValidity(state, coef, validMask, leafMask,
+                               isLeaf, tv_max, tx_center, ty_center, tz_center)) {
+
+            if (isLeaf) {
+                float tBias = tEntryWorld;
+
+                // Tier-crossing check: identical structure to traverseOctreeInstancedOnce's
+                // own block (see that function for the full derivation) -- only the
+                // sub-pixel/non-resident fallback's PAYLOAD differs (coverage test, not shade).
+                {
+                    int localChildIdxTc = mirroredToLocalOctant(state.idx, coef.octant_mask);
+                    if (localChildIdxTc >= 0 && localChildIdxTc <= 7) {
+                        uint leafDescriptorIndexTc = resolveLeafDescriptorIndex(
+                            parent_descriptor, validMask, leafMask, localChildIdxTc);
+                        uvec2 leafDescriptorTc = fetchESVONode(leafDescriptorIndexTc);
+                        if (getFarBit(leafDescriptorTc)) {
+                            uint tierRefIdxInSlice = getTierRefIndex(leafDescriptorTc);
+                            uint absoluteTierRefIdx = octreeConfig.tierRefTableBase + tierRefIdxInSlice;
+                            if (absoluteTierRefIdx < tierRefTable.length()) {
+                                float tcChildScale = tierRefTable[absoluteTierRefIdx].childScale;
+                                vec3 tcChildOriginLocal = vec3(
+                                    tierRefTable[absoluteTierRefIdx].childOriginLocal[0],
+                                    tierRefTable[absoluteTierRefIdx].childOriginLocal[1],
+                                    tierRefTable[absoluteTierRefIdx].childOriginLocal[2]);
+                                float tcDirLen2 = max(dot(rayDirLocal, rayDirLocal), 1e-30);
+                                float tChild = clamp(
+                                    dot(tcChildOriginLocal - coef.normOrigin, rayDirLocal) / tcDirLen2,
+                                    state.t_min, tv_max);
+                                // tWorldBase/tLocalUnitWorld (the M8 Task 23 camera-anchored gate)
+                                // are this function's own parameters -- the any-hit wrapper below
+                                // hop-threads them exactly the same way the shading wrapper does.
+                                float kPhys = sqrt(tcDirLen2) * tLocalUnitWorld;
+                                float worldDistToChild = tWorldBase + (tEntryWorld + tChild) * kPhys;
+                                float childWorldSize = tcChildScale * state.scale_exp2 * tLocalUnitWorld;
+                                bool subPixelFootprint = (pc.raySizeCoef > 0.0 &&
+                                    worldDistToChild * pc.raySizeCoef + pc.raySizeBias >= childWorldSize);
+
+                                uint childOctreeIdxTc = tierRefTable[absoluteTierRefIdx].childOctreeIndex;
+                                bool childNotResident = (configs[childOctreeIdxTc].brickResident == 0u);
+
+                                if (subPixelFootprint || childNotResident) {
+                                    float hitTMip = tEntryWorld + state.t_min;
+                                    if (mipHasCoverage(leafDescriptorIndexTc) &&
+                                        hitTMip >= tmin && hitTMip <= tmax) {
+                                        return true;
+                                    }
+                                    return false;
+                                }
+
+                                tierCrossHit      = true;
+                                tierCrossRefIndex = absoluteTierRefIdx;
+                                tierCrossParentLocalOrigin = coef.normOrigin + rayDirLocal * state.t_min;
+                                tierCrossParentLocalDir    = rayDirLocal;
+                                tierCrossWorldT = tBias + state.t_min;
+                                return false;
+                            }
+                        }
+                    }
+                }
+
+                bool leafHit = false;
+                float hitTLeaf = 0.0;
+                if (octreeConfig.brickResident == 0u) {
+                    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+                    if (localChildIdx >= 0 && localChildIdx <= 7) {
+                        uint leafDescriptorIndex = resolveLeafDescriptorIndex(
+                            parent_descriptor, validMask, leafMask, localChildIdx);
+                        if (mipHasCoverage(leafDescriptorIndex)) {
+                            leafHit  = true;
+                            hitTLeaf = tEntryWorld + state.t_min;
+                        }
+                    }
+                } else {
+                    if (octreeConfig.formatId == FORMAT_STORED_SDF) {
+                        leafHit = handleLeafHitInstancedSdfAnyHit(state, coef, rayDir, tBias, tmax,
+                                                                  stack, hitTLeaf);
+                    } else {
+                        leafHit = handleLeafHitInstancedAnyHit(state, coef, rayDir, tBias,
+                                                               parent_descriptor, validMask, leafMask,
+                                                               hitTLeaf);
+                    }
+                }
+                if (leafHit && hitTLeaf >= tmin && hitTLeaf <= tmax) {
+                    return true;
+                }
+                state.t_min = tv_max;
+
+            } else {
+#ifdef LOD_ENABLED
+                if (pc.raySizeCoef > 0.0 &&
+                    tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
+                    float hitTMip = tEntryWorld + state.t_min;
+                    if (mipHasCoverage(state.parentPtr) && hitTMip >= tmin && hitTMip <= tmax) {
+                        return true;
+                    }
+                    return false;
+                }
+#endif
+                executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
+                                 tv_max, tx_center, ty_center, tz_center);
+                continue;
+            }
+        }
+
+        int step_mask;
+        int advanceResult = executeAdvancePhase(state, coef, step_mask);
+
+        if (advanceResult == 0) {
+            if (state.scale < octreeConfig.esvoMaxScale) {
+                state.t_max = stack[state.scale + 1].t_max;
+            }
+        }
+
+        if (advanceResult == 1) {
+            int popResult = executePopPhase(state, coef, stack, step_mask);
+            if (popResult == 1) return false;
+        }
+    }
+
+    return false;
+}
+
+// ============================================================================
+// ANY-HIT TRAVERSAL-RESTART WRAPPER (Baked-Perf M4 Task 4.2)
+// ============================================================================
+// Occlusion-only counterpart of traverseOctreeInstanced below: same bounded
+// tier-hop loop (MAX_TIER_HOPS, remapRayIntoChildFrame, the identical hitT/
+// cumulativeDirLen composition this file's derivation comment above already
+// covers) reused verbatim, calling traverseOctreeInstancedOnceAnyHit per hop
+// instead of the shading "once". tmin/tmax are re-expressed in EACH hop's own
+// local t-units the same way the shading wrapper's tWorldBase/tLocalUnitWorld
+// convert a world distance into hop-local units, just inverted (world tmax ->
+// this hop's local tmax) since the any-hit "once" function's own reject uses
+// hop-local t, not world t (a leaf hit's hitT there is tBias+tHit, in the
+// CURRENT hop's own frame -- see traverseOctreeInstancedOnce's identical
+// hitT=tBias+tHit convention).
+// ============================================================================
+bool traverseOctreeInstancedAnyHit(vec3 rayOrigin, vec3 rayDir,
+                              vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
+                              float tmin, float tmax) {
+    int originOctreeIdx      = g_octreeIdx;
+    int originEsvoNodeBase   = g_esvoNodeBase;
+    int originBrickArrayBase = g_brickArrayBase;
+
+    vec3 curRayOrigin = rayOrigin;
+    vec3 curRayDir    = rayDir;
+    vec3 curRayOriginLocal = rayOriginLocal;
+    vec3 curRayDirLocal    = rayDirLocal;
+    vec2 curGridT = gridT;
+
+    float cumulativeDirLen = 1.0;
+    float runningHitT = 0.0;
+
+    // Hop-threaded camera-anchored gate inputs (mirrors the shading wrapper's
+    // tWorldBase/tLocalUnitWorld, M8 Task 23) -- plain locals updated per hop,
+    // passed to traverseOctreeInstancedOnceAnyHit as real parameters.
+    float tWorldBase = 0.0;
+    float tLocalUnitWorld = 1.0 / max(length(rayDirLocal), 1e-30);
+
+    for (int hop = 0; hop < MAX_TIER_HOPS; ++hop) {
+        bool tierCrossHit;
+        uint tierCrossRefIndex;
+        vec3 tierCrossParentLocalOrigin, tierCrossParentLocalDir;
+        float tierCrossWorldT;
+
+        // This hop's own [tmin,tmax] window, in ITS local hitT convention
+        // (tBias+tHit, tBias being THIS hop's tEntryWorld -- see the shading
+        // wrapper's tierCrossWorldT/runningHitT derivation, which composes the
+        // SAME way): world tmin/tmax minus everything already walked
+        // (runningHitT), scaled back by this hop's own direction magnitude.
+        float hopTmin = (tmin - runningHitT) / max(cumulativeDirLen, 1e-30);
+        float hopTmax = (tmax - runningHitT) / max(cumulativeDirLen, 1e-30);
+
+        bool hit = traverseOctreeInstancedOnceAnyHit(curRayOrigin, curRayDir, curRayOriginLocal, curRayDirLocal, curGridT,
+                                               hopTmin, hopTmax,
+                                               tWorldBase, tLocalUnitWorld,
+                                               tierCrossHit, tierCrossRefIndex,
+                                               tierCrossParentLocalOrigin, tierCrossParentLocalDir,
+                                               tierCrossWorldT);
+
+        if (hit) {
+            g_octreeIdx      = originOctreeIdx;
+            g_esvoNodeBase   = originEsvoNodeBase;
+            g_brickArrayBase = originBrickArrayBase;
+            return true;
+        }
+        if (!tierCrossHit) {
+            g_octreeIdx      = originOctreeIdx;
+            g_esvoNodeBase   = originEsvoNodeBase;
+            g_brickArrayBase = originBrickArrayBase;
+            return false;
+        }
+
+        TierRef ref = tierRefTable[tierCrossRefIndex];
+
+        tWorldBase += tierCrossWorldT * (length(curRayDirLocal) * tLocalUnitWorld);
+        tLocalUnitWorld *= ref.childScale;
+
+        vec3 childLocalOrigin, childLocalDir;
+        remapRayIntoChildFrame(tierCrossParentLocalOrigin, tierCrossParentLocalDir, ref,
+                               childLocalOrigin, childLocalDir);
+
+        g_octreeIdx      = int(ref.childOctreeIndex);
+        g_esvoNodeBase   = configs[g_octreeIdx].nodeArrayBase;
+        g_brickArrayBase = configs[g_octreeIdx].brickArrayBase;
+
+        mat4 childLocalToWorld = configs[g_octreeIdx].localToWorld;
+        vec3 childRayOriginWorld = (childLocalToWorld * vec4(childLocalOrigin - vec3(1.0), 1.0)).xyz;
+        vec3 childRayDirWorld    = mat3(childLocalToWorld) * childLocalDir;
+
+        vec3 childGridOrigin = childLocalOrigin - vec3(1.0);
+        vec2 childGridT = rayAABBIntersection(childGridOrigin, childLocalDir, vec3(0.0), vec3(1.0));
+
+        runningHitT += tierCrossWorldT * cumulativeDirLen;
+        cumulativeDirLen = length(childRayDirWorld);
+
+        curRayOrigin      = childRayOriginWorld;
+        curRayDir         = childRayDirWorld;
+        curRayOriginLocal = childGridOrigin;
+        curRayDirLocal    = childLocalDir;
+        curGridT          = childGridT;
+    }
+
     g_octreeIdx      = originOctreeIdx;
     g_esvoNodeBase   = originEsvoNodeBase;
     g_brickArrayBase = originBrickArrayBase;

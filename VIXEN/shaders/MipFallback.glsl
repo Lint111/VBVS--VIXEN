@@ -73,4 +73,17 @@ bool shadeFromMipSample(uint nodeIdx, out vec3 hitColor, out vec3 hitNormal) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// mipHasCoverage (Baked-Perf M4 Task 4.2): occlusion-only counterpart of
+// shadeFromMipSample -- reads ONLY the SEM_SDF coverage float (one readMipSample
+// call, no SEM_COLOR fetch) to answer "is there an occluder baked at this
+// mip-fallback node," the exact same coverage test shadeFromMipSample's first
+// line already gates on. Any-hit callers (TraceWorldShadow's mip-fallback leaf
+// case) never need the color sample shadeFromMipSample goes on to read.
+// ---------------------------------------------------------------------------
+bool mipHasCoverage(uint nodeIdx) {
+    vec2 sdfSample = readMipSample(nodeIdx, SEM_SDF, 0.0);
+    return sdfSample.y > 0.0;
+}
+
 #endif // MIP_FALLBACK_GLSL
