@@ -3312,10 +3312,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // (~2-6 world unit) walls resolvable instead of dilating into solid overlapping
             // slabs (round 5's own finding). Light/object grid: no subdivision needed (their
             // thinnest dims are close enough to a full brick that subdividing them is a smaller,
-            // non-blocking cosmetic concern). n=16 (pow2) as before for the small bodies (subdiv=1).
+            // non-blocking cosmetic concern).
+            //
+            // Baked-Perf M5 Task 5.5 (small-body bake resolution bump): kSmallN was 16 (pow2)
+            // -- at subdiv=1 that is ~1 voxel/world-unit across the light/sphere/box bodies'
+            // full span, the COARSEST normals in the scene (every downstream light term is
+            // NdotL-gated -- Brdf.glsl / ProbeUpdate.comp -- so a coarse/faceted normal field
+            // reads as visibly near-black vs the virtual/procedural path's exact analytic
+            // normal). Doubled to 32 (still pow2, no BuildSdfBodyOctree round-up surprise --
+            // see that function's own pow2-round-up comment) for ~2 voxels/world-unit: no
+            // box-tight bakeRegion is passed for these 3 bodies (sphere/box/light bake their
+            // FULL grid, unlike the walls), so n alone determines sampling resolution here --
+            // a clean resolution bump with no other side effect on bake geometry/placement.
+            // kSmallSubdiv stays 1: unlike the walls (which need subdiv to resolve a THIN
+            // slab-shaped body), these bodies are roughly cube-shaped at a scale n already
+            // resolves reasonably -- doubling n directly (rather than adding subdiv) is the
+            // simpler lever and keeps bodyWorldPos/bodyRenderScale's grid<->world mapping
+            // unchanged in form (just a different n).
             constexpr int kWallSubdiv = 4;
             constexpr int kWallN   = 128;  // power of two (was 112 -- see the pow2 note above)
-            constexpr int kSmallN  = 16;
+            constexpr int kSmallN  = 32;   // was 16 -- Task 5.5 normals-resolution bump
             constexpr int kSmallSubdiv = 1;
 
             std::vector<CornellWorldSpaceBody> bodies = BuildCornellWorldSpaceBodies();
