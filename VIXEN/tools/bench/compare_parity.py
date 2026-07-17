@@ -384,12 +384,18 @@ def compare_cross_path(run_a: dict, run_b: dict, thresholds: dict) -> dict:
         else:
             perf_deltas[key] = vb - va
 
-    # cross_path is REPORT-ONLY (per parity_thresholds.json's "enforced" flag) --
-    # `meets_target` is informational (what M5 will eventually gate on), and
-    # never determines the tool's PASS/FAIL exit status while enforced=false.
+    # M5b: the baked run's OOB fraction is the PRIMARY signal the far-hit fix locks down
+    # (28% -> 0). Luminance p99 is deliberately NOT the far-hit metric: it measured 38.77
+    # WITH the far-hits and 40.77 WITHOUT them, i.e. it never moved with the corruption --
+    # the far-hit was a GEOMETRIC defect (OOB + cell disagreement), not a luminance one, so
+    # gating on OOB + cell agreement is what actually protects the fix. p99/mean-abs budgets
+    # stay (loose) regression fences for the residual baked-normal-quality divergence (M5's
+    # cause 2, a Phase-2 bake-resolution item, NOT this fix).
+    oob_a_frac = (cd_a["oob_count"] / cd_a["oob_total"]) if cd_a.get("oob_total") else 0.0
     meets_target = (
         agreement_pct >= cfg["instidx_agreement_pct_target"]
         and (bodies_match if cfg["require_bodies_match"] else True)
+        and oob_a_frac <= cfg.get("run_a_oob_fraction_max", 1.0)
         and image_result["mean_abs_luminance_delta"] <= cfg["luminance_mean_abs_delta_budget"]
         and image_result["p99_luminance_delta"] <= cfg["luminance_p99_delta_budget"]
         and image_result["pct_pixels_over_threshold"] <= cfg["pct_pixels_over_threshold_budget"]
@@ -433,12 +439,23 @@ def build_summary_line(result: dict) -> tuple[str, str]:
             summary += f" luminance_p99_delta={result['image']['p99_luminance_delta']:.2f}"
         return status, summary
     else:
-        status = "REPORT"
+        # M5b: cross_path now honors the "enforced" flag. enforced=false -> REPORT (never
+        # fails the gate, pre-M5b behavior). enforced=true -> PASS/FAIL on meets_target, so
+        # a regression that re-breaks baked<->virtual parity (e.g. the far-hit returning:
+        # OOB spikes, cell agreement drops) hard-fails the milestone gate exactly like
+        # same_path does.
         img = result["image"]
+        if result["enforced"]:
+            status = "PASS" if result["meets_future_m5_target"] else "FAIL"
+            mode_label = f"cross_path {status.lower()} (ENFORCED)"
+        else:
+            status = "REPORT"
+            mode_label = "cross_path (report-only, enforced=False)"
         summary = (
-            f"cross_path (report-only, enforced={result['enforced']}) -- "
+            f"{mode_label} -- "
             f"cell_agreement={result['cell_agreement_pct']:.1f}% "
             f"bodies_match={result['bodies_match']} "
+            f"run_a_oob={result['run_a_oob']} "
             f"luminance_mean_abs_delta={img['mean_abs_luminance_delta']:.2f} "
             f"luminance_p99_delta={img['p99_luminance_delta']:.2f} "
             f"pct_pixels_over_threshold={img['pct_pixels_over_threshold']:.1f}% "
@@ -513,6 +530,10 @@ def main() -> int:
     print(f"PARITY: {status} {summary}")
 
     if result["mode"] == "same_path" and not result["passed"]:
+        return 1
+    # M5b: an ENFORCED cross_path that misses its target hard-fails (exit 1), same as
+    # same_path. A report-only (enforced=false) cross_path never affects the exit code.
+    if result["mode"] == "cross_path" and result["enforced"] and not result["meets_future_m5_target"]:
         return 1
     return 0
 

@@ -10,13 +10,14 @@
     "luminance_p99_max_delta": 2.0
   },
   "cross_path": {
-    "_comment": "Baked vs virtual -- the two providers are expected to diverge today (baked lighting is not yet parity-matched to virtual's). This mode REPORTS the divergence so it is machine-quantified and tracked, but does not fail the gate. M5 (Baked-Perf-Fix-Pipeline-Plan-2026-07.md Milestone M5) flips 'enforced' to true once baked-lighting-parity closes -- do not flip this by hand without that milestone's sign-off.",
-    "enforced": false,
-    "instidx_agreement_pct_target": 90.0,
+    "_comment": "Baked vs virtual. ENFORCED at M5b (2026-07-17) once the backWall far-hit root cause was fixed (non-unit instDir into the ESVO ray setup at renderScale!=1 -- TraceWorld.glsl; see Baked-Perf-Fix-Pipeline-Plan-2026-07.md M5b). Budgets set from the MEASURED post-fix cross-path numbers with regression margin: cell_agreement 99.0%, run_a(baked) OOB 0/183540, luminance mean-abs 4.70, p99 40.77, pct-over-threshold 7.9%. The LOAD-BEARING far-hit fences are instidx_agreement_pct_target + run_a_oob_fraction_max: those are the metrics the far-hit corrupted (agreement 95->99, OOB 28%->0). The luminance p99/mean-abs budgets are DELIBERATELY loose regression fences, NOT a parity target -- p99 measured 38.77 WITH the far-hits and 40.77 WITHOUT, i.e. it never tracked the corruption; the residual ~40 p99 is baked-normal-quality on the subdiv=1 small bodies (sphere/box/light render dimmer than virtual's analytic normals -- M5's cause 2, a Phase-2 bake-resolution item, NOT the far-hit). Do not tighten the luminance budgets to force 'parity' without that Phase-2 bake work; do keep them tight enough that a returning far-hit (which spikes OOB + drops agreement) fails here.",
+    "enforced": true,
+    "instidx_agreement_pct_target": 97.0,
     "require_bodies_match": true,
-    "luminance_mean_abs_delta_budget": 40.0,
-    "luminance_p99_delta_budget": 120.0,
-    "pct_pixels_over_threshold_budget": 60.0
+    "run_a_oob_fraction_max": 0.02,
+    "luminance_mean_abs_delta_budget": 8.0,
+    "luminance_p99_delta_budget": 55.0,
+    "pct_pixels_over_threshold_budget": 12.0
   },
   "pixel_diff_threshold": 24,
   "instidx_grid_size": 25

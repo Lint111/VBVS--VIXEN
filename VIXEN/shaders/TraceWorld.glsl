@@ -243,25 +243,35 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // base octree's world frame by undoing the placement, then let
         // traverseOctreeInstanced apply configs[oi].worldToLocal exactly once:
         //
-        //   p_base = (p_world      - worldPos) / renderScale     (point)
-        //   d_base =  d_world                  / renderScale     (direction)
+        //   p_base = (p_world - worldPos) / renderScale            (point)
+        //   d_base =  normalize(d_world)  = d_world (already unit)  (direction)
         //
-        // CRITICAL: the SAME /renderScale must scale BOTH origin and
-        // direction, or the t-parametrisation is warped and hitT (used for the
-        // cross-instance nearest-hit test and the LOD coarse-shade distance)
-        // ends up in inconsistent units when renderScale != 1.  The translation
-        // term drops out of the direction because a direction is a difference
-        // of points; the scale does not.
+        // ORIGIN is de-instanced (÷renderScale) so the traversal runs in the
+        // base octree's own shrunk frame; DIRECTION is kept UNIT-LENGTH. With a
+        // unit direction and the de-instanced origin, the ESVO traversal's
+        // returned hitT is a EUCLIDEAN DISTANCE in that shrunk frame — the SAME
+        // kind of quantity as tEntryWorld (initRayCoefficients/rayStartWorld's
+        // own length()-based entry distance, SceneBindings.glsl). hitT *=
+        // renderScale (below) then converts that shrunk-frame distance to true
+        // world distance for the cross-instance nearest-hit test.
         //
-        // We deliberately do NOT renormalise d_base: traverseOctreeInstanced
-        // and initRayCoefficients are scale-tolerant (they derive t-spans from
-        // ratios), and keeping d_base = rayDir/renderScale means hitT is in the
-        // SAME world-distance units across every instance, so the nearest-hit
-        // comparison is correct.  (rayDir itself is already unit-length.)
+        // WHY UNIT, not rayDir/renderScale (M5b root-cause fix, 2026-07-17): the
+        // ESVO leaf composes hitT = tBias + state.t_min + sHit/(dirLen*gridScale)
+        // (SceneBindings.glsl handleLeafHitInstancedSdf). tBias (=tEntryWorld) is
+        // a length()-distance, but state.t_min/sHit are t-PARAMETERS along the
+        // direction fed to initRayCoefficients. Those two are only the same unit
+        // when that direction is UNIT-length. Passing a non-unit rayDir/renderScale
+        // made state.t_min come out renderScale× larger than tBias, so their sum
+        // (then *renderScale) placed the hit renderScale× too far along the ray —
+        // the backWall z≈−27 far-hit, seen ONLY at renderScale≠1 (every prior
+        // scene used renderScale=1, where /renderScale is a no-op and the bug is
+        // invisible). Verified byte-exact against the CPU mirror
+        // (test_stored_sdf_march_mirror.cpp, which always normalizes): non-unit
+        // dir reproduces z=−27; unit dir gives the correct z=6 surface hit.
+        // Normalizing is a strict no-op for renderScale==1 (instDir already unit).
         // ------------------------------------------------------------------
-        float invScale = 1.0 / inst.renderScale;
-        vec3  instOrigin = (rayOrigin - inst.worldPos) * invScale;
-        vec3  instDir    = rayDir * invScale;
+        vec3  instOrigin = (rayOrigin - inst.worldPos) / inst.renderScale;
+        vec3  instDir    = normalize(rayDir);   // UNIT — see the M5b note above
 
         // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
         // traversal uses internally), before paying for full ESVO descent.
@@ -275,16 +285,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // tight one — an earlier version of this fix passed the tight gridT straight
         // through and broke bodies whose tight bounds are genuinely interior to the
         // root cube (verified live: backWall/sphereObj vanished 100% in the Cornell
-        // repro). Root cause: traverseOctreeInstancedOnce's rayStartWorld/
-        // initRayCoefficients/initTraversalState (SceneBindings.glsl / ESVOCoefficients
-        // .glsl / ESVOTraversal.glsl) implement the classic Laine-Karras ESVO ray setup,
-        // which assumes an "exterior ray" entry point sits exactly ON the octree's own
-        // [1,2]^3-normalized root-cube boundary -- entering instead at an interior
-        // sub-box crossing (the tight bounds' own surface, when it doesn't coincide
-        // with the true root face) produces a t_min/t_max span computed against the
-        // WRONG cube face, which can invert or degenerate to empty (state.t_min >=
-        // state.t_max), silently missing the whole instance on every ray. The tight
-        // bounds are therefore used ONLY as a strictly-conservative fast-reject (miss
+        // repro) -- the tight span substituted a WRONG entry face into the ESVO
+        // t_min/t_max setup, which can invert/degenerate and silently miss the
+        // instance. (M5b note, 2026-07-17: that live "vanished when tight-gridT was
+        // substituted" observation stands, but do NOT read it as the cause of the
+        // backWall z≈−27 FAR-HIT -- that was a SEPARATE bug, the non-unit instDir
+        // fed into the ESVO ray setup at renderScale≠1, now fixed at instDir above;
+        // the M5-era attribution of the far-hit to this interior-entry frame issue
+        // was disproven by the CPU mirror, which reproduces the far-hit purely from
+        // the direction magnitude.) The tight bounds are therefore used ONLY as a
+        // strictly-conservative fast-reject (miss
         // the instance entirely if the tight AABB itself isn't hit -- correct, since
         // "outside every allocated brick's tight AABB" always implies "outside the
         // populated geometry" regardless of which cube's boundary the descent enters
@@ -328,19 +338,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // point" to compare in that case, and the instance may still be the
         // nearest hit.
         //
-        // ROOT-CAUSE FIX (Cornell demo M1 round 4): entryPointWorldInstSpace is
-        // measured in the (instOrigin-relative, i.e. ALREADY /renderScale) frame
-        // -- length(entryPointWorldInstSpace - instOrigin) is therefore a t
-        // PARAMETER along instDir, not a true world distance, UNLESS renderScale
-        // == 1 (every scene before this one happened to use renderScale=1, which
-        // made this bug invisible -- see instDir's own /invScale derivation
-        // above: instDir is rayDir/renderScale, NOT unit-length, contrary to the
-        // old comment here). Multiplying by inst.renderScale converts the
-        // parameter back to true world-distance units, matching bestT (which
-        // accumulates real hitT values, now also renderScale-corrected below).
-        // Verified numerically against a live GPU readback (HitRecord.worldPos):
-        // without this factor, a renderScale=3.2 body reported hitT=5.625 for a
-        // ray whose true entry distance was 18.0 (5.625*3.2==18.0 exactly).
+        // RENDERSCALE CORRECTION (Cornell demo M1 round 4; instDir clarified by
+        // the M5b fix above): entryPointWorldInstSpace and instOrigin both live
+        // in the de-instanced (÷renderScale) frame, so length(entryPointWorldInstSpace
+        // - instOrigin) is a Euclidean distance in that shrunk frame — the SAME
+        // shrunk-frame-distance quantity the ESVO traversal's hitT now is (instDir
+        // is UNIT, see above). Multiplying by inst.renderScale converts it to true
+        // world distance, matching bestT (which accumulates real hitT values, also
+        // *renderScale below). Verified numerically against a live GPU readback
+        // (HitRecord.worldPos): without this factor, a renderScale=3.2 body reported
+        // hitT=5.625 for a ray whose true entry distance was 18.0 (5.625*3.2==18.0).
         if (gridT.x >= 0.0) {
             vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
             vec3 entryPointWorldInstSpace =
@@ -385,18 +392,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         uint  hitBrick;
         uint  hitVoxel;
 
-        // Pass the de-instanced ray (origin AND direction both scaled by
-        // 1/renderScale). ROOT-CAUSE FIX (Cornell demo M1 round 4): instDir is
-        // NOT unit-length when renderScale != 1 (it is rayDir/renderScale), so
-        // traverseOctreeInstanced's returned hitT is a parameter along instDir,
-        // not a true world distance -- multiply by inst.renderScale below to
-        // recover true world-distance units before it's used for the
-        // cross-instance nearest-hit test or HitRecord.worldPos reconstruction
-        // (BodyInstanceRayMarch.comp's rayOrigin + rayDir*hitT). Every scene
-        // before this one used renderScale=1, which made the missing factor
-        // invisible (multiplying by 1 is a no-op) -- see this file's other
-        // renderScale-correction (the entryTWorld reject above) for the same fix
-        // applied to the front-to-back early-reject's own copy of this math.
+        // Pass the de-instanced ray: origin ÷renderScale, direction UNIT (M5b
+        // fix — see the instOrigin/instDir block above). traverseOctreeInstanced
+        // returns hitT as a Euclidean distance in the de-instanced (shrunk) frame;
+        // multiply by inst.renderScale below to recover true world-distance units
+        // before it's used for the cross-instance nearest-hit test or
+        // HitRecord.worldPos reconstruction (BodyInstanceRayMarch.comp's
+        // rayOrigin + rayDir*hitT). Every scene before backWall used renderScale=1,
+        // which made the *renderScale a no-op and the non-unit-direction unit-mix
+        // bug invisible -- see this file's other renderScale-correction (the
+        // entryTWorld reject above) for the same factor on the early-reject math.
         //
         // Pass localRayOrigin/localRayDir/gridT (already computed above for the AABB cull)
         // straight through instead of letting traverseOctreeInstanced recompute the same
@@ -408,7 +413,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
-        hitT *= inst.renderScale;  // parameter-along-instDir -> true world distance (see comment above)
+        hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see comment above)
 #ifdef VIXEN_GPU_TRACE_HOOKS
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
 #endif
@@ -528,11 +533,15 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         g_brickArrayBase = configs[oi].brickArrayBase;
 
         // World -> instance-local ray transform (identical to TraceWorld; see
-        // that function's block comment for the full derivation of why the
-        // SAME invScale must divide both origin and direction).
-        float invScale = 1.0 / inst.renderScale;
-        vec3  instOrigin = (rayOrigin - inst.worldPos) * invScale;
-        vec3  instDir    = rayDir * invScale;
+        // that function's block comment for the full derivation). ORIGIN is
+        // de-instanced (÷renderScale); DIRECTION is UNIT (M5b root-cause fix,
+        // 2026-07-17 — a non-unit rayDir/renderScale makes the ESVO state.t_min
+        // renderScale× larger than tEntryWorld, mixing units in the hitT sum and
+        // placing the occluder renderScale× too far; occlusion at renderScale≠1
+        // was consequently wrong). hitT *= renderScale below converts the
+        // shrunk-frame distance to true world. No-op for renderScale==1.
+        vec3  instOrigin = (rayOrigin - inst.worldPos) / inst.renderScale;
+        vec3  instDir    = normalize(rayDir);   // UNIT — see the M5b note in TraceWorld
 
         // Quick AABB cull in the base octree's [0,1]^3 grid, before paying for
         // full ESVO descent. Tight-bounds fast-reject, same as TraceWorld's identical
@@ -586,7 +595,7 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
-        hitT *= inst.renderScale;  // parameter-along-instDir -> true world distance (see TraceWorld's identical fix)
+        hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see TraceWorld)
 
         if (instHit && hitT >= tmin && hitT <= tmax) {
             return true;  // any-hit: confirmed occluder, stop immediately

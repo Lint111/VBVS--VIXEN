@@ -943,9 +943,6 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     // fields at the memset(0) default -- the documented backward-safe "no tighter bound"
     // sentinel, deliberately NOT a synthesized inverted/empty range that could misbehave
     // in the shader's cull math.
-    // DIAGNOSTIC TEMP REVERT (isolating Task 5.1, final confirmation with the COMPLETE
-    // M5 diff otherwise restored): force-disabled to re-confirm this write is the root
-    // cause even with Task 5.3 (sort) back in place.
     if (anyBrickAllocated) {
         const float invBpa = 1.0f / static_cast<float>(oct->bricksPerAxis);
         const glm::vec3 tbMin = glm::vec3(brickCellMin) * invBpa;
