@@ -5694,7 +5694,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
                   blitNode, BlitNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                  blitNode, BlitNodeConfig::TIMELINE_FRAME_BASE_IN);
+                  blitNode, BlitNodeConfig::TIMELINE_FRAME_BASE_IN)
+         // Baked-Perf M6 Task 6.1 (audit E2): BlitNode is now the real first swapchain-
+         // touching submit on the writesNoImage march path (the march no longer waits
+         // imageAvailable itself — see ComputeDispatchWaitsForSwapchainAcquire's doc
+         // comment), so it must consume the acquire wait BlitNodeConfig's own
+         // IMAGE_AVAILABLE_SEMAPHORES_ARRAY slot already anticipated for exactly this.
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  blitNode, BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
     // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE
@@ -5717,10 +5724,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // class bugs. So we keep these connections purely as ORDERING edges (their documented secondary
     // purpose, mirroring UIRenderNodeConfig's own SWAPCHAIN/COMPOSITE_WAIT convention exactly): the
     // binary semaphores they carry are INERT — the march no longer signals a real renderComplete in
-    // composite (writesNoImage + leaveImageInGeneral), BlitNode's own renderComplete output is
-    // real (it owns the fence) but SkyProjectionNode never WAITS its COMPOSITE_WAIT_SEMAPHORE
-    // input, and UIRenderNode no longer waits compositeWait either (the M3 binary handoff was
-    // dropped from its submit). With the edges in the right direction the scheduler bakes
+    // composite (writesNoImage + leaveImageInGeneral), and Baked-Perf M6 Task 6.3 (audit E4) fixed
+    // BlitNode to match: it used to unconditionally signal a real renderComplete even in composite
+    // mode (an orphaned per-image binary semaphore nothing ever waited, re-signalled illegally the
+    // next time this image index came around — VUID-vkQueueSubmit2-semaphore-03868), so now its
+    // output here is also VK_NULL_HANDLE in composite mode. SkyProjectionNode never WAITS its
+    // COMPOSITE_WAIT_SEMAPHORE input, and UIRenderNode no longer waits compositeWait either (the M3
+    // binary handoff was dropped from its submit). With the edges in the right direction the scheduler bakes
     // march(HitRecord)->DirectLighting(GENERAL)->Blit(GENERAL)->sky-projection(GENERAL)->UI(GENERAL)
     // timeline edges, tags the UI group as present (its render pass owns GENERAL->PRESENT_SRC,
     // unchanged), and the timeline alone — not a binary handoff — orders every pass. WSI acquire

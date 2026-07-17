@@ -68,12 +68,13 @@ add_executable(test_rendergraph_criticalnodes_infra1
     Nodes/test_frame_sync_node.cpp
     Nodes/test_render_target_node.cpp
     Nodes/test_compute_dispatch_node.cpp
+    Nodes/test_blit_node.cpp
     Nodes/test_blend_mode.cpp
 )
 target_link_libraries(test_rendergraph_criticalnodes_infra1 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 set_target_properties(test_rendergraph_criticalnodes_infra1 PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_rendergraph_criticalnodes_infra1)
-message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blend_mode)")
+message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)")
 
 # ===========================================================================
 # Group 2: test_rendergraph_criticalnodes_infra2 — bare link surface plus two

@@ -235,10 +235,13 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
 
         // Binary signal (renderComplete, indexed by image) — Present waits on this.
+        // Baked-Perf M6 Task 6.3 (audit pattern R7): scoped to COMPUTE_SHADER_BIT, matching
+        // the acquire wait's and the consumer's own timeline wait stage masks above (this
+        // node's only queue-side work is the compute dispatch), not ALL_COMMANDS_BIT.
         VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         renderSig.semaphore = renderComplete[imageIndex];
         renderSig.value     = 0;  // binary: value ignored
-        renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        renderSig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
         signals.push_back(renderSig);
     } else {
         // Producer: timeline SIGNALS only. A group signals its OWN completion value once.
