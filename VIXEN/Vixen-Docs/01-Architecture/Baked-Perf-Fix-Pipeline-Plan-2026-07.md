@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0–M3 DONE; M5 in flight (runs before M4/M4b); worktree fix/baked-perf-pipeline
+status: RUNNING — M0–M3+M5 DONE; M5b in flight (backWall far-hit root cause); worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -292,17 +292,17 @@ M5 executes after M3 and BEFORE M4/M4b (mip A/Bs must not be confounded by the s
 defect). Full per-axis box-shaped bake grids (the complete fix for both causes) is
 Phase-2 backlog — extends the shipped SDF-Bake-Box-Tight work.
 
-- [ ] Task 5.1 — Record allocated-brick min/max AABB in `SerializeSdf`'s existing loop →
+- [x] Task 5.1 — Record allocated-brick min/max AABB in `SerializeSdf`'s existing loop →
   `traceBoundsMin/Max` `OctreeConfig` fields (codegen path; backward-safe zero default)
   (`SdfBake.h:399-406`, `ShellOctreeGpu.h:791-804`; audit B3 / Top #8; red branch
   reference). In the same schema change, REPLACE the dead `gridMin/gridMax` fields
   (uploaded but read by no dispatched shader — inventory #10): net-zero schema growth,
   removes dead weight.
-- [ ] Task 5.2 — Shader-side: AABB cull + front-to-back entry reject using the bounds in
+- [x] Task 5.2 — Shader-side: AABB cull + front-to-back entry reject using the bounds in
   `TraceWorld.glsl:234,:266-279` (+ shadow variant from M4).
-- [ ] Task 5.3 — Instance sort key: cube center (or bounds center), not min-corner
+- [x] Task 5.3 — Instance sort key: cube center (or bounds center), not min-corner
   (`InstanceSort.h:26-34`; audit B3 corollary).
-- [ ] Task 5.4 — A/B bench + hole-hunt: grazing angles screenshot sweep. **Includes the
+- [x] Task 5.4 — A/B bench + hole-hunt: grazing angles screenshot sweep. **Includes the
   user-reported wall-thickness-step repro (2026-07-16, screenshot at
   `temp_bench/reference/wall-thickness-steps-2026-07-16.png` in the worktree): silhouette
   steps at the LEFT-WALL TOP and the FLOOR FRONT-RIGHT EDGE — both grazing regions.
@@ -311,13 +311,13 @@ Phase-2 backlog — extends the shipped SDF-Bake-Box-Tight work.
   granularity (sentinel face probe-crawl), (3) box-tight bake-region boundary snapping
   (`cd9e1362` pow2 round-up) crossing the wall. Gate: both marked steps gone or
   root-caused with evidence.**
-- [ ] Task 5.5 — Far-hit rejection (lighting-parity interim fix): using 5.1's tight
+- [x] Task 5.5 — Far-hit rejection (lighting-parity interim fix): using 5.1's tight
   trace bounds, discard/clamp hits whose reconstructed `worldPos` falls outside the
   body's bounds+ε before the HitRecord write (`BodyInstanceRayMarch.comp:246` area) —
   stops corrupted `worldPos` from poisoning `gatherIndirectDiffuse`
   (`SpatialReuseShade.comp:498`, edge-clamped probe cells at `:265`) and the cross-region
   color bleed. Expect the OOB fraction (~27.5%) to collapse.
-- [ ] Task 5.6 — Small-body bake resolution bump (normals-parity interim fix): the
+- [x] Task 5.6 — Small-body bake resolution bump (normals-parity interim fix): the
   subdiv=1 bodies (light/sphere/box) bake at `kSmallN=16` ≈ 1 voxel/world-unit — the
   coarsest normals in the scene, why they render near-black. Raise their bake resolution
   (e.g. 16→32 or subdiv 1→2; small absolute memory/bake cost) and A/B the sphere/box
@@ -421,6 +421,7 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 | M2d | Automated visual-parity gate | 2d.1–2d.2 | S–M | golden-hash + cross-path divergence detector |
 | M3 | March-loop package | 3.1–3.4 | M | ~16 FPS |
 | M5 | Trace bounds + culling + lighting parity | 5.1–5.6 | M | **runs 3rd** — cull + DDGI un-poisoning |
+| M5b | backWall far-hit root cause + enforce parity | 5b.1–5b.4 | M (Opus) | OOB collapse + cross_path enforced |
 | M4 | Shadow/probe economy | 4.1–4.5 | S–M | lighting passes cut |
 | M4b | Sparse-Mip for secondary rays | 4b.1–4b.4 | M | probe/shadow coarse-LOD |
 | M6 | Sync/overlap | 6.1–6.4 | M | wall≈GPU span |
@@ -532,3 +533,51 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   the old "M3 ≈ 16 FPS" over-attributed a red-prototype bundle that included
   M5-owned trace bounds + sync; M3's fetch-volume mechanism is fully delivered, the
   residual is step-count × memory latency (M5/M4b/relaxed-stepping territory).
+
+- M5 (Tasks 5.1–5.6): DONE · commits `2bd30fba..322fdec9` + golden regen `c0df3667` ·
+  Opus validator APPROVED · 2026-07-17. **Perf + geometry-repro delivered: whole-frame
+  138→106 ms (−23% vs validator's independent M3 baseline; esvo −48%, spatial −48%);
+  BOTH user-repro wall-thickness silhouette steps FIXED by Task 5.2's cull alone; all
+  8 bodies preserved; 3/625 golden drift individually justified (box-silhouette
+  correctness improvement) and goldens regenerated under validator sign-off.**
+  Schema: `traceBoundsMin/Max` replaced dead `gridMin/gridMax` at identical offsets
+  (SPIR-V reflection parity proven). **Lighting parity RE-SCOPED to M5b: the backWall
+  (octree 2) has PRE-EXISTING far-hit corruption across its visible region
+  (worldPos.z≈−27 vs true z≈[4,6], confirmed present at the M3 baseline from main's
+  own artifacts) — Task 5.4 (far-hit rejection) is implemented+pre-validated but
+  DISABLED (`if(false&&)` at BodyInstanceRayMarch.comp:254) because enabling it blanks
+  backWall.** Root cause documented precisely (TraceWorld.glsl:278-294): Laine-Karras
+  ray setup assumes exterior-ray entry on the root-cube face; interior sub-box entry
+  computes the span against the wrong face → degenerate/inverted span → instance
+  silently missed — why the cull can only fast-reject, not constrain. Cross-path stays
+  enforced:false (p99 38.77 unchanged) until M5b lands.
+
+## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
+
+Rationale: the single remaining blocker between the pipeline and lighting parity +
+the enforced cross-path gate + the 16–20 FPS tier. One Sonnet round bounced off the
+coordinate-frame aspect; deep ESVO frame bugs historically needed Opus.
+
+- [ ] Task 5b.1 — Root-cause + fix the ESVO interior-entry defect: `TraceWorld.glsl:
+  278-294` documents it precisely (traverseOctreeInstancedOnce → rayStartWorld /
+  initRayCoefficients / initTraversalState; Laine-Karras exterior-entry assumption
+  breaks for interior sub-box entry → inverted/degenerate span). Fix the ray setup so
+  tight bounds genuinely CONSTRAIN the march — this should kill backWall's z≈−27
+  far-hit class at the source. Signature: backWall instIdx 2, OOB 51610/183540
+  baseline. Epsilon tuning is proven useless (1-brick and 2-brick both fail).
+  Fallback lever if the frame fix stalls: Phase-2 per-axis box bake grids.
+- [ ] Task 5b.2 — Enable far-hit rejection: flip `if(false&&)` →
+  `if(anyHit...` at `BodyInstanceRayMarch.comp:254`. Gate: OOB fraction collapses
+  (28%→near-virtual levels); ALL 8 bodies incl. backWall present.
+- [ ] Task 5b.3 — Lighting-parity close: cross-path A/B (target luminance p99 ≪ 38.77);
+  flip `enforced:true` in `parity_thresholds.json` with a measured p99 threshold
+  (~5–10 range per M5's projection); regenerate goldens under validator sign-off
+  (image legitimately changes: silhouettes + lighting).
+- [ ] Task 5b.4 — Cleanup + parity: delete stale diagnostic comment
+  `ShellOctreeGpu.h:946-948`; update the CPU mirror 1:1 if march semantics changed;
+  full test sweep + documented map deltas.
+
+**Gate:** OOB sharply down; backWall + 8 bodies present; luminance p99 ≪ 38.77 and
+cross_path ENFORCED; baked visually matches virtual (the original user lighting-gap
+complaint resolved); mirror/serialize/bake/sdiparity green; map deltas documented +
+goldens regenerated at close.
