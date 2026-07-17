@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0–M5b+M4(4.1–4.3) DONE; M4b in flight (Sparse-Mip secondary rays); worktree fix/baked-perf-pipeline
+status: RUNNING — M0–M4b DONE (~19 FPS class); M6 in flight (sync hygiene, trimmed scope); worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -258,17 +258,17 @@ probe_update 140.6 + spatial_reuse 74.1 ms = ⅔ of the frame is secondary rays 
 don't need brick-resolution distances. Sequenced AFTER the baked-lighting-gap diagnosis
 so mip A/Bs aren't confounded by a pre-existing shading defect.
 
-- [ ] Task 4b.1 — Dormancy audit: confirm mip pools are baked+uploaded on the Cornell
+- [x] Task 4b.1 — Dormancy audit: confirm mip pools are baked+uploaded on the Cornell
   baked path, `MipFallback.glsl` still compiles against current bindings, and M1's
   `brickLookupBase` stamping covers the mip lookup tables (`ConcatenateSdfWithMips` was
   stamped in M1 — verify the mip-march read side).
-- [ ] Task 4b.2 — Per-ray-type LOD policy: probe rays (`ProbeUpdate.comp`) and shadow
+- [x] Task 4b.2 — Per-ray-type LOD policy: probe rays (`ProbeUpdate.comp`) and shadow
   rays (M4's any-hit variant) march coarse mip level(s) via the MipFallback path;
   primary rays unchanged at full res.
-- [ ] Task 4b.3 — A/B with per-pass timers: probe_update + spatial_reuse deltas;
+- [x] Task 4b.3 — A/B with per-pass timers: probe_update + spatial_reuse deltas;
   correctness: primary-ray instIdx map unchanged; image soft-compare vs full-res
   reference — watch for light leaks / over-darkening in the closed box.
-- [ ] Task 4b.4 (stretch, knob-gated OFF by default) — Footprint-driven mip selection
+- [ ] Task 4b.4 (DOCUMENTED + DEFERRED to Phase-2 at M4b close — risks same_path invariant, needs level blending; stretch, knob-gated OFF by default) — Footprint-driven mip selection
   for PRIMARY rays: reuse the existing `RaySizeCoefNode` ray-size term
   (`size = coef·t + bias`, already used for ESVO descent termination) to pick the brick
   mip level in `marchBrickSdf`. Accept only if the image gate shows no visible popping /
@@ -593,6 +593,23 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   Inc6-amortization interaction — convergence-DYNAMICS risk class that could pass the
   tick-150 gate yet be wrong later; M4b's secondary-ray mips attack the same probe cost
   with less state risk. Re-evaluate after M4b.**
+
+- M4b (Tasks 4b.1–4b.3; 4b.4 documented+deferred): DONE · commits `f123a0d9`,
+  `c4bc07f5` · Opus validator APPROVED · 2026-07-17. **Zero shader changes**: new
+  `secondaryRaySizeCoefConstant` (0.05, env `VIXEN_SECONDARY_RAY_SIZE_COEF`) feeds
+  field 8 of the DirectLighting/SpatialReuse gatherers (replacing the primary-mirrored
+  coefficient that could structurally never trip) and newly fields 8+9 of ProbeUpdate's
+  (previously ZERO-FILLED → probe rays always ran full detail). **spatial_reuse
+  8.0→~3.8 ms (~2.1×), probe_update 65→~30 ms (~2×, validator-reproduced), whole frame
+  −~20%.** Field mapping proven at the reflection level (all 3 shaders share
+  SceneBindings' PushConstants; field 8 = raySizeCoef byte 48); primary gatherer
+  byte-identical (structural same_path safety); mip-gate math verified to coarsen
+  progressively, not floor. Parity: same_path hash-equal, cross_path ENFORCED PASS
+  both fences; no leaks/over-darkening; esvo 62–71 ms spread settled as GPU-timing
+  noise (5-run evidence). 4.4 (probe sleep) CONFIRMED stays Phase-2 — M4b reclaimed the
+  cost with no new state. Benign pre-existing finding for a future KI: systemic
+  non-fatal `PushConstantGathererNode::ValidateFieldType` type-mismatch log noise on
+  every field/gatherer (present pre-M4b; packing proven correct by the luminance gates).
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
