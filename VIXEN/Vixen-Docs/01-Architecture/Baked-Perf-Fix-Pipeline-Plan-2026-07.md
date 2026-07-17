@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0–M3+M5 DONE; M5b in flight (backWall far-hit root cause); worktree fix/baked-perf-pipeline
+status: RUNNING — M0–M3+M5+M5b DONE (OOB=0, cross_path ENFORCED); M4 in flight; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -552,13 +552,36 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   silently missed — why the cull can only fast-reject, not constrain. Cross-path stays
   enforced:false (p99 38.77 unchanged) until M5b lands.
 
+- M5b (Tasks 5b.1–5b.4): DONE · commits `7e2a983a` + golden regen `40352dce` · Opus
+  implementer + Opus validator APPROVED · 2026-07-17. **backWall far-hit ROOT CAUSE:
+  non-unit `instDir = rayDir/renderScale` fed into the ESVO ray setup — the hitT
+  composition mixes a `length()`-distance (tEntryWorld) with `1/|dir|`-scaled
+  t-parameters (state.t_min), agreeing only for unit directions → renderScale-inflated
+  far-hits (backWall z≈−27; invisible at renderScale=1, why no prior scene showed it).
+  Fix = `normalize(rayDir)` at TraceWorld.glsl:274/:544.** Overturns M5's
+  interior-entry hypothesis (disproven: camera exterior; CPU mirror reproduced BOTH
+  states byte-exact — z=6.002 fixed / z=−26.992 pre-fix; mirror's skipped normalize
+  was exactly why it had always been "correct"). **OOB 51610→0 (28%→0%); this also
+  closes the historical "~35–40k out-of-bounds worldPos" mystery chased since before
+  the pipeline.** Far-hit rejection re-enabled (now rejects nothing — belt-and-braces).
+  **cross_path parity ENFORCED and PASSING** (agreement 99.0%, OOB gate 0.02,
+  luminance budgets documented as loose fences — p99 never tracked the far-hit; the
+  residual small-body dimness is the Phase-2 bake-normal item). Warm same-session A/B
+  vs the M5 boundary: **GPU span 173.6→69.0 ms (~2.5×), probe_update 85→25 ms,
+  esvo 68→32, spatial 21→12** (absolute numbers float with machine state across
+  sessions; the same-session ratio is the solid figure). Golden regenerated
+  (29/625 = backWall+silhouette correction, verified cell-by-cell). Reds = KI'd set
+  (035/036/038). NOTE for future validators: full parallel builds can surface ~5
+  transient codegen-`_check` reds (dotnet SDFNodeGenerator file-lock race under -j12);
+  serial re-run passes; not a regression.
+
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
 Rationale: the single remaining blocker between the pipeline and lighting parity +
 the enforced cross-path gate + the 16–20 FPS tier. One Sonnet round bounced off the
 coordinate-frame aspect; deep ESVO frame bugs historically needed Opus.
 
-- [ ] Task 5b.1 — Root-cause + fix the ESVO interior-entry defect: `TraceWorld.glsl:
+- [x] Task 5b.1 — Root-cause + fix the ESVO interior-entry defect: `TraceWorld.glsl:
   278-294` documents it precisely (traverseOctreeInstancedOnce → rayStartWorld /
   initRayCoefficients / initTraversalState; Laine-Karras exterior-entry assumption
   breaks for interior sub-box entry → inverted/degenerate span). Fix the ray setup so
@@ -566,14 +589,14 @@ coordinate-frame aspect; deep ESVO frame bugs historically needed Opus.
   far-hit class at the source. Signature: backWall instIdx 2, OOB 51610/183540
   baseline. Epsilon tuning is proven useless (1-brick and 2-brick both fail).
   Fallback lever if the frame fix stalls: Phase-2 per-axis box bake grids.
-- [ ] Task 5b.2 — Enable far-hit rejection: flip `if(false&&)` →
+- [x] Task 5b.2 — Enable far-hit rejection: flip `if(false&&)` →
   `if(anyHit...` at `BodyInstanceRayMarch.comp:254`. Gate: OOB fraction collapses
   (28%→near-virtual levels); ALL 8 bodies incl. backWall present.
-- [ ] Task 5b.3 — Lighting-parity close: cross-path A/B (target luminance p99 ≪ 38.77);
+- [x] Task 5b.3 — Lighting-parity close: cross-path A/B (target luminance p99 ≪ 38.77);
   flip `enforced:true` in `parity_thresholds.json` with a measured p99 threshold
   (~5–10 range per M5's projection); regenerate goldens under validator sign-off
   (image legitimately changes: silhouettes + lighting).
-- [ ] Task 5b.4 — Cleanup + parity: delete stale diagnostic comment
+- [x] Task 5b.4 — Cleanup + parity: delete stale diagnostic comment
   `ShellOctreeGpu.h:946-948`; update the CPU mirror 1:1 if march semantics changed;
   full test sweep + documented map deltas.
 
