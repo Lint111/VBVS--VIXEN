@@ -58,6 +58,18 @@ public:
     );
     ~ShaderLibraryNode() override = default;
 
+    /// Recipe-Live-App-Bucketed-Dispatch Inc4 M3: read the real device's resolved GLSL compile
+    /// target versions (Vulkan/SPIR-V shorthand, e.g. 130/160), for a caller OUTSIDE the graph
+    /// that needs to compile GLSL directly via ShaderManagement::ShaderCompiler (bypassing this
+    /// node's own RegisterShaderBuilder callback path entirely) but must still target the SAME
+    /// environment every other shader in the graph targets -- ShaderCompiler's own
+    /// CompilationOptions default (Vulkan 1.2/SPIR-V 1.5) is a safe FLOOR, not necessarily what
+    /// the actual selected device supports, and a #version 460 GLSL source can fail to compile
+    /// ("Unable to parse built-ins") against too-low a target environment. 120/150 (this node's
+    /// own pre-device-metadata defaults) until OnDeviceMetadata has actually fired once.
+    int GetDeviceVulkanVersion() const { return deviceVulkanVersion; }
+    int GetDeviceSpirvVersion() const { return deviceSpirvVersion; }
+
     // ===== Program Management API =====
 
     /**

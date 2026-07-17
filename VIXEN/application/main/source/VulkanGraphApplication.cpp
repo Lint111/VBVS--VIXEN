@@ -52,6 +52,17 @@
 #include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
 #include "LightTree.h"                        // Sampled Lighting Inc3 M4: Vixen::SVO::LightTreeNode for the DIAG readback recomputation
+#include "Nodes/MultiDispatchNode.h"           // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: QueueDispatch for the specialized-pipeline path
+#include "Nodes/ConstantNode.h"                // Inc4 M3: refreshing recipe_bucketing_view_proj_constant every frame
+#include "Nodes/ShaderLibraryNode.h"           // Inc4 M3: GetDeviceVulkanVersion/GetDeviceSpirvVersion for the specialized-shader compile
+#include "Nodes/CommandPoolNode.h"             // Inc4 M3: not directly needed here, but device/pool pairing convention
+#include "Recipe/SpecializedRecipeShaderGlsl.h"  // Inc4 M3: EmitSpecializedRecipeComputeShader
+#include "ShaderCompiler.h"                    // Inc4 M3: runtime GLSL->SPIR-V compile for a hot recipe's specialized shader
+#include "ShaderBundleBuilder.h"               // Inc4 M3: AddStageFromSpirv -> reflection-only ShaderDataBundle
+#include "ComputePipelineCacher.h"             // Inc4 M3: GetOrCreate for the specialized VkPipeline
+#include "DescriptorSetLayoutCacher.h"         // Inc4 M3: BuildDescriptorSetLayoutFromReflection/ExtractPushConstantsFromReflection/CalculateDescriptorPoolSizes
+#include "Hash.h"                              // Inc4 M3: ComputeSHA256HexFromUint32Vec for the pipeline cache key
+#include <fstream>                             // Inc4 M3: reading SdfCoreKernels.glsl for the specialized shader's inlined core
 
 // Sampled Lighting Inc3 M4: the world-transformed light-tree cut for the ReSTIR gate demo
 // (VIXEN_RESTIR_GATE_DEMO), stashed by BuildRenderGraph.cpp's demo-scene block and read by
@@ -502,12 +513,388 @@ void VulkanGraphApplication::PreTick() {
                 }
             }
         }
+
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration, gated behind
+        // VIXEN_RECIPE_BUCKETED_DISPATCH (recipeBucketedDispatchEnabled_, set once in
+        // BuildRenderGraph.cpp). A COMPLETE no-op when unset -- returns before touching any of
+        // the M3 node handles (all default-constructed/invalid in that case anyway).
+        if (recipeBucketedDispatchEnabled_) {
+            RunRecipeBucketedDispatchPreTick();
+        }
     } catch (const std::exception& e) {
         lastError_ = std::string("PreTick failed: ") + e.what();
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
     } catch (...) {
         lastError_ = "PreTick failed: unknown (non-std) exception";
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
+    }
+}
+
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M3: per-frame orchestration for the opt-in bucketed-
+// dispatch path. Pure-CPU hotness decision (see file header for why: the CPU already has full
+// recipeId-per-instance knowledge via BodyOctreeSceneNode::GetInstances(), so grouping/counting
+// needs no GPU readback), but the bucketing pre-pass itself still runs for real every frame
+// (Task 3's own wording: wire the pre-pass in, not shortcut around it) -- its OWN output (the
+// per-bucket indirect-dispatch command + screen-space coverage) is what the specialized
+// indirect dispatch actually consumes below, so the mechanism this milestone gives a live home
+// to is the real one, not a CPU-only stand-in.
+void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
+    if (!renderGraph) return;
+
+    auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstanceByName("body_octree_scene"));
+    auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+    if (!bodyScene || !deviceInst || !deviceInst->GetVulkanDevice()) return;
+    Vixen::Vulkan::Resources::VulkanDevice* device = deviceInst->GetVulkanDevice();
+
+    // Refresh the bucketing shader's viewProj push-constant field every frame -- see
+    // recipeBucketingViewProjConstant's own creation-site comment (BuildRenderGraph.cpp) for
+    // why this goes through a ConstantNode instead of wiring CameraNode's own reference-typed
+    // CURRENT_VIEW_PROJ output directly into the push-constant gatherer.
+    if (auto* cameraInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+        if (auto* viewProjConst = static_cast<ConstantNode*>(renderGraph->GetInstance(recipeBucketingViewProjConstant_))) {
+            viewProjConst->SetValue<glm::mat4>(cameraInst->GetCurrentViewProj());
+        }
+    }
+
+    // --- Step 1: pure-CPU grouping + hotness decision (no GPU readback needed) ---
+    const std::vector<Vixen::SVO::BodyInstanceGpu>& instances = bodyScene->GetInstances();
+    std::unordered_map<uint32_t, std::vector<uint32_t>> instancesByRecipe;
+    for (uint32_t i = 0; i < instances.size(); ++i) {
+        instancesByRecipe[instances[i].recipeId].push_back(i);
+    }
+    std::vector<uint32_t> hotRecipeIds;
+    for (const auto& [recipeId, memberIndices] : instancesByRecipe) {
+        if (memberIndices.size() >= kRecipeBucketingHotnessThreshold && recipeId < kRecipeBucketingMaxBuckets) {
+            hotRecipeIds.push_back(recipeId);
+        }
+    }
+    std::sort(hotRecipeIds.begin(), hotRecipeIds.end());  // deterministic dispatch order
+
+    // --- Step 2: populate instanceSkipMaskBuffer -- mark exactly the instances belonging to a
+    // HOT recipe, so tier-0's march excludes them (M1's mechanism, populated with real content
+    // for the first time). Cold-recipe instances stay unmarked -- tier-0 still handles them. ---
+    if (auto* skipMaskNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("instance_skip_mask_buffer"))) {
+        if (void* mapped = skipMaskNode->MapForReadback(device)) {
+            auto* words = reinterpret_cast<uint32_t*>(mapped);
+            const VkDeviceSize sizeBytes = skipMaskNode->GetSizeBytes();
+            const size_t wordCount = static_cast<size_t>(sizeBytes / 4);
+            std::fill(words, words + wordCount, 0u);
+            for (uint32_t hotId : hotRecipeIds) {
+                for (uint32_t instIdx : instancesByRecipe[hotId]) {
+                    const size_t wordIdx = instIdx / 32u;
+                    if (wordIdx < wordCount) {
+                        words[wordIdx] |= (1u << (instIdx % 32u));
+                    }
+                }
+            }
+            skipMaskNode->UnmapReadback(device);
+        }
+    }
+
+    // --- Step 3: populate RecipeBoundSphereBuffer (bindings the bucketing shader reads by
+    // recipeId) from the registry -- every registered recipe, not just hot ones, since the
+    // bucketing shader buckets ALL recipeIds unconditionally (subject to maxBuckets). ---
+    if (auto* boundSphereNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bound_sphere_buffer"))) {
+        if (void* mapped = boundSphereNode->MapForReadback(device)) {
+            struct RecipeBoundSphereGpu { float center[3]; float radius; float relaxation; float _pad[3]; };
+            auto* entries = reinterpret_cast<RecipeBoundSphereGpu*>(mapped);
+            const size_t entryCount = static_cast<size_t>(boundSphereNode->GetSizeBytes() / sizeof(RecipeBoundSphereGpu));
+            std::fill(entries, entries + entryCount, RecipeBoundSphereGpu{});
+            for (uint32_t recipeId : proceduralRecipes_.Ids()) {
+                if (recipeId >= entryCount) continue;
+                const auto* entry = proceduralRecipes_.Get(recipeId);
+                if (!entry) continue;
+                entries[recipeId].center[0] = entry->boundCenter.x;
+                entries[recipeId].center[1] = entry->boundCenter.y;
+                entries[recipeId].center[2] = entry->boundCenter.z;
+                entries[recipeId].radius = (entry->boundRadius > 0.f) ? entry->boundRadius : 1.0f;
+                entries[recipeId].relaxation = (entry->stepRelaxation > 0.f) ? entry->stepRelaxation : 1.0f;
+            }
+            boundSphereNode->UnmapReadback(device);
+        }
+    }
+
+    // --- Step 4: populate BucketMetaBuffer (specialized shader binding 3) for every HOT recipe
+    // -- memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation, indexed by recipeId. The
+    // bucketing pre-pass (ComputeStageNode trio, wired in BuildRenderGraph.cpp, dispatched
+    // automatically every frame by RenderGraph::RenderFrame's own node walk -- no explicit call
+    // needed here) has ALREADY run by the time PreTick's readback below executes: PreTick runs
+    // BEFORE Update()/Render() for THIS frame, so this reads LAST FRAME's bucketing output --
+    // one frame of latency, acceptable for this milestone's gate (build+run without crashing,
+    // not exact per-frame correctness -- M4 is where correctness gets measured). Also reads
+    // BucketIndirectCommandBuffer for the indirect dispatch this frame will queue.
+    if (hotRecipeIds.empty()) return;
+
+    auto* bucketMetaNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_meta_buffer"));
+    auto* bucketCountNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_count_buffer"));
+    auto* bucketIndirectNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_indirect_command_buffer"));
+    auto* hitRecordNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+    auto* bucketIndicesNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_indices_buffer"));
+    auto* dispatchNode = static_cast<MultiDispatchNode*>(renderGraph->GetInstanceByName("recipe_specialized_dispatch"));
+    if (!bucketMetaNode || !bucketCountNode || !bucketIndirectNode || !hitRecordNode || !bucketIndicesNode || !dispatchNode) return;
+
+    if (void* mapped = bucketMetaNode->MapForReadback(device)) {
+        struct BucketMetaGpu { uint32_t memberCount; uint32_t rectMinX; uint32_t rectMinY; float boundRadius; float stepRelaxation; uint32_t _pad[3]; };
+        auto* metaEntries = reinterpret_cast<BucketMetaGpu*>(mapped);
+        const size_t metaCount = static_cast<size_t>(bucketMetaNode->GetSizeBytes() / sizeof(BucketMetaGpu));
+        for (uint32_t recipeId : hotRecipeIds) {
+            if (recipeId >= metaCount) continue;
+            const auto* entry = proceduralRecipes_.Get(recipeId);
+            metaEntries[recipeId].memberCount = static_cast<uint32_t>(instancesByRecipe[recipeId].size());
+            metaEntries[recipeId].rectMinX = 0;   // coverage rect offset -- the specialized shader
+            metaEntries[recipeId].rectMinY = 0;   // dispatches over the FULL screen this milestone
+            // (matching an all-zero rect origin), not the bucketing pass's tighter coverage AABB --
+            // a scope-narrowing simplification vs. Inc2/3's own perf-oriented tight-rect dispatch,
+            // acceptable here since M3's gate is correctness/stability, not performance (M4's job).
+            metaEntries[recipeId].boundRadius = entry && entry->boundRadius > 0.f ? entry->boundRadius : 1.0f;
+            metaEntries[recipeId].stepRelaxation = entry && entry->stepRelaxation > 0.f ? entry->stepRelaxation : 1.0f;
+        }
+        bucketMetaNode->UnmapReadback(device);
+    }
+
+    // BucketMembersBuffer (specialized shader binding 1) is the bucketing pass's OWN
+    // recipe_bucket_indices_buffer output -- no separate CPU population needed, just wire it as
+    // a descriptor below (it's already written by the GPU bucketing pass every frame).
+
+    // --- Step 5: for each hot recipe, compile (once, cached) the specialized shader and queue
+    // its indirect dispatch. ---
+    auto* commandPoolInst = static_cast<CommandPoolNode*>(renderGraph->GetInstanceByName("main_cmd_pool"));
+    if (!commandPoolInst) return;
+
+    for (uint32_t recipeId : hotRecipeIds) {
+        const auto* entry = proceduralRecipes_.Get(recipeId);
+        if (!entry) continue;
+
+        auto cacheIt = recipeSpecializedPipelineCache_.find(recipeId);
+        if (cacheIt == recipeSpecializedPipelineCache_.end()) {
+            // First promotion of this recipeId: compile its specialized shader now.
+            std::vector<std::filesystem::path> corePaths = {
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) / "recipe" / "SdfCoreKernels.glsl",
+#endif
+                std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
+                std::filesystem::path("../libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
+            };
+            std::filesystem::path corePath;
+            for (const auto& p : corePaths) { if (std::filesystem::exists(p)) { corePath = p; break; } }
+            if (corePath.empty()) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] SdfCoreKernels.glsl not found, skipping recipeId=" + std::to_string(recipeId));
+                continue;
+            }
+            std::ifstream coreFile(corePath);
+            std::ostringstream coreBuf;
+            coreBuf << coreFile.rdbuf();
+
+            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeComputeShader(*entry, recipeId, coreBuf.str());
+
+            // AddStageFromSpirv is a stub in this codebase today (ShaderBundleBuilder.cpp's own
+            // "TODO: Store SPIRV separately, for now this is a placeholder" -- it discards the
+            // SPIR-V and stores an EMPTY source string, so Build() silently tries to compile ""
+            // as GLSL and fails with a confusing "Unable to parse built-ins" error, found live
+            // during this milestone's own gate run). Use AddStage (text) instead -- Build()
+            // compiles AND reflects in one step from source text, the same path the main
+            // march's own ShaderLibraryNode builder uses, and IS proven working.
+            ShaderManagement::CompilationOptions opts;
+            opts.validateSpirv = false;  // matches test_recipe_bucketed_indirect_dispatch.cpp's own working call
+            ShaderManagement::ShaderBundleBuilder bundleBuilder;
+            bundleBuilder.SetProgramName("RecipeSpecialized_" + std::to_string(recipeId))
+                         .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                         .AddStage(ShaderManagement::ShaderStage::Compute, source, "main", opts);
+            auto buildResult = bundleBuilder.Build();
+            if (!buildResult.success || !buildResult.bundle) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] shader build/reflect failed for recipeId=" +
+                                                   std::to_string(recipeId) + ": " + buildResult.errorMessage);
+                continue;
+            }
+            const std::vector<uint32_t>& spirv = buildResult.bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
+            if (spirv.empty()) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] empty SPIR-V for recipeId=" + std::to_string(recipeId));
+                continue;
+            }
+
+            VkShaderModuleCreateInfo moduleInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+            moduleInfo.codeSize = spirv.size() * sizeof(uint32_t);
+            moduleInfo.pCode = spirv.data();
+            VkShaderModule shaderModule = VK_NULL_HANDLE;
+            if (vkCreateShaderModule(device->device, &moduleInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] vkCreateShaderModule failed for recipeId=" + std::to_string(recipeId));
+                continue;
+            }
+
+            VkDescriptorSetLayout setLayout = CashSystem::BuildDescriptorSetLayoutFromReflection(device, *buildResult.bundle, 0);
+            std::vector<VkPushConstantRange> pcRanges = CashSystem::ExtractPushConstantsFromReflection(*buildResult.bundle);
+            std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(*buildResult.bundle, 0, 1);
+
+            VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            poolInfo.maxSets = 1;
+            poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+            poolInfo.pPoolSizes = poolSizes.data();
+            VkDescriptorPool descPool = VK_NULL_HANDLE;
+            if (vkCreateDescriptorPool(device->device, &poolInfo, nullptr, &descPool) != VK_SUCCESS) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] vkCreateDescriptorPool failed for recipeId=" + std::to_string(recipeId));
+                vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                continue;
+            }
+            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocInfo.descriptorPool = descPool;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = &setLayout;
+            VkDescriptorSet descSet = VK_NULL_HANDLE;
+            if (vkAllocateDescriptorSets(device->device, &allocInfo, &descSet) != VK_SUCCESS) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] vkAllocateDescriptorSets failed for recipeId=" + std::to_string(recipeId));
+                vkDestroyDescriptorPool(device->device, descPool, nullptr);
+                vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                continue;
+            }
+
+            // Descriptor set bindings (0=BodyInstanceBuffer, 1=BucketMembersBuffer,
+            // 2=HitRecordBuffer, 3=BucketMetaBuffer) are written every frame below (after this
+            // first-promotion block), not here -- the buffer handles are identical on the very
+            // first frame this pipeline is used, so a separate first-time write would be
+            // redundant with that per-frame rewrite.
+
+            CashSystem::ComputePipelineCreateParams pipelineParams;
+            pipelineParams.shaderModule = shaderModule;
+            pipelineParams.entryPoint = "main";
+            pipelineParams.descriptorSetLayout = setLayout;
+            pipelineParams.pushConstantRanges = pcRanges;
+            pipelineParams.shaderKey = "RecipeSpecialized_" + std::to_string(recipeId) + ":" +
+                                       ShaderManagement::ComputeSHA256HexFromUint32Vec(spirv);
+            pipelineParams.layoutKey = "RecipeSpecializedLayout_" + std::to_string(recipeId);
+            pipelineParams.workgroupSizeX = 8;
+            pipelineParams.workgroupSizeY = 8;
+            pipelineParams.workgroupSizeZ = 1;
+
+            auto& mainCacher = renderGraph->GetMainCacher();
+            if (!mainCacher.IsRegistered(typeid(CashSystem::ComputePipelineWrapper))) {
+                mainCacher.RegisterCacher<CashSystem::ComputePipelineCacher, CashSystem::ComputePipelineWrapper,
+                                          CashSystem::ComputePipelineCreateParams>(
+                    typeid(CashSystem::ComputePipelineWrapper), "ComputePipeline", true);
+            }
+            auto* computeCacher = mainCacher.GetCacher<CashSystem::ComputePipelineCacher, CashSystem::ComputePipelineWrapper,
+                                                       CashSystem::ComputePipelineCreateParams>(
+                typeid(CashSystem::ComputePipelineWrapper), device);
+            if (!computeCacher) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] failed to get ComputePipelineCacher for recipeId=" + std::to_string(recipeId));
+                vkDestroyDescriptorPool(device->device, descPool, nullptr);
+                vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                continue;
+            }
+            auto pipelineWrapper = computeCacher->GetOrCreate(pipelineParams);
+            if (!pipelineWrapper || pipelineWrapper->pipeline == VK_NULL_HANDLE) {
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] pipeline creation failed for recipeId=" + std::to_string(recipeId));
+                vkDestroyDescriptorPool(device->device, descPool, nullptr);
+                vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                continue;
+            }
+
+            SpecializedRecipePipeline cached;
+            cached.shaderModule = shaderModule;
+            cached.descriptorSetLayout = setLayout;
+            cached.descriptorPool = descPool;
+            cached.descriptorSet = descSet;
+            cached.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
+            cached.pipeline = pipelineWrapper->pipeline;
+
+            // Write this recipe's descriptor set's buffer bindings ONCE, here at first
+            // promotion, not every frame: every one of these 4 SSBOs (bodyScene's own instance
+            // ring slot 0, and the 3 single-instance bucketing StorageBufferNodes) is allocated
+            // once at graph-compile time and never reallocated/moved for the lifetime of this
+            // pipeline -- only their CONTENT changes frame to frame, not their VkBuffer handles.
+            // Re-writing the SAME binding values into a descriptor set every frame was a real
+            // bug (VUID-vkUpdateDescriptorSets-None-03047, found live during this milestone's
+            // own gate run): vkUpdateDescriptorSets on a set still referenced by a PENDING
+            // command buffer (this same set, from a prior frame's not-yet-completed dispatch)
+            // is illegal without VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT, which this set's
+            // layout does not opt into (BuildDescriptorSetLayoutFromReflection's own default).
+            VkBuffer bodyInstanceBuf = bodyScene->GetInstanceBufferHandle();
+            VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
+            VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
+            VkBuffer bucketMetaBuf = bucketMetaNode->GetBufferHandle();
+            VkDescriptorBufferInfo bufInfos[4] = {
+                { bodyInstanceBuf, 0, VK_WHOLE_SIZE },
+                { bucketMembersBuf, 0, VK_WHOLE_SIZE },
+                { hitRecordBuf, 0, VK_WHOLE_SIZE },
+                { bucketMetaBuf, 0, VK_WHOLE_SIZE },
+            };
+            VkWriteDescriptorSet writes[4]{};
+            for (int b = 0; b < 4; ++b) {
+                writes[b].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[b].dstSet = descSet;
+                writes[b].dstBinding = static_cast<uint32_t>(b);
+                writes[b].descriptorCount = 1;
+                writes[b].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                writes[b].pBufferInfo = &bufInfos[b];
+            }
+            // A device-wide wait before this ONE-TIME (first-promotion only, not per-frame)
+            // descriptor write -- found live (VUID-vkUpdateDescriptorSets-None-03047) that a
+            // freshly-allocated VkDescriptorSet could still be flagged "in use" by an in-flight
+            // command buffer from this same frame's recipe_specialized_dispatch ring without
+            // this wait. Acceptable here specifically because it fires at most once per
+            // recipeId's lifetime (guarded by the recipeSpecializedPipelineCache_ cache-miss
+            // check above), not a per-frame cost.
+            vkDeviceWaitIdle(device->device);
+            vkUpdateDescriptorSets(device->device, 4, writes, 0, nullptr);
+
+            recipeSpecializedPipelineCache_[recipeId] = cached;
+
+            if (mainLogger) mainLogger->Info("[RecipeBucketedDispatch] compiled specialized pipeline for recipeId=" +
+                                             std::to_string(recipeId) + " (" + std::to_string(instancesByRecipe[recipeId].size()) +
+                                             " instances, promoted hot)");
+        }
+
+        const auto& cached = recipeSpecializedPipelineCache_[recipeId];
+
+        // Queue this recipe's indirect dispatch: workgroup counts come from
+        // recipe_bucket_indirect_command_buffer (the bucketing pass's mode==2 output), at this
+        // recipeId's own 3xuint32 slot.
+        Vixen::RenderGraph::DispatchPass pass;
+        pass.pipeline = cached.pipeline;
+        pass.layout = cached.pipelineLayout;
+        pass.descriptorSets = { cached.descriptorSet };
+        pass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
+        pass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;  // 3x uint32 per bucket
+        pass.debugName = "recipe_specialized_" + std::to_string(recipeId);
+
+        // Push constants: SpecializedRecipeShaderGlsl.h's own Push block (96 bytes) --
+        // cameraPos/_p0/cameraDir/fov/cameraUp/aspect/cameraRight/_p1/screenWidth/screenHeight/
+        // maxMembersPerBucket/recipeId. Found live (VUID-vkCmdDispatchIndirect-maintenance4-08602)
+        // that leaving DispatchPass.pushConstants unset is a real gap -- the shader statically
+        // uses these fields, so a value must be pushed before every dispatch.
+        struct SpecializedPushCpu {
+            glm::vec3 cameraPos; float _p0;
+            glm::vec3 cameraDir; float fov;
+            glm::vec3 cameraUp;  float aspect;
+            glm::vec3 cameraRight; float _p1;
+            uint32_t screenWidth;
+            uint32_t screenHeight;
+            uint32_t maxMembersPerBucket;
+            uint32_t recipeIdField;
+        };
+        static_assert(sizeof(SpecializedPushCpu) == 80, "SpecializedPushCpu must match the GLSL Push block's 80-byte std430 layout (4x vec3+float pairs=64B, 4x uint32_t=16B)");
+        SpecializedPushCpu pushData{};
+        if (auto* camInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+            const CameraData& cam = camInst->GetCurrentCameraData();
+            pushData.cameraPos = cam.cameraPos;
+            pushData.cameraDir = cam.cameraDir;
+            pushData.cameraUp = cam.cameraUp;
+            pushData.cameraRight = cam.cameraRight;
+            pushData.fov = cam.fov;
+            pushData.aspect = cam.aspect;
+        }
+        pushData.screenWidth = static_cast<uint32_t>(width);
+        pushData.screenHeight = static_cast<uint32_t>(height);
+        pushData.maxMembersPerBucket = kRecipeBucketingMaxMembersPerBucket;
+        pushData.recipeIdField = recipeId;
+
+        Vixen::RenderGraph::PushConstantData pcData;
+        pcData.data.resize(sizeof(SpecializedPushCpu));
+        std::memcpy(pcData.data.data(), &pushData, sizeof(SpecializedPushCpu));
+        pcData.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        pcData.offset = 0;
+        pass.pushConstants = std::move(pcData);
+
+        dispatchNode->QueueDispatch(std::move(pass));
     }
 }
 
@@ -2275,6 +2662,47 @@ void VulkanGraphApplication::DeInitialize() {
     // This ensures all node-owned Vulkan resources (buffers, images, views, shaders) are destroyed
     // while the VkDevice is still valid.
     // Note: ConstantNode's cleanup callback will destroy the shader via registered callback
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: destroy the specialized per-recipe Vulkan
+    // objects (VkShaderModule/VkDescriptorPool -- destroying the pool also frees every
+    // VkDescriptorSet allocated from it) BEFORE the render graph/device teardown below, same
+    // "while the VkDevice is still valid" ordering rule as every node's own CleanupImpl.
+    // These are NOT node-owned resources (built directly via Vulkan calls in PreTick, outside
+    // the RenderGraph node system entirely -- see RunRecipeBucketedDispatchPreTick's own
+    // comment for why), so nothing else in the graph's teardown chain destroys them; skipping
+    // this was a real gap found live (VUID-vkDestroyDevice-device-05137, one per leaked
+    // pool/set, during this milestone's own gate run).
+    if (!recipeSpecializedPipelineCache_.empty() && renderGraph) {
+        if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+            if (auto* device = deviceInst->GetVulkanDevice()) {
+                // Wait for every in-flight command buffer to finish before destroying these
+                // pools -- found live (VUID-vkDestroyDescriptorPool-descriptorPool-00303) that
+                // the last frame's dispatch could still be executing when teardown reaches here.
+                vkDeviceWaitIdle(device->device);
+                for (auto& [recipeId, cached] : recipeSpecializedPipelineCache_) {
+                    if (cached.descriptorPool != VK_NULL_HANDLE) {
+                        vkDestroyDescriptorPool(device->device, cached.descriptorPool, nullptr);
+                    }
+                    if (cached.shaderModule != VK_NULL_HANDLE) {
+                        vkDestroyShaderModule(device->device, cached.shaderModule, nullptr);
+                    }
+                    // descriptorSetLayout/pipeline/pipelineLayout are owned by CashSystem's
+                    // caches (DescriptorSetLayoutCacher's BuildDescriptorSetLayoutFromReflection
+                    // is a one-off convenience helper -- its returned layout is NOT cacher-owned,
+                    // but ComputePipelineCacher DOES own pipeline/pipelineLayout via MainCacher,
+                    // torn down by the graph's own MainCacher cleanup below). The layout built by
+                    // the one-off helper has no owner anywhere else, so destroy it here too.
+                    if (cached.descriptorSetLayout != VK_NULL_HANDLE) {
+                        vkDestroyDescriptorSetLayout(device->device, cached.descriptorSetLayout, nullptr);
+                    }
+                }
+                if (mainLogger) mainLogger->Info("[DeInitialize] Destroyed " +
+                    std::to_string(recipeSpecializedPipelineCache_.size()) +
+                    " specialized recipe pipeline(s) (shader modules + descriptor pools/layouts)");
+            }
+        }
+        recipeSpecializedPipelineCache_.clear();
+    }
+
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[DeInitialize] Destroying render graph...");
     }

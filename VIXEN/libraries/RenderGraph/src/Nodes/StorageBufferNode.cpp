@@ -150,10 +150,15 @@ void StorageBufferNode::CreateBuffer(VulkanDevice* device, VkDeviceSize sizeByte
     VkPhysicalDevice physDev  = *device->gpu;
 
     // --- Create the storage buffer ---
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: additive extra usage bits (e.g.
+    // VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT), default 0 -- every pre-M3 consumer gets the exact
+    // same STORAGE_BUFFER_BIT-only buffer as before.
+    const uint32_t extraUsageFlags = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_EXTRA_USAGE_FLAGS, 0u);
+
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size        = sizeBytes;
-    bufferInfo.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    bufferInfo.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | static_cast<VkBufferUsageFlags>(extraUsageFlags);
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer_) != VK_SUCCESS) {

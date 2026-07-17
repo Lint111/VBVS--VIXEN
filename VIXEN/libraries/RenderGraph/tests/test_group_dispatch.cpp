@@ -261,8 +261,13 @@ TEST(MultiDispatchNodeConfig, HasGroupInputsSlot) {
 }
 
 TEST(MultiDispatchNodeConfig, SlotCountIncludesGroupInputs) {
-    // Sprint 6.1 added one input (GROUP_INPUTS), so total should be 6
-    EXPECT_EQ(MultiDispatchNodeCounts::INPUTS, 6u);
+    // Sprint 6.1 added one input (GROUP_INPUTS: 6 total). Recipe-Live-App-Bucketed-Dispatch
+    // Inc4 M3 added 5 more (IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+    // RENDER_COMPLETE_SEMAPHORES_ARRAY, TIMELINE_SEMAPHORE_IN, TIMELINE_FRAME_BASE_IN) so
+    // this node can submit its own recorded command buffer -- see MultiDispatchNodeConfig.h's
+    // own comment for why all 5 are Optional (this test's own GROUP_INPUTS-only assembly
+    // below never wires them, and stays byte-identical: record-only, no submit).
+    EXPECT_EQ(MultiDispatchNodeCounts::INPUTS, 11u);
     EXPECT_EQ(MultiDispatchNodeCounts::OUTPUTS, 2u);
 }
 

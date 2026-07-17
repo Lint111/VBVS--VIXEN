@@ -462,7 +462,15 @@ protected:
                       VkBuffer sdfBuf, VkBuffer brickLookupBuf,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& outRgba /*w*h*4*/, double& outRenderMs,
-                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr,
+                      const std::vector<uint32_t>* skipMaskWords = nullptr,
+                      // Recipe-Live-App-Bucketed-Dispatch Inc4 M2: pre-seed the HitRecord SSBO
+                      // before dispatch, standing in for "a second writer (M3's future bucketed
+                      // dispatch) already ran earlier this same frame" -- lets this same harness
+                      // prove the conditional compositing write without M3's real indirect-dispatch
+                      // plumbing existing yet. Must be exactly w*h HitRecordCpu entries when
+                      // provided. nullptr (default) preserves today's zeroed-fresh-buffer behavior.
+                      const std::vector<HitRecordCpu>* preSeedHitRecords = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
@@ -526,6 +534,24 @@ protected:
         VkDeviceMemory dummyOccGridMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyOccGrid, dummyOccGridMem, true);
 
+        // Instance skip mask (35, Recipe-Live-App-Bucketed-Dispatch Inc4 M1): a 256-byte
+        // zeroed placeholder by default (isInstanceSkipped's own length() bounds-check in
+        // SceneBindings.glsl makes a too-small placeholder always safe — see that function's
+        // comment) — most callers never populate it. When skipMaskWords is provided (the
+        // exclusion-mechanism proof test), upload it instead so specific instance indices are
+        // actually excluded.
+        VkBuffer dummySkipMask = VK_NULL_HANDLE;
+        VkDeviceMemory dummySkipMaskMem = VK_NULL_HANDLE;
+        const VkDeviceSize skipMaskBufSize =
+            skipMaskWords != nullptr
+                ? std::max<VkDeviceSize>(256, VkDeviceSize(skipMaskWords->size()) * sizeof(uint32_t))
+                : 256;
+        CreateHostBuffer(skipMaskBufSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySkipMask, dummySkipMaskMem, true);
+        if (skipMaskWords != nullptr && !skipMaskWords->empty()) {
+            ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dummySkipMaskMem, skipMaskWords->data(),
+                                                        skipMaskWords->size() * sizeof(uint32_t)));
+        }
+
         // Sampled Lighting Inc0-Inc2 bindings (17-22): this test only checks the raymarch
         // geometry/color output, not shading — LightingConfig/ShadowConfig/AccumulationConfig
         // are bound as zeroed placeholders (accumulationConfig.enabled==0 keeps the temporal
@@ -548,6 +574,12 @@ protected:
         // bounds for any non-trivial w*h and silently corrupts/discards the round-trip.
         const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
         CreateHostBuffer(hitRecordBufSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyHitRecord, dummyHitRecordMem, true);
+        if (preSeedHitRecords != nullptr) {
+            ASSERT_EQ(preSeedHitRecords->size(), static_cast<size_t>(w) * h)
+                << "preSeedHitRecords must have exactly w*h entries";
+            ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dummyHitRecordMem, preSeedHitRecords->data(),
+                                                        static_cast<size_t>(hitRecordBufSize)));
+        }
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyShadow, dummyShadowMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyAccum, dummyAccumMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyPrevCam, dummyPrevCamMem, true);
@@ -584,7 +616,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 21> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 22> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -606,6 +638,7 @@ protected:
             bind(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
             bind(21, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
             bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
+            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -636,7 +669,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -673,6 +706,7 @@ protected:
         VkDescriptorBufferInfo shadowInfo{dummyShadow, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo accumInfo{dummyAccum, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo prevCamInfo{dummyPrevCam, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo skipMaskInfo{dummySkipMask, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -688,7 +722,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 21> writes = {
+        const std::array<VkWriteDescriptorSet, 22> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -710,6 +744,7 @@ protected:
             wBuf(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),     // Sampled Lighting Inc2 M1
             wImg(21, &historyInfo),                                     // Sampled Lighting Inc2 M1
             wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
+            wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -833,6 +868,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyShadow, nullptr);     vkFreeMemory(logicalDevice_, dummyShadowMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyAccum, nullptr);      vkFreeMemory(logicalDevice_, dummyAccumMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyPrevCam, nullptr);    vkFreeMemory(logicalDevice_, dummyPrevCamMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummySkipMask, nullptr);   vkFreeMemory(logicalDevice_, dummySkipMaskMem, nullptr);
     }
 };
 
@@ -1106,6 +1142,503 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
     EXPECT_GT(redPixels,   500) << "kind 0 (octreeIndex 0) body did not render";
     EXPECT_GT(greenPixels, 500) << "kind 1 (octreeIndex 1) body did not render — stride fix regressed";
     EXPECT_GT(grayPixels,  500) << "kind 2 (octreeIndex 2) body did not render — stride fix regressed";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M1: per-instance skip mechanism proof.
+//
+// Reuses RenderMultiKindBodiesProvesStrideFix's exact 3-body side-by-side scene
+// (kind0=red star, kind1=green planet, kind2=gray/white moon octree, octreeIndex
+// 0/1/2 respectively) so the only variable between this test and that one is the
+// skip mask. Renders the SAME scene/camera TWICE:
+//   (a) skip mask unset (nullptr) — sanity re-check that all 3 kinds render (this
+//       is redundant with the sibling test but cheap insurance against a scene-
+//       setup regression masquerading as an exclusion-mechanism failure below).
+//   (b) skip mask excluding instance index 1 (the green "planet") — instIdx 1's
+//       bit set in word 0 (1u << 1 = 0x2u), instIdx 0 and 2 left unset.
+// Proof: with instance 1 excluded, green pixels must collapse to ~0 (that body is
+// never marched — TraceWorld's isInstanceSkipped early-continue fires for it) while
+// red (kind 0) and gray (kind 2) pixel counts must stay materially unchanged versus
+// the unskipped render — the OTHER instances still march and hit-test normally,
+// proving this is a per-instance exclusion, not a global regression.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, SkipMaskExcludesOnlyTargetedInstance) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_skipmask");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const float scale = kBaseRadiusAu * 2.0f;
+    const float Rb    = 0.5f * kWorldGridSize * scale;
+    const float sep   = Rb * 3.0f;
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(-sep, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),  // instIdx 0: kind 0 (red)
+        MakeInstance( 0.0f, 0.0f, 0.0f, scale, 1, 1.0f, 1.0f, 1.0f),  // instIdx 1: kind 1 (green) -- EXCLUDED below
+        MakeInstance( sep, 0.0f, 0.0f, scale, 2, 1.0f, 1.0f, 1.0f),  // instIdx 2: kind 2 (gray)
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers b;
+    b.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
+
+    constexpr uint32_t kW = 768, kH = 256;
+    const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
+    const glm::vec3 c2 = ShaderBodyCentre(instances[2]);
+    const glm::vec3 centre = 0.5f * (c0 + c2);
+    const float spanX = std::abs(c2.x - c0.x) + 2.0f * Rb;
+    const float halfFov = glm::radians(45.0f) * 0.5f;
+    const float aspect  = static_cast<float>(kW) / static_cast<float>(kH);
+    const float dist    = (0.5f * spanX) / (std::tan(halfFov) * aspect) * 1.35f;
+    const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * dist;
+    const PushConstants pc = MakeCamera(eye, centre, kW, kH, static_cast<int32_t>(instances.size()));
+
+    auto classify = [](const std::vector<HitRecordCpu>& hitRecords, uint32_t w, uint32_t h,
+                       int& redPixels, int& greenPixels, int& grayPixels, int& anyBody) {
+        redPixels = greenPixels = grayPixels = anyBody = 0;
+        for (uint32_t i = 0; i < w * h; ++i) {
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool body = (rec.flags & kHitRecordFlagHit) != 0u;
+            if (!body) continue;
+            ++anyBody;
+            const int r  = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+            const int g  = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+            const int bl = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
+            if      (r > g + 25 && r > bl + 25) ++redPixels;
+            else if (g > r + 25 && g > bl + 25) ++greenPixels;
+            else                                ++grayPixels;
+        }
+    };
+
+    // (a) Baseline: no skip mask (nullptr) — all 3 kinds must render, matching the sibling
+    // stride-fix test's own gate. This is the empty-skip-set no-op case for THIS scene.
+    std::vector<uint8_t> rgbaBaseline; double renderMsBaseline = 0.0;
+    std::vector<HitRecordCpu> hitRecordsBaseline;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaBaseline, renderMsBaseline,
+                                         &hitRecordsBaseline, /*skipMaskWords=*/nullptr));
+    int redBase, greenBase, grayBase, anyBase;
+    classify(hitRecordsBaseline, kW, kH, redBase, greenBase, grayBase, anyBase);
+    std::printf("[SKIPMASK] baseline (no skip): red=%d green=%d gray=%d\n", redBase, greenBase, grayBase);
+    ASSERT_GT(redBase,   500) << "baseline: kind 0 (instIdx 0) did not render";
+    ASSERT_GT(greenBase, 500) << "baseline: kind 1 (instIdx 1) did not render";
+    ASSERT_GT(grayBase,  500) << "baseline: kind 2 (instIdx 2) did not render";
+
+    // (b) Exclude instance index 1 (the green planet): bit 1 of word 0 set (1u << 1 = 0x2u).
+    const std::vector<uint32_t> skipMask = {0x2u};
+    std::vector<uint8_t> rgbaSkip; double renderMsSkip = 0.0;
+    std::vector<HitRecordCpu> hitRecordsSkip;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaSkip, renderMsSkip,
+                                         &hitRecordsSkip, &skipMask));
+    int redSkip, greenSkip, graySkip, anySkip;
+    classify(hitRecordsSkip, kW, kH, redSkip, greenSkip, graySkip, anySkip);
+    std::printf("[SKIPMASK] instance 1 excluded: red=%d green=%d gray=%d\n", redSkip, greenSkip, graySkip);
+
+    // The exclusion proof: instance 1 (green) must vanish; instances 0/2 (red/gray) must be
+    // BYTE-IDENTICAL pixel counts to baseline. Both dispatches share the same camera, octree
+    // data, and push constants -- isInstanceSkipped()'s early-continue on instance 1 cannot
+    // perturb any other instance's traversal (each instance loop iteration is independent, no
+    // shared mutable state across iterations besides the nearest-hit compare), and the march
+    // itself is a deterministic per-pixel computation (no accumulation/temporal feedback, no
+    // randomness in this harness's pipeline) -- so there is no legitimate source of jitter
+    // between the two runs. An exact-equality assertion is the decisive proof; a tolerance
+    // would only mask a real regression.
+    EXPECT_LT(greenSkip, 10) << "excluded instance 1 (green planet) still rendered — skip mechanism did not exclude it";
+    EXPECT_EQ(redSkip,  redBase)  << "non-excluded instance 0 (red) pixel count changed when instance 1 was excluded — expected byte-identical";
+    EXPECT_EQ(graySkip, grayBase) << "non-excluded instance 2 (gray) pixel count changed when instance 1 was excluded — expected byte-identical";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M2 gate: reproduce Inc2 M3's exact proof
+// (test_recipe_multi_bucket_compositing.cpp's OverlappingHotRecipesCompositeCorrectlyBothOrderings
+// — real overlap scene, both dispatch orderings, byte-identical HitRecord comparison) but against
+// the REAL BodyInstanceRayMarch.comp this time, not a hand-rolled GPU stand-in.
+//
+// Scene: same 3-instance layout as SkipMaskExcludesOnlyTargetedInstance (red/green/gray). Instance 1
+// (green) is skip-masked out of tier-0's march — modeling M1's mechanism actively excluding an
+// instance that a future M3 bucketed dispatch would claim. Since M3's real indirect-dispatch wiring
+// doesn't exist yet, the "second writer" is stubbed: a synthetic HitRecord pre-seeded into the SSBO
+// before tier-0's dispatch, at exactly the pixels the excluded green instance would have covered
+// (read from the baseline's own HitRecord — no guessing at screen-space coordinates).
+//
+// Both dispatch orderings are exercised for real, not simulated:
+//   (a) second-writer-then-tier-0: pre-seed the stub BEFORE tier-0 dispatches — tier-0's own
+//       conditional write is exercised live against pre-existing content from "the other pass".
+//   (b) tier-0-then-second-writer: tier-0 dispatches into a fresh buffer first; the second writer's
+//       compositing (Inc2 M3's own proven nearest-hit-wins rule, applied here exactly as that
+//       harness applies it) runs against tier-0's real GPU output afterward.
+// Both must converge on the SAME final HitRecord content (nearest-hit-wins is order-independent by
+// construction) -- byte-identical comparison via memcmp, matching Inc2 M3's own rigor.
+TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderingsMatchOracle) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_m2_compositing");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const float scale = kBaseRadiusAu * 2.0f;
+    const float Rb    = 0.5f * kWorldGridSize * scale;
+    const float sep   = Rb * 3.0f;
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(-sep, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),  // instIdx 0: kind 0 (red)
+        MakeInstance( 0.0f, 0.0f, 0.0f, scale, 1, 1.0f, 1.0f, 1.0f),  // instIdx 1: kind 1 (green) -- SKIP-MASKED
+        MakeInstance( sep, 0.0f, 0.0f, scale, 2, 1.0f, 1.0f, 1.0f),  // instIdx 2: kind 2 (gray)
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers b;
+    b.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
+
+    constexpr uint32_t kW = 768, kH = 256;
+    const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
+    const glm::vec3 c2 = ShaderBodyCentre(instances[2]);
+    const glm::vec3 centre = 0.5f * (c0 + c2);
+    const float spanX = std::abs(c2.x - c0.x) + 2.0f * Rb;
+    const float halfFov = glm::radians(45.0f) * 0.5f;
+    const float aspect  = static_cast<float>(kW) / static_cast<float>(kH);
+    const float dist    = (0.5f * spanX) / (std::tan(halfFov) * aspect) * 1.35f;
+    const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * dist;
+    const PushConstants pc = MakeCamera(eye, centre, kW, kH, static_cast<int32_t>(instances.size()));
+
+    // -----------------------------------------------------------------------
+    // Step 1: gate-OFF no-op proof -- empty skip mask, no pre-seed (buffer starts zeroed, exactly
+    // CreateHostBuffer's own default). With genuinely only one writer, EVERY hit slot satisfies
+    // existing.flags==0u (virgin) and every miss slot's unconditional branch fires -- byte-identical
+    // to the pre-M2 unconditional `hitRecords[idx] = rec` in every case. Two independent renders of
+    // the SAME scene/camera/push-constants must be memcmp-identical (deterministic march, no
+    // temporal/accumulation feedback in this harness) -- this is the decisive no-op proof, stronger
+    // than a pixel-count check.
+    // -----------------------------------------------------------------------
+    std::vector<uint8_t> rgbaA, rgbaB; double msA = 0.0, msB = 0.0;
+    std::vector<HitRecordCpu> baselineA, baselineB;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaA, msA, &baselineA, /*skipMaskWords=*/nullptr));
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaB, msB, &baselineB, /*skipMaskWords=*/nullptr));
+    const int noOpDiff = std::memcmp(baselineA.data(), baselineB.data(), baselineA.size() * sizeof(HitRecordCpu));
+    std::printf("[M2-COMPOSITING] gate-OFF no-op proof: two independent renders, memcmp=%d (0=identical)\n", noOpDiff);
+    ASSERT_EQ(noOpDiff, 0) << "gate-OFF (single writer) must be byte-identical across renders -- "
+                              "conditional write introduced a behavior change with no second writer present";
+
+    int redBase=0, greenBase=0, grayBase=0, anyBase=0;
+    auto classify = [](const std::vector<HitRecordCpu>& hitRecords, uint32_t w, uint32_t h,
+                       int& redPixels, int& greenPixels, int& grayPixels, int& anyBody) {
+        redPixels = greenPixels = grayPixels = anyBody = 0;
+        for (uint32_t i = 0; i < w * h; ++i) {
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool body = (rec.flags & kHitRecordFlagHit) != 0u;
+            if (!body) continue;
+            ++anyBody;
+            const int r  = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+            const int g  = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+            const int bl = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
+            if      (r > g + 25 && r > bl + 25) ++redPixels;
+            else if (g > r + 25 && g > bl + 25) ++greenPixels;
+            else                                ++grayPixels;
+        }
+    };
+    classify(baselineA, kW, kH, redBase, greenBase, grayBase, anyBase);
+    std::printf("[M2-COMPOSITING] baseline: red=%d green=%d gray=%d\n", redBase, greenBase, grayBase);
+    ASSERT_GT(greenBase, 500) << "baseline: green instance did not render -- can't build a meaningful stub below";
+
+    // -----------------------------------------------------------------------
+    // Step 2: build the "second writer" stub -- exactly the green instance's own baseline pixels,
+    // reused verbatim as what a bucketed-dispatch pass would have produced for those same pixels
+    // (a real second writer would trace the SAME instance and get the SAME hit; reusing baseline's
+    // own output is the most faithful stand-in available without M3's real second shader existing).
+    // Stub hitT is nudged CLOSER than green's true hitT for half the stub pixels (by index parity)
+    // and FARTHER for the other half, so both branches of the nearest-hit-wins compare
+    // (`rec.hitT < existing.hitT` true AND false) are genuinely exercised, not just one.
+    // -----------------------------------------------------------------------
+    std::vector<HitRecordCpu> stubOverlay = baselineA;  // start from baseline; only green pixels differ below
+    std::vector<uint8_t> isStubGreenPixel(static_cast<size_t>(kW) * kH, 0);
+    int stubCloserCount = 0, stubFartherCount = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        const HitRecordCpu& rec = baselineA[i];
+        if ((rec.flags & kHitRecordFlagHit) == 0u) continue;
+        const int r  = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+        const int g  = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+        const int bl = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
+        const bool isGreen = (g > r + 25 && g > bl + 25);
+        if (!isGreen) continue;
+        isStubGreenPixel[i] = 1;
+        HitRecordCpu stub = rec;
+        if ((i & 1u) == 0u) { stub.hitT = rec.hitT * 0.5f;  ++stubCloserCount; }   // stub nearer than tier-0-would-be
+        else                { stub.hitT = rec.hitT * 2.0f;  ++stubFartherCount; } // stub farther than tier-0-would-be
+        stubOverlay[i] = stub;
+    }
+    std::printf("[M2-COMPOSITING] stub green pixels: closer=%d farther=%d\n", stubCloserCount, stubFartherCount);
+    ASSERT_GT(stubCloserCount, 0);
+    ASSERT_GT(stubFartherCount, 0);
+
+    const std::vector<uint32_t> skipMask = {0x2u};  // exclude instance 1 (green) from tier-0's march
+
+    // -----------------------------------------------------------------------
+    // Step 3a: ORDERING A -- second writer runs FIRST (stub pre-seeded), tier-0 runs SECOND (skip
+    // mask active, real GPU dispatch against the pre-seeded buffer). Exercises the real conditional
+    // write's read-compare-write live, both branches (closer stub wins, farther stub loses to
+    // tier-0's own miss-clear... except tier-0 SKIPS instance 1, so tier-0 itself never produces a
+    // competing green hit here -- the real competition is tier-0's UNRELATED pixels (red/gray/miss)
+    // correctly leaving the stub's green pixels untouched, i.e. this ordering mainly proves tier-0's
+    // conditional write doesn't clobber a legitimate prior same-frame writer it has no opinion about.
+    // -----------------------------------------------------------------------
+    std::vector<uint8_t> rgbaOrderA; double msOrderA = 0.0;
+    std::vector<HitRecordCpu> resultOrderA;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaOrderA, msOrderA, &resultOrderA,
+                                         &skipMask, &stubOverlay));
+
+    // -----------------------------------------------------------------------
+    // Step 3b: ORDERING B -- tier-0 runs FIRST (skip mask active, fresh buffer, real GPU dispatch),
+    // second writer's compositing runs SECOND -- applied here via the SAME nearest-hit-wins rule
+    // Inc2 M3's own harness uses (test_recipe_multi_bucket_compositing.cpp: `if (bestT <
+    // existing.hitT || existing.flags==0u) overwrite`), against tier-0's REAL GPU output this time.
+    // -----------------------------------------------------------------------
+    std::vector<uint8_t> rgbaTier0Only; double msTier0Only = 0.0;
+    std::vector<HitRecordCpu> resultOrderB;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaTier0Only, msTier0Only, &resultOrderB,
+                                         &skipMask, /*preSeedHitRecords=*/nullptr));
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if (isStubGreenPixel[i] == 0) continue;
+        const HitRecordCpu& stub = stubOverlay[i];
+        HitRecordCpu& existing = resultOrderB[i];
+        if (stub.hitT < existing.hitT || (existing.flags & kHitRecordFlagHit) == 0u) {
+            existing = stub;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 4: ORACLE -- per-pixel nearest-of-{tier-0's real skip-masked output, the stub}, computed
+    // independently of either ordering's own bookkeeping (a third, from-scratch derivation, not a
+    // repeat of either ordering's own logic) -- the same standard Inc2 M3's own oracle used.
+    // -----------------------------------------------------------------------
+    // Recomputed from a THIRD fresh render (not reused from resultOrderB) so the oracle is derived
+    // independently of either ordering's own bookkeeping.
+    std::vector<uint8_t> rgbaTier0Fresh; double msTier0Fresh = 0.0;
+    std::vector<HitRecordCpu> tier0Only;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaTier0Fresh, msTier0Fresh, &tier0Only,
+                                         &skipMask, /*preSeedHitRecords=*/nullptr));
+    std::vector<HitRecordCpu> oracle = tier0Only;
+    int oracleStubWins = 0, oracleTier0Wins = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if (isStubGreenPixel[i] == 0) continue;
+        const HitRecordCpu& stub = stubOverlay[i];
+        const HitRecordCpu& t0   = tier0Only[i];
+        const bool stubNearer = stub.hitT < t0.hitT || (t0.flags & kHitRecordFlagHit) == 0u;
+        oracle[i] = stubNearer ? stub : t0;
+        stubNearer ? ++oracleStubWins : ++oracleTier0Wins;
+    }
+    std::printf("[M2-COMPOSITING] oracle: stubWins=%d tier0Wins=%d (of %d stub pixels)\n",
+                oracleStubWins, oracleTier0Wins, stubCloserCount + stubFartherCount);
+
+    // -----------------------------------------------------------------------
+    // Step 5: both real orderings must match the oracle byte-identically, AND match each other --
+    // exactly Inc2 M3's own "0/N pixels differ between orderings" rigor, now against the real
+    // production shader's own conditional write instead of a hand-rolled stand-in.
+    // -----------------------------------------------------------------------
+    const size_t hrBytes = static_cast<size_t>(kW) * kH * sizeof(HitRecordCpu);
+    const int diffA_Oracle = std::memcmp(resultOrderA.data(), oracle.data(), hrBytes);
+    int pixelsDifferAB = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if (std::memcmp(&resultOrderA[i], &resultOrderB[i], sizeof(HitRecordCpu)) != 0) ++pixelsDifferAB;
+    }
+    std::printf("[M2-COMPOSITING] orderingA-vs-oracle memcmp=%d | orderingA-vs-orderingB pixel diffs=%d/%u\n",
+                diffA_Oracle, pixelsDifferAB, kW * kH);
+    EXPECT_EQ(diffA_Oracle, 0) << "ordering A (second-writer-then-tier-0) does not match the independent oracle";
+    EXPECT_EQ(pixelsDifferAB, 0) << "the two dispatch orderings disagree -- compositing is not order-independent";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M2 FIX-ROUND gate: proves the empty-skip-mask
+// (tier0Exhaustive==true) HIT branch is now a fully unconditional overwrite, matching its MISS
+// sibling, instead of the stale conditional compare an Opus validator found live on real GPU
+// (61290/61290 body pixels kept a stale prior-frame closer hit instead of the current frame's
+// genuine hit).
+//
+// Scene: same 3-instance layout as the sibling compositing test (red/green/gray), but with NO
+// skip mask (anyInstanceSkipped()==false — tier-0 is the sole, exhaustive writer, exactly gate-OFF
+// behavior). Pre-seed HitRecordBuffer with a synthetic "stale last-frame" hit at every real body
+// pixel, with hitT deliberately CLOSER than this frame's genuine hit — the exact shape of the bug
+// (a nearer stale record surviving a farther, but current and correct, hit). Since tier0Exhaustive
+// is true here, the fixed shader must overwrite unconditionally regardless of the stale record's
+// hitT — the pre-fix code would have kept the stale (closer) record at every one of these pixels.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, EmptySkipMaskHitAlwaysOverwritesStaleCloserRecord) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_m2_stale_hit_fix");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const float scale = kBaseRadiusAu * 2.0f;
+    const float Rb    = 0.5f * kWorldGridSize * scale;
+    const float sep   = Rb * 3.0f;
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(-sep, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),  // instIdx 0: kind 0 (red)
+        MakeInstance( 0.0f, 0.0f, 0.0f, scale, 1, 1.0f, 1.0f, 1.0f),  // instIdx 1: kind 1 (green)
+        MakeInstance( sep, 0.0f, 0.0f, scale, 2, 1.0f, 1.0f, 1.0f),  // instIdx 2: kind 2 (gray)
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers b;
+    b.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
+
+    constexpr uint32_t kW = 768, kH = 256;
+    const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
+    const glm::vec3 c2 = ShaderBodyCentre(instances[2]);
+    const glm::vec3 centre = 0.5f * (c0 + c2);
+    const float spanX = std::abs(c2.x - c0.x) + 2.0f * Rb;
+    const float halfFov = glm::radians(45.0f) * 0.5f;
+    const float aspect  = static_cast<float>(kW) / static_cast<float>(kH);
+    const float dist    = (0.5f * spanX) / (std::tan(halfFov) * aspect) * 1.35f;
+    const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * dist;
+    const PushConstants pc = MakeCamera(eye, centre, kW, kH, static_cast<int32_t>(instances.size()));
+
+    // Step 1: get the genuine current-frame hit content (no skip mask, no pre-seed) to know which
+    // pixels are real body pixels and what their real hitT is.
+    std::vector<uint8_t> rgbaBaseline; double msBaseline = 0.0;
+    std::vector<HitRecordCpu> baseline;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaBaseline, msBaseline, &baseline,
+                                         /*skipMaskWords=*/nullptr));
+    int bodyPixelCount = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if ((baseline[i].flags & kHitRecordFlagHit) != 0u) ++bodyPixelCount;
+    }
+    std::printf("[M2-FIX-STALE-HIT] baseline real body pixels=%d/%u\n", bodyPixelCount, kW * kH);
+    ASSERT_GT(bodyPixelCount, 500) << "baseline scene did not render enough body pixels to be a meaningful gate";
+
+    // Step 2: build a "stale last-frame" pre-seed -- at every real body pixel, a hit CLOSER than
+    // this frame's genuine hitT (half the true distance), with a distinct flag/albedo so it's
+    // unambiguously "the stale record" rather than a coincidental match. Non-body (background)
+    // pixels are left zeroed (flags=0), matching a real stale buffer where the background never
+    // got a hit either.
+    std::vector<HitRecordCpu> staleSeed(static_cast<size_t>(kW) * kH, HitRecordCpu{});
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        const HitRecordCpu& real = baseline[i];
+        if ((real.flags & kHitRecordFlagHit) == 0u) continue;
+        HitRecordCpu stale = real;
+        stale.hitT = real.hitT * 0.5f;  // strictly closer than this frame's genuine hit
+        // Distinct albedo (pure blue) so the stale record is trivially distinguishable from any
+        // real red/green/gray body color, independent of the hitT comparison itself.
+        stale.albedo[0] = 0.0f; stale.albedo[1] = 0.0f; stale.albedo[2] = 1.0f;
+        staleSeed[i] = stale;
+    }
+
+    // Step 3: run one march with EMPTY skip mask (tier0Exhaustive==true) and the stale-closer
+    // pre-seed installed. The fixed shader's HIT branch must overwrite unconditionally in this
+    // regime -- the current frame's real, farther hit must win at every single body pixel.
+    std::vector<uint8_t> rgbaResult; double msResult = 0.0;
+    std::vector<HitRecordCpu> result;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaResult, msResult, &result,
+                                         /*skipMaskWords=*/nullptr, &staleSeed));
+
+    int currentFrameWins = 0, staleSurvived = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if ((baseline[i].flags & kHitRecordFlagHit) == 0u) continue;  // only check real body pixels
+        const HitRecordCpu& r = result[i];
+        const bool isStaleBlue = (r.albedo[0] < 0.05f && r.albedo[1] < 0.05f && r.albedo[2] > 0.95f);
+        const bool matchesRealHit = std::memcmp(&r, &baseline[i], sizeof(HitRecordCpu)) == 0;
+        if (isStaleBlue) { ++staleSurvived; continue; }
+        if (matchesRealHit) ++currentFrameWins;
+    }
+    std::printf("[M2-FIX-STALE-HIT] current-frame-wins=%d/%d stale-survived=%d (tier0Exhaustive regime)\n",
+                currentFrameWins, bodyPixelCount, staleSurvived);
+
+    // The decisive assertion: EVERY real body pixel must show the current frame's genuine hit,
+    // byte-identical to the no-pre-seed baseline -- zero stale (blue) records may survive. Before
+    // the fix, this would have been 0/N (the closer stale record always won the compare).
+    EXPECT_EQ(staleSurvived, 0)
+        << "a stale prior-frame closer hit survived tier-0's own current-frame hit in the "
+           "exhaustive (empty-skip-mask) regime -- the HIT branch is not unconditional";
+    EXPECT_EQ(currentFrameWins, bodyPixelCount)
+        << "not every real body pixel shows the current frame's genuine hit -- expected " << bodyPixelCount
+        << ", got " << currentFrameWins;
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

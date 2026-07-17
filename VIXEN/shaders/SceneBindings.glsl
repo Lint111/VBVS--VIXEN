@@ -115,6 +115,106 @@ struct TierRef {
 };
 layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
 
+// ============================================================================
+// PER-INSTANCE SKIP BITMASK (Recipe-Live-App-Bucketed-Dispatch Inc4 M1 — binding 35)
+// ============================================================================
+// One bit per instance index (bit (instIdx & 31) of word instIdx>>5), read once at the
+// top of TraceWorld's and TraceWorldShadow's instance-loop body: a set bit means "some
+// OTHER pass already owns this instance this frame, skip it here" — an early-continue,
+// cheap enough to be unconditional. Only a CONSUMER of this mechanism (a future
+// bucketed-dispatch integration, not built in this milestone) ever sets a bit; this
+// milestone only builds the read side + the skip semantics.
+//
+// Bound as a 256-byte ZEROED placeholder in every scene/test that doesn't populate it
+// (both the production graph's own instance_skip_mask_buffer, BuildRenderGraph.cpp, and
+// all 11 GTest Vulkan harnesses exercising this shader use the SAME 256-byte/zeroed
+// convention — one no-op shape everywhere, not two). This differs from MipPoolBuffer/
+// TierRefTableBuffer/OccupancyGridBuffer's 1-byte-when-empty convention (see those
+// buffers' comments above) because those buffers are CONCATENATED CPU-side vectors that
+// are sometimes genuinely empty (no tree ever produced data for them), whereas this
+// buffer's placeholder is a fixed, always-allocated size independent of any CPU-side
+// vector — 1 byte would be equally safe (the bounds-check below tolerates any size) but
+// 256 bytes was chosen so production and every test harness share one literal buffer
+// size. The read bounds-checks against skipMask.length() before indexing, so the no-op
+// holds by CONTENT (every word is zero), not by length: with the 256-byte placeholder,
+// skipMask.length()==64 (256B / 4B-per-uint) is nonzero, so the bounds-check passes and
+// the read genuinely happens — it just always reads a zero word, so no bit is ever set
+// and every instance is always marched. (A 1-byte placeholder would instead make the
+// no-op hold via skipMask.length()==0 — a std430 runtime-sized array's element count
+// over a too-small binding truncates to 0 — short-circuiting the bounds-check instead;
+// both shapes are safe, this file's declared convention is the zeroed-content one.)
+//
+// Binding number 35 (not the next free number in THIS file's own local sequence, 23):
+// SceneBindings.glsl is #included by DirectLighting.comp/ProbeUpdate.comp/
+// SpatialReuseShade.comp TOO, each of which separately declares its OWN bindings in the
+// 23-34 range (ReservoirConfigSSBO, LightTreeBufferSSBO, ProbeGridConfigSSBO, the DDGI
+// leak-gate debug buffers, the probe irradiance/visibility atlases, ...) — since a single
+// compiled shader's reflected descriptor set is the UNION of every binding declared in
+// its translation unit, a number already used by one of those shaders would collide the
+// moment this file's declaration and that shader's own declaration are both in scope.
+// Confirmed via grep across every shaders/*.comp: 23-34 are all taken by at least one
+// SceneBindings.glsl includer; 35 is free everywhere as of this milestone.
+layout(std430, binding = 35) readonly buffer InstanceSkipMaskBuffer { uint skipMask[]; };
+
+// Returns true iff instIdx's bit is set in skipMask[] — false (never skip) whenever the
+// bound buffer is the 256-byte zeroed placeholder (every word reads 0, so no bit is ever
+// set) or instIdx's word is simply beyond whatever was actually populated, so a caller
+// that never populates this buffer at all gets byte-identical behavior to a build that
+// never had this mechanism.
+bool isInstanceSkipped(int instIdx) {
+    uint wordIdx = uint(instIdx) >> 5u;
+    if (wordIdx >= skipMask.length()) return false;
+    uint bitIdx = uint(instIdx) & 31u;
+    return (skipMask[wordIdx] & (1u << bitIdx)) != 0u;
+}
+
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M2: true iff ANY instance is currently skip-masked
+// (word-scanned, not per-instance — cheap since the mask covers at most 3*64=192 instances,
+// i.e. 6 words, matching TraceWorld's own instance-count cap). Used by BodyInstanceRayMarch.comp
+// to decide whether tier-0's own instance loop is exhaustive this frame: with the mask entirely
+// empty (every word zero — the always-true case until M3 wires a real second writer), tier-0
+// marches every instance and its own hit/miss determination is authoritative, so a miss must
+// unconditionally clear any stale prior-frame HitRecord content. The MOMENT any instance is
+// skip-masked, tier-0 is no longer exhaustive — a miss at a pixel whose only geometry was a
+// skipped instance is NOT "nothing is here," it's "I didn't check this," and must defer to
+// whatever a same-frame second writer (the skipped instance's own bucketed-dispatch pass)
+// already wrote, rather than clobbering it. See BodyInstanceRayMarch.comp's HitRecord write for
+// the full derivation (a test scene with a skip-masked instance + a stubbed second writer caught
+// this exact miss-clobbers-hit bug during Inc4 M2's gate).
+// Computed once per invocation (frame-global content, not a per-pixel quantity) rather than
+// tracked as a local inside TraceWorld's instance loop -- deliberately, not an oversight. The two
+// forms are PROVABLY the same value for every pixel today, not merely a close approximation of
+// each other, because of three facts that all hold simultaneously in TraceWorld.glsl's instance
+// loop (`for (int instIdx = 0; instIdx < numInstances; ++instIdx)`):
+//   1. The loop bound (numInstances = clamp(pc.instanceCount, ...)) comes from a push constant --
+//      frame-global, not per-pixel/per-ray.
+//   2. isInstanceSkipped(instIdx) takes ONLY instIdx and the skip-mask buffer's content as input --
+//      no per-pixel/per-ray input reaches it anywhere.
+//   3. The loop body never `break`s or early-`return`s before reaching a later index (every branch
+//      is `continue` or falls through) -- so every pixel's invocation visits the SAME index range
+//      and evaluates the SAME skip decision per index, regardless of ray direction/origin.
+// Given all three, "did this pixel's march skip an instance" cannot vary across pixels in the
+// current code -- it's frame-global content computed identically no matter where in the shader you
+// evaluate it, so hoisting it to one frame-level call here (instead of a per-invocation tracked
+// bool threaded through both the procedural and ESVO branches of the loop) is zero behavioral
+// difference, less surface area.
+// THIS EQUIVALENCE BREAKS the moment ANY ONE of the three facts above stops holding -- e.g. a
+// future change makes the instance range or skip decision genuinely ray/pixel-dependent, or adds an
+// early-break/return to the loop before its last index (plausible territory for M3's real bucketing
+// scheme). If you are that future change: this frame-global call is no longer correct and the
+// "did I skip anything" signal MUST move to a real per-invocation tracked bool inside the loop
+// instead -- re-derive from scratch, don't assume this function still applies unmodified.
+bool anyInstanceSkipped() {
+    uint wordCount = skipMask.length();
+    // 3*64=192 instances / 32 bits-per-word = 6 words covers TraceWorld's own instance-count cap;
+    // clamp defensively in case a future caller ever binds a larger buffer.
+    uint scanWords = min(wordCount, 6u);
+    for (uint w = 0u; w < scanWords; ++w) {
+        if (skipMask[w] != 0u) return true;
+    }
+    return false;
+}
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 

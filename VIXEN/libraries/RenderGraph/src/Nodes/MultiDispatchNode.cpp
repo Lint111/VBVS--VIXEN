@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <chrono>
 #include <sstream>  // Sprint 6.1: Task #314 - For enhanced logging
+#include <mutex>    // Inc4 M3: SubmitMutex guard around vkQueueSubmit2
+#include <set>      // Inc4 M3: distinctSignalValues dedup
 
 namespace Vixen::RenderGraph {
 
@@ -399,6 +401,79 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         endTime - startTime).count();
 
     commandBuffers_.MarkReady(imageIndex);
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: submit this node's own recorded command
+    // buffer, mirroring ComputeStageNode::ExecuteImpl's PRODUCER branch exactly (this node
+    // is never a swapchain consumer — no isConsumer path, no fence reset/ownership, no
+    // acquire wait, no PRESENT-facing binary signal). Only runs when IN_FLIGHT_FENCE is
+    // actually connected — every pre-M3 consumer (test_group_dispatch,
+    // test_multidispatch_integration, the Inc2/3 bucketing GTest harnesses) leaves it
+    // unconnected (VK_NULL_HANDLE default) and stays byte-identical to pre-M3 behavior:
+    // record-only, no submit, caller does its own vkQueueSubmit exactly as those tests
+    // already do.
+    VkFence inFlightFence = ctx.In(MultiDispatchNodeConfig::IN_FLIGHT_FENCE);
+    if (inFlightFence != VK_NULL_HANDLE) {
+        VkSemaphore timelineSem = ctx.In(MultiDispatchNodeConfig::TIMELINE_SEMAPHORE_IN);
+        uint64_t frameBase = ctx.In(MultiDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+        VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        cmdInfo.commandBuffer = cmdBuffer;
+
+        std::vector<VkSemaphoreSubmitInfo> waits, signals;
+
+        // Producer: timeline SIGNALS only (this node never waits an acquire semaphore or
+        // signals a PRESENT-facing binary — it has no swapchain image of its own to hand
+        // off). A group signals its OWN completion value once; distinct (offset+frameBase)
+        // values dedupe to one, same VUID-VkSubmitInfo2-semaphore-03882 avoidance as
+        // ComputeStageNode's own producer branch.
+        if (timelineSem != VK_NULL_HANDLE) {
+            const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
+            if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
+                std::set<uint64_t> distinctSignalValues;
+                for (uint32_t idx : grp->signalEdges) {
+                    distinctSignalValues.insert(sched.edges[idx].timelineOffset + frameBase);
+                }
+                for (uint64_t value : distinctSignalValues) {
+                    VkSemaphoreSubmitInfo tsig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+                    tsig.semaphore = timelineSem;
+                    tsig.value     = value;
+                    tsig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                    signals.push_back(tsig);
+                }
+            }
+        }
+
+        VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+        si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
+        si.pWaitSemaphoreInfos      = waits.data();
+        si.commandBufferInfoCount   = 1;
+        si.pCommandBufferInfos      = &cmdInfo;
+        si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+        si.pSignalSemaphoreInfos    = signals.data();
+
+        // Producer submits with NO fence (mirrors ComputeStageNode::ExecuteImpl's own producer
+        // branch: "Producer submits with no fence; consumer owns the in-flight fence"). This
+        // node is never the frame's consumer/last-submitter -- passing inFlightFence itself as
+        // submitFence here was a real bug (VUID-vkQueueSubmit2-fence-04895, found live during
+        // this milestone's own gate run): the REAL consumer node (whichever submits last, e.g.
+        // ui_composite_render) also associates that same fence with its own submission, and two
+        // submissions racing to attach one fence in the same frame is exactly what that VUID
+        // forbids. IN_FLIGHT_FENCE stays as an INPUT (gates whether this node participates in
+        // the real submit chain at all, matching every pre-M3 consumer's record-only default
+        // when unconnected) -- it is deliberately never passed to vkQueueSubmit2 itself.
+        VkResult result;
+        {
+            std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+            result = vulkanDevice_->fpQueueSubmit2(vulkanDevice_->queue, 1, &si, VK_NULL_HANDLE);
+        }
+        if (result != VK_SUCCESS) {
+            if (result == VK_ERROR_DEVICE_LOST) {
+                GetOwningGraph()->NotifyDeviceLost("MultiDispatchNode::ExecuteImpl vkQueueSubmit2");
+            }
+            throw std::runtime_error("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
+                                     std::to_string(result));
+        }
+    }
 
     // Output command buffer
     ctx.Out(MultiDispatchNodeConfig::COMMAND_BUFFER, cmdBuffer);

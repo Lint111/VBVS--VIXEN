@@ -120,7 +120,18 @@ layout(std430, binding = 8) buffer BucketIndirectCommandBuffer { uint bucketIndi
 
 layout(push_constant) uniform Push {
     mat4  viewProj;            // CameraNodeConfig::CURRENT_VIEW_PROJ (Task 1)
-    uint  instanceCount;       // number of valid entries in bodyInstances[]
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: int32_t (signed), not uint -- matches the
+    // codebase-wide contract BodyOctreeSceneNodeConfig::INSTANCE_COUNT already documents (its
+    // own comment: "int32_t (signed) to match the shader's reflected `int instanceCount`
+    // push-constant field"). This shader originally declared it uint (Inc2, when the only
+    // consumer was a hand-rolled test harness that packs push-constant bytes directly and
+    // never goes through PushConstantGathererNode's SPIR-V-reflection-driven type dispatch) --
+    // found live during M3's own gate run: PushConstantGathererNode::ExtractResourceAs<T>()
+    // resolves T purely from this field's reflected SPIR-V type, so a `uint` here demanded
+    // GetHandle<uint32_t>() against a Resource holding int32_t, throwing std::bad_any_cast
+    // unconditionally the first time this shader was wired through the production
+    // reflection path instead of a hand-rolled harness.
+    int   instanceCount;       // number of valid entries in bodyInstances[]
     uint  maxBuckets;          // distinct-recipeId cap (Task 2; default 256)
     uint  maxMembersPerBucket; // per-bucket compacted-index-list row stride
     uint  screenWidth;
@@ -192,8 +203,11 @@ void main() {
         return;
     }
 
-    // mode == 0: bucket + coverage pass, one thread per INSTANCE.
-    if (gid >= pc.instanceCount) return;
+    // mode == 0: bucket + coverage pass, one thread per INSTANCE. int(gid) is safe up to
+    // 2^31-1 invocations (this pass's own instance-count scale is nowhere near that);
+    // pc.instanceCount<0 (a producer bug, never a legitimate live value) would make this
+    // comparison false for every gid, a safe no-op rather than a huge-unsigned-wrap OOB read.
+    if (int(gid) >= pc.instanceCount) return;
 
     BodyInstance inst = bodyInstances[gid];
     uint recipeId = inst.recipeId;

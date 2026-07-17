@@ -56,6 +56,18 @@ public:
     /// ExecuteImpl runs (mirrors every other node's pre-Compile state).
     const CameraData& GetCurrentCameraData() const { return currentCameraData; }
 
+    /// Recipe-Live-App-Bucketed-Dispatch Inc4 M3: BY-VALUE accessor for the live view-proj
+    /// matrix, for a caller OUTSIDE the render graph's connection system (e.g. PreTick feeding
+    /// a ConstantNode each frame) that needs a plain glm::mat4 -- CURRENT_VIEW_PROJ's own graph
+    /// output slot is `const glm::mat4&` (reference semantics, for cheap node-to-node pass-
+    /// through), which is NOT interchangeable with PushConstantGathererNode's generic
+    /// ExtractResourceAs<T>() path (that path always does GetHandle<T>() with T as a bare VALUE
+    /// type -- wiring a reference-typed slot directly into a raw variadic push-constant field
+    /// index is a producer/consumer Resource-tag mismatch that throws std::bad_any_cast at
+    /// Execute time, not a hypothetical -- this is precisely the bug this accessor exists to let
+    /// a caller work around by copying the value at the point of use instead).
+    glm::mat4 GetCurrentViewProj() const { return currentViewProj; }
+
     /**
      * @brief Directly set the live orbit distance/yaw (Sparse-Mip ESVO LOD Inc1 M4c live gate).
      *

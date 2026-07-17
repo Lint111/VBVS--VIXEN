@@ -721,6 +721,10 @@ protected:
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyShadow,dShadowMem,true);
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyAccum,dAccumMem,true);
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyPrevCam,dPrevCamMem,true);
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer (binding 35) placeholder.
+        VkBuffer dummySkipMask=VK_NULL_HANDLE;
+        VkDeviceMemory dSkipMaskMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySkipMask,dSkipMaskMem,true);
 
         VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE, historyImg=VK_NULL_HANDLE;
         VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE, historyMem=VK_NULL_HANDLE;
@@ -749,7 +753,7 @@ protected:
         // (root-caused 2026-07-15, Recipe-Parameterization M4 — was previously misdiagnosed
         // as a boot-recompile descriptor-staleness bug in KI-028; that issue is real but
         // unrelated to this test's symmetric bakedHits=0/virtualHits=0 failure).
-        const std::array<VkDescriptorSetLayoutBinding,20> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,21> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -770,6 +774,7 @@ protected:
             bindL(20,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
             bindL(21,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
             bindL(22,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
+            bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -791,7 +796,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -812,7 +817,8 @@ protected:
             tierRefI{tierRef,0,VK_WHOLE_SIZE}, occGridI{occGrid,0,VK_WHOLE_SIZE},
             lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
             shadowI{dummyShadow,0,VK_WHOLE_SIZE}, accumI{dummyAccum,0,VK_WHOLE_SIZE},
-            prevCamI{dummyPrevCam,0,VK_WHOLE_SIZE};
+            prevCamI{dummyPrevCam,0,VK_WHOLE_SIZE},
+            skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -824,12 +830,13 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,20> writes = {
+        const std::array<VkWriteDescriptorSet,21> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI), wB(15,&tierRefI), wB(16,&occGridI),
             wB(17,&lightingI), wB(18,&hitRecordI), wB(19,&shadowI), wB(20,&accumI),
             wI(21,&historyImgI), wB(22,&prevCamI),
+            wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -923,6 +930,7 @@ protected:
         vkDestroyBuffer(logicalDevice_,dummyShadow,nullptr);     vkFreeMemory(logicalDevice_,dShadowMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyAccum,nullptr);      vkFreeMemory(logicalDevice_,dAccumMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyPrevCam,nullptr);    vkFreeMemory(logicalDevice_,dPrevCamMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummySkipMask,nullptr);   vkFreeMemory(logicalDevice_,dSkipMaskMem,nullptr);
     }
 
     // Coverage mask + count. KI-032 fix: a pixel counts as "hit" using HitRecordBuffer's

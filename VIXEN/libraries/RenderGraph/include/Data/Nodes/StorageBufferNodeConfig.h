@@ -53,6 +53,12 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
     static constexpr const char* PARAM_ELEMENT_COUNT   = "elementCount";   // number of elements
     static constexpr const char* PARAM_ELEMENT_STRIDE  = "elementStride";  // bytes per element
     static constexpr const char* PARAM_BYTES_PER_PIXEL = "bytesPerPixel";  // extent-driven: bytes per swapchain pixel
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: additional VkBufferUsageFlags bits OR'd onto
+    // the always-present VK_BUFFER_USAGE_STORAGE_BUFFER_BIT (e.g. VK_BUFFER_USAGE_INDIRECT_
+    // BUFFER_BIT for a buffer a compute pass also reads via vkCmdDispatchIndirect). Defaults to
+    // 0 -- every pre-M3 StorageBufferNode consumer leaves this unset and gets the exact same
+    // STORAGE_BUFFER_BIT-only buffer as before (byte-identical no-op).
+    static constexpr const char* PARAM_EXTRA_USAGE_FLAGS = "extraUsageFlags";
 
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,

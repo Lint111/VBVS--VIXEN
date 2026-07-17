@@ -447,6 +447,10 @@ protected:
         CreateHostBuffer(sizeof(ShadowConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, shadowBuf, shadowMem, false);
         UploadHostBuffer(shadowMem, &shadow, sizeof(ShadowConfigCpu));
 
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer (binding 35) placeholder.
+        VkBuffer dummySkipMask = VK_NULL_HANDLE; VkDeviceMemory dummySkipMaskMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySkipMask, dummySkipMaskMem, true);
+
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
         const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
         VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE;
@@ -471,7 +475,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 17> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 18> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -489,6 +493,7 @@ protected:
             bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -516,7 +521,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -547,6 +552,7 @@ protected:
         VkDescriptorBufferInfo lightInfo{lightBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo hitRecordInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo shadowInfo{shadowBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo skipMaskInfo{dummySkipMask, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -562,7 +568,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 17> writes = {
+        const std::array<VkWriteDescriptorSet, 18> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -580,6 +586,7 @@ protected:
             wBuf(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightInfo),
             wBuf(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
             wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),
+            wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -671,6 +678,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, lightBuf, nullptr);     vkFreeMemory(logicalDevice_, lightMem, nullptr);
         vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
         vkDestroyBuffer(logicalDevice_, shadowBuf, nullptr);    vkFreeMemory(logicalDevice_, shadowMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummySkipMask, nullptr); vkFreeMemory(logicalDevice_, dummySkipMaskMem, nullptr);
     }
 };
 
