@@ -675,6 +675,14 @@ private:
     //   leafBrick: the brick coordinate to bound the march to.
     //     - CURRENT (buggy) shader: floor((gridEntry+gridDirN*1e-3)/8), recomputed here.
     //     - FIX (m_useEsvoBrick): the brick the ESVO traversal descended to, passed in.
+    //
+    // KNOWN SYNC DRIFT (Baked-Perf M8 Task 8.2, 2026-07-17): the shader's step loop now
+    // over-relaxes (OMEGA*d, default 1.5) with an unbounding-sphere overlap-test fallback;
+    // this CPU port still steps the plain honest distance d (OMEGA=1 behavior). Both
+    // converge to the SAME iso-surface crossing by construction (the overlap test's whole
+    // purpose is to make relaxation result-preserving), so this test's analytic-sphere
+    // hole-detection stays valid unmodified — but a future worker syncing this file 1:1
+    // with the shader should port the overlap-test loop too.
     // ====================================================================
     bool marchBrickSdf(const glm::vec3& gridEntry, const glm::vec3& gridDirN,
                        const glm::ivec3& esvoBrick,
