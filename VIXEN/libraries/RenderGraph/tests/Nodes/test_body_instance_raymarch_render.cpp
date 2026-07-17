@@ -1511,6 +1511,141 @@ TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderin
 }
 
 // ---------------------------------------------------------------------------
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M2 FIX-ROUND gate: proves the empty-skip-mask
+// (tier0Exhaustive==true) HIT branch is now a fully unconditional overwrite, matching its MISS
+// sibling, instead of the stale conditional compare an Opus validator found live on real GPU
+// (61290/61290 body pixels kept a stale prior-frame closer hit instead of the current frame's
+// genuine hit).
+//
+// Scene: same 3-instance layout as the sibling compositing test (red/green/gray), but with NO
+// skip mask (anyInstanceSkipped()==false — tier-0 is the sole, exhaustive writer, exactly gate-OFF
+// behavior). Pre-seed HitRecordBuffer with a synthetic "stale last-frame" hit at every real body
+// pixel, with hitT deliberately CLOSER than this frame's genuine hit — the exact shape of the bug
+// (a nearer stale record surviving a farther, but current and correct, hit). Since tier0Exhaustive
+// is true here, the fixed shader must overwrite unconditionally regardless of the stale record's
+// hitT — the pre-fix code would have kept the stale (closer) record at every one of these pixels.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, EmptySkipMaskHitAlwaysOverwritesStaleCloserRecord) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_m2_stale_hit_fix");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const float scale = kBaseRadiusAu * 2.0f;
+    const float Rb    = 0.5f * kWorldGridSize * scale;
+    const float sep   = Rb * 3.0f;
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(-sep, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),  // instIdx 0: kind 0 (red)
+        MakeInstance( 0.0f, 0.0f, 0.0f, scale, 1, 1.0f, 1.0f, 1.0f),  // instIdx 1: kind 1 (green)
+        MakeInstance( sep, 0.0f, 0.0f, scale, 2, 1.0f, 1.0f, 1.0f),  // instIdx 2: kind 2 (gray)
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers b;
+    b.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
+
+    constexpr uint32_t kW = 768, kH = 256;
+    const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
+    const glm::vec3 c2 = ShaderBodyCentre(instances[2]);
+    const glm::vec3 centre = 0.5f * (c0 + c2);
+    const float spanX = std::abs(c2.x - c0.x) + 2.0f * Rb;
+    const float halfFov = glm::radians(45.0f) * 0.5f;
+    const float aspect  = static_cast<float>(kW) / static_cast<float>(kH);
+    const float dist    = (0.5f * spanX) / (std::tan(halfFov) * aspect) * 1.35f;
+    const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * dist;
+    const PushConstants pc = MakeCamera(eye, centre, kW, kH, static_cast<int32_t>(instances.size()));
+
+    // Step 1: get the genuine current-frame hit content (no skip mask, no pre-seed) to know which
+    // pixels are real body pixels and what their real hitT is.
+    std::vector<uint8_t> rgbaBaseline; double msBaseline = 0.0;
+    std::vector<HitRecordCpu> baseline;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaBaseline, msBaseline, &baseline,
+                                         /*skipMaskWords=*/nullptr));
+    int bodyPixelCount = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if ((baseline[i].flags & kHitRecordFlagHit) != 0u) ++bodyPixelCount;
+    }
+    std::printf("[M2-FIX-STALE-HIT] baseline real body pixels=%d/%u\n", bodyPixelCount, kW * kH);
+    ASSERT_GT(bodyPixelCount, 500) << "baseline scene did not render enough body pixels to be a meaningful gate";
+
+    // Step 2: build a "stale last-frame" pre-seed -- at every real body pixel, a hit CLOSER than
+    // this frame's genuine hitT (half the true distance), with a distinct flag/albedo so it's
+    // unambiguously "the stale record" rather than a coincidental match. Non-body (background)
+    // pixels are left zeroed (flags=0), matching a real stale buffer where the background never
+    // got a hit either.
+    std::vector<HitRecordCpu> staleSeed(static_cast<size_t>(kW) * kH, HitRecordCpu{});
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        const HitRecordCpu& real = baseline[i];
+        if ((real.flags & kHitRecordFlagHit) == 0u) continue;
+        HitRecordCpu stale = real;
+        stale.hitT = real.hitT * 0.5f;  // strictly closer than this frame's genuine hit
+        // Distinct albedo (pure blue) so the stale record is trivially distinguishable from any
+        // real red/green/gray body color, independent of the hitT comparison itself.
+        stale.albedo[0] = 0.0f; stale.albedo[1] = 0.0f; stale.albedo[2] = 1.0f;
+        staleSeed[i] = stale;
+    }
+
+    // Step 3: run one march with EMPTY skip mask (tier0Exhaustive==true) and the stale-closer
+    // pre-seed installed. The fixed shader's HIT branch must overwrite unconditionally in this
+    // regime -- the current frame's real, farther hit must win at every single body pixel.
+    std::vector<uint8_t> rgbaResult; double msResult = 0.0;
+    std::vector<HitRecordCpu> result;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaResult, msResult, &result,
+                                         /*skipMaskWords=*/nullptr, &staleSeed));
+
+    int currentFrameWins = 0, staleSurvived = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        if ((baseline[i].flags & kHitRecordFlagHit) == 0u) continue;  // only check real body pixels
+        const HitRecordCpu& r = result[i];
+        const bool isStaleBlue = (r.albedo[0] < 0.05f && r.albedo[1] < 0.05f && r.albedo[2] > 0.95f);
+        const bool matchesRealHit = std::memcmp(&r, &baseline[i], sizeof(HitRecordCpu)) == 0;
+        if (isStaleBlue) { ++staleSurvived; continue; }
+        if (matchesRealHit) ++currentFrameWins;
+    }
+    std::printf("[M2-FIX-STALE-HIT] current-frame-wins=%d/%d stale-survived=%d (tier0Exhaustive regime)\n",
+                currentFrameWins, bodyPixelCount, staleSurvived);
+
+    // The decisive assertion: EVERY real body pixel must show the current frame's genuine hit,
+    // byte-identical to the no-pre-seed baseline -- zero stale (blue) records may survive. Before
+    // the fix, this would have been 0/N (the closer stale record always won the compare).
+    EXPECT_EQ(staleSurvived, 0)
+        << "a stale prior-frame closer hit survived tier-0's own current-frame hit in the "
+           "exhaustive (empty-skip-mask) regime -- the HIT branch is not unconditional";
+    EXPECT_EQ(currentFrameWins, bodyPixelCount)
+        << "not every real body pixel shows the current frame's genuine hit -- expected " << bodyPixelCount
+        << ", got " << currentFrameWins;
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
 // STORED-SDF render (Inc2 M6) — decisive proof of the ESVO-leaf-hit redesign.
 //
 // Bakes the 3 Stored-SDF body kinds (VIXEN_STORED_SDF_DEMO → the node's SDF path:

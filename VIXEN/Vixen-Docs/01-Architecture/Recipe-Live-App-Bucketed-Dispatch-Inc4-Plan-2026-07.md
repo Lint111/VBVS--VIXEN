@@ -404,6 +404,67 @@ validator verdict.)
     `VIXEN/Vixen-Docs/01-Architecture/Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07.md` (a copy
     already existed there from M1's dispatch, per the prompt's own note) — not committed there, left
     for the controller to review/commit.
+- **M2 FIX ROUND (2026-07-17).** An Opus validator found the M2 commit above still correctness-blocking
+  in exactly the one case Task 2's own bar demands be a byte-identical no-op: the empty-skip-mask
+  (`anyInstanceSkipped()==false`, tier-0 exhaustive, sole writer) HIT branch still ran the conditional
+  compare `rec.hitT < existing.hitT || existing.flags==0u` against `existing`, which is always LAST
+  FRAME's leftover content since `HitRecordBuffer` is never cleared per-frame
+  (`StorageBufferNode::ExecuteImpl` confirmed a no-op, independently re-confirmed this round). Since
+  `existing.flags==0u` never holds after frame 1, the condition degenerates to `rec.hitT <
+  existing.hitT` — a closer stale hit from a prior frame (camera motion, object moving out of view)
+  wrongly survived over the current frame's real, farther, correct hit. The validator proved this live:
+  61290/61290 body pixels kept a stale record instead of the current frame's genuine hit, with an empty
+  skip mask. The MISS branch in this same regime was already correct (unconditional).
+  - **Fix:** restructured `BodyInstanceRayMarch.comp`'s `HitRecord` write (~line 355-370) to check
+    `tier0Exhaustive` FIRST, branching into two fully separate regimes instead of folding the
+    empty/nonempty distinction into a combined conditional expression:
+    - `tier0Exhaustive == true` (no instance skip-masked, sole writer): plain unconditional overwrite,
+      hit or miss, no compare — byte-identical to the original pre-M2 code, exactly as Task 2's own bar
+      requires.
+    - `tier0Exhaustive == false` (some instance skip-masked, a real second writer expected this frame):
+      unchanged from the prior round — miss defers to an existing hit, hit applies Inc2 M3's
+      nearest-hit-wins compare. Not touched; already validated correct.
+  - **New gate test:** `BodyInstanceRayMarchRenderTest.EmptySkipMaskHitAlwaysOverwritesStaleCloserRecord`
+    (`test_body_instance_raymarch_render.cpp`) — same 3-instance red/green/gray scene as the sibling
+    compositing test, empty skip mask, pre-seeds `HitRecordBuffer` with a synthetic "stale last-frame"
+    hit at every real body pixel (closer than the genuine hit, distinct pure-blue albedo so it's
+    unambiguous), runs one march, and asserts the CURRENT frame's real hit wins everywhere — the exact
+    opposite of what the validator measured. Result: **61290/61290 current-frame-wins, 0/61290
+    stale-survived** — matches the validator's own cited pixel count exactly, now with the fix in
+    place producing the correct outcome instead of the bug's outcome.
+  - **Full suite re-run (Windows-native, real GPU, post-fix):** `test_rendergraph_criticalnodes_gpurender1`
+    (10/10 PASS, includes the new stale-hit-wins test), `test_recipe_pool_render` (1/1 PASS),
+    `test_mip_fallback_render` (4/4 PASS), `test_rendergraph_shadermirrors` (25/25 PASS),
+    `test_rendergraph_criticalnodes_sdiparity` (9/9 PASS, the "gpu_parity" suite) — all zero
+    regressions. The same 4 pre-existing failures from M1/M2 reproduced byte-identically this round
+    too: `test_baked_vs_virtual_parity` (`bakedHits=5808/virtualHits=9580/IoU=0.6062630480167015`),
+    `test_rendergraph_criticalnodes_gpurender2`'s `TierCrossingLodResidencyTest` (`magenta px=0`),
+    `test_rendergraph_criticalnodes_gpurender2b`'s `ShadowCorrectnessTest` (`luma=0`),
+    `test_appflow_editor_toggle_render`'s `ToggleThenUndoRestoresRender` (`boreDiffPixels=0 vs 3000`) —
+    all confirmed unrelated to this fix, unchanged from prior rounds' own documentation.
+  - **LIVE APP GATE:** ran the real `VIXEN.exe` (Windows-native, `VIXEN_EXIT_AFTER_FRAMES=25000`),
+    default scene/graph (which engages orbit-mode camera by default — real per-frame camera motion
+    exercised throughout the run, the exact condition the bug needed to manifest), no special flags.
+    Reached frame ~24985 in ~3 minutes at 176-187 FPS sustained, clean exit ("frame limit reached"),
+    clean teardown. Discrete GPU confirmed via a freshly-written calibration artifact
+    (`calibration/NVIDIA_GeForce_RTX_3060_Laptop_GPU_4318_9504.json`, timestamped to this run) — this
+    machine has both an AMD iGPU and this NVIDIA discrete GPU; auto-select correctly chose the discrete
+    one, consistent with the DeviceNode discrete-preference fix from an earlier epic. **Zero occurrences
+    of `VUID-vkCmdDispatch-None-08114` or any NEW validation-error class.** VUID/error counts matched
+    the M1/M2-documented pre-existing baseline exactly: 50 `PushConstantGathererNode::Validate` "Type
+    mismatch" lines, 40 total VUID occurrences split 20/20 between `VUID-vkCmdDraw-None-09600` and
+    `VUID-vkQueueSubmit2-semaphore-03868` (same self-limited startup-transient class, unrelated to
+    compute dispatch/HitRecord writes). Confirmed binding 35 (skip mask) and binding 18 (HitRecord)
+    both wired into the live production graph via startup log lines. Per-node `DeviceNode`/`Selected
+    GPU` log lines were not present in this run's stdout capture (VIXEN's node logging convention
+    writes to per-node log files, not console, per this repo's own logging rule) — device identity was
+    confirmed via the calibration-file side artifact instead, not a log-line citation; noted here for
+    transparency about the evidence source, not a gap in the gate itself.
+  - **Deviation from prompt:** none of substance. The prompt's own repro-shape (empty skip mask,
+    pre-seed closer stale hit at real body pixels, assert current frame wins) was implemented directly.
+  - Plan-doc sync: this worktree copy updated with this entry; `cp` (not commit) to the main checkout's
+    copy at `/mnt/c/cpp/VBVS--VIXEN/VIXEN/Vixen-Docs/01-Architecture/Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07.md`
+    performed as part of this same round.
 
 ---
 
