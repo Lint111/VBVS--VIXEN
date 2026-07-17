@@ -1187,6 +1187,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, directLightingDispatchX);
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, directLightingDispatchY);
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    // Baked-Perf M4 Task 4.3's PARAM_DISPATCH_ENABLED is set at the END of this function (see the
+    // block right before batch.RegisterAll()), NOT here -- several VIXEN_*_DEMO blocks further
+    // down force-enable VIXEN_PROBE_GRID_CONFIG_ENABLED via _putenv_s AFTER this point in the
+    // SAME function, so reading ResolveProbeGridEnabled()/ResolveReservoirEnabled() this early
+    // would see the pre-demo-override default and wire the wrong value (found live: Cornell's
+    // force-enable landed too late, permanently disabling probe_update's dispatch on the demo
+    // that most needs it).
 
     // SpatialReuseNode (Sampled Lighting Inc3 M5): the second half of the pass split — NOW owns
     // IMAGE_WRITE (moved from DirectLightingNode), so it keeps the ORIGINAL live-derivation
@@ -1258,6 +1265,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDispatchX);
     probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
     probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    // Baked-Perf M4 Task 4.3's PARAM_DISPATCH_ENABLED is set at the END of this function --
+    // see directLighting's own identical note above for why (Cornell's force-enable of
+    // VIXEN_PROBE_GRID_CONFIG_ENABLED runs later in this SAME function).
 
     // BlitNode: mirrors ComputeDispatchNode's own M4 PARAM_LEAVE_IMAGE_IN_GENERAL=true (set
     // below beside uiComposite's own parameters) — the sky-projection/UI composite chain still
@@ -5660,6 +5670,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   skyProjectionNode, SkyProjectionNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
     batch.Connect(skyProjectionNode, SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   uiCompositeNode, UIRenderNodeConfig::COMPOSITE_WAIT_SEMAPHORE);
+
+    // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch guard,
+    // wired HERE (the end of this function) rather than beside each node's OTHER
+    // parameters above -- several VIXEN_*_DEMO blocks between here and there force-enable
+    // VIXEN_PROBE_GRID_CONFIG_ENABLED/VIXEN_RESERVOIR_CONFIG_ENABLED via _putenv_s for
+    // their own scene setup (e.g. VIXEN_DDGI_CORNELL_BAKED_DEMO's "probe grid must be on
+    // for this demo's own point" block), so ResolveProbeGridEnabled()/
+    // ResolveReservoirEnabled() must be evaluated AFTER every such override has had a
+    // chance to run, not at the point each node's other parameters happen to be set.
+    //
+    // direct_lighting: SpatialReuseShade.comp's own comment documents reservoirEnabled==0
+    // (the shipped default; nothing in this codebase enables it) as a byte-identity no-op
+    // for its whole ReSTIR block -- today a DEAD full-screen dispatch + submit runs every
+    // frame on every path regardless. ResolveReservoirEnabled() is the SAME accessor
+    // ReservoirConfigNode's own per-frame GPU upload calls, so this CPU-side skip can
+    // never disagree with the GPU-side config it is skipping around.
+    directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
+                                  ResolveReservoirEnabled());
+    // probe_update: same reasoning, gated on probeGridEnabled instead (ProbeUpdate.comp's
+    // own shade-pass consumer, SpatialReuseShade.comp, documents the identical
+    // "probeGridEnabled==0 skips this block entirely" escape hatch). ResolveProbeGridEnabled()
+    // is the SAME accessor ProbeGridConfigNode's own per-frame GPU upload calls, so a demo's
+    // force-enable (Cornell, both baked and virtual variants -- see their own
+    // VIXEN_PROBE_GRID_CONFIG_ENABLED _putenv_s blocks above) keeps probe_update dispatching
+    // exactly as before; only the default-boot (probe grid off) path skips it.
+    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
+                               ResolveProbeGridEnabled());
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();

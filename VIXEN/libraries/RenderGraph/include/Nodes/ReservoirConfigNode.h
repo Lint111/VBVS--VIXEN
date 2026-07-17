@@ -9,6 +9,22 @@
 namespace Vixen::RenderGraph {
 
 /**
+ * @brief Resolves whether ReSTIR reservoir sampling is enabled: default false,
+ * overridden by VIXEN_RESERVOIR_CONFIG_ENABLED if set, else implied true by
+ * VIXEN_RESTIR_GATE_DEMO (same env vars/precedence ReservoirConfigNode's own
+ * MakeDefaultReservoirConfig uses to fill ReservoirConfig::reservoirEnabled).
+ *
+ * Baked-Perf M4 Task 4.3: single-source-of-truth accessor so
+ * BuildRenderGraph.cpp's CPU-side direct_lighting dispatch-skip guard
+ * (ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED) and ReservoirConfigNode's
+ * own per-frame GPU-side config upload agree on the SAME value without
+ * duplicating the env-var-read/precedence logic in two places -- mirrors
+ * ProbeGridConfigNode's ResolveDdgiAmortizationFactor/ResolveProbeGridEnabled
+ * precedent exactly.
+ */
+bool ResolveReservoirEnabled();
+
+/**
  * @brief Node type for ReservoirConfigNode.
  */
 class ReservoirConfigNodeType : public TypedNodeType<ReservoirConfigNodeConfig> {

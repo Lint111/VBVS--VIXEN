@@ -305,8 +305,36 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     }
 
     // Begin GPU timing frame (reset this slot's queries) — mirrors ComputeDispatchNode.
+    // Baked-Perf M4 Task 4.3: this reset MUST run every frame regardless of
+    // PARAM_DISPATCH_ENABLED below -- GPUQueryManager::AllAllocatedSlotsReset gates
+    // vkGetQueryPoolResults on EVERY allocated slot having been reset at least once
+    // per frame-in-flight (shared query pool, VUID-vkGetQueryPoolResults-None-09401);
+    // an allocated slot that skips its reset here would permanently stall result
+    // collection for every OTHER pass sharing the same GPUQueryManager, not just this
+    // one (found live: an earlier version of this guard short-circuited the whole
+    // ExecuteImpl before BeginFrame ever ran, zeroing whole_frame_gpu_span_ms/
+    // spatial_reuse_ms/probe_update_ms too, not just this node's own column).
     if (gpuPerfLogger_) {
         gpuPerfLogger_->BeginFrame(cmd, frameIndex);
+    }
+
+    // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch
+    // guard (see PARAM_DISPATCH_ENABLED's own doc comment) -- skips the descriptor
+    // bind, push constants, image-layout barriers, and the vkCmdDispatch itself
+    // (the actual GPU work + the CPU-side setup for it), but the command buffer is
+    // still begun/ended/submitted and the query timestamps below are still written
+    // (as a genuine, near-zero-duration pair around nothing) so this pass's own GPU-
+    // timing column reads a real ~0ms rather than a stale/never-collected value, and
+    // the shared query pool's per-frame reset invariant above stays satisfied.
+    if (!GetParameterValue<bool>(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED, true)) {
+        if (gpuPerfLogger_) {
+            gpuPerfLogger_->RecordDispatchStart(cmd, frameIndex);
+            gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, 0, 0);
+        }
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+            throw std::runtime_error("[ComputeStageNode::RecordComputeCommands] vkEndCommandBuffer failed");
+        }
+        return;
     }
 
     VkPipeline pipeline = ctx.In(ComputeStageNodeConfig::COMPUTE_PIPELINE);

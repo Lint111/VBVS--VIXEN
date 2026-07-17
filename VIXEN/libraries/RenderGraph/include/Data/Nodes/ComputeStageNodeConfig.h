@@ -173,6 +173,23 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
     static constexpr const char* PARAM_PC_WIDTH  = "pcWidth";
     static constexpr const char* PARAM_PC_HEIGHT = "pcHeight";
 
+    // Baked-Perf M4 Task 4.3 (audit C8 + inventory #1/#2): generic no-op dispatch
+    // guard. When false, ExecuteImpl returns before recording/submitting anything --
+    // no command buffer, no vkQueueSubmit2, no timeline signal/wait. Default true
+    // (backward-safe: every existing wiring keeps dispatching exactly as before
+    // unless a caller explicitly opts a pass out). Intended for a pass whose SHADER
+    // is a config-gated no-op on the current config (e.g. direct_lighting when
+    // reservoirEnabled=0, probe_update when probeGridEnabled=0) -- today those
+    // shaders still pay for a full dispatch + submit every frame even though their
+    // own body-level gate (see SpatialReuseShade.comp's "reservoirEnabled==0 skips
+    // this block entirely" / ProbeUpdate.comp's own byte-identity escape hatch)
+    // makes the work provably a no-op. A CONSUMER (isConsumer=true) must never be
+    // skipped this way -- it owns the in-flight fence reset + WSI present chain,
+    // which downstream nodes unconditionally depend on; this guard is for
+    // producer-role middle passes only (the caller is responsible for that
+    // invariant -- see BuildRenderGraph.cpp's wiring for the two current uses).
+    static constexpr const char* PARAM_DISPATCH_ENABLED = "dispatchEnabled";
+
     // ===== INPUTS (20, indices 0-19 — Sampled Lighting Inc3 M5 collapsed the old 3
     // fixed buffer slots [14,15,16] into 2 array slots [14,15], renumbering every slot
     // after it down by one to keep the index space contiguous — RenderGraph::Validate

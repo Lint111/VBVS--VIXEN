@@ -19,6 +19,23 @@ using namespace Vixen::Vulkan::Resources;
 // Ring size = frames-in-flight (the value CURRENT_FRAME_INDEX cycles through).
 const uint32_t ReservoirConfigNode::kRingSize = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
+// Baked-Perf M4 Task 4.3: single-source-of-truth accessor -- SAME two env vars +
+// precedence (explicit VIXEN_RESERVOIR_CONFIG_ENABLED wins over the implicit
+// VIXEN_RESTIR_GATE_DEMO default) MakeDefaultReservoirConfig's own reservoirEnabled
+// resolution below uses, factored out so BuildRenderGraph.cpp's CPU-side
+// dispatch-skip guard reads the identical value instead of re-implementing the
+// env-var read (mirrors ProbeGridConfigNode's ResolveDdgiAmortizationFactor/
+// ResolveProbeGridEnabled precedent exactly).
+bool ResolveReservoirEnabled() {
+    if (const char* enabledEnv = std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED")) {
+        return enabledEnv[0] == '1';
+    }
+    if (std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
+        return true;
+    }
+    return false;
+}
+
 namespace {
 
 // Default content: reservoirEnabled=0 (M3 ships scaffolding only — no
@@ -42,20 +59,14 @@ Vixen::Gpu::ReservoirConfig MakeDefaultReservoirConfig() {
 
     // M3 gate lever: VIXEN_RESERVOIR_CONFIG_ENABLED=1 forces the enable path so a
     // future live gate can capture both states from the SAME binary, no rebuild —
-    // mirrors VIXEN_SHADOW_CONFIG_ENABLED's convention. No consumer reads
-    // reservoirEnabled yet (M3 scope), so flipping this today has no visual effect;
-    // the lever exists so M4 doesn't need to invent it.
-    if (const char* enabledEnv = std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED")) {
-        cfg.reservoirEnabled = (enabledEnv[0] == '1') ? 1u : 0u;
-    }
-    // Sampled Lighting Inc3 M4: the equal-error-vs-brute-force live gate demo scene implies
-    // reservoirEnabled=1 -- no point baking the gate scene without RIS actually running.
-    // VIXEN_RESERVOIR_CONFIG_ENABLED (above) still wins if BOTH are set and disagree (explicit
-    // lever takes precedence over the implicit demo default), matching every other VIXEN_*_DEMO
-    // block's "the demo sets sane defaults, an explicit override still wins" convention.
-    if (std::getenv("VIXEN_RESTIR_GATE_DEMO") && !std::getenv("VIXEN_RESERVOIR_CONFIG_ENABLED")) {
-        cfg.reservoirEnabled = 1u;
-    }
+    // mirrors VIXEN_SHADOW_CONFIG_ENABLED's convention. Sampled Lighting Inc3 M4: the
+    // equal-error-vs-brute-force live gate demo scene implies reservoirEnabled=1 (no
+    // point baking the gate scene without RIS actually running), with the explicit
+    // lever still winning if both env vars are set and disagree. Baked-Perf M4 Task
+    // 4.3: reads via ResolveReservoirEnabled() (this file, above) -- the SAME accessor
+    // BuildRenderGraph.cpp's dispatch-skip guard calls -- instead of re-implementing
+    // the two-env-var precedence here directly.
+    cfg.reservoirEnabled = ResolveReservoirEnabled() ? 1u : 0u;
     // Sampled Lighting Inc3 M5: neighbor count for spatial reuse. 0 collapses
     // SpatialReuseShade.comp's neighbor loop to a no-op, reproducing M4's
     // temporal-only behavior on the SAME binary for the variance-reduction

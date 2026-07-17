@@ -35,6 +35,19 @@ uint32_t ResolveDdgiAmortizationFactor() {
     return factor;
 }
 
+// Baked-Perf M4 Task 4.3: single-source-of-truth accessor -- SAME env var + default
+// (false) MakeDefaultProbeGridConfig's own probeGridEnabled resolution below uses,
+// factored out so BuildRenderGraph.cpp's CPU-side dispatch-skip guard reads the
+// identical value instead of re-implementing the env-var read (mirrors
+// ResolveDdgiAmortizationFactor's own rationale exactly).
+bool ResolveProbeGridEnabled() {
+    bool enabled = false;
+    if (const char* enabledEnv = std::getenv("VIXEN_PROBE_GRID_CONFIG_ENABLED")) {
+        enabled = (enabledEnv[0] == '1');
+    }
+    return enabled;
+}
+
 namespace {
 
 // Default content: probeGridEnabled=0 (M2 ships scaffolding only — no probe-update/
@@ -93,12 +106,12 @@ Vixen::Gpu::ProbeGridConfig MakeDefaultProbeGridConfig() {
 
     // M2 gate lever: VIXEN_PROBE_GRID_CONFIG_ENABLED=1 forces the enable path so a
     // future live gate can capture both states from the SAME binary, no rebuild —
-    // mirrors VIXEN_RESERVOIR_CONFIG_ENABLED's convention. No consumer reads
-    // probeGridEnabled yet (M2 scope), so flipping this today has no visual effect;
-    // the lever exists so M3 doesn't need to invent it.
-    if (const char* enabledEnv = std::getenv("VIXEN_PROBE_GRID_CONFIG_ENABLED")) {
-        cfg.probeGridEnabled = (enabledEnv[0] == '1') ? 1u : 0u;
-    }
+    // mirrors VIXEN_RESERVOIR_CONFIG_ENABLED's convention. Baked-Perf M4 Task 4.3:
+    // reads via ResolveProbeGridEnabled() (this file, above) -- the SAME accessor
+    // BuildRenderGraph.cpp's dispatch-skip guard calls -- instead of re-reading the
+    // env var here directly (mirrors amortizationFactor's ResolveDdgiAmortizationFactor
+    // precedent immediately below).
+    cfg.probeGridEnabled = ResolveProbeGridEnabled() ? 1u : 0u;
 
     // M6 bench lever: VIXEN_PROBE_RAYS_PER_PROBE=<n> overrides the fixed raysPerProbe=64
     // default so the design's own flagged pass-2 open question (real-GPU cost vs ray
