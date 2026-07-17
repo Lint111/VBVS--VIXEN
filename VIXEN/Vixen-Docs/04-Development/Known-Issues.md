@@ -11,6 +11,22 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-040 — `BakeArtifactCache::LoadBakeArtifact` resizes buffers from an UNVALIDATED length prefix → a corrupt `.bake` file crashes with `bad_alloc` instead of the promised silent miss
+
+**Discovered:** 2026-07-17, by the Task 7.6 Opus validator while empirically closing the v1-cache-rejection gap (planting a garbage file at the current cache key to exercise the loader's reject path).
+
+**Symptom:** with a corrupt/garbage file sitting at the exact current cache-key filename (`cache/global/BakeArtifactCache/<key>.bake`), booting the Cornell baked demo does NOT silently fall back to a re-bake — it ABORTS with "Prepare failed: bad allocation" at the moment `BuildRenderGraph` loads the cache. Reproduced twice (independent of concurrent machine load).
+
+**Root cause:** `LoadBakeArtifact`'s `readBytesVec`/`readPodVec` (`BakeArtifactCache.h:120-124, 139-143`) do `v.resize(size)` using an 8-byte length prefix read straight from the file with NO validation. Garbage bytes → a bogus multi-exabyte size → unbounded `resize` → `std::bad_alloc` → propagates up and kills the app. This CONTRADICTS the header's own promise (`BakeArtifactCache.h:208-212`: "a corrupt cache file is a silent miss, not a hard error").
+
+**Impact:** LOW in practice / effectively unreachable in normal operation. The versioning is KEY-based (kFormatVersion is hashed into the filename, not stored as a version byte in the file), so a real version mismatch puts the old artifact at a DIFFERENT filename that the new loader never opens — the crash is only reachable by garbage at the EXACT current-key filename, which a legitimate version bump never produces. `StoreBakeArtifact`'s `.tmp`+rename (`:177,204`) also prevents a torn/partial write from appearing at the real key. So it takes hand-planted corruption to trigger. But the code explicitly promises graceful degradation it doesn't deliver, so disk corruption / an external truncation could in principle surface it.
+
+**Fix options:** validate the length prefix in `readBytesVec`/`readPodVec` — cap it against remaining file size (or a sane max) and treat an out-of-range prefix as a cache MISS; and/or wrap `LoadBakeArtifact` in a try/catch that converts any failure into the documented silent miss. Either makes a corrupt/mismatched `.bake` degrade gracefully as the header claims.
+
+**Severity:** Low (unreachable without artificial corruption given key-based versioning + tmp-rename write) · **Status:** OPEN · pre-existing Task 7.4 loader code, NOT introduced by 7.6 (7.6's diff only bumped kFormatVersion 1→2; the loader is untouched) · surfaced during 7.6 validation. Natural owner: a bake-cache hardening pass, or fold into the next M7/M8 touch of `BakeArtifactCache.h`.
+
+---
+
 ## KI-037 — `RecipeInstanceBucketing.comp`'s `ProjectToPixel` silently drops behind-camera bound-sphere extrema, shrinking (not growing) the coverage rect for camera-straddling instances
 
 **Discovered:** 2026-07-16, during [[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2's

@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: PHASE-2 RUNNING — M0–M7 shipped (~19 FPS class; bake cache: warm boot ~16ms; brick dedup 5.2x). NEXT DECISION POINT: M8 sparseness call with occupancy data in hand (walls ~3% brick-occupancy → dense texture only viable for solid objects, not walls; 7.6 dedup'd pool is the sparse-atlas foundation). Phase-2 order set by user 2026-07-17: M7 FIRST (parallel bakes + bake-artifact cache), THEN revisit M8 with the walls' real density/occupancy data (M8's dense-3D-texture trade loses inter-brick + hierarchical sparseness — only worth it for near-solid bodies, so decide per-body AFTER M7 measures occupancy). worktree fix/baked-perf-pipeline
+status: PHASE-2 RUNNING — M0–M7 shipped (~19 FPS class; bake cache warm boot ~16ms; brick dedup 5.2x). M8 SCOPED (user 2026-07-17): dense-texture DROPPED (occupancy proves no viable target — walls ~3%, 7.6 already compacted 5.2x while keeping sparseness); M8 = Task 8.2 over-relaxed sphere tracing only (march-iteration speedup on the sparse pool). Also filed KI-040 (pre-existing bake-cache loader bad_alloc-on-corrupt-length, non-blocker). Phase-2 order set by user 2026-07-17: M7 FIRST (parallel bakes + bake-artifact cache), THEN revisit M8 with the walls' real density/occupancy data (M8's dense-3D-texture trade loses inter-brick + hierarchical sparseness — only worth it for near-solid bodies, so decide per-body AFTER M7 measures occupancy). worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -536,14 +536,28 @@ state, plus the existing same_path parity gate on an actual warm-cache boot.
 > that atlas** — reference-counted content-addressed slots are already the packed,
 > sparseness-preserving pool this fallback needs; M8 would add aprons + hw filtering on top.
 
-- [ ] Task 8.1 — Phase-1 prototype: dense per-octree R16F 3D texture for the 5 walls,
-  march via `textureLod` hardware trilinear; A/B vs M3's SSBO fast path (audit A6 /
-  pattern R1; settles uncertain-6).
+- [x] Task 8.1 — ~~Dense per-octree R16F 3D texture for the 5 walls~~ **DROPPED (user
+  decision 2026-07-17, on M7.5 occupancy evidence).** The dense-texture premise was "the
+  walls are near-solid" — but M7.5 measured them at **~3% brick-occupancy** (thin slabs in
+  a mostly-empty 128³ bounding volume); a dense texture sized to that volume would allocate
+  ~30× the memory the wall uses — the exact sparseness disaster. The only 100%-occupied
+  bodies (light/sphere/box) are tiny (64 bricks) with negligible payoff. NO viable
+  dense-texture target exists in this scene. Moreover M7.6's dedup ALREADY delivered the
+  compaction dense-texture was chasing (5.2×) while KEEPING sparseness — the dedup'd pool
+  IS the packed sparse structure. Recorded as a no-go; the sparse-atlas+aprons idea (8.3)
+  stays a future option on top of the 7.6 pool if hardware filtering is ever wanted.
 - [ ] Task 8.2 — Over-relaxed sphere tracing (ω≈1.4–1.6 + unbounding-sphere overlap
-  test) in the march loop (pattern R2).
-- [ ] Task 8.3 — Decision doc: phase-2 sparse atlas + aprons go/no-go from measured delta.
+  test) in the march loop (pattern R2). **NOW THE PRIMARY M8 WORK** — a march-iteration
+  speedup on the existing (now 5.2×-dedup'd) sparse pool, independent of the dropped
+  dense-texture path. Keeps sparseness, chases esvo FPS directly.
+- [ ] Task 8.3 — ~~Decision doc: dense-vs-sparse~~ SUBSUMED: the dense-vs-sparse decision
+  is made (8.1 dropped). Residual: if 8.2's measured esvo delta motivates hardware
+  trilinear filtering, spec the sparse-atlas+aprons layer ON TOP of the 7.6 content-addressed
+  pool (aprons + `textureLod`, sparseness preserved) — future, gated on 8.2's numbers.
 
-**Gate:** measured esvo delta recorded; correctness rig; decision documented.
+**Gate:** 8.2 measured esvo delta recorded (march iterations before/after); correctness rig
+(parity byte-identical — relaxed stepping must not change the converged hit); decision on the
+hw-filtering atlas documented from 8.2's numbers.
 
 ---
 
