@@ -5403,13 +5403,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       recipeBucketingPipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
              // DescriptorSetNode requires SWAPCHAIN_INFO/IMAGE_INDEX (it reads swapChainImageCount
              // during Compile to size its descriptor-set ring, same shape computeDescriptorSet's
-             // own wiring above uses) -- CURRENT_FRAME_INDEX stays unwired (optional; only needed
-             // when a node wants frame-indexed set selection instead of image-indexed, per
-             // ComputeStageNode::RecordComputeCommands' own frameIndexWired fallback comment).
+             // own wiring above uses).
              .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                       recipeBucketingDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
              .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+             // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
+             // This node's OWN consumers (recipeBucketingModeInit/Bucket/Final ComputeStageNodes,
+             // wired below) already select CURRENT_FRAME_INDEX -- without this wire the producer
+             // fell back to IMAGE_INDEX (0-2) while the consumer selected by frame index (0-3),
+             // so producer and consumer disagreed on which ring slot is "current" (Inc5 M1).
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
 
         // Binding 0: BodyInstanceBuffer -- reuses bodyOctreeSceneNode's own INSTANCE_BUFFER
         // (the SAME buffer the march reads at its own binding 10) -- no new instance data node.
