@@ -367,6 +367,16 @@ nothing currently benches or verifies that composition. User-defined acceptance 
 (2026-07-16): virtual scene + a visible modification (hole/feature) on one element
 delivered via the stored/delta path.
 
+- [ ] Task 6b.0 — Instance-seam winner tie-break (user-reported 2026-07-17,
+  Screenshot_244): checkerboard "z-fighting" patches at instance junctions —
+  ceiling/leftWall/backWall corner and floor/rightWall corner (the SAME junction as the
+  golden's row-21 cross-binary near-tie flip). Root cause hypothesis: two abutting
+  Cornell slabs return near-equal hitT and per-pixel float noise flips the per-instance
+  bestT winner. Fix DETERMINISTICALLY (relative-epsilon tie-band + stable
+  instance-index preference in the TraceWorld.glsl winner compare), not a depth-bias
+  hack. Gate: checkered patches gone at both corners; cross_path agreement does not
+  regress; same_path golden re-blessed if the map legitimately changes (expect near-tie
+  flips to disappear — the ≤2/625 slack may become unnecessary; note it if so).
 - [ ] Task 6b.1 — v1 "hole in the wall" (today's machinery): virtual Cornell with ONE
   body flipped to PROVIDER_STORED whose bake is the MODIFIED shape (e.g. right wall
   recipe minus a cylinder — `BakeRecipeInstructionsToSdfWorld` bakes arbitrary recipe
