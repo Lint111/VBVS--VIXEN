@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0–M4b DONE (~19 FPS class); M6 in flight (sync hygiene, trimmed scope); worktree fix/baked-perf-pipeline
+status: RUNNING — M0–M6 DONE (~19 FPS class; validation-layer errors eliminated); M6b next (opens with Task 6b.0 instance-seam tie-break for user-reported checkering, then hybrid gates), then Phase-1→Phase-2 review with user; worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -329,17 +329,25 @@ virtual capture (5.6).
 
 ## Milestone M6 — Sync/overlap package (M) — only what M0 attribution justifies
 
-- [ ] Task 6.1 — Decouple the march submit from the WSI acquire semaphore (first real
+- [x] Task 6.1 — Decouple the march submit from the WSI acquire semaphore (first real
   swapchain writer waits instead; verify cross-frame HitRecord hazard)
-  (`ComputeDispatchNode.cpp:288-293`; audit E2).
-- [ ] Task 6.2 — Blit exit barrier: return render target TRANSFER_SRC→GENERAL at frame
+  (`ComputeDispatchNode.cpp:288-293`; audit E2). IMPLEMENTED (not skipped): BlitNode owns
+  the acquire wait; per-flight `vkWaitForFences` (ring=frames-in-flight=4) guards
+  cross-frame reuse, NOT the acquire — validator-verified against the 1c5e3836 bug class.
+- [x] Task 6.2 — Blit exit barrier: return render target TRANSFER_SRC→GENERAL at frame
   edge (spec-violation fix; red `layout_sync` was best-wall) (`SwapchainBarriers.h:184,
-  :100-103` vs `ComputeStageNode.cpp:348`; audit E3).
-- [ ] Task 6.3 — Fix the orphaned per-image semaphore re-signal in composite mode
+  :100-103` vs `ComputeStageNode.cpp:348`; audit E3). `MakeRenderTargetPostBlitBarrier`
+  restores GENERAL. E3 signature 100%→0% of runs.
+- [x] Task 6.3 — Fix the orphaned per-image semaphore re-signal in composite mode
   (`BlitNode.cpp:172-177`; audit E4) + compute-scoped stage masks replacing
-  ALL_COMMANDS signals (audit pattern R7).
-- [ ] Task 6.4 — A/B with validation layers ON (sync changes never ship unvalidated).
-- [ ] Task 6.5 — Expose the widescreen render-scale dial (inventory #12): document
+  ALL_COMMANDS signals (audit pattern R7). Composite publishes VK_NULL_HANDLE; 4 masks
+  scoped (BlitNode→BLIT, ComputeStage/Dispatch→COMPUTE_SHADER, UIRender→COLOR_ATTACH).
+  E4 signature 100%→0%. LATENT caveat (not live): a self-blitting terminal
+  ComputeDispatchNode would under-sync Present — that config is never instantiated.
+- [x] Task 6.4 — A/B with validation layers ON (sync changes never ship unvalidated).
+  vixen-ninja Debug compiles VIXEN_VULKAN_VALIDATION=1; validator built pre-M6 binary,
+  confirmed E3+E4 every run BEFORE, 0× either signature across 6 runs AFTER.
+- [x] Task 6.5 — Expose the widescreen render-scale dial (inventory #12): document
   `VIXEN_RENDER_SCALE` in the bench rig and record a capability curve (1.0/0.75/0.5)
   — a merged, validated 27%-dispatch-cut dial currently sitting unused at 1.0. Default
   stays 1.0; the curve informs the realtime-target definition.
@@ -620,6 +628,32 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   cost with no new state. Benign pre-existing finding for a future KI: systemic
   non-fatal `PushConstantGathererNode::ValidateFieldType` type-mismatch log noise on
   every field/gatherer (present pre-M4b; packing proven correct by the luminance gates).
+
+- M6 (Tasks 6.1–6.5): DONE · commits `b00216a9` (code) + `7e6aaab3` (docs/KI/curve) ·
+  Opus validator APPROVED · 2026-07-17. **Systemic validation-layer errors ELIMINATED
+  on the live path**: E3 (`VUID-vkCmdDraw-None-09600`, render target left TRANSFER_SRC)
+  and E4 (`VUID-vkQueueSubmit2-semaphore-03868`, orphaned binary semaphore) went
+  **100%→0% of runs** (validator built pre-M6 binary to confirm BEFORE, ran 6 AFTER).
+  6.2: `MakeRenderTargetPostBlitBarrier` restores GENERAL. 6.3: composite publishes
+  `VK_NULL_HANDLE`, 4 ALL_COMMANDS masks scoped to real stages (latent non-live caveat:
+  a self-blitting terminal ComputeDispatchNode would under-sync Present — never
+  instantiated; worth a comment if it ever gains a render target). 6.1 IMPLEMENTED not
+  skipped: BlitNode owns the acquire wait; the render-target WAR hazard is guarded by
+  `FrameSyncNode`'s per-flight `vkWaitForFences` (ring=frames-in-flight=4=fence ring), so
+  frame N cannot write slot N%4 until N−4's blit fenced-complete — the acquire only ever
+  gated the swapchain image, which the `writesNoImage` march never touches (verified vs
+  the 1c5e3836 reuse-while-pending bug class). **#1 risk (parity drift) DISPROVEN**: the
+  implementer's 2/6 anomalous runs (57/625, 13/625 cells) reproduced 0/6 fresh, and the
+  magnitude far exceeds the golden's ≤2-cell near-tie band → contended-machine capture
+  artifact, backed by the fence mechanism. 6.5: `VIXEN_RENDER_SCALE` curve recorded
+  (1.0/0.75/0.5) — esvo/spatial_reuse scale with resolution, probe_update does NOT (fixed
+  probe count → largest pass at 0.5). Default stays 1.0. **KI-039 filed** (pre-existing
+  boot-time UNDEFINED-layout flake, reproduces on pre-M6 binary, KI-033 trigger class, no
+  correctness impact; no number collision with main's KI-037/038). No perf delta expected
+  or seen from sync-only work (~102 ms/9.8 FPS, frame stays GPU-bound). Tests: 9/9 new
+  unit + 13/13 serialize + 7/7 bake green. HARNESS NOTES (not M6 defects): `win_build.bat`
+  targets a nonexistent `vixen_benchmark` and cd's to MAIN not the worktree — build from
+  the worktree's VIXEN dir; `run_parity_check.bat` overwrites `baked/run.log` per run.
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
