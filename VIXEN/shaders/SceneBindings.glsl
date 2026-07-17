@@ -181,6 +181,29 @@ bool isInstanceSkipped(int instIdx) {
 // already wrote, rather than clobbering it. See BodyInstanceRayMarch.comp's HitRecord write for
 // the full derivation (a test scene with a skip-masked instance + a stubbed second writer caught
 // this exact miss-clobbers-hit bug during Inc4 M2's gate).
+// Computed once per invocation (frame-global content, not a per-pixel quantity) rather than
+// tracked as a local inside TraceWorld's instance loop -- deliberately, not an oversight. The two
+// forms are PROVABLY the same value for every pixel today, not merely a close approximation of
+// each other, because of three facts that all hold simultaneously in TraceWorld.glsl's instance
+// loop (`for (int instIdx = 0; instIdx < numInstances; ++instIdx)`):
+//   1. The loop bound (numInstances = clamp(pc.instanceCount, ...)) comes from a push constant --
+//      frame-global, not per-pixel/per-ray.
+//   2. isInstanceSkipped(instIdx) takes ONLY instIdx and the skip-mask buffer's content as input --
+//      no per-pixel/per-ray input reaches it anywhere.
+//   3. The loop body never `break`s or early-`return`s before reaching a later index (every branch
+//      is `continue` or falls through) -- so every pixel's invocation visits the SAME index range
+//      and evaluates the SAME skip decision per index, regardless of ray direction/origin.
+// Given all three, "did this pixel's march skip an instance" cannot vary across pixels in the
+// current code -- it's frame-global content computed identically no matter where in the shader you
+// evaluate it, so hoisting it to one frame-level call here (instead of a per-invocation tracked
+// bool threaded through both the procedural and ESVO branches of the loop) is zero behavioral
+// difference, less surface area.
+// THIS EQUIVALENCE BREAKS the moment ANY ONE of the three facts above stops holding -- e.g. a
+// future change makes the instance range or skip decision genuinely ray/pixel-dependent, or adds an
+// early-break/return to the loop before its last index (plausible territory for M3's real bucketing
+// scheme). If you are that future change: this frame-global call is no longer correct and the
+// "did I skip anything" signal MUST move to a real per-invocation tracked bool inside the loop
+// instead -- re-derive from scratch, don't assume this function still applies unmodified.
 bool anyInstanceSkipped() {
     uint wordCount = skipMask.length();
     // 3*64=192 instances / 32 bits-per-word = 6 words covers TraceWorld's own instance-count cap;

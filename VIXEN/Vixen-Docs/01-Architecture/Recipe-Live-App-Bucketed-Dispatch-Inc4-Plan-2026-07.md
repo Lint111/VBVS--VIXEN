@@ -333,6 +333,31 @@ validator verdict.)
     push-constant field + new node-output wiring in `BuildRenderGraph.cpp`) more properly scoped to M3
     (which already owns introducing the real second-writer/barrier contract); the skip-mask-based
     signal is fully correct for every case M1-M2's own scope can produce and adds zero new surface.
+    A controller review independently reached the SAME conclusion on the generation-counter rejection
+    (M3's territory, not M2's) but initially asked for a stronger per-INVOCATION formulation of the
+    skip-mask signal — track, inside `TraceWorld`'s own instance loop, whether THIS pixel's march
+    actually skipped an instance while searching for its nearest hit, rather than a frame-global "was
+    anything skipped anywhere" check. Traced through `TraceWorld.glsl`'s instance loop to verify: the
+    loop is `for (int instIdx = 0; instIdx < numInstances; ++instIdx)` where `numInstances` derives
+    only from the push-constant `pc.instanceCount` (frame-global, not per-pixel), `isInstanceSkipped
+    (instIdx)` depends only on `instIdx` and the skip-mask buffer's content (also frame-global, no
+    per-pixel/per-ray input anywhere in that function), and the loop body never `break`s or early-
+    `return`s before reaching a later index (every branch is `continue` or falls through to the
+    nearest-hit update — checked both the procedural and ESVO branches). Consequence: EVERY pixel
+    dispatched this frame iterates the identical index range and evaluates the identical skip decision
+    per index, regardless of ray direction/origin — "did this pixel's march skip an instance" is
+    therefore NOT actually a per-pixel-varying quantity in the current loop structure; it is
+    frame-global content computed identically no matter where in the shader you evaluate it. The
+    frame-global `anyInstanceSkipped()` and a per-invocation tracked-bool are consequently PROVABLY
+    the same value for every pixel today, not merely a conservative approximation of each other. This
+    also independently reconfirms the controller's own "all-or-nothing per instance, not partial/
+    conditional" checkpoint from the same angle: instance skipping doesn't depend on anything
+    pixel-specific, so any signal built from it is necessarily frame-global regardless of where it's
+    computed. Flagged back to the controller for sign-off before deciding whether to leave the
+    frame-global form (documented as equivalent, less surface) or refactor to the per-invocation form
+    for literal-match/defense-in-depth against a future loop-structure change (e.g. if M3's real
+    bucketing scheme ever makes skip decisions ray- or region-dependent) — either form's gate-test
+    behavior is identical today, so this does not block or change M2's own DONE status.
   - **Gate-OFF no-op proof:** new test `HitRecordCompositingRealShaderBothOrderingsMatchOracle`
     (`test_body_instance_raymarch_render.cpp`) — two independent renders of the same 3-instance
     scene/camera with no skip mask: `memcmp==0` (byte-identical `HitRecord` buffers, decisive — not
