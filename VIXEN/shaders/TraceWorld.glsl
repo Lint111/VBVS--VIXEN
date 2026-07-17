@@ -24,6 +24,41 @@
 #define TRACEWORLD_GLSL
 
 // ============================================================================
+// isCloserHit - deterministic seam tie-break (M6b Task 6b.0, 2026-07-17)
+// ============================================================================
+// Root cause: two Cornell wall bodies are separate baked ESVO instances whose
+// slabs ABUT along a shared plane (e.g. ceiling/leftWall/backWall corner,
+// floor/rightWall corner). A ray landing exactly on that seam gets near-equal
+// hitT from both instances; raw `candidateT < bestT` float comparison then
+// flips winner per-pixel on sub-ULP noise (different traversal path length,
+// FMA fusion, etc.), reading as a checkerboard. This is the SAME junction as
+// the parity golden's documented row-21 floor/rightWall near-tie flip
+// (tools/bench/parity_thresholds.json's same_path _comment).
+//
+// Fix: within a RELATIVE epsilon band of the current best, prefer the LOWER
+// instance index deterministically instead of trusting raw float ordering.
+// Lower-instIdx-wins is an arbitrary but STABLE rule -- every pixel along a
+// seam resolves the same way regardless of float noise, so the seam becomes
+// a coherent boundary instead of a checkerboard. Epsilon is relative
+// (scaled by max(|t|,1.0)) so it stays tight at both near and far distances
+// without swallowing genuinely different depths -- 1e-4 relative is far
+// tighter than any real depth gap between non-abutting geometry in this
+// scene (Cornell box spans ~O(10) world units) but wide enough to cover the
+// float noise a seam actually produces (observed noise is sub-1e-5 relative).
+#define SEAM_TIE_EPS_REL 1e-4
+
+bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint bestInstIdx) {
+    float tieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
+    if (abs(candidateT - bestT) <= tieBand) {
+        // Near-tie: stable tiebreaker, not raw float ordering. Lower instIdx
+        // wins. bestInstIdx == 0xFFFFFFFFu means "no winner yet" -- any
+        // candidate takes it.
+        return candidateInstIdx < bestInstIdx;
+    }
+    return candidateT < bestT;
+}
+
+// ============================================================================
 // WorldHit - what the march produces at a hit
 // ============================================================================
 // Carries everything the shade path (computeLighting) reads: tinted color,
@@ -154,7 +189,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     continue;  // ray misses this instance's bound sphere entirely
                 }
                 float entryT = max(-b - sqrt(disc), 0.0);
-                if (entryT > bestT) {
+                // M6b Task 6b.0: same relative tie-band as isCloserHit / the ESVO branch's
+                // entryTWorld reject above -- do not eliminate a candidate within the seam
+                // tie-band before it can be considered by the deterministic tiebreaker.
+                float uberEntryTieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
+                if (entryT > bestT + uberEntryTieBand) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 0u;
 #endif
@@ -205,7 +244,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             }
 #endif
 
-            if (pHit && pT < bestT) {
+            if (pHit && isCloserHit(pT, uint(instIdx), bestT, bestInstIdx)) {
                 bestT          = pT;
                 bestColor      = inst.color;   // procedural base colour = instance tint
                 bestNormal     = pNormal;      // smooth SDF-gradient normal
@@ -353,7 +392,15 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             vec3 entryPointWorldInstSpace =
                 (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
             float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale;
-            if (entryTWorld > bestT) {
+            // M6b Task 6b.0: use the SAME relative tie-band as isCloserHit's winner
+            // compare, not a raw `>`. Without this, an instance whose entry point sits
+            // within the tie-band of bestT (a seam neighbor) could be entry-rejected here
+            // before its full traversal ever runs, silently disagreeing with the
+            // deterministic lower-instIdx tiebreaker isCloserHit would otherwise apply --
+            // this reject must never eliminate a candidate the winner compare would have
+            // preferred.
+            float entryTieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
+            if (entryTWorld > bestT + entryTieBand) {
                 // This instance's nearest possible entry is already farther than
                 // something already hit this ray — its full ESVO traversal
                 // (below) cannot possibly produce the nearest hit. Skip it
@@ -418,7 +465,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
 #endif
 
-        if (instHit && hitT < bestT) {
+        if (instHit && isCloserHit(hitT, uint(instIdx), bestT, bestInstIdx)) {
             bestT           = hitT;
             // Tint by instance colour (multiply LOD-grey or material colour)
             bestColor       = hitColor * inst.color;
