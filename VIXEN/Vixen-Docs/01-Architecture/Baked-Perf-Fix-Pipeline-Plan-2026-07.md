@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: PHASE-1 COMPLETE — M0–M6b ALL DONE+validated (~19 FPS class; validation-layer errors eliminated; seam checkering fixed; hybrid+mixed provider frames shipped). PAUSED for Phase-1→Phase-2 review with user before dispatching M7/M8 (parallel bakes, bake-artifact cache [none exists], 3D-texture pool = the 60+ FPS lever); worktree fix/baked-perf-pipeline
+status: PHASE-2 RUNNING — M0–M6b shipped (~19 FPS class). Phase-2 order set by user 2026-07-17: M7 FIRST (parallel bakes + bake-artifact cache), THEN revisit M8 with the walls' real density/occupancy data (M8's dense-3D-texture trade loses inter-brick + hierarchical sparseness — only worth it for near-solid bodies, so decide per-body AFTER M7 measures occupancy). worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -420,10 +420,27 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
   NO bake cache exists anywhere — the 87–190 s bake re-runs every boot; JIT Inc1's
   content-hash cache is write-only recipe-bytecode dedup, unrelated). Key on
   recipe+params+resolution → warm boots at file-load speed. Effort L.
+- [ ] Task 7.5 — Emit per-body OCCUPANCY stats during bake/serialize (occupied bricks /
+  bounding-volume bricks, and voxel fill ratio per body) to the log + a small artifact.
+  This is the data M8 needs to decide the dense-3D-texture-vs-ESVO fork PER BODY (user
+  2026-07-17): a dense texture only wins where sparseness is already near-zero. Cheap —
+  the bake already knows these counts.
 
-**Gate:** boot < 60 s; serialize output byte-identical (hash compare); tests green.
+**Gate:** boot < 60 s; serialize output byte-identical (hash compare); tests green;
+per-body occupancy stats recorded for the M8 decision.
 
 ## Milestone M8 — 3D-texture brick pool prototype + relaxed stepping (L) — the 60+ lever
+
+> **SPARSENESS CAVEAT (user 2026-07-17):** a DENSE per-octree 3D texture discards BOTH
+> inter-brick sparseness (the octree's empty-space skipping — empty Cornell interior is
+> free today) AND the sparse-mip hierarchical LOD (M4b). The trade buys hardware trilinear
+> filtering + coherent linear access. It only wins for NEAR-SOLID bodies (the 5 walls),
+> and loses badly for genuinely sparse ones. So: (a) prototype dense on the 5 walls ONLY;
+> (b) the 8.3 decision is PER-BODY (dense texture for solid, keep ESVO for sparse), never
+> a global switch; (c) gate the go/no-go on M7 Task 7.5's measured per-body occupancy.
+> If dense proves wrong even for walls, the sparse-preserving fallback is a packed brick
+> ATLAS with 1-voxel aprons still marched through the octree — hardware filtering WITHOUT
+> dense allocation (this was M8's own phase-2; pull it forward if 8.1 disappoints).
 
 - [ ] Task 8.1 — Phase-1 prototype: dense per-octree R16F 3D texture for the 5 walls,
   march via `textureLod` hardware trilinear; A/B vs M3's SSBO fast path (audit A6 /
