@@ -1450,7 +1450,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // +Z face is the deliberately-open one (CornellBoxSceneDefinition.h's own wall layout), so
     // a yaw=0 camera sits just outside that open face looking straight in, no yaw override
     // needed (CameraNodeConfig::PARAM_YAW already defaults to 0 from SetupImpl above).
-    if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") || std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO")) {
+    // M6b Task 6b.1/6b.2: also applies to VIXEN_DDGI_CORNELL_HYBRID_DEMO and
+    // VIXEN_DDGI_CORNELL_MIXED_DEMO (mixed-provider variants) -- same shared Cornell box
+    // geometry/camera-preset source, only the per-body provider assignment differs. Missing
+    // this branch (found live, M6b round 1) leaves the camera on the unrelated legacy
+    // VoxelGridNode PRESET-1 default, pointed away from the actual scene -- symptom was a
+    // near-total scene miss (3279/250000 hits) that looked like a rendering bug but was
+    // purely a wrong camera transform.
+    if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") || std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
+        std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO") || std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
         using namespace Vixen::App::CornellBox;
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, kCameraOrbitCenter.x);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, kCameraOrbitCenter.y);
@@ -3740,6 +3748,233 @@ void VulkanGraphApplication::BuildRenderGraph() {
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_VIRTUAL_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (probe grid must be on for this "
                               "demo's own point -- visible bounce lighting -- to be visible at all)");
+        } else if (std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO")) {
+            // Sampled Lighting — Cornell Box GI Reference Scene, M6b Task 6b.1 (hybrid
+            // provider variant, "hole in the wall"). Plan: Baked-Perf-Fix-Pipeline-Plan-2026-07.md
+            // Milestone M6b.
+            //
+            // Structurally this is M2's virtual/zero-bake variant (7 bodies PROVIDER_PROCEDURAL,
+            // zero bake calls) with exactly ONE body -- rightWall -- flipped to PROVIDER_STORED,
+            // whose bake is a MODIFIED shape (the rightWall RoundedBox minus a Cylinder, so light
+            // can pass through a visible hole). This needs zero new engine machinery: the CSG
+            // Subtract opcode (SdfOpCode::Subtract) and BakeSdfWorld (the same bake path M1's
+            // baked variant already uses per-body) already support an arbitrary instruction
+            // program -- this block just authors a 2-instruction program (RoundedBox, Cylinder,
+            // Subtract) instead of M1's 1-instruction (RoundedBox only) program for that one body.
+            //
+            // Geometry/color/camera SAME shared source as every other Cornell variant
+            // (CornellBoxSceneDefinition.h via BuildCornellWorldSpaceBodies()) so the hole is the
+            // ONLY visual difference from the virtual/baked baselines.
+            using namespace Vixen::App::CornellBox;
+            using Vixen::SVO::Recipe::SdfInstruction;
+            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: building the Cornell "
+                              "box GI reference scene (hybrid variant: rightWall PROVIDER_STORED with "
+                              "a baked hole, other 7 bodies PROVIDER_PROCEDURAL)");
+
+            std::vector<CornellWorldSpaceBody> worldBodies = BuildCornellWorldSpaceBodies();
+            // worldBodies[]: leftWall(0), rightWall(1), backWall(2), floor(3), ceiling(4), light(5),
+            // sphereObj(6), boxObj(7) -- fixed order, see BuildCornellWorldSpaceBodies.
+            constexpr size_t kHoleWallIdx = 1;  // rightWall
+
+            // --- rightWall: baked, MODIFIED shape (wall minus a through-hole cylinder) ---
+            //
+            // SdfOpCode::Cylinder (SdfRecipeEval.h / generated/SdfCoreKernels.g.hpp
+            // SdfCore_Cylinder) is NOT a position/axis-carrying primitive like RoundedBox/Sphere --
+            // it evaluates directly against the current `pos` with its bore axis HARD-FIXED to
+            // local Y (SdfCore_Cylinder: radial test on p.x/p.z, height test on p.y) and has no
+            // data[4..6] center field at all. To place and orient it, wrap it in a
+            // SdfOpCode::Transform/RestorePos domain-transform pair (the same push/pop position-
+            // stack mechanism Twist/Bend/RepeatInfinite use -- SdfRecipeEval.h's Transform case):
+            // Transform pushes `pos` into the cylinder's local frame via
+            // pos' = invRot*(pos-translation)*invScale (SdfCore_Transform), the Cylinder opcode
+            // then evaluates in that local frame, and RestorePos pops back to world space
+            // afterward for the following Subtract to combine correctly with the wall's own
+            // world-space RoundedBox distance.
+            //
+            // rightWall is thin on X (CornellWorldBoxAt(kRightWallWorldCenter, vec3(kWallThickness,
+            // kWallSpan, kZWideHalfExtent), ...) -- BuildCornellWorldSpaceBodies), so the hole must
+            // bore through world X to be a see-through hole rather than a shallow dimple. Since the
+            // cylinder's own bore axis is fixed to LOCAL Y, invRot must rotate world X onto local Y:
+            // a +90 degree rotation about Z maps (1,0,0) -> (0,1,0) exactly (verified numerically:
+            // quaternion (qv=(0,0,sin45),qw=cos45) applied to SdfCore_Transform's rotation formula
+            // sends world X to local Y with zero residual on X/Z). translation = the wall's own
+            // world center (Transform's data[0..2]), so the cylinder is centered on the wall.
+            const float kHoleRadius = 3.0f;                    // world units -- clearly visible, well inside the wall's span
+            const float kHoleHalfLen = kWallThickness * 2.0f;  // bores fully through the wall's thin (X) axis with margin
+            const glm::vec3& kHoleWallCenter = worldBodies[kHoleWallIdx].worldCenter;
+
+            SdfInstruction transformIn{};
+            transformIn.opCode = static_cast<uint8_t>(SdfOpCode::Transform);
+            transformIn.data[0] = kHoleWallCenter.x;  // translation (Data0.xyz)
+            transformIn.data[1] = kHoleWallCenter.y;
+            transformIn.data[2] = kHoleWallCenter.z;
+            // invRot xyzw: +90deg about Z, world X -> local Y (see derivation above)
+            transformIn.data[4] = 0.0f;
+            transformIn.data[5] = 0.0f;
+            transformIn.data[6] = 0.70710678f;   // sin(45deg)
+            transformIn.data[7] = 0.70710678f;   // cos(45deg)
+            transformIn.data[8]  = 1.0f;  // invScale (no scaling)
+            transformIn.data[9]  = 1.0f;
+            transformIn.data[10] = 1.0f;
+            transformIn.data[11] = 1.0f;  // distScale (rotation/translation only -- no distance rescale)
+
+            SdfInstruction holeCylinder{};
+            holeCylinder.opCode = static_cast<uint8_t>(SdfOpCode::Cylinder);
+            holeCylinder.data[0] = kHoleHalfLen;  // halfHeight (bore axis, local Y)
+            holeCylinder.data[1] = kHoleRadius;   // radius
+
+            SdfInstruction restorePosOp{};
+            restorePosOp.opCode = static_cast<uint8_t>(SdfOpCode::RestorePos);
+
+            SdfInstruction subtractOp{};
+            subtractOp.opCode = static_cast<uint8_t>(SdfOpCode::Subtract);
+
+            std::vector<SdfInstruction> holedWallProg = worldBodies[kHoleWallIdx].prog;  // [RoundedBox]
+            holedWallProg.push_back(transformIn);
+            holedWallProg.push_back(holeCylinder);
+            holedWallProg.push_back(restorePosOp);
+            holedWallProg.push_back(subtractOp);
+            // stack after: RoundedBox(wall, world space), Cylinder(hole, transformed into world
+            // space by RestorePos) -> Subtract -> wall minus hole.
+
+            constexpr float kBand = 2.0f;
+            constexpr float kWorldGridSize = 10.0f;  // ShellOctreeGpu.h's fixed octree-local->world span
+            constexpr int kWallSubdiv = 4;
+            constexpr int kWallN = 128;  // power of two -- see M1 baked variant's own pow2 note
+
+            auto bodyWorldPos = [](glm::vec3 bodyWorldCenter, int n, int subdiv) {
+                return bodyWorldCenter - glm::vec3(static_cast<float>(n) / (2.0f * static_cast<float>(subdiv)));
+            };
+            auto bodyRenderScale = [](int n, int subdiv) {
+                return static_cast<float>(n) / (static_cast<float>(subdiv) * kWorldGridSize);
+            };
+            auto makeWorldSpaceEval = [](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
+                return [&prog, bodyWorldCenter, n, subdiv](const glm::vec3& pRaw) {
+                    const glm::vec3 world = bodyWorldCenter + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
+                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world) * static_cast<float>(subdiv);
+                };
+            };
+
+            Vixen::SVO::SdfBakeResult holedWallBaked = Vixen::SVO::BakeSdfWorld(
+                makeWorldSpaceEval(holedWallProg, worldBodies[kHoleWallIdx].worldCenter, kWallN, kWallSubdiv),
+                worldBodies[kHoleWallIdx].worldCenter, kWallN, kBand, 3, Vixen::SVO::NoEmission,
+                [](const glm::vec3&) { return glm::vec3(1.0f); });
+            Vixen::SVO::SdfBodyOctree holedWallBody = Vixen::SVO::BuildSdfBodyOctree(holedWallBaked, 3);
+
+            const Vixen::SVO::Octree* holedWallOct = holedWallBody.octree->getOctree();
+            if (holedWallOct == nullptr) {
+                mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: holed rightWall "
+                                   "octree is null -- scene not built");
+            } else {
+                std::vector<const Vixen::SVO::SdfBodyOctree*> octreesForCat = { &holedWallBody };
+                Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+
+                if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                    bodyScene->SetRecipePool(std::move(cat));
+                    bodyScene->RequestBrickResidency(true);  // same eager-residency requirement as M1's baked variant
+
+                    // --- Assemble all 8 instances: rightWall STORED (octreeIndex 0, the only
+                    // entry in cat), the other 7 PROCEDURAL ---
+                    std::vector<Vixen::SVO::BodyInstanceGpu> instances;
+                    instances.reserve(worldBodies.size());
+                    bool allRegistered = true;
+                    for (size_t i = 0; i < worldBodies.size(); ++i) {
+                        const CornellWorldSpaceBody& b = worldBodies[i];
+                        Vixen::SVO::BodyInstanceGpu inst{};
+                        inst.color[0] = b.color.x; inst.color[1] = b.color.y; inst.color[2] = b.color.z;
+
+                        if (i == kHoleWallIdx) {
+                            const glm::vec3 wp = bodyWorldPos(b.worldCenter, kWallN, kWallSubdiv);
+                            inst.worldPos[0] = wp.x; inst.worldPos[1] = wp.y; inst.worldPos[2] = wp.z;
+                            inst.renderScale = bodyRenderScale(kWallN, kWallSubdiv);
+                            inst.octreeIndex = 0u;
+                            inst.providerKind = 0u;  // PROVIDER_STORED
+                            inst.recipeId = 0u;
+                        } else {
+                            const uint32_t recipeId = static_cast<uint32_t>(2 + i);  // 2..9, mirrors M2's own convention
+                            Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                            entry.bytecode = b.prog;
+                            entry.boundCenter = b.worldCenter;
+                            entry.boundRadius = b.boundRadius;
+                            auto regResult = RegisterProceduralRecipe(recipeId, entry);
+                            if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                                mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: "
+                                                 "RegisterProceduralRecipe(") + b.name + ") failed, code " +
+                                                 std::to_string(static_cast<int>(regResult)));
+                                allRegistered = false;
+                            }
+                            inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
+                            inst.renderScale = 1.0f;  // unused by Procedural
+                            inst.octreeIndex = 0u;    // unused by Procedural
+                            inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                            inst.recipeId = recipeId;
+                        }
+                        instances.push_back(inst);
+                    }
+                    bodyScene->SetInstances(std::move(instances));
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: seeded 8 body "
+                                      "instances (rightWall PROVIDER_STORED w/ hole, 7 PROVIDER_PROCEDURAL), "
+                                      "allRegistered=" + (allRegistered ? std::string("true") : std::string("false")));
+                }
+            }
+
+            // Light-tree cut: SAME side-bake mechanism as M2's virtual variant (light-tree cut is
+            // structurally baked-content-only regardless of how bodies render -- see that block's
+            // own header comment). The light BODY's visible pixels render via PROVIDER_PROCEDURAL
+            // above like every other non-holed body; this bake feeds ONLY the DDGI light-tree cut.
+            {
+                constexpr int kLightBakeN = 16;
+                const glm::vec3 kLightBakeCenter(static_cast<float>(kLightBakeN) * 0.5f);
+                std::vector<SdfInstruction> lightLocalProg = {
+                    CornellWorldBoxAt(kLightBakeCenter, kLightHalfExtent, 0.05f)
+                };
+                Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeRecipeInstructionsToSdfWorldWithEmission(
+                    lightLocalProg.data(), static_cast<uint32_t>(lightLocalProg.size()), kLightBakeCenter,
+                    kLightBakeN, kBand,
+                    [](const glm::vec3&) { return kLightEmissionIntensity; });
+                Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
+
+                const Vixen::SVO::Octree* lightOct = lightBody.octree->getOctree();
+                if (lightOct == nullptr) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: light-tree "
+                                       "side-bake octree is null -- no bounce lighting from the ceiling light");
+                } else {
+                    Vixen::SVO::SerializedOctree lightSer = Vixen::SVO::SerializeSdf(lightBody);
+                    Vixen::SVO::BakeAndAttachMipPool(*lightOct, lightSer);
+                    Vixen::SVO::MipPool lightMipPool = Vixen::SVO::BakeMipPool(*lightOct, lightSer);
+
+                    Vixen::SVO::LightTreeCutParams cutParams;
+                    cutParams.powerThreshold = 0.001f;
+                    std::vector<Vixen::SVO::LightTreeNode> cut =
+                        Vixen::SVO::BuildLightTreeCut(*lightOct, lightSer, lightMipPool, kLightBakeN, cutParams);
+
+                    const float lightRenderScale = static_cast<float>(kLightBakeN) / kWorldGridSize;
+                    const glm::vec3 lightWorldPos = kLightCenter - glm::vec3(static_cast<float>(kLightBakeN) * 0.5f);
+
+                    std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                    worldCut.reserve(cut.size());
+                    for (const auto& node : cut) {
+                        Vixen::SVO::LightTreeNode w = node;
+                        w.worldPos = lightWorldPos + (node.worldPos / static_cast<float>(kLightBakeN)) * kWorldGridSize * lightRenderScale;
+                        w.worldExtent = (node.worldExtent / static_cast<float>(kLightBakeN)) * kWorldGridSize * lightRenderScale;
+                        worldCut.push_back(w);
+                    }
+
+                    if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
+                        lightTreeInst->SetLightTreeCut(worldCut);
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: light-tree "
+                                      "side-bake cut=" + std::to_string(cut.size()) + " nodes");
+                }
+            }
+
+#if defined(_WIN32)
+            _putenv_s("VIXEN_PROBE_GRID_CONFIG_ENABLED", "1");
+#else
+            setenv("VIXEN_PROBE_GRID_CONFIG_ENABLED", "1", 1);
+#endif
+            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: force-enabled "
+                              "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
         } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO") || std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
             // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
             // near/far indices) for the edit-loop responsiveness gate when

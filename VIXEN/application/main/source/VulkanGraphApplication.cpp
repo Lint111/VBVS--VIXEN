@@ -1334,8 +1334,15 @@ void VulkanGraphApplication::Update() {
         // variants read hit_record_buffer identically post-KI-018 -- see this milestone's
         // compare_parity.py, which needs a [CornellDiag] instIdx map from BOTH providers to
         // quantify the virtual<->baked lighting divergence the cross_path mode reports).
+        //
+        // M6b Task 6b.1/6b.2: also fires under VIXEN_DDGI_CORNELL_HYBRID_DEMO and
+        // VIXEN_DDGI_CORNELL_MIXED_DEMO (mixed-provider variants) -- same hit_record_buffer
+        // readback mechanism applies unchanged regardless of which bodies are STORED vs
+        // PROCEDURAL, so these variants get the same instIdx-map/OOB gate evidence for free.
         if (renderGraph && (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") ||
-                            std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO"))) {
+                            std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
+                            std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO") ||
+                            std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO"))) {
             static long cornellDiagTick = 0;
             ++cornellDiagTick;
             constexpr long kCornellDiagReadTick = 150;  // matches the camera-pose diagnostic's own settle tick
