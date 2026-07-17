@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: M9 IN FLIGHT — hardware eval passed correctness (all 8 bodies, OOB 0/183540, cache HIT) but user caught a NEW artifact (Screenshot_246): the M6b tie-band (1e-4) is too wide, so at grazing wall/ceiling+wall/floor corners the lower-index WALL wins a wrong-color wedge. Fix = tighten SEAM_TIE_EPS_REL toward the noise floor (~1e-5). Phase-2 (M0–M8) was shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
+status: M9 REVERTED (mis-diagnosis, af5da90b) — the tie-band tightening moved the baked path AWAY from analytic ground truth (validator caught it); 1e-4 was correct, Screenshot_246's green corner is legitimate geometry. REAL FINDING from the hw eval: baked path renders sphere/box OBJECTS + LIGHTING far worse than virtual (flat/washed-out vs crisp 3D) — the genuine baked-vs-virtual quality gap, PAUSED for user direction (candidate M10). Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). Correctness on hw: all 8 bodies, OOB 0/183540, cache HIT. KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -571,7 +571,33 @@ state, plus the existing same_path parity gate on an actual warm-cache boot.
 byte-identical + 219 sub-perceptual edge pixels, no surface-skip); hw-atlas decision
 documented as future-only.
 
-## Milestone M9 — Tie-band too wide: wall wins a wedge at grazing corners (user-reported 2026-07-17, hardware eval, Screenshot_246)
+## Milestone M9 — MIS-DIAGNOSED + REVERTED; real finding = baked object/lighting quality gap (2026-07-17, hardware eval, Screenshot_246)
+
+> **RESOLUTION (2026-07-17): Task 9.1 was WRONG and is REVERTED (commit `af5da90b` reverts
+> `4a456395`; epsilon back to 1e-4, golden restored).** The Opus validator (oracle-based)
+> proved the tie-band tightening moved the baked path AWAY from analytic ground truth:
+> controller diffed the VIRTUAL (analytic, no-tie-break) instIdx map vs baked — at rows
+> 19-20/cols 18-19 the VIRTUAL render says rightWall(**1**), but the 1e-5 baked path wrongly
+> said floor(**3**), and the re-bless endorsed that. So 1e-4 was CORRECT at that corner; the
+> "wall eats floor wedge" was a controller MIS-DIAGNOSIS. The green presence at the
+> floor/rightWall corner in Screenshot_246 is LEGITIMATE geometry (virtual shows it too).
+> LESSON: never re-bless the baked path's output when it disagrees with the analytic oracle;
+> always diff baked-vs-virtual instIdx BEFORE concluding a baked cell is "wrong."
+>
+> **THE REAL FINDING (from comparing the two rendered hud_capture_150.png images):** the
+> BAKED path renders the sphere/box OBJECTS and LIGHTING markedly WORSE than the VIRTUAL
+> path — virtual shows crisp, correctly-lit 3D sphere + box (real depth/shading); baked
+> shows flat, washed-out, barely-visible grey smudges for the same objects, and a dimmer
+> overall scene. THIS is the genuine baked-vs-virtual quality gap worth chasing (and the
+> whole point of the hybrid "virtual baseline + baked deltas" architecture — the baked half
+> is visibly weaker). Distinct from tie-break/seam issues. Needs its own diagnosis milestone
+> (M10?) — candidate causes: baked object normals/shading (the fenced Phase-2 "small-body
+> bake-normal" item from M5b?), lighting/GI applied differently per provider, or
+> object-body bake resolution. GATE for any real fix: baked object shading + lighting must
+> approach virtual's, verified by baked-vs-virtual IMAGE comparison at the objects, not just
+> the instIdx map. PAUSED for user direction on scope.
+
+### (superseded) original Task 9.1 framing — kept for provenance, DO NOT re-attempt as written
 
 - [ ] Task 9.1 — The M6b `SEAM_TIE_EPS_REL = 1e-4` tie-band (`TraceWorld.glsl:48`) is TOO
   WIDE. User caught on hardware: at the DIAGONAL wall/ceiling and wall/floor corners
