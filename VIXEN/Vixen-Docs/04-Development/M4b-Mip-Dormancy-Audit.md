@@ -114,3 +114,105 @@ gatherers, independent from the primary raymarch gatherer:
   grace" `brickResident==0u` gate is out of scope for M4b (that's a
   residency-management change, not an LOD-policy change); only the
   screen-space coefficient gate is being exercised.
+
+## Task 4b.2 implementation notes
+
+Implemented exactly as planned above: a new `secondaryRaySizeCoefConstant`
+`ConstantNode` (default `0.05`, ~90x the primary ray's live coefficient at
+45deg/1440p; tunable via `VIXEN_SECONDARY_RAY_SIZE_COEF`), wired into field 8
+of `directLightingPushConstantGatherer`, `spatialReusePushConstantGatherer`
+(replacing their prior `raySizeCoefNode` connection), and newly into
+`probeUpdatePushConstantGatherer` (fields 8 AND 9, both previously
+unconnected). The tier-crossing debug override
+(`VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE`) still takes precedence over the
+new constant when active, same as it did over `raySizeCoefNode` before —
+unchanged precedence, just a different non-override source. The primary
+gatherer's connection (`pushConstantGatherer` -> `raySizeCoefNode`) is
+byte-for-byte unmodified.
+
+Verified `PushConstantGathererNode::PackPushConstantData` (line 436) treats
+an out-of-range field index as a logged warning + skip, not an error/crash —
+so wiring fields 8/9 into `probeUpdatePushConstantGatherer` is safe even if
+`ProbeUpdate.comp`'s reflected push-constant struct had turned out not to
+include them (it does: `TraceWorldShadow` is a real, unconditionally-reached
+call in that shader, so glslang keeps `raySizeCoef`/`raySizeBias` live
+through dead-code elimination).
+
+## Task 4b.3 — A/B results (fix/baked-perf-pipeline, this worktree)
+
+Two independent fresh `run_parity_check.bat` passes (each internally
+re-running both `run_baked.bat` and `run_virtual.bat`, warm per the
+project's warm-run convention — a prior `run_baked.bat` launch was done
+first and discarded). Frames 31-160 excluding 150/151, per
+`compare_parity.py`'s own convention.
+
+| metric (ms) | pre-M4b baseline | M4b run 1 | M4b run 2 |
+|---|---|---|---|
+| `probe_update_ms` | 65.03 | 31.01 | 28.85 |
+| `spatial_reuse_ms` | 8.01 | 3.71 | 3.90 |
+| `whole_frame_gpu_span_ms` | 135.11 | 103.42 | 101.31 |
+| `esvo_traverse_shade_ms` (primary, unchanged code) | 61.97 | 68.58 | 68.42 |
+| `direct_lighting_ms` | ~0.0002 | ~0.0002 | ~0.0002 |
+
+`probe_update_ms` and `spatial_reuse_ms` both dropped by roughly half,
+reproducibly across two independent runs — the two ray types M4b's mip
+policy targets. `esvo_traverse_shade_ms` (primary ray march, byte-identical
+code path) floats within normal cross-session variance (per
+`baked-sdf-perf-rootfix-validation` memory note: absolutes float,
+ratios/deltas are what's meaningful) — consistent with same_path staying
+hash-equal. `direct_lighting_ms` stayed at its pre-existing near-zero value
+(that pass's own dispatch is already gated by M4 Task 4.3's no-op guard in
+this scene, per prior milestones — its shadow rays run inside
+`SpatialReuseShade.comp`, not `DirectLighting.comp`, which is why that
+pass's OWN ms figure is unaffected here).
+
+**Parity**: both runs — `same_path`: `hash_equal=True`, `cells_differing=0/625`,
+`oob_ok=True`, all 8 bodies present. `cross_path` (ENFORCED): PASS both
+runs, `cell_agreement=99.0%` (unchanged from the pre-M4b 99.04%),
+`mean_abs_luminance_delta` 4.70/4.71 (pre-M4b baseline: 4.79 -- within
+noise), `p99_luminance_delta` 40.77/40.41 (pre-M4b: 40.0 -- within noise).
+No regression against either fence.
+
+**Leak/over-darkening check**: visually compared `temp_bench/baked/
+hud_capture_150.png` against `temp_bench/virtual/hud_capture_150.png`
+(ground truth). Cornell box geometry fully coherent — red/green side walls,
+back wall, floor, ceiling, ceiling light, sphere, and box all present and
+correctly shaded; no visible light leaks or over-darkening in the closed
+box from the coarser shadow/probe mip level. Sphere/box shading-crispness
+differences between baked and virtual are the pre-existing, already-fenced
+baked-vs-virtual lighting divergence (same magnitude as before M4b), not a
+new artifact.
+
+**8 bodies / OOB**: confirmed both runs — `run_oob: "0/183540"`,
+`run_bodies_present: ["0".."7"]`.
+
+**Tests**: `BuildRenderGraph.cpp` compiles only into the application targets
+(`VixenApp`/`VIXEN` in `application/main/CMakeLists.txt`) — confirmed via
+`grep` that no RenderGraph test executable's `CMakeLists.txt` compiles this
+file (the one hit in `libraries/RenderGraph/tests/CMakeLists.txt` is a
+comment, not a source-list entry). No test rebuild/rerun required for this
+change; existing test state (including the KI'd reds) is unaffected by
+construction.
+
+**Gate verdict**: probe_update + spatial_reuse GPU ms measurably and
+reproducibly down; same_path hash-equal; cross_path ENFORCED PASS; no
+visible leaks/over-darkening; 8 bodies; OOB=0. Task 4b.3 PASSES.
+
+## Task 4b.4 (stretch) — deferred, not attempted
+
+Footprint-driven mip selection for PRIMARY rays via the existing
+`RaySizeCoefNode`/`raySizeCoef` term is the SAME mechanism already live for
+primary rays today (`SceneBindings.glsl:1071-1072`,
+`OctreeTraversal-ESVO.glsl:213`) — calibrated for genuine sub-pixel screen-
+space error, which is the architecturally correct threshold for primary
+rays and is why it structurally never trips in this room-scale, single-tier
+Cornell scene (matches the plan's own expectation: "Expected small in
+room-scale Cornell; the payoff is tiered scenes"). Making primary rays use
+a coarser threshold would require either a second, primary-specific
+coefficient (risking the same_path hash-equal invariant the instant it's
+non-default) or genuine level-blending to avoid visible popping at the
+transition distance — the plan's own stretch-task language calls for
+exactly this to be "DOCUMENT and defer" rather than half-landed. Deferred
+to a future increment (tiered/orbit-scale scenes, where the payoff is
+actually large per the plan, are the natural place to pick this back up)
+with an OFF-by-default knob design, not attempted in this milestone.

@@ -679,6 +679,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // footprint sub-pixel) is the correct, robust lever.
     NodeHandle tierCrossingLodCoefOverrideConstant = renderGraph->AddNode<ConstantNodeType>("tier_crossing_lod_coef_override");
 
+    // Baked-Perf M4b Task 4b.2: secondary-ray (shadow/probe) LOD coefficient. A SEPARATE
+    // literal ConstantNode (same "direct literal, not an FOV bump" lever as
+    // tierCrossingLodCoefOverrideConstant above -- see that node's own comment for why FOV
+    // scaling is too weak) feeding ONLY the DirectLighting/SpatialReuse/ProbeUpdate push-
+    // constant gatherers' field 8, so shadow and probe rays hit the existing screen-space LOD
+    // gate (SceneBindings.glsl raySizeCoef>0 checks) at a coefficient calibrated for "occluder/
+    // GI coarse-enough" rather than primary rays' pixel-accurate footprint threshold. The
+    // primary gatherer keeps its own unrelated connection to raySizeCoefNode (line ~4561) --
+    // untouched by this node, so same_path stays hash-equal by construction (no shared wire).
+    NodeHandle secondaryRaySizeCoefConstant = renderGraph->AddNode<ConstantNodeType>("secondary_ray_size_coef");
+
     NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
     // --- Sky-projection composite pass (Tiered ESVO Inc1 M3: address-derived sky points) ---
@@ -866,6 +877,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
                               " (bypasses RaySizeCoefNode entirely for this run)");
         } else {
             lodOverrideConst->SetValue<float>(0.0f);  // unused when the override isn't active
+        }
+    }
+
+    // Baked-Perf M4b Task 4b.2: secondary-ray raySizeCoef value. Default 0.05 -- roughly two
+    // orders of magnitude coarser than the primary ray's live coefficient (~5.6e-4 at 45deg
+    // FOV/1440p) -- picked to trip the existing SceneBindings.glsl screen-space LOD gate
+    // (tv_max*raySizeCoef+raySizeBias >= scale_exp2, LOCAL [1,2)-frame units, same formula
+    // primary rays use) once a shadow/probe ray's traversal reaches a node whose local extent
+    // is a small fraction of the octree root, WITHOUT being so large it trips on the
+    // ROOT-level node itself (scale_exp2=1.0 at the root; 0.05*tv_max must stay < 1.0 for any
+    // tv_max under ~20, comfortably covering this scene's [1,2) traversal range) -- i.e. coarse
+    // occluders/GI, not "every shadow ray mip-shades the first node it touches." Tunable via
+    // VIXEN_SECONDARY_RAY_SIZE_COEF for the M4b Task 4b.3 A/B pass without a rebuild.
+    {
+        float secondaryRaySizeCoefValue = 0.05f;
+        if (const char* secondaryCoefEnv = std::getenv("VIXEN_SECONDARY_RAY_SIZE_COEF")) {
+            secondaryRaySizeCoefValue = std::strtof(secondaryCoefEnv, nullptr);
+        }
+        auto* secondaryRaySizeCoefConst =
+            static_cast<ConstantNode*>(renderGraph->GetInstance(secondaryRaySizeCoefConstant));
+        secondaryRaySizeCoefConst->SetValue<float>(secondaryRaySizeCoefValue);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] M4b: secondary-ray (shadow/probe) raySizeCoef=" +
+                              std::to_string(secondaryRaySizeCoefValue) +
+                              " (VIXEN_SECONDARY_RAY_SIZE_COEF env; default 0.05)");
         }
     }
 
@@ -4964,14 +5000,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                           directLightingPushConstantGatherer, VoxelRayMarch::debugMode::BINDING,
                           ExtractField(&InputState::debugMode, SlotRole::Execute));
+    // Baked-Perf M4b Task 4b.2: DirectLighting.comp issues shadow rays (TraceWorldShadow, M4's
+    // any-hit chain) -- feed the secondary-ray coefficient instead of mirroring the primary
+    // gatherer's raySizeCoefNode, so shadow-ray occlusion tests reach the mip-fallback path
+    // (SceneBindings.glsl any-hit LOD gate) at a coarser threshold than primary rays. The
+    // tier-crossing debug override still wins when active (same precedence as before this
+    // change) -- it is a whole-scene debug knob, orthogonal to per-ray-type policy.
     if (tierCrossingLodCoefOverrideActive) {
         batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
                               directLightingPushConstantGatherer, 8,
                               SlotRoleModifier(SlotRole::Execute));
     } else {
-        batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+        batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
                               directLightingPushConstantGatherer, 8,
-                              SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                              SlotRoleModifier(SlotRole::Execute));
     }
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           directLightingPushConstantGatherer, 9,
@@ -5162,14 +5204,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                           spatialReusePushConstantGatherer, VoxelRayMarch::debugMode::BINDING,
                           ExtractField(&InputState::debugMode, SlotRole::Execute));
+    // Baked-Perf M4b Task 4b.2: SpatialReuseShade.comp also issues shadow rays (TraceWorldShadow,
+    // ReSTIR spatial-reuse shade pass) -- same secondary-ray coefficient as DirectLighting above,
+    // not the primary gatherer's raySizeCoefNode. See that block's comment for rationale.
     if (tierCrossingLodCoefOverrideActive) {
         batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
                               spatialReusePushConstantGatherer, 8,
                               SlotRoleModifier(SlotRole::Execute));
     } else {
-        batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+        batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
                               spatialReusePushConstantGatherer, 8,
-                              SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                              SlotRoleModifier(SlotRole::Execute));
     }
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           spatialReusePushConstantGatherer, 9,
@@ -5500,6 +5545,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
                           probeUpdatePushConstantGatherer, 10,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Baked-Perf M4b Task 4b.2: raySizeCoef/raySizeBias (fields 8/9) were previously left
+    // UNCONNECTED here (zero-filled by PushConstantGathererNode::PackPushConstantData, per the
+    // M4b dormancy audit) -- ProbeUpdate.comp's own TraceWorldShadow call (line 241) reads
+    // pc.raySizeCoef through SceneBindings.glsl's any-hit LOD gate, so a live, nonzero
+    // coefficient is required for probe rays to ever reach the mip-fallback path; raySizeCoef=0
+    // is not dead code here (glslang keeps the field reflected -- TraceWorldShadow is a real
+    // call, not eliminated), it was simply never wired. Same secondary-ray coefficient as
+    // DirectLighting/SpatialReuse (not the primary gatherer's raySizeCoefNode).
+    batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+                          probeUpdatePushConstantGatherer, 8,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          probeUpdatePushConstantGatherer, 9,
+                          SlotRoleModifier(SlotRole::Execute));
 
     // ProbeUpdate's descriptor bindings: the scene SSBOs (read-only, same as DirectLighting/
     // SpatialReuse's own gatherer bindings — read-read is not a hazard) + ProbeGridConfig
