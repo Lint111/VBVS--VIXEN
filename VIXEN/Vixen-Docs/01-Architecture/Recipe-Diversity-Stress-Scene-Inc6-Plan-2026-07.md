@@ -154,11 +154,31 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
     visualization was used instead, an equally valid and cheaper visual proof) rendered the same
     recipe at 3 declared positions on real hardware and wrote 3 PNGs; each showed the sphere's disc
     silhouette at the pixel location matching its declared world position (visually confirmed + a
-    centroid-position numeric assertion in the test itself). Commit: see this repo's git log on
-    `feat/recipe-diversity-stress-inc6` for the exact hash. New opcode registered in
-    `RecipeStackArity`/`IsValidSdfOpCode`; excluded (with an explicit, documented exemption) from the
+    centroid-position numeric assertion in the test itself). Commit: `754442d1`. New opcode registered
+    in `RecipeStackArity`/`IsValidSdfOpCode`; excluded (with an explicit, documented exemption) from the
     shared `RecipeParityCorpus`/`RecipeGlslOpcodeCoverage` loop since it needs the out-param emitter path
     the shared harness doesn't thread through — its own dedicated tests cover it instead.
+  - **Opus re-validator: APPROVED (2026-07-17).** Independently re-derived every claim, did not trust
+    the report on the strength of it reporting a clean success — this is the load-bearing milestone the
+    rest of the increment builds on. Ran a fresh full `build.bat all` (confirmed correct worktree source,
+    new test binary's mtime postdates its source), re-ran the CPU/GPU parity test on real GPU hardware
+    (not skipped) and independently confirmed all 3 of its claims, including reading the actual generated
+    GLSL to verify the `declaredPos` assignment is genuinely INLINE mid-function (not hoisted) and that
+    the SPIR-V module compiles exactly once across the 4-value redispatch. Re-ran the live-render test
+    and — critically — opened and inspected the actual 3 PNGs rather than trusting the centroid-distance
+    assertion alone: confirmed `insidePixels=812` identical across all 3 (translation-only, no
+    scale/distortion), and all 3 positions visually correct with no axis swap or sign flip (one apparent
+    vertical-placement oddity was investigated and correctly identified as a display y-flip convention,
+    not a bug — internally consistent with the test's own u/v mapping). Confirmed the opcode-coverage
+    exemption is real, documented, and doesn't weaken the coverage check for any OTHER opcode. Confirmed
+    scope discipline (diff limited to exactly the 13 allowed files, no `BuildRenderGraph.cpp`/
+    `VulkanGraphApplication.cpp`/`RecipeEntry`/spatial-structure/composer-tool/enforcement-mechanism
+    changes). Re-ran the full regression suite independently (own pass counts matched exactly:
+    codegen 10, codegen_glsl 4, eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5, zero
+    failures/skips). **Own independent conclusion: the prototype genuinely succeeded — M2 can proceed on
+    contract-based placement.** One minor non-blocking note for M2: the render test's PNG output path
+    resolves to Windows `C:\tmp\...` (not WSL `/tmp`) under the Windows-native exe — a path-convention
+    note for any M2 tooling that reads rendered output, not a defect.
 - **M2 — Spatial placement + recipe-diversity generation, scaled to N=20-250.** Generalize M1's proven
   placement mechanism (contract-based if M1 succeeded; flat-literal fallback if M1 found a real blocker)
   across N distinct, genuinely-diverging recipe programs — reuse/extend `VIXEN_PROCEDURAL_UBER_DEMO`'s
