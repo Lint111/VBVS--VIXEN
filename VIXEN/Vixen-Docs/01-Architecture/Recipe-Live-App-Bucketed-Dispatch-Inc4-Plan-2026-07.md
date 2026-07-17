@@ -212,6 +212,70 @@ validator verdict.)
   - **Deviation from prompt:** none of substance. The prompt's plan-doc sync step (worktree → main
     checkout copy) is handled by the controller per the prompt's own instruction (implementer does not
     commit in the main checkout).
+- **M1 FIX ROUND (2026-07-17).** An Opus validator found the M1 commit above correctness-blocking:
+  binding 35 was used unconditionally in the shader (SPIR-V reflection correctly marks it required)
+  but nothing in the PRODUCTION render path ever wired or populated that descriptor — an unbound
+  `STORAGE_BUFFER` at `vkCmdDispatch` time on every default-scene frame.
+  - **Scope found WIDER than the fix prompt stated:** `SceneBindings.glsl`'s binding-35 declaration
+    (line 148/157) is unconditional (no `#ifdef`) and unconditionally `#include`d by FOUR production
+    shaders, not just the march: `BodyInstanceRayMarch.comp`, `DirectLighting.comp`, `ProbeUpdate.comp`,
+    `SpatialReuseShade.comp`. Independently verified (own grep + a sub-agent's independent research,
+    cross-checked): SPIR-V reflection (`SPIRVReflection.cpp`'s `spvReflectEnumerateDescriptorBindings`,
+    no dead-code-elimination pass anywhere in the shader build — `ShaderCompiler.cpp`) marks binding 35
+    REQUIRED in all four compiled shaders' descriptor sets regardless of whether that shader's own code
+    calls `isInstanceSkipped()` — confirmed against the codebase's own established precedent
+    (`ddgiLeakGateDebugBuffer` already wired into 3 separate gatherers for the identical reason). Fixed
+    all FOUR production gatherers (`descriptorGatherer`/main march, `directLightingGatherer`,
+    `probeUpdateGatherer`, `spatialReuseGatherer`), not just the one the fix prompt named — the other
+    three would have hit the identical unbound-descriptor bug on their own real dispatches otherwise.
+  - **Fix:** one shared `instanceSkipMaskBuffer` (`StorageBufferNode`, `PARAM_SIZE_BYTES=256`,
+    `BuildRenderGraph.cpp` node creation ~line 632, param ~line 839, device wire ~line 4532) connected
+    to binding 35 on all four gatherers (`BuildRenderGraph.cpp:4732, 5069, 5268, 5592`). Chose 256 bytes
+    (not 1 byte) to match the 11 GTest harnesses' own existing placeholder convention exactly, per the
+    fix prompt's own suggestion — production and tests now share one no-op shape.
+  - **Shader comment fixed:** `SceneBindings.glsl`'s comment previously described the no-op as holding
+    via `skipMask.length()==0` (a 1-byte-placeholder framing) while all 11 test harnesses actually use a
+    256-byte zeroed buffer (`length()==64`) — the validator's exact finding. Rewrote the comment to
+    describe the deployed reality: the no-op holds by CONTENT (every word zero), not by length, since
+    production and tests both use the 256-byte convention now.
+  - **Test rigor fixed:** `SkipMaskExcludesOnlyTargetedInstance`'s non-excluded-instance assertions were
+    `EXPECT_GT(..., *0.9)` despite the M1 report calling the proof "byte-identical" — tightened to
+    `EXPECT_EQ` (exact). Live GPU run confirmed exact equality holds with zero tolerance needed:
+    red=21743/21743, gray=21743/21743 baseline vs. skip-active, both dispatches (see gate results below).
+  - **Full test suite re-run (Windows-native, real GPU):** `test_rendergraph_criticalnodes_gpurender1`
+    (8/8 PASS, includes the tightened test), `test_recipe_pool_render` (1/1 PASS), `test_mip_fallback_render`
+    (4/4 PASS), `test_baked_vs_virtual_parity` (0/1 — pre-existing, see below),
+    `test_rendergraph_criticalnodes_gpurender2` (6/7 — pre-existing, see below),
+    `test_rendergraph_criticalnodes_gpurender2b` (2/3 — pre-existing, see below),
+    `test_appflow_editor_toggle_render` (0/1 — pre-existing, see below).
+  - **4 failures, all independently confirmed pre-existing and unrelated to this fix** (not just
+    asserted — actually re-built and re-run against a temporary worktree at the pre-M1 commit,
+    `9303e096`, then discarded): `BakedVsVirtualParityTest.VirtualRendersGeometricallyEquivalentToBaked`
+    and `TierCrossingLodResidencyTest.NonResidentChildNeverCrossesResidentChildDoes` and
+    `ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay` were already documented as
+    pre-existing in the M1 entry above (isolated via always-false short-circuit, reproduced
+    byte-identically here too: same IoU=0.6062630480167015/bakedHits=5808/virtualHits=9580, same
+    magenta=0, same luma=0 values). `AppFlowEditorToggleRenderTest.ToggleThenUndoRestoresRender` was
+    NOT previously documented — found newly failing in this fix round's re-run, then independently
+    verified via a temporary worktree at commit `9303e096` (one commit before M1): identical failure,
+    identical `boreDiffPixels=0 vs 3000` — confirms it predates M1 entirely and is unrelated to the
+    skip-mask mechanism.
+  - **LIVE APP GATE (the most important result):** ran the real `VIXEN.exe` (Windows-native, discrete
+    GPU `AMD Radeon(TM) Graphics`, Debug build, Vulkan validation layers ON per build log confirmation),
+    default scene/graph, no special flags, for ~4 minutes / 25000+ frames at ~200 FPS sustained.
+    **Zero occurrences of `VUID-vkCmdDispatch-None-08114` or any unbound-descriptor warning** — the
+    exact defect this fix round targets is confirmed gone. Two unrelated pre-existing VUID classes were
+    found (`VUID-vkCmdDraw-None-09600`, `VUID-vkQueueSubmit2-semaphore-03868`, 20 occurrences each,
+    confined to a one-time startup-recompile transient, self-limited by the validation layer's own
+    duplicate-message cap after 10 reports, never recurring across the rest of the run) — independently
+    confirmed pre-existing and unrelated by rebuilding+running the pre-M1 baseline app (`9303e096`) in a
+    temporary worktree: byte-identical 42 total VUID count (20+20) and identical 50-occurrence
+    `PushConstantGathererNode::Validate` "Type mismatch" log line count, both discarded afterward. Both
+    temporary comparison worktrees (`-pretest`, `-pretest2`) were removed after use; nothing landed on
+    this branch from them.
+  - **Deviation from prompt:** scope was WIDER than stated (3 additional gatherers, not just the main
+    march's) — flagged above, not a deviation in spirit (the prompt's own reasoning, applied
+    consistently, requires it). Everything else matches the prompt exactly.
 
 ---
 

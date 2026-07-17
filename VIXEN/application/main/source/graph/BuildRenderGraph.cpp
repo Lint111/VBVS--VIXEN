@@ -616,6 +616,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // MapForReadback/UnmapReadback it exactly like reservoirBufferA/B already do.
     NodeHandle ddgiLeakGateDebugBuffer = renderGraph->AddNode<StorageBufferNodeType>("ddgi_leak_gate_debug_buffer");
 
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: InstanceSkipMaskBuffer (binding 35,
+    // shaders/SceneBindings.glsl) placeholder SSBO. `SceneBindings.glsl` is #included
+    // unconditionally by FOUR production shaders (BodyInstanceRayMarch.comp, DirectLighting.comp,
+    // ProbeUpdate.comp, SpatialReuseShade.comp) -- SPIR-V reflection (SPIRVReflection.cpp, no
+    // dead-code-elimination pass anywhere in the shader build) marks binding 35 as a REQUIRED
+    // descriptor in all four compiled shaders' reflected sets regardless of whether that shader's
+    // own code ever calls isInstanceSkipped(), exactly like ddgiLeakGateDebugBuffer above already
+    // gets wired into three separate gatherers (directLighting/probeUpdate/spatialReuse) for the
+    // same reason. One shared placeholder buffer, wired to all four gatherers below (descriptorGatherer,
+    // directLightingGatherer, probeUpdateGatherer, spatialReuseGatherer) -- never populated with real
+    // skip data this milestone (M3's job), same 256-byte zeroed convention as this feature's own 11
+    // GTest harnesses (test_body_instance_raymarch_render.cpp et al.) use for their own default-case
+    // placeholder, so production and tests share one no-op convention instead of two.
+    NodeHandle instanceSkipMaskBuffer = renderGraph->AddNode<StorageBufferNodeType>("instance_skip_mask_buffer");
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -814,6 +829,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // post-hysteresis-blend atlas readback) -> 60B.
     auto* ddgiLeakGateDebugInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(ddgiLeakGateDebugBuffer));
     ddgiLeakGateDebugInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 60u);
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: InstanceSkipMaskBuffer (binding 35) --
+    // fixed 256-byte zeroed placeholder, not extent-driven (mirrors ddgiLeakGateDebugBuffer's own
+    // fixed-size convention just above). 256 bytes matches this feature's 11 GTest harnesses'
+    // default placeholder size exactly (see test_body_instance_raymarch_render.cpp's
+    // dummySkipMask), so isInstanceSkipped()'s skipMask.length()==64 (256B / 4B-per-uint) no-op
+    // path is identical in production and in every test.
+    auto* instanceSkipMaskInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(instanceSkipMaskBuffer));
+    instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 256u);
 
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
@@ -4501,6 +4525,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
 
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: instance skip mask buffer — device
+    // only, NO SWAPCHAIN_INFO connection (fixed PARAM_SIZE_BYTES sizing set above, same shape as
+    // ddgiLeakGateDebugBuffer immediately above).
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  instanceSkipMaskBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
@@ -4689,6 +4719,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Connected recipe occupancy grid at binding 16 (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13)");
+    }
+
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
+    // SPIR-V reflection marks this REQUIRED in BodyInstanceRayMarch.comp's descriptor set (it's
+    // read unconditionally by isInstanceSkipped(), called from both TraceWorld's and
+    // TraceWorldShadow's instance loops) -- without this wire, binding 35 is an unbound
+    // STORAGE_BUFFER descriptor at vkCmdDispatch time (VUID-vkCmdDispatch-None-08114) on every
+    // default-scene frame. Never populated with real skip data this milestone (M3's job) --
+    // the 256-byte zeroed placeholder makes isInstanceSkipped() a true no-op (see that
+    // function's own bounds-check comment in SceneBindings.glsl).
+    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          descriptorGatherer, 35,  // Binding 35: InstanceSkipMaskBuffer
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected instance skip mask at binding 35 (Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round)");
     }
 
     // Sampled Lighting Inc0 M3: Binding 17: LightingConfig SSBO (single record, re-uploaded
@@ -5014,6 +5060,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
                           directLightingGatherer, 16,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
+    // DirectLighting.comp #includes SceneBindings.glsl too (KI-018 shared-scene-code precedent),
+    // so SPIR-V reflection marks binding 35 REQUIRED here as well, even though this shader never
+    // calls isInstanceSkipped() itself -- same reasoning as this gatherer's own binding 31
+    // (ddgiLeakGateDebugBuffer) wire below. Same shared placeholder buffer as descriptorGatherer's
+    // binding 35 above.
+    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          directLightingGatherer, 35,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
                           directLightingGatherer, 18,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
@@ -5205,6 +5260,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
                           spatialReuseGatherer, 16,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
+    // SpatialReuseShade.comp #includes SceneBindings.glsl too, so SPIR-V reflection marks
+    // binding 35 REQUIRED here as well (same reasoning as descriptorGatherer/directLightingGatherer
+    // above). Same shared placeholder buffer.
+    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          spatialReuseGatherer, 35,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
                           spatialReuseGatherer, 18,
@@ -5522,6 +5584,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
                           probeUpdateGatherer, 15,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
+    // ProbeUpdate.comp #includes SceneBindings.glsl too, so SPIR-V reflection marks binding 35
+    // REQUIRED here as well (same reasoning as the other three gatherers). Same shared
+    // placeholder buffer.
+    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          probeUpdateGatherer, 35,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
                           probeUpdateGatherer, 24,

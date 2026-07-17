@@ -1249,11 +1249,17 @@ TEST_F(BodyInstanceRayMarchRenderTest, SkipMaskExcludesOnlyTargetedInstance) {
     std::printf("[SKIPMASK] instance 1 excluded: red=%d green=%d gray=%d\n", redSkip, greenSkip, graySkip);
 
     // The exclusion proof: instance 1 (green) must vanish; instances 0/2 (red/gray) must be
-    // materially unaffected (allow a small tolerance for silhouette-edge pixel jitter between
-    // the two independent dispatches, but this must not be a meaningful regression).
+    // BYTE-IDENTICAL pixel counts to baseline. Both dispatches share the same camera, octree
+    // data, and push constants -- isInstanceSkipped()'s early-continue on instance 1 cannot
+    // perturb any other instance's traversal (each instance loop iteration is independent, no
+    // shared mutable state across iterations besides the nearest-hit compare), and the march
+    // itself is a deterministic per-pixel computation (no accumulation/temporal feedback, no
+    // randomness in this harness's pipeline) -- so there is no legitimate source of jitter
+    // between the two runs. An exact-equality assertion is the decisive proof; a tolerance
+    // would only mask a real regression.
     EXPECT_LT(greenSkip, 10) << "excluded instance 1 (green planet) still rendered — skip mechanism did not exclude it";
-    EXPECT_GT(redSkip,  static_cast<int>(redBase  * 0.9)) << "non-excluded instance 0 (red) regressed when instance 1 was excluded";
-    EXPECT_GT(graySkip, static_cast<int>(grayBase * 0.9)) << "non-excluded instance 2 (gray) regressed when instance 1 was excluded";
+    EXPECT_EQ(redSkip,  redBase)  << "non-excluded instance 0 (red) pixel count changed when instance 1 was excluded — expected byte-identical";
+    EXPECT_EQ(graySkip, grayBase) << "non-excluded instance 2 (gray) pixel count changed when instance 1 was excluded — expected byte-identical";
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

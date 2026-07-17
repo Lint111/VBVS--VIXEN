@@ -125,15 +125,24 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 // bucketed-dispatch integration, not built in this milestone) ever sets a bit; this
 // milestone only builds the read side + the skip semantics.
 //
-// Bound as a 1-byte placeholder in every scene/test that doesn't populate it — mirrors
-// MipPoolBuffer/TierRefTableBuffer/OccupancyGridBuffer's identical "always declared,
-// placeholder when the owning feature is inactive" convention (see those buffers'
-// comments above). The read bounds-checks against skipMask.length() before indexing, so
-// an unbound/1-byte placeholder is always safe: length()==0 (a std430 runtime-sized
-// array's element count over a 1-byte binding truncates to 0, since one uint is 4 bytes)
-// makes wordIdx<skipMask.length() false for every instIdx, so the read never happens and
-// every instance is always marched — the empty/default/placeholder case is a true no-op,
-// not just "usually returns false."
+// Bound as a 256-byte ZEROED placeholder in every scene/test that doesn't populate it
+// (both the production graph's own instance_skip_mask_buffer, BuildRenderGraph.cpp, and
+// all 11 GTest Vulkan harnesses exercising this shader use the SAME 256-byte/zeroed
+// convention — one no-op shape everywhere, not two). This differs from MipPoolBuffer/
+// TierRefTableBuffer/OccupancyGridBuffer's 1-byte-when-empty convention (see those
+// buffers' comments above) because those buffers are CONCATENATED CPU-side vectors that
+// are sometimes genuinely empty (no tree ever produced data for them), whereas this
+// buffer's placeholder is a fixed, always-allocated size independent of any CPU-side
+// vector — 1 byte would be equally safe (the bounds-check below tolerates any size) but
+// 256 bytes was chosen so production and every test harness share one literal buffer
+// size. The read bounds-checks against skipMask.length() before indexing, so the no-op
+// holds by CONTENT (every word is zero), not by length: with the 256-byte placeholder,
+// skipMask.length()==64 (256B / 4B-per-uint) is nonzero, so the bounds-check passes and
+// the read genuinely happens — it just always reads a zero word, so no bit is ever set
+// and every instance is always marched. (A 1-byte placeholder would instead make the
+// no-op hold via skipMask.length()==0 — a std430 runtime-sized array's element count
+// over a too-small binding truncates to 0 — short-circuiting the bounds-check instead;
+// both shapes are safe, this file's declared convention is the zeroed-content one.)
 //
 // Binding number 35 (not the next free number in THIS file's own local sequence, 23):
 // SceneBindings.glsl is #included by DirectLighting.comp/ProbeUpdate.comp/
@@ -148,9 +157,10 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 layout(std430, binding = 35) readonly buffer InstanceSkipMaskBuffer { uint skipMask[]; };
 
 // Returns true iff instIdx's bit is set in skipMask[] — false (never skip) whenever the
-// bound buffer is the 1-byte placeholder (skipMask.length()==0) or instIdx's word is
-// simply beyond whatever was actually populated, so a caller that never populates this
-// buffer at all gets byte-identical behavior to a build that never had this mechanism.
+// bound buffer is the 256-byte zeroed placeholder (every word reads 0, so no bit is ever
+// set) or instIdx's word is simply beyond whatever was actually populated, so a caller
+// that never populates this buffer at all gets byte-identical behavior to a build that
+// never had this mechanism.
 bool isInstanceSkipped(int instIdx) {
     uint wordIdx = uint(instIdx) >> 5u;
     if (wordIdx >= skipMask.length()) return false;
