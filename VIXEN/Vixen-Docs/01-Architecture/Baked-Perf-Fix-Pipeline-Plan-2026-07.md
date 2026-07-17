@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0–M6 DONE (~19 FPS class; validation-layer errors eliminated); M6b next (opens with Task 6b.0 instance-seam tie-break for user-reported checkering, then hybrid gates), then Phase-1→Phase-2 review with user; worktree fix/baked-perf-pipeline
+status: PHASE-1 COMPLETE — M0–M6b ALL DONE+validated (~19 FPS class; validation-layer errors eliminated; seam checkering fixed; hybrid+mixed provider frames shipped). PAUSED for Phase-1→Phase-2 review with user before dispatching M7/M8 (parallel bakes, bake-artifact cache [none exists], 3D-texture pool = the 60+ FPS lever); worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -375,7 +375,7 @@ nothing currently benches or verifies that composition. User-defined acceptance 
 (2026-07-16): virtual scene + a visible modification (hole/feature) on one element
 delivered via the stored/delta path.
 
-- [ ] Task 6b.0 — Instance-seam winner tie-break (user-reported 2026-07-17,
+- [x] Task 6b.0 — Instance-seam winner tie-break (user-reported 2026-07-17,
   Screenshot_244): checkerboard "z-fighting" patches at instance junctions —
   ceiling/leftWall/backWall corner and floor/rightWall corner (the SAME junction as the
   golden's row-21 cross-binary near-tie flip). Root cause hypothesis: two abutting
@@ -392,14 +392,16 @@ delivered via the stored/delta path.
   QUIET — same_path gate is contention-sensitive, see M6 verify note); same_path golden
   re-blessed ONLY if the map change is exactly seam cells becoming coherent (expect
   near-tie flips to disappear — the ≤2/625 slack may become unnecessary; note it if so).
-- [ ] Task 6b.1 — v1 "hole in the wall" (today's machinery): virtual Cornell with ONE
+- [x] Task 6b.1 — v1 "hole in the wall" (today's machinery): virtual Cornell with ONE
   body flipped to PROVIDER_STORED whose bake is the MODIFIED shape (e.g. right wall
   recipe minus a cylinder — `BakeRecipeInstructionsToSdfWorld` bakes arbitrary recipe
   instructions, zero new engine work). New `temp_bench/run_hybrid.bat`.
-- [ ] Task 6b.2 — Mixed-provider splits: walls stored + objects procedural, and the
+- [x] Task 6b.2 — Mixed-provider splits: walls stored + objects procedural, and the
   inverse (`temp_bench/run_mixed.bat`).
-- [ ] Task 6b.3 — v2 (if voxel-authoring path is ready per the dormant-work inventory):
-  the same hole applied as a RUNTIME voxel edit to the resident stored body, no rebake.
+- [x] Task 6b.3 — DOCUMENT-AND-SKIP: no runtime (no-rebake) voxel-edit path exists in the
+  codebase (grep VoxelAuthoring/RuntimeVoxelEdit/VoxelBrush/EditVoxel = zero non-test
+  hits; not in the dormant-work inventory). What exists is bake-time recipe authoring,
+  which 6b.1/6b.2 already exercise. Belongs to the delta program when a live-edit path lands.
 
 **Gates:** hole/feature visibly correct (light passes through it: shadows + GI respond);
 instIdx map correct for all 8 bodies in every variant; per-pass timers within the
@@ -673,6 +675,33 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   capture lands on a slightly different scene registration; the same_path hard gate is
   contention-sensitive → run parity on a quiet machine (or add a contention guard /
   multi-sample mode).
+
+- M6b (Tasks 6b.0–6b.3): DONE · commits `805c2871` (6b.0) + `da893fa6` (6b.1) +
+  `dd9ea1bf` (6b.2) · Opus validator APPROVED · 2026-07-17. **User-reported seam
+  checkering (Screenshot_244) FIXED**: `isCloserHit()` in TraceWorld.glsl adds a
+  relative-epsilon tie-band (`1e-4*max(|bestT|,1)`) at 4 sites (2 winner-compares +
+  2 front-to-back early-rejects, symmetric band so no in-band candidate is pre-rejected);
+  **depth is the primary arbiter** (`candidateT < bestT` outside the band — supports
+  hybrid deltas in front of/behind a baseline), lower instance index wins only inside the
+  band (coincident-slab symmetry break). Golden re-blessed HONESTLY: exactly 2/625 cells
+  changed (rows 18-19, floor(3)→rightWall(1), lower-index-wins direction), no non-seam
+  movement; ceiling corner already resolved to leftWall. Parity byte-identical 3/3 fresh
+  runs even under load 12-18 (strong determinism). **HYBRID FRAME shipped** (6b.1,
+  `VIXEN_DDGI_CORNELL_HYBRID_DEMO`): rightWall PROVIDER_STORED baked as RoundedBox−Cylinder
+  through-hole (Transform/RestorePos wrapper around the local-Y-fixed Cylinder opcode);
+  hole A/B-confirmed (lit patch through the bore vs uniform virtual wall), OOB 0/183682,
+  8 bodies. **MIXED-provider** (6b.2, `VIXEN_DDGI_CORNELL_MIXED_DEMO=walls_stored|
+  objects_stored`) both modes clean, OOB 0, no provider-seam artifacts. 6b.3 (runtime
+  voxel-edit) document-and-skipped — no live-edit path exists (grep-verified). Found+fixed
+  **2 latent OR-chain gaps** (CornellDiag readback gate + camera-preset gate both omitted
+  new demo env vars) and — significant — **`run_baked.bat`/`run_virtual.bat` were silently
+  benching the MAIN-checkout binary** via a hardcoded path; now `%~dp0`-self-resolve to the
+  worktree (any earlier bench numbers from those two scripts may be stale-binary reads;
+  `run_parity_check.bat` was already self-resolving so the parity gate stands). Standing
+  tests green (7/7, 13/13, 16/16 — CPU mirror is single-instance so needs no tie-break
+  mirror). Benign cosmetic note: CornellDiag instIdx-map *labels* differ across demo blocks
+  (instance-slot ordering) but worldPos/color/geometry all correct — legend-only, doesn't
+  touch the golden.
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
