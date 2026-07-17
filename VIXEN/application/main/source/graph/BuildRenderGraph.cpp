@@ -3975,6 +3975,196 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #endif
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
+        } else if (std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
+            // Sampled Lighting — Cornell Box GI Reference Scene, M6b Task 6b.2 (mixed-provider
+            // split). Plan: Baked-Perf-Fix-Pipeline-Plan-2026-07.md Milestone M6b.
+            //
+            // Two configs, selected by the env var's VALUE:
+            //   VIXEN_DDGI_CORNELL_MIXED_DEMO=walls_stored   -- 5 walls PROVIDER_STORED (baked,
+            //     UNMODIFIED shape, unlike 6b.1's hole), light+sphereObj+boxObj PROVIDER_PROCEDURAL.
+            //   VIXEN_DDGI_CORNELL_MIXED_DEMO=objects_stored (or any other/empty value) -- the
+            //     INVERSE: light+sphereObj+boxObj PROVIDER_STORED, 5 walls PROVIDER_PROCEDURAL.
+            //
+            // Mechanically this is 6b.1's hybrid pattern generalized to an arbitrary index SET
+            // instead of a single hard-coded body: bake every body in the STORED set (mirroring
+            // M1's bakeWorldSpaceBody/light-emission bake), register every body in the
+            // PROCEDURAL set (mirroring M2's RegisterProceduralRecipe loop), concatenate only the
+            // STORED subset via ConcatenateSdfWithMips (never all 8 -- an empty STORED set would
+            // pass an empty vector, which ConcatenateSdfWithMips accepts). The light-tree cut is
+            // ALWAYS derived from its own explicitly-scoped side bake regardless of which set the
+            // light body's VISIBLE geometry is in (same "light-tree cut is baked-content-only"
+            // architectural boundary M2's own header comment establishes) -- so, unusually, the
+            // walls_stored config's light body appears in BOTH bake and procedural registration
+            // for different purposes (register for pixels, side-bake for the DDGI cut), matching
+            // M2's own light handling exactly.
+            using namespace Vixen::App::CornellBox;
+            using Vixen::SVO::Recipe::SdfInstruction;
+            const char* mixedMode = std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO");
+            const bool wallsStored = (std::string(mixedMode) == "walls_stored");
+            mainLogger->Info(std::string("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: building the "
+                              "Cornell box GI reference scene (mixed-provider variant: ") +
+                              (wallsStored ? "walls STORED, objects+light PROCEDURAL)" :
+                                             "objects+light STORED, walls PROCEDURAL)"));
+
+            std::vector<CornellWorldSpaceBody> worldBodies = BuildCornellWorldSpaceBodies();
+            // worldBodies[]: leftWall(0), rightWall(1), backWall(2), floor(3), ceiling(4), light(5),
+            // sphereObj(6), boxObj(7) -- fixed order, see BuildCornellWorldSpaceBodies.
+            const std::vector<size_t> wallIdx    = {0, 1, 2, 3, 4};
+            const std::vector<size_t> objectIdx  = {5, 6, 7};  // light, sphereObj, boxObj
+            const std::vector<size_t>& storedIdx     = wallsStored ? wallIdx   : objectIdx;
+            const std::vector<size_t>& proceduralIdx = wallsStored ? objectIdx : wallIdx;
+
+            constexpr float kBand = 2.0f;
+            constexpr float kWorldGridSize = 10.0f;  // ShellOctreeGpu.h's fixed octree-local->world span
+            constexpr int kWallSubdiv = 4;
+            constexpr int kWallN = 128;   // power of two -- see M1 baked variant's own pow2 note
+            constexpr int kSmallN = 32;
+            constexpr int kSmallSubdiv = 1;
+
+            auto bodyWorldPos = [](glm::vec3 bodyWorldCenter, int n, int subdiv) {
+                return bodyWorldCenter - glm::vec3(static_cast<float>(n) / (2.0f * static_cast<float>(subdiv)));
+            };
+            auto bodyRenderScale = [](int n, int subdiv) {
+                return static_cast<float>(n) / (static_cast<float>(subdiv) * kWorldGridSize);
+            };
+            auto makeWorldSpaceEval = [](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv) {
+                return [&prog, bodyWorldCenter, n, subdiv](const glm::vec3& pRaw) {
+                    const glm::vec3 world = bodyWorldCenter + (pRaw - glm::vec3(static_cast<float>(n) * 0.5f)) / static_cast<float>(subdiv);
+                    return Vixen::SVO::Recipe::evalRecipe(prog.data(), static_cast<uint32_t>(prog.size()), world) * static_cast<float>(subdiv);
+                };
+            };
+            // n/subdiv per body: walls need kWallN/kWallSubdiv (thin-slab resolution), light/
+            // sphere/box need kSmallN/kSmallSubdiv (cube-ish bodies) -- same split M1's baked
+            // variant uses, generalized to whichever bodies land in the STORED set here.
+            auto gridParamsFor = [&](size_t i) {
+                return (i <= 4) ? std::make_pair(kWallN, kWallSubdiv) : std::make_pair(kSmallN, kSmallSubdiv);
+            };
+
+            std::vector<Vixen::SVO::SdfBodyOctree> storedOctrees;  // owns storage for octreesForCat below
+            storedOctrees.reserve(storedIdx.size());
+            std::vector<uint32_t> storedOctreeIndexOf(worldBodies.size(), 0xFFFFFFFFu);  // body idx -> octreesForCat slot
+            for (size_t i : storedIdx) {
+                const CornellWorldSpaceBody& b = worldBodies[i];
+                auto [n, subdiv] = gridParamsFor(i);
+                Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeSdfWorld(
+                    makeWorldSpaceEval(b.prog, b.worldCenter, n, subdiv), b.worldCenter, n, kBand, 3,
+                    Vixen::SVO::NoEmission, [](const glm::vec3&) { return glm::vec3(1.0f); });
+                storedOctreeIndexOf[i] = static_cast<uint32_t>(storedOctrees.size());
+                storedOctrees.push_back(Vixen::SVO::BuildSdfBodyOctree(baked, 3));
+            }
+
+            std::vector<const Vixen::SVO::SdfBodyOctree*> octreesForCat;
+            octreesForCat.reserve(storedOctrees.size());
+            for (const auto& oct : storedOctrees) octreesForCat.push_back(&oct);
+            Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetRecipePool(std::move(cat));
+                bodyScene->RequestBrickResidency(true);  // same eager-residency requirement as M1/6b.1
+
+                std::vector<Vixen::SVO::BodyInstanceGpu> instances;
+                instances.reserve(worldBodies.size());
+                bool allRegistered = true;
+                std::vector<bool> isStored(worldBodies.size(), false);
+                for (size_t i : storedIdx) isStored[i] = true;
+
+                for (size_t i = 0; i < worldBodies.size(); ++i) {
+                    const CornellWorldSpaceBody& b = worldBodies[i];
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.color[0] = b.color.x; inst.color[1] = b.color.y; inst.color[2] = b.color.z;
+
+                    if (isStored[i]) {
+                        auto [n, subdiv] = gridParamsFor(i);
+                        const glm::vec3 wp = bodyWorldPos(b.worldCenter, n, subdiv);
+                        inst.worldPos[0] = wp.x; inst.worldPos[1] = wp.y; inst.worldPos[2] = wp.z;
+                        inst.renderScale = bodyRenderScale(n, subdiv);
+                        inst.octreeIndex = storedOctreeIndexOf[i];
+                        inst.providerKind = 0u;  // PROVIDER_STORED
+                        inst.recipeId = 0u;
+                    } else {
+                        const uint32_t recipeId = static_cast<uint32_t>(2 + i);  // 2..9, mirrors M2's own convention
+                        Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                        entry.bytecode = b.prog;
+                        entry.boundCenter = b.worldCenter;
+                        entry.boundRadius = b.boundRadius;
+                        auto regResult = RegisterProceduralRecipe(recipeId, entry);
+                        if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                            mainLogger->Error(std::string("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: "
+                                             "RegisterProceduralRecipe(") + b.name + ") failed, code " +
+                                             std::to_string(static_cast<int>(regResult)));
+                            allRegistered = false;
+                        }
+                        inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
+                        inst.renderScale = 1.0f;  // unused by Procedural
+                        inst.octreeIndex = 0u;    // unused by Procedural
+                        inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                        inst.recipeId = recipeId;
+                    }
+                    instances.push_back(inst);
+                }
+                bodyScene->SetInstances(std::move(instances));
+                mainLogger->Info(std::string("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: seeded 8 body "
+                                  "instances (") + std::to_string(storedIdx.size()) + " PROVIDER_STORED, " +
+                                  std::to_string(proceduralIdx.size()) + " PROVIDER_PROCEDURAL), allRegistered=" +
+                                  (allRegistered ? std::string("true") : std::string("false")));
+            }
+
+            // Light-tree cut: SAME side-bake mechanism as 6b.1/M2 regardless of which set the
+            // light body's visible geometry is in -- structurally baked-content-only (see M2's
+            // own header comment).
+            {
+                constexpr int kLightBakeN = 16;
+                const glm::vec3 kLightBakeCenter(static_cast<float>(kLightBakeN) * 0.5f);
+                std::vector<SdfInstruction> lightLocalProg = {
+                    CornellWorldBoxAt(kLightBakeCenter, kLightHalfExtent, 0.05f)
+                };
+                Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeRecipeInstructionsToSdfWorldWithEmission(
+                    lightLocalProg.data(), static_cast<uint32_t>(lightLocalProg.size()), kLightBakeCenter,
+                    kLightBakeN, kBand,
+                    [](const glm::vec3&) { return kLightEmissionIntensity; });
+                Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
+
+                const Vixen::SVO::Octree* lightOct = lightBody.octree->getOctree();
+                if (lightOct == nullptr) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: light-tree "
+                                       "side-bake octree is null -- no bounce lighting from the ceiling light");
+                } else {
+                    Vixen::SVO::SerializedOctree lightSer = Vixen::SVO::SerializeSdf(lightBody);
+                    Vixen::SVO::BakeAndAttachMipPool(*lightOct, lightSer);
+                    Vixen::SVO::MipPool lightMipPool = Vixen::SVO::BakeMipPool(*lightOct, lightSer);
+
+                    Vixen::SVO::LightTreeCutParams cutParams;
+                    cutParams.powerThreshold = 0.001f;
+                    std::vector<Vixen::SVO::LightTreeNode> cut =
+                        Vixen::SVO::BuildLightTreeCut(*lightOct, lightSer, lightMipPool, kLightBakeN, cutParams);
+
+                    const float lightRenderScale = static_cast<float>(kLightBakeN) / kWorldGridSize;
+                    const glm::vec3 lightWorldPos = kLightCenter - glm::vec3(static_cast<float>(kLightBakeN) * 0.5f);
+
+                    std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                    worldCut.reserve(cut.size());
+                    for (const auto& node : cut) {
+                        Vixen::SVO::LightTreeNode w = node;
+                        w.worldPos = lightWorldPos + (node.worldPos / static_cast<float>(kLightBakeN)) * kWorldGridSize * lightRenderScale;
+                        w.worldExtent = (node.worldExtent / static_cast<float>(kLightBakeN)) * kWorldGridSize * lightRenderScale;
+                        worldCut.push_back(w);
+                    }
+
+                    if (auto* lightTreeInst = static_cast<LightTreeBufferNode*>(renderGraph->GetInstance(lightTreeBufferNode))) {
+                        lightTreeInst->SetLightTreeCut(worldCut);
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: light-tree "
+                                      "side-bake cut=" + std::to_string(cut.size()) + " nodes");
+                }
+            }
+
+#if defined(_WIN32)
+            _putenv_s("VIXEN_PROBE_GRID_CONFIG_ENABLED", "1");
+#else
+            setenv("VIXEN_PROBE_GRID_CONFIG_ENABLED", "1", 1);
+#endif
+            mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: force-enabled "
+                              "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
         } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO") || std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
             // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
             // near/far indices) for the edit-loop responsiveness gate when
