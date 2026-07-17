@@ -110,8 +110,12 @@ target_compile_definitions(VixenApp PRIVATE
     # Inc0 M5: BodyInstanceRayMarch.comp's #include "recipe/SdfCoreKernels.glsl" resolves
     # under libraries/SVO/shaders (a DIFFERENT tree than VIXEN_SHADER_SOURCE_DIR above, which
     # points at the top-level shaders/ directory) — its own absolute compile-time define,
-    # same convention.
-    VIXEN_SVO_SHADER_SOURCE_DIR="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
+    # same convention. Use VIXEN_ROOT (NOT CMAKE_SOURCE_DIR) per the engine-root rule in the
+    # top-level CMakeLists.txt: under the undertow vixen/ super-build CMAKE_SOURCE_DIR is the
+    # super-build root (.../vixen), so CMAKE_SOURCE_DIR resolved to a non-existent path and the
+    # render host failed shader preprocessing on the recipe/ include; VIXEN_ROOT is the engine
+    # tree in both standalone and nested builds.
+    VIXEN_SVO_SHADER_SOURCE_DIR="${VIXEN_ROOT}/libraries/SVO/shaders"
 )
 
 # WSL2 GPU Vulkan: pass the provisioned Mesa Dozen ICD path (set by cmake/ProvisionWslVulkan.cmake at
