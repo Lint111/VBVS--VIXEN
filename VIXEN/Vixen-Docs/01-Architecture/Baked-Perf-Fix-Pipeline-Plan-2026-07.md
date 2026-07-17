@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: PHASE-2 COMPLETE — M0–M8 ALL shipped+validated. Baked Cornell 877ms/1.17FPS → ~19 FPS class; bake cache warm boot ~16ms; brick dedup 5.2×; over-relaxed march +1.3–1.4×; hybrid+mixed provider frames; byte-identical instIdx parity throughout. M8 = Task 8.2 only (dense-texture dropped on occupancy evidence — walls ~3%). Filed KI-040 (bake-cache loader bad_alloc) + KI-041 (intermittent late-frame validation crash), both pre-existing non-blockers. READY FOR USER EVALUATION on real hardware before any further push. worktree fix/baked-perf-pipeline
+status: M9 IN FLIGHT — hardware eval passed correctness (all 8 bodies, OOB 0/183540, cache HIT) but user caught a NEW artifact (Screenshot_246): the M6b tie-band (1e-4) is too wide, so at grazing wall/ceiling+wall/floor corners the lower-index WALL wins a wrong-color wedge. Fix = tighten SEAM_TIE_EPS_REL toward the noise floor (~1e-5). Phase-2 (M0–M8) was shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -570,6 +570,37 @@ state, plus the existing same_path parity gate on an actual warm-cache boot.
 **Gate:** MET — 8.2 esvo delta recorded (~1.3–1.4×); correctness rig (instIdx 0/625
 byte-identical + 219 sub-perceptual edge pixels, no surface-skip); hw-atlas decision
 documented as future-only.
+
+## Milestone M9 — Tie-band too wide: wall wins a wedge at grazing corners (user-reported 2026-07-17, hardware eval, Screenshot_246)
+
+- [ ] Task 9.1 — The M6b `SEAM_TIE_EPS_REL = 1e-4` tie-band (`TraceWorld.glsl:48`) is TOO
+  WIDE. User caught on hardware: at the DIAGONAL wall/ceiling and wall/floor corners
+  (where two abutting slabs meet at ~45°), a CONTIGUOUS wedge of the lower-index WALL
+  (red Lwall=0 / green Rwall=1) wins pixels that geometrically belong to the grey
+  ceiling(4)/floor(3) — a protruding wrong-color block that doesn't continue the
+  surrounding geometry. Visible in the tick-150 instIdx map too: rows 3-8 the walls 0/1
+  eat a widening triangular wedge of the ceiling 4; rows 18-22 similar at the floor.
+  ROOT CAUSE (confirmed from code + its own comment): along the diagonal seam the TRUE
+  depth gap between the two slabs can be smaller than `1e-4*max(|t|,1)` (≈2.6e-3 units at
+  Cornell hitT≈26) while still being REAL and resolvable — so the band swallows a genuine
+  depth difference and the lower-index tiebreak overrides the true-nearer surface. This is
+  distinct from M6b's original checkering (adjacent pixels ALTERNATING); this is a stable
+  WRONG-WINNER block. The band's own comment admits observed float noise is sub-1e-5 while
+  the band is 1e-4 — 10× wider than needed. FIX (user decision 2026-07-17): TIGHTEN toward
+  the noise floor (~1e-5; sweep 5e-6..3e-5) so genuinely-different depths resolve by depth
+  and the index tiebreak fires ONLY on true sub-ULP coincident-slab ties. Apply to all 4
+  tie-band sites (isCloserHit + the 3 early-reject/uber bands that reference SEAM_TIE_EPS_REL).
+  GATE (BOTH failure modes — this is a two-sided coefficient tune): (a) NO checkering
+  returns at the abutting seams (too-tight failure), (b) NO wall/floor/ceiling wrong-winner
+  wedge at the grazing corners (too-wide failure — verify the instIdx map's rows 3-8/18-22
+  show walls NOT eating the ceiling/floor, and inspect hud_capture_150.png at both corners
+  vs the virtual render), (c) same_path parity still passes (golden may legitimately shift
+  a few cells as the wedge cells flip to their correct body — re-bless ONLY if the change is
+  exactly the wedge correcting; document which cells). Escalate to Opus-max if the sweep
+  circles (coefficient-tune churn is the escalation-ladder's known trap).
+
+**Gate:** no checkering AND no grazing-corner wrong-winner wedge; instIdx map corners
+correct (walls don't eat ceiling/floor); parity passes (re-bless only if wedge-correcting).
 
 ---
 
