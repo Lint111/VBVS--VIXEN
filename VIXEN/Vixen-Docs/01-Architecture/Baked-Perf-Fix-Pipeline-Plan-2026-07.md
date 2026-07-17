@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: PHASE-2 RUNNING — M0–M6b shipped (~19 FPS class). Phase-2 order set by user 2026-07-17: M7 FIRST (parallel bakes + bake-artifact cache), THEN revisit M8 with the walls' real density/occupancy data (M8's dense-3D-texture trade loses inter-brick + hierarchical sparseness — only worth it for near-solid bodies, so decide per-body AFTER M7 measures occupancy). worktree fix/baked-perf-pipeline
+status: PHASE-2 RUNNING — M0–M7 shipped (~19 FPS class; bake cache: warm boot ~16ms; brick dedup 5.2x). NEXT DECISION POINT: M8 sparseness call with occupancy data in hand (walls ~3% brick-occupancy → dense texture only viable for solid objects, not walls; 7.6 dedup'd pool is the sparse-atlas foundation). Phase-2 order set by user 2026-07-17: M7 FIRST (parallel bakes + bake-artifact cache), THEN revisit M8 with the walls' real density/occupancy data (M8's dense-3D-texture trade loses inter-brick + hierarchical sparseness — only worth it for near-solid bodies, so decide per-body AFTER M7 measures occupancy). worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -411,23 +411,31 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 
 ## Milestone M7 — Boot parallel bake + serialize bulk path (M)
 
-- [ ] Task 7.1 — Parallelize the 8 independent per-body bakes (`std::async` per body;
+- [x] Task 7.1 — Parallelize the 8 independent per-body bakes (`std::async` per body;
   Gaia cross-world thread-safety smoke test FIRST — audit F1 + uncertain-11).
-- [ ] Task 7.2 — SerializeSdf bulk entity path (`getBrickEntitiesInto`/`getEntityFast`;
+- [x] Task 7.2 — SerializeSdf bulk entity path (`getBrickEntitiesInto`/`getEntityFast`;
   audit F4) + skip double serialize/mip-bake (F5).
 - [ ] Task 7.3 — ~~Wire shader cache~~ MOVED to M2b (pulled forward 2026-07-16).
-- [ ] Task 7.4 — Bake-artifact disk cache, design-first (inventory #7 clarification:
+- [x] Task 7.4 — Bake-artifact disk cache, design-first (inventory #7 clarification:
   NO bake cache exists anywhere — the 87–190 s bake re-runs every boot; JIT Inc1's
   content-hash cache is write-only recipe-bytecode dedup, unrelated). Key on
   recipe+params+resolution → warm boots at file-load speed. Effort L.
-- [ ] Task 7.5 — Emit per-body OCCUPANCY stats during bake/serialize (occupied bricks /
+- [x] Task 7.5 — Emit per-body OCCUPANCY stats during bake/serialize (occupied bricks /
   bounding-volume bricks, and voxel fill ratio per body) to the log + a small artifact.
   This is the data M8 needs to decide the dense-3D-texture-vs-ESVO fork PER BODY (user
   2026-07-17): a dense texture only wins where sparseness is already near-zero. Cheap —
   the bake already knows these counts.
 
-- [ ] Task 7.6 — **Brick dedup by reference (content-addressed brick pool)** (user idea
-  2026-07-17, distinct from 7.4's cross-boot cache — this attacks IN-POOL duplication):
+- [x] Task 7.6 — **Brick dedup by reference (content-addressed brick pool)** (user idea
+  2026-07-17; DONE, commit ab4ad40a, own Opus validator APPROVED. Achieved 5.2x
+  (4112→790 bricks), byte-identical parity. SCOPE as shipped: intra-octree (per-body)
+  content-addressed dedup as an opt-in post-process wired ONLY into the StoredSdf-path
+  Cornell baked demo — deliberately NOT folded into SerializeSdf/ConcatenateSdf generally,
+  which is the load-bearing SAFETY decision: two brick-read paths exist (StoredSdf uses
+  brickGridLookup which dedup rewrites; the ESVO material DDA uses getContourPointer which
+  dedup does NOT touch), and the baked demo uses only StoredSdf. Cross-body dedup =
+  documented follow-on (needs a global pool). Distinct from 7.4's cross-boot cache
+  — this attacks IN-POOL duplication):
   hash each baked 8³ brick payload; keep a brick-content-hash → pool-slot map; when a new
   ESVO leaf would upload a brick whose content already exists, point that leaf's
   `brickLookupBase` at the EXISTING slot instead of uploading a duplicate. Kills
@@ -740,6 +748,34 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   mirror). Benign cosmetic note: CornellDiag instIdx-map *labels* differ across demo blocks
   (instance-slot ordering) but worldPos/color/geometry all correct — legend-only, doesn't
   touch the golden.
+
+- M7 (Tasks 7.1/7.2/7.4/7.5/7.6): DONE · commits `e398e40f` (7.1/7.2/7.4/7.5) +
+  `ab4ad40a` (7.6 dedup) · TWO Opus validators APPROVED (core + dedup) · 2026-07-17.
+  **HEADLINE — bake-artifact disk cache (7.4): cold boot ~130-150s → WARM boot ~16-20ms,
+  byte-identical.** No bake cache existed before; the full bake re-ran every boot. Key =
+  FNV-1a-64 over format-version + per-body {132B SdfInstruction bytes, worldCenter/n/subdiv/
+  worldHalfExtent} + kBand + light emission; caches POST-concat ConcatenatedOctrees +
+  light-tree-cut. Validator MUTATE-KEY tested: changed light intensity → key changed → MISS
+  → re-bake, never a stale serve. **7.6 BRICK DEDUP (user idea): 5.2x pool reduction
+  (4112→790 bricks)**, byte-identical parity — intra-octree content-addressed dedup
+  (payload hash + memcmp tie-break, complete key proven from the StoredSdf shader read
+  path), wired ONLY into the StoredSdf-path baked demo (the ESVO material DDA uses a
+  different brick lookup dedup doesn't touch — this scoping is the load-bearing safety
+  decision). Fixed a 7.5↔7.6 interaction (occupancy sum taken pre-dedup would inflate
+  fill ratio >1.0; recomputed from kept bricks → all bodies read exactly 1.0). Cache
+  format-version bumped 1→2 (dedup'd content shape changed; content-addressed invalidation
+  rejects v1). **7.5 OCCUPANCY DATA (feeds M8): walls ~3% brick-occupancy (thin slabs, and
+  the source of the 5.2x dedup — identical repeated bricks), light/sphere/box 100%
+  (box-tight); all voxelFillRatio=1.0.** 7.1 parallel bake hit a REAL hazard — gaia
+  ChunkAllocator is a process-wide singleton with an unsynchronized free-list, crashed
+  100% unlocked (caught only by live-run, not static analysis); fixed with a serializing
+  mutex → net perf modest/negative, but validator recommends KEEP (with the cache, bake is
+  a cold-boot-only cost; the mutex is the correctness floor). 7.2 bulk serialize
+  (EntityBrickView + getEntityFast) + triple-serialize collapse, byte-identical (parity +
+  13/13). Tests 7/7, 13/13, 16/16 green. PROCESS NOTE: a mid-flight scope-add (7.6) to an
+  already-reported worker caused a HEAD-moved-under-validator collision + a stray
+  uncommitted edit; resolved by reverting the stray edit + expanding validation scope.
+  Lesson: once a worker reports, new work = fresh dispatch, never a mid-flight add.
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
