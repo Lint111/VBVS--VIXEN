@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: RUNNING — M0–M3+M5+M5b DONE (OOB=0, cross_path ENFORCED); M4 in flight; worktree fix/baked-perf-pipeline
+status: RUNNING — M0–M5b+M4(4.1–4.3) DONE; M4b in flight (Sparse-Mip secondary rays); worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -228,23 +228,23 @@ mirror tests green; no visual regression vs pre-milestone screenshot.
 
 ## Milestone M4 — Shadow/probe economy (S–M)
 
-- [ ] Task 4.1 — NdotL/BRDF gate BEFORE shadow traces (3-line reorder;
+- [x] Task 4.1 — NdotL/BRDF gate BEFORE shadow traces (3-line reorder;
   `SpatialReuseShade.comp:326-334,:470-474`; `ProbeUpdate.comp:236-241` is the idiom;
   audit C3 / Top #3).
-- [ ] Task 4.2 — True any-hit shadow/probe march variant: no gradient/color/roughness
+- [x] Task 4.2 — True any-hit shadow/probe march variant: no gradient/color/roughness
   payload, instance reject at entry-t > tmax, span clamped at light distance — a separate
   function, not a runtime flag (`TraceWorld.glsl:393-508,:495-502`,
   `SceneBindings.glsl:513-528`; audit C1/C2 / Top #7).
-- [ ] Task 4.3 — Generic CPU-side no-op dispatch guard (audit C8 + inventory #1/#2):
+- [x] Task 4.3 — Generic CPU-side no-op dispatch guard (audit C8 + inventory #1/#2):
   a config-driven enable early-return in `ComputeStageNode::ExecuteImpl` — skips
   `direct_lighting` when `reservoirEnabled=0` (today a dead full-screen dispatch +
   submit every frame on ALL paths) and `probe_update` when `probeGridEnabled=0`
   (default boot). Cornell force-enables the probe grid — it must keep running there.
-- [ ] Task 4.4 — Converged-probe sleep (audit C4) — **PROMOTED from stretch by M0's
+- [ ] Task 4.4 (RE-SCOPED to Phase-2 at M4 close; re-evaluate after M4b) — Converged-probe sleep (audit C4) — **PROMOTED from stretch by M0's
   attribution: probe_update = 431.7 ms is the LARGEST baked pass.** Per-probe blend-delta
   sleep (skip probes whose last update changed below epsilon) + wake on scene-dirty;
   `ProbeUpdate.comp:406,:241`, `ProbeGridConfigNode.cpp:58-72`.
-- [ ] Task 4.5 — A/B with M0's per-pass timers: spatial_reuse + probe_update ms deltas.
+- [x] Task 4.5 — A/B with M0's per-pass timers: spatial_reuse + probe_update ms deltas.
 
 **Gate:** lighting-pass GPU ms down; shadowed image matches pre-milestone reference
 (soft-compare screenshot); 8 bodies.
@@ -574,6 +574,25 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   (035/036/038). NOTE for future validators: full parallel builds can surface ~5
   transient codegen-`_check` reds (dotnet SDFNodeGenerator file-lock race under -j12);
   serial re-run passes; not a regression.
+
+- M4 (Tasks 4.1–4.3+4.5; 4.4 RE-SCOPED): DONE · commits `70b6e426..f23a8d01` · Opus
+  validator APPROVED · 2026-07-17. 4.1 NdotL/W gate before both shadow-trace sites
+  (provably zero image change). 4.2 parallel any-hit occlusion chain (unit conversions
+  verified as correct INVERSIONS of the shipped shading-path math; NOTE: the any-hit
+  chain has NO CPU-mirror coverage — its verification authority is the live same_path
+  parity gate; NOTE for M4b/tiered scenes: on a taken tier-crossing whose child tree
+  misses, shading serves the parked mip as a HIT while any-hit returns NOT-OCCLUDED —
+  inert in single-tier Cornell, flagged for tiered-shadow work). 4.3 CPU no-op dispatch
+  guard with two self-caught bugs fixed (shared query-pool reset preservation +
+  SetParameter placed after all demo env overrides; single-source-of-truth Resolve*
+  accessors keep CPU-skip and GPU-config in lockstep). Gates: same_path hash-equal
+  0/625, cross_path ENFORCED 99.0%, 8 bodies, OOB 0; direct_lighting now FREE
+  (~0.0002 ms, dead full-screen pass eliminated on every path); probe_update correctly
+  still dispatches on Cornell. Reds = KI'd set. **Task 4.4 (converged-probe sleep)
+  re-scoped to Phase-2: needs new persistent per-probe SSBO + scene-dirty wake hook +
+  Inc6-amortization interaction — convergence-DYNAMICS risk class that could pass the
+  tick-150 gate yet be wrong later; M4b's secondary-ray mips attack the same probe cost
+  with less state risk. Re-evaluate after M4b.**
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
