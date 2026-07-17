@@ -112,10 +112,35 @@ created: 2026-07-16
 **E1. The "~125 ms CPU stalls" are pacing fences waiting on ~6 untimed GPU passes that also brick-march** — `FrameSyncNode.cpp:149`, `SwapChainNode.cpp:176,:197` (4-flight vs 3-image ring desync documented in-code); all fences signaled only by the last submit (`UIRenderNode.cpp:357`); 7 same-queue submits/frame with only `test_dispatch` timed (`VulkanGraphApplication.cpp:505-508`). Wall≈2×esvo is mostly *real untimed GPU work* (C1/C2/C4). Impact: **high** for attribution — Top #9 before any further sync hunting.
 
 **E2. March submit head-waits the WSI acquire semaphore despite writing no swapchain image** *(merged ×2)* — `ComputeDispatchNode.cpp:288-293` unconditional acquire wait; `BuildRenderGraph.cpp:3966` sets `PARAM_WRITES_NO_IMAGE=true`; BlitNode (first real swapchain writer) deliberately carries none (`BlitNode.cpp:154-158`). Frame's heaviest pass gated on presentation-engine image release; forbids GPU frame overlap. Impact: medium, effort M — red `acquire_sync` cut esvo to 25.2 ms but its *wall* number wasn't cleanly better; land with cross-frame HitRecord hazard check.
+**FIXED (Baked-Perf M6 Task 6.1, 2026-07-17):** BlitNode now owns the acquire wait
+(`ComputeDispatchWaitsForSwapchainAcquire`, `ComputeDispatchNode.h`); hazard re-analyzed and found
+non-issue — `FrameSyncNode::ExecuteImpl`'s own per-flight `vkWaitForFences(UINT64_MAX)` (not the
+acquire semaphore) is what actually guards this dispatch's cross-frame HitRecord reuse, and it runs
+regardless of which node consumes the acquire. Validated: same_path hash-equal, cross_path
+ENFORCED PASS.
 
 **E3. Blit leaves the render target in TRANSFer_SRC across the frame boundary; next writer declares GENERAL from a private map** *(merged ×2)* — `SwapchainBarriers.h:184,:100-103` vs `ComputeStageNode.cpp:348`: per-frame Vulkan spec violation (oldLayout mismatch) on the presented image from frame 2 onward; red `layout_sync` (adds TRANSFER_SRC→GENERAL exit barrier) was the best-wall run (62.5 ms). Impact: low-perf/high-hygiene, effort **S**.
+**FIXED (Baked-Perf M6 Task 6.2, 2026-07-17):** `SwapchainBarriers::MakeRenderTargetPostBlitBarrier`
+restores the render target to GENERAL (the stable cross-node boundary layout every
+`ComputeStageNode` IMAGE_WRITE producer already assumes) before `BlitRenderTargetToSwapchain`
+returns. Validation-layers A/B (9 fresh runs each side): the `VUID-vkCmdDraw-None-09600`
+`TRANSFER_SRC_OPTIMAL`-mismatch signature was present in 100% of pre-fix runs (always ≥1 per run)
+and 0% of post-fix runs.
 
 **E4. BlitNode re-signals an orphaned per-image binary semaphore every frame in composite mode** — `BlitNode.cpp:172-177` vs Present waiting `uiComplete` (`BuildRenderGraph.cpp:4060-4064`); the exact re-signal VUID class `ComputeDispatchNode.cpp:319-327` documents and avoids. Impact: low, effort S.
+**FIXED (Baked-Perf M6 Task 6.3, 2026-07-17):** `BlitSubmissionPolicy::signalsPresentSemaphore`
+gates the binary signal to terminal blits only (mirrors ComputeDispatchNode's existing convention
+for the same signal); composite-mode `RENDER_COMPLETE_SEMAPHORE` output now publishes
+`VK_NULL_HANDLE` honestly instead of a handle nothing signals. Also fixed alongside (pattern R7):
+all 4 `ALL_COMMANDS_BIT` binary-signal stage masks (`BlitNode.cpp`, `ComputeDispatchNode.cpp`,
+`ComputeStageNode.cpp`, `UIRenderNode.cpp`) scoped to the actual producing stage
+(BLIT/COMPUTE_SHADER/COLOR_ATTACHMENT_OUTPUT respectively). Validation A/B: `VUID-
+vkQueueSubmit2-semaphore-03868` present in 100% of pre-fix runs, 0% of post-fix runs.
+**New finding surfaced by the A/B, filed separately (KI-039):** an intermittent, pre-existing
+(confirmed via disposable-worktree isolation against unmodified `c4bc07f5`), boot-time-only
+`UNDEFINED`-layout/acquire-semaphore flake tied to the one-time `body_octree_scene` recompile
+right after boot pause/resume — same trigger class as KI-033, unrelated to E2/E3/E4, unchanged by
+this milestone.
 
 **E5. Five separate `vkQueueSubmit2` for a linear same-queue compute chain** — `ComputeStageNode.cpp:246-252`, `ComputeDispatchNode.cpp:344-348`, `BlitNode.cpp:191-197`; timeline edges where in-CB COMPUTE→COMPUTE barriers suffice. Impact: low today, effort L (architecture).
 
@@ -177,6 +202,9 @@ created: 2026-07-16
 5. **Distance-mip / coarse-LOD marching for probe & shadow rays** → re-activate the dormant Sparse-Mip path (`MipFallback.glsl`) for `ProbeUpdate.comp` rays (C4) — probe irradiance doesn't need brick-resolution iso hits. — https://maverick.inria.fr/Publications/2009/CNLE09/CNLE09.pdf
 6. **Never block on the current frame's fence; N-buffered readbacks with availability polling** → `DebugBufferReaderNode.cpp:103-106` reads frame N−3's ring slot via `vkGetFenceStatus` poll instead of `vkWaitForFences(UINT64_MAX)` (D2); same rule for any future ray-guided-streaming feedback (JIT epic). — https://docs.vulkan.org/samples/latest/samples/performance/wait_idle/README.html
 7. **Compute-only stage masks instead of ALL_COMMANDS** → `renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT` at `BlitNode.cpp:176`, `ComputeDispatchNode.cpp:325`, `ComputeStageNode.cpp:209`, `UIRenderNode.cpp:342` should be COMPUTE (or BLIT/TRANSFER for the blit) in this compute-only app, enabling same-queue overlap between independent passes (probe update vs primary march). — https://developer.nvidia.com/blog/vulkan-dos-donts/
+**FIXED (Baked-Perf M6 Task 6.3, 2026-07-17):** all 4 sites scoped — BlitNode→BLIT_BIT,
+ComputeDispatchNode/ComputeStageNode→COMPUTE_SHADER_BIT, UIRenderNode→COLOR_ATTACHMENT_OUTPUT_BIT
+(graphics pass, not compute — matches its own acquire-wait's stage mask).
 8. **Timeline semaphores for coarse CPU/GPU sync** → collapses `FrameSyncNode.cpp:52-159`'s fence array + `SwapChainNode.cpp:176-197`'s ring juggling (E1's 4-vs-3 beat) to one u64 counter; gives D2 its clean non-blocking `vkGetSemaphoreCounterValue` test. Binary semaphores stay only at WSI edges. — https://www.khronos.org/blog/vulkan-timeline-semaphores
 9. **Specialization constants for pipeline-creation-known config** → instance count (8), channel count/SDF base, bpa, `raysPerProbe` (fixes C5's workgroup size too) via the *already-present but never-fed* spec plumbing in `ComputePipelineCacher.cpp:155-161`; recompile-on-scene-rebuild already handles staleness. — https://docs.vulkan.org/samples/latest/samples/performance/specialization_constants/README.html
 10. **sebbbi/perftest buffer-shape rules: wide loads + wave-uniform hoisting + 16-bit SDF** → if the SSBO pool stays short-term: fetch corner pairs as 64-bit loads, `subgroupBroadcastFirst` the wave-uniform `configs[octreeIdx]` fields out of the per-step path, and store SDF as half (halves bandwidth). Complements A1's fast path. — https://github.com/sebbbi/perftest
@@ -188,3 +216,27 @@ created: 2026-07-16
 ## 5. Expected FPS trajectory for baked Cornell
 
 From the 0.9–1.1 FPS baseline, the path is multiplicative and well-anchored: landing B1+B2 (the unblocked `*subdiv` unit/band fix) recovers the proven ~3.8× to **~3.5–4 FPS**; the march-loop package (A1 fast path + A2 analytic gradient + C1–C3 shadow gating/any-hit) then attacks the Exp-A-proven dominant cost *across all four marching passes* — the red worktree's combined-but-unvalidated configuration already demonstrated this class of build runs at **~62–65 ms wall / ~30 ms esvo ≈ 16 FPS**. Stripping the debug hooks/readback (D1/D2, ~20% of the GPU pass + ~10% of the run) and reviving instance culling (B3 trace bounds, red-measured 2nd-best) pushes toward the **~52 FPS Exp-A ceiling**, whose remaining components (8-octree descent, DDGI probe budget C4/C5, sync overlap E1/E2) are each now itemized with fixes. Breaking *through* ~52 FPS to the 60-FPS realtime target requires shrinking the ~30 ms GPU pass itself — the 3D-texture brick pool (A6) plus relaxed stepping are the levers for that, converting the march from a scattered-SSBO-latency problem into the texture-filtering problem the >100×-faster virtual variant never pays. Net: ~0.9 → ~4 → ~16 → ~40–52 FPS on the enumerated short/medium-effort work, with 60+ contingent on the pool-representation change — subject at every step to the instIdx-map/virtual ground-truth correctness rig, since the investigation's history shows "fast but missing bodies" is the standing failure mode.
+
+---
+
+## 6. Render-scale capability curve (Baked-Perf M6 Task 6.5, inventory #12)
+
+`VIXEN_RENDER_SCALE` (M4's render-scale decoupling) shrinks the offscreen render target the
+compute dispatch writes into relative to the swapchain, then blits it back up — a merged,
+validated dial currently sitting unused at its default of 1.0. Recorded here (Cornell baked,
+frames 31–160 excl. 150/151, warm run, this machine, 2026-07-17) to inform the realtime-target
+definition; **default stays 1.0**, nothing in the shipped app's default path changes:
+
+| scale | cpu_frame_ms | gpu_span_ms | esvo_ms | spatial_reuse_ms | probe_update_ms | bodies | OOB |
+|---|---|---|---|---|---|---|---|
+| 1.0 | 101.88 | 102.75 | 68.39 | 3.67 | 30.58 | 8/8 | 0 |
+| 0.75 | 89.44 | 90.56 | 57.58 | 2.88 | 30.00 | 8/8 | 0 |
+| 0.5 | 72.74 | 73.41 | 28.23 | 2.11 | 42.95 | 8/8 | 0 |
+
+`esvo_traverse_shade`/`spatial_reuse` scale down with resolution as expected (fewer pixels to
+march/shade). `probe_update` does **not** scale with render-scale — it dispatches at a fixed
+probe count via `ProbeGridConfigNode`, independent of render-target resolution (M4b's per-ray-type
+LOD affects probe-ray march cost, not probe count) — so at 0.5 scale it becomes the single largest
+pass (42.95 ms, exceeding esvo's 28.23 ms), inverting the 1.0/0.75 ordering. All three scales:
+8/8 bodies present, OOB 0 (correctness invariant holds independent of render-scale). Documented
+in `temp_bench/run_baked.bat`'s own comment block alongside the reproduction recipe.
