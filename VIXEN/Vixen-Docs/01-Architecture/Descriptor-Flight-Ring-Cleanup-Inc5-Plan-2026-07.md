@@ -1,9 +1,10 @@
 # Descriptor Flight-Ring Cleanup — Increment 5 Plan (2026-07-17)
 
-> **Status: SCOPED, not yet started.** Follow-on from
-> [[Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07]]'s M3 Opus re-validator finding: a benign but
-> real Vulkan validation warning (`VUID-vkUpdateDescriptorSets-None-03047`) introduced by Inc4's two new
-> descriptor-writing paths, closeable by adopting a pattern the engine already uses everywhere else.
+> **Status: DONE — closed after M1, 2026-07-17.** Opus-validated APPROVED. M2 was not needed: M1's fix
+> (commit `8ba599ff`) brought `VUID-vkUpdateDescriptorSets-None-03047` to 0 in both the full demo scene
+> and a zero-promotion repro that isolates the bucketing pre-pass alone, confirming it was the sole
+> source and the harder-to-fix specialized-pipeline promotion path contributes nothing measurable.
+> Follow-on from [[Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07]]'s M3 Opus re-validator finding.
 
 ## §0 Scope
 
@@ -92,25 +93,95 @@ way that matters for scoping:
   (`VIXEN_RECIPE_BUCKETED_DISPATCH=1`), hot+cold demo scene, validation layers on, sustained run: does the
   `03047` count drop to the flag-unset baseline (0)? Report the exact before/after count. This
   measurement is what M2's scope depends on.
-  - [ ] Not started.
-- **M2 — Path B's residual, scoped based on M1's measurement.** NOT scoped in detail yet. Three possible
-  outcomes once M1's number is in:
-  - If M1's fix already brings the count to 0 (or to a number matching only the 3 known
-    promotion-events in the demo scene, i.e. Path B contributes nothing beyond its own already-
-    `vkDeviceWaitIdle`-guarded one-time writes): **this increment may be DONE after M1** — document Path
-    B's residual (if any) as accepted, already-safe, non-blocking, same treatment it already has in
-    Inc4's doc, and close the increment without further code changes.
-  - If a real, recurring (not just once-per-recipeId) residual remains attributable to Path B: scope a
-    real M2 — likely extracting `DescriptorSetNode`'s ring-depth/index-selection logic into a small
-    reusable non-node helper `RunRecipeBucketedDispatchPreTick` can call directly, changing its
-    descriptor set from a single one-time-allocated set to a ring, and confronting the "buffer handles
-    never change, so why version by frame" question the current one-time-write design's own comment
-    raises (this needs a real answer, not just churn-for-churn's-sake, before writing the fix).
-  - If the residual is real but only fires a small, self-limited number of times matching exactly the
-    number of DISTINCT recipes ever promoted (not per-frame) — this may itself be judged acceptable
-    non-blocking debt, same bar Inc4 already applied to the whole VUID before this increment existed;
-    the decision point is real per-frame recurrence vs. one-time-per-promotion-event.
-  - [ ] Not scoped — depends on M1.
+  - [x] **DONE 2026-07-17.** Commit `8ba599ff`. Wire added at
+    `application/main/source/graph/BuildRenderGraph.cpp:5416-5417` (`.Connect(frameSyncNode,
+    FrameSyncNodeConfig::CURRENT_FRAME_INDEX, recipeBucketingDescriptorSet,
+    DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)`), matching the 4 existing precedents exactly.
+    **4-number VUID table** (real `VixenApp`, Windows-native, discrete GPU, Debug build/validation
+    layers on, 3000-frame sustained runs):
+    | Config | `03047` count |
+    |---|---|
+    | (1) Full demo scene (`VIXEN_RECIPE_HOT_COLD_DEMO=1`), before fix | 20 |
+    | (2) Full demo scene, after fix | 0 |
+    | (3) Zero-promotion repro (flag alone, no demo scene), before fix | 20 |
+    | (4) Zero-promotion repro, after fix | 0 |
+
+    Both before-fix configs matched Inc4's own documented baseline (20) exactly; both after-fix
+    configs dropped to 0, confirming Path A (the producer/consumer ring-index mismatch) was the
+    **sole** source of the VUID — the zero-promotion repro alone (no specialized-pipeline promotion
+    ever runs) already fully reproduced the fix's effect, independently confirming Path B contributes
+    nothing to this VUID's count.
+
+    **Measurement-methodology caveat, added by the Opus re-validator (see re-validation entry below):**
+    this table's numbers are real but the CAPTURE PROCESS behind them is more fragile than the clean
+    table implies, and this fragility wasn't documented in the first pass. The default
+    `build.bat all`/`vixen-ninja` build (`VIXEN_FAIL_SCENARIOS` OFF) produces NO observable Vulkan
+    validation output on its own — the engine's only VUID-observing path
+    (`InstanceNode::CreateDebugReportCallback`) is gated behind that flag and uses a legacy
+    `debug_report` path that's inert without it. Getting real validation output required an
+    undocumented `vk_layer_settings.txt` routing `VK_LAYER_KHRONOS_validation` to stdout, and even then
+    capture was INTERMITTENT on the validating machine (worked in some runs, silent in others — the
+    Vulkan loader stacks the validation layer behind an OBS hook + NV layers with unstable ordering on
+    that hardware). The re-validator could not independently reproduce the full 4-number table under a
+    reliably-firing capture, but DID directly confirm the single most load-bearing number (after-fix,
+    full demo scene, `03047`=0) under a run where capture demonstrably worked, and found nothing
+    contradicting the rest of the table. **Follow-up for whoever next needs airtight VUID numbers from
+    this app**: document the exact `vk_layer_settings.txt`/vkconfig setup needed to get validation
+    output at all from a default build, and note the layer-ordering flakiness with OBS/NV layers on
+    this machine — not done here, not blocking, but worth fixing so the next measurement doesn't have
+    to rediscover this.
+
+    **New validation-error class observed in both after-fix runs** (identically, 4 occurrences each):
+    `VUID-vkCmdDraw-None-09600` (swapchain image `UNDEFINED` vs expected `GENERAL`), firing once,
+    right after the single boot-time `body_octree_scene` transitive recompile, never recurring for the
+    rest of each 3000-frame run. Investigated and confirmed **NOT a regression from this fix** — this
+    is **KI-039** (`Known-Issues.md:78-124`), an already-documented, already isolation-tested
+    intermittent flake (reproduces ~2-3/7-9 sampled runs on a genuinely unmodified base commit,
+    `fix/baked-perf-pipeline@c4bc07f5`), triggered by the same boot-time `body_octree_scene` recompile
+    regardless of this increment's changes. It simply didn't happen to fire in either of this
+    session's two before-fix runs (consistent with its documented intermittency) but fired in both
+    after-fix runs. Zero data/control dependency between this fix (which only touches
+    `recipeBucketingDescriptorSet`'s ring-slot selection) and `body_octree_scene`/the swapchain-image
+    path KI-039/KI-033 implicate.
+
+    **Regression suites**: all 6 required suites pass, zero regressions —
+    `test_rendergraph_criticalnodes_gpurender1` (10/10), `test_recipe_pool_render` (1/1),
+    `test_mip_fallback_render` (4/4), `test_rendergraph_dispatch` (186/186),
+    `test_recipe_multi_bucket_compositing` (2/2), `test_rendergraph_criticalnodes_sdiparity` (9/9).
+
+    **M2 read**: fix already brings `03047` to 0 in both configs, including the config that isolates
+    Path A alone — matches the Milestone Map's first outcome ("M1's fix already brings the count to 0
+    ... this increment may be DONE after M1"). Path B's residual was not separately measured here (no
+    promotion-path run distinct from the zero-promotion repro was needed, since the zero-promotion
+    repro's own after-fix count of 0 already shows Path A alone is fully closed) — recommend M2 is
+    **NOT needed** unless a promotion-path-specific run is desired for extra confidence, which reads
+    like optional polish rather than a real gap.
+  - **Opus re-validator: APPROVED (2026-07-17).** Independently re-derived every claim rather than
+    trusting the clean-looking report. Confirmed via direct diff read: the wiring change matches 2
+    independently-checked precedents (`computeDescriptorSet`, `directLightingDescriptorSet`)
+    argument-for-argument, and the producer/consumer invariant is genuinely restored (both sides now
+    read `CURRENT_FRAME_INDEX` from the same `frameSyncNode` source). Confirmed the single most
+    load-bearing number directly (after-fix, full demo scene with promotions actually running,
+    `03047`=0) under a run where validation capture demonstrably worked. Independently confirmed the
+    KI-039 attribution by reading `Known-Issues.md:78-124` directly — genuinely the same VUID class,
+    same intermittency signature, isolation-tested against an unmodified base commit, zero data/control
+    dependency on this fix's own change. Ran a fresh full `build.bat all` (not trusting the scoped
+    rebuild) and independently re-ran all 6 regression suites, all passing with exact reported counts.
+    Explicitly agreed, as an independent conclusion (not an echo), that M2 is not needed — the fix is
+    unambiguously correct by inspection, and there is no evidence of a recurring Path B residual.
+    **The one real finding**: the re-validator could not reliably reproduce the FULL 4-number table
+    end-to-end due to the validation-capture fragility described above (not a contradiction of the
+    reported numbers, a gap in how repeatable the measurement process itself is) — corrected inline
+    above, not a reason to withhold approval given the load-bearing number was independently confirmed
+    and nothing else contradicts the table.
+- **M2 — NOT NEEDED. Increment closes after M1.** Per M1's own measurement (fix brings `03047` to 0 in
+  both the full demo scene and the zero-promotion repro that isolates Path A alone) and the Opus
+  re-validator's independent agreement, Path B (the specialized-pipeline promotion path) contributes
+  nothing measurable to this VUID and does not need the harder ring-extraction treatment originally
+  anticipated as a possible outcome. Path B's existing `vkDeviceWaitIdle`-guarded one-time-per-recipeId
+  write stays as-is, unchanged, same accepted-safe status Inc4 already gave it.
+  - [x] **NOT NEEDED — 2026-07-17.** Closed without further code changes, per M1's measurement and
+    independent re-validation.
 
 ## Tasks
 
