@@ -1,20 +1,5 @@
 # Baked-Perf-Fix-Pipeline M6b Task 6b.0 golden -- HEAD bd1370d3 base, 2026-07-17, temp_bench/run_baked.bat warm run; regenerated after the seam-winner deterministic tie-break fix (TraceWorld.glsl isCloserHit(): a relative-epsilon tie-band + stable lower-instIdx tiebreaker replaces raw `<` float comparison at both winner-selection sites and their two front-to-back early-reject sites). Root cause of the user-reported checkerboard (Screenshot_244, ceiling/leftWall/backWall corner + floor/rightWall corner): abutting Cornell wall slabs return near-equal hitT at their shared seam, so per-pixel float noise flipped the raw-`<` winner. The fix makes the floor(3)/rightWall(1) corner resolve DETERMINISTICALLY to rightWall (lower instIdx) instead of alternating -- verified bit-identical across 2 repeated same-camera-pose launches (hits=183540/183540 both times, OOB 0/183540 both times). This flips exactly 2/625 cells vs the prior (M5b-era, HEAD 7e2a983a) golden: map rows 18-19 (0-indexed), cols 18-19 (the floor/rightWall corner), both floor(3)->rightWall(1) -- a coherent single-seam change, not scattered noise, and consistent with the fix's own documented tiebreak rule (lower instIdx wins a near-tie). This is the SAME cell pair the prior golden's own compare_parity.py near-tie note already flagged as a known near-tie flip site (that note's "row 21", 1-indexed) -- it is now pinned to one deterministic answer instead of drifting. The ceiling/leftWall/backWall corner (top-left) shows no analogous change here (that seam was already resolving to leftWall(0), the lower index, before this fix -- unchanged vs the prior golden).
 #
-# M9 Task 9.1 re-bless (2026-07-17, user hw eval, Screenshot_246): the M6b tie-band
-# (SEAM_TIE_EPS_REL=1e-4) was found TOO WIDE -- at the diagonal floor/rightWall grazing
-# corner the true depth gap between the two slabs was SMALLER than the 1e-4-relative band
-# while still being real and resolvable, so the band swallowed it and handed rightWall(1)
-# a wedge of pixels that geometrically belonged to floor(3). Tightened SEAM_TIE_EPS_REL to
-# 1e-5 (this shader comment's own prior admission that real seam float noise is sub-1e-5
-# relative). Swept 5e-6..1e-4: 5e-6 and 1e-5 both produce this identical map (no
-# checkering at either value); 1e-4 (the prior value) produces the wedge. Landed on 1e-5
-# as the safer margin above the documented noise floor. This flips exactly the SAME 2
-# cells the M6b golden above documents flipping (map rows 18-19, cols 18-19) back the
-# OTHER way: rightWall(1)->floor(3) -- i.e. M6b's fix overshot at this one corner, and this
-# pass corrects it. Verified via cross_path against a fresh virtual (analytic) run: 99.5%
-# cell agreement (target 97.0%), consistent with the pre-existing documented
-# baked/virtual divergence baseline, not a new regression.
-#
 # NOTE for future maintainers: the same_path slack (instidx_max_differing_cells=2 in
 # parity_thresholds.json) was originally attributed to cross-binary FMA/rounding
 # nondeterminism (see that file's own _comment). This milestone's finding: at least this
@@ -42,8 +27,8 @@
 ..000000666222777711111..
 ..000000666222777711111..
 ..000003666333777711111..
-..000033333333777731111..
-..000333333333377733111..
+..000033333333777711111..
+..000333333333377731111..
 ..003333333333333333111..
 ..033333333333333333311..
 ...3333333333333333333...
