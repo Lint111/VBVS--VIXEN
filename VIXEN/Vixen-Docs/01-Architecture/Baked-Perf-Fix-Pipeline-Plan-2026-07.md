@@ -447,6 +447,71 @@ the delta program (v3, same-body delta-over-procedural, lives there — out of s
 per-body occupancy stats recorded for the M8 decision; brick-dedup ratio reported with
 byte-identical output preserved.
 
+### Task 7.4 design note — bake-artifact disk cache (written 2026-07-17, before implementation)
+
+**Where it lives:** `libraries/SVO/include/BakeArtifactCache.h` (header-only, same idiom as
+`SdfBake.h`/`ShellOctreeGpu.h`). Files land in `cache/global/BakeArtifactCache/<hex-key>.bake`
+— mirrors the existing `cache/global/` + `cache/devices/<id>/*.cache` convention
+(`ShaderCacheManager`'s own `cacheDirectory` pattern), global (not per-device) because a bake
+artifact has no GPU-specific content, matching `SerializedOctree`/`ConcatenatedOctrees` being
+pure CPU-side byte buffers.
+
+**Key derivation (must cover everything that changes the bake output):** per Cornell-baked-demo
+call site, concatenate in FIXED body order (leftWall, rightWall, backWall, floor, ceiling,
+light, sphereObj, boxObj — the same order `BuildCornellWorldSpaceBodies`/`octreesForCat` already
+use) a byte stream of:
+  1. a `uint32_t` format-version constant (bump on any change to this list or to
+     `SerializedOctree`/`ConcatenatedOctrees`'s layout — an implicit invalidator for future
+     schema changes);
+  2. per body: the raw bytes of every `SdfInstruction` in `prog` (132 B POD, `sizeof`-exact,
+     `std::memcpy`-able — covers the authored geometry/primitive-params completely, no manual
+     field enumeration needed and no drift risk if a recipe changes);
+  3. per body: `worldCenter` (vec3), `n` (bake grid resolution), `subdiv`, `worldHalfExtent`
+     (box-tight region, 0 sentinel = full cube), `brickDepth` (always 3 here, included for
+     future-proofing) — every numeric bake-shape parameter `bakeWorldSpaceBody`/the light's
+     direct `BakeSdfWorld` call takes;
+  4. the shared `kBand` constant (occupancy band, currently 2.0f) — a global that affects every
+     body's bake;
+  5. the light body's extra `kLightEmissionIntensity` scalar (its EmitFn's only free parameter).
+Hash this byte stream with a 64-bit non-cryptographic hash (FNV-1a, matching the existing
+`GaiaVoxelWorld::BlockQueryKeyHash` idiom already in this codebase) rendered as a 16-hex-digit
+filename. Collision risk is a non-issue at this key's entropy for a single-machine dev cache;
+if this ever needs to be shared/distributed, upgrade to a real cryptographic hash — noted, not
+built, since it's YAGNI for the current single-dev-machine use case.
+
+**What must NOT be in the key:** anything that doesn't change bake OUTPUT — e.g. render-scale,
+probe-grid config, debug-capture flags. Including extra unrelated inputs in the key only costs
+cache-miss churn, never correctness; the risk is exclusively on the OMISSION side (a bake input
+this key forgets to cover silently serves a stale artifact for a changed recipe). This is why
+every numeric parameter `bakeWorldSpaceBody` takes is listed explicitly above rather than trusting
+recall — the validator should cross-check this list against `bakeWorldSpaceBody`'s actual
+parameter list and `BakeSdfWorld`'s signature at review time.
+
+**Format on disk (single file per body-set, matching `ConcatenatedOctrees`'s own all-byte-vectors
+shape):** a small fixed header (format-version `uint32_t`, body count `uint32_t`, light-tree-cut
+node count `uint32_t`) followed by, per body, a length-prefixed dump of every `SerializedOctree`
+byte-vector field. `ConcatenateSdfWithMips`'s OUTPUT (`ConcatenatedOctrees`) is what's cached
+directly, not the pre-concat per-body octrees — that's the exact struct `SetRecipePool` consumes,
+and concatenation is deterministic given the same inputs, so caching post-concat also skips the
+concat/mip-bake CPU work on a hit, not just the per-body bake. Each `std::vector<uint8_t>` /
+`std::vector<TierRef>` member is written as `(uint64_t size, raw bytes)`; fixed-size fields
+are written verbatim. The light-tree cut (`std::vector<LightTreeNode>`, built from the light
+body's own mip pool, entirely a function of the light body's bake — already covered by the key)
+is cached alongside since `BuildLightTreeCut`'s CPU cost is part of what a warm boot should skip
+too.
+
+**Invalidation:** purely content-addressed — a key miss (recipe/params/resolution/anything
+above changed) simply bakes fresh and writes a new file under the new key; stale files are never
+overwritten, only orphaned (acceptable dev-cache growth; no eviction policy at this scope, unlike
+`ShaderCacheManager`'s size-based LRU — YAGNI until this actually fills a disk, noted for a future
+increment if it becomes a problem, mirrors the "one cache line, not the whole subsystem"
+philosophy this doc's ground rules ask for).
+
+**Guard (validator-checkable):** a cache HIT must reproduce byte-identical
+`ConcatenatedOctrees`/light-tree-cut to a cold bake — verified by hashing the in-memory
+`ConcatenatedOctrees` byte-for-byte both ways (cold bake vs warm cache-load) on the SAME machine
+state, plus the existing same_path parity gate on an actual warm-cache boot.
+
 ## Milestone M8 — 3D-texture brick pool prototype + relaxed stepping (L) — the 60+ lever
 
 > **SPARSENESS CAVEAT (user 2026-07-17):** a DENSE per-octree 3D texture discards BOTH

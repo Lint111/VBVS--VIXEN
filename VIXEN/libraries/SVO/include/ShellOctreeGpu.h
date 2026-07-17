@@ -72,6 +72,7 @@
 #include "SVOBuilder.h"       // Octree / OctreeBlock
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
+#include "EntityBrickView.h"  // Baked-Perf M7 Task 7.2: getEntityFast bulk brick lookup
 #include "VoxelComponents.h"  // Material, Density
 #include "VoxelChannelFormat.h"  // ChannelDesc, kMaxChannels, SemanticId, FieldKind (Inc3 M1)
 #include "TierRef.h"          // TierRef (Tiered-ESVO Inc2 M1 Task 1)
@@ -339,6 +340,13 @@ struct SerializedOctree {
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
 
+    // Baked-Perf M7 Task 7.5: occupancy stats, accumulated for free during the
+    // existing per-voxel serialize loop below (no extra pass over the octree).
+    // occupiedVoxelCount / (brickCount * kVoxelsPerBrick) = voxel fill ratio
+    // within allocated bricks; feeds the M8 dense-3D-texture-vs-ESVO per-body
+    // decision (a dense texture only wins where fill ratio is near 1.0).
+    uint32_t occupiedVoxelCount = 0;
+
     // Returns the channelBaseFloats for the given semantic (scans channels[]).
     // Returns 0xFFFFFFFFu if the semantic is not present.
     uint32_t channelBaseFloats(SemanticId sem) const {
@@ -400,6 +408,9 @@ struct ConcatenatedOctrees {
     std::vector<uint32_t>     nodeCounts; // per-octree node count
     std::vector<uint32_t>     brickCounts;// per-octree brick count
     std::vector<uint32_t>     tierRefCounts; // per-octree tier-ref-table entry count
+    // Baked-Perf M7 Task 7.5: per-octree occupied-voxel count (mirrors brickCounts'
+    // own per-octree convention) -- feeds the M8 per-body dense-texture decision.
+    std::vector<uint32_t>     occupiedVoxelCounts;
     uint32_t count = 0;  // number of octrees packed (== configs.size())
 };
 
@@ -775,19 +786,31 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     const size_t poolFloats = static_cast<size_t>(out.brickCount) * out.brickStrideFloats;
     std::vector<float> pool(poolFloats, 0.0f);
 
+    // Baked-Perf M7 Task 7.2 (audit F4): per-voxel lookup used to go through
+    // world.getEntityByWorldSpace(worldPos) -- a float grid position re-derived via
+    // MortonKey::fromPosition (float->Morton conversion) then a hash lookup, called
+    // fresh for EVERY one of the 512 voxels/brick. A per-brick EntityBrickView built
+    // once (over the brick's own INTEGER gridOrigin, matching its local grid frame
+    // exactly) precomputes ONE Morton base in its constructor; getEntityFast() then
+    // reaches each voxel via cheap integer Morton arithmetic (addLocalOffset) + a
+    // direct-by-Morton hash lookup, skipping the float round-trip 512x per brick.
+    // getBrickEntitiesInto/getEntityFast were previously zero-caller (dormant-work
+    // inventory #4) -- this is byte-identical output (same entities, same order),
+    // strictly a lookup-cost fix, not a behavior change.
+    // brickSide == 1<<brickDepth (SVOBuilder.h's own brickSideLength convention);
+    // EntityBrickView's integer-grid ctor wants the depth, not the side length.
+    const uint8_t brickDepthForView = static_cast<uint8_t>(std::countr_zero(static_cast<unsigned>(brickSide)));
     for (uint32_t bi = 0; bi < out.brickCount; ++bi) {
         const Vixen::GaiaVoxel::EntityBrickView& view = brickViews[bi];
         const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
+        Vixen::GaiaVoxel::EntityBrickView fastView(world, gridOrigin, brickDepthForView);
         uint32_t voxelSlot = 0u;
         for (int bz = 0; bz < brickSide; ++bz) {
             for (int by = 0; by < brickSide; ++by) {
                 for (int bx = 0; bx < brickSide; ++bx, ++voxelSlot) {
-                    const glm::vec3 worldPos(
-                        static_cast<float>(gridOrigin.x + bx),
-                        static_cast<float>(gridOrigin.y + by),
-                        static_cast<float>(gridOrigin.z + bz));
-                    const auto entity = world.getEntityByWorldSpace(worldPos);
+                    const auto entity = fastView.getEntityFast(bx, by, bz);
                     const bool alive  = world.exists(entity);
+                    if (alive) ++out.occupiedVoxelCount;  // Task 7.5 occupancy stat
 
                     // material brick (unchanged)
                     uint32_t materialId = 0u;

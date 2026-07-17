@@ -15,8 +15,12 @@
 #include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
 #include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
 #include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
+#include <future>   // Baked-Perf M7 Task 7.1: std::async per-body parallel bake
+#include <mutex>    // Baked-Perf M7 Task 7.1: serializes calls into Gaia's shared ChunkAllocator
+#include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "graph/CornellBoxSceneDefinition.h"  // Sampled Lighting Cornell Box Demo M1: shared scene-definition constants (M1+M2 both read this verbatim)
+#include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
 #include "Connection/ConnectionModifier.h"
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
@@ -3321,6 +3325,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // whole bricks anyway (SdfBake.h's own occupancy/active-brick arrays are brick-
             // granular) — a non-brick-aligned bound buys nothing and just obscures the real
             // brick count in a diagnostic dump.
+            // Baked-Perf M7 Task 7.1: serializes calls into Gaia's process-wide
+            // ChunkAllocator singleton (see the header comment at the parallel-bake launch
+            // site below for the full root-cause writeup) -- a function-local static so every
+            // caller of this render-graph-build function (only ever invoked once per process
+            // launch, but a static is the standard "exactly one, lazily initialized, no
+            // separate declaration site to keep in sync" idiom for this) shares the same lock.
+            static std::mutex g_gaiaChunkAllocatorMutex;
+
             auto bakeWorldSpaceBody = [&](const std::vector<SdfInstruction>& prog, glm::vec3 bodyWorldCenter, int n, int subdiv,
                                           glm::vec3 worldHalfExtent = glm::vec3(0.0f)) {
                 glm::ivec3 bakeRegion(0);
@@ -3333,6 +3345,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         bakeRegion[axis] = std::min(hiRoundedUp, n);
                     }
                 }
+                std::lock_guard<std::mutex> gaiaLock(g_gaiaChunkAllocatorMutex);
                 Vixen::SVO::SdfBakeResult baked = Vixen::SVO::BakeSdfWorld(
                     makeWorldSpaceEval(prog, bodyWorldCenter, n, subdiv), bodyWorldCenter, n, kBand,
                     3, Vixen::SVO::NoEmission,
@@ -3403,40 +3416,168 @@ void VulkanGraphApplication::BuildRenderGraph() {
             const float kWallSpanHalf      = 11.0f;             // kBoxHalfExtent(10) + kWallThickness(1)
             const float kZWideHalf         = 10.5f;              // kBoxHalfExtent(10) + kWallThickness*0.5
 
-            Vixen::SVO::SdfBodyOctree leftWallBody   = bakeWorldSpaceBody(bodies[0].prog, bodies[0].worldCenter, kWallN, kWallSubdiv,
-                                                                           glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
-            Vixen::SVO::SdfBodyOctree rightWallBody  = bakeWorldSpaceBody(bodies[1].prog, bodies[1].worldCenter, kWallN, kWallSubdiv,
-                                                                           glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
-            Vixen::SVO::SdfBodyOctree backWallBody   = bakeWorldSpaceBody(bodies[2].prog, bodies[2].worldCenter, kWallN, kWallSubdiv,
-                                                                           glm::vec3(kWallSpanHalf, kWallSpanHalf, kWallThicknessHalf));
-            Vixen::SVO::SdfBodyOctree floorBody      = bakeWorldSpaceBody(bodies[3].prog, bodies[3].worldCenter, kWallN, kWallSubdiv,
-                                                                           glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
-            Vixen::SVO::SdfBodyOctree ceilingBody    = bakeWorldSpaceBody(bodies[4].prog, bodies[4].worldCenter, kWallN, kWallSubdiv,
-                                                                           glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
-            Vixen::SVO::SdfBodyOctree sphereObjBody  = bakeWorldSpaceBody(bodies[6].prog, bodies[6].worldCenter, kSmallN, kSmallSubdiv);
-            Vixen::SVO::SdfBodyOctree boxObjBody     = bakeWorldSpaceBody(bodies[7].prog, bodies[7].worldCenter, kSmallN, kSmallSubdiv);
+            // Baked-Perf M7 Task 7.4: bake-artifact disk cache. Design note:
+            // Vixen-Docs/01-Architecture/Baked-Perf-Fix-Pipeline-Plan-2026-07.md's
+            // "Task 7.4 design note" section (written before this code). Key = FNV-1a
+            // hash over every input that changes the bake OUTPUT: each body's SdfInstruction
+            // program bytes + worldCenter/n/subdiv/worldHalfExtent, plus the shared kBand and
+            // the light body's own emission intensity -- exactly the parameter list
+            // bakeWorldSpaceBody/the light's direct BakeSdfWorld call take. A HIT skips the
+            // entire 8-body bake AND the concat/mip-bake/light-tree-cut pass below (a warm
+            // boot should reach file-load speed, not just skip the GaiaVoxelWorld bake).
+            const glm::vec3 kNoHalfExtent(0.0f);
+            Vixen::SVO::BakeArtifactKeyBuilder keyBuilder;
+            auto addBodyKeyInputs = [&](const CornellWorldSpaceBody& b, int n, int subdiv, glm::vec3 halfExtent) {
+                keyBuilder.addProgram(std::span<const SdfInstruction>(b.prog.data(), b.prog.size()));
+                keyBuilder.addVec3(b.worldCenter);
+                keyBuilder.addI32(n);
+                keyBuilder.addI32(subdiv);
+                keyBuilder.addVec3(halfExtent);
+            };
+            addBodyKeyInputs(bodies[0], kWallN, kWallSubdiv, glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
+            addBodyKeyInputs(bodies[1], kWallN, kWallSubdiv, glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
+            addBodyKeyInputs(bodies[2], kWallN, kWallSubdiv, glm::vec3(kWallSpanHalf, kWallSpanHalf, kWallThicknessHalf));
+            addBodyKeyInputs(bodies[3], kWallN, kWallSubdiv, glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
+            addBodyKeyInputs(bodies[4], kWallN, kWallSubdiv, glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
+            addBodyKeyInputs(bodies[5], kSmallN, kSmallSubdiv, kNoHalfExtent);  // light
+            addBodyKeyInputs(bodies[6], kSmallN, kSmallSubdiv, kNoHalfExtent);  // sphereObj
+            addBodyKeyInputs(bodies[7], kSmallN, kSmallSubdiv, kNoHalfExtent);  // boxObj
+            keyBuilder.addFloat(kBand);
+            keyBuilder.addFloat(kLightEmissionIntensity);
+            const std::string bakeArtifactKey = keyBuilder.hexKey();
+
+            std::optional<Vixen::SVO::BakeArtifactBundle> cachedBundle =
+                Vixen::SVO::LoadBakeArtifact(bakeArtifactKey);
+            if (cachedBundle.has_value()) {
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: bake-artifact "
+                                  "cache HIT (key=" + bakeArtifactKey + ") -- skipping bake+concat+"
+                                  "light-tree-cut, loading from disk");
+            } else {
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: bake-artifact "
+                                  "cache MISS (key=" + bakeArtifactKey + ") -- baking fresh");
+            }
+
+            // kLightWorldPos/kLightRenderScale are pure functions of bodies[5]/kSmallN/
+            // kSmallSubdiv -- needed by the instance-seeding tail regardless of cache hit/miss,
+            // so computed once up front rather than duplicated in both branches.
+            const glm::vec3 kLightWorldCenter = bodies[5].worldCenter;
+            const glm::vec3 kLightWorldPos = bodyWorldPos(kLightWorldCenter, kSmallN, kSmallSubdiv);
+            const float kLightRenderScale = bodyRenderScale(kSmallN, kSmallSubdiv);
+
+            // Converged outputs: populated either from the cache (HIT, no bake at all) or
+            // from a fresh bake+concat+light-tree-cut (MISS, then stored to the cache below
+            // for the NEXT boot). Everything from the occupancy stats through SetRecipePool/
+            // SetLightTreeCut reads only these two (plus bakeOk, which gates that whole tail
+            // exactly like the pre-M7 code's own "lightOct == nullptr -> skip everything"
+            // control flow did), so the hit/miss branches converge before any GPU-facing
+            // state is touched.
+            Vixen::SVO::ConcatenatedOctrees cat;
+            std::vector<Vixen::SVO::LightTreeNode> worldCut;
+            bool bakeOk = true;
+
+            if (cachedBundle.has_value()) {
+                cat = std::move(cachedBundle->cat);
+                worldCut = std::move(cachedBundle->lightTreeCut);
+            } else {
+
+            // Baked-Perf M7 Task 7.1: the 8 bodies bake independently -- each owns its own
+            // GaiaVoxelWorld (its own gaia::ecs::World instance, SdfBake.h's BakeSdfWorld
+            // constructs a fresh one per call) and its own AttributeRegistry/LaineKarrasOctree
+            // (SdfBake.h's SdfBodyOctree bundle). A FIRST thread-safety pass (component IDs,
+            // Gaia's opt-in ThreadPool, Logger globals) found no shared mutable state and
+            // looked safe -- but the FIRST unlocked live run of this parallelization crashed
+            // every single time with "Assertion failed: (m_nextFreeBlock < m_blockCnt &&
+            // \"Block allocator recycle list broken!\")" (gaia.h ~18958). Root cause: every
+            // World's entity/chunk creation (BakeSdfWorld's createVoxelsBatch) and octree
+            // rebuild() ultimately allocate/free ECS chunks through
+            // gaia::ecs::ChunkAllocator::get() -- a process-WIDE singleton (gaia.h ~18873,
+            // `using ChunkAllocator = core::dyn_singleton<detail::ChunkAllocatorImpl>`) whose
+            // per-page block-recycle free-list (MemoryPage::m_nextFreeBlock/m_freeBlocks) has
+            // NO internal synchronization. This is exactly the "shared allocator" hazard this
+            // task's own instructions called out to check for -- the static read of
+            // ComponentRegistry/GaiaVoxelWorld.h alone missed it because the singleton lives
+            // in gaia.h's own chunk-management internals, not in this codebase's wrapper
+            // layer; only a live run surfaced it.
+            // FIX: g_gaiaChunkAllocatorMutex (function-local static below) serializes the
+            // ENTIRE per-body bake+build call (bakeWorldSpaceBody's lock_guard, and the
+            // light body's own lambda) rather than attempting to lock only the specific
+            // internal Gaia call sites that touch ChunkAllocator -- World construction,
+            // component registration, createVoxelsBatch, AND rebuild() all reach into Gaia's
+            // chunk internals at various points, and mis-scoping the lock to miss one of them
+            // would silently reintroduce the same corruption. This still yields real overlap:
+            // the CPU-bound per-voxel evalRecipe scan (BakeSdfWorld's occupancy + full-brick
+            // passes -- pure computation, no Gaia calls, audit-doc-confirmed dominant cost of
+            // the bake) for whichever bodies haven't yet reached the lock runs concurrently
+            // with whichever ONE body currently holds it during its own allocation phase.
+            // (mainLogger->Info/Error calls deliberately stay OUTSIDE the parallel section below --
+            // Logger's own logEntries vector is NOT internally synchronized, only the two atomics
+            // are, so logging from worker threads would race; every existing log call already sat
+            // on the main thread after all bakes complete, so this is unchanged.)
+            auto leftWallFut  = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[0].prog), bodies[0].worldCenter, kWallN, kWallSubdiv,
+                                            glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
+            auto rightWallFut = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[1].prog), bodies[1].worldCenter, kWallN, kWallSubdiv,
+                                            glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
+            auto backWallFut  = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[2].prog), bodies[2].worldCenter, kWallN, kWallSubdiv,
+                                            glm::vec3(kWallSpanHalf, kWallSpanHalf, kWallThicknessHalf));
+            auto floorFut     = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[3].prog), bodies[3].worldCenter, kWallN, kWallSubdiv,
+                                            glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
+            auto ceilingFut   = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[4].prog), bodies[4].worldCenter, kWallN, kWallSubdiv,
+                                            glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
+            auto sphereObjFut = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[6].prog), bodies[6].worldCenter, kSmallN, kSmallSubdiv,
+                                            glm::vec3(0.0f));
+            auto boxObjFut    = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[7].prog), bodies[7].worldCenter, kSmallN, kSmallSubdiv,
+                                            glm::vec3(0.0f));
 
             // Light body: baked WITH emission (constant intensity across its whole volume —
             // the ceiling-recessed box IS the emitter, no separate "emissive surface only"
             // distinction at this milestone's fidelity). Same world-space-eval adapter as every
             // other body, plus an EmitFn (BakeSdfWorld's own generic EmitFn template param).
-            const glm::vec3& kLightWorldCenter = bodies[5].worldCenter;
-            Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeSdfWorld(
-                makeWorldSpaceEval(bodies[5].prog, kLightWorldCenter, kSmallN, kSmallSubdiv),
-                kLightWorldCenter, kSmallN, kBand, 3,
-                [](const glm::vec3&) { return kLightEmissionIntensity; },
-                [](const glm::vec3&) { return glm::vec3(1.0f); });  // flat white, not the debug rainbow (tint applied once via inst.color; see bakeWorldSpaceBody)
-            Vixen::SVO::SdfBodyOctree lightBody = Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
-            const glm::vec3 kLightWorldPos = bodyWorldPos(kLightWorldCenter, kSmallN, kSmallSubdiv);
-            const float kLightRenderScale = bodyRenderScale(kSmallN, kSmallSubdiv);
+            // Runs on its own async task too -- BakeSdfWorld+BuildSdfBodyOctree together are the
+            // SAME self-contained bake-and-build sequence bakeWorldSpaceBody wraps for the other
+            // 7 bodies, just with an explicit EmitFn instead of the default NoEmission.
+            // (kLightWorldCenter is declared above, before the cache hit/miss branch --
+            // needed by both branches.)
+            auto lightFut = std::async(std::launch::async, [&]() {
+                std::lock_guard<std::mutex> gaiaLock(g_gaiaChunkAllocatorMutex);
+                Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeSdfWorld(
+                    makeWorldSpaceEval(bodies[5].prog, kLightWorldCenter, kSmallN, kSmallSubdiv),
+                    kLightWorldCenter, kSmallN, kBand, 3,
+                    [](const glm::vec3&) { return kLightEmissionIntensity; },
+                    [](const glm::vec3&) { return glm::vec3(1.0f); });  // flat white, not the debug rainbow (tint applied once via inst.color; see bakeWorldSpaceBody)
+                return Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
+            });
+
+            // Join point: .get() blocks until each body's bake completes. Order of the .get()
+            // calls doesn't affect wall time (all 8 tasks were already launched above); this
+            // sequence just matches the original single-threaded assignment order so downstream
+            // code (octreesForCat, instances[]) is untouched.
+            Vixen::SVO::SdfBodyOctree leftWallBody   = leftWallFut.get();
+            Vixen::SVO::SdfBodyOctree rightWallBody  = rightWallFut.get();
+            Vixen::SVO::SdfBodyOctree backWallBody   = backWallFut.get();
+            Vixen::SVO::SdfBodyOctree floorBody      = floorFut.get();
+            Vixen::SVO::SdfBodyOctree ceilingBody    = ceilingFut.get();
+            Vixen::SVO::SdfBodyOctree sphereObjBody  = sphereObjFut.get();
+            Vixen::SVO::SdfBodyOctree boxObjBody     = boxObjFut.get();
+            Vixen::SVO::SdfBodyOctree lightBody      = lightFut.get();
+
+            // (kLightWorldPos/kLightRenderScale declared above, before the cache branch.)
 
             const Vixen::SVO::Octree* lightOct = lightBody.octree->getOctree();
             if (lightOct == nullptr) {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: light body octree is null -- scene not built");
+                bakeOk = false;  // skip the occupancy/instance-seeding tail below, same as the pre-M7 control flow
             } else {
+                // Baked-Perf M7 Task 7.2 (audit F5): the light body used to be serialized
+                // AND mip-baked here, then mip-baked a SECOND time (BakeMipPool called again
+                // just to get a MipPool object for BuildLightTreeCut, discarding the first
+                // bake BakeAndAttachMipPool already did internally), then serialized a THIRD
+                // time inside ConcatenateSdfWithMips's own per-body loop below. BakeMipPool is
+                // pure (same octree + same already-serialized channelPool in, same MipPool
+                // out), so baking once and reusing the result for both BuildLightTreeCut and
+                // the concat pass is byte-identical, not an approximation.
                 Vixen::SVO::SerializedOctree lightSer = Vixen::SVO::SerializeSdf(lightBody);
-                Vixen::SVO::BakeAndAttachMipPool(*lightOct, lightSer);
                 Vixen::SVO::MipPool lightMipPool = Vixen::SVO::BakeMipPool(*lightOct, lightSer);
+                lightSer.mipPool = Vixen::SVO::SerializeMipPool(lightMipPool);
 
                 Vixen::SVO::LightTreeCutParams cutParams;
                 cutParams.powerThreshold = 0.001f;  // same fine-cut rationale as VIXEN_DDGI_LEAK_GATE_DEMO
@@ -3453,7 +3594,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // disagree with where the light BODY geometry actually renders -- the exact
                 // class of bug VIXEN_DDGI_LEAK_GATE_DEMO's own header comment warns about (an
                 // unrescaled cut silently lands outside the probe grid's [0,32) coverage).
-                std::vector<Vixen::SVO::LightTreeNode> worldCut;
+                // (worldCut is the OUTER-scope vector declared above the cache branch -- both
+                // the HIT and MISS paths populate the same variable so the tail below is shared.)
                 worldCut.reserve(cut.size());
                 for (const auto& node : cut) {
                     Vixen::SVO::LightTreeNode w = node;
@@ -3480,7 +3622,101 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // serialization (descriptors.size()/brickViews.size() in ShellOctreeGpu.h), not
                 // stored as an O(1) field on Octree itself, so there is no cheap equivalent to
                 // preserve -- deleted rather than fabricating an approximate substitute.
-                Vixen::SVO::ConcatenatedOctrees cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat);
+                // Task 7.2 (F5, continued): hand the light body's already-serialized+mip-baked
+                // lightSer to the concat pass via the precomputed map (index 5, its position in
+                // octreesForCat above) so it isn't serialized+mip-baked a THIRD time here.
+                const std::unordered_map<size_t, Vixen::SVO::SerializedOctree> precomputedSer = {
+                    {5, lightSer},
+                };
+                // (cat is the OUTER-scope ConcatenatedOctrees declared above the cache branch.)
+                cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat, precomputedSer);
+
+                // Baked-Perf M7 Task 7.4: store the fresh bake to the disk cache for the NEXT
+                // boot. Store failures are logged but non-fatal (this boot already has a good
+                // `cat`/`worldCut` in hand; only a future boot loses the warm-start benefit).
+                Vixen::SVO::BakeArtifactBundle bundleToStore;
+                bundleToStore.cat = cat;              // copy -- `cat` is still needed below (SetRecipePool moves it later)
+                bundleToStore.lightTreeCut = worldCut; // copy -- `worldCut` is still needed below (SetLightTreeCut reads it)
+                if (Vixen::SVO::StoreBakeArtifact(bakeArtifactKey, bundleToStore)) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: bake-artifact "
+                                      "cache STORE ok (key=" + bakeArtifactKey + ")");
+                } else {
+                    mainLogger->Warning("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: bake-artifact "
+                                          "cache STORE failed (key=" + bakeArtifactKey + ") -- next boot will bake fresh again");
+                }
+                }  // else (bake MISS)
+            }
+
+            // Baked-Perf M7: everything below runs for BOTH a cache HIT (cat/worldCut loaded
+            // from disk) and a fresh-bake MISS (cat/worldCut just computed above) -- gated on
+            // bakeOk, which mirrors the pre-M7 code's own "lightOct == nullptr -> skip
+            // everything downstream" control flow (now the only way this can be false is the
+            // MISS branch's own lightOct-null check, since a cache HIT has no octree to fail).
+            if (bakeOk) {
+                // Baked-Perf M7 Task 7.5: per-body occupancy stats -- occupied bricks /
+                // bounding-volume bricks (bpa^3), and voxel fill ratio (occupied voxels /
+                // (brickCount*512)) within allocated bricks. This is the data M8 needs to
+                // decide, per-body, whether a dense 3D texture (which only wins where fill
+                // ratio is near 1.0) is worth it -- a genuinely sparse body loses both
+                // inter-brick sparseness and the sparse-mip hierarchy to a dense texture.
+                // Reads ONLY `cat` (bricksPerAxis via cat.configs[k], occupied counts via
+                // cat.brickCounts[k]/cat.occupiedVoxelCounts[k]) so it works identically on a
+                // cache HIT (no live octree objects exist in that path) and a MISS.
+                // Log line format: [CornellDiag] mirrors this demo's existing diagnostic
+                // block naming convention (instIdx map, OOB counter) rather than inventing
+                // a new tag.
+                {
+                    static const char* kBodyNames[8] = {
+                        "leftWall", "rightWall", "backWall", "floor", "ceiling",
+                        "light", "sphereObj", "boxObj",
+                    };
+                    std::ostringstream occJson;
+                    occJson << "{\n";
+                    for (size_t k = 0; k < 8; ++k) {
+                        const uint64_t bpa = cat.configs[k].bricksPerAxis;
+                        const uint64_t boundingVolumeBricks = bpa * bpa * bpa;
+                        const uint64_t occupiedBricks = cat.brickCounts[k];
+                        const uint64_t occupiedVoxels = cat.occupiedVoxelCounts[k];
+                        const uint64_t voxelsInOccupiedBricks =
+                            occupiedBricks * Vixen::SVO::SerializedOctree::kVoxelsPerBrick;
+                        const double brickOccupancyRatio = boundingVolumeBricks > 0
+                            ? static_cast<double>(occupiedBricks) / static_cast<double>(boundingVolumeBricks) : 0.0;
+                        const double voxelFillRatio = voxelsInOccupiedBricks > 0
+                            ? static_cast<double>(occupiedVoxels) / static_cast<double>(voxelsInOccupiedBricks) : 0.0;
+                        mainLogger->Info("[CornellDiag] occupancy body=" + std::string(kBodyNames[k]) +
+                                          " occupiedBricks=" + std::to_string(occupiedBricks) +
+                                          " boundingVolumeBricks=" + std::to_string(boundingVolumeBricks) +
+                                          " brickOccupancyRatio=" + std::to_string(brickOccupancyRatio) +
+                                          " occupiedVoxels=" + std::to_string(occupiedVoxels) +
+                                          " voxelFillRatio=" + std::to_string(voxelFillRatio));
+                        occJson << "  \"" << kBodyNames[k] << "\": {"
+                                << "\"occupiedBricks\": " << occupiedBricks << ", "
+                                << "\"boundingVolumeBricks\": " << boundingVolumeBricks << ", "
+                                << "\"brickOccupancyRatio\": " << brickOccupancyRatio << ", "
+                                << "\"occupiedVoxels\": " << occupiedVoxels << ", "
+                                << "\"voxelFillRatio\": " << voxelFillRatio << "}"
+                                << (k + 1 < 8 ? ",\n" : "\n");
+                    }
+                    occJson << "}\n";
+                    // Env-var-driven output path (VIXEN_OCCUPANCY_JSON), matching the existing
+                    // VIXEN_PERF_CSV/VIXEN_HUD_CAPTURE_DIR convention (PerfCsvWriter.cpp) rather
+                    // than a cwd-relative literal -- the app's cwd at launch (VIXEN\, per every
+                    // temp_bench\*.bat's own `cd /d %VIXEN_ROOT%\VIXEN`) is NOT the worktree root
+                    // temp_bench\ lives under, so a bare "temp_bench/occupancy.json" silently
+                    // misses (caught live: this file did not exist after the first bake run).
+                    // Falls back to the historical relative path if the env var is unset, so a
+                    // bare manual launch from the repo root still gets a file, just not
+                    // necessarily where the bench scripts expect it.
+                    const char* occPathEnv = std::getenv("VIXEN_OCCUPANCY_JSON");
+                    const std::string occPath = occPathEnv ? occPathEnv : "temp_bench/occupancy.json";
+                    std::ofstream occFile(occPath);
+                    if (occFile) {
+                        occFile << occJson.str();
+                    } else {
+                        mainLogger->Warning("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: "
+                                              "could not write occupancy JSON to " + occPath);
+                    }
+                }
 
                 auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos, float renderScale) {
                     Vixen::SVO::BodyInstanceGpu inst{};
