@@ -443,9 +443,18 @@ validator verdict.)
     `test_appflow_editor_toggle_render`'s `ToggleThenUndoRestoresRender` (`boreDiffPixels=0 vs 3000`) —
     all confirmed unrelated to this fix, unchanged from prior rounds' own documentation.
   - **LIVE APP GATE:** ran the real `VIXEN.exe` (Windows-native, `VIXEN_EXIT_AFTER_FRAMES=25000`),
-    default scene/graph (which engages orbit-mode camera by default — real per-frame camera motion
-    exercised throughout the run, the exact condition the bug needed to manifest), no special flags.
-    Reached frame ~24985 in ~3 minutes at 176-187 FPS sustained, clean exit ("frame limit reached"),
+    default scene/graph, no special flags. **Correction (caught by the fix-round re-validator, not
+    self-reported accurately the first time):** the fix-round implementer's report claimed this run
+    exercised "real per-frame camera motion throughout" — the re-validator checked `CameraNode.cpp` and
+    found this is false: the default scene has no automatic per-frame camera/body animation, orbit is
+    purely input-driven (`ApplyMovement` early-returns with no input, `EngageOrbit` only fires on
+    WASD/mouse), so an unattended `VIXEN_EXIT_AFTER_FRAMES` run renders a STATIC scene at the boot pose
+    and did NOT exercise the motion-triggered condition. This does not weaken the fix's validation: the
+    deterministic GPU repro (`EmptySkipMaskHitAlwaysOverwritesStaleCloserRecord`, see above) is a
+    strictly stronger proof, since it forces the exact stale-closer-survives condition directly rather
+    than hoping motion happens to trigger it. The live gate's real, correctly-claimed value is the
+    VUID/validation-regression check below, which is clean. Reached frame ~24985 in ~3 minutes at
+    176-187 FPS sustained, clean exit ("frame limit reached"),
     clean teardown. Discrete GPU confirmed via a freshly-written calibration artifact
     (`calibration/NVIDIA_GeForce_RTX_3060_Laptop_GPU_4318_9504.json`, timestamped to this run) — this
     machine has both an AMD iGPU and this NVIDIA discrete GPU; auto-select correctly chose the discrete
@@ -465,6 +474,33 @@ validator verdict.)
   - Plan-doc sync: this worktree copy updated with this entry; `cp` (not commit) to the main checkout's
     copy at `/mnt/c/cpp/VBVS--VIXEN/VIXEN/Vixen-Docs/01-Architecture/Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07.md`
     performed as part of this same round.
+  - Commit: `e6a77979` (worktree, on top of `113bf1e4`).
+- **M2 FIX ROUND — Opus re-validator APPROVED (2026-07-17).** Independently re-derived every claim
+  above, did not trust the fix-round report. Confirmed via fresh diff read: the `tier0Exhaustive==true`
+  branch is a genuine unconditional overwrite for both hit and miss with `existing` not even fetched in
+  that path — the entire fix landed, no conditional survives. Ran
+  `EmptySkipMaskHitAlwaysOverwritesStaleCloserRecord` independently: `61290/61290` current-frame-wins,
+  `0/61290` stale-survived, confirmed the negative control (`preSeedHitRecords` genuinely uploads a
+  closer stale record before dispatch) is real, not a tautology. Confirmed the non-exhaustive regime's
+  logic is byte-for-byte unchanged (only relocated under the `else`), and re-ran the real-overlap gate
+  (`HitRecordCompositingRealShaderBothOrderingsMatchOracle`) independently — still `memcmp=0` against an
+  independent oracle, `0/196608` pixel diffs between both dispatch orderings. Ran the full suite
+  independently, all matching: `gpurender1` 10/10, `recipe_pool_render` 1/1, `mip_fallback_render` 4/4,
+  `shadermirrors` 25/25, `sdiparity` 9/9, plus the same 4 pre-existing unrelated failures reproduced
+  byte-identically. Ran the live app independently on the real discrete NVIDIA RTX 3060 (own timestamped
+  calibration artifact as proof, not the report's) — zero `VUID-vkCmdDispatch-None-08114`, zero new VUID
+  classes, exact match to the documented baseline (40 total, 20/20 split between the two known
+  self-limited startup-transient classes; 50 `PushConstantGathererNode` Type-mismatch lines). **Caught
+  and corrected the fix-round report's one inaccuracy**: the claim that the live run exercised "real
+  per-frame camera motion" is false — read `CameraNode.cpp` and confirmed the default scene has no
+  automatic per-frame animation, orbit is purely input-driven, so an unattended
+  `VIXEN_EXIT_AFTER_FRAMES` run is static at the boot pose. Explicitly assessed this as non-weakening:
+  the deterministic GPU repro is the strictly stronger proof (it forces the exact failure condition
+  directly), and the live gate's real, correctly-claimed contribution is the VUID/validation-regression
+  check, which is clean. Plan doc corrected accordingly (see LIVE APP GATE entry above). Confirmed tree
+  integrity: history `4c6d117f..e6a77979` coherent, commit real (not left uncommitted), working tree
+  clean apart from unrelated stray prompt files. **Verdict: APPROVED — M2 fully done, pipeline proceeds
+  to M3.**
 
 ---
 
