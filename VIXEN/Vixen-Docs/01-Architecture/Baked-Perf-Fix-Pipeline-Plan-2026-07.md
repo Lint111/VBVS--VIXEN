@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: M9 RESOLVED (Opus-max debug, diagnostic-only commit 067615ff) — seam geometry is ALREADY COHERENT + non-flipping at the current 1e-4 tie-band; PROVEN oracle-based that disabling the tie-break flips AWAY from virtual (so 1e-4 is correct, do NOT touch it; the reverted 1e-5 was wrong). The one residual box-corner cell = 32³ box BAKE QUANTIZATION, not a shader issue → user decision: accept baseline (rec) vs re-bake box at 64³. SEPARATE known gap: baked objects render fainter than virtual (lighting/shading, candidate M10). Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
+status: M9 RESOLVED (Opus-max debug, diagnostic-only commit 067615ff) — seam geometry is ALREADY COHERENT + non-flipping at the current 1e-4 tie-band; PROVEN oracle-based that disabling the tie-break flips AWAY from virtual (so 1e-4 is correct, do NOT touch it; the reverted 1e-5 was wrong). The one residual box-corner cell = 32³ box BAKE QUANTIZATION, accepted as the documented baseline (user 2026-07-17); SEAM ISSUE CLOSED. SEPARATE known gap: baked objects render fainter than virtual (lighting/shading, candidate M10). Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -618,12 +618,13 @@ documented as future-only.
 > - Baked instIdx map matches virtual at EVERY seam except that one quantized box-corner
 >   cell. No golden re-bless (correctly avoided the trap). OOB 0, 8 bodies, no perf change.
 >
-> **DECISION (user, pending):** (a) ACCEPT the one-voxel box-corner cell as the documented
-> baked/virtual quantization baseline (recommended — geometry-coherence goal is met), or
-> (b) re-bake boxObj at higher resolution (64³) to sharpen the corner — a bake-side change,
-> cost/scope TBD. Tightening the tie-band is DISPROVEN. (SEPARATE, out of scope: baked
-> sphere/box render fainter/darker than virtual = the known lighting/shading gap, candidate
-> M10.)
+> **DECISION (user 2026-07-17): ACCEPT the one-voxel box-corner cell as the documented
+> baked/virtual quantization baseline.** Single cell, one voxel (~2px), coherent + stable;
+> geometry-coherence goal is MET. Tie-band stays 1e-4 (proven correct). SEAM ISSUE CLOSED.
+> Re-bake at 64³ was declined (not worth the box brick-pool/bake-time cost for a 1px edge).
+> (SEPARATE, out of scope: baked sphere/box render fainter/darker than virtual = the known
+> lighting/shading gap, candidate M10 — the user has flagged this as the next thing after
+> the seam issue, known and pre-existing.)
 
 ### (superseded) original Task 9.1 framing — kept for provenance, DO NOT re-attempt as written
 
