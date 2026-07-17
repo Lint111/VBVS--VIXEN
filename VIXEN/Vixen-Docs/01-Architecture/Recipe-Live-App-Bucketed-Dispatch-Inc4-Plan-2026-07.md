@@ -113,7 +113,16 @@ Windows `.bat` builds, real discrete GPU (Windows-native) for every milestone.
   a skip-bitmask SSBO, an excluded-index-range convention, or similar — decided by the implementer,
   documented and justified) lets tier-0's march exclude a caller-specified instance subset, with zero
   behavior change when unused.
-  - [ ] Not started.
+  - [x] DONE 2026-07-17. Shape chosen: (a) skip-bitmask SSBO (binding 35,
+    `InstanceSkipMaskBuffer`/`isInstanceSkipped()` in `shaders/SceneBindings.glsl`), read once per
+    instance-loop iteration in both `TraceWorld` and `TraceWorldShadow` (`shaders/TraceWorld.glsl`).
+    Chose (a) over (b) (CPU-side instance-array re-partitioning) because (a) needs no new ordering
+    dependency between the bucketing pre-pass and tier-0's dispatch sizing (the plan doc's own
+    concern with (b)), is a pure additive SSBO binding matching the exact "1-byte/256-byte
+    placeholder when the owning feature is inactive" convention already proven safe by this same
+    shader's bindings 13/15/16 (MipPoolBuffer/TierRefTableBuffer/OccupancyGridBuffer), and needs zero
+    CPU-side re-ordering logic to be a no-op — the CPU side still only needs to know WHICH indices to
+    mark, which M3's bucketing pre-pass output will supply later.
 - **M2 — Real cross-pass HitRecord compositing on the production shader** (Task 2) · **live-run gate**
   · retrofit the proven nearest-hit-wins conditional write onto `BodyInstanceRayMarch.comp`/
   `TraceWorldShadow`'s actual write paths, proven correct via the SAME rigor Inc2 M3 used (real
@@ -162,6 +171,47 @@ validator verdict.)
   per-instance exclusion primitive in the shader, or CPU-side re-partitioning of the instance array
   every frame reacting to which recipes were promoted (itself new, fragile plumbing). M1 owns deciding
   between these approaches.
+- **M1 DONE (2026-07-17).** Commit (this worktree, `feat/recipe-live-app-bucketing-inc4`):
+  `shaders/SceneBindings.glsl` (+binding 35 `InstanceSkipMaskBuffer`/`isInstanceSkipped()`),
+  `shaders/TraceWorld.glsl` (early-continue in both `TraceWorld`'s and `TraceWorldShadow`'s instance
+  loops), plus 11 hand-rolled GTest Vulkan harnesses updated to declare the new binding in their own
+  descriptor-set-layout arrays (`test_body_instance_raymarch_render.cpp` and 10 siblings under
+  `libraries/RenderGraph/tests/Nodes/`) — these harnesses build their own `VkDescriptorSetLayoutBinding`
+  arrays rather than going through the production reflection/gatherer path, so each needed its own
+  256-byte placeholder + layout/write entry for the new binding, or validation correctly rejected the
+  now-larger reflected descriptor set.
+  - **Shape chosen:** (a) skip-bitmask SSBO, not (b) CPU-side re-partitioning — see the Milestone Map
+    entry above for the full justification.
+  - **Empty-skip-set no-op proof:** ran the full existing render/SVO/mirror suite with the mechanism
+    wired but every scene's skip mask left at its zeroed/placeholder default.
+    `test_rendergraph_criticalnodes_gpurender1` (8 tests, incl. the new positive-case test below): ALL
+    PASS. `test_recipe_pool_render` (1/1), `test_mip_fallback_render` (4/4): ALL PASS.
+    `test_rendergraph_shadermirrors` (25/25, pure-CPU `TraceWorldShadow` mirror, untouched baseline):
+    ALL PASS. `test_gpu_parity` (7/7): ALL PASS. Three pre-existing failures were found
+    (`test_rendergraph_criticalnodes_gpurender2`'s `TierCrossingLodResidencyTest.
+    NonResidentChildNeverCrossesResidentChildDoes`, `test_rendergraph_criticalnodes_gpurender2b`'s
+    `ShadowCorrectnessTest.OccludedPixelMatchesCpuReferenceShadowRay`, and
+    `test_baked_vs_virtual_parity`'s `VirtualRendersGeometricallyEquivalentToBaked`) — each was
+    isolated by temporarily short-circuiting `isInstanceSkipped()` to always-false (`if (false &&
+    isInstanceSkipped(...))`) and re-running: all three reproduced byte-identically (same magenta=0/0,
+    same luma=0 values, same IoU=0.6062630480167015/bakedHits=5808/virtualHits=9580) with the mechanism
+    fully neutralized, proving they predate and are independent of this change — not investigated
+    further as fixing them is out of this milestone's scope. `test_stored_sdf_march_mirror` is a
+    pure-CPU mirror with zero reference to `SceneBindings.glsl`/`TraceWorld.glsl` (grep-confirmed) and
+    was skipped for runtime reasons (dense marching, multi-minute regardless of this change), not a
+    gate concern.
+  - **Positive-case exclusion proof:** new test
+    `BodyInstanceRayMarchRenderTest.SkipMaskExcludesOnlyTargetedInstance`
+    (`test_body_instance_raymarch_render.cpp`) — 3 side-by-side body instances (red/green/gray
+    material kinds at instance indices 0/1/2, reusing the sibling
+    `RenderMultiKindBodiesProvesStrideFix` scene). Baseline (no skip mask): red=21743, green=17804,
+    gray=21743 px. With instance index 1 (green) excluded via `skipMask={0x2u}` (bit 1 set): red=21743
+    (byte-identical to baseline), green=0 (fully excluded), gray=21743 (byte-identical to baseline) —
+    decisive proof the mechanism excludes exactly the targeted instance and leaves all others
+    completely unaffected.
+  - **Deviation from prompt:** none of substance. The prompt's plan-doc sync step (worktree → main
+    checkout copy) is handled by the controller per the prompt's own instruction (implementer does not
+    commit in the main checkout).
 
 ---
 

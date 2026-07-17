@@ -462,7 +462,8 @@ protected:
                       VkBuffer sdfBuf, VkBuffer brickLookupBuf,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& outRgba /*w*h*4*/, double& outRenderMs,
-                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr,
+                      const std::vector<uint32_t>* skipMaskWords = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
@@ -526,6 +527,24 @@ protected:
         VkDeviceMemory dummyOccGridMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyOccGrid, dummyOccGridMem, true);
 
+        // Instance skip mask (35, Recipe-Live-App-Bucketed-Dispatch Inc4 M1): a 256-byte
+        // zeroed placeholder by default (isInstanceSkipped's own length() bounds-check in
+        // SceneBindings.glsl makes a too-small placeholder always safe — see that function's
+        // comment) — most callers never populate it. When skipMaskWords is provided (the
+        // exclusion-mechanism proof test), upload it instead so specific instance indices are
+        // actually excluded.
+        VkBuffer dummySkipMask = VK_NULL_HANDLE;
+        VkDeviceMemory dummySkipMaskMem = VK_NULL_HANDLE;
+        const VkDeviceSize skipMaskBufSize =
+            skipMaskWords != nullptr
+                ? std::max<VkDeviceSize>(256, VkDeviceSize(skipMaskWords->size()) * sizeof(uint32_t))
+                : 256;
+        CreateHostBuffer(skipMaskBufSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySkipMask, dummySkipMaskMem, true);
+        if (skipMaskWords != nullptr && !skipMaskWords->empty()) {
+            ASSERT_NO_FATAL_FAILURE(UploadBufferContent(dummySkipMaskMem, skipMaskWords->data(),
+                                                        skipMaskWords->size() * sizeof(uint32_t)));
+        }
+
         // Sampled Lighting Inc0-Inc2 bindings (17-22): this test only checks the raymarch
         // geometry/color output, not shading — LightingConfig/ShadowConfig/AccumulationConfig
         // are bound as zeroed placeholders (accumulationConfig.enabled==0 keeps the temporal
@@ -584,7 +603,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 21> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 22> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -606,6 +625,7 @@ protected:
             bind(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M1: AccumulationConfigSSBO
             bind(21, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
             bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
+            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -636,7 +656,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -673,6 +693,7 @@ protected:
         VkDescriptorBufferInfo shadowInfo{dummyShadow, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo accumInfo{dummyAccum, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo prevCamInfo{dummyPrevCam, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo skipMaskInfo{dummySkipMask, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -688,7 +709,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 21> writes = {
+        const std::array<VkWriteDescriptorSet, 22> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -710,6 +731,7 @@ protected:
             wBuf(20, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &accumInfo),     // Sampled Lighting Inc2 M1
             wImg(21, &historyInfo),                                     // Sampled Lighting Inc2 M1
             wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
+            wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -833,6 +855,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyShadow, nullptr);     vkFreeMemory(logicalDevice_, dummyShadowMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyAccum, nullptr);      vkFreeMemory(logicalDevice_, dummyAccumMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyPrevCam, nullptr);    vkFreeMemory(logicalDevice_, dummyPrevCamMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummySkipMask, nullptr);   vkFreeMemory(logicalDevice_, dummySkipMaskMem, nullptr);
     }
 };
 
@@ -1106,6 +1129,131 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
     EXPECT_GT(redPixels,   500) << "kind 0 (octreeIndex 0) body did not render";
     EXPECT_GT(greenPixels, 500) << "kind 1 (octreeIndex 1) body did not render — stride fix regressed";
     EXPECT_GT(grayPixels,  500) << "kind 2 (octreeIndex 2) body did not render — stride fix regressed";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-Live-App-Bucketed-Dispatch Inc4 M1: per-instance skip mechanism proof.
+//
+// Reuses RenderMultiKindBodiesProvesStrideFix's exact 3-body side-by-side scene
+// (kind0=red star, kind1=green planet, kind2=gray/white moon octree, octreeIndex
+// 0/1/2 respectively) so the only variable between this test and that one is the
+// skip mask. Renders the SAME scene/camera TWICE:
+//   (a) skip mask unset (nullptr) — sanity re-check that all 3 kinds render (this
+//       is redundant with the sibling test but cheap insurance against a scene-
+//       setup regression masquerading as an exclusion-mechanism failure below).
+//   (b) skip mask excluding instance index 1 (the green "planet") — instIdx 1's
+//       bit set in word 0 (1u << 1 = 0x2u), instIdx 0 and 2 left unset.
+// Proof: with instance 1 excluded, green pixels must collapse to ~0 (that body is
+// never marched — TraceWorld's isInstanceSkipped early-continue fires for it) while
+// red (kind 0) and gray (kind 2) pixel counts must stay materially unchanged versus
+// the unskipped render — the OTHER instances still march and hit-test normally,
+// proving this is a per-instance exclusion, not a global regression.
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, SkipMaskExcludesOnlyTargetedInstance) {
+    std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
+              << "' (software rasterizer confirmed)\n";
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_skipmask");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const float scale = kBaseRadiusAu * 2.0f;
+    const float Rb    = 0.5f * kWorldGridSize * scale;
+    const float sep   = Rb * 3.0f;
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(-sep, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),  // instIdx 0: kind 0 (red)
+        MakeInstance( 0.0f, 0.0f, 0.0f, scale, 1, 1.0f, 1.0f, 1.0f),  // instIdx 1: kind 1 (green) -- EXCLUDED below
+        MakeInstance( sep, 0.0f, 0.0f, scale, 2, 1.0f, 1.0f, 1.0f),  // instIdx 2: kind 2 (gray)
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers b;
+    b.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
+
+    constexpr uint32_t kW = 768, kH = 256;
+    const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
+    const glm::vec3 c2 = ShaderBodyCentre(instances[2]);
+    const glm::vec3 centre = 0.5f * (c0 + c2);
+    const float spanX = std::abs(c2.x - c0.x) + 2.0f * Rb;
+    const float halfFov = glm::radians(45.0f) * 0.5f;
+    const float aspect  = static_cast<float>(kW) / static_cast<float>(kH);
+    const float dist    = (0.5f * spanX) / (std::tan(halfFov) * aspect) * 1.35f;
+    const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * dist;
+    const PushConstants pc = MakeCamera(eye, centre, kW, kH, static_cast<int32_t>(instances.size()));
+
+    auto classify = [](const std::vector<HitRecordCpu>& hitRecords, uint32_t w, uint32_t h,
+                       int& redPixels, int& greenPixels, int& grayPixels, int& anyBody) {
+        redPixels = greenPixels = grayPixels = anyBody = 0;
+        for (uint32_t i = 0; i < w * h; ++i) {
+            const HitRecordCpu& rec = hitRecords[i];
+            const bool body = (rec.flags & kHitRecordFlagHit) != 0u;
+            if (!body) continue;
+            ++anyBody;
+            const int r  = static_cast<int>(std::clamp(rec.albedo[0], 0.0f, 1.0f) * 255.0f);
+            const int g  = static_cast<int>(std::clamp(rec.albedo[1], 0.0f, 1.0f) * 255.0f);
+            const int bl = static_cast<int>(std::clamp(rec.albedo[2], 0.0f, 1.0f) * 255.0f);
+            if      (r > g + 25 && r > bl + 25) ++redPixels;
+            else if (g > r + 25 && g > bl + 25) ++greenPixels;
+            else                                ++grayPixels;
+        }
+    };
+
+    // (a) Baseline: no skip mask (nullptr) — all 3 kinds must render, matching the sibling
+    // stride-fix test's own gate. This is the empty-skip-set no-op case for THIS scene.
+    std::vector<uint8_t> rgbaBaseline; double renderMsBaseline = 0.0;
+    std::vector<HitRecordCpu> hitRecordsBaseline;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaBaseline, renderMsBaseline,
+                                         &hitRecordsBaseline, /*skipMaskWords=*/nullptr));
+    int redBase, greenBase, grayBase, anyBase;
+    classify(hitRecordsBaseline, kW, kH, redBase, greenBase, grayBase, anyBase);
+    std::printf("[SKIPMASK] baseline (no skip): red=%d green=%d gray=%d\n", redBase, greenBase, grayBase);
+    ASSERT_GT(redBase,   500) << "baseline: kind 0 (instIdx 0) did not render";
+    ASSERT_GT(greenBase, 500) << "baseline: kind 1 (instIdx 1) did not render";
+    ASSERT_GT(grayBase,  500) << "baseline: kind 2 (instIdx 2) did not render";
+
+    // (b) Exclude instance index 1 (the green planet): bit 1 of word 0 set (1u << 1 = 0x2u).
+    const std::vector<uint32_t> skipMask = {0x2u};
+    std::vector<uint8_t> rgbaSkip; double renderMsSkip = 0.0;
+    std::vector<HitRecordCpu> hitRecordsSkip;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgbaSkip, renderMsSkip,
+                                         &hitRecordsSkip, &skipMask));
+    int redSkip, greenSkip, graySkip, anySkip;
+    classify(hitRecordsSkip, kW, kH, redSkip, greenSkip, graySkip, anySkip);
+    std::printf("[SKIPMASK] instance 1 excluded: red=%d green=%d gray=%d\n", redSkip, greenSkip, graySkip);
+
+    // The exclusion proof: instance 1 (green) must vanish; instances 0/2 (red/gray) must be
+    // materially unaffected (allow a small tolerance for silhouette-edge pixel jitter between
+    // the two independent dispatches, but this must not be a meaningful regression).
+    EXPECT_LT(greenSkip, 10) << "excluded instance 1 (green planet) still rendered — skip mechanism did not exclude it";
+    EXPECT_GT(redSkip,  static_cast<int>(redBase  * 0.9)) << "non-excluded instance 0 (red) regressed when instance 1 was excluded";
+    EXPECT_GT(graySkip, static_cast<int>(grayBase * 0.9)) << "non-excluded instance 2 (gray) regressed when instance 1 was excluded";
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

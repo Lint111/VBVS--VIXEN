@@ -346,6 +346,10 @@ protected:
         // written post-KI-018 — see this file's HitRecordCpu comment).
         const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * 64;
         CreateHostBuffer(hitRecordBufSize,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer (binding 35) placeholder.
+        VkBuffer dummySkipMask=VK_NULL_HANDLE;
+        VkDeviceMemory dSkipMaskMem=VK_NULL_HANDLE;
+        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySkipMask,dSkipMaskMem,true);
 
         VkImage cImg=VK_NULL_HANDLE, iImg=VK_NULL_HANDLE;
         VkDeviceMemory cMem=VK_NULL_HANDLE, iMem=VK_NULL_HANDLE;
@@ -365,7 +369,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,15> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,16> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -381,6 +385,7 @@ protected:
             bindL(14,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M4b: per-instance iteration debug
             bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
             bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
+            bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount=uint32_t(bindings.size()); dslci.pBindings=bindings.data();
@@ -402,7 +407,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -420,7 +425,8 @@ protected:
             ctI{ctrBuf,0,VK_WHOLE_SIZE}, inI{inst,0,VK_WHOLE_SIZE},
             sdI{sdf,0,VK_WHOLE_SIZE}, lkI{lookup,0,VK_WHOLE_SIZE}, mpI{dummyMip,0,VK_WHOLE_SIZE},
             itI{dummyIter,0,VK_WHOLE_SIZE},
-            tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE};
+            tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
+            skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE};
 
         auto wI2 = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -432,11 +438,12 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,15> writes = {
+        const std::array<VkWriteDescriptorSet,16> writes = {
             wI2(0,&colI), wB2(1,&nI), wB2(2,&brI), wB2(3,&mI), wB2(4,&trI),
             wB2(5,&cI), wB2(8,&ctI), wI2(9,&idI), wB2(10,&inI), wB2(11,&sdI), wB2(12,&lkI), wB2(13,&mpI),
             wB2(14,&itI),  // Inc1 M4b: per-instance iteration debug
-            wB2(15,&tierRefI), wB2(18,&hitRecordI)
+            wB2(15,&tierRefI), wB2(18,&hitRecordI),
+            wB2(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -526,6 +533,7 @@ protected:
         vkDestroyBuffer(logicalDevice_,dummyIter,nullptr); vkFreeMemory(logicalDevice_,dIterMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyTierRef,nullptr);   vkFreeMemory(logicalDevice_,dTierRefMem,nullptr);
         vkDestroyBuffer(logicalDevice_,dummyHitRecord,nullptr); vkFreeMemory(logicalDevice_,dHitRecordMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,dummySkipMask,nullptr);  vkFreeMemory(logicalDevice_,dSkipMaskMem,nullptr);
     }
 
     // Run a node lifecycle (Setup → Compile → Execute → read outputs → call fn → Cleanup).

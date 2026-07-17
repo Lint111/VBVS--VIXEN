@@ -346,6 +346,11 @@ protected:
         VkDeviceMemory dummyTierRefMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyTierRef, dummyTierRefMem, true);
 
+        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer (binding 35) placeholder.
+        VkBuffer dummySkipMask = VK_NULL_HANDLE;
+        VkDeviceMemory dummySkipMaskMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySkipMask, dummySkipMaskMem, true);
+
         // Sampled Lighting Inc1 M3: the HitRecordBuffer under test (binding 17), sized w*h,
         // zero-initialised so an untouched slot is trivially distinguishable from a real write.
         const VkDeviceSize hitRecordBufSize = static_cast<VkDeviceSize>(w) * h * sizeof(HitRecordCpu);
@@ -386,7 +391,7 @@ protected:
         // labeled binding 17 as "HitRecordBuffer" -- that's WRONG, binding 17 is
         // LightingConfigSSBO; the real HitRecordBuffer is at 18 (verified against
         // BodyInstanceRayMarch.comp's own layout declarations directly).
-        const std::array<VkDescriptorSetLayoutBinding, 15> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 16> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -402,6 +407,7 @@ protected:
             bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Inc1 M3: HitRecordBuffer (real, under test)
+            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -429,7 +435,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 13},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -458,6 +464,7 @@ protected:
         VkDescriptorBufferInfo iterInfo{dummyIter, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo hitRecordInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo tierRefInfo{dummyTierRef, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo skipMaskInfo{dummySkipMask, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -473,7 +480,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 15> writes = {
+        const std::array<VkWriteDescriptorSet, 16> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -489,6 +496,7 @@ protected:
             wBuf(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
             wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),  // TierRefTableBuffer (placeholder)
             wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),  // HitRecordBuffer (real, under test; was wrongly 17)
+            wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -612,6 +620,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyIter, nullptr);   vkFreeMemory(logicalDevice_, dummyIterMem, nullptr);
         vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyTierRef, nullptr); vkFreeMemory(logicalDevice_, dummyTierRefMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, dummySkipMask, nullptr); vkFreeMemory(logicalDevice_, dummySkipMaskMem, nullptr);
     }
 };
 

@@ -115,6 +115,49 @@ struct TierRef {
 };
 layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRefTable[]; };
 
+// ============================================================================
+// PER-INSTANCE SKIP BITMASK (Recipe-Live-App-Bucketed-Dispatch Inc4 M1 — binding 35)
+// ============================================================================
+// One bit per instance index (bit (instIdx & 31) of word instIdx>>5), read once at the
+// top of TraceWorld's and TraceWorldShadow's instance-loop body: a set bit means "some
+// OTHER pass already owns this instance this frame, skip it here" — an early-continue,
+// cheap enough to be unconditional. Only a CONSUMER of this mechanism (a future
+// bucketed-dispatch integration, not built in this milestone) ever sets a bit; this
+// milestone only builds the read side + the skip semantics.
+//
+// Bound as a 1-byte placeholder in every scene/test that doesn't populate it — mirrors
+// MipPoolBuffer/TierRefTableBuffer/OccupancyGridBuffer's identical "always declared,
+// placeholder when the owning feature is inactive" convention (see those buffers'
+// comments above). The read bounds-checks against skipMask.length() before indexing, so
+// an unbound/1-byte placeholder is always safe: length()==0 (a std430 runtime-sized
+// array's element count over a 1-byte binding truncates to 0, since one uint is 4 bytes)
+// makes wordIdx<skipMask.length() false for every instIdx, so the read never happens and
+// every instance is always marched — the empty/default/placeholder case is a true no-op,
+// not just "usually returns false."
+//
+// Binding number 35 (not the next free number in THIS file's own local sequence, 23):
+// SceneBindings.glsl is #included by DirectLighting.comp/ProbeUpdate.comp/
+// SpatialReuseShade.comp TOO, each of which separately declares its OWN bindings in the
+// 23-34 range (ReservoirConfigSSBO, LightTreeBufferSSBO, ProbeGridConfigSSBO, the DDGI
+// leak-gate debug buffers, the probe irradiance/visibility atlases, ...) — since a single
+// compiled shader's reflected descriptor set is the UNION of every binding declared in
+// its translation unit, a number already used by one of those shaders would collide the
+// moment this file's declaration and that shader's own declaration are both in scope.
+// Confirmed via grep across every shaders/*.comp: 23-34 are all taken by at least one
+// SceneBindings.glsl includer; 35 is free everywhere as of this milestone.
+layout(std430, binding = 35) readonly buffer InstanceSkipMaskBuffer { uint skipMask[]; };
+
+// Returns true iff instIdx's bit is set in skipMask[] — false (never skip) whenever the
+// bound buffer is the 1-byte placeholder (skipMask.length()==0) or instIdx's word is
+// simply beyond whatever was actually populated, so a caller that never populates this
+// buffer at all gets byte-identical behavior to a build that never had this mechanism.
+bool isInstanceSkipped(int instIdx) {
+    uint wordIdx = uint(instIdx) >> 5u;
+    if (wordIdx >= skipMask.length()) return false;
+    uint bitIdx = uint(instIdx) & 31u;
+    return (skipMask[wordIdx] & (1u << bitIdx)) != 0u;
+}
+
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
