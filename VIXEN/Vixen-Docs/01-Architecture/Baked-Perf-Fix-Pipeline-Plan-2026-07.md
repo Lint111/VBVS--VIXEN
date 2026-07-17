@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: PHASE-2 RUNNING — M0–M7 shipped (~19 FPS class; bake cache warm boot ~16ms; brick dedup 5.2x). M8 SCOPED (user 2026-07-17): dense-texture DROPPED (occupancy proves no viable target — walls ~3%, 7.6 already compacted 5.2x while keeping sparseness); M8 = Task 8.2 over-relaxed sphere tracing only (march-iteration speedup on the sparse pool). Also filed KI-040 (pre-existing bake-cache loader bad_alloc-on-corrupt-length, non-blocker). Phase-2 order set by user 2026-07-17: M7 FIRST (parallel bakes + bake-artifact cache), THEN revisit M8 with the walls' real density/occupancy data (M8's dense-3D-texture trade loses inter-brick + hierarchical sparseness — only worth it for near-solid bodies, so decide per-body AFTER M7 measures occupancy). worktree fix/baked-perf-pipeline
+status: PHASE-2 COMPLETE — M0–M8 ALL shipped+validated. Baked Cornell 877ms/1.17FPS → ~19 FPS class; bake cache warm boot ~16ms; brick dedup 5.2×; over-relaxed march +1.3–1.4×; hybrid+mixed provider frames; byte-identical instIdx parity throughout. M8 = Task 8.2 only (dense-texture dropped on occupancy evidence — walls ~3%). Filed KI-040 (bake-cache loader bad_alloc) + KI-041 (intermittent late-frame validation crash), both pre-existing non-blockers. READY FOR USER EVALUATION on real hardware before any further push. worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -546,18 +546,30 @@ state, plus the existing same_path parity gate on an actual warm-cache boot.
   compaction dense-texture was chasing (5.2×) while KEEPING sparseness — the dedup'd pool
   IS the packed sparse structure. Recorded as a no-go; the sparse-atlas+aprons idea (8.3)
   stays a future option on top of the 7.6 pool if hardware filtering is ever wanted.
-- [ ] Task 8.2 — Over-relaxed sphere tracing (ω≈1.4–1.6 + unbounding-sphere overlap
-  test) in the march loop (pattern R2). **NOW THE PRIMARY M8 WORK** — a march-iteration
-  speedup on the existing (now 5.2×-dedup'd) sparse pool, independent of the dropped
-  dense-texture path. Keeps sparseness, chases esvo FPS directly.
-- [ ] Task 8.3 — ~~Decision doc: dense-vs-sparse~~ SUBSUMED: the dense-vs-sparse decision
-  is made (8.1 dropped). Residual: if 8.2's measured esvo delta motivates hardware
-  trilinear filtering, spec the sparse-atlas+aprons layer ON TOP of the 7.6 content-addressed
-  pool (aprons + `textureLod`, sparseness preserved) — future, gated on 8.2's numbers.
+- [x] Task 8.2 — Over-relaxed sphere tracing (ω=1.5 + unbounding-sphere overlap test) in
+  `marchBrickSdf`'s primary iso-surface loop (commit `15d500d2`, Opus validator APPROVED).
+  **~1.3–1.4× frame speedup** (esvo 69.6→55.0 ms = −21%; frame 105.8→75.0 ms = −29%).
+  Overlap test (the crux, took 3 iterations for units-consistency): radii = RAW SDF `d`
+  (true unbounding-sphere radii, NOT `honestStep=d*0.5773503` which is a step-size margin),
+  travel = actual `stepTaken`; test `stepTakenPrev > dPrev + d` → fallback rolls back to the
+  pre-relaxation point + a forced un-relaxed next step (flag, no infinite retry); sentinels
+  never relaxed; ω=1.0 byte-reproduces the original loop. **CORRECTNESS NUANCE (record
+  correction): relaxation is NOT bit-exact to non-relaxed marching — a ω=1.5-vs-1.0
+  image diff shows 219 SUB-PERCEPTUAL edge pixels (216 @ mag 1/255, 3 @ 6/255, all on
+  silhouettes = iso-crossing quantization drift), which is the EXPECTED, acceptable
+  over-relaxation signature, NOT surface-skip.** A punch-through would be contiguous
+  50–150-mag wall→box blocks — none exist; instIdx same_path byte-identical (0/625). The
+  controller's initial "0/250000" diff was a STALE capture pair (likely a lingering
+  VIXEN.exe per KI-041 serving a stale frame); the validator's 219 is the honest number.
+  Scope: `marchBrickSdf` only (primary rays); `marchBrickSdfAnyHit` (shadow/probe) untouched.
+- [x] Task 8.3 — ~~Decision doc: dense-vs-sparse~~ SUBSUMED (8.1 dropped). Residual future
+  option: if hw trilinear filtering is ever wanted, spec the sparse-atlas+aprons layer ON
+  TOP of the 7.6 content-addressed pool (aprons + `textureLod`, sparseness preserved). Not
+  motivated by current numbers — the 8.2 relaxation win + 7.6 dedup already deliver.
 
-**Gate:** 8.2 measured esvo delta recorded (march iterations before/after); correctness rig
-(parity byte-identical — relaxed stepping must not change the converged hit); decision on the
-hw-filtering atlas documented from 8.2's numbers.
+**Gate:** MET — 8.2 esvo delta recorded (~1.3–1.4×); correctness rig (instIdx 0/625
+byte-identical + 219 sub-perceptual edge pixels, no surface-skip); hw-atlas decision
+documented as future-only.
 
 ---
 
@@ -855,6 +867,27 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   already-reported worker caused a HEAD-moved-under-validator collision + a stray
   uncommitted edit; resolved by reverting the stray edit + expanding validation scope.
   Lesson: once a worker reports, new work = fresh dispatch, never a mid-flight add.
+
+- M8 (Task 8.2 only; 8.1 dropped, 8.3 subsumed): DONE · commit `15d500d2` · Opus
+  validator APPROVED · 2026-07-17. **Over-relaxed sphere tracing → ~1.3–1.4× frame
+  speedup** (esvo 69.6→55.0 ms −21%, frame 105.8→75.0 ms −29%, validator-measured n=128
+  clean). ω=1.5 with the unbounding-sphere overlap test in `marchBrickSdf`'s primary loop;
+  the correctness crux was units-consistency (took the implementer 3 iterations): radii =
+  raw SDF `d`, travel = actual `stepTaken`, `stepTakenPrev > dPrev + d` → roll back +
+  forced-honest next step; sentinels never relaxed; ω=1.0 reproduces the original loop.
+  **USER-REPORTED artifact (Screenshot_245, box punching through walls) was the WIP** — the
+  implementer's attempt-2 (honestStep-as-radius, broke parity 136/625); the committed
+  attempt-3 is correct. **CORRECTNESS NUANCE: relaxation is NOT bit-exact — ω=1.5-vs-1.0
+  image diff = 219 SUB-PERCEPTUAL edge pixels (216 @ 1/255, 3 @ 6/255, silhouette
+  quantization drift), the EXPECTED over-relaxation signature, NOT surface-skip** (a
+  punch-through would be contiguous 50–150-mag wall→box blocks; none exist). instIdx
+  same_path byte-identical 0/625. The controller's initial "0-pixel" diff was a stale
+  capture pair (KI-041 lingering-VIXEN.exe class); validator's 219 is the honest number —
+  record corrected. Scope: primary rays only (`marchBrickSdfAnyHit` untouched). CPU mirror
+  ports ω=1.0 with a documented drift note (test passes; GPU relaxation proven correct
+  independently → coverage gap not correctness bug). Filed **KI-041** (pre-existing
+  intermittent late-frame Vulkan-validation crash + lingering VIXEN.exe, reproduces at both
+  ω, found during 8.2 validation) and **KI-040** earlier (bake-cache loader bad_alloc).
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
