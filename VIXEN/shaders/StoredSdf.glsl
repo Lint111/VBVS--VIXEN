@@ -653,6 +653,17 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
     // data, rather than trusting the blown-up value as a distance (which would lunge past sMax).
     const float SENTINEL_D = 100.0;
 
+    // Over-relaxed sphere tracing (Baked-Perf M8 Task 8.2; Bálint-Valasek 2018 /
+    // Keinert 2014, audit pattern R2): step OMEGA*d instead of d so fewer trilinear
+    // samples are needed to converge. Only valid while the over-stepped unbounding
+    // sphere still overlaps the previous one -- i.e. no surface could have been
+    // skipped between the two sample points. Tunable via VIXEN_SDF_MARCH_OMEGA
+    // (see CMake/shader-define plumbing); 1.0 reproduces exact (non-relaxed) marching.
+#ifndef VIXEN_SDF_MARCH_OMEGA
+#define VIXEN_SDF_MARCH_OMEGA 1.5
+#endif
+    const float OMEGA = VIXEN_SDF_MARCH_OMEGA;
+
     // Runaway guard on brick-to-brick hops. The genuine terminator is NOT this counter but the
     // octree-exit test inside _advanceToNextSdfLeaf (executePopPhase → returns false → the hop
     // loop `return false`s below), which fires the instant the ray leaves the octree — normal
@@ -697,6 +708,27 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
 
         // Sphere-trace within this brick's [0, sMax] span (relative to curEntry).
         float s = 0.0;
+        // dPrev is the RAW SDF value sampled at the point the LAST step advanced FROM -- the
+        // true radius of that point's unbounding sphere (a sphere of radius d around a sample
+        // is guaranteed surface-free by definition of the distance field; the codebase's extra
+        // 0.5773503 factor below is a step-SIZE safety margin the march chooses to advance by,
+        // NOT part of the sphere's radius, so the overlap test -- which is about whether two
+        // consecutive guaranteed-empty spheres still touch -- must compare against the raw d
+        // values, not the shrunken step distance). 0 at brick entry: no prior sample yet in
+        // this brick, so the very first step is never relaxed (see below).
+        float dPrev = 0.0;
+        // stepTakenPrev is the ACTUAL arc-length the last step advanced by (honestStep or
+        // OMEGA*honestStep, whichever was taken) -- this is what must be compared against
+        // dPrev+dCur, since it's the true center-to-center distance between the two sample
+        // points whose sphere-overlap is in question.
+        float stepTakenPrev = 0.0;
+        // True for the one iteration immediately after an overlap-test rollback: that step
+        // MUST be taken un-relaxed (its safety is guaranteed by Lipschitz continuity from the
+        // pre-relaxation point, by construction) and must NOT be re-subjected to the overlap
+        // test against the same stale dPrev/stepTakenPrev -- otherwise a thin/grazing surface
+        // that fails the test once would fail it again at the identical rolled-back point
+        // forever.
+        bool forceHonestStep = false;
         for (int i = 0; i < MAX_STEPS; ++i) {
             if (s > sMax) break;              // left the brick without crossing → try to continue
             vec3  p = curEntry + gridDirN * s;
@@ -714,9 +746,33 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
                 hitBrick  = curBrick;
                 return true;
             }
-            // 1/√3 Lipschitz step for honest samples; a bounded 1-voxel probe through
-            // sentinel-contaminated (brick-face straddle) regions.
-            s += (d > SENTINEL_D) ? 1.0 : max(d * 0.5773503, EPS);
+            // Over-relaxed sphere tracing (Bálint-Valasek 2018 eq. 3 / Keinert 2014): the step
+            // FROM this sample would normally be the honest (safe, Lipschitz-bounded) step;
+            // over-relaxing steps OMEGA*honestStep instead. That is only valid if the two
+            // consecutive unbounding spheres (radius dPrev at the point stepped FROM, radius d
+            // at this point) still overlap -- i.e. the true center-to-center distance
+            // (stepTakenPrev, the arc-length actually advanced) does not exceed the sum of
+            // their TRUE radii: stepTakenPrev <= dPrev + d. If it does, the over-step may have
+            // skipped the surface between the two spheres. Sentinel-contaminated samples
+            // (brick-face straddle) are never relaxed -- their distance isn't trustworthy, so
+            // relaxing off one is exactly the failure mode the test prevents.
+            bool sentinel = d > SENTINEL_D;
+            float honestStep = sentinel ? 1.0 : max(d * 0.5773503, EPS);
+            if (i > 0 && !sentinel && !forceHonestStep && stepTakenPrev > dPrev + d) {
+                // The overlap test on the step just taken FAILED against what we now see at d:
+                // it may have skipped the surface. Roll back to the pre-relaxation point (retreat
+                // by the over-step, re-advance by the safe one) and resample there instead of
+                // trusting this sample. dPrev is unchanged (still the safe, valid distance to
+                // retry with); d/p are discarded.
+                s += (dPrev * 0.5773503) - stepTakenPrev;
+                forceHonestStep = true;
+                continue;
+            }
+            float stepTaken = (forceHonestStep || sentinel) ? honestStep : OMEGA * honestStep;
+            dPrev = d;
+            stepTakenPrev = stepTaken;
+            forceHonestStep = false;
+            s += stepTaken;
         }
 
         // No crossing in this brick. Ask the REAL ESVO traversal which allocated leaf the ray
