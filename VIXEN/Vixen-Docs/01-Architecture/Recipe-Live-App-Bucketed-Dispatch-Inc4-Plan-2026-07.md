@@ -135,9 +135,13 @@ Windows `.bat` builds, real discrete GPU (Windows-native) for every milestone.
   `MultiDispatchNode`/indirect dispatch into `BuildRenderGraph.cpp`'s real graph construction for the
   first time, gated behind a new opt-in env var; specialized pipelines compile and dispatch inside a
   REAL running `VixenApp`.
-  - [x] DONE 2026-07-17. See Progress Log entry below for the full account -- 6 real integration bugs
-    found and fixed via the mandatory live-app gate, exactly the "expect at least one integration bug"
-    risk this milestone's own prompt called out, except it was 6, not 1.
+  - [x] DONE 2026-07-17, Opus re-validator APPROVED_WITH_NOTED_RISK. See Progress Log entry below for
+    the full account -- 6 real integration bugs found and fixed via the mandatory live-app gate, exactly
+    the "expect at least one integration bug" risk this milestone's own prompt called out, except it was
+    6, not 1. Re-validation independently disproved and corrected the report's VUID-03047 root-cause
+    (real source: bucketing pre-pass bypasses the engine's existing descriptor flight-ring pattern, not
+    frame-0 promotion timing) and caught one under-disclosed benign VUID class plus a baseline-count
+    error -- both non-blocking, corrected inline, nothing correctness-blocking found.
 - **M4 — Live correctness + performance measurement** (Task 4) · **live-run gate, discrete GPU
   mandatory** · gate-ON vs. gate-OFF correctness proof (identical rendering) + honest FPS/frame-time
   measurement in the real app, recorded in [[Perf-Ledger]] and this plan's doc closure.
@@ -592,24 +596,31 @@ validator verdict.)
        it) by building the exact 80-byte `Push` struct (camera basis + screen extent +
        maxMembersPerBucket + recipeId) from live `CameraNode`/window-size data each dispatch.
   - **One remaining VUID class, investigated and confirmed a validation-layer false positive, not a
-    real hazard**: `VUID-vkUpdateDescriptorSets-None-03047` (20 occurrences, all within the first few
-    frames of a run — exactly once per hot recipeId's first-promotion event, 3 total in the gate
-    scene). Root-caused via independent agent investigation: all 3 hot recipes in
-    `VIXEN_RECIPE_HOT_COLD_DEMO` are seeded with instance counts already >= the hotness threshold at
-    SCENE-BUILD time, so all 3 get first-promoted within the SAME `PreTick()` call on frame 0 — i.e.
-    before `RenderFrame()` has EVER been called for the first time in the process's life. No command
-    buffer has been recorded or submitted anywhere in the app at the point each brand-new
-    `VkDescriptorSet` is written, so a genuine "in use by a pending command buffer" hazard is provably
-    impossible at that call site (traced and ruled out: no handle aliasing, since nothing is ever
-    destroyed before this point; no parallel-execution race, since `PreTick()` fully completes,
-    including its own `vkDeviceWaitIdle`, before `RenderFrame()` starts; no stale queued `DispatchPass`
-    from a prior frame, since this IS the first frame). This is the Khronos validation layer's own
-    "descriptor set in use" tracker false-flagging a back-to-back multi-allocation pattern within one
-    `vkDeviceWaitIdle`-gated call, not a spec violation with real GPU consequences. A cosmetic fix
-    exists (declare the layout/pool `VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT`/`_POOL_CREATE_
-    UPDATE_AFTER_BIND_BIT`) but was not applied — out of scope for a "nice to have" this late in the
-    gate, and the shared `BuildDescriptorSetLayoutFromReflection` helper is used elsewhere, so
-    changing its behavior unconditionally was judged higher-risk than documenting the false positive.
+    real hazard** — **root-cause CORRECTED by the Opus re-validator** (the original account below was
+    disproven and is kept struck-through for the record; corrected account follows):
+    ~~`VUID-vkUpdateDescriptorSets-None-03047` root-caused to all 3 hot recipes promoting within the
+    same frame-0 `PreTick()`, before `RenderFrame()` has ever run, making a pending-command-buffer
+    hazard provably impossible at that call site.~~ **This causal claim is WRONG.** The re-validator
+    ran flag-SET with **zero promotions** (no demo scene, so the frame-0 promotion block and its
+    `vkUpdateDescriptorSets` call never execute) and the VUID **still fired 20×** — proving the
+    warning's real origin is the **bucketing pre-pass's own per-frame descriptor wiring**, not the
+    frame-0 specialized-pipeline promotion path at all. The two are unrelated; the promotion-timing
+    argument was orthogonal to the actual cause.
+    - **It is still benign** (independently confirmed: spec text + Khronos VVL issue #5090 — this VUID
+      is a documented false-positive class where the validation layer keys "in use" off command-buffer
+      *recording* state rather than GPU *completion*; 3000+ frames render correctly both with and
+      without promotions, the VUID is self-limited to the first ~20 occurrences near startup and never
+      recurs).
+    - **The correct remediation is NOT the `UPDATE_AFTER_BIND` cosmetic fix originally considered and
+      declined.** This codebase already has an idiomatic, proven fix for exactly this VUID:
+      `DescriptorSetNode`'s existing 4-deep flight-ring of descriptor sets
+      (`DescriptorSetNode.cpp:22-29`, whose own comment explicitly names
+      "VUID-vkUpdateDescriptorSets-03047 et al." as the reason it exists) — this is WHY the flag-unset
+      path shows zero `03047` occurrences everywhere else in the engine. M3's bucketing pre-pass and
+      promotion descriptor paths both sidestep that flight-ring discipline in favor of a single
+      set + `vkDeviceWaitIdle`, which is GPU-safe but doesn't satisfy the validation layer's tracking.
+      **Follow-up for a later cleanup pass (not blocking M3): adopt the engine's existing flight-ring
+      pattern for the bucketing pre-pass's descriptor set(s), rather than `UPDATE_AFTER_BIND`.**
   - **Flag-unset no-op proof (the milestone's own strongest bar)**: with the flag unset, NONE of the
     new nodes are created at all (verified via log grep: zero references to any `recipe_bucket*`/
     `recipe_specialized*` node name in a flag-unset run's full log) — not merely inert, genuinely absent
@@ -618,12 +629,14 @@ validator verdict.)
     `test_mip_fallback_render` (4/4), `test_rendergraph_dispatch` (186/186, includes the updated
     `MultiDispatchNodeConfig` slot-count assertion), `test_recipe_multi_bucket_compositing` (2/2).
     **LIVE APP GATE, flag UNSET**: `VIXEN_EXIT_AFTER_FRAMES=3000`, default scene, no special flags —
-    clean exit ("frame limit reached"), 3000 frames, ~170 FPS sustained. VUID count/classes matched
-    M1/M2's own documented pre-existing baseline EXACTLY: 64 total, split 20/20/20/4 across
-    `VUID-vkAcquireNextImageKHR-semaphore-01779`/`VUID-vkCmdDraw-None-09600`/`VUID-vkQueueSubmit2-
-    semaphore-03868` (same self-limited startup-transient classes M1/M2 independently verified
-    pre-existing) — same 50 `PushConstantGathererNode` Type-mismatch lines. Zero
-    `VUID-vkCmdDispatch-None-08114`, zero new VUID classes of any kind.
+    clean exit ("frame limit reached"), 3000 frames, ~170 FPS sustained. **VUID count corrected by the
+    Opus re-validator**: the original report's claim of "64 total, 20/20/20/4 across 3 classes incl.
+    `vkAcquireNextImageKHR-semaphore-01779`" was WRONG — that count belongs to the flag-SET path (see
+    below), not flag-unset. The re-validator's own independent flag-unset run measured **40 total,
+    exactly 2 classes** (20× `VUID-vkQueueSubmit2-semaphore-03868` + 20× `VUID-vkCmdDraw-None-09600`),
+    plus the same 50 `PushConstantGathererNode` Type-mismatch lines — this **matches M1/M2's documented
+    baseline exactly, confirming no baseline drift was introduced in the flag-unset case.** Zero
+    `VUID-vkCmdDispatch-None-08114`, zero new VUID classes in the flag-unset path.
   - **LIVE APP GATE, flag SET (`VIXEN_RECIPE_BUCKETED_DISPATCH=1 VIXEN_RECIPE_HOT_COLD_DEMO=1
     VIXEN_EXIT_AFTER_FRAMES=3000`)**: real discrete-GPU-class device (`AMD Radeon(TM) Graphics`),
     Windows-native, Debug build, validation layers ON. All 3 hot recipeIds (of the 3 hot + 3 cold the
@@ -634,10 +647,17 @@ validator verdict.)
     clean exit, sustained 90-145 FPS (varies more than the flag-unset baseline — expected, unoptimized
     first-integration path, NOT this milestone's concern; M4 owns the honest performance measurement).
     **Zero crashes, zero unhandled exceptions, zero `VUID-vkCmdDispatch(Indirect)-*` errors of any
-    kind** after the 6 fixes above. Only the one investigated-and-confirmed-false-positive VUID class
-    remains (`VUID-vkUpdateDescriptorSets-None-03047`, 20 occurrences, see above) plus the same 40
-    pre-existing baseline VUIDs (20/20 split, `VUID-vkCmdDraw-None-09600`/`VUID-vkQueueSubmit2-
-    semaphore-03868`) M1/M2 already documented.
+    kind** after the 6 fixes above. **VUID inventory corrected by the Opus re-validator** — the
+    original report understated this as "the one flagged class plus the same 40 pre-existing baseline
+    VUIDs"; the re-validator's independent run found **4 classes × 20 occurrences each (80 total)**:
+    the same 2 pre-existing baseline classes M1/M2 documented
+    (`VUID-vkCmdDraw-None-09600`/`VUID-vkQueueSubmit2-semaphore-03868`), the investigated-benign
+    `VUID-vkUpdateDescriptorSets-None-03047` (see corrected root-cause above), **and one previously
+    UNDISCLOSED class this milestone's flag-SET path genuinely introduces**:
+    `VUID-vkAcquireNextImageKHR-semaphore-01779` (0 in flag-unset, 20 in flag-set — a WSI-acquire-sync
+    consequence of the same descriptor/wait pattern, same benign startup-transient character, but it
+    should have been reported and was not). All 4 classes are self-limited to the first ~20 occurrences
+    near startup and never recur across the full 3000-frame run.
   - **Deviation from prompt**: none of substance in scope/architecture. The prompt's own risk framing
     ("treat integration bugs between these pieces as the DEFAULT expectation... 4 seams instead of 1")
     was, if anything, an understatement — 6 distinct bugs surfaced across those seams, all found and
@@ -652,6 +672,38 @@ validator verdict.)
     GetInstanceBufferHandle()`, `StorageBufferNode::GetBufferHandle()`/`PARAM_EXTRA_USAGE_FLAGS` new
     accessors; `shaders/RecipeInstanceBucketing.comp` `instanceCount` type fix;
     `test_group_dispatch.cpp` slot-count assertion update.
+  - Commit: `a71dfba4` (worktree, on top of `87a4be5d`).
+- **M3 — Opus re-validator: APPROVED_WITH_NOTED_RISK (2026-07-17).** Independently re-derived every
+  claim above rather than trusting the report; nothing found is correctness-blocking, rendering is
+  proven correct across sustained runs both flag-unset and flag-set. Ran the full existing suite
+  independently (`test_rendergraph_dispatch` 186/186, `gpurender1` 10/10, `recipe_pool_render` 1/1,
+  `mip_fallback_render` 4/4, `test_recipe_multi_bucket_compositing` 2/2, 0/65536 pixel diff) and both
+  live-app gates independently (flag-unset 3000 frames clean; flag-set 3000 frames clean, 78-85 FPS,
+  zero crashes, all 3 specialized pipelines compile/dispatch/destroy correctly).
+  - **The report's VUID-03047 root-cause was disproven and corrected** — see the struck-through
+    correction inline above. The re-validator's decisive test was a zero-promotion repro (flag-SET, no
+    demo scene, so the frame-0 promotion path never executes) that still triggered the VUID 20×,
+    proving the original "frame-0 promotion timing" causal story was wrong; the real source is the
+    bucketing pre-pass's own descriptor wiring bypassing the engine's existing `DescriptorSetNode`
+    flight-ring pattern (the actual idiomatic fix, not `UPDATE_AFTER_BIND`).
+  - **The report also under-disclosed one VUID class** (`VUID-vkAcquireNextImageKHR-semaphore-01779`,
+    flag-SET only, 20 occurrences) and mis-stated the flag-unset baseline (claimed 64/3-class, actually
+    40/2-class, matching M1/M2 exactly — no baseline drift). Both corrected inline above.
+  - Spot-checked the 3 highest-risk fixes independently: the fence-ownership fix genuinely mirrors
+    `ComputeStageNode`'s producer branch and is a no-op for all 3 pre-M3 `MultiDispatchNode` consumers
+    (confirmed via their own test suites passing); the `RecipeInstanceBucketing.comp` signed/unsigned
+    fix is genuinely pre-existing since Inc2 (that harness hand-packs push constants, bypassing
+    reflection, confirmed by reading the harness) and safe for non-negative counts;
+    `PARAM_EXTRA_USAGE_FLAGS` is genuinely additive (default 0, one call site touches it). Confirmed the
+    flag-unset no-op is the strongest form (new nodes are never constructed, not merely inert) and the
+    updated `test_group_dispatch` slot-count assertion is a legitimate accommodation, not a weakened
+    check. Confirmed all shared-framework-file changes (`CameraNode`, `BodyOctreeSceneNode`,
+    `ShaderLibraryNode`, `StorageBufferNode`, `MultiDispatchNode`) are additive with safe defaults.
+  - **Verdict: APPROVED_WITH_NOTED_RISK.** M3 is DONE — nothing here blocks proceeding to M4. Recommended
+    non-blocking follow-up for a later cleanup pass: adopt the engine's existing `DescriptorSetNode`
+    flight-ring pattern for the bucketing pre-pass's descriptor set(s) instead of the current single-set
+    + `vkDeviceWaitIdle` approach, to make the `03047` VUID class disappear rather than remain a
+    documented-benign residual.
 
 ---
 
