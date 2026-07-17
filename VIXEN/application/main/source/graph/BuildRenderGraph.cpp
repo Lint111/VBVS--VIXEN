@@ -2271,19 +2271,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // (RegisterProceduralRecipe + BodyOctreeSceneNode::SetInstances, no octree bake) --
             // this demo's own scope is just "produce a real hot+cold instance-count
             // distribution," not a new construction mechanism.
-            constexpr int kHotRecipeCount    = 3;  // distinct recipeIds that go hot
-            constexpr int kColdRecipeCount   = 3;  // distinct recipeIds that stay cold
-            constexpr int kInstancesPerHot   = 6;  // >= kRecipeBucketingHotnessThreshold(4)
-            constexpr int kInstancesPerCold  = 2;  // < kRecipeBucketingHotnessThreshold(4)
+            // M4 perf-measurement note: population mix is overridable via 4 optional env vars
+            // (VIXEN_RECIPE_HOT_COLD_DEMO_{HOT_RECIPES,COLD_RECIPES,HOT_INSTANCES,COLD_INSTANCES}),
+            // each defaulting to the exact value M3 shipped (3/3/6/2) when unset -- so the M3 gate
+            // and every prior milestone's documented scene remain byte-identical by default. This
+            // is scene-construction flexibility only, not a change to the bucketing/compositing/
+            // dispatch mechanism itself (out of scope for M4 per its own prompt).
+            auto envOr = [](const char* name, int fallback) -> int {
+                const char* v = std::getenv(name);
+                if (!v) return fallback;
+                int parsed = std::atoi(v);
+                return parsed > 0 ? parsed : fallback;
+            };
+            const int kHotRecipeCount    = envOr("VIXEN_RECIPE_HOT_COLD_DEMO_HOT_RECIPES", 3);
+            const int kColdRecipeCount   = envOr("VIXEN_RECIPE_HOT_COLD_DEMO_COLD_RECIPES", 3);
+            const int kInstancesPerHot   = envOr("VIXEN_RECIPE_HOT_COLD_DEMO_HOT_INSTANCES", 6);
+            const int kInstancesPerCold  = envOr("VIXEN_RECIPE_HOT_COLD_DEMO_COLD_INSTANCES", 2);
             constexpr float kSpacingX = 30.0f;
             constexpr float kSpacingZ = 40.0f;
             constexpr float kBaseZ    = 30.0f;
-            const glm::vec3 kHotColors[kHotRecipeCount] = {
+            // Fixed-size palettes, indexed modulo when a M4 measurement run asks for more
+            // recipes than the original M3 demo's 3+3 -- color repeats across indices past 3,
+            // which is fine for an FPS measurement (colors are a visual-attribution aid only).
+            static const glm::vec3 kHotColors[3] = {
                 glm::vec3(1.00f, 0.30f, 0.30f),  // hot recipe 0: red
                 glm::vec3(0.30f, 1.00f, 0.30f),  // hot recipe 1: green
                 glm::vec3(0.30f, 0.45f, 1.00f),  // hot recipe 2: blue
             };
-            const glm::vec3 kColdColors[kColdRecipeCount] = {
+            static const glm::vec3 kColdColors[3] = {
                 glm::vec3(1.00f, 1.00f, 0.30f),  // cold recipe 0: yellow
                 glm::vec3(1.00f, 0.30f, 1.00f),  // cold recipe 1: magenta
                 glm::vec3(0.30f, 1.00f, 1.00f),  // cold recipe 2: cyan
@@ -2332,10 +2347,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
             };
 
             for (int h = 0; h < kHotRecipeCount; ++h) {
-                registerAndSeed(nextRecipeId++, kHotColors[h], 40.0f + static_cast<float>(h) * kSpacingX, kInstancesPerHot);
+                registerAndSeed(nextRecipeId++, kHotColors[h % 3], 40.0f + static_cast<float>(h) * kSpacingX, kInstancesPerHot);
             }
             for (int c = 0; c < kColdRecipeCount; ++c) {
-                registerAndSeed(nextRecipeId++, kColdColors[c], 40.0f + static_cast<float>(kHotRecipeCount + c) * kSpacingX, kInstancesPerCold);
+                registerAndSeed(nextRecipeId++, kColdColors[c % 3], 40.0f + static_cast<float>(kHotRecipeCount + c) * kSpacingX, kInstancesPerCold);
             }
 
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {

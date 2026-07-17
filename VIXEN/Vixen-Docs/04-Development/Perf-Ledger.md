@@ -360,3 +360,94 @@ tested N — the per-bucket fixed-cost bottleneck this increment targeted is dom
 else (most plausibly `vkCmdDispatchIndirect` and/or `vkCmdBindPipeline`, both either unaddressed
 or confirmed out-of-scope-and-architecturally-unavoidable), not by descriptor-set binds. Bucketed
 dispatch remains substantially slower than a single fixed dispatch at every tested N.
+
+### Live-app bucketed-dispatch measurement (Inc4 M4, 2026-07-17)
+
+**First-ever measurement inside the real `VixenApp`** (not a standalone GTest harness) — Inc2/Inc3's
+own isolated finding re-tested with `VIXEN_RECIPE_BUCKETED_DISPATCH` flag OFF vs. ON, same
+`VIXEN_RECIPE_HOT_COLD_DEMO` scene family M3 built, across 4 population mixes (hot/cold recipe
+counts made env-var-overridable for this measurement only — `VIXEN_RECIPE_HOT_COLD_DEMO_{HOT_
+RECIPES,COLD_RECIPES,HOT_INSTANCES,COLD_INSTANCES}`, each defaulting to M3's exact 3/3/6/2 when
+unset, zero behavior change to any prior milestone's documented scene). Windows-native, real
+discrete `NVIDIA GeForce RTX 3060 Laptop GPU`, Debug build, **Vulkan validation layers ON** (see
+methodology note below for why this wasn't disabled). Source: `PerfCsvWriter`
+(`VIXEN_PERF_CSV`), an always-on per-frame CSV recorder already wired into `VulkanGraphApplication::
+PostTick` — reused as-is, no new instrumentation built. `VIXEN_EXIT_AFTER_FRAMES=900` per run;
+steady-state window = frames 150-900 (excludes the ~150-frame startup/shader-compile transient).
+
+**Methodology note — validation layers left ON, and why:** this repo's only Windows-native CMake
+preset (`vixen-ninja`) is Debug-only; disabling validation requires reconfiguring with
+`-DVIXEN_VULKAN_VALIDATION=OFF` (a real, documented `ProvisionVulkan.cmake` knob) against a SEPARATE
+build directory, which would mean the perf numbers come from a differently-configured binary than
+the one whose correctness was just proven byte-identical (see the plan doc's M4 entry). Judged not
+worth the risk of silently comparing two different binaries — validation overhead is a roughly
+constant additive tax paid identically by BOTH the gate-OFF and gate-ON arm of every comparison
+below, so it does not bias the ON-vs-OFF RATIO this measurement cares about, even though it does
+inflate both arms' absolute FPS below what a Release build would show. Reconfiguring with validation
+off is a reasonable follow-up if a future pass wants absolute (not just relative) numbers.
+
+**Methodology note — machine noise, discovered mid-measurement:** early single-run samples showed
+implausible run-to-run swings (one all-cold pair even reversed sign between two back-to-back
+attempts). Root-caused to two real, distinct sources: (1) a **sibling agent's concurrent VIXEN build**
+running on this shared machine during part of the session (confirmed via `ps aux`; one run crashed
+mid-startup during that window, GPU memory summary showing 0MB tracked, discarded); (2) even on a
+subsequently-confirmed-quiet machine, **within-run GPU clock-state shifts** (steady FPS shifting
+distinctly partway through a single 900-frame run, visible in both gate-OFF and gate-ON trajectories,
+most likely a boost/base clock transition) that make even same-config repeats vary by up to ~15%.
+**Fix: every mix below is 3 (M3-mix: 5) independent gate-OFF/gate-ON PAIRED runs**, re-run only after
+confirming via `check_build_lock.ps1` + `ps aux` that no other build/app was active, reported as
+mean ± range plus the per-pair win/loss count — a single-run number on this machine is not reliable
+signal, paired repeats are.
+
+| Population mix (instances) | gate-OFF mean FPS (range, n) | gate-ON mean FPS (range, n) | ratio of means (ON/OFF) | gate-ON wins |
+|---|---|---|---|---|
+| all-cold: 0 hot, 6 cold×2 (12 instances, zero promotions ever) | 127.5 (116.2-135.2, n=3) | 99.9 (96.4-103.4, n=3) | **0.78x** | 0/3 |
+| M3-mix: 3 hot×6, 3 cold×2 (24 instances, M3's own demo shape) | 132.7 (117.9-145.1, n=5) | 113.0 (94.0-156.9, n=5) | **0.85x** | 1/5 |
+| mostly-hot: 6 hot×6, 1 cold×2 (38 instances) | 126.2 (122.3-130.4, n=3) | 110.7 (72.7-154.2, n=3) | **0.88x** | 1/3 |
+| large-N: 10 hot×6, 2 cold×2 (64 instances) | 108.4 (107.5-109.8, n=3) | 111.0 (103.1-125.4, n=3) | **1.02x (~parity)** | 1/3 |
+
+**HONEST FINDING: gate-ON is a net loss or a wash at every tested mix, consistent with Inc2/3's own
+isolated-harness finding, now confirmed live.** The cleanest, lowest-variance result is **all-cold**
+(0/3 gate-ON wins, tight 0.74-0.86x per-pair ratio range) — even with ZERO recipes ever promoted, ZERO
+specialized pipelines ever compiled, turning the flag on costs ~15-25% FPS. This is the "real per-frame
+overhead cost from the bucketing pre-pass itself" this milestone's own prompt flagged as a possibility
+Inc2/3 never could have measured (they never ran a full frame graph). Root-caused via code inspection,
+not guessed: `VulkanGraphApplication::RunRecipeBucketedDispatchPreTick` (`VulkanGraphApplication.cpp:
+541`) unconditionally runs, every frame, regardless of whether any recipe is hot this frame — CPU-side
+regrouping of every body instance by `recipeId` (`std::unordered_map` rebuild each frame) plus TWO
+`MapForReadback`/`UnmapReadback` round-trips (the skip-mask buffer and the bound-sphere buffer) — only
+Steps 4-5 (specialized-pipeline dispatch bookkeeping) are skipped when `hotRecipeIds.empty()`
+(line 626). The GPU-side pass timings (`esvo_traverse_shade_ms`, `whole_frame_gpu_span_ms`) show no
+consistent gate-OFF-vs-ON pattern once averaged over the noise described above; the CPU `cpu_frame_
+time_ms` column is the one column that consistently reads higher for gate-ON across all-cold's 3
+pairs (9.69-10.38ms vs. 7.34-8.59ms) — a genuine, always-paid, CPU-side per-frame tax, not a GPU
+dispatch cost at all. **The large-N mix is the one exception worth noting**: its ratio is the closest
+to parity (1.02x mean, individual pairs 0.94x/1.17x/0.97x) — plausible explanation (not confirmed
+further, out of this milestone's scope) is that as the hot population grows, the fixed per-frame CPU
+tax becomes a smaller fraction of a bigger per-instance re-evaluation cost tier-0 would otherwise pay,
+partially offsetting the tax; it does not cross into gate-ON actually winning outright in this data.
+
+**Reproducing this data**: `VIXEN_RECIPE_HOT_COLD_DEMO=1 VIXEN_RECIPE_HOT_COLD_DEMO_HOT_RECIPES=<n>
+VIXEN_RECIPE_HOT_COLD_DEMO_COLD_RECIPES=<n> VIXEN_RECIPE_HOT_COLD_DEMO_HOT_INSTANCES=<n> VIXEN_
+RECIPE_HOT_COLD_DEMO_COLD_INSTANCES=<n> [VIXEN_RECIPE_BUCKETED_DISPATCH=1] VIXEN_EXIT_AFTER_
+FRAMES=900 VIXEN_PERF_CSV=<path>.csv binaries\VIXEN.exe` (see `VIXEN/temp/run_m4_perf.bat` in this
+worktree for the exact wrapper used, following the established `run_m2_capture.bat` env-in-batch
+pattern). Average `steady_state_fps` over CSV rows 150-900 for the steady-state number; every row
+also carries per-pass GPU ms if a finer breakdown is wanted.
+
+**Correctness proof (the OTHER half of M4, not a perf number but recorded here for completeness):**
+same scene/camera, gate-OFF vs. gate-ON, captured via the app's existing (not newly built)
+`VIXEN_HUD_CAPTURE_FRAMES`/`CaptureHudFrameToPng` mechanism at frame 30 — the two PNGs are
+**byte-identical** (`cmp` reports no difference, identical MD5 `af1dcec88ddd91ef737a618ea0ad62e0`),
+reproduced across 2 separate rebuild/re-run cycles. Zero `VUID-vkCmdDispatch(Indirect)-*` in either
+configuration; gate-ON log-confirmed 3 specialized pipelines genuinely compiled, dispatched, and
+destroyed. Full account in the plan doc's own M4 Progress Log entry.
+
+**Bottom line for the epic as a whole (Inc2 M4 -> Inc3 M3 -> Inc4 M4):** three independent
+measurements now agree — isolated-harness (Inc2), isolated-harness-post-optimization (Inc3), and now
+live-full-frame-graph (Inc4) — bucketed dispatch does not beat a single fixed dispatch at any tested
+population size or shape. Inc4 adds one NEW datum Inc2/3 could not have found: even the FIXED per-frame
+CPU overhead of the bucketing pre-pass itself (independent of whether anything is actually bucketed)
+is measurable and non-trivial once run inside a real frame graph. The large-N near-parity result is the
+only data point suggesting the gap could close further at larger scale; not itself a reason to flip the
+default given every mix tested here still shows gate-OFF winning or tying, never gate-ON clearly ahead.
