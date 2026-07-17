@@ -47,6 +47,34 @@ struct WorldHit {
 };
 
 // ============================================================================
+// getOctreeTraceBounds - conservative allocated-brick AABB, in local [0,1]^3 space
+// ============================================================================
+// Baked-Perf M5 Task 5.1/5.2: configs[octreeIdx].traceBoundsMin/Max (stamped by
+// SerializeSdf, see ShellOctreeGpu.h) is the tight AABB over every brick this
+// octree actually allocated, in the SAME normalized [0,1]^3 local grid space
+// localRayOrigin/localRayDir already occupy after worldToLocal below — no extra
+// transform needed at the call site. Old cached configs and the plain binary
+// Serialize() path (no per-brick lookup loop to derive a tighter bound from)
+// leave both fields at their memset(0) default (min==max==(0,0,0)); treat that
+// as "no tighter bound than the full root" so the schema extension is
+// backward-safe. Returns true when the bound is genuinely tighter than [0,1]^3
+// (i.e. actually worth using in place of the full-cube cull).
+bool getOctreeTraceBounds(uint octreeIdx, out vec3 boundsMin, out vec3 boundsMax) {
+    boundsMin = configs[octreeIdx].traceBoundsMin;
+    boundsMax = configs[octreeIdx].traceBoundsMax;
+    bool valid = all(greaterThan(boundsMax, boundsMin)) &&
+                 all(greaterThanEqual(boundsMin, vec3(0.0))) &&
+                 all(lessThanEqual(boundsMax, vec3(1.0)));
+    if (!valid) {
+        boundsMin = vec3(0.0);
+        boundsMax = vec3(1.0);
+        return false;
+    }
+    return any(greaterThan(boundsMin, vec3(0.0))) ||
+           any(lessThan(boundsMax, vec3(1.0)));
+}
+
+// ============================================================================
 // TraceWorld - nearest-hit across all body instances (procedural + ESVO)
 // ============================================================================
 // origin/dir: world-space ray. tmin/tmax: currently unused by the moved body
@@ -237,8 +265,48 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 
         // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
         // traversal uses internally), before paying for full ESVO descent.
+        //
+        // Baked-Perf M5 Task 5.2 (CORRECTED, see Task 5.6 round 2 finding): the cull
+        // TEST uses the TIGHT allocated-brick bounds (configs[oi].traceBoundsMin/Max,
+        // Task 5.1) — the prior [0,1]^3 cull was structurally dead (every octree's own
+        // root spans the whole grid, so the test could never reject anything a
+        // genuinely tighter bound wouldn't also pass). BUT the gridT actually PASSED
+        // into traverseOctreeInstanced below is still the FULL [0,1]^3 span, NOT the
+        // tight one — an earlier version of this fix passed the tight gridT straight
+        // through and broke bodies whose tight bounds are genuinely interior to the
+        // root cube (verified live: backWall/sphereObj vanished 100% in the Cornell
+        // repro). Root cause: traverseOctreeInstancedOnce's rayStartWorld/
+        // initRayCoefficients/initTraversalState (SceneBindings.glsl / ESVOCoefficients
+        // .glsl / ESVOTraversal.glsl) implement the classic Laine-Karras ESVO ray setup,
+        // which assumes an "exterior ray" entry point sits exactly ON the octree's own
+        // [1,2]^3-normalized root-cube boundary -- entering instead at an interior
+        // sub-box crossing (the tight bounds' own surface, when it doesn't coincide
+        // with the true root face) produces a t_min/t_max span computed against the
+        // WRONG cube face, which can invert or degenerate to empty (state.t_min >=
+        // state.t_max), silently missing the whole instance on every ray. The tight
+        // bounds are therefore used ONLY as a strictly-conservative fast-reject (miss
+        // the instance entirely if the tight AABB itself isn't hit -- correct, since
+        // "outside every allocated brick's tight AABB" always implies "outside the
+        // populated geometry" regardless of which cube's boundary the descent enters
+        // at) and are NOT substituted for the full-cube gridT/entry-point math the
+        // traversal actually needs. This still gets the fast-reject win (skip full ESVO
+        // descent for rays that miss the tight box) without touching where the
+        // traversal itself begins.
         vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
         vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
+        vec3 traceBoundsMin, traceBoundsMax;
+        getOctreeTraceBounds(oi, traceBoundsMin, traceBoundsMax);
+        vec2 tightRejectT = rayAABBIntersection(localRayOrigin, localRayDir, traceBoundsMin, traceBoundsMax);
+        // Full slab-intersection validity: tNear>tFar (tightRejectT.x>tightRejectT.y) is
+        // also a miss, not just tFar<0 -- a thin tight box can be missed this way from
+        // many angles even while tFar>=0, unlike the full [0,1]^3 root which a converging
+        // camera ray enters with tNear<=tFar almost trivially.
+        if (tightRejectT.y < 0.0 || tightRejectT.x > tightRejectT.y) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
+            instanceIterCount[instIdx] = 0u;  // proves zero traversal iterations (Inc1 M4b test)
+#endif
+            continue;  // ray misses this instance's allocated-brick AABB entirely
+        }
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
 
         if (gridT.y < 0.0) {
@@ -467,9 +535,16 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         vec3  instDir    = rayDir * invScale;
 
         // Quick AABB cull in the base octree's [0,1]^3 grid, before paying for
-        // full ESVO descent.
+        // full ESVO descent. Tight-bounds fast-reject, same as TraceWorld's identical
+        // block (see there for the full derivation).
         vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
         vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
+        vec3 traceBoundsMin, traceBoundsMax;
+        getOctreeTraceBounds(oi, traceBoundsMin, traceBoundsMax);
+        vec2 tightRejectT = rayAABBIntersection(localRayOrigin, localRayDir, traceBoundsMin, traceBoundsMax);
+        if (tightRejectT.y < 0.0 || tightRejectT.x > tightRejectT.y) {
+            continue;  // ray misses this instance's allocated-brick AABB entirely
+        }
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
         if (gridT.y < 0.0) {
             continue;  // ray misses this instance's AABB entirely

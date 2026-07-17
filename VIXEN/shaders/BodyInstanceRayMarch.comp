@@ -228,6 +228,74 @@ void main() {
     bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
 
     // -----------------------------------------------------------------------
+    // Baked-Perf M5 Task 5.4 (far-hit rejection) -- IMPLEMENTED BUT DISABLED,
+    // NOT SHIPPED THIS MILESTONE. Using the winning instance's TIGHT trace
+    // bounds (Task 5.1), the design discards hits whose reconstructed worldPos
+    // falls outside the body's own allocated-brick AABB (+eps): backWall's
+    // (octreeIndex 2) live diagnostic hits show worldPos.z far outside the
+    // wall's true surface (e.g. z=-27 instead of the true z=4-6) across NEARLY
+    // ITS ENTIRE VISIBLE REGION, not just grazing/silhouette edges -- i.e. the
+    // underlying traversal corruption this task targets is severe enough for
+    // backWall specifically that rejecting every corrupted hit also rejects
+    // effectively the whole body (verified live: enabling this block drops
+    // backWall to 0 visible pixels; every OTHER body's far-hit corruption
+    // (~1% residual OOB) is fixed correctly by the SAME logic below with a
+    // one-brick-footprint epsilon -- see the retained implementation's own
+    // comment for that derivation). A per-body/per-axis exemption or epsilon
+    // special-case would be a band-aid on top of a real, deeper problem: this
+    // needs the traversal-level fix (Task 5.2's cull genuinely CONSTRAINING
+    // the march, not just fast-rejecting before it -- blocked this milestone
+    // by a separate ESVO ray-setup coordinate-frame issue, see Task 5.2's own
+    // comment) or the Phase-2 per-axis box bake grids already on the backlog.
+    // Disabled (not deleted) so the correct logic ships pre-validated for
+    // whoever picks up the real fix -- flip this back to `if (anyHit ...)`
+    // once backWall's corruption is fixed at the traversal level, and this
+    // block will then finish the OOB cleanup for the whole scene.
+    if (false && anyHit && worldHit.instIdx != 0xFFFFFFFFu) {
+        BodyInstance winner = bodyInstances[worldHit.instIdx];
+        if (winner.providerKind == PROVIDER_STORED) {
+            uint winnerOi = winner.octreeIndex;
+            vec3 tbMin, tbMax;
+            bool tight = getOctreeTraceBounds(winnerOi, tbMin, tbMax);
+            if (tight) {
+                // World-space AABB of the winning instance's tight bounds: same
+                // worldPos + (localToWorld * local) * renderScale mapping
+                // TraceWorld's de-instancing (and InstanceSort.h's
+                // traceBoundsWorldCenterOf, Task 5.3) already use. mat3(...) takes
+                // just the linear part (SerializeSdf's localToWorld is a pure
+                // uniform scale, no rotation, but this form is correct even if
+                // that ever changes, matching TraceWorld's own mat3(...) usage).
+                mat3 l2wLinear = mat3(configs[winnerOi].localToWorld);
+                vec3 worldBoundsMin = winner.worldPos + (l2wLinear * tbMin) * winner.renderScale;
+                vec3 worldBoundsMax = winner.worldPos + (l2wLinear * tbMax) * winner.renderScale;
+
+                // A fixed 1e-3-world epsilon is many orders of magnitude smaller than ONE
+                // BRICK's own world footprint -- traceBoundsMin/Max (Task 5.1) is quantized
+                // to whole allocated BRICK cells (brickCellMin/bpa), not the true sub-brick
+                // surface position, so a real surface can legitimately sit up to one brick's
+                // world-size inside the tight-bounds boundary. The dimensionally-principled
+                // margin is exactly one brick's own world footprint: (1/bricksPerAxis) of the
+                // local [0,1]^3 cube, scaled to world units the SAME way tbMin/tbMax
+                // themselves are (kWorldGridSize * renderScale) -- undoes exactly the one
+                // brick of quantization traceBoundsMin/Max's own derivation introduces, no
+                // more. Verified live: this margin correctly stops rejecting leftWall/
+                // rightWall/floor/ceiling's genuine near-boundary hits while still catching
+                // ~99% of the pre-existing far-hit OOB corruption on those bodies.
+                float bpa = float(configs[winnerOi].bricksPerAxis);
+                float worldGridSize = l2wLinear[0][0];  // uniform scale factor (kWorldGridSize)
+                float brickWorldEps = (bpa > 0.0) ? (worldGridSize * winner.renderScale / bpa) : 0.0;
+                vec3 hitWorldPos = rayOrigin + rayDir * worldHit.t;
+                bool inBounds =
+                    all(greaterThanEqual(hitWorldPos, worldBoundsMin - vec3(brickWorldEps))) &&
+                    all(lessThanEqual(hitWorldPos, worldBoundsMax + vec3(brickWorldEps)));
+                if (!inBounds) {
+                    anyHit = false;  // reject: treat as a miss, not a clamped/corrupted hit
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // HitRecord round-trip (Sampled Lighting Inc1 M3): pack WorldHit into the
     // per-pixel HitRecord layout, write it to the real SSBO, then read it back
     // and unpack — DirectLighting.comp's shade path consumes ONLY the

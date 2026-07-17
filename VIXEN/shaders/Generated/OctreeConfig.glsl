@@ -10,8 +10,8 @@ struct OctreeConfig {
     int brickESVOScale;
     int bricksPerAxis;
     int _padding1;
-    vec3 gridMin;
-    vec3 gridMax;
+    vec3 traceBoundsMin;
+    vec3 traceBoundsMax;
     mat4 localToWorld;
     mat4 worldToLocal;
     int nodeArrayBase;

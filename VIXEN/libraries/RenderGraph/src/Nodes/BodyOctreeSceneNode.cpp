@@ -156,7 +156,31 @@ void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
     // In-place; does NOT mark instanceCount_ dirty (count is unchanged by a reorder).
     // ExecuteImpl uploads whatever order instances_ is currently in — same seam as
     // SetInstances, just without replacing the list.
-    Vixen::SVO::SortInstancesFrontToBack(instances_, cameraPos);
+    //
+    // Baked-Perf M5 Task 5.3: sort by each instance's TRUE occupied-region center
+    // (traceBoundsMin/Max, Task 5.1), not worldPos (the body's full-cube min-CORNER,
+    // despite BodyInstanceGpu's own field comment calling it "body centre" — see
+    // InstanceSort.h's updated doc comment for the full derivation). This node has
+    // concatenated_.configs available here (populated by EnsureOctreesBuilt/
+    // Rematerialize before any SetInstances/Sort call), so it can compute the real
+    // per-instance center instead of falling back to the plain worldPos-only overload.
+    // Procedural-provider instances (no octreeIndex-indexed config; analytic SDF, not
+    // ESVO) have no traceBounds to read — worldPos IS their true center for those
+    // (bodyWorldPos/kWorldGridSize's own convention only applies to Stored/ESVO
+    // instances), so the accessor below falls back to worldPos unchanged whenever
+    // octreeIndex doesn't resolve to a valid config, keeping this a strict refinement.
+    constexpr float kWorldGridSize = 10.0f;  // ShellOctreeGpu.h's fixed octree-local->world span
+    const std::vector<Vixen::SVO::OctreeConfig>& configs = concatenated_.configs;
+    Vixen::SVO::SortInstancesFrontToBack(instances_, cameraPos,
+        [&configs](const Vixen::SVO::BodyInstanceGpu& inst) {
+            const glm::vec3 worldPos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
+            if (inst.providerKind != 0u /* PROVIDER_STORED */ ||
+                inst.octreeIndex >= configs.size()) {
+                return worldPos;
+            }
+            return Vixen::SVO::traceBoundsWorldCenterOf(
+                configs[inst.octreeIndex], worldPos, inst.renderScale, kWorldGridSize);
+        });
 }
 
 void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
