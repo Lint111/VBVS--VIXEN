@@ -53,6 +53,40 @@ TEST(EmitProceduralFieldFunctionGlsl, UnionOfTwoSpheresChainsCorrectly) {
     EXPECT_NE(glsl.find("return t2;"), std::string::npos);
 }
 
+// Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype. Proves
+// EmitProceduralFieldFunctionGlsl's new emitDeclaredPositionOutParam=true path produces the
+// expected `out vec3 declaredPos` signature + inline assignment shape (pure string-shape
+// check; GPU numerical parity + the "declared position actually moves the shape" claim live
+// in test_recipe_glsl_numerical_parity.cpp's GPU-gated harness).
+TEST(EmitProceduralFieldFunctionGlsl, DeclaredPositionEmitsOutParamAndInlineAssignment) {
+    SdfInstruction prog[] = {
+        MakeOp(SdfOpCode::ReadParamFloat3), // idx defaults to data[0]=0 via zero-init
+        MakeOp(SdfOpCode::DeclarePosition),
+        MakeSphere(0.0f, 0.0f, 0.0f, 0.5f),
+    };
+    const std::string glsl = EmitProceduralFieldFunctionGlsl(prog, 3, /*recipeId=*/9,
+                                                              /*emitDeclaredPositionOutParam=*/true);
+
+    // Signature carries the out-param.
+    EXPECT_NE(glsl.find("float sdfRecipe_9(vec3 p, float params[6], out vec3 declaredPos) {"),
+              std::string::npos) << glsl;
+    // Inline assignment happens BEFORE the resolve segment's sphere call — i.e. the meta
+    // segment's out-param write precedes the SdfCore_Sphere call textually, proving the
+    // direction doc's "assign inline mid-walk, keep walking to the resolve segment" argument
+    // produces the expected single linear function body (no early-exit/branch machinery).
+    size_t assignPos = glsl.find("declaredPos = vec3(");
+    size_t spherePos = glsl.find("SdfCore_Sphere(");
+    EXPECT_NE(assignPos, std::string::npos) << glsl;
+    EXPECT_NE(spherePos, std::string::npos) << glsl;
+    EXPECT_LT(assignPos, spherePos) << "declaredPos assignment must precede the resolve "
+                                        "segment's field evaluation:\n" << glsl;
+    // The resolve segment samples the TRANSLATED position (curPos rewritten to p - declaredPos),
+    // not the raw input p — otherwise the declared position would be a disconnected reported
+    // value that never actually moves the shape.
+    EXPECT_NE(glsl.find("SdfCore_Sphere(pp"), std::string::npos)
+        << "resolve segment must sample the DeclarePosition-translated point, not raw p:\n" << glsl;
+}
+
 TEST(EmitProceduralFieldFunctionGlsl, EveryNumericLiteralHasDecimalPoint) {
     // Float-literal guard: a program exercising an integer-valued float (radius 6, a value
     // that would silently become the GLSL/HLSL int literal `6` without the guard) — mirrors

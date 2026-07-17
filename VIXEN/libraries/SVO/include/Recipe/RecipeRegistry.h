@@ -46,6 +46,7 @@ inline bool IsValidSdfOpCode(uint8_t raw) {
         case SdfOpCode::Float3Max: case SdfOpCode::Float3ScalarMul:
         case SdfOpCode::Float3Dot: case SdfOpCode::Float3Normalize:
         case SdfOpCode::ReadParam: case SdfOpCode::ReadParamFloat3:
+        case SdfOpCode::DeclarePosition:
             return true;
         default:
             return false;

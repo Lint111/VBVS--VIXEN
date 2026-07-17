@@ -128,7 +128,37 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
   what broke down, and fall back to flat-literal placement (M1's original, simpler plan, preserved below
   as the fallback) for the rest of this increment — do not force the contract through if it doesn't
   actually work cleanly at prototype scale.
-  - [ ] Not started.
+  - [x] **DONE (2026-07-17) — prototype SUCCEEDED cleanly, M2 proceeds on contract-based placement.**
+    Resolved the scoping question: recipe-side contract only, no new spatial structure (per this
+    increment's own decision, §0). Hand-authored ONE recipe:
+    `[ReadParamFloat3(idx=0), DeclarePosition, Sphere(center=0,r=0.5)]` — a new marker opcode
+    `DeclarePosition` (VIXEN-only, hand-mirrored into `SdfOpCodes.g.h` alongside the existing
+    `ReadParam`/`ReadParamFloat3` hand-mirrors; pops a float3 off the value stack, captures it as the
+    declared position, translates the sample point for the rest of the walk). The direction doc's own
+    inline-assignment argument HELD exactly as described: `EmitProceduralFieldFunctionGlsl` gained an
+    opt-in `emitDeclaredPositionOutParam` flag that assigns `declaredPos` the moment `DeclarePosition` is
+    walked, then keeps emitting the resolve segment into the same linear function body — no early-exit
+    machinery needed. `evalRecipe` got a mirrored `outDeclaredPos` out-param on the CPU side. Both are
+    opt-in (default-off/nullptr), so every pre-Inc6 call site is unaffected — confirmed by a full rebuild
+    + the entire pre-existing SVO test suite (test_recipe_codegen, test_recipe_codegen_glsl,
+    test_recipe_eval_parity [100 tests], test_recipe_registry, test_recipe_bake) passing unchanged.
+    **Correctness gate**: `RecipeGlslNumericalParityTest.DeclaredPositionMatchesAcrossCpuAndGpu`
+    (new, `test_recipe_glsl_numerical_parity.cpp`) ran on REAL discrete/integrated GPU hardware (not
+    skipped) and passed: declared position matches between CPU/GPU and the `ReadParam`-supplied value at
+    4 swept positions; the resolve segment's field value at a fixed query point correctly tracks the
+    declared position (outside when declared elsewhere, exactly `-radius` when declared==query point);
+    compiled the SPIR-V module exactly once and re-dispatched across all 4 params values (no-recompile
+    invariant confirmed, mirroring P4's own proven claim). **Live-render gate**: a new standalone
+    2D-distance-field-slice GPU test (`test_recipe_declared_position_render.cpp` — a full 3D ray-traced
+    render wasn't available for the GLSL field-function-only emitter, so a direct flat-slice
+    visualization was used instead, an equally valid and cheaper visual proof) rendered the same
+    recipe at 3 declared positions on real hardware and wrote 3 PNGs; each showed the sphere's disc
+    silhouette at the pixel location matching its declared world position (visually confirmed + a
+    centroid-position numeric assertion in the test itself). Commit: see this repo's git log on
+    `feat/recipe-diversity-stress-inc6` for the exact hash. New opcode registered in
+    `RecipeStackArity`/`IsValidSdfOpCode`; excluded (with an explicit, documented exemption) from the
+    shared `RecipeParityCorpus`/`RecipeGlslOpcodeCoverage` loop since it needs the out-param emitter path
+    the shared harness doesn't thread through — its own dedicated tests cover it instead.
 - **M2 — Spatial placement + recipe-diversity generation, scaled to N=20-250.** Generalize M1's proven
   placement mechanism (contract-based if M1 succeeded; flat-literal fallback if M1 found a real blocker)
   across N distinct, genuinely-diverging recipe programs — reuse/extend `VIXEN_PROCEDURAL_UBER_DEMO`'s

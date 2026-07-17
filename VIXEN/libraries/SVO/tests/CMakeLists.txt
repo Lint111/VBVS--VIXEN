@@ -648,6 +648,38 @@ endif()
 gtest_discover_tests(test_recipe_glsl_numerical_parity)
 
 # ===========================================================================
+# Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype's
+# live-render/visual gate (2D distance-field slice, not a full 3D ray-traced render — see
+# file header). Same GPU-required/SKIP behavior as test_recipe_glsl_numerical_parity above.
+# ===========================================================================
+add_executable(test_recipe_declared_position_render test_recipe_declared_position_render.cpp)
+if(TARGET SVO AND TARGET ShaderManagement AND TARGET VulkanResources)
+    target_link_libraries(test_recipe_declared_position_render PRIVATE
+        GTest::gtest_main SVO ShaderManagement VulkanResources)
+elseif(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_recipe_declared_position_render PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+else()
+    target_link_libraries(test_recipe_declared_position_render PRIVATE GTest::gtest_main)
+endif()
+if(TARGET stb)
+    target_link_libraries(test_recipe_declared_position_render PRIVATE stb)
+else()
+    target_include_directories(test_recipe_declared_position_render PRIVATE "${stb_SOURCE_DIR}")
+endif()
+target_compile_definitions(test_recipe_declared_position_render PRIVATE
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_recipe_declared_position_render PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_declared_position_render POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_declared_position_render>
+        COMMENT "Copying TBB DLL for test_recipe_declared_position_render")
+endif()
+gtest_discover_tests(test_recipe_declared_position_render)
+
+# ===========================================================================
 # Uber-Shader Splice Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11 —
 # SpliceProceduralRecipesIntoSource compiles the REAL BodyInstanceRayMarch.comp
 # through the production ShaderBundleBuilder path, CPU-only / no GPU needed)
