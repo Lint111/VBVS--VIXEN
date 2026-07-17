@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: M9 REVERTED (mis-diagnosis, af5da90b) — the tie-band tightening moved the baked path AWAY from analytic ground truth (validator caught it); 1e-4 was correct, Screenshot_246's green corner is legitimate geometry. REAL FINDING from the hw eval: baked path renders sphere/box OBJECTS + LIGHTING far worse than virtual (flat/washed-out vs crisp 3D) — the genuine baked-vs-virtual quality gap, PAUSED for user direction (candidate M10). Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). Correctness on hw: all 8 bodies, OOB 0/183540, cache HIT. KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
+status: M9 RESOLVED (Opus-max debug, diagnostic-only commit 067615ff) — seam geometry is ALREADY COHERENT + non-flipping at the current 1e-4 tie-band; PROVEN oracle-based that disabling the tie-break flips AWAY from virtual (so 1e-4 is correct, do NOT touch it; the reverted 1e-5 was wrong). The one residual box-corner cell = 32³ box BAKE QUANTIZATION, not a shader issue → user decision: accept baseline (rec) vs re-bake box at 64³. SEPARATE known gap: baked objects render fainter than virtual (lighting/shading, candidate M10). Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -596,6 +596,34 @@ documented as future-only.
 > object-body bake resolution. GATE for any real fix: baked object shading + lighting must
 > approach virtual's, verified by baked-vs-virtual IMAGE comparison at the objects, not just
 > the instIdx map. PAUSED for user direction on scope.
+
+> **OPUS-MAX DEBUG RESULT (2026-07-17, commit `067615ff` = diagnostic-only, ZERO shader
+> change): the seam geometry is ALREADY COHERENT and non-flipping at the current 1e-4
+> tie-band. No fix needed; the tie-band must NOT be touched.** Proven oracle-based against
+> the virtual render:
+> - **floor/rightWall seam is CORRECT as-is.** Disabling the tie-break (`SEAM_TIE_EPS_REL=0`,
+>   pure float compare) flips those cells AWAY from virtual (rightWall→floor) — so the 1e-4
+>   lower-index tie-break is doing the RIGHT thing there and is NECESSARY. This is the exact
+>   seam the reverted 1e-5 attempt broke. Experimentally confirmed, not opinion.
+> - **The original "checkering" (M6b's target) is GONE** — deterministic renderer, two runs
+>   md5-identical, zero single-pixel flips in the seam window.
+> - **The ONE residual cell that disagrees with virtual — pixel(290,390), box(7) vs floor(3)
+>   — is NOT a tie-break artifact.** Disabling the tie-break leaves that boundary
+>   byte-identical (the box/floor are cleanly depth-separated there, tie-break never fires).
+>   ROOT CAUSE: the box object bakes at 32³ voxels over its bounding volume (~0.15
+>   world-units/voxel ≈ 2 screen px at 34-unit depth), so its rounded-corner silhouette
+>   quantizes ~1 voxel narrower than the analytic box. Floor hits are worldPos-IDENTICAL
+>   baked-vs-virtual; only the box's edge ends 1-2px early. This is bake resolution, a
+>   BAKE-SIDE decision, not a shader fix.
+> - Baked instIdx map matches virtual at EVERY seam except that one quantized box-corner
+>   cell. No golden re-bless (correctly avoided the trap). OOB 0, 8 bodies, no perf change.
+>
+> **DECISION (user, pending):** (a) ACCEPT the one-voxel box-corner cell as the documented
+> baked/virtual quantization baseline (recommended — geometry-coherence goal is met), or
+> (b) re-bake boxObj at higher resolution (64³) to sharpen the corner — a bake-side change,
+> cost/scope TBD. Tightening the tie-band is DISPROVEN. (SEPARATE, out of scope: baked
+> sphere/box render fainter/darker than virtual = the known lighting/shading gap, candidate
+> M10.)
 
 ### (superseded) original Task 9.1 framing — kept for provenance, DO NOT re-attempt as written
 
