@@ -216,18 +216,19 @@ validator verdict.)
   binding 35 was used unconditionally in the shader (SPIR-V reflection correctly marks it required)
   but nothing in the PRODUCTION render path ever wired or populated that descriptor — an unbound
   `STORAGE_BUFFER` at `vkCmdDispatch` time on every default-scene frame.
-  - **Scope found WIDER than the fix prompt stated:** `SceneBindings.glsl`'s binding-35 declaration
-    (line 148/157) is unconditional (no `#ifdef`) and unconditionally `#include`d by FOUR production
-    shaders, not just the march: `BodyInstanceRayMarch.comp`, `DirectLighting.comp`, `ProbeUpdate.comp`,
-    `SpatialReuseShade.comp`. Independently verified (own grep + a sub-agent's independent research,
-    cross-checked): SPIR-V reflection (`SPIRVReflection.cpp`'s `spvReflectEnumerateDescriptorBindings`,
-    no dead-code-elimination pass anywhere in the shader build — `ShaderCompiler.cpp`) marks binding 35
-    REQUIRED in all four compiled shaders' descriptor sets regardless of whether that shader's own code
-    calls `isInstanceSkipped()` — confirmed against the codebase's own established precedent
-    (`ddgiLeakGateDebugBuffer` already wired into 3 separate gatherers for the identical reason). Fixed
-    all FOUR production gatherers (`descriptorGatherer`/main march, `directLightingGatherer`,
-    `probeUpdateGatherer`, `spatialReuseGatherer`), not just the one the fix prompt named — the other
-    three would have hit the identical unbound-descriptor bug on their own real dispatches otherwise.
+  - **Scope found WIDER than the fix prompt stated — CORRECTED 2026-07-17 by re-validator.**
+    `SceneBindings.glsl`'s binding-35 declaration (line 148/157) is unconditionally `#include`d by
+    FOUR production shaders (`BodyInstanceRayMarch.comp`, `DirectLighting.comp`, `ProbeUpdate.comp`,
+    `SpatialReuseShade.comp`), but the fix round's claim that SPIR-V reflection marks binding 35
+    REQUIRED "in all four regardless of usage" was **incorrect** — the re-validator's own independent
+    reflection dump found binding 35 is genuinely reflected-required in only THREE
+    (`BodyInstanceRayMarch.comp`/march, `ProbeUpdate.comp`, `SpatialReuseShade.comp` — all three
+    genuinely call `TraceWorld`/`isInstanceSkipped()`); `DirectLighting.comp` only MENTIONS
+    `TraceWorldShadow` in a comment, never calls it, so glslang elides the unreferenced SSBO from its
+    compiled binary entirely. The fix round wired all FOUR gatherers anyway (harmless — a live 3000-
+    frame run produced no descriptor/gatherer error for the extra, silently-ignored
+    `directLightingGatherer` wire — but it is unnecessary). **If a future cleanup pass touches this
+    area, the CORRECT required set is march + ProbeUpdate + SpatialReuse only, not all four.**
   - **Fix:** one shared `instanceSkipMaskBuffer` (`StorageBufferNode`, `PARAM_SIZE_BYTES=256`,
     `BuildRenderGraph.cpp` node creation ~line 632, param ~line 839, device wire ~line 4532) connected
     to binding 35 on all four gatherers (`BuildRenderGraph.cpp:4732, 5069, 5268, 5592`). Chose 256 bytes
@@ -276,6 +277,16 @@ validator verdict.)
   - **Deviation from prompt:** scope was WIDER than stated (3 additional gatherers, not just the main
     march's) — flagged above, not a deviation in spirit (the prompt's own reasoning, applied
     consistently, requires it). Everything else matches the prompt exactly.
+  - **Opus RE-VALIDATION: APPROVED.** Independently reproduced the live-app gate (3000 frames,
+    ~196 FPS, zero `VUID-vkCmdDispatch-None-08114`, validation confirmed active via 70 unrelated VUID
+    lines present), confirmed the tightened `EXPECT_EQ` assertion is real and passes on real GPU, and
+    confirmed the pre-existing-baseline claims via independent reasoning (the VUID classes seen are
+    structurally draw/present/sync-related, impossible to stem from a compute descriptor binding).
+    **Caught and corrected one real inaccuracy** (see above): the "required in all four shaders"
+    claim was wrong — `DirectLighting.comp` doesn't actually call `TraceWorldShadow`, so glslang elides
+    the unreferenced binding; only 3 of 4 gatherers genuinely needed the wire. Confirmed harmless
+    (the extra wire is silently ignored, zero errors in the live run) but flagged for future cleanup.
+    **Correctness-blocking issues: NONE.** M1 is APPROVED, cleared to proceed to M2.
 
 ---
 
