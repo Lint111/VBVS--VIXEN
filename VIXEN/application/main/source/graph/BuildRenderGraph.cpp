@@ -3622,12 +3622,39 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // serialization (descriptors.size()/brickViews.size() in ShellOctreeGpu.h), not
                 // stored as an O(1) field on Octree itself, so there is no cheap equivalent to
                 // preserve -- deleted rather than fabricating an approximate substitute.
-                // Task 7.2 (F5, continued): hand the light body's already-serialized+mip-baked
-                // lightSer to the concat pass via the precomputed map (index 5, its position in
-                // octreesForCat above) so it isn't serialized+mip-baked a THIRD time here.
-                const std::unordered_map<size_t, Vixen::SVO::SerializedOctree> precomputedSer = {
-                    {5, lightSer},
-                };
+                //
+                // Baked-Perf M7 Task 7.6: brick dedup by reference. Pre-serialize ALL 8 bodies
+                // (reusing Task 7.2's SerializeSdfWithMips helper -- the light body's own
+                // lightSer above is ALREADY exactly this, computed once), run DedupBricks on
+                // each body's own SerializedOctree (dedup is scoped per-octree -- see
+                // ShellOctreeGpu.h's own header comment on DedupBricks for why cross-octree
+                // dedup would need a bigger addressing change), then hand ALL 8 as precomputed
+                // entries to ConcatenateSdfWithMips so it serializes nothing itself and just
+                // concatenates the already-deduplicated per-body arrays. This kills BOTH
+                // intra-body duplication (a flat wall's identical interior bricks) and
+                // inter-body duplication WITHIN each body's own dedup pass; true cross-body
+                // sharing (the 5 walls' bricks against EACH OTHER) is out of scope for this
+                // pass -- see the DedupBricks header comment.
+                std::unordered_map<size_t, Vixen::SVO::SerializedOctree> precomputedSer;
+                uint32_t totalOriginalBricks = 0;
+                uint32_t totalDedupedBricks  = 0;
+                for (size_t k = 0; k < octreesForCat.size(); ++k) {
+                    Vixen::SVO::SerializedOctree ser = (k == 5)
+                        ? lightSer  // already serialized+mip-baked above; copy, don't redo the work
+                        : Vixen::SVO::SerializeSdfWithMips(*octreesForCat[k]);
+                    const Vixen::SVO::BrickDedupResult dedup = Vixen::SVO::DedupBricks(ser);
+                    totalOriginalBricks += dedup.originalBrickCount;
+                    totalDedupedBricks  += dedup.dedupedBrickCount;
+                    precomputedSer.emplace(k, std::move(ser));
+                }
+                const float overallDedupRatio = totalDedupedBricks > 0
+                    ? static_cast<float>(totalOriginalBricks) / static_cast<float>(totalDedupedBricks)
+                    : 1.0f;
+                mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: brick dedup -- "
+                                  "originalBricks=" + std::to_string(totalOriginalBricks) +
+                                  " dedupedBricks=" + std::to_string(totalDedupedBricks) +
+                                  " ratio=" + std::to_string(overallDedupRatio));
+
                 // (cat is the OUTER-scope ConcatenatedOctrees declared above the cache branch.)
                 cat = Vixen::SVO::ConcatenateSdfWithMips(octreesForCat, precomputedSer);
 

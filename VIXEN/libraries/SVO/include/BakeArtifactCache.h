@@ -48,7 +48,13 @@ public:
     // FIRST bytes hashed so any format change invalidates every existing cache
     // entry (a version bump alone is enough; no explicit clear step needed since
     // the key changes and old files simply become permanently-orphaned misses).
-    static constexpr uint32_t kFormatVersion = 1u;
+    // v2 (Task 7.6): the CONTENT stored under a given key changed -- callers now
+    // run DedupBricks on each body before handing it to the cache, so what a HIT
+    // loads is a deduplicated ConcatenatedOctrees, not the raw one v1 cached. Same
+    // recipe/params could otherwise hash to a v1 file that predates dedup and is
+    // silently stale (correct pixels, but NOT deduplicated, and NOT what a fresh
+    // bake under the current code would produce) -- bump forces a clean re-bake.
+    static constexpr uint32_t kFormatVersion = 2u;
 
     BakeArtifactKeyBuilder() { addU32(kFormatVersion); }
 
