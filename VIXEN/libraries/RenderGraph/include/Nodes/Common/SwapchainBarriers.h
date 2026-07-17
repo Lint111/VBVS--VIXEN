@@ -66,6 +66,34 @@ inline void TransitionImageToGeneralBarrier2(Vixen::Vulkan::Resources::VulkanDev
     device->fpCmdPipelineBarrier2(cmdBuffer, &dep);
 }
 
+// Baked-Perf M6 Task 6.2 (audit E3): return a blit's render-target source from
+// TRANSFER_SRC_OPTIMAL (where the blit left it) back to GENERAL — the stable cross-node
+// boundary layout every ComputeStageNode IMAGE_WRITE producer/consumer already assumes.
+// Before this fix, BlitRenderTargetToSwapchain left the render target in TRANSFER_SRC_OPTIMAL
+// across the frame boundary while SpatialReuseNode's next write (ComputeStageNode's private
+// imageWriteLayouts_ map, which only ever stores GENERAL) declared oldLayout=GENERAL — a
+// stale-layout mismatch against what the driver/validation layer actually tracked (the real
+// per-frame spec violation this milestone fixes). Returning to GENERAL here means BOTH the
+// blit's own layoutTracking map AND ComputeStageNode's imageWriteLayouts_ agree on the
+// image's state without sharing a map: GENERAL is the one layout every producer of this
+// image already writes into DecideRenderTargetPriorLayoutAndUpdate's tracked state.
+inline VkImageMemoryBarrier2 MakeRenderTargetPostBlitBarrier(VkImage image) {
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.srcStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
+    barrier.srcAccessMask       = VK_ACCESS_2_TRANSFER_READ_BIT;
+    barrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.dstStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    barrier.dstAccessMask       = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+    barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image               = image;
+    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    return barrier;
+}
+
 // Explicit GENERAL → PRESENT_SRC_KHR transition for the voxel-only (!leaveImageInGeneral) path.
 inline void TransitionImageToPresentBarrier2(Vixen::Vulkan::Resources::VulkanDevice* device,
                                               VkCommandBuffer cmdBuffer, VkImage image) {
@@ -93,14 +121,18 @@ inline void TransitionImageToPresentBarrier2(Vixen::Vulkan::Resources::VulkanDev
 // a compute pass, still GENERAL) up/down to the swapchain extent. Handles the full
 // GENERAL->TRANSFER_SRC / swapchain ?->TRANSFER_DST / blit / ->GENERAL-or-PRESENT_SRC
 // barrier sequence:
-//   render target:  GENERAL (compute write)      -> TRANSFER_SRC_OPTIMAL
+//   render target:  GENERAL (compute write)      -> TRANSFER_SRC_OPTIMAL -> GENERAL
 //   swapchain:       ?  (WSI acquire / prior frame's real last layout) -> TRANSFER_DST_OPTIMAL
 //   vkCmdBlitImage
 //   swapchain:       TRANSFER_DST_OPTIMAL -> GENERAL (composite/UI) or PRESENT_SRC_KHR (voxel-only)
-// The render target itself is left in TRANSFER_SRC_OPTIMAL; its NEXT write (by
-// whichever pass produces it) must declare that as oldLayout — callers should feed
-// this function's `layoutTracking` map into whatever barrier prepares that next write
-// (see DecideRenderTargetPriorLayoutAndUpdate above).
+// Baked-Perf M6 Task 6.2 (audit E3): the render target is returned to GENERAL before this
+// function returns (MakeRenderTargetPostBlitBarrier above) — GENERAL is the stable cross-node
+// boundary layout, so the NEXT write (by whichever ComputeStageNode IMAGE_WRITE producer
+// produces it) can declare oldLayout=GENERAL without needing to share this function's private
+// `layoutTracking` map with that producer's own imageWriteLayouts_ map. Before this fix the
+// render target was left in TRANSFER_SRC_OPTIMAL across the frame boundary while the next
+// writer's own private map (which only ever stores GENERAL) declared a stale oldLayout=GENERAL —
+// a genuine spec violation the validation layer would catch as a layout mismatch.
 //
 // Originally a ComputeDispatchNode-private method (`BlitRenderTargetToSwapchain`);
 // extracted here Sampled Lighting Inc3 M1 (KI-018) so the new presentation-only
@@ -150,16 +182,21 @@ inline void BlitRenderTargetToSwapchain(
     entryBarriers[0].subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
     entryBarriers[1].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    // srcStageMask must match (or come after) the acquire semaphore's wait stage
-    // (VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, set on this command buffer's submit — see
-    // acquireWait.stageMask in the caller) so this barrier actually chains an execution
-    // dependency off that wait. TOP_OF_PIPE_BIT here (the old value) is a no-op source that
+    // srcStageMask must match (or be synchronized-after) the acquire semaphore's wait stage
+    // on THIS command buffer's own submit so this barrier actually chains an execution
+    // dependency off that wait. TOP_OF_PIPE_BIT (the pre-KI-007 value) is a no-op source that
     // doesn't synchronize with anything, which is only harmless when oldLayout is a true
     // first-use UNDEFINED (nothing to wait for) — once the swapchain-tracking fix above
     // declares a real prior layout (PRESENT_SRC_KHR from a previous frame's present), this
     // must correctly wait on the acquire, else validation reports SYNC-HAZARD-WRITE-AFTER-READ
-    // against vkAcquireNextImageKHR.
-    entryBarriers[1].srcStageMask        = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    // against vkAcquireNextImageKHR. Baked-Perf M6 Task 6.1 (audit E2): BLIT_BIT, not
+    // COMPUTE_SHADER_BIT — this function's OWN command buffer either belongs to BlitNode
+    // (whose acquire wait, when it owns one, is declared at BLIT_BIT — see BlitNode::
+    // ExecuteImpl) or ComputeDispatchNode's voxel-only path (whose compute dispatch is
+    // already CPU-recorded strictly before this function runs in the SAME command buffer,
+    // so BLIT_BIT here still correctly comes after that dispatch in submission order
+    // regardless of the acquire wait's own stage there).
+    entryBarriers[1].srcStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
     entryBarriers[1].srcAccessMask       = VK_ACCESS_2_NONE;
     entryBarriers[1].oldLayout           = swapchainPriorLayout;
     entryBarriers[1].dstStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
@@ -197,8 +234,10 @@ inline void BlitRenderTargetToSwapchain(
                    swapchainImage,    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                    1, &blit, VK_FILTER_LINEAR);
 
-    // --- Exit barrier: swapchain TRANSFER_DST -> today's contract (GENERAL for UI, else PRESENT) ---
-    VkImageMemoryBarrier2 exitBarrier{};
+    // --- Exit barriers: restore the render-target source to GENERAL (Task 6.2 / audit E3) and
+    // transition swapchain TRANSFER_DST -> today's contract (GENERAL for UI, else PRESENT) ---
+    VkImageMemoryBarrier2 exitBarriers[2]{MakeRenderTargetPostBlitBarrier(renderTargetImage), {}};
+    VkImageMemoryBarrier2& exitBarrier = exitBarriers[1];
     exitBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     exitBarrier.srcStageMask        = VK_PIPELINE_STAGE_2_BLIT_BIT;
     exitBarrier.srcAccessMask       = VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -227,10 +266,16 @@ inline void BlitRenderTargetToSwapchain(
     // the correct oldLayout instead of hardcoding UNDEFINED.
     layoutTracking[swapchainImage] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
+    // Task 6.2: keep this function's own history honest too, though the real cross-node
+    // contract is that GENERAL is what every consumer of renderTargetImage already expects
+    // (ComputeStageNode's imageWriteLayouts_ map independently arrives at the same GENERAL
+    // state for its own next write — the two maps no longer need to agree by coincidence).
+    layoutTracking[renderTargetImage] = VK_IMAGE_LAYOUT_GENERAL;
+
     VkDependencyInfo exitDep{};
     exitDep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    exitDep.imageMemoryBarrierCount = 1;
-    exitDep.pImageMemoryBarriers    = &exitBarrier;
+    exitDep.imageMemoryBarrierCount = 2;
+    exitDep.pImageMemoryBarriers    = exitBarriers;
     device->fpCmdPipelineBarrier2(cmdBuffer, &exitDep);
 }
 

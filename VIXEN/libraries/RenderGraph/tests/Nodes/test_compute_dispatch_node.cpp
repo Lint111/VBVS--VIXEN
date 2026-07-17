@@ -73,3 +73,20 @@ TEST(DecideRenderTargetPriorLayoutAndUpdate, UpdatesTrackedStateToTheNewLayout) 
     EXPECT_EQ(tracked.at(img), VK_IMAGE_LAYOUT_GENERAL)
         << "the map must be updated to the layout just transitioned to, not left at the old value";
 }
+
+// Baked-Perf M6 Task 6.1 (audit E2): ComputeDispatchWaitsForSwapchainAcquire decides whether
+// this dispatch's own submit consumes the WSI acquire semaphore, or leaves it for whichever
+// later submit is the real first swapchain touch (BlitNode, on the split baked path).
+TEST(ComputeDispatchAcquirePolicy, OffscreenOnlyPassDoesNotConsumeSwapchainAcquire) {
+    EXPECT_FALSE(ComputeDispatchWaitsForSwapchainAcquire(/*writesNoImage=*/true))
+        << "a dispatch that writes no presentable image (writesNoImage) must not wait the acquire "
+           "-- it never touches the swapchain image, so the wait belongs to whichever later submit "
+           "does (BlitNode)";
+}
+
+TEST(ComputeDispatchAcquirePolicy, SwapchainWritingPassConsumesSwapchainAcquire) {
+    EXPECT_TRUE(ComputeDispatchWaitsForSwapchainAcquire(/*writesNoImage=*/false))
+        << "a dispatch that DOES write the swapchain/render-target image (voxel-only or "
+           "self-blitting variants) is the first real swapchain touch and must still consume "
+           "the acquire wait itself, unchanged from before Task 6.1";
+}

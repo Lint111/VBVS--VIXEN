@@ -17,6 +17,23 @@ namespace Vixen::RenderGraph {
 // IMAGE_WRITE role and the new BlitNode can reuse it too — this header still pulls it
 // in transitively via the SwapchainBarriers.h include above.
 
+// Baked-Perf M6 Task 6.1 (audit E2): the WSI acquire semaphore belongs to the FIRST
+// submission that actually accesses the swapchain image — waiting it anywhere else
+// cannot prove acquired-image ownership to Present, and validation reports a missing
+// wait against whichever submit really does touch the image first. In the split baked
+// path (writesNoImage==true: this dispatch writes only HitRecord, an SSBO — see
+// PARAM_WRITES_NO_IMAGE's own doc comment) the real first swapchain-touching submit is
+// BlitNode, several passes later. Cross-frame reuse safety for this dispatch's own
+// resources (HitRecord, the command-buffer ring) is unaffected by which node waits the
+// acquire: FrameSyncNode::ExecuteImpl already does a full CPU-side vkWaitForFences on
+// the current flight's in-flight fence (UINT64_MAX timeout) before this node's own
+// ExecuteImpl ever runs, which is what actually guarantees the previous frame using this
+// flight-ring slot has finished — the acquire semaphore only ever gated the SWAPCHAIN
+// image, which this dispatch never touches on the writesNoImage path.
+[[nodiscard]] constexpr bool ComputeDispatchWaitsForSwapchainAcquire(bool writesNoImage) {
+    return !writesNoImage;
+}
+
 /**
  * @brief Node type for generic compute shader dispatch
  *

@@ -285,12 +285,21 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
-    // Binary acquire wait (imageAvailable is a WSI binary semaphore)
-    VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    acquireWait.semaphore = imageAvailableSemaphore;
-    acquireWait.value     = 0;  // binary semaphore: value ignored
-    acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    waits.push_back(acquireWait);
+    // Baked-Perf M6 Task 6.1 (audit E2): the binary acquire wait must be consumed by the
+    // first submit that actually accesses the swapchain image. On the split baked path this
+    // dispatch writes HitRecord only (writesNoImage) — BlitNode is the real first swapchain
+    // touch and now owns this wait instead. See ComputeDispatchWaitsForSwapchainAcquire's doc
+    // comment (ComputeDispatchNode.h) for why this is safe (the per-flight fence wait in
+    // FrameSyncNode, not this semaphore, is what actually guards this dispatch's own
+    // cross-frame resource reuse). Swapchain-writing / self-blitting variants (writesNoImage
+    // == false) still consume it here, unchanged.
+    if (ComputeDispatchWaitsForSwapchainAcquire(writesNoImage)) {
+        VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        acquireWait.semaphore = imageAvailableSemaphore;
+        acquireWait.value     = 0;  // binary semaphore: value ignored
+        acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        waits.push_back(acquireWait);
+    }
 
     // Timeline SIGNALS (compute is the producer): a group signals its OWN completion value once.
     // All of a producer's signalEdges carry the same timelineOffset (== the producer's groupId,
@@ -322,7 +331,10 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         renderSig.semaphore = renderCompleteSemaphore;
         renderSig.value     = 0;  // binary semaphore: value ignored
-        renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        // Baked-Perf M6 Task 6.3 (audit pattern R7): scoped to COMPUTE_SHADER_BIT, this
+        // node's only queue-side work on the voxel-only path (matches the acquire wait's
+        // and the timeline signal's own stage mask above), not ALL_COMMANDS_BIT.
+        renderSig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
         signals.push_back(renderSig);
     }
 

@@ -56,6 +56,58 @@ trust these rects as a hard superset guarantee. · **Status:** OPEN, out of scop
 [[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2 (an analysis milestone, not a fix
 milestone for M1's shipped code) — the natural owner is whichever future increment revisits
 barrier-coalescing or otherwise builds a correctness-relevant decision on these coverage rects.
+
+---
+
+## KI-039 — Intermittent boot-time layout/acquire-semaphore validation flake on the Cornell baked demo, same `body_octree_scene` recompile trigger as KI-033
+
+**Discovered:** 2026-07-17, during Baked-Perf-Fix-Pipeline M6 Task 6.4's before/after validation-layer
+A/B gate (sync hygiene: blit exit-barrier layout fix + orphaned semaphore fix, audit E3/E4).
+
+**Symptom:** an intermittent (roughly 2/9 M6-fixed runs, 3/7 pre-M6 runs sampled) burst of
+`VUID-vkCmdDraw-None-09600` errors reporting the swapchain image's actual layout as `UNDEFINED`
+when a descriptor expected `GENERAL`, occasionally accompanied by `VUID-vkAcquireNextImageKHR-
+semaphore-01779` ("Semaphore must not have any pending operations") and a `vkQueuePresentKHR`
+"acquired with a semaphore that has not since been waited on" pair. All occurrences cluster at
+the SAME point in every run: immediately after the single one-time `RenderGraph::
+RecompileDirtyNodes` wave that recompiles `body_octree_scene` (dirty count 1), which fires right
+after the boot "Render pause event: START/END" / "Rendering resumed" sequence and before the
+first real frame's `ExecuteImpl`.
+
+**Root cause (not yet fixed, likely shared with KI-033):** not isolated further, but the trigger
+signature — a lone `body_octree_scene` recompile firing right after the boot pause/resume
+sequence, producing stale/mismatched sync state independent of anything the recompiled node's own
+bindings touch — matches KI-033's already-documented mechanism exactly (that entry reproduces on
+`VIXEN_PROCEDURAL_UBER_DEMO`; this one reproduces on `VIXEN_DDGI_CORNELL_BAKED_DEMO`). Plausibly
+the same underlying descriptor-set/layout-tracking gap across this one boot-time recompile,
+surfacing different VUIDs depending on which node graph is live.
+
+**Confirmed pre-existing, not introduced by Baked-Perf M6:** isolation-tested against the genuinely
+unmodified pre-M6 binary (`fix/baked-perf-pipeline` @ `c4bc07f5`, built in a disposable worktree
+with zero M6 changes applied) — the SAME `UNDEFINED`/acquire-semaphore-pending flake reproduces
+there too (3 of 7 sampled runs), always at the identical `body_octree_scene` recompile point.
+M6's own fix (Tasks 6.2/6.3: blit exit-barrier GENERAL restore + orphaned per-image binary
+semaphore fix) deterministically eliminates the SEPARATE, ALWAYS-present `VUID-vkCmdDraw-None-
+09600` (`TRANSFER_SRC_OPTIMAL` variant, audit E3) and `VUID-vkQueueSubmit2-semaphore-03868`
+(audit E4) pair — 9/9 M6-fixed runs never show either — while this intermittent flake is a
+distinct, narrower, unrelated pre-existing bug that persists unchanged on both sides of the fix.
+
+**Impact:** rare, boot-time-only, self-resolving noise (only 4 errors max, never recurs after the
+one recompile, no observed correctness impact on rendered output or the CornellDiag/parity gates
+across any sampled run). Same masking risk KI-033 already flags: could obscure a genuine NEW
+validation regression in a future session's gate unless diffed carefully against this known
+signature (the single boot-recompile point, `UNDEFINED`/`01779`-class only).
+
+**Fix options:** same territory as KI-033 — likely resolved together once that entry's
+descriptor-set/layout refresh gap across a `RecompileDirtyNodes` wave is root-caused; needs its
+own investigation session, not scoped to the baked-perf sync-hygiene milestone that found it.
+
+**Severity:** Low (intermittent, boot-only, self-resolving, no correctness impact observed) ·
+**Status:** OPEN · pre-existing (confirmed via disposable-worktree isolation against unmodified
+`c4bc07f5`), not a Baked-Perf M6 defect · likely same root cause as KI-033.
+
+---
+
 ## KI-038 — `test_baked_vs_virtual_parity`'s `readparam_sphere` corpus entry applies its `ReadParam` snapshot in the WRONG coordinate space on the baked path, producing a genuine (not KI-032) IoU failure
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2d's warm-up A

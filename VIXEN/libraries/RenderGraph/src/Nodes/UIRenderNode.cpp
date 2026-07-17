@@ -335,11 +335,17 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    // Binary signal (uiComplete / renderComplete — present waits on this)
+    // Binary signal (uiComplete / renderComplete — present waits on this).
+    // Baked-Perf M6 Task 6.3 (audit pattern R7): scoped to COLOR_ATTACHMENT_OUTPUT_BIT — this
+    // node's last GPU-side write is the render pass's color attachment (matches this same
+    // submit's own acquire-wait stage mask above, line ~318), not ALL_COMMANDS_BIT. Unlike the
+    // other three R7 sites this signal is always live (UI is the true frame-final consumer in
+    // both standalone and composite mode), so the correct scope is the graphics stage, not
+    // COMPUTE_SHADER_BIT.
     VkSemaphoreSubmitInfo binSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
     binSig.semaphore = signalSem;
     binSig.value     = 0;  // binary semaphore: value ignored
-    binSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    binSig.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
     signals.push_back(binSig);
 
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};

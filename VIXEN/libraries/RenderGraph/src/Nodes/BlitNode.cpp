@@ -132,17 +132,23 @@ void BlitNode::CompileImpl(TypedCompileContext& ctx) {
 void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const bool leaveImageInGeneral =
         GetParameterValue<bool>(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
+    // Baked-Perf M6 Task 6.3 (audit E4): centralizes the fence/present-semaphore ownership
+    // decision this function already made ad hoc from leaveImageInGeneral — see
+    // BlitSubmissionPolicy's doc comment (BlitNode.h) for the VUID this fixes.
+    const BlitSubmissionPolicy submissionPolicy = ResolveBlitSubmissionPolicy(leaveImageInGeneral);
 
     const uint32_t imageIndex = ctx.In(BlitNodeConfig::IMAGE_INDEX);
     const uint32_t currentFrameIndex = ctx.In(BlitNodeConfig::CURRENT_FRAME_INDEX);
     VkFence inFlightFence = ctx.In(BlitNodeConfig::IN_FLIGHT_FENCE);
     const std::vector<VkSemaphore>& renderComplete = ctx.In(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& imageAvailable = ctx.In(BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
 
     // Two separate bounds: the image-derived arrays are indexed by imageIndex (bounded by
     // renderComplete size), while the command-buffer ring is frame-indexed (bounded by its own
-    // flight-ring size).
+    // flight-ring size, as is imageAvailable — Task 6.1 adds this third frame-indexed bound).
     if (imageIndex == UINT32_MAX || imageIndex >= renderComplete.size() ||
-        currentFrameIndex >= commandBuffers_.size()) {
+        currentFrameIndex >= commandBuffers_.size() ||
+        (submissionPolicy.waitsForSwapchainAcquire && currentFrameIndex >= imageAvailable.size())) {
         NODE_LOG_WARNING("[BlitNode] Invalid image/frame index - skipping frame");
         return;
     }
@@ -158,7 +164,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // GPU ordering before UI is preserved regardless: both submit to the same device->queue in
     // executionOrder, so submission order already sequences them (a fence never orders GPU work).
     // Terminal blit (leaveImageInGeneral==false, no UI after it): Blit stays the sole fence owner.
-    if (!leaveImageInGeneral) {
+    if (submissionPolicy.ownsFrameFence) {
         vkResetFences(GetDevice()->device, 1, &inFlightFence);
     }
 
@@ -182,11 +188,21 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
+    // Baked-Perf M6 Task 6.1 (audit E2): this is the first submission that actually touches
+    // the acquired swapchain image in the split baked path (the march writes HitRecord only
+    // and no longer waits imageAvailable itself — see ComputeDispatchWaitsForSwapchainAcquire's
+    // doc comment, ComputeDispatchNode.h). Consume the WSI binary at BLIT, the stage that
+    // performs this node's first real access to the acquired image.
+    if (submissionPolicy.waitsForSwapchainAcquire) {
+        VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        acquireWait.semaphore = imageAvailable[currentFrameIndex];
+        acquireWait.value     = 0;  // binary semaphore: value ignored
+        acquireWait.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
+        waits.push_back(acquireWait);
+    }
+
     // Timeline WAITS: one per baked waitEdge — the genuine fan-in wait proving the upstream
     // shading pass (IMAGE_WRITE) finished writing before this blit reads it (IMAGE_READ).
-    // No binary imageAvailable wait here: the upstream pass chain already consumed the WSI
-    // acquire (see BlitNodeConfig.h's class doc comment on why this node isn't the first
-    // submit in the default composite chain).
     if (timelineSem != VK_NULL_HANDLE) {
         const FrameSyncSchedule& sched = GetOwningGraph()->GetFrameSyncSchedule();
         if (const SubmitGroup* grp = FindGroupForNode(sched, this)) {
@@ -200,12 +216,22 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    // Binary signal (renderComplete, indexed by image) — Present waits on this.
-    VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    renderSig.semaphore = renderComplete[imageIndex];
-    renderSig.value     = 0;  // binary: value ignored
-    renderSig.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    signals.push_back(renderSig);
+    // Baked-Perf M6 Task 6.3 (audit E4): only a TERMINAL blit signals the binary semaphore
+    // Present consumes. In the composite chain (leaveImageInGeneral==true) nothing ever waits
+    // this per-image semaphore — UI owns the frame-final present handoff via its OWN signal —
+    // so signalling it here left an orphaned pending signal that became an illegal re-signal
+    // the next time this swapchain image index came back around
+    // (VUID-vkQueueSubmit2-semaphore-03868). See BlitSubmissionPolicy's doc comment.
+    // Stage mask scoped to BLIT (this node's only queue-side work in a compute-only app),
+    // not ALL_COMMANDS_BIT (audit pattern R7) -- a terminal blit's last GPU-side access to
+    // anything Present cares about is the blit itself.
+    if (submissionPolicy.signalsPresentSemaphore) {
+        VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        renderSig.semaphore = renderComplete[imageIndex];
+        renderSig.value     = 0;  // binary: value ignored
+        renderSig.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
+        signals.push_back(renderSig);
+    }
 
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
@@ -217,7 +243,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Composite (leaveImageInGeneral): downstream UI owns the frame fence, so submit with none —
     // see the fence-ownership comment above. Terminal blit: this is the last submit, own the fence.
-    VkFence submitFence = leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence;
+    VkFence submitFence = submissionPolicy.ownsFrameFence ? inFlightFence : VK_NULL_HANDLE;
 
     VkResult result;
     {
@@ -231,7 +257,16 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
                                  std::to_string(result));
     }
 
-    ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderComplete[imageIndex]);
+    // Baked-Perf M6 Task 6.3: publish the real semaphore only when this submit actually
+    // signalled it (submissionPolicy.signalsPresentSemaphore) -- in composite mode this output
+    // feeds BuildRenderGraph.cpp's blit->sky-projection->UI connections, which that file's own
+    // comment documents as ORDERING-only topology edges that nothing ever waits (their real
+    // ordering comes from the baked timeline, not this binary handoff). Publishing an honest
+    // VK_NULL_HANDLE here (instead of a real handle this submit never signals) keeps that
+    // documented "the binary semaphores they carry are INERT" claim actually true, now that
+    // Task 6.3 stops signalling the handle in composite mode.
+    ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+            submissionPolicy.signalsPresentSemaphore ? renderComplete[imageIndex] : VK_NULL_HANDLE);
     ctx.Out(BlitNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
 
