@@ -219,7 +219,8 @@ This resolves two of the user's sub-ideas:
    **Increment 4 (Recipe Live-App Bucketed-Dispatch — give the proven mechanism a real home in
    `VixenApp`, not another isolated-harness re-measurement) ✅ SHIPPED 2026-07-17, RESULT:
    confirmed live, one new root cause found** ([[Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07]],
-   M1-M4 all DONE, Opus-validated APPROVED/APPROVED_WITH_NOTED_RISK on M1-M3, M4 measurement-only).
+   M1-M4 all DONE, ALL FOUR Opus-validated APPROVED/APPROVED_WITH_NOTED_RISK, including an
+   independent statistical re-derivation of M4's own performance numbers).
    M1-M3 built the substantial NEW plumbing a safe, gated, coexisting-with-tier-0 live integration
    actually requires (a per-instance skip-mask SSBO so tier-0's march can exclude bucketed
    instances; real cross-pass `HitRecord` compositing retrofitted onto the ACTUAL production
@@ -233,20 +234,26 @@ This resolves two of the user's sub-ideas:
    M3's own 3-hot mix, mostly-hot, a 10-hot/64-instance large-N mix), each as 3-5 independent paired
    runs (this machine showed real run-to-run noise, both from a sibling agent's concurrent build and
    from within-run GPU clock-state shifts — controlled for via repeated paired sampling, not a single
-   run). **Gate-ON is a net loss or a wash at every mix tested, confirming Inc2/Inc3's isolated
-   finding live**: all-cold 0.78x (cleanest signal, 0/3 gate-ON wins), M3-mix 0.85x (1/5 wins),
-   mostly-hot 0.88x (1/3 wins), large-N ~1.02x/near-parity (1/3 wins, the closest any mix came to
-   gate-ON winning, still not a clear win). **One NEW root cause Inc2/3 could not have found**
-   (they never ran a full frame graph): even with ZERO recipes ever promoted, gate-ON pays a
-   real, consistently-measured ~15-25% FPS tax (all-cold mix) — traced to `VulkanGraphApplication::
-   RunRecipeBucketedDispatchPreTick` running unconditionally every frame regardless of hotness
-   (CPU-side instance regrouping + 2 unconditional GPU-buffer map/unmap round-trips), not to any
-   GPU dispatch cost. Full numbers and methodology: [[Perf-Ledger]] "Live-app bucketed-dispatch
-   measurement (Inc4 M4, 2026-07-17)". **Net effect for the epic as a whole across Inc2->Inc3->Inc4**:
-   three independent measurements (isolated-harness, isolated-harness-post-optimization, and now
-   live-full-frame-graph) all agree bucketed dispatch does not beat a single fixed dispatch at any
-   tested population; Inc4 additionally surfaces a fixed per-frame CPU cost the isolated harnesses
-   structurally could not see. **The path stays opt-in** (`VIXEN_RECIPE_BUCKETED_DISPATCH`, unset by
+   run). **Gate-ON never shows a statistically clear win at any mix tested, confirming Inc2/Inc3's
+   isolated finding live** — an Opus re-validator independently re-derived every ratio from the raw
+   per-run CSVs via paired t-tests against parity: all-cold 0/3 wins (95% CI [0.678, 1.010]), M3-mix
+   1/5 wins (CI [0.634, 1.072]), mostly-hot 1/3 wins (CI [0.404, 1.333]), large-N 1/3 wins, closest to
+   parity (CI [0.851, 1.281]) — pooled 5/19 wins, CI [0.813, 1.007]. **Every mix's confidence interval
+   includes parity**, so the raw point ratios (0.78x/0.85x/0.88x/1.02x) should be read as noise-
+   dominated, not as precise per-mix effect sizes — the durable, statistically defensible claim is
+   "never a clear win," not the specific decimal ratios. **One NEW root cause Inc2/3 could not have
+   found** (they never ran a full frame graph), and the ONE result in this whole measurement that IS
+   independently confirmed statistically significant: even with ZERO recipes ever promoted, gate-ON
+   pays a real CPU-side tax (+1.65ms/frame, CI [+0.08, +3.22], excludes zero, reproduced twice more by
+   the re-validator) — traced to `VulkanGraphApplication::RunRecipeBucketedDispatchPreTick` running
+   unconditionally every frame regardless of hotness (CPU-side instance regrouping + 2 unconditional
+   GPU-buffer map/unmap round-trips), not to any GPU dispatch cost. Full numbers and methodology:
+   [[Perf-Ledger]] "Live-app bucketed-dispatch measurement (Inc4 M4, 2026-07-17)". **Net effect for the
+   epic as a whole across Inc2->Inc3->Inc4**: three independent measurements (isolated-harness,
+   isolated-harness-post-optimization, and now live-full-frame-graph) all agree bucketed dispatch never
+   establishes a statistically clear win over a single fixed dispatch at any tested population; Inc4
+   additionally surfaces a real, statistically significant fixed per-frame CPU cost the isolated
+   harnesses structurally could not see. **The path stays opt-in** (`VIXEN_RECIPE_BUCKETED_DISPATCH`, unset by
    default) — this increment's own scope was giving the mechanism a live home to be honestly measured
    in, not making it win, and it does not win. GPU-LRU eviction (next item below) remains deferred
    for the same reason as before: evicting a mechanism that isn't yet fast enough to be worth caching

@@ -145,10 +145,14 @@ Windows `.bat` builds, real discrete GPU (Windows-native) for every milestone.
 - **M4 — Live correctness + performance measurement** (Task 4) · **live-run gate, discrete GPU
   mandatory** · gate-ON vs. gate-OFF correctness proof (identical rendering) + honest FPS/frame-time
   measurement in the real app, recorded in [[Perf-Ledger]] and this plan's doc closure.
-  - [x] DONE 2026-07-17. Correctness proof: byte-identical (MD5-confirmed). Honest perf finding:
-    gate-ON is a net loss or a wash at every population mix tested (0.78x-1.02x), confirming
-    Inc2/Inc3's isolated finding live, plus one new root cause (a fixed per-frame CPU tax paid
-    even with zero promotions). See Progress Log entry below for the full account.
+  - [x] DONE 2026-07-17, Opus re-validator APPROVED_WITH_NOTED_RISK. Correctness proof:
+    byte-identical (MD5-confirmed, independently reproduced). Honest perf finding: gate-ON never
+    shows a statistically clear win at any population mix tested (raw ratios 0.78x-1.02x, but
+    re-validation found every mix's confidence interval includes parity -- the defensible claim is
+    "never a clear win," not the specific ratios), confirming Inc2/Inc3's isolated finding live,
+    plus one new, statistically significant root cause (a fixed per-frame CPU tax paid even with
+    zero promotions). See Progress Log entry below for the full account, including the
+    re-validator's statistical correction.
 
 **Milestone Map: ALL 4 MILESTONES DONE.** M1 (skip mechanism), M2 (real cross-pass compositing),
 M3 (production indirect-dispatch wiring + env-var gate), M4 (live correctness + honest perf
@@ -788,6 +792,17 @@ validator verdict.)
     **Gate-ON is a net loss or a wash at every mix tested — confirms Inc2/Inc3's isolated finding,
     live, exactly as the prompt anticipated might happen.** No cherry-picking: all 4 mixes and every
     individual paired run are reported in [[Perf-Ledger]], not just the best-looking one.
+  - **STATISTICAL CORRECTION from the Opus re-validator (see the M4 re-validation entry below for the
+    full account):** the re-validator independently re-derived every ratio above from the raw per-run
+    CSVs via paired t-tests against parity and found **every single mix's 95% confidence interval
+    includes 1.0x** — none of the point ratios above is individually statistically significant, given
+    a real, confirmed bidirectional ~15% noise floor from sequential (not simultaneous) paired process
+    launches landing on different GPU clock-state plateaus. 3-5 paired repeats is not enough sample
+    size to resolve a ~10-15% effect against that noise floor. **The qualitative conclusion above
+    ("net loss or a wash at every mix") still holds and is the correct, durable claim — but the
+    specific decimal ratios (0.78x/0.85x/0.88x/1.02x) should not be read as tight, individually
+    significant effect sizes.** The pooled result across all 19 pairs (5/19 gate-ON wins, ratio 0.910x,
+    CI [0.813, 1.007]) is the closest any aggregation comes to significance, still just inside parity.
   - **One NEW finding Inc2/3's isolated harnesses structurally could not have surfaced** (they never
     ran a full frame graph): even the all-cold mix (ZERO recipes ever promoted, ZERO specialized
     pipelines ever compiled) pays a real, consistently-measured ~15-25% FPS tax with the flag on.
@@ -800,7 +815,12 @@ validator verdict.)
     early-out at line 626. The CSV's `cpu_frame_time_ms` column is the one column that consistently
     reads higher for gate-ON across all 3 all-cold pairs (9.69-10.38ms vs. 7.34-8.59ms gate-OFF) — a
     genuine CPU-side per-frame cost, not a GPU dispatch cost (the GPU-side pass timings showed no
-    consistent gate-OFF-vs-ON pattern once averaged over the machine noise). **Reported as a finding/
+    consistent gate-OFF-vs-ON pattern once averaged over the machine noise). **This is the ONE result
+    in the entire measurement that the Opus re-validator independently confirmed IS statistically
+    significant** (paired CPU-delta t-test: mean +1.65ms, 95% CI [+0.08, +3.22], excludes zero,
+    reproduced twice more by the re-validator's own runs at +1.78ms/+8.00ms) — unlike the FPS ratios
+    above, this specific finding survives the noise-floor scrutiny and is the most durable single
+    conclusion this milestone produced. **Reported as a finding/
     recommendation only, per the prompt's explicit instruction not to fix mechanism issues found
     during this measurement-only milestone** — a future cleanup pass could gate Steps 1-3's buffer
     readbacks behind a cheaper "did the instance set change since last frame" check, but that's a
@@ -816,17 +836,51 @@ validator verdict.)
     `run_m4_gate_on.bat`/`run_m4_perf.bat` (measurement scripts, following the established
     `run_m2_capture.bat` env-in-batch pattern); this plan doc + Perf-Ledger.md + the JIT direction
     doc updated with the honest results.
-- **Increment 4 as a whole: READY TO CLOSE OUT.** All 4 milestones DONE, M1-M3 Opus-validated
-  APPROVED/APPROVED_WITH_NOTED_RISK, M4 self-validated (measurement-only milestone, no mechanism
-  change to re-review). The specialized-pipeline mechanism now has a real, gated, byte-identical-
-  correct home inside `VixenApp`, honestly measured to still not beat tier-0 live — consistent with,
-  not contradicting, this whole epic's established honesty discipline. Nothing outstanding blocks
-  closing this increment except GPU-LRU eviction, which stays explicitly, deliberately deferred to a
-  future increment per this plan's own §0 scope boundary (a live population now exists for a future
-  increment to eventually evict from — that's the only thing this increment intentionally leaves
-  undone). The one non-blocking cleanup item M3's re-validator flagged (adopt `DescriptorSetNode`'s
-  flight-ring pattern for the bucketing pre-pass's descriptor sets, to make the benign `03047` VUID
-  class disappear) remains open for a future pass, not a gate to closing this increment.
+- **M4 — Opus re-validator: APPROVED_WITH_NOTED_RISK (2026-07-17).** Independently rebuilt fresh
+  (291/291, no FAILED) and re-ran the correctness capture (own MD5 `af1dcec88ddd91ef737a618ea0ad62e0`,
+  exact match) — confirmed `CaptureHudFrameToPng` reads the FULL composited swapchain, not a HUD-only
+  overlay, so the byte-identical proof genuinely covers the underlying scene render; gate-ON's
+  mechanism-activation log-confirmed, not an inert-flag false pass.
+  - **Independently re-derived every reported performance ratio from the raw per-run CSVs via paired
+    one-sample t-tests against parity.** Found the CSV set actually holds 5 pairs/mix (some table rows
+    had cited n=3). Result: **every mix's 95% confidence interval includes 1.0x** — all-cold [0.678,
+    1.010], M3-mix [0.634, 1.072], mostly-hot [0.404, 1.333], large-N [0.851, 1.281], pooled (n=19)
+    0.910x [0.813, 1.007]. Confirmed the noise is real and bidirectional: paired runs are sequential
+    process launches (not simultaneous), so they can land on different GPU clock-state plateaus —
+    the reported ON-"win" outliers are whole runs sitting on a high FPS clock plateau against a paired
+    OFF run that happened to sit lower. **Verdict: 3-5 paired repeats is not enough sample size to
+    resolve a ~10-15% effect against a ~15% noise floor — the specific point ratios should not be read
+    as individually significant effect sizes.** This does NOT overturn the report's qualitative
+    conclusion: "a wash" IS statistical parity, so "net loss or a wash at every mix, never a clear win"
+    remains the correct, defensible claim — it's the precise decimal ratios that needed this caveat.
+  - **Confirmed the all-cold CPU-tax finding IS the one statistically significant result**: independently
+    re-derived paired CPU-delta test, mean +1.65ms, 95% CI [+0.08, +3.22] (excludes zero) — reproduced
+    with the re-validator's own two additional all-cold paired runs (+1.78ms, +8.00ms deltas, one
+    reproducing the reported 0.798x FPS ratio almost exactly). Read `RunRecipeBucketedDispatchPreTick`
+    directly and confirmed Steps 1-3 genuinely run unconditionally before the `hotRecipeIds.empty()`
+    early-out.
+  - Confirmed the population-mix env-var change is genuinely additive (diff touches only
+    `BuildRenderGraph.cpp`'s demo-scene section, zero mechanism/shader/dispatch code — grep-confirmed).
+    Confirmed doc updates honestly report the loss/wash and don't bury the CPU-tax finding. Confirmed
+    tree integrity (`92f0d203..f7c0c316`, single coherent commit, 4 files, clean).
+  - **Verdict: APPROVED_WITH_NOTED_RISK** — nothing correctness-blocking; the noted risk (the point
+    ratios' precision) has been corrected inline in this doc and in [[Perf-Ledger]] and the JIT
+    direction doc per this finding, so the permanent record now states the statistically defensible
+    claim rather than treating the raw ratios as tight measurements.
+- **Increment 4 as a whole: READY TO CLOSE OUT.** All 4 milestones DONE, M1-M4 ALL Opus-validated
+  (APPROVED/APPROVED_WITH_NOTED_RISK). The specialized-pipeline mechanism now has a real, gated,
+  byte-identical-correct home inside `VixenApp`, honestly measured to never establish a statistically
+  clear win over tier-0 live — consistent with, not contradicting, this whole epic's established
+  honesty discipline. Nothing outstanding blocks closing this increment except GPU-LRU eviction, which
+  stays explicitly, deliberately deferred to a future increment per this plan's own §0 scope boundary
+  (a live population now exists for a future increment to eventually evict from — that's the only
+  thing this increment intentionally leaves undone). Two non-blocking cleanup items remain open for a
+  future pass, not gates to closing this increment: (1) M3's re-validator's recommendation to adopt
+  `DescriptorSetNode`'s flight-ring pattern for the bucketing pre-pass's descriptor sets (removes the
+  benign `03047` VUID class); (2) the fixed per-frame CPU tax `RunRecipeBucketedDispatchPreTick` pays
+  even with zero promotions (M4's new finding) — a plausible future fix is gating Steps 1-3's buffer
+  readbacks behind a "did the instance set change since last frame" check, not implemented here per
+  this milestone's measurement-only scope.
 
 ---
 
