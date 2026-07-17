@@ -72,6 +72,7 @@
 #include "SVOBuilder.h"       // Octree / OctreeBlock
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
+#include "EntityBrickView.h"  // Baked-Perf M7 Task 7.2: getEntityFast bulk brick lookup
 #include "VoxelComponents.h"  // Material, Density
 #include "VoxelChannelFormat.h"  // ChannelDesc, kMaxChannels, SemanticId, FieldKind (Inc3 M1)
 #include "TierRef.h"          // TierRef (Tiered-ESVO Inc2 M1 Task 1)
@@ -88,6 +89,7 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace Vixen::SVO {
@@ -339,6 +341,23 @@ struct SerializedOctree {
     uint32_t nodeCount = 0;   // == nodes.size() / sizeof(ChildDescriptor)
     uint32_t brickCount = 0;  // == bricks.size() / kBrickStrideBytes
 
+    // Baked-Perf M7 Task 7.5: occupancy stats, accumulated for free during the
+    // existing per-voxel serialize loop below (no extra pass over the octree).
+    // occupiedVoxelCount / (brickCount * kVoxelsPerBrick) = voxel fill ratio
+    // within allocated bricks; feeds the M8 dense-3D-texture-vs-ESVO per-body
+    // decision (a dense texture only wins where fill ratio is near 1.0).
+    uint32_t occupiedVoxelCount = 0;
+    // Per-brick occupied-voxel count, parallel to bricks[]/channelPool (index i =
+    // brick i's own count). Task 7.6 (brick dedup) needs this: occupiedVoxelCount
+    // is a single body-wide SUM taken BEFORE dedup can ever run, so collapsing
+    // duplicate bricks would silently inflate occupiedVoxelCount/brickCount's
+    // ratio past 1.0 (the sum still reflects every ORIGINAL occurrence, but
+    // brickCount shrinks to the deduplicated slot count) unless DedupBricks
+    // recomputes the body-wide sum from only the KEPT bricks' own counts --
+    // this per-brick array is what makes that recomputation exact rather than
+    // an approximation. Empty unless populated by SerializeSdf below.
+    std::vector<uint32_t> perBrickOccupiedVoxelCount;
+
     // Returns the channelBaseFloats for the given semantic (scans channels[]).
     // Returns 0xFFFFFFFFu if the semantic is not present.
     uint32_t channelBaseFloats(SemanticId sem) const {
@@ -400,6 +419,9 @@ struct ConcatenatedOctrees {
     std::vector<uint32_t>     nodeCounts; // per-octree node count
     std::vector<uint32_t>     brickCounts;// per-octree brick count
     std::vector<uint32_t>     tierRefCounts; // per-octree tier-ref-table entry count
+    // Baked-Perf M7 Task 7.5: per-octree occupied-voxel count (mirrors brickCounts'
+    // own per-octree convention) -- feeds the M8 per-body dense-texture decision.
+    std::vector<uint32_t>     occupiedVoxelCounts;
     uint32_t count = 0;  // number of octrees packed (== configs.size())
 };
 
@@ -775,19 +797,39 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     const size_t poolFloats = static_cast<size_t>(out.brickCount) * out.brickStrideFloats;
     std::vector<float> pool(poolFloats, 0.0f);
 
+    // Task 7.6 (see the field's own header comment): per-brick occupied-voxel
+    // counts, so DedupBricks can recompute an exact body-wide occupiedVoxelCount
+    // from only the bricks it actually keeps.
+    out.perBrickOccupiedVoxelCount.assign(out.brickCount, 0u);
+
+    // Baked-Perf M7 Task 7.2 (audit F4): per-voxel lookup used to go through
+    // world.getEntityByWorldSpace(worldPos) -- a float grid position re-derived via
+    // MortonKey::fromPosition (float->Morton conversion) then a hash lookup, called
+    // fresh for EVERY one of the 512 voxels/brick. A per-brick EntityBrickView built
+    // once (over the brick's own INTEGER gridOrigin, matching its local grid frame
+    // exactly) precomputes ONE Morton base in its constructor; getEntityFast() then
+    // reaches each voxel via cheap integer Morton arithmetic (addLocalOffset) + a
+    // direct-by-Morton hash lookup, skipping the float round-trip 512x per brick.
+    // getBrickEntitiesInto/getEntityFast were previously zero-caller (dormant-work
+    // inventory #4) -- this is byte-identical output (same entities, same order),
+    // strictly a lookup-cost fix, not a behavior change.
+    // brickSide == 1<<brickDepth (SVOBuilder.h's own brickSideLength convention);
+    // EntityBrickView's integer-grid ctor wants the depth, not the side length.
+    const uint8_t brickDepthForView = static_cast<uint8_t>(std::countr_zero(static_cast<unsigned>(brickSide)));
     for (uint32_t bi = 0; bi < out.brickCount; ++bi) {
         const Vixen::GaiaVoxel::EntityBrickView& view = brickViews[bi];
         const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
+        Vixen::GaiaVoxel::EntityBrickView fastView(world, gridOrigin, brickDepthForView);
         uint32_t voxelSlot = 0u;
         for (int bz = 0; bz < brickSide; ++bz) {
             for (int by = 0; by < brickSide; ++by) {
                 for (int bx = 0; bx < brickSide; ++bx, ++voxelSlot) {
-                    const glm::vec3 worldPos(
-                        static_cast<float>(gridOrigin.x + bx),
-                        static_cast<float>(gridOrigin.y + by),
-                        static_cast<float>(gridOrigin.z + bz));
-                    const auto entity = world.getEntityByWorldSpace(worldPos);
+                    const auto entity = fastView.getEntityFast(bx, by, bz);
                     const bool alive  = world.exists(entity);
+                    if (alive) {
+                        ++out.occupiedVoxelCount;  // Task 7.5 occupancy stat
+                        ++out.perBrickOccupiedVoxelCount[bi];  // Task 7.6: per-brick, for dedup recompute
+                    }
 
                     // material brick (unchanged)
                     uint32_t materialId = 0u;
@@ -971,6 +1013,191 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     }
 
     return out;
+}
+
+// ===========================================================================
+// Baked-Perf M7 Task 7.6 — brick dedup by reference (content-addressed pool)
+// ===========================================================================
+// DedupBricks: an OPT-IN post-process over an already-built SerializedOctree.
+// Deliberately NOT folded into SerializeSdf/ConcatenateSdf/ConcatenateSdfWithMips
+// themselves -- test_soa_sdf_serialize.cpp pins their output sizes exactly
+// (BrickBufferSize, ConcatenateSdfBrickArrayBase, etc.), and every other caller of
+// those functions across the demos/tests expects today's undeduplicated behavior.
+// A caller that wants dedup calls this explicitly on the SerializedOctree BEFORE
+// concatenation (dedup is scoped per-octree, matching brickGridLookup's own
+// per-octree-local brickIdx addressing -- ConcatenateSdfWithMips's poolBrickBase
+// prefix-sum bookkeeping is untouched, since it only ever sees `out.brickCount`
+// as a black box after this runs).
+//
+// Mechanism: hash each brick's full payload -- the material word slice
+// (bricks[i*512..(i+1)*512)) AND the channelPool slice
+// (channelPool[i*brickStrideFloats..(i+1)*brickStrideFloats)), since BOTH
+// contribute to what the shader reads for a given brickIdx (SEM_SDF/COLOR/
+// ROUGHNESS/EMISSION via channelPool; material via bricks). Two bricks are
+// interchangeable ONLY if every byte of both slices matches bit-for-bit --
+// there is no addressing metadata inside a brick's own payload (base/scale/
+// origin all live on the REFERENCING leaf's brickGridLookup entry + the
+// octree-wide OctreeConfig, never inside the brick itself), so a payload-only
+// hash is the complete and correct dedup key: nothing about how a brick is
+// addressed changes when its slot is shared.
+//
+// Effect: compacts `out.bricks`/`out.channelPool` down to the unique-payload
+// set, then rewrites every brickGridLookup[] entry that pointed at a removed
+// duplicate to point at the surviving slot instead (leaves that referenced a
+// duplicate keep their OWN grid-cell/addressing -- only the brickIdx they
+// resolve to changes, exactly the "share the DATA, not the leaf's addressing"
+// requirement). out.brickCount is updated to the deduplicated count.
+//
+// Returns the dedup ratio (originalBrickCount / dedupedBrickCount) for the
+// caller to report; a ratio of 1.0 means no duplicates were found (safe
+// no-op, not an error).
+struct BrickDedupResult {
+    uint32_t originalBrickCount = 0;
+    uint32_t dedupedBrickCount  = 0;
+    float dedupRatio() const {
+        return dedupedBrickCount > 0
+            ? static_cast<float>(originalBrickCount) / static_cast<float>(dedupedBrickCount)
+            : 1.0f;
+    }
+};
+
+inline BrickDedupResult DedupBricks(SerializedOctree& out) {
+    BrickDedupResult result;
+    result.originalBrickCount = out.brickCount;
+    result.dedupedBrickCount  = out.brickCount;
+
+    if (out.brickCount == 0) {
+        return result;  // nothing to dedup
+    }
+
+    const size_t materialStrideBytes = SerializedOctree::kBrickStrideBytes;  // 2048 B (512 uint32)
+    const size_t poolStrideFloats    = out.brickStrideFloats;
+    const size_t poolStrideBytes     = poolStrideFloats * sizeof(float);
+
+    // FNV-1a 64-bit over BOTH slices concatenated -- matches the existing
+    // BakeArtifactKeyBuilder/GaiaVoxelWorld::BlockQueryKeyHash idiom already in
+    // this codebase. Collision risk is negligible at this key's entropy (whole
+    // multi-KB brick payloads); a false-positive hash match would need to ALSO
+    // survive the byte-exact tie-break comparison below before two bricks are
+    // ever actually merged, so a hash collision alone cannot silently corrupt
+    // output -- it only costs an extra byte compare.
+    auto hashBrick = [&](uint32_t brickIdx) -> uint64_t {
+        uint64_t h = 0xcbf29ce484222325ULL;
+        const uint8_t* matBytes = out.bricks.data() + static_cast<size_t>(brickIdx) * materialStrideBytes;
+        for (size_t i = 0; i < materialStrideBytes; ++i) {
+            h ^= static_cast<uint64_t>(matBytes[i]);
+            h *= 0x100000001b3ULL;
+        }
+        const uint8_t* poolBytes = out.channelPool.data() + static_cast<size_t>(brickIdx) * poolStrideBytes;
+        for (size_t i = 0; i < poolStrideBytes; ++i) {
+            h ^= static_cast<uint64_t>(poolBytes[i]);
+            h *= 0x100000001b3ULL;
+        }
+        return h;
+    };
+
+    auto bricksEqual = [&](uint32_t a, uint32_t b) -> bool {
+        const uint8_t* matA = out.bricks.data() + static_cast<size_t>(a) * materialStrideBytes;
+        const uint8_t* matB = out.bricks.data() + static_cast<size_t>(b) * materialStrideBytes;
+        if (std::memcmp(matA, matB, materialStrideBytes) != 0) return false;
+        const uint8_t* poolA = out.channelPool.data() + static_cast<size_t>(a) * poolStrideBytes;
+        const uint8_t* poolB = out.channelPool.data() + static_cast<size_t>(b) * poolStrideBytes;
+        return std::memcmp(poolA, poolB, poolStrideBytes) == 0;
+    };
+
+    // hash -> list of ALREADY-KEPT unique brick indices sharing that hash (handles
+    // the rare hash-collision-but-different-payload case via the tie-break above).
+    std::unordered_map<uint64_t, std::vector<uint32_t>> hashToKeptBricks;
+    hashToKeptBricks.reserve(out.brickCount);
+
+    // oldBrickIdx -> newBrickIdx (into the compacted array). A brick that is its
+    // own first occurrence maps to its own new (compacted) slot; a duplicate maps
+    // to the FIRST occurrence's new slot.
+    std::vector<uint32_t> oldToNew(out.brickCount);
+    std::vector<uint32_t> keptOldIndices;  // old indices of surviving (unique) bricks, in order
+    keptOldIndices.reserve(out.brickCount);
+
+    for (uint32_t oldIdx = 0; oldIdx < out.brickCount; ++oldIdx) {
+        const uint64_t h = hashBrick(oldIdx);
+        auto& candidates = hashToKeptBricks[h];
+        uint32_t matchedNewIdx = kBrickUnalloc;
+        for (uint32_t keptOld : candidates) {
+            if (bricksEqual(oldIdx, keptOld)) {
+                matchedNewIdx = oldToNew[keptOld];
+                break;
+            }
+        }
+        if (matchedNewIdx != kBrickUnalloc) {
+            oldToNew[oldIdx] = matchedNewIdx;
+        } else {
+            const uint32_t newIdx = static_cast<uint32_t>(keptOldIndices.size());
+            oldToNew[oldIdx] = newIdx;
+            keptOldIndices.push_back(oldIdx);
+            candidates.push_back(oldIdx);
+        }
+    }
+
+    const uint32_t dedupedCount = static_cast<uint32_t>(keptOldIndices.size());
+    if (dedupedCount == out.brickCount) {
+        return result;  // no duplicates found -- leave everything untouched, ratio 1.0
+    }
+
+    // Compact bricks/channelPool down to the kept set, in kept order (stable --
+    // each surviving brick's FIRST occurrence keeps its original relative order,
+    // so any incidental ordering assumption elsewhere is preserved as much as
+    // possible; nothing in the addressing scheme actually depends on brick order,
+    // only on brickGridLookup[] resolving to the correct payload).
+    std::vector<uint8_t> newBricks(static_cast<size_t>(dedupedCount) * materialStrideBytes);
+    std::vector<uint8_t> newPool(static_cast<size_t>(dedupedCount) * poolStrideBytes);
+    for (uint32_t newIdx = 0; newIdx < dedupedCount; ++newIdx) {
+        const uint32_t oldIdx = keptOldIndices[newIdx];
+        std::memcpy(newBricks.data() + static_cast<size_t>(newIdx) * materialStrideBytes,
+                    out.bricks.data() + static_cast<size_t>(oldIdx) * materialStrideBytes,
+                    materialStrideBytes);
+        std::memcpy(newPool.data() + static_cast<size_t>(newIdx) * poolStrideBytes,
+                    out.channelPool.data() + static_cast<size_t>(oldIdx) * poolStrideBytes,
+                    poolStrideBytes);
+    }
+    out.bricks      = std::move(newBricks);
+    out.channelPool = std::move(newPool);
+    out.brickCount  = dedupedCount;
+
+    // Task 7.5/7.6 interaction fix: occupiedVoxelCount was accumulated as a body-
+    // wide SUM across every ORIGINAL brick occurrence (SerializeSdf, before this
+    // function ever runs). Left as-is, it would still count every duplicate's
+    // voxels even though only ONE copy of that payload survives -- silently
+    // inflating occupiedVoxelCount/(brickCount*kVoxelsPerBrick) (the voxel FILL
+    // ratio M8 reads) past 1.0 for any deduplicated body. Recompute it exactly
+    // from only the KEPT bricks' own per-brick counts (compacted the same way as
+    // bricks/channelPool above) rather than leaving a stale, now-wrong number.
+    if (!out.perBrickOccupiedVoxelCount.empty()) {
+        std::vector<uint32_t> newPerBrickCounts(dedupedCount);
+        uint32_t recomputedTotal = 0;
+        for (uint32_t newIdx = 0; newIdx < dedupedCount; ++newIdx) {
+            const uint32_t oldIdx = keptOldIndices[newIdx];
+            const uint32_t count = out.perBrickOccupiedVoxelCount[oldIdx];
+            newPerBrickCounts[newIdx] = count;
+            recomputedTotal += count;
+        }
+        out.perBrickOccupiedVoxelCount = std::move(newPerBrickCounts);
+        out.occupiedVoxelCount = recomputedTotal;
+    }
+
+    // Rewrite brickGridLookup[]: every entry pointed at an OLD brickIdx; remap
+    // through oldToNew so each leaf's grid-cell/addressing is untouched but now
+    // resolves to the (possibly shared) COMPACTED slot.
+    const size_t lookupCount = out.brickGridLookup.size() / sizeof(uint32_t);
+    for (size_t i = 0; i < lookupCount; ++i) {
+        uint32_t entry = 0;
+        std::memcpy(&entry, out.brickGridLookup.data() + i * sizeof(uint32_t), sizeof(uint32_t));
+        if (entry != kBrickUnalloc && entry < oldToNew.size()) {
+            const uint32_t remapped = oldToNew[entry];
+            std::memcpy(out.brickGridLookup.data() + i * sizeof(uint32_t), &remapped, sizeof(uint32_t));
+        }
+    }
+
+    result.dedupedBrickCount = dedupedCount;
+    return result;
 }
 
 // ===========================================================================

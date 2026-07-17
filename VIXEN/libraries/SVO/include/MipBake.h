@@ -319,13 +319,37 @@ inline void BakeAndAttachMipPool(const Octree& oct, SerializedOctree& serialized
 // octree's mipPool... same pattern as channelPool/brickGridLookup" (Task 3),
 // realized as this sibling entry point so ConcatenateSdf itself (and its
 // existing non-mip callers) stays unchanged.
-inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBodyOctree*>& octrees) {
+// Baked-Perf M7 Task 7.2 (audit F5): pre-serialize + mip-bake ONE body, in
+// exactly the shape ConcatenateSdfWithMips's own per-octree loop produces
+// internally. Exposed so a caller that already needs a body's SerializedOctree
+// standalone (e.g. the Cornell baked demo's light body, serialized separately
+// to build its light-tree cut BEFORE the concat pass runs) can hand that
+// already-computed result to ConcatenateSdfWithMips below instead of paying
+// for a second SerializeSdf + BakeMipPool pass over the same octree.
+inline SerializedOctree SerializeSdfWithMips(const SdfBodyOctree& body) {
+    SerializedOctree s = SerializeSdf(body);
+    const Octree* oct = body.octree->getOctree();
+    if (oct != nullptr) {
+        BakeAndAttachMipPool(*oct, s);
+    }
+    return s;
+}
+
+// precomputed: optional map from an octree's INDEX in `octrees` to an already
+// serialized+mip-baked SerializedOctree (e.g. via SerializeSdfWithMips above).
+// Bodies with no entry are serialized here exactly as before — default-empty
+// `precomputed` reproduces the original behavior byte-for-byte for every
+// existing caller (this parameter is purely additive).
+inline ConcatenatedOctrees ConcatenateSdfWithMips(
+        const std::vector<const SdfBodyOctree*>& octrees,
+        const std::unordered_map<size_t, SerializedOctree>& precomputed = {}) {
     ConcatenatedOctrees cat;
     cat.count = static_cast<uint32_t>(octrees.size());
     cat.configs.resize(octrees.size());
     cat.nodeCounts.resize(octrees.size());
     cat.brickCounts.resize(octrees.size());
     cat.tierRefCounts.resize(octrees.size());
+    cat.occupiedVoxelCounts.resize(octrees.size());  // Baked-Perf M7 Task 7.5
 
     uint32_t nodeBase        = 0;
     uint32_t brickBase       = 0;
@@ -338,11 +362,10 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         if (octrees[k] == nullptr) {
             throw std::invalid_argument("MipBake::ConcatenateSdfWithMips: null octree pointer");
         }
-        SerializedOctree s = SerializeSdf(*octrees[k]);
-        const Octree* oct = octrees[k]->octree->getOctree();
-        if (oct != nullptr) {
-            BakeAndAttachMipPool(*oct, s);
-        }
+        auto precomputedIt = precomputed.find(k);
+        SerializedOctree s = (precomputedIt != precomputed.end())
+            ? precomputedIt->second
+            : SerializeSdfWithMips(*octrees[k]);
 
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
@@ -358,6 +381,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(const std::vector<const SdfBod
         cat.nodeCounts[k]  = s.nodeCount;
         cat.brickCounts[k] = s.brickCount;
         cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+        cat.occupiedVoxelCounts[k] = s.occupiedVoxelCount;  // Baked-Perf M7 Task 7.5
 
         cat.nodes.insert(cat.nodes.end(),   s.nodes.begin(),   s.nodes.end());
         cat.bricks.insert(cat.bricks.end(), s.bricks.begin(),  s.bricks.end());

@@ -35,5 +35,8 @@ set VIXEN_PERF_CSV=%VIXEN_ROOT%\temp_bench\baked\perf.csv
 set VIXEN_HUD_CAPTURE_FRAMES=150
 set VIXEN_HUD_CAPTURE_DIR=%VIXEN_ROOT%\temp_bench\baked
 set VIXEN_EXIT_AFTER_FRAMES=160
+REM Baked-Perf M7 Task 7.5: per-body occupancy stats JSON (occupied/bounding-volume
+REM bricks + voxel fill ratio per body), written next to the other bench artifacts.
+set VIXEN_OCCUPANCY_JSON=%VIXEN_ROOT%\temp_bench\occupancy.json
 cd /d %VIXEN_ROOT%\VIXEN
 binaries\VIXEN.exe > %VIXEN_ROOT%\temp_bench\baked\run.log 2>&1
