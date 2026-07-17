@@ -1,7 +1,7 @@
 using Yeroket.Util.KernelFramework;
 
 // Canonical OctreeConfig — one source for C++ (Vixen::Gpu) + GLSL. 432 B std430.
-// Offsets (must match ShellOctreeGpu.h): gridMin@32, gridMax@48, localToWorld@64,
+// Offsets (must match ShellOctreeGpu.h): traceBoundsMin@32, traceBoundsMax@48, localToWorld@64,
 // worldToLocal@128, nodeArrayBase@192, formatId@200, brickStrideFloats@216, channels@224,
 // mipPoolBase@352 (Sparse-Mip ESVO LOD Inc1 M1 Task 3), brickResident@356 (Inc1 M3 Task 7),
 // tierRefTableBase@360 (Tiered-ESVO Inc2 M1 Task 3), brickLookupBase@364 (Baked-Perf M1
@@ -19,8 +19,20 @@ public struct OctreeConfig
     public int bricksPerAxis;
     public int _padding1;
 
-    public Float3 gridMin;   // @32 (align16; implicit 4B pad before gridMax)
-    public Float3 gridMax;   // @48
+    // Baked-Perf M5 Task 5.1: conservative allocated-brick AABB in this octree's OWN
+    // [0,1]^3 local grid space (NOT world space, despite the "grid" naming this field
+    // replaces) — the tight bound over every brick actually populated by SerializeSdf's
+    // grid->brick lookup loop, as opposed to the octree's full root extent. REPLACES the
+    // dead gridMin/gridMax fields (uploaded but read by no dispatched shader — Dormant-
+    // Work-Inventory #10; the only real consumer of the octree's world AABB is the
+    // localToWorld/worldToLocal matrix pair, which every instanced shader path already
+    // uses instead). Net-zero schema growth: same two Float3 slots, same offsets.
+    // Zero-default (both fields left at their memset(0) default, i.e. min==max==(0,0,0))
+    // is BACKWARD-SAFE: old cached SerializedOctree data / any non-SDF serializer that
+    // never sets these fields reproduces the historical "no tighter bound than the full
+    // [0,1]^3 root" behavior — see TraceWorld.glsl's getOctreeTraceBounds validity check.
+    public Float3 traceBoundsMin;   // @32 (align16; implicit 4B pad before traceBoundsMax)
+    public Float3 traceBoundsMax;   // @48
 
     public Mat4 localToWorld; // @64
     public Mat4 worldToLocal; // @128

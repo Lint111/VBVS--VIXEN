@@ -79,12 +79,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>  // glm::scale / glm::translate
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -242,6 +244,48 @@ inline uint32_t brickLookupBaseOf(const OctreeConfig& c) {
 inline void setBrickLookupBase(OctreeConfig& c, uint32_t base) {
     c.brickLookupBase = base;
 }
+/// Read traceBoundsMin (Baked-Perf M5 Task 5.1) from OctreeConfig (byte 32).
+/// Conservative allocated-brick AABB minimum, in this octree's OWN normalized
+/// [0,1]^3 local grid space (NOT world space). See the field's own schema doc
+/// comment (codegen/config-schemas/OctreeConfig.cs) for the full contract,
+/// including the backward-safe all-zero "no tighter bound" sentinel.
+inline glm::vec3 traceBoundsMinOf(const OctreeConfig& c) {
+    return glm::vec3(c.traceBoundsMinX, c.traceBoundsMinY, c.traceBoundsMinZ);
+}
+/// Read traceBoundsMax (Baked-Perf M5 Task 5.1) from OctreeConfig (byte 48).
+inline glm::vec3 traceBoundsMaxOf(const OctreeConfig& c) {
+    return glm::vec3(c.traceBoundsMaxX, c.traceBoundsMaxY, c.traceBoundsMaxZ);
+}
+/// Write traceBoundsMin/Max into the OctreeConfig header.
+inline void setTraceBounds(OctreeConfig& c, const glm::vec3& boundsMin, const glm::vec3& boundsMax) {
+    c.traceBoundsMinX = boundsMin.x; c.traceBoundsMinY = boundsMin.y; c.traceBoundsMinZ = boundsMin.z;
+    c.traceBoundsMaxX = boundsMax.x; c.traceBoundsMaxY = boundsMax.y; c.traceBoundsMaxZ = boundsMax.z;
+}
+/// True if traceBoundsMin/Max hold a genuinely tighter bound than the full [0,1]^3
+/// root (mirrors TraceWorld.glsl's getOctreeTraceBounds validity check exactly —
+/// keep both in sync if either changes).
+inline bool hasTightTraceBounds(const OctreeConfig& c) {
+    const glm::vec3 bmin = traceBoundsMinOf(c);
+    const glm::vec3 bmax = traceBoundsMaxOf(c);
+    const bool valid = glm::all(glm::greaterThan(bmax, bmin)) &&
+                        glm::all(glm::greaterThanEqual(bmin, glm::vec3(0.0f))) &&
+                        glm::all(glm::lessThanEqual(bmax, glm::vec3(1.0f)));
+    if (!valid) return false;
+    return glm::any(glm::greaterThan(bmin, glm::vec3(0.0f))) ||
+           glm::any(glm::lessThan(bmax, glm::vec3(1.0f)));
+}
+/// World-space center of traceBoundsMin/Max (or the full-cube center if untight),
+/// for an instance placed via worldPos/renderScale exactly as TraceWorld.glsl's
+/// de-instancing does: world = worldPos + (local * kWorldGridSize) * renderScale
+/// (SerializeSdf's localToWorld is a pure uniform scale by kWorldGridSize, no
+/// rotation/translation — see SerializeSdf's own kWorldGridSize comment). Baked-Perf
+/// M5 Task 5.3: the sort-key use case — a body's true occupied-region center, not
+/// its full-cube min-corner (worldPos) or full-cube center.
+inline glm::vec3 traceBoundsWorldCenterOf(const OctreeConfig& c, const glm::vec3& worldPos,
+                                            float renderScale, float worldGridSize) {
+    const glm::vec3 localCenter = 0.5f * (traceBoundsMinOf(c) + traceBoundsMaxOf(c));
+    return worldPos + (localCenter * worldGridSize) * renderScale;
+}
 
 // ===========================================================================
 // Serialized output
@@ -366,7 +410,10 @@ struct ConcatenatedOctrees {
  * concatenated octree (and thus which OctreeConfig) this instance draws.
  */
 struct BodyInstanceGpu {
-    float worldPos[3];       // 0   : body centre (world space)
+    float worldPos[3];       // 0   : body's local [0,1]^3-cube min-CORNER (world space) --
+                             //       NOT the centre, despite the name (Baked-Perf M5 Task
+                             //       5.3 finding; see InstanceSort.h's traceBoundsWorldCenterOf
+                             //       for the true occupied-region center derivation)
     float renderScale;       // 12  : Stored: grid scale; Procedural: unused
     float color[3];          // 16  : per-instance tint
     uint32_t octreeIndex;    // 28  : Stored: index into configs[]; Procedural: unused
@@ -502,12 +549,18 @@ inline SerializedOctree Serialize(const ShellOctree& shell) {
     // to keep sizeof(OctreeConfig)==256 — see the struct's stride-trap note).
     constexpr float kWorldGridSize = 10.0f;
 
-    c.gridMinX = oct->worldMin.x;
-    c.gridMinY = oct->worldMin.y;
-    c.gridMinZ = oct->worldMin.z;
-    c.gridMaxX = oct->worldMax.x;
-    c.gridMaxY = oct->worldMax.y;
-    c.gridMaxZ = oct->worldMax.z;
+    // Baked-Perf M5 Task 5.1: this is the plain BINARY Serialize() path (not SDF) --
+    // it has no per-brick grid-lookup loop to derive a genuinely tighter bound from
+    // (that loop lives in SerializeSdf below), and oct->worldMin/worldMax are GRID-unit
+    // coordinates (e.g. (0,0,0)..(n,n,n)), not the normalized [0,1]^3 local space
+    // traceBoundsMin/Max is documented to hold -- writing them here unconverted would be
+    // a wrong-unit correctness bug, not a tighter bound. Leave both fields at their
+    // memset(0) default: getOctreeTraceBounds's validity check treats all-zero
+    // (min==max==(0,0,0)) as "no tighter bound than the full root," which is exactly
+    // this path's historical behavior (its predecessor gridMin/gridMax fields were never
+    // read by any dispatched shader either -- see the schema's own doc comment).
+    c.traceBoundsMinX = 0.0f; c.traceBoundsMinY = 0.0f; c.traceBoundsMinZ = 0.0f;
+    c.traceBoundsMaxX = 0.0f; c.traceBoundsMaxY = 0.0f; c.traceBoundsMaxZ = 0.0f;
 
     const glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(kWorldGridSize));
     const glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f));
@@ -801,7 +854,13 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     out.materials.resize(palette.size() * sizeof(GPUMaterial));
     std::memcpy(out.materials.data(), palette.data(), out.materials.size());
 
-    // --- Dense grid→brick lookup: uint32[bpa^3].
+    // --- Dense grid→brick lookup: uint32[bpa^3]. Baked-Perf M5 Task 5.1: this SAME loop
+    // already visits every ALLOCATED brick's grid cell (gx,gy,gz) exactly once -- the
+    // cheapest possible place to also accumulate the conservative allocated-brick AABB
+    // (traceBoundsMin/Max below) with no extra pass over the octree.
+    glm::ivec3 brickCellMin(std::numeric_limits<int>::max());
+    glm::ivec3 brickCellMax(std::numeric_limits<int>::min());
+    bool anyBrickAllocated = false;
     {
         const int bpa = oct->bricksPerAxis;
         const uint32_t tableSize = static_cast<uint32_t>(bpa) *
@@ -819,6 +878,13 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
                                    + gz * static_cast<uint32_t>(bpa) * static_cast<uint32_t>(bpa);
             if (flatIdx < tableSize) {
                 lookupTable[flatIdx] = brickViewIdx;
+                anyBrickAllocated = true;
+                brickCellMin.x = std::min(brickCellMin.x, static_cast<int>(gx));
+                brickCellMin.y = std::min(brickCellMin.y, static_cast<int>(gy));
+                brickCellMin.z = std::min(brickCellMin.z, static_cast<int>(gz));
+                brickCellMax.x = std::max(brickCellMax.x, static_cast<int>(gx));
+                brickCellMax.y = std::max(brickCellMax.y, static_cast<int>(gy));
+                brickCellMax.z = std::max(brickCellMax.z, static_cast<int>(gz));
             }
         }
 
@@ -846,26 +912,48 @@ inline SerializedOctree SerializeSdf(const SdfBodyOctree& body) {
     c.bricksPerAxis   = oct->bricksPerAxis;
 
     // NOT FIXED IN M1 -- see M1 Progress Log entry. localToWorld's hardcoded uniform
-    // kWorldGridSize=10.0 scale (ignoring the octree's own worldMin/worldMax, which ARE
-    // already written correctly into gridMinX/Y/Z below) is a genuine bug in isolation,
-    // but a dedicated investigation found it is currently a DE FACTO load-bearing
-    // convention: application/main/source/graph/BuildRenderGraph.cpp independently
-    // redeclares the identical `constexpr float kWorldGridSize = 10.0f;` in 4 places
-    // (search that file for the symbol) and uses it to convert every baked body's
-    // grid-space world position/extent (including light-tree cuts) into world units via
-    // BodyInstanceGpu's separate worldPos/renderScale instancing layer -- NOT via this
-    // localToWorld matrix, which the instanced shader path (TraceWorld.glsl) treats as a
-    // fixed body-LOCAL [0,1]^3->[0,10]^3 frame, already de-instanced before worldToLocal
-    // is ever applied. Changing this scale to the octree's real worldMax-worldMin here
-    // without ALSO updating every one of those BuildRenderGraph.cpp call sites in lockstep
-    // silently mis-sizes/mis-places every demo body (Cornell walls, DDGI leak-gate,
-    // tier-crossing spheres) currently rendered via the instanced path -- a regression far
-    // outside M1's zero-behavior-change gate. Left as pre-existing behavior; flagged back
-    // to the plan owner as a separate, larger cross-cutting fix (touches every scene
-    // authoring call site, not just SDF bake) rather than silently expanding this plan.
+    // kWorldGridSize=10.0 scale (ignoring the octree's own worldMin/worldMax) is a
+    // genuine bug in isolation, but a dedicated investigation found it is currently a DE
+    // FACTO load-bearing convention: application/main/source/graph/BuildRenderGraph.cpp
+    // independently redeclares the identical `constexpr float kWorldGridSize = 10.0f;` in
+    // 4 places (search that file for the symbol) and uses it to convert every baked
+    // body's grid-space world position/extent (including light-tree cuts) into world
+    // units via BodyInstanceGpu's separate worldPos/renderScale instancing layer -- NOT
+    // via this localToWorld matrix, which the instanced shader path (TraceWorld.glsl)
+    // treats as a fixed body-LOCAL [0,1]^3->[0,10]^3 frame, already de-instanced before
+    // worldToLocal is ever applied. Changing this scale to the octree's real
+    // worldMax-worldMin here without ALSO updating every one of those
+    // BuildRenderGraph.cpp call sites in lockstep silently mis-sizes/mis-places every
+    // demo body (Cornell walls, DDGI leak-gate, tier-crossing spheres) currently
+    // rendered via the instanced path -- a regression far outside M1's zero-behavior-
+    // change gate. Left as pre-existing behavior; flagged back to the plan owner as a
+    // separate, larger cross-cutting fix (touches every scene authoring call site, not
+    // just SDF bake) rather than silently expanding this plan.
     constexpr float kWorldGridSize = 10.0f;
-    c.gridMinX = oct->worldMin.x; c.gridMinY = oct->worldMin.y; c.gridMinZ = oct->worldMin.z;
-    c.gridMaxX = oct->worldMax.x; c.gridMaxY = oct->worldMax.y; c.gridMaxZ = oct->worldMax.z;
+
+    // Baked-Perf M5 Task 5.1: traceBoundsMin/Max is the conservative allocated-brick AABB
+    // in this octree's OWN normalized [0,1]^3 local grid space (the SAME space the
+    // worldToLocal-transformed ray occupies in TraceWorld.glsl's rayAABBIntersection cull,
+    // and the space getOctreeTraceBounds's validity check clamps against) -- NOT world
+    // space, and NOT the octree's raw bricksPerAxis grid-cell units. Each allocated brick
+    // cell gx/gy/gz (accumulated in the grid->brick lookup loop just above) occupies
+    // [gx/bpa, (gx+1)/bpa] along that axis (bpa bricks tile the full [0,1] cube), so the
+    // tight bound over every allocated cell is [minCell/bpa, (maxCell+1)/bpa]. Zero brick
+    // allocated (anyBrickAllocated==false, e.g. an empty/degenerate bake) leaves both
+    // fields at the memset(0) default -- the documented backward-safe "no tighter bound"
+    // sentinel, deliberately NOT a synthesized inverted/empty range that could misbehave
+    // in the shader's cull math.
+    // DIAGNOSTIC TEMP REVERT (isolating Task 5.1, final confirmation with the COMPLETE
+    // M5 diff otherwise restored): force-disabled to re-confirm this write is the root
+    // cause even with Task 5.3 (sort) back in place.
+    if (anyBrickAllocated) {
+        const float invBpa = 1.0f / static_cast<float>(oct->bricksPerAxis);
+        const glm::vec3 tbMin = glm::vec3(brickCellMin) * invBpa;
+        const glm::vec3 tbMax = glm::vec3(brickCellMax + glm::ivec3(1)) * invBpa;
+        c.traceBoundsMinX = tbMin.x; c.traceBoundsMinY = tbMin.y; c.traceBoundsMinZ = tbMin.z;
+        c.traceBoundsMaxX = tbMax.x; c.traceBoundsMaxY = tbMax.y; c.traceBoundsMaxZ = tbMax.z;
+    }
+
     const glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), glm::vec3(kWorldGridSize));
     const glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f));
     c.localToWorld = translateMat * scaleMat;

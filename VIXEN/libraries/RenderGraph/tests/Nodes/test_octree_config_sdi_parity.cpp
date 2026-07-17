@@ -113,10 +113,11 @@ TEST(OctreeConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
     ASSERT_FALSE(configs->members.empty())
         << "SpirvReflector did not surface nested OctreeConfig members — recursion regressed";
 
-    // Fields the shader reads, present identically on both sides. (gridMin/gridMax are vec3
-    // in the shader vs scalar triples in C++, and channels[] is uvec4 vs ChannelDesc — same
-    // bytes, different member shape — so they are intentionally not name-matched here; the
-    // element-size check above covers the total.)
+    // Fields the shader reads, present identically on both sides. (traceBoundsMin/Max —
+    // Baked-Perf M5 Task 5.1, formerly gridMin/gridMax — are vec3 in the shader vs scalar
+    // triples in C++, and channels[] is uvec4 vs ChannelDesc — same bytes, different member
+    // shape — so they are intentionally not name-matched here; the element-size check above
+    // covers the total.)
     struct Field { const char* name; std::size_t cppOffset; };
     const Field fields[] = {
         {"localToWorld",      offsetof(OctreeConfig, localToWorld)},      //  64

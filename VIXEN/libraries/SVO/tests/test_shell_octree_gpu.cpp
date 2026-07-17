@@ -121,13 +121,19 @@ TEST(ShellOctreeGpu, ConfigFieldsAreSane) {
     EXPECT_EQ(c.userMaxLevels, depth + 3);      // maxLevels = depth + brickDepthLevels
     EXPECT_EQ(c.bricksPerAxis, (1 << depth) / 8);
 
-    // Grid bounds come from the octree's [0, n]^3.
-    EXPECT_FLOAT_EQ(c.gridMinX, 0.0f);
-    EXPECT_FLOAT_EQ(c.gridMinY, 0.0f);
-    EXPECT_FLOAT_EQ(c.gridMinZ, 0.0f);
-    EXPECT_FLOAT_EQ(c.gridMaxX, n);
-    EXPECT_FLOAT_EQ(c.gridMaxY, n);
-    EXPECT_FLOAT_EQ(c.gridMaxZ, n);
+    // Baked-Perf M5 Task 5.1: gridMin/gridMax (uploaded, read by no dispatched shader) were
+    // REPLACED by traceBoundsMin/Max (the tight allocated-brick AABB, SDF-bake-only). The
+    // plain BINARY Serialize() path under test here has no per-brick grid-lookup loop to
+    // derive a genuinely tighter bound from, so it deliberately leaves both fields at their
+    // memset(0) default -- the documented backward-safe "no tighter bound than the full
+    // [0,1]^3 root" sentinel (see getOctreeTraceBounds's validity check in TraceWorld.glsl).
+    EXPECT_FLOAT_EQ(c.traceBoundsMinX, 0.0f);
+    EXPECT_FLOAT_EQ(c.traceBoundsMinY, 0.0f);
+    EXPECT_FLOAT_EQ(c.traceBoundsMinZ, 0.0f);
+    EXPECT_FLOAT_EQ(c.traceBoundsMaxX, 0.0f);
+    EXPECT_FLOAT_EQ(c.traceBoundsMaxY, 0.0f);
+    EXPECT_FLOAT_EQ(c.traceBoundsMaxZ, 0.0f);
+    (void)n;  // n (the octree's [0,n]^3 grid extent) is no longer asserted against directly
 
     // Derived scales (same formulas as the cacher).
     EXPECT_EQ(c.minESVOScale, c.esvoMaxScale - c.userMaxLevels + 1);
