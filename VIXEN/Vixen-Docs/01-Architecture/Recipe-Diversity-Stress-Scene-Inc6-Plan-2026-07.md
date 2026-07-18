@@ -340,7 +340,73 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
   scale) — this is the single most important correctness bar, since a silent recompile-per-frame at
   N=250 would be a severe, misleading performance artifact unrelated to the actual switch-cost question
   this scene exists to measure.
-  - [ ] Not started.
+  - [x] **DONE (2026-07-18) — generalized from M3 Task 8's single ReadParam body to all
+    `min(N,192)` diversity-stress instances; no-recompile invariant confirmed at scale.**
+    Two per-frame-updated parameters, both genuinely consumed:
+    1. **Every instantiated instance**: every generated recipe program
+       (`BuildRenderGraph.cpp`'s `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO` block) now appends
+       `ReadParam(idx=3)`+`MathSub` after its resolve segment (idx=3 chosen so it doesn't
+       alias `ReadParamFloat3(idx=0)`'s 3-slot declared-position read) — a uniform
+       shrink/grow perturbation of the final SDF value, subtracted the same way the
+       uber-demo's own single swept-radius body already proved (sphere − ReadParam). Swept
+       every frame in `VulkanGraphApplication::PreTick` (`recipeParams[3] = amplitude *
+       sin(tick*speed + index)`, per-instance phase offset so instances don't move in
+       lockstep).
+    2. **A subset of instances (every 4th, `index % 4 == 0`)**: the DECLARED POSITION
+       ITSELF (`recipeParams[0..2]`, `ReadParamFloat3(idx=0)`) orbits its own resting grid
+       slot every frame — exercising the spatial contract's own stated value proposition
+       (a genuinely moving, `ReadParam`-sourced position) rather than only a shape
+       parameter, per this milestone's own explicit framing. Orbit is computed from a
+       CACHED base position (captured once per instance count, not the previous frame's
+       value) so per-frame writes never drift/accumulate.
+    - **No-recompile invariant at scale — the gate's own "single most important" bar**:
+      new test `DiversityStressParamSweepAtScaleNeverMarksNodeNeedsRecompile`
+      (`test_body_octree_lifetime.cpp`) registers 192 distinct `[ReadParamFloat3,
+      DeclarePosition, Sphere, ReadParam, MathSub]` recipes (the same program shape the
+      real demo generates), instantiates exactly 192 instances, then runs 120 consecutive
+      frames of pure `recipeParams[]` value updates (shape param on all 192, declared
+      position on the 48 instances with `index % 4 == 0`) — confirmed via direct
+      `NodeInstance::NeedsRecompile()` instrumentation (not a log-grep) that
+      `MarkNeedsRecompile()` never fires post-Compile, and instance count stayed exactly
+      192 for every one of the 120 frames (`ASSERT_EQ` per-frame, not just a final check).
+      Zero `ADD_FAILURE` hits for a recompile. (The test's own `ExpectNoValidationErrors`
+      assertions DID fail — but on the SAME pre-existing, already-documented
+      `EOSOverlayVkLayer-Win32.json` machine-local Vulkan-loader artifact the unmodified
+      sibling test `ReadParamValueSweepNeverMarksNodeNeedsRecompile` also hits identically
+      (see Recipe-Parameterization-Plan-2026-07.md's own M3 Task 9 entry) — unrelated to
+      this change, zero-diff on `EnabledValidationLayers()`/device wiring.)
+    - **Live-run gate**: real `VixenApp`, Windows-native, real discrete GPU (AMD Radeon),
+      validation layers on, at both N=20 and N=250 (192 instantiated). 3-frame HUD
+      captures (`VIXEN_HUD_CAPTURE_FRAMES=10,60,110`) at both N, visually inspected (not
+      just numerically asserted): shapes visibly morph over time (a box-shaped instance at
+      frame 10 becomes sphere-shaped by frame 60 and something else again by frame 110, at
+      both N — the shape-param sweep pushes the CSG result through different silhouettes,
+      not just a subtle radius wobble), and declared positions visibly drift (small
+      sphere/box instances at clearly different screen positions across the 3 captures at
+      both N). Exactly ONE `BodyInstanceRayMarch` shader-bundle build logged per run at
+      both N (no recompile storm), zero `VUID`/validation-ERROR lines in either log, clean
+      exit (code 0) both times.
+    - **Pre-existing flakiness encountered, matches the documented boundary, not fixed
+      here**: hit the SAME `GaiaVoxelWorld`/Cornell-boot-bake silent-crash signature M2's
+      validator already root-caused to **KI-027** — repeatedly (7 consecutive failures) at
+      N=20 during this session, all truncating mid-`GaiaVoxelWorld` ECS-init/batch-create,
+      no exception/VUID logged, no two failures at the identical log line (consistent with
+      timing-sensitive corruption, not a deterministic code path). Confirmed via
+      `Get-Process`/`Get-CimInstance` that the machine was under heavy concurrent
+      multi-agent load throughout (a SIBLING worktree's own `VIXEN.exe` observed running
+      at the same time, 40-51% CPU load, a dozen+ concurrent `claude` processes) — the 8th
+      attempt at N=20 succeeded cleanly with no code change in between, and N=250 then
+      succeeded on its very first attempt. Per this milestone's own explicit scope
+      boundary, this is NOT fixed here — out of scope, already tracked.
+    - **Regression suite**: all baseline counts unchanged — codegen 10, codegen_glsl 4,
+      eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5,
+      declared_position_render 1, uber_shader_splice 7 — zero failures, zero skips.
+    - **Scope discipline**: diff limited to exactly 3 files (`BuildRenderGraph.cpp`,
+      `VulkanGraphApplication.cpp`, `test_body_octree_lifetime.cpp`) — no
+      `RecipeEntry`/`boundCenter`/`boundRadius` handling changed beyond the existing
+      margin-widening already established by M2's own pattern, no switch-cost fix
+      attempted, no composer/enforcement tooling, no M4 measurement sweep run. Commit:
+      `b5d1e8b7`.
 - **M4 — Sweep + measurement.** Run the scene across the N=20-250 range (a reasonable sampling, not
   necessarily every integer — e.g. 20, 50, 100, 150, 200, 250, informed by where the existing N=100 knee
   and N=500 hang already are), real live `VixenApp`, validation layers on for a correctness pass and off
