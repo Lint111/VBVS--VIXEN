@@ -1,6 +1,6 @@
 ---
 title: Baked-Perf Fix Pipeline — Milestone-Chunked Execution Plan
-status: M9 RESOLVED (Opus-max debug, diagnostic-only commit 067615ff) — seam geometry is ALREADY COHERENT + non-flipping at the current 1e-4 tie-band; PROVEN oracle-based that disabling the tie-break flips AWAY from virtual (so 1e-4 is correct, do NOT touch it; the reverted 1e-5 was wrong). The one residual box-corner cell = 32³ box BAKE QUANTIZATION, accepted as the documented baseline (user 2026-07-17); SEAM ISSUE CLOSED. SEPARATE known gap: baked objects render fainter than virtual (lighting/shading, candidate M10). Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
+status: M9 RESOLVED (Opus-max debug, diagnostic-only commit 067615ff) — seam geometry is ALREADY COHERENT + non-flipping at the current 1e-4 tie-band; PROVEN oracle-based that disabling the tie-break flips AWAY from virtual (so 1e-4 is correct, do NOT touch it; the reverted 1e-5 was wrong). The one residual box-corner cell = 32³ box BAKE QUANTIZATION, accepted as the documented baseline (user 2026-07-17); SEAM ISSUE CLOSED. M10 DIAGNOSED (2026-07-18, Opus-high oracle-based): baked-fainter-than-virtual = stored-SDF shadow-ray FALSE-OCCLUSION of the dilated occupancy band (shadows-off ratio 1.00, shadows-on 0.88; baked floor loses 27.4% direct light, virtual 0%). Render-time; fix = tighten `marchBrickSdfAnyHit` occlusion crossing (StoredSdf.glsl:822), shadow/probe-only, seam untouched. **M10 SHIPPED (Task 10.2, commit `1964c134`, Opus-validated APPROVED 2026-07-18): TWO shadow false-occlusion mechanisms closed (mip-coverage any-hit + dilated-band SDF crossing `-EPS`→`-kBand`) — floor shadow-loss 24.5%→6.24%, interior baked/virtual ratio 0.895→0.970, geometry parity byte-identical 0/625, seam+primary-march untouched. Residual ~3% = a THIRD precision issue (wall thin-edge stored-vs-analytic divergence), out of scope, candidate follow-up KI.** (Task 10.1 `3142047c` was an honest-negative intermediate — correct but inert, kept.) Phase-2 (M0–M8) shipped+validated (877ms→~19 FPS class; bake cache 16ms warm; dedup 5.2×; +1.3–1.4× march; hybrid frames). KI-040/KI-041 filed. worktree fix/baked-perf-pipeline
 created: 2026-07-16
 ---
 
@@ -626,6 +626,53 @@ documented as future-only.
 > lighting/shading gap, candidate M10 — the user has flagged this as the next thing after
 > the seam issue, known and pre-existing.)
 
+## Milestone M10 — Baked/virtual lighting parity: stored-SDF shadow false-occlusion (2026-07-18)
+
+**Root cause (PROVEN oracle-based, Opus-high diagnostician, diagnosis-only — no fix applied):**
+the baked sphere/box/walls render fainter than virtual ENTIRELY because of the **direct-light
+shadow term**. The baked (PROVIDER_STORED / ESVO) geometry casts **false shadows** on the
+scene's directional light that the virtual (PROVIDER_PROCEDURAL, analytic) geometry does not.
+Not normals (unit-length, aggregate-identical baked-vs-virtual), not albedo (byte-identical),
+not roughness/DDGI (forcing both to match moved the image by 0.000). Mechanism: shadow rays
+test the baked SDF's **dilated occupancy band** (kBand=2.0 voxels + wall subdiv thickening,
+`BuildRenderGraph.cpp:3633/3782`) via `marchBrickSdfAnyHit`'s `d < EPS(0.01)` crossing test
+(`StoredSdf.glsl:822`) — a fatter occluder cross-section than the true thin procedural surface,
+so grazing shadow rays that cleanly MISS the virtual geometry clip the baked band.
+
+**Evidence (direct in-engine A/B against the virtual oracle, virtual = ground truth):**
+- shadows ON: baked/virtual interior mean = **0.88** (floor 0.72, Lwall 0.77, box 0.93, sphere 0.96; Rwall/backwall 1.00)
+- shadows OFF: **1.00** everywhere → the shadow toggle explains the WHOLE gap.
+- per-body shadow loss (off→on): virtual 0% everywhere; baked floor **27.4%**, Lwall 22.6%, box 6.7%, sphere 4.3%.
+- region pattern confirms it: only positive-NdotL surfaces vs the (1,1,-1) light dim; Rwall/backwall (NdotL≤0, never shadow-tested) stay exactly 1.00.
+- NOT self-acne: shadow bias 0.01→0.5 AND tmin 0→2.0 both left the baked image byte-identical → a distant fattened body along the escape ray, not origin-surface acne.
+
+**Classification:** RENDER-TIME (shadow-ray occlusion over stored bodies). The band thickness
+is a bake-time input, but the visible gap is produced at shade time by the shadow trace.
+
+**Code path:** `SpatialReuseShade.comp:333-340` (computeLightingWithShadows) → `TraceWorldShadow`
+(`TraceWorld.glsl:538`) → per-stored-instance `traverseOctreeInstancedAnyHit` (`TraceWorld.glsl:~652`)
+→ `marchBrickSdfAnyHit` (`StoredSdf.glsl:822`). Touches shadow/probe-only any-hit march ONLY —
+NOT the primary visible-hit `marchBrickSdf` (`StoredSdf.glsl:633`), NOT the seam tie-break
+(`SEAM_TIE_EPS_REL 1e-4`, must stay untouched).
+
+- [ ] Task 10.1 — Tighten `marchBrickSdfAnyHit`'s occlusion crossing test so stored-SDF shadow
+  occlusion agrees with the true surface, not the dilated band: require a genuine sign-crossing
+  into solid (d well below the band, or interval bracketing) rather than `d < 0.01` on the band
+  shell; and/or skip the shadow-origin body (self) for the first band-thickness of arc-length.
+  Do NOT touch the primary visible-hit march or the seam tie-break.
+
+**Gate (oracle-based):** re-run the shadow off→on A/B — baked per-body shadow-loss (esp. floor,
+currently 27.4%) must drop toward the virtual oracle's 0%; baked/virtual interior mean must rise
+from 0.88 toward 1.00. Geometry/silhouette instIdx parity must stay byte-identical (0/625
+same_path, cross_path ≥97%); 8 bodies present; OOB not materially up; seam epsilon still 1e-4.
+Prove any brightness claim by baked-vs-virtual IMAGE diff at the objects, not eyeball, not the
+instIdx map. NEVER re-bless a golden toward baked output that disagrees with virtual.
+
+> Diagnostic tool available for validation: env-gated `VIXEN_CORNELL_NORMAL_DUMP` (off by
+> default, +55 lines in `VulkanGraphApplication.cpp`, per-instance albedo/normal/roughness
+> aggregator in the tick-150 [CornellDiag] block). The diagnostician also used a shadow off→on
+> toggle for the decisive A/B — the implementer should reproduce that toggle to measure.
+
 ### (superseded) original Task 9.1 framing — kept for provenance, DO NOT re-attempt as written
 
 - [ ] Task 9.1 — The M6b `SEAM_TIE_EPS_REL = 1e-4` tie-band (`TraceWorld.glsl:48`) is TOO
@@ -974,6 +1021,106 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   independently → coverage gap not correctness bug). Filed **KI-041** (pre-existing
   intermittent late-frame Vulkan-validation crash + lingering VIXEN.exe, reproduces at both
   ω, found during 8.2 validation) and **KI-040** earlier (bake-cache loader bad_alloc).
+
+- M10 DIAGNOSIS (diagnosis-only, no fix): DONE · Opus-high diagnostician · 2026-07-18.
+  Baked-fainter-than-virtual root cause PROVEN oracle-based = stored-SDF shadow-ray
+  **false-occlusion** of the dilated occupancy band (kBand + wall subdiv thickening), not
+  normals/albedo/roughness/GI (all ruled out by direct A/B: albedo byte-identical, normals
+  unit-length aggregate-identical, roughness/DDGI forced-to-match moved image by 0.000).
+  Decisive A/B: shadows OFF → baked/virtual = 1.00; shadows ON → 0.88 (baked floor loses
+  27.4% direct light, virtual 0%); only positive-NdotL surfaces dim, Rwall/backwall untouched.
+  RENDER-TIME (shadow trace over `marchBrickSdfAnyHit`, `StoredSdf.glsl:822`, `d<0.01` band
+  shell). Fix direction (Task 10.1, not yet impl): tighten the any-hit occlusion crossing to
+  the true surface / self-skip first band-thickness; shadow/probe-only, seam tie-break
+  untouched. Left an env-gated `VIXEN_CORNELL_NORMAL_DUMP` diagnostic (+55 lines, off by
+  default) in VulkanGraphApplication.cpp for fix validation. Shaders/libraries unchanged;
+  seam epsilon still 1e-4. NEXT: dispatch Sonnet-medium implementer for Task 10.1.
+
+- M10 Task 10.1 (fix attempt): DONE but HONEST NEGATIVE — the proven mechanism did NOT
+  close the gap · commit `3142047c` · Sonnet-medium · 2026-07-18. Tightened
+  `marchBrickSdfAnyHit` occlusion test `d<0.01` → `d<-EPS` (true inside-crossing; stored
+  Density is a real signed distance). Strictly correct + zero-regression + geometry parity
+  intact (0/625 same_path, cross_path 99.8% PASS), so KEPT. BUT the A/B is byte-identical
+  before/after: floor shadow-loss 24.51% before AND after, interior baked/virtual ratio 0.895
+  unchanged, overall 10.03% unchanged. Sensitivity probes (OCCLUDE_EPS=-1.0; 2.5-voxel
+  self-skip) equally inert (4/250000 faint pixels). **The dilated-band crossing threshold is
+  NOT the dominant cause for this scene** — the diagnostician's mechanism was real but minor.
+  Added reproduction tools: `VIXEN/tools/bench/shadow_ab.py` + `temp_bench/run_baked_shadow_{on,off}.bat`
+  + `run_virtual_shadow_on.bat` (the shadow on/off/virtual A/B triad).
+  **OPEN ROOT CAUSE + SCOPE FORK (needs user direction before re-dispatch):** implementer
+  flags a likely CONFLATION — `parity_thresholds.json` already attributes a ~40 p99-luminance
+  gap to *"baked-normal-quality on subdiv=1 small bodies"* (a DIFFERENT, already-known,
+  Phase-2-deferred issue). The per-body "shadow-loss" numbers may be measuring that
+  normal-quality effect, not shadow false-occlusion. Other open candidates: (b) maxShadowDistance=1000
+  → shadow rays graze near-parallel to wall faces over a long span; (c) live GPU instrumentation
+  of `marchBrickSdfAnyHit`'s actual `d` distribution (never done — reasoned from threshold only).
+  ESCALATION-LADDER read: this is a "new distinct blocker" (mechanism doesn't explain the gap),
+  not a failure to fix a known one → escalate to a deeper Opus diagnostic, NOT re-dispatch Sonnet
+  on the same premise. PAUSED for user: which target — (A) re-frame as the known baked-normal
+  gap, (B) deeper shadow-geometry diagnostic, or (C) accept-and-defer. USER CHOSE (B).
+
+- M10 DEEPER DIAGNOSTIC (INSTRUMENTED, diagnosis-only): DONE · Opus-high · 2026-07-18. VERDICT:
+  the dimming IS shadow-driven via **TWO distinct false-occlusion mechanisms** (~50/50), NOT a
+  normal-quality/subdiv=1 conflation. CONFLATION RULED OUT with live data: shadows-OFF baked
+  matches virtual-ON to ~1.00 at the dim pixels (floor bOFF 88.96 vs vON 88.86; false-shadowed
+  pixels collapse to exact ambient-only 64.8/24.8 with shadowFactor=0 while virtual stays lit
+  103.5/44.5). Normal-quality is at most a ~1.5-3% residual tail, not the gap.
+  - **MECH 1 (~25/57 floor pixels): coarse mip-coverage any-hit occlusion.** TraceWorldShadow's
+    any-hit traversal has 3 `mipHasCoverage()` early-return-TRUE paths (sub-pixel/tier-cross leaf,
+    brick-not-resident, LOD-subpixel non-leaf; `SceneBindings.glsl:~1649/~1677/~1705`) that report
+    occlusion WITHOUT marching the SDF — the LOD sub-pixel footprint falls back to a whole-leaf
+    coverage bit, which for a dilated-band brick reads "occupied" across the +band shell. Causation
+    A/B (`VIXEN_SHADOW_NO_MIP_ANYHIT` disables the 3 returns): floor 67.16→76.29, sphere 69.00→72.11
+    (= its shadows-OFF value), Lwall 24.75→29.31; 25/57 pixels FULLY recover, clean bimodal.
+  - **MECH 2 (~32/57 floor pixels): SDF-march dilated-band false crossing at d≈-0.0104.** The
+    non-mip-recovered pixels are occluded by `marchBrickSdfAnyHit` (`StoredSdf.glsl:822`) itself;
+    live probes show false crossings cluster at d≈-0.0104 — just 0.0004 PAST the committed
+    OCCLUDE_EPS=-0.01. **THIS is why fix 3142047c was inert:** it moved the threshold to -0.01 but
+    the false band samples sit at -0.0104, still "occluded." The kBand=2.0 dilation (SdfBake.h:156)
+    makes each body's SDF fatter than analytic, so the shadow ray clips the band where the true
+    surface doesn't. Virtual lit at every one (oracle vON≈103.5).
+  - maxShadowDistance=1000 grazing hypothesis RULED OUT (occluders are bodies' own near-surface
+    bands at small sHit 1.3-6.4 grid-units, not distant tangential wall clipping).
+  - Instrumentation env-gated OFF, verified inert (md5-identical to baseline with env unset).
+    Gates: `VIXEN_SHADOW_DBG_PX/_PY` (per-pixel `d`/occluder/leafKind), `VIXEN_SHADOW_NO_MIP_ANYHIT`
+    (Mech-1 causation). 6 files touched (all #ifdef-gated), seam + primary march untouched.
+
+- [x] Task 10.2 — Close BOTH mechanisms (shadow/any-hit-only, primary march + seam untouched):
+  (1) MECH 1: shadow any-hit rays must NOT accept coarse `mipHasCoverage` as an occluder — require
+  a real leaf crossing (or descend) instead of the conservative coverage-bit fallback, at the 3
+  sites (`SceneBindings.glsl:~1649/~1677/~1705`); mip coverage stays correct for the primary
+  visible-hit path. (2) MECH 2: `marchBrickSdfAnyHit`'s crossing test must account for the +kBand
+  dilation — march to a more-negative iso (d < -(kBand·voxelSize)) or shrink/skip the exterior band
+  for occlusion; NOT another 0.005 OCCLUDE_EPS nudge (fragile). GATE (oracle-based): with both
+  fixes, baked per-body shadow-loss (floor 24.5%, Lwall 32%) drops toward virtual's 0% and interior
+  baked/virtual ratio 0.895→~1.00; verify with the `VIXEN_SHADOW_NO_MIP_ANYHIT` A/B (Mech 1 fully
+  recovers 25/57) + per-pixel `d`-dump (Mech 2 crossings no longer occlude); geometry parity
+  byte-identical (0/625 same_path, cross_path ≥97%), 8 bodies, seam 1e-4, no perf regression on the
+  visible-hit path. NEVER re-bless a golden toward baked output disagreeing with virtual.
+
+- M10 Task 10.2 (fix): DONE · commit `1964c134` · Sonnet-medium impl · Opus validator APPROVED · 2026-07-18.
+  BOTH mechanisms closed, scope confined to any-hit/shadow. **Fix logic (default path):** (1) MECH 1 —
+  the 3 `mipHasCoverage()` any-hit early-return-occlusion sites in `SceneBindings.glsl`
+  (`traverseOctreeInstancedOnceAnyHit`) now return non-occlusion (coarse coverage no longer
+  false-shadows a dilated-band brick; the surviving `return true` is the genuine SDF/DDA leaf-hit);
+  (2) MECH 2 — `marchBrickSdfAnyHit` OCCLUDE_EPS `-EPS`→`-kBand`(-2.0 grid-voxel, = the bake-time
+  dilation width, principled not a magic nudge; no world↔grid scale needed since makeWorldSpaceEval
+  pre-multiplies by subdiv). **Validator-reproduced fresh A/B (oracle-measured, every body moved TOWARD
+  virtual, NO overshoot):** floor shadow-loss 24.51%→**6.24%**, Lwall 31.86%→**14.83%**, interior
+  baked/virtual ratio 0.895→**0.970**, cross_path luminance delta 4.68→**1.80**. Geometry parity
+  byte-identical **0/625** (run twice fresh, md5-identical), cross_path 99.8%, OOB 0/183540, 8 bodies.
+  **SEAM_TIE_EPS_REL (1e-4) + all 4 usages BYTE-IDENTICAL** to `3142047c`; primary `marchBrickSdf`
+  untouched; the +102/+84/+46/+10 lines in VulkanGraphApplication/BuildRenderGraph/SpatialReuseShade/
+  TraceWorld all `#ifdef VIXEN_SHADOW_DBG`/getenv-gated instrumentation (verified off by default).
+  Perf: esvo_traverse_shade 55.20→50.77ms (favorable/noise); no visible-hit regression (proven by
+  0/625 byte-identical primary output). Commit also lands the env-gated diagnostic harness + temp_bench
+  A/B .bat triad. **RESIDUAL (honest, small, NOT masked): interior ratio 0.970 not 1.00** — dominated by
+  floor's remaining ~5.45-lum gap (83.41 vs virtual 88.86) + ~1.1 on box; = the flagged **THIRD distinct
+  precision issue** (stored-vs-analytic divergence at a wall's own true thin edge / rightWall corner
+  under grazing shadow rays: stored crossing ~0.62 into the dilated band vs analytic gap ~0.114). Not
+  fixed here (out of scope); candidate follow-up KI. Env-leak trap in validator's ad-hoc driver
+  (BAKED_DEMO leaking into "virtual" runs via un-scoped `call`) caught+fixed with setlocal/endlocal;
+  committed `run_parity_check.bat` already scopes it correctly.
 
 ## Milestone M5b — backWall far-hit root cause → enable far-hit rejection → enforce parity (M, OPUS implementer)
 
