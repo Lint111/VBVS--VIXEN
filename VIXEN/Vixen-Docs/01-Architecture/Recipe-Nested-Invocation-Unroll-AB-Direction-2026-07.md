@@ -142,10 +142,35 @@ scales already measured (Inc6, the switch-cost-knee pre-check)?**
 
 ### 2.1 What to measure, and against what baseline
 
+- **Scale target, per explicit user direction (2026-07-18): push well past Inc6's own N=250 ceiling.**
+  Inc6's flat-N sweep topped out at N=250 DISTINCT recipes with a 192-INSTANCE ceiling (the
+  register-all/instantiate-capped design — see [[Recipe-Diversity-Stress-Scene-Inc6-Plan-2026-07]]
+  M2). The user wants M2's own sweep to target **1000+ total instances, drawn from a distinct-recipe
+  count in the 250-1000 range** — i.e. BOTH more distinct recipes AND enough instances-per-recipe
+  that the total instance count clears 1000, deliberately exceeding every prior measurement's scale
+  (Inc6's 192-instance cap, the switch-cost pre-check's own N≤100 cases) to stress this scene
+  authentically at the scale a "grass/terrain/city/biome" scene implies. This is a genuinely new scale
+  regime for this codebase's recipe-perf measurements — confirm at scoping/implementation time whether
+  the existing 192-instance ceiling itself needs to be raised/reconsidered to reach 1000+ instances,
+  or whether that cap was specific to Inc6's own scene design and doesn't apply here.
+- **Per-recipe bytecode complexity (`m_i` in the switch-cost-knee pre-check's own decoupling
+  terminology), per explicit user direction (2026-07-18): 20-200 opcode steps per recipe.** This is
+  itself a wide range spanning simple (20-step) to genuinely complex (200-step) hand/generated
+  recipes — the sweep should sample across this range (not just pick one fixed `m_i`), since the
+  switch-cost pre-check already showed `m_i` (code size) is a primary driver of the existing flat-N
+  collapse; M2 needs `m_i` as an explicit, independently-varied axis, not a fixed constant, to
+  determine whether nesting depth's effect is independent of or entangled with code-size effects
+  already known to matter.
 - Construct a nesting-depth axis (e.g. depth 1, 2, 4, 8 — chosen at implementation time, informed by
-  what M1's guard/design actually supports) crossed against the existing flat-N axis (Inc6 already
-  measured N up to 250) — a 2D sweep, not just depth alone, since the open question is specifically
-  whether NESTING changes the flat-N story, not nesting in isolation.
+  what M1's guard/design actually supports) crossed against the distinct-recipe-count axis (250-1000),
+  the total-instance-count axis (targeting 1000+), AND the per-recipe-complexity axis (20-200 steps)
+  — a genuinely 4D sweep (depth × recipe-count × instance-count × m_i), not just depth alone, since
+  the open question is specifically whether NESTING changes the flat-N story at a scale and
+  complexity this codebase hasn't tested before, not nesting in isolation at the old, smaller scale.
+  A full 4D grid is almost certainly too expensive to sweep exhaustively — at implementation time,
+  design a reduced set of representative cells (e.g. corners + a few interior points of the space)
+  rather than a naive full cross-product, and document what was dropped/sampled vs. exhaustively
+  covered (per this program's own "no silent caps" discipline).
 - Compare: (a) fully-unrolled nested recipes (per whichever of §1.3's two unroll strategies M1
   actually built) vs. (b) the SAME nested recipes evaluated via the interpreter/orchestration path
   (`evalRecipe`, recursing through `InvokeRecipe`) — this is literally "unrolled vs. natural" as the
@@ -188,6 +213,11 @@ nesting depth is just MORE of that same driver, or something qualitatively diffe
   for realistic content — worth checking against actual authored-content plans before over-scoping
   M1's depth support.
 - Cross-language (HLSL) nesting support — explicitly deferred past M1's first cut (§1.1).
+- **Whether Inc6's 192-instance registration/instantiation ceiling needs to be raised to reach M2's
+  1000+-instance scale target (§2.1), or was specific to Inc6's own scene design.** Not yet checked
+  against the actual cap's implementation (find where it's enforced — `RecipeRegistry` registration
+  limit vs. a scene-authoring-time instantiation cap vs. a GPU-buffer-sizing limit — before assuming
+  either "just raise a constant" or "this needs real redesign").
 
 ## Related
 
@@ -217,3 +247,10 @@ nesting depth is just MORE of that same driver, or something qualitatively diffe
 - User, 2026-07-18, when asked how to proceed given the gap: "Build minimal nesting first, then A/B"
   — chose to scope M1 (nesting mechanism) and M2 (the A/B test) as two milestones of this same
   direction, sequential, rather than reframing away from literal nesting or pausing Step 2 entirely.
+- User, 2026-07-18 (M2 scale target, given while M1 was being scoped): "we should aim to 1000+
+  instances from recipes that are N 250 to 1000, i want to really push the scope of the performance"
+  followed by "with recipes themselves having 20-200 steps range" — sets M2's sweep target well past
+  every prior measurement's scale in this codebase (Inc6's own N=250/192-instance ceiling, the
+  switch-cost pre-check's N≤100 cases): 250-1000 distinct recipes, 1000+ total instances, 20-200
+  opcode steps (`m_i`) per recipe. Captured in §2.1 and flagged as an open question in §3 (whether
+  Inc6's 192-instance ceiling needs raising to reach this target).
