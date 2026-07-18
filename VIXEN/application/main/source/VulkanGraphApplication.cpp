@@ -1956,6 +1956,108 @@ void VulkanGraphApplication::Update() {
                                                  " wp=(" + std::to_string(wp[0]) + "," + std::to_string(wp[1]) + "," + std::to_string(wp[2]) + ")");
                             }
                         }
+                        // NORMAL/ALBEDO ORACLE-DIFF DUMP (diagnosis-only, 2026-07-18):
+                        // For each winning instIdx, aggregate the HitRecord's albedo,
+                        // worldNormal, and roughness across every pixel that body won, so the
+                        // baked run's per-body shading inputs can be diffed field-for-field
+                        // against the virtual run's. Reports, per instance: hit count, a
+                        // representative (first-hit) albedo/normal/roughness, and the MEAN
+                        // per-pixel normal length -- a normalized analytic gradient has |n|~=1
+                        // at every pixel, so a mean length well below 1 (or a low variance of a
+                        // faceted field) is the direct numeric fingerprint of a coarse/quantized
+                        // baked normal vs a crisp analytic one. Env-gated, off by default.
+                        if (std::getenv("VIXEN_CORNELL_NORMAL_DUMP")) {
+                            constexpr int kMaxInst = 9;  // 0..7 bodies + one ?-bucket
+                            size_t nCount[kMaxInst] = {0};
+                            double nLenSum[kMaxInst] = {0};
+                            double nLenMin[kMaxInst]; double nLenMax[kMaxInst];
+                            double albSum[kMaxInst][3] = {{0}};
+                            double nrmSum[kMaxInst][3] = {{0}};
+                            double rghSum[kMaxInst] = {0};
+                            float firstAlb[kMaxInst][3] = {{0}}; float firstNrm[kMaxInst][3] = {{0}};
+                            float firstRgh[kMaxInst] = {0};
+                            for (int k = 0; k < kMaxInst; ++k) { nLenMin[k] = 1e30; nLenMax[k] = -1e30; }
+                            for (size_t i = 0; i < recordCount; ++i) {
+                                uint32_t f; std::memcpy(&f, bytes + i * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                if ((f & 0x1u) == 0u) continue;
+                                uint32_t wi; std::memcpy(&wi, bytes + i * kHitRecordStride + kPad0Offset, sizeof(uint32_t));
+                                const int slot = (wi < 8u) ? static_cast<int>(wi) : 8;
+                                float alb[3]; std::memcpy(alb, bytes + i * kHitRecordStride + 0, sizeof(alb));   // albedo @0
+                                float rgh;    std::memcpy(&rgh, bytes + i * kHitRecordStride + 12, sizeof(float)); // roughness @12
+                                float nrm[3]; std::memcpy(nrm, bytes + i * kHitRecordStride + 16, sizeof(nrm));  // worldNormal @16
+                                const double len = std::sqrt((double)nrm[0]*nrm[0] + (double)nrm[1]*nrm[1] + (double)nrm[2]*nrm[2]);
+                                if (nCount[slot] == 0) {
+                                    for (int a = 0; a < 3; ++a) { firstAlb[slot][a] = alb[a]; firstNrm[slot][a] = nrm[a]; }
+                                    firstRgh[slot] = rgh;
+                                }
+                                for (int a = 0; a < 3; ++a) { albSum[slot][a] += alb[a]; nrmSum[slot][a] += nrm[a]; }
+                                rghSum[slot] += rgh; nLenSum[slot] += len;
+                                nLenMin[slot] = std::min(nLenMin[slot], len);
+                                nLenMax[slot] = std::max(nLenMax[slot], len);
+                                ++nCount[slot];
+                            }
+                            const char* names[kMaxInst] = {"Lwall","Rwall","back","floor","ceil","light","sphere","box","?"};
+                            for (int k = 0; k < kMaxInst; ++k) {
+                                if (nCount[k] == 0) continue;
+                                const double inv = 1.0 / (double)nCount[k];
+                                mainLogger->Info(std::string("[CornellDiag] NRMDUMP ") + names[k] + " n=" + std::to_string(nCount[k]) +
+                                    " |n|mean=" + std::to_string(nLenSum[k]*inv) +
+                                    " |n|min=" + std::to_string(nLenMin[k]) + " |n|max=" + std::to_string(nLenMax[k]) +
+                                    " meanNrm=(" + std::to_string(nrmSum[k][0]*inv) + "," + std::to_string(nrmSum[k][1]*inv) + "," + std::to_string(nrmSum[k][2]*inv) + ")" +
+                                    " meanAlb=(" + std::to_string(albSum[k][0]*inv) + "," + std::to_string(albSum[k][1]*inv) + "," + std::to_string(albSum[k][2]*inv) + ")" +
+                                    " meanRgh=" + std::to_string(rghSum[k]*inv) +
+                                    " first[alb=(" + std::to_string(firstAlb[k][0]) + "," + std::to_string(firstAlb[k][1]) + "," + std::to_string(firstAlb[k][2]) +
+                                    ") nrm=(" + std::to_string(firstNrm[k][0]) + "," + std::to_string(firstNrm[k][1]) + "," + std::to_string(firstNrm[k][2]) +
+                                    ") rgh=" + std::to_string(firstRgh[k]) + "]");
+                            }
+                        }
+                        // M10 SHADOW DIAGNOSTIC decode (env-gated, off by default): when
+                        // VIXEN_SHADOW_DBG_PX/_PY are set, SpatialReuseShade.comp re-ran the
+                        // first light's shadow trace for that ONE pixel with capture armed and
+                        // stashed the result into that pixel's HitRecord._pad0[0..2]. Decode it:
+                        //   pad0[0]: bit0=occluded, bit1=NdotL>0, [2..9]=step+1, [10..21]=hop+1,
+                        //            [22..]=occluderInstIdx+1 (0=none)
+                        //   pad0[1]: float d at the crossing sample
+                        //   pad0[2]: float grid-arc-length to crossing (from brick entry)
+                        // This is the LIVE d-distribution / occluder-identity probe -- no CPU
+                        // mirror, the actual value marchBrickSdfAnyHit crossed on.
+                        if (std::getenv("VIXEN_SHADOW_DBG_PX") && std::getenv("VIXEN_SHADOW_DBG_PY") && mainLogger) {
+                            const int tpx = std::atoi(std::getenv("VIXEN_SHADOW_DBG_PX"));
+                            const int tpy = std::atoi(std::getenv("VIXEN_SHADOW_DBG_PY"));
+                            const size_t ti = static_cast<size_t>(tpy) * static_cast<size_t>(kImgSize) + static_cast<size_t>(tpx);
+                            if (ti < recordCount) {
+                                uint32_t packed0, dBits, sBits, flagsField;
+                                std::memcpy(&packed0, bytes + ti * kHitRecordStride + kPad0Offset + 0, sizeof(uint32_t));
+                                std::memcpy(&dBits,   bytes + ti * kHitRecordStride + kPad0Offset + 4, sizeof(uint32_t));
+                                std::memcpy(&sBits,   bytes + ti * kHitRecordStride + kPad0Offset + 8, sizeof(uint32_t));
+                                std::memcpy(&flagsField, bytes + ti * kHitRecordStride + kFlagsOffset, sizeof(uint32_t));
+                                float dVal, sVal; std::memcpy(&dVal, &dBits, 4); std::memcpy(&sVal, &sBits, 4);
+                                float wp[3]; std::memcpy(wp, bytes + ti * kHitRecordStride + kWorldPosOffset, sizeof(wp));
+                                float nrm[3]; std::memcpy(nrm, bytes + ti * kHitRecordStride + 16, sizeof(nrm));
+                                const bool occluded = (packed0 & 0x1u) != 0u;
+                                const bool ndotlPos = (packed0 & 0x2u) != 0u;
+                                const int  step     = static_cast<int>((packed0 >> 2)  & 0xFFu) - 1;
+                                const int  hop      = static_cast<int>((packed0 >> 10) & 0xFFFu) - 1;
+                                const int  occInst  = static_cast<int>((packed0 >> 22) & 0x3Fu) - 1;
+                                const int  leafKind = static_cast<int>((packed0 >> 28) & 0x7u) - 1;
+                                const char* leafName = (leafKind==0)?"SDF-march":(leafKind==1)?"binaryDDA":(leafKind==2)?"procedural":
+                                                       (leafKind==3)?"MIP-tierCross":(leafKind==4)?"MIP-brickNonResident":(leafKind==5)?"MIP-lodSubpixel":"none";
+                                mainLogger->Info("[CornellDiag] SHADOWDBG pixel(" + std::to_string(tpx) + "," + std::to_string(tpy) +
+                                    ") primaryHit=" + std::string((flagsField & 0x1u) ? "1" : "0") +
+                                    " NdotL>0=" + std::string(ndotlPos ? "1" : "0") +
+                                    " OCCLUDED=" + std::string(occluded ? "1" : "0") +
+                                    " occluderInst=" + std::to_string(occInst) +
+                                    " leafKind=" + std::string(leafName) +
+                                    " d@cross=" + std::to_string(dVal) +
+                                    " sHitGrid=" + std::to_string(sVal) +
+                                    " brickHop=" + std::to_string(hop) +
+                                    " step=" + std::to_string(step) +
+                                    " shadePos=(" + std::to_string(wp[0]) + "," + std::to_string(wp[1]) + "," + std::to_string(wp[2]) + ")" +
+                                    " normal=(" + std::to_string(nrm[0]) + "," + std::to_string(nrm[1]) + "," + std::to_string(nrm[2]) + ")");
+                            } else {
+                                mainLogger->Warning("[CornellDiag] SHADOWDBG target pixel out of range");
+                            }
+                        }
                         hrBuf->UnmapReadback(cornellDev);
                     }
                 } else if (mainLogger) {

@@ -1337,7 +1337,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
-        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+        std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+        // M10 shadow diagnostic (env-gated, off by default): when VIXEN_SHADOW_DBG_PX/_PY
+        // are set, inject `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
+        // #version. Only SpatialReuseShade.comp has the arming block that acts on it (the
+        // other shaders that share this builder pattern get a harmless unused define). Same
+        // after-#version textual-injection rule ReadShaderSourceWithTraceHooksGate documents.
+        if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
+            if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
+                const std::string dbgDefines =
+                    "#define VIXEN_SHADOW_DBG 1\n"
+                    "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
+                    "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
+                const size_t fnl = source.find('\n');
+                if (fnl == std::string::npos) source += "\n" + dbgDefines;
+                else source.insert(fnl + 1, dbgDefines);
+            }
+        }
+        // M10 causation A/B (env-gated, off by default): when VIXEN_SHADOW_NO_MIP_ANYHIT is
+        // set, inject the define that disables the coarse mip-coverage any-hit occlusion paths
+        // (SceneBindings.glsl), so a shadow ray only reports occlusion on a real SDF/DDA leaf
+        // crossing. Directly proves whether the baked-vs-virtual false shadow is mip-driven.
+        if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
+            const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
+            const size_t fnl2 = source.find('\n');
+            if (fnl2 == std::string::npos) source += "\n" + noMipDef;
+            else source.insert(fnl2 + 1, noMipDef);
+        }
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -1379,7 +1405,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
-        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+        std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+        // M10 shadow diagnostic (env-gated, off by default): when VIXEN_SHADOW_DBG_PX/_PY
+        // are set, inject `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
+        // #version. Only SpatialReuseShade.comp has the arming block that acts on it (the
+        // other shaders that share this builder pattern get a harmless unused define). Same
+        // after-#version textual-injection rule ReadShaderSourceWithTraceHooksGate documents.
+        if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
+            if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
+                const std::string dbgDefines =
+                    "#define VIXEN_SHADOW_DBG 1\n"
+                    "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
+                    "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
+                const size_t fnl = source.find('\n');
+                if (fnl == std::string::npos) source += "\n" + dbgDefines;
+                else source.insert(fnl + 1, dbgDefines);
+            }
+        }
+        // M10 causation A/B (env-gated, off by default): when VIXEN_SHADOW_NO_MIP_ANYHIT is
+        // set, inject the define that disables the coarse mip-coverage any-hit occlusion paths
+        // (SceneBindings.glsl), so a shadow ray only reports occlusion on a real SDF/DDA leaf
+        // crossing. Directly proves whether the baked-vs-virtual false shadow is mip-driven.
+        if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
+            const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
+            const size_t fnl2 = source.find('\n');
+            if (fnl2 == std::string::npos) source += "\n" + noMipDef;
+            else source.insert(fnl2 + 1, noMipDef);
+        }
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
@@ -1421,7 +1473,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (compPath.empty()) {
             throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
-        const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+        std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+        // M10 shadow diagnostic (env-gated, off by default): when VIXEN_SHADOW_DBG_PX/_PY
+        // are set, inject `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
+        // #version. Only SpatialReuseShade.comp has the arming block that acts on it (the
+        // other shaders that share this builder pattern get a harmless unused define). Same
+        // after-#version textual-injection rule ReadShaderSourceWithTraceHooksGate documents.
+        if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
+            if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
+                const std::string dbgDefines =
+                    "#define VIXEN_SHADOW_DBG 1\n"
+                    "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
+                    "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
+                const size_t fnl = source.find('\n');
+                if (fnl == std::string::npos) source += "\n" + dbgDefines;
+                else source.insert(fnl + 1, dbgDefines);
+            }
+        }
+        // M10 causation A/B (env-gated, off by default): when VIXEN_SHADOW_NO_MIP_ANYHIT is
+        // set, inject the define that disables the coarse mip-coverage any-hit occlusion paths
+        // (SceneBindings.glsl), so a shadow ray only reports occlusion on a real SDF/DDA leaf
+        // crossing. Directly proves whether the baked-vs-virtual false shadow is mip-driven.
+        if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
+            const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
+            const size_t fnl2 = source.find('\n');
+            if (fnl2 == std::string::npos) source += "\n" + noMipDef;
+            else source.insert(fnl2 + 1, noMipDef);
+        }
         builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)

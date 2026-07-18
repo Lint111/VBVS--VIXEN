@@ -552,6 +552,10 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
 
         BodyInstance inst = bodyInstances[instIdx];
 
+#ifdef VIXEN_SHADOW_DBG
+        if (g_shadowDbgArm != 0) g_shadowDbgCurInst = instIdx;
+#endif
+
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
         // Mirrors TraceWorld's recipeId dispatch (Task 11/12/13): recipeId<2 stays on the
         // legacy analytic path; recipeId>=2 is registry-driven via the uber-shader splice.
@@ -584,6 +588,9 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
 #endif
 
             if (pHit && pT >= tmin && pT <= tmax) {
+#ifdef VIXEN_SHADOW_DBG
+                if (g_shadowDbgArm != 0) { g_shadowDbgInst = instIdx; g_shadowDbgSHitGrid = pT; g_shadowDbgLeafKind = 2; }
+#endif
                 return true;  // any-hit: no need to keep looking
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -654,6 +661,9 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
                                            instTmin, instTmax);
 
         if (instHit) {
+#ifdef VIXEN_SHADOW_DBG
+            if (g_shadowDbgArm != 0) { g_shadowDbgInst = instIdx; }
+#endif
             return true;  // any-hit: confirmed occluder, stop immediately (already tmin/tmax-checked inside)
         }
     }

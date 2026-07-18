@@ -841,18 +841,31 @@ bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDi
     // for the PRIMARY visible-hit march (camera rays converge onto the surface from
     // outside, so the first d<EPS sample IS the true crossing) but is IMPRECISE for this
     // any-hit occlusion march: a sample can read d in [0, EPS) while still outside the
-    // true surface (inside the exterior half of the dilated band). Tightening to a true
-    // sign-crossing (d < -EPS, i.e. past d==0 by the same EPS slack, now on the INSIDE)
-    // is strictly more correct and can only shrink false occlusion, never grow it — kept
-    // as a real correctness fix even though the live A/B below found it changes only a
-    // handful of grazing-edge pixels (4/250000, overall shadow-loss unchanged at ~10%)
-    // for THIS scene: the true false-occlusion source for the diagnosed 27%/0.88 gap was
-    // NOT reproduced by tightening this threshold alone (also tried OCCLUDE_EPS=-1.0 and
-    // a 2.5-grid-voxel self-occlusion skip at the march's own entry — both equally inert
-    // on the measured numbers), so a further root-cause is still open beyond this fix —
-    // see Task 10.1's completion report. Do NOT change marchBrickSdf (primary march) or
-    // the seam tie-break — this tightened test is scoped to the any-hit/shadow path only.
-    const float OCCLUDE_EPS = -EPS;
+    // true surface (inside the exterior half of the dilated band). Task 10.1 tightened
+    // this to a bare `d < -EPS` sign-crossing, which is strictly more correct but proved
+    // insufficient on its own (live A/B: only 4/250000 grazing pixels moved, aggregate
+    // floor shadow-loss unchanged) — because MECH 1 (coarse mipHasCoverage any-hit
+    // occlusion, fixed above in traverseOctreeInstancedOnceAnyHit) was independently
+    // false-occluding a separate, larger pixel set and dominated the aggregate metric.
+    //
+    // Task 10.2 MECH 2: with MECH 1 now fixed, the per-pixel d-dump (VIXEN_SHADOW_DBG_PX/
+    // _PY) isolated a SECOND false-occlusion source on the remaining ~32/57 floor pixels:
+    // crossings at d≈-0.0104, just past the bare -EPS=-0.01 threshold. These are trilinear-
+    // interpolation samples inside the dilated band's exterior-facing shell (SdfBake.h's
+    // occupancy predicate marks a brick active out to sd<=kBand, so the exterior half of
+    // the band, 0 < true-d <= kBand, legitimately stores small-magnitude d whose trilinear
+    // blend with an adjacent inside sample can read slightly negative) — not a true crossing
+    // of the analytic surface. -EPS alone only rejects the immediate d∈[0,EPS) straddle;
+    // it doesn't reject band-interior samples further out. The principled fix is to derive
+    // the rejection depth from the SAME kBand the bake used to dilate the band in the first
+    // place (both `d` here and `kBand` in SdfBake.h are grid-voxel-unit signed distances —
+    // see BuildRenderGraph.cpp's makeWorldSpaceEval, which multiplies evalRecipe's world-
+    // space distance by `subdiv` specifically so the stored/marched distance is a grid-voxel
+    // quantity — so no separate world<->grid scale factor applies here): march past the full
+    // dilated-band depth, not just past d==0, so a sample anywhere in the exterior band shell
+    // is rejected and only a true reach into the solid interior counts as an occluder.
+    const float kBand = 2.0;  // SdfBake.h/BuildRenderGraph.cpp's shared bake-time band width (grid-voxel units)
+    const float OCCLUDE_EPS = -kBand;
 
     float sBase = 0.0;
     ivec3 curBrick = brick;
@@ -886,6 +899,16 @@ bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDi
             float d = _interpolateTrilinearCell(cellF, cellZ0, cellZ1);
             if (d < OCCLUDE_EPS) {
                 sHit = sBase + s;
+#ifdef VIXEN_SHADOW_DBG
+                if (g_shadowDbgArm != 0) {
+                    g_shadowDbgD        = d;
+                    g_shadowDbgSHitGrid = sBase + s;
+                    g_shadowDbgStep     = i;
+                    g_shadowDbgHops     = hop;
+                    g_shadowDbgInst     = g_shadowDbgCurInst;
+                    g_shadowDbgLeafKind = 0;  // SDF march
+                }
+#endif
                 return true;
             }
             // abs(d): step size is the unbounding-sphere radius, which is |d| regardless of
