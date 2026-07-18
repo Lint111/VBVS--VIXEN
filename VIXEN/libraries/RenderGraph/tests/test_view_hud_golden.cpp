@@ -3,7 +3,8 @@
  * @brief View Contract Inc-2 golden-mirror gate. Proves the generated Hud.g.h RmlUi data-model
  * registration block (a) compiles + binds against a real Rml::DataModelConstructor, and (b)
  * matches, as a normalized ordered call sequence, the CANONICAL Hud [View] schema field order
- * (tick, bodyCount, activeLensName, activeLensCount, factions[HudFaction], events[HudEvent]).
+ * (tick, bodyCount, activeLensName, activeLensCount, factions[HudFaction], events[HudEvent],
+ * inspectSelected, inspectName, inspectCause).
  * The human truth used to be the hand-written block in UIRenderNode.cpp (Inc-1); that block is
  * deleted in Inc-2 (the node is now a generic IView host — see Ui/IView.h), so the truth moves
  * to the schema itself (codegen/view-schemas/Hud.cs) and its native consumer, HudView::Register
@@ -66,6 +67,9 @@ const std::vector<std::string> kExpected = {
     "Bind(activeLensCount)",
     "Bind(factions)",
     "Bind(events)",
+    "Bind(inspectSelected)",
+    "Bind(inspectName)",
+    "Bind(inspectCause)",
 };
 
 std::string ReadGeneratedHeader() {

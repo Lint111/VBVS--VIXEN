@@ -1,6 +1,6 @@
 #include "Ui/ViewWireReaderSoa.h"
 #include "Ui/ViewStore.h"
-#include "Generated/Hud.blob.g.h"   // Vixen::Views::kHudBlob (version 0x55D27B8C)
+#include "Generated/Hud.blob.g.h"   // Vixen::Views::kHudBlob (version 0x9D4ACFD2)
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <cstring>
@@ -30,7 +30,7 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     WB w;
     w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
     w.u32(version);
-    w.u32(6);                      // top-field count
+    w.u32(9);                      // top-field count
     w.i32(7); w.i32(12); w.str("Ops"); w.i32(4);
 
     // factions: SoA, declared column order name/grievance/focused/known/inLens/recentChanged
@@ -54,6 +54,9 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     w.u32(0); w.u32(3); w.u32(8);
     for (char ch : std::string("wartruce")) w.u8(static_cast<uint8_t>(ch));
     w.i32(40); w.i32(99);
+
+    // T1 inspect-panel tail scalars (top-level, decoded identically to AoS)
+    w.i32(1); w.str("Reds"); w.str("border skirmish");  // inspectSelected, inspectName, inspectCause
 
     return w.b;
 }
@@ -118,6 +121,11 @@ TEST(ViewWireSoaRoundtrip, ReadsBackEveryFieldIncludingEmptyStringRow) {
     EXPECT_EQ(ev[0].cells[Elem(edesc,"tick")].i, 40);
     EXPECT_EQ(ev[1].cells[Elem(edesc,"kind")].s, "truce");
     EXPECT_EQ(ev[1].cells[Elem(edesc,"tick")].i, 99);
+
+    // T1 inspect-panel tail scalars
+    EXPECT_EQ(*static_cast<int*>(store.ScalarSlotPtr(Field(blob,"inspectSelected"))), 1);
+    EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectName"))), "Reds");
+    EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectCause"))), "border skirmish");
 }
 
 TEST(ViewWireSoaRoundtrip, VersionMismatchIsHardError) {

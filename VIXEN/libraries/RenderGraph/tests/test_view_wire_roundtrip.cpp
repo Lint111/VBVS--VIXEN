@@ -1,6 +1,6 @@
 #include "Ui/ViewWireReader.h"
 #include "Ui/ViewStore.h"
-#include "Generated/Hud.blob.g.h"   // Vixen::Views::kHudBlob (version 0x55D27B8C)
+#include "Generated/Hud.blob.g.h"   // Vixen::Views::kHudBlob (version 0x9D4ACFD2)
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <cstring>
@@ -13,7 +13,8 @@ namespace {
 
 // Build the canonical UTVA wire "B" — the byte-for-byte twin of the C# ToBuffer() golden
 // (Yeroket ViewWriterEmitterTests). Same known input: tick=42, bodyCount=9, activeLensName="Intel",
-// activeLensCount=3, factions=[Reds,Blues], events=[war@40].
+// activeLensCount=3, factions=[Reds,Blues], events=[war@40], plus the T1 inspect-panel tail
+// scalars inspectSelected=1, inspectName="Reds", inspectCause="border skirmish".
 struct WB {
     std::vector<std::byte> b;
     void u8(uint8_t v)  { b.push_back(std::byte{v}); }
@@ -27,13 +28,14 @@ std::vector<std::byte> CanonicalWire(uint32_t version) {
     WB w;
     w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
     w.u32(version);
-    w.u32(6);                      // top-field count
+    w.u32(9);                      // top-field count
     w.i32(42); w.i32(9); w.str("Intel"); w.i32(3);
     w.u32(2);                      // factions
     w.str("Reds");  w.f32(0.5f);  w.u8(1); w.u8(1); w.u8(0); w.u8(1);
     w.str("Blues"); w.f32(0.25f); w.u8(0); w.u8(0); w.u8(1); w.u8(0);
     w.u32(1);                      // events
     w.str("war"); w.i32(40);
+    w.i32(1); w.str("Reds"); w.str("border skirmish");  // inspectSelected, inspectName, inspectCause
     return w.b;
 }
 
@@ -84,6 +86,11 @@ TEST(ViewWireRoundtrip, ReadsBackEveryField) {
     ASSERT_EQ(ev.size(), 1u);
     EXPECT_EQ(ev[0].cells[Elem(edesc,"kind")].s, "war");
     EXPECT_EQ(ev[0].cells[Elem(edesc,"tick")].i, 40);
+
+    // T1 inspect-panel tail scalars
+    EXPECT_EQ(*static_cast<int*>(store.ScalarSlotPtr(Field(blob,"inspectSelected"))), 1);
+    EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectName"))), "Reds");
+    EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectCause"))), "border skirmish");
 }
 
 TEST(ViewWireRoundtrip, VersionMismatchIsHardError) {
