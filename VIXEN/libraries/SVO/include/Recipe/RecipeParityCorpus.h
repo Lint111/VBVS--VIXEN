@@ -290,6 +290,15 @@ inline SdfInstruction readParamFloat3Op(int idx) {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamFloat3; in.paramMask=1;
     in.data[0]=(float)idx; return in; }
 
+// Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype. VIXEN-only
+// opcode (see SdfOpCodes.g.h) — pops a float3 already on the value stack (declared world
+// position) and captures it as the recipe's declared position, translating `pos`/curPos for
+// the remainder of the walk. paramMask left at 0 (default) since DeclarePosition itself
+// carries no runtime param-array index — the ReadParamFloat3 immediately before it is what
+// supplies the dynamic value.
+inline SdfInstruction declarePositionOp() {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::DeclarePosition; return in; }
+
 // ────────────────────────────────────────────────────────────────────────────
 // One function per TEST case, building the SAME prog[] sequence (verbatim
 // literal values) as the corresponding TEST(RecipeEvalParity, <Name>) body.
@@ -864,6 +873,17 @@ inline std::vector<SdfInstruction> Make_M2_ReadParamFloat3_MatchesIndexedRead() 
         readParamFloat3Op(0), decomposeFloat3Op(1),
         sphere(glm::vec3(0.f), 0.5f), mathAddOp()
     };
+}
+
+// Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype corpus
+// entry. Meta segment (ReadParamFloat3 + DeclarePosition) computes a ReadParam-sourced world
+// position; resolve segment (Sphere at local center=0) renders at that declared position.
+// NOTE: this program is excluded from GetAll()/the standard CPU/GPU corpus loop below (see
+// its comment) since it needs the emitDeclaredPositionOutParam=true emitter path and a 3rd
+// out-param SSBO readback the shared corpus harness doesn't thread through — its own
+// dedicated parity test lives in test_recipe_glsl_numerical_parity.cpp instead.
+inline std::vector<SdfInstruction> Make_Inc6M1_DeclaredPosition_SphereRendersAtDeclaredPos() {
+    return { readParamFloat3Op(0), declarePositionOp(), sphere(glm::vec3(0.f), 0.5f) };
 }
 
 inline std::vector<CorpusProgram> GetAll() {

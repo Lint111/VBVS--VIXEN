@@ -104,5 +104,22 @@ enum class SdfOpCode : uint8_t {
     // 110 == CurlNoise3D in the canonical enum (NOT free; intentionally not mirrored here — VIXEN
     // has no curl-noise kernel yet, out of scope for this plan).
     ReadParamFloat3        = 111,  // hand-mirrored — see file-header note; SDFInstruction.cs:171
+
+    // HAND-MIRRORED ADDITION (Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract
+    // meta/resolve prototype, 2026-07-17): DeclarePosition is NOT a Yeroket canonical opcode
+    // at all (no C# SDFInstruction.cs counterpart exists or is planned here) — it is a
+    // VIXEN-only, prototype-scoped marker opcode, unlike ReadParam/ReadParamFloat3 above
+    // (which mirror a real canonical enumerator not yet marked [SdfCoreOp]). Value 112 chosen
+    // as the next free slot after ReadParamFloat3=111; not derived from any canonical source.
+    // Semantics: pops a float3 already on the value stack (the meta segment's declared
+    // world position, typically produced by ReadParamFloat3) and (a) captures it as the
+    // recipe's declared position (exposed via an `out vec3` in the GLSL emitter / an
+    // out-param in the CPU eval overload), and (b) folds it into the sample-point position
+    // as a pure translation for the remainder of the walk (the resolve segment), so the
+    // declared position actually moves where the resolve segment's shape renders — not just
+    // a disconnected reported value. See SdfRecipeEval.h/SdfRecipeCodegenGlsl.h for the
+    // dispatch and Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07.md for the
+    // design this derisks.
+    DeclarePosition        = 112,
 };
 }  // namespace Vixen::SVO::Recipe

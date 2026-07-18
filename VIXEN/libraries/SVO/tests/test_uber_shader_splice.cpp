@@ -170,6 +170,40 @@ TEST(UberShaderSplice, LegacyAndRegistryRecipesCoexist) {
     EXPECT_TRUE(result.success) << result.errorMessage;
 }
 
+// --- Recipe-Diversity-Stress-Scene Inc6 M2 repro: N=100 DeclarePosition-using recipes -----
+// Isolates the live-app crash (VIXEN.exe exits 1, no exception logged, during
+// BodyInstanceRayMarch.comp's Compute-stage compile) from the rest of the app, using the
+// SAME production compile path (ShaderBundleBuilder) this file's other tests already use.
+TEST(UberShaderSplice, OneHundredDeclarePositionRecipesCompile) {
+    const std::string raw = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+    ASSERT_FALSE(raw.empty());
+
+    RecipeRegistry registry;
+    for (uint32_t i = 2; i < 102; ++i) {
+        SdfInstruction readPos{}; readPos.opCode = (uint8_t)SdfOpCode::ReadParamFloat3;
+        readPos.paramMask = 1; readPos.data[0] = 0.0f;
+        SdfInstruction declarePos{}; declarePos.opCode = (uint8_t)SdfOpCode::DeclarePosition;
+
+        RecipeRegistry::RecipeEntry e{};
+        e.bytecode = {
+            readPos, declarePos,
+            box(glm::vec3(2.f + 0.1f * i, 2.f, 2.f)),
+            sphere(glm::vec3(float(i % 10), 0.f, 0.f), 1.5f),
+            combine(SdfOpCode::SmoothUnion, 0.15f),
+        };
+        e.boundCenter = glm::vec3(float(i), 64.f, 64.f);
+        e.boundRadius = 12.0f;
+        ASSERT_EQ(registry.Register(i, e), RecipeRegistry::RegisterResult::Ok) << "id=" << i;
+    }
+    ASSERT_EQ(registry.Ids().size(), 100u);
+
+    const std::string spliced = SpliceProceduralRecipesIntoSource(raw, registry);
+    EXPECT_NE(spliced.find("sdfRecipe_50"), std::string::npos);
+
+    auto result = CompileSource(spliced);
+    EXPECT_TRUE(result.success) << result.errorMessage;
+}
+
 // --- Marker-missing input throws (rather than silently producing a stale shader) ---------
 
 TEST(UberShaderSplice, MissingMarkerThrows) {

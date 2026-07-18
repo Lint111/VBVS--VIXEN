@@ -4,6 +4,8 @@
 #include <glm/gtc/quaternion.hpp>   // glm::quat — for M4b Transform oracle
 #include <cmath>
 #include <algorithm>
+#include <array>
+#include <span>
 using namespace Vixen::SVO::Recipe;
 
 static SdfInstruction sphere(glm::vec3 c, float r) {
@@ -2263,4 +2265,80 @@ TEST(RecipeEvalParity, ReadParamDoesNotAffectExistingPushParam) {
     const float params[] = { 999.0f };
     SdfInstruction pushProg[] = { pushParamOp(42.0f) };
     EXPECT_NEAR(evalRecipe(pushProg, 1, glm::vec3(0), params), 42.0f, 1e-6f);
+}
+
+// =========================================================================
+// Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype.
+// Recipe: [ReadParamFloat3(idx=0), DeclarePosition, Sphere(center=0,r=0.5)].
+//   Meta segment:    ReadParamFloat3 pushes a ReadParam-sourced (NOT baked) world position;
+//                     DeclarePosition captures it (outDeclaredPos) and folds it into `pos`
+//                     as a translation for the rest of the walk.
+//   Resolve segment:  a plain Sphere at local center=0 — renders at the DECLARED position
+//                     because pos was already translated by the meta segment.
+// This directly exercises Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07.md's
+// "suggested first step": prove the out-param convention + inline-assignment argument holds
+// for a REAL position-dependent (not CPU-baked-constant) meta segment.
+// =========================================================================
+
+static SdfInstruction declarePositionOp() {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::DeclarePosition; return in;
+}
+
+static std::vector<SdfInstruction> MakeSpatialContractPrototypeProgram() {
+    return { readParamFloat3Op(0.0f), declarePositionOp(), sphere(glm::vec3(0.0f), 0.5f) };
+}
+
+TEST(RecipeEvalParity, DeclarePosition_CapturesReadParamSourcedWorldPosition) {
+    auto prog = MakeSpatialContractPrototypeProgram();
+    const std::array<glm::vec3, 3> declaredPositions = {
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(2.0f, 0.0f, 0.0f),
+        glm::vec3(-1.5f, 3.0f, 0.75f),
+    };
+    for (const glm::vec3& declared : declaredPositions) {
+        const float params[] = { declared.x, declared.y, declared.z };
+        glm::vec3 outDeclared(-999.0f); // sentinel -- must be overwritten
+        float d = evalRecipe(prog.data(), (uint32_t)prog.size(), declared /*query AT the declared center*/,
+                              std::span<const float>(params, 3), &outDeclared);
+        // (1) The out-param must equal the ReadParam-supplied value exactly.
+        EXPECT_NEAR(outDeclared.x, declared.x, 1e-6f) << "declared.x mismatch";
+        EXPECT_NEAR(outDeclared.y, declared.y, 1e-6f) << "declared.y mismatch";
+        EXPECT_NEAR(outDeclared.z, declared.z, 1e-6f) << "declared.z mismatch";
+        // (2) Querying AT the declared position must land at the sphere's center (d == -radius),
+        // proving the resolve segment actually consumed the translated position -- not a
+        // disconnected reported value that nothing else uses.
+        EXPECT_NEAR(d, -0.5f, 1e-5f)
+            << "sphere did not render at the declared position (declared="
+            << declared.x << "," << declared.y << "," << declared.z << ")";
+    }
+}
+
+TEST(RecipeEvalParity, DeclarePosition_ChangingReadParamMovesWhereShapeRenders) {
+    // The core claim of the whole prototype: changing the ReadParam-supplied position value
+    // moves WHERE the resolve segment's shape renders, not just a separately-reported number.
+    auto prog = MakeSpatialContractPrototypeProgram();
+    const glm::vec3 queryPoint(5.0f, 0.0f, 0.0f); // fixed query point in world space
+
+    // Declared position far from queryPoint -> queryPoint is far outside the sphere (d > 0).
+    {
+        const float params[] = { 0.0f, 0.0f, 0.0f };
+        float d = evalRecipe(prog.data(), (uint32_t)prog.size(), queryPoint, std::span<const float>(params, 3));
+        EXPECT_GT(d, 0.0f) << "expected queryPoint OUTSIDE sphere when declared=(0,0,0)";
+    }
+    // Declared position AT queryPoint -> queryPoint is now the sphere's center (d == -radius).
+    {
+        const float params[] = { queryPoint.x, queryPoint.y, queryPoint.z };
+        float d = evalRecipe(prog.data(), (uint32_t)prog.size(), queryPoint, std::span<const float>(params, 3));
+        EXPECT_NEAR(d, -0.5f, 1e-5f) << "expected queryPoint AT sphere center when declared==queryPoint";
+    }
+}
+
+TEST(RecipeEvalParity, DeclarePosition_OmittedOutParamDoesNotCrash) {
+    // outDeclaredPos defaults to nullptr -- confirm the opt-in out-param is truly optional
+    // (mirrors every pre-Inc6 evalRecipe call site, which never passes it).
+    auto prog = MakeSpatialContractPrototypeProgram();
+    const float params[] = { 1.0f, 2.0f, 3.0f };
+    float d = evalRecipe(prog.data(), (uint32_t)prog.size(), glm::vec3(1.0f, 2.0f, 3.0f),
+                          std::span<const float>(params, 3));
+    EXPECT_NEAR(d, -0.5f, 1e-5f);
 }

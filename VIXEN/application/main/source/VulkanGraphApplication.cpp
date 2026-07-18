@@ -514,6 +514,85 @@ void VulkanGraphApplication::PreTick() {
             }
         }
 
+        // Recipe-Diversity-Stress-Scene Inc6 M3: per-frame parameter updates generalized from
+        // M3 Task 8's single ReadParam body (above) to ALL instantiated bodies in the diversity
+        // stress demo (min(N,192) per M2). SAME mechanism, same SetInstances() re-submission
+        // path -- just applied to the whole instance list instead of one instance. Gated on the
+        // SAME env var BuildRenderGraph.cpp used to build this scene, so this block is a true
+        // no-op when the demo isn't active (mirrors the uber-demo sweep's own gating discipline).
+        //
+        // Two per-frame-updated parameters, per the M3 plan's own two requirements:
+        //   1. EVERY instance: recipeParams[3] (a scalar shape parameter, ReadParam idx=3 --
+        //      idx 0 is reserved by the float3 declared-position read, so idx=3 doesn't alias)
+        //      subtracted from the resolve segment's own SDF value (BuildRenderGraph.cpp's
+        //      program suffix: ReadParam(3), MathSub) -- a uniform "shrink/grow" sweep visible
+        //      on every generated shape regardless of its specific CSG structure.
+        //   2. A SUBSET of instances (every 4th, index % kAnimatedPositionStride == 0): the
+        //      DECLARED POSITION ITSELF (recipeParams[0..2], ReadParamFloat3 idx=0) orbits
+        //      around that instance's own resting grid slot -- exercising the spatial contract's
+        //      own value proposition (a genuinely moving, ReadParam-sourced position) rather than
+        //      only a shape parameter, per the plan's explicit "this is the actual point of the
+        //      milestone" framing. Orbit is centered on a CACHED base position (captured once,
+        //      the first time this block runs after a fresh N) rather than the previous frame's
+        //      value, so per-frame writes never drift/accumulate -- each frame recomputes the
+        //      absolute orbited position from the fixed base + current phase.
+        if (std::getenv("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(
+                    renderGraph ? renderGraph->GetInstance(bodyOctreeSceneNode_) : nullptr)) {
+                std::vector<Vixen::SVO::BodyInstanceGpu> instances = bodyScene->GetInstances();
+
+                // Base declared positions, cached once per instance COUNT (a fresh N re-seeds
+                // the cache; the same N across frames reuses it) -- captured from the FIRST
+                // frame's already-authored recipeParams[0..2] (BuildRenderGraph.cpp's own
+                // static-per-run grid placement), not recomputed from grid math here, so this
+                // block stays correct regardless of how the grid is laid out upstream.
+                static std::vector<glm::vec3> diversityBasePositions;
+                if (diversityBasePositions.size() != instances.size()) {
+                    diversityBasePositions.clear();
+                    diversityBasePositions.reserve(instances.size());
+                    for (const auto& inst : instances) {
+                        diversityBasePositions.emplace_back(
+                            inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+                    }
+                }
+
+                constexpr float kShapeParamSweepMax   = 3.0f;   // matches BuildRenderGraph.cpp's kShapeParamSweepMax
+                constexpr float kShapeSweepSpeed       = 0.05f;  // radians/frame, matches the uber-demo's own cadence
+                constexpr int   kAnimatedPositionStride = 4;     // matches BuildRenderGraph.cpp's kAnimatedPositionStride
+                constexpr float kOrbitRadius           = 6.0f;   // world units; covered by the boundRadius margin
+                constexpr float kOrbitSpeed            = 0.03f;  // radians/frame
+
+                const float t = static_cast<float>(hudUpdateTick_);
+                for (size_t idx = 0; idx < instances.size(); ++idx) {
+                    Vixen::SVO::BodyInstanceGpu& inst = instances[idx];
+                    if (inst.providerKind != 1u) continue;  // only PROVIDER_PROCEDURAL bodies carry recipeParams
+
+                    // (1) every instance: animated shape parameter.
+                    inst.recipeParams[3] = kShapeParamSweepMax * std::sin(t * kShapeSweepSpeed + static_cast<float>(idx));
+
+                    // (2) every Nth instance: animated declared position, orbiting its own base
+                    // grid slot in the XZ plane (Y fixed, matching the grid's own flat layout).
+                    if (idx % kAnimatedPositionStride == 0) {
+                        const glm::vec3& base = diversityBasePositions[idx];
+                        const float phase = t * kOrbitSpeed + static_cast<float>(idx);
+                        const glm::vec3 orbited(
+                            base.x + kOrbitRadius * std::cos(phase),
+                            base.y,
+                            base.z + kOrbitRadius * std::sin(phase));
+                        inst.recipeParams[0] = orbited.x;
+                        inst.recipeParams[1] = orbited.y;
+                        inst.recipeParams[2] = orbited.z;
+                    }
+                }
+
+                // SAME instance COUNT every frame (only recipeParams[] contents change) ->
+                // BodyOctreeSceneNode::SetInstances never calls MarkNeedsRecompile, the exact
+                // invariant ReadParamValueSweepNeverMarksNodeNeedsRecompile pins structurally and
+                // this milestone's own scaled-up test extends to min(N,192) instances.
+                bodyScene->SetInstances(std::move(instances));
+            }
+        }
+
         // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live orchestration, gated behind
         // VIXEN_RECIPE_BUCKETED_DISPATCH (recipeBucketedDispatchEnabled_, set once in
         // BuildRenderGraph.cpp). A COMPLETE no-op when unset -- returns before touching any of

@@ -185,6 +185,47 @@ void main() {
 }
 
 // ---------------------------------------------------------------------------
+// Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype variant.
+// Same shape as ComposeComputeShader above, but the wrapper main() also reads back the
+// emitted function's `out vec3 declaredPos` into a 4th SSBO binding (3) — proving the
+// out-param convention actually threads a value out of the compute shader, not just that it
+// compiles. sdfRecipe_0 here is expected to have been emitted with
+// emitDeclaredPositionOutParam=true (3-arg signature with the trailing out-param).
+// ---------------------------------------------------------------------------
+std::string ComposeComputeShaderWithDeclaredPosition(const std::string& sdfCoreGlsl,
+                                                      const std::string& emittedFieldFn) {
+    std::ostringstream ss;
+    ss << "#version 450\n";
+    ss << sdfCoreGlsl << "\n";
+    ss << emittedFieldFn << "\n";
+    ss << R"GLSL(
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer InPoints {
+    vec4 points[];
+};
+layout(set = 0, binding = 1, std430) writeonly buffer OutValues {
+    float values[];
+};
+layout(set = 0, binding = 2, std430) readonly buffer InParams {
+    float params[6];
+};
+layout(set = 0, binding = 3, std430) writeonly buffer OutDeclaredPos {
+    vec4 declaredPositions[];
+};
+
+void main() {
+    if (gl_GlobalInvocationID.x >= points.length()) return;
+    float p[6] = float[6](params[0], params[1], params[2], params[3], params[4], params[5]);
+    vec3 declaredPos;
+    values[gl_GlobalInvocationID.x] = sdfRecipe_0(points[gl_GlobalInvocationID.x].xyz, p, declaredPos);
+    declaredPositions[gl_GlobalInvocationID.x] = vec4(declaredPos, 0.0);
+}
+)GLSL";
+    return ss.str();
+}
+
+// ---------------------------------------------------------------------------
 // GPU parity fixture. Device bring-up mirrors test_procedural_recipe_render.cpp's
 // ProceduralRecipeRenderTest, but INVERTS the accept gate: this harness SKIPS
 // (rather than asserting) when no REAL (discrete/integrated, non-software,
@@ -542,6 +583,208 @@ protected:
         vkDestroyBuffer(logicalDevice_, paramsBuf, nullptr);
         vkFreeMemory(logicalDevice_, paramsMem, nullptr);
     }
+
+    // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype variant
+    // of DispatchAndReadback above: same shape, plus a 4th SSBO (binding 3) that reads back
+    // the emitted function's `out vec3 declaredPos` per sample point. `spirv` must have been
+    // compiled from ComposeComputeShaderWithDeclaredPosition (a 4-binding pipeline layout),
+    // not the plain 3-binding ComposeComputeShader.
+    void DispatchAndReadbackWithDeclaredPosition(const std::vector<uint32_t>& spirv,
+                                                  const std::vector<glm::vec3>& points,
+                                                  std::vector<float>& outValues,
+                                                  std::vector<glm::vec3>& outDeclaredPositions,
+                                                  const std::array<float, 6>& params = {}) {
+        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
+        ASSERT_FALSE(spirv.empty());
+
+        const uint32_t pointCount = static_cast<uint32_t>(points.size());
+
+        std::vector<glm::vec4> paddedPoints(pointCount);
+        for (uint32_t i = 0; i < pointCount; ++i)
+            paddedPoints[i] = glm::vec4(points[i], 0.0f);
+        const VkDeviceSize inSize = static_cast<VkDeviceSize>(pointCount) * sizeof(glm::vec4);
+
+        VkBuffer inBuf = VK_NULL_HANDLE; VkDeviceMemory inMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(inSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, inBuf, inMem));
+        {
+            void* mapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, inMem, 0, inSize, 0, &mapped), VK_SUCCESS);
+            std::memcpy(mapped, paddedPoints.data(), static_cast<size_t>(inSize));
+            vkUnmapMemory(logicalDevice_, inMem);
+        }
+
+        const VkDeviceSize outSize = static_cast<VkDeviceSize>(pointCount) * sizeof(float);
+        VkBuffer outBuf = VK_NULL_HANDLE; VkDeviceMemory outMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(outSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, outBuf, outMem));
+
+        const VkDeviceSize paramsSize = params.size() * sizeof(float);
+        VkBuffer paramsBuf = VK_NULL_HANDLE; VkDeviceMemory paramsMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(paramsSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, paramsBuf, paramsMem));
+        {
+            void* mapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, paramsMem, 0, paramsSize, 0, &mapped), VK_SUCCESS);
+            std::memcpy(mapped, params.data(), static_cast<size_t>(paramsSize));
+            vkUnmapMemory(logicalDevice_, paramsMem);
+        }
+
+        // 4th binding: declared-position readback (vec4-padded, same std430 convention as points).
+        const VkDeviceSize declPosSize = static_cast<VkDeviceSize>(pointCount) * sizeof(glm::vec4);
+        VkBuffer declPosBuf = VK_NULL_HANDLE; VkDeviceMemory declPosMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(declPosSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, declPosBuf, declPosMem));
+
+        VkShaderModuleCreateInfo smci{};
+        smci.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        smci.codeSize = spirv.size() * sizeof(uint32_t);
+        smci.pCode    = spirv.data();
+        VkShaderModule shaderModule = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shaderModule), VK_SUCCESS);
+
+        VkDescriptorSetLayoutBinding bindings[4]{};
+        for (int i = 0; i < 4; ++i) {
+            bindings[i].binding         = i;
+            bindings[i].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+
+        VkDescriptorSetLayoutCreateInfo dslci{};
+        dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        dslci.bindingCount = 4;
+        dslci.pBindings    = bindings;
+        VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
+
+        VkPipelineLayoutCreateInfo plci{};
+        plci.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        plci.setLayoutCount = 1;
+        plci.pSetLayouts    = &dsl;
+        VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &plci, nullptr, &pipelineLayout), VK_SUCCESS);
+
+        VkComputePipelineCreateInfo cpci{};
+        cpci.sType       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        cpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        cpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        cpci.stage.module = shaderModule;
+        cpci.stage.pName  = "main";
+        cpci.layout       = pipelineLayout;
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline),
+                  VK_SUCCESS);
+
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+        VkDescriptorPoolCreateInfo dpci{};
+        dpci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        dpci.maxSets       = 1;
+        dpci.poolSizeCount = 1;
+        dpci.pPoolSizes    = &poolSize;
+        VkDescriptorPool descPool = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &dpci, nullptr, &descPool), VK_SUCCESS);
+
+        VkDescriptorSetAllocateInfo dsai{};
+        dsai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dsai.descriptorPool     = descPool;
+        dsai.descriptorSetCount = 1;
+        dsai.pSetLayouts        = &dsl;
+        VkDescriptorSet descSet = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &descSet), VK_SUCCESS);
+
+        VkDescriptorBufferInfo inInfo{inBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo outInfo{outBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo paramsInfo{paramsBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo declPosInfo{declPosBuf, 0, VK_WHOLE_SIZE};
+        VkWriteDescriptorSet writes[4]{};
+        VkDescriptorBufferInfo* infos[4] = {&inInfo, &outInfo, &paramsInfo, &declPosInfo};
+        for (int i = 0; i < 4; ++i) {
+            writes[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet          = descSet;
+            writes[i].dstBinding      = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[i].pBufferInfo     = infos[i];
+        }
+        vkUpdateDescriptorSets(logicalDevice_, 4, writes, 0, nullptr);
+
+        VkCommandBufferAllocateInfo cbai{};
+        cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbai.commandPool        = commandPool_;
+        cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cbai.commandBufferCount = 1;
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &cbai, &cmd), VK_SUCCESS);
+
+        VkCommandBufferBeginInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        ASSERT_EQ(vkBeginCommandBuffer(cmd, &bi), VK_SUCCESS);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                 pipelineLayout, 0, 1, &descSet, 0, nullptr);
+        const uint32_t groups = (pointCount + 63) / 64;
+        vkCmdDispatch(cmd, groups, 1, 1);
+
+        VkBufferMemoryBarrier toHost[2]{};
+        for (int i = 0; i < 2; ++i) {
+            toHost[i].sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            toHost[i].srcAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+            toHost[i].dstAccessMask       = VK_ACCESS_HOST_READ_BIT;
+            toHost[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            toHost[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            toHost[i].offset              = 0;
+            toHost[i].size                = VK_WHOLE_SIZE;
+        }
+        toHost[0].buffer = outBuf;
+        toHost[1].buffer = declPosBuf;
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0, 0, nullptr, 2, toHost, 0, nullptr);
+
+        ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
+
+        VkSubmitInfo si{};
+        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        si.commandBufferCount = 1;
+        si.pCommandBuffers    = &cmd;
+
+        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
+        ASSERT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
+        ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+
+        outValues.resize(pointCount);
+        void* mappedOut = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, outMem, 0, outSize, 0, &mappedOut), VK_SUCCESS);
+        std::memcpy(outValues.data(), mappedOut, static_cast<size_t>(outSize));
+        vkUnmapMemory(logicalDevice_, outMem);
+
+        std::vector<glm::vec4> paddedDeclPos(pointCount);
+        void* mappedDecl = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, declPosMem, 0, declPosSize, 0, &mappedDecl), VK_SUCCESS);
+        std::memcpy(paddedDeclPos.data(), mappedDecl, static_cast<size_t>(declPosSize));
+        vkUnmapMemory(logicalDevice_, declPosMem);
+        outDeclaredPositions.resize(pointCount);
+        for (uint32_t i = 0; i < pointCount; ++i)
+            outDeclaredPositions[i] = glm::vec3(paddedDeclPos[i]);
+
+        vkDeviceWaitIdle(logicalDevice_);
+        vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);
+        vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
+        vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(logicalDevice_, dsl, nullptr);
+        vkDestroyShaderModule(logicalDevice_, shaderModule, nullptr);
+        vkDestroyBuffer(logicalDevice_, outBuf, nullptr);
+        vkFreeMemory(logicalDevice_, outMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, inBuf, nullptr);
+        vkFreeMemory(logicalDevice_, inMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, paramsBuf, nullptr);
+        vkFreeMemory(logicalDevice_, paramsMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, declPosBuf, nullptr);
+        vkFreeMemory(logicalDevice_, declPosMem, nullptr);
+    }
 };
 
 } // namespace
@@ -693,6 +936,125 @@ TEST_F(RecipeGlslNumericalParityTest, ReadParamSweepAcrossValuesWithoutRecompile
 }
 
 // ---------------------------------------------------------------------------
+// Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype's own
+// dedicated GPU parity test. Proves, on real hardware, the THREE claims the direction doc's
+// "suggested first step" asks for:
+//   (a) the declared position (meta segment's `out vec3 declaredPos`) matches between CPU
+//       (evalRecipe's outDeclaredPos) and GPU (the emitted out-param, read back via SSBO),
+//       and both match the actual ReadParam-supplied value;
+//   (b) the resolve segment's own field value is correct GIVEN that position — i.e. changing
+//       the declared position via ReadParam moves WHERE the shape renders (queried at a FIXED
+//       world point, its sdf value changes as the declared position sweeps toward/away from
+//       it), not just a disconnected reported number;
+//   (c) compiled EXACTLY ONCE, re-dispatched with different params — mirrors P4's own
+//       proven no-recompile invariant (ReadParamSweepAcrossValuesWithoutRecompile above),
+//       confirmed to still hold for this new opcode.
+// Same GPU-required/SKIP behavior as the rest of this fixture.
+// ---------------------------------------------------------------------------
+TEST_F(RecipeGlslNumericalParityTest, DeclaredPositionMatchesAcrossCpuAndGpu) {
+    using namespace Vixen::SVO::Recipe;
+    const std::vector<glm::vec3> samplePoints = BuildSamplePoints();
+
+    // Meta segment: ReadParamFloat3(idx=0) + DeclarePosition. Resolve segment: Sphere(center=0,r=0.5).
+    const SdfInstruction prog[] = {
+        [] { SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::ReadParamFloat3; in.paramMask = 1; in.data[0] = 0.0f; return in; }(),
+        [] { SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::DeclarePosition; return in; }(),
+        [] { SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Sphere; in.data[3] = 0.5f; return in; }(),
+    };
+    constexpr uint32_t kCount = 3;
+
+    ShaderManagement::ShaderCompiler compiler;
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good())
+        << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+
+    // Compile EXACTLY ONCE (claim (c) above) — emitted WITH the out-param (emitDeclaredPositionOutParam=true).
+    const std::string fieldFn = EmitProceduralFieldFunctionGlsl(
+        prog, kCount, /*recipeId=*/0, /*emitDeclaredPositionOutParam=*/true);
+    const std::string shaderSrc = ComposeComputeShaderWithDeclaredPosition(sdfCoreGlsl, fieldFn);
+
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, shaderSrc, "main", opts);
+    ASSERT_TRUE(compOut.success)
+        << "GLSL compile failed for Inc6 M1 declared-position prototype:\n" << compOut.GetFullLog()
+        << "\n--- emitted field function ---\n" << fieldFn;
+    ASSERT_FALSE(compOut.spirv.empty());
+
+    // Fixed query point in world space — used for claim (b): its sdf value must change as the
+    // declared position sweeps toward/away from it.
+    const glm::vec3 fixedQueryPoint(5.0f, 0.0f, 0.0f);
+
+    const std::vector<glm::vec3> declaredPositionSweep = {
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(2.0f, 0.0f, 0.0f),
+        glm::vec3(-1.5f, 3.0f, 0.75f),
+        glm::vec3(5.0f, 0.0f, 0.0f),   // == fixedQueryPoint: sphere should land exactly on it
+    };
+
+    for (const glm::vec3& declared : declaredPositionSweep) {
+        SCOPED_TRACE("declared=(" + std::to_string(declared.x) + "," +
+                     std::to_string(declared.y) + "," + std::to_string(declared.z) + ")");
+        const std::array<float, 6> params = {declared.x, declared.y, declared.z, 0.0f, 0.0f, 0.0f};
+
+        // CPU reference: full sample grid + the fixed query point, plus outDeclaredPos capture.
+        std::vector<float> cpuRef(samplePoints.size());
+        glm::vec3 cpuDeclaredFromGrid(-999.0f);
+        for (size_t i = 0; i < samplePoints.size(); ++i) {
+            cpuRef[i] = evalRecipe(prog, kCount, samplePoints[i],
+                                    std::span<const float>(params.data(), params.size()),
+                                    &cpuDeclaredFromGrid);
+        }
+        glm::vec3 cpuDeclaredAtQuery(-999.0f);
+        float cpuAtFixedQuery = evalRecipe(prog, kCount, fixedQueryPoint,
+                                            std::span<const float>(params.data(), params.size()),
+                                            &cpuDeclaredAtQuery);
+
+        // (a) CPU out-param must equal the ReadParam-supplied value exactly (evalRecipe is
+        // deterministic C++, no GPU involved yet).
+        EXPECT_NEAR(cpuDeclaredFromGrid.x, declared.x, 1e-6f);
+        EXPECT_NEAR(cpuDeclaredFromGrid.y, declared.y, 1e-6f);
+        EXPECT_NEAR(cpuDeclaredFromGrid.z, declared.z, 1e-6f);
+
+        // GPU dispatch: same already-compiled SPIR-V, different params each iteration (claim (c)).
+        std::vector<float> gpuValues;
+        std::vector<glm::vec3> gpuDeclaredPositions;
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadbackWithDeclaredPosition(
+            compOut.spirv, samplePoints, gpuValues, gpuDeclaredPositions, params));
+        ASSERT_EQ(gpuValues.size(), cpuRef.size());
+        ASSERT_EQ(gpuDeclaredPositions.size(), cpuRef.size());
+
+        for (size_t i = 0; i < samplePoints.size(); ++i) {
+            EXPECT_TRUE(NearlyEqual(gpuValues[i], cpuRef[i]))
+                << "Field-value mismatch at point (" << samplePoints[i].x << ","
+                << samplePoints[i].y << "," << samplePoints[i].z << "): gpu=" << gpuValues[i]
+                << " cpu=" << cpuRef[i];
+            // (a) GPU out-param must match the CPU out-param (and thus the declared value)
+            // at every dispatched invocation, not just invocation 0.
+            EXPECT_NEAR(gpuDeclaredPositions[i].x, declared.x, 1e-4f) << "GPU declaredPos.x at sample " << i;
+            EXPECT_NEAR(gpuDeclaredPositions[i].y, declared.y, 1e-4f) << "GPU declaredPos.y at sample " << i;
+            EXPECT_NEAR(gpuDeclaredPositions[i].z, declared.z, 1e-4f) << "GPU declaredPos.z at sample " << i;
+        }
+
+        // (b) The resolve segment's field value at the FIXED query point must reflect the
+        // declared position actually moving the shape: sdf(fixedQueryPoint) == -radius exactly
+        // when declared == fixedQueryPoint, and > -radius (further from the surface, since the
+        // sphere is elsewhere) otherwise. This is the crux check: a disconnected/reported-only
+        // declared position would NOT correlate with this value at all.
+        if (declared == fixedQueryPoint) {
+            EXPECT_NEAR(cpuAtFixedQuery, -0.5f, 1e-5f)
+                << "CPU: expected fixedQueryPoint to be the sphere's center when declared==fixedQueryPoint";
+        } else {
+            EXPECT_GT(cpuAtFixedQuery, -0.5f)
+                << "CPU: expected fixedQueryPoint OUTSIDE the sphere's center when declared!=fixedQueryPoint";
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Gate B — glslang-compile gate, pure CPU/host-side. Standalone (non-fixture)
 // TEST so it runs unconditionally on every machine, GPU or not (mirrors
 // RecipeGlslOpcodeCoverage below, which is immune to the TEST_F's GTEST_SKIP()
@@ -763,6 +1125,15 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
             validOpcodes.insert(static_cast<uint8_t>(raw));
 
     ASSERT_FALSE(validOpcodes.empty()) << "IsValidSdfOpCode accepted nothing 0..255 — broken enum?";
+
+    // Recipe-Diversity-Stress-Scene-Inc6 M1 exemption: DeclarePosition (the spatial-contract
+    // meta/resolve prototype's marker opcode) is deliberately NOT in GetAll()'s standard corpus
+    // — it requires the emitDeclaredPositionOutParam=true emitter path and a 3rd out-param SSBO
+    // readback the shared corpus loop below doesn't thread through (same class of exclusion as
+    // the M4d_N1_*_KernelProbe cases above, which also opt out of the shared harness shape).
+    // Its own dedicated GPU parity test (DeclaredPositionMatchesAcrossCpuAndGpu, below) exercises
+    // it directly instead — this exemption only says "not in the SHARED loop," not "untested."
+    validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::DeclarePosition));
 
     std::vector<int> missingFromCorpus;   // valid but never exercised by the corpus
     for (uint8_t v : validOpcodes)

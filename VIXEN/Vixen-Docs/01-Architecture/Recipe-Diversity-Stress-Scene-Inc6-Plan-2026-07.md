@@ -1,0 +1,624 @@
+# Recipe Diversity Stress-Test Scene — Increment 6 Plan (2026-07-17)
+
+> **Status: COMPLETE (2026-07-18) — all 4 milestones DONE + Opus-validated APPROVED.** See
+> "Increment status: COMPLETE" below the Milestone Map for the headline result and follow-ups.
+> New increment, not a continuation of
+> [[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]]'s own numbered increment sketch (that epic's
+> next candidate item, single-dispatch-unrolled-selection, explicitly needs its own cheap pre-check
+> before scoping — separate, not started here). This increment builds a large, realistic stress-test
+> scene: many DISTINCT diverging recipes, spatially distributed, with parameters updated in real time
+> every frame — and uses it to characterize the tier-0 switch's FPS-collapse curve across N=20-250 in a
+> live, diverse, dynamic scene, not the synthetic/stacked scenes the existing measurements used.
+
+## §0 Scope
+
+**The goal, as the user framed it**: a large stress-test scene with unique, actually-diverging recipes
+showing in different areas of the scene, updating their parameters in real time, for a proper dynamic
+scene — as opposed to the small, narrow synthetic scenes used so far (`VIXEN_RECIPE_HOT_COLD_DEMO`'s 6
+opcode-identical sphere clones; `VIXEN_PROCEDURAL_UBER_DEMO`'s N diverging recipes but all stacked along
+one camera-facing Z-axis line, only 1 of N bodies parameterized).
+
+**Recipe-count range, per user direction**: **N=20 to N=250 distinct recipe complexities**, deliberately
+spanning below, at, and above the already-measured N=100 tier-0-switch knee (~2-8x FPS collapse) and
+approaching the documented N=500 driver-hang territory (staying below it). This is intentional: the
+existing N=100/500 measurements were taken on synthetic, non-diverse, non-spatial, non-dynamic scenes
+(`test_switch_cost_isolation.cpp`'s self-contained synthetic tracer; `VIXEN_PROCEDURAL_UBER_DEMO`'s
+stacked-Z-line layout) — this increment produces the first measurement of the same collapse curve in a
+scene that actually looks and behaves like a real, varied, moving scene. That is new information, not a
+re-run of a known result.
+
+**Placement mechanism, decided after user review (2026-07-17): use the real spatial contract, not a
+flat-literal workaround.** A separate, unstarted future direction
+([[Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07]]) already designs the "right" way for a
+recipe to declare a computed, parameterized world position (a meta-segment/resolve-segment bytecode
+split, `ReadParam`-sourced L2W transform + AABB, exposed via `out`-params mirroring the already-shipped
+`getRecipeBoundSphere` convention) — but that doc explicitly says NOT to jump to building the full
+mechanism; its own "suggested first step" is to (a) resolve one open scoping question (is a new spatial
+structure in scope, or is this only the recipe-side contract?) and (b) hand-author ONE recipe with a
+manual meta/resolve split to prove the approach produces correct GLSL, before any tooling/composer work.
+**This increment's M1 IS that suggested first step** — not a parallel workaround that would need
+reconciling with the contract later, and not the full contract either. If M1's prototype works, this
+increment's stress scene builds its spatial distribution on real contract-based placement for all N
+instances. If the prototype reveals the approach doesn't work cleanly, M1 documents why and this
+increment falls back to flat-literal placement (the original, simpler plan) for the remaining
+milestones — a cheap, early decision point, not a mid-increment scramble.
+
+**Why this needs a real infrastructure gap filled, not just "turn a demo flag up"** (beyond the
+placement mechanism question above): grounding research also found no existing demo updates MANY
+distinct recipes' parameters simultaneously, every frame. The shipped `ReadParam`/`ReadParamFloat3`
+mechanism (Recipe Parameterization, "P4") is proven correct and live-gated, but only exercised on
+exactly ONE hand-coded demo body today (`VIXEN_PROCEDURAL_UBER_DEMO`'s single swept-radius sphere).
+Generalizing "mutate parameters on N instances every `PreTick()`, re-submit via `SetInstances()`" from 1
+body to N is straightforward in principle (same shipped code path) but is new orchestration code, not
+something that exists.
+
+**A hard, orthogonal ceiling to respect, not work around**: `TraceWorld.glsl`'s tier-0 march hard-clamps
+`numInstances = clamp(pc.instanceCount, 0, 3*64)` — **192 total body instances**, across ALL recipes
+combined, regardless of recipe diversity. This bounds how many instances-per-recipe this stress scene
+can use at the high end of the N range (e.g. at N=250 recipes, even 1 instance per recipe already
+exceeds 192 — the scene design must account for this explicitly, likely via a many-recipes/few-
+instances-each shape rather than assuming uniform per-recipe instance counts).
+
+## §1 Grounding — what's already built vs. genuinely new (2026-07-17 research pass)
+
+- **Recipe registration itself has no hard cap** (`RecipeRegistry`, a `std::map`, unbounded except by
+  memory/id space) — the real constraint is the tier-0 switch's driver-compile behavior, empirically
+  measured, not enforced by any assertion.
+- **`VIXEN_PROCEDURAL_UBER_DEMO`'s recipe-generation loop is the right template to generalize** for
+  "many distinct, genuinely diverging programs" — it already cycles a `{sphere/box/torus} x {6 CSG ops}
+  x {none/Round/Onion}` product past the first 3 legacy-shape recipes, producing opcode-distinct programs
+  at arbitrary N (clamped to 2000, though 500 is a documented driver hang). Its placement (stacked +Z
+  line) and its single-parameterized-body limitation are what need to change, not its recipe-diversity
+  generation.
+- **`VIXEN_RECIPE_HOT_COLD_DEMO`'s scene-construction shape is the WRONG template for recipe diversity**
+  (its 6 instances are all the same opcode-identical Sphere recipe, differing only by tint/position) —
+  its population-mix env-var pattern and PreTick-orchestration precedent are still reusable ideas, just
+  not its recipe-generation content.
+- **Real-time parameter updates are proven correct and live-gated** (Recipe Parameterization "P4," all 4
+  milestones shipped, Opus-validated) via `BodyInstanceGpu::recipeParams[6]` mutated CPU-side and
+  re-submitted through `SetInstances()` — confirmed NOT to trigger a recompile as long as instance count
+  is unchanged. This is the exact mechanism to generalize from 1 body to N, and the same mechanism the
+  spatial contract's own design explicitly builds on (`ReadParam`-sourced transform values).
+- **The spatial contract is a real, only-partially-derisked design, not a drop-in mechanism.** Confirmed
+  by reading its direction doc directly (not secondhand): the `out`-param multi-output CONVENTION is
+  proven in this codebase (`getRecipeBoundSphere`/`getRecipeOccupancyGrid`), and inline assignment
+  during a single walk (no early-exit machinery needed, since GLSL locals stay in scope for the rest of
+  an emitted function) is argued to make position-DEPENDENT multi-output "structurally small" — but this
+  is an argument, not yet a proven prototype. Several real open questions remain explicitly unresolved
+  in the doc itself: the recipe-composer/authoring question (who decides the meta/resolve boundary),
+  the enforcement mechanism, whether `RecipeEntry`'s existing flat `boundCenter`/`boundRadius` coexists
+  with or is subsumed by a declared AABB, and whether a new spatial structure is in scope at all. This
+  increment's M1 resolves the LAST of these (declare recipe-side-only, no new spatial structure) and
+  produces the hand-authored prototype the doc's own "suggested first step" calls for — it does not
+  resolve the composer/enforcement questions, which stay genuinely open for whoever builds the full
+  contract later.
+- **The bucketed-dispatch alternative is not a way to exceed the switch's practical ceiling.** Three
+  independent measurements (Inc2 M4, Inc3 M3, Inc4 M4) all agree specialized per-recipe dispatch is
+  slower than the tier-0 switch at every tested N. This stress scene uses tier-0 (the only production
+  path that's actually competitive) throughout its N range — it does not attempt to route around the
+  wall via bucketing.
+- **The switch knee's shape is m_i/k_i-driven (per-recipe complexity x instance count), not literally
+  case-count-shaped** (Inc3 M0 finding) — this is directly relevant to how this increment should vary
+  "recipe complexity" across its N=20-250 sweep: a flat sweep of N alone, with uniform low-complexity
+  recipes, may not reproduce the collapse the same way a mix of complexities would. The plan's own name
+  ("N=20-250 recipe complexities," per user direction) should be read as varying BOTH count and
+  per-recipe complexity, not holding complexity fixed while only N varies.
+
+## Milestone Map
+
+- **M1 — Spatial-contract scoping decision + hand-authored prototype (the contract doc's own suggested
+  first step, not the full mechanism).** Two parts, in order:
+  1. **Resolve the scoping question** the contract doc leaves open: is a new spatial/bucketing
+     structure in scope for this prototype, or is this ONLY the recipe-side meta/resolve contract? For
+     this increment's purposes, the answer is the latter (no new spatial structure — this increment
+     needs placement, not bucketing) — document this decision explicitly rather than silently assuming
+     it, since the contract doc itself treats it as a real open fork.
+  2. **Hand-author ONE recipe** with a genuine meta/resolve bytecode split: a meta segment that computes
+     a `ReadParam`-sourced local-to-world position (NOT a baked literal) and exposes it via an `out`-param
+     GLSL convention mirroring `getRecipeBoundSphere`, followed by the existing resolve-segment SDF
+     evaluation. Confirm this actually produces correct, compilable GLSL and renders the recipe at the
+     declared position — both via the CPU eval path (`SdfRecipeEval.h`) and the GPU emit path
+     (`SdfRecipeCodegenGlsl.h`), matching each other, per this codebase's own established parity-testing
+     convention (see `RecipeEvalParity`/`RecipeGlslNumericalParityTest` test families for the pattern to
+     follow).
+  **Gate**: this is exploratory/prototype work, but still needs a real correctness proof — CPU/GPU
+  parity for the declared position + the resolve segment's own field value, at a handful of `ReadParam`
+  values, mirroring the existing parity-test convention. **Decision point, not just a gate**: if the
+  prototype produces correct results cleanly, M2 onward builds the stress scene's placement on this
+  mechanism (generalized to N recipes). If it reveals a real blocker (composer complexity, enforcement
+  gaps that actually bite, GLSL codegen issues beyond what the doc anticipated), STOP, document exactly
+  what broke down, and fall back to flat-literal placement (M1's original, simpler plan, preserved below
+  as the fallback) for the rest of this increment — do not force the contract through if it doesn't
+  actually work cleanly at prototype scale.
+  - [x] **DONE (2026-07-17) — prototype SUCCEEDED cleanly, M2 proceeds on contract-based placement.**
+    Resolved the scoping question: recipe-side contract only, no new spatial structure (per this
+    increment's own decision, §0). Hand-authored ONE recipe:
+    `[ReadParamFloat3(idx=0), DeclarePosition, Sphere(center=0,r=0.5)]` — a new marker opcode
+    `DeclarePosition` (VIXEN-only, hand-mirrored into `SdfOpCodes.g.h` alongside the existing
+    `ReadParam`/`ReadParamFloat3` hand-mirrors; pops a float3 off the value stack, captures it as the
+    declared position, translates the sample point for the rest of the walk). The direction doc's own
+    inline-assignment argument HELD exactly as described: `EmitProceduralFieldFunctionGlsl` gained an
+    opt-in `emitDeclaredPositionOutParam` flag that assigns `declaredPos` the moment `DeclarePosition` is
+    walked, then keeps emitting the resolve segment into the same linear function body — no early-exit
+    machinery needed. `evalRecipe` got a mirrored `outDeclaredPos` out-param on the CPU side. Both are
+    opt-in (default-off/nullptr), so every pre-Inc6 call site is unaffected — confirmed by a full rebuild
+    + the entire pre-existing SVO test suite (test_recipe_codegen, test_recipe_codegen_glsl,
+    test_recipe_eval_parity [100 tests], test_recipe_registry, test_recipe_bake) passing unchanged.
+    **Correctness gate**: `RecipeGlslNumericalParityTest.DeclaredPositionMatchesAcrossCpuAndGpu`
+    (new, `test_recipe_glsl_numerical_parity.cpp`) ran on REAL discrete/integrated GPU hardware (not
+    skipped) and passed: declared position matches between CPU/GPU and the `ReadParam`-supplied value at
+    4 swept positions; the resolve segment's field value at a fixed query point correctly tracks the
+    declared position (outside when declared elsewhere, exactly `-radius` when declared==query point);
+    compiled the SPIR-V module exactly once and re-dispatched across all 4 params values (no-recompile
+    invariant confirmed, mirroring P4's own proven claim). **Live-render gate**: a new standalone
+    2D-distance-field-slice GPU test (`test_recipe_declared_position_render.cpp` — a full 3D ray-traced
+    render wasn't available for the GLSL field-function-only emitter, so a direct flat-slice
+    visualization was used instead, an equally valid and cheaper visual proof) rendered the same
+    recipe at 3 declared positions on real hardware and wrote 3 PNGs; each showed the sphere's disc
+    silhouette at the pixel location matching its declared world position (visually confirmed + a
+    centroid-position numeric assertion in the test itself). Commit: `754442d1`. New opcode registered
+    in `RecipeStackArity`/`IsValidSdfOpCode`; excluded (with an explicit, documented exemption) from the
+    shared `RecipeParityCorpus`/`RecipeGlslOpcodeCoverage` loop since it needs the out-param emitter path
+    the shared harness doesn't thread through — its own dedicated tests cover it instead.
+  - **Opus re-validator: APPROVED (2026-07-17).** Independently re-derived every claim, did not trust
+    the report on the strength of it reporting a clean success — this is the load-bearing milestone the
+    rest of the increment builds on. Ran a fresh full `build.bat all` (confirmed correct worktree source,
+    new test binary's mtime postdates its source), re-ran the CPU/GPU parity test on real GPU hardware
+    (not skipped) and independently confirmed all 3 of its claims, including reading the actual generated
+    GLSL to verify the `declaredPos` assignment is genuinely INLINE mid-function (not hoisted) and that
+    the SPIR-V module compiles exactly once across the 4-value redispatch. Re-ran the live-render test
+    and — critically — opened and inspected the actual 3 PNGs rather than trusting the centroid-distance
+    assertion alone: confirmed `insidePixels=812` identical across all 3 (translation-only, no
+    scale/distortion), and all 3 positions visually correct with no axis swap or sign flip (one apparent
+    vertical-placement oddity was investigated and correctly identified as a display y-flip convention,
+    not a bug — internally consistent with the test's own u/v mapping). Confirmed the opcode-coverage
+    exemption is real, documented, and doesn't weaken the coverage check for any OTHER opcode. Confirmed
+    scope discipline (diff limited to exactly the 13 allowed files, no `BuildRenderGraph.cpp`/
+    `VulkanGraphApplication.cpp`/`RecipeEntry`/spatial-structure/composer-tool/enforcement-mechanism
+    changes). Re-ran the full regression suite independently (own pass counts matched exactly:
+    codegen 10, codegen_glsl 4, eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5, zero
+    failures/skips). **Own independent conclusion: the prototype genuinely succeeded — M2 can proceed on
+    contract-based placement.** One minor non-blocking note for M2: the render test's PNG output path
+    resolves to Windows `C:\tmp\...` (not WSL `/tmp`) under the Windows-native exe — a path-convention
+    note for any M2 tooling that reads rendered output, not a defect.
+- **M2 — Spatial placement + recipe-diversity generation, scaled to N=20-250.** Generalize M1's proven
+  placement mechanism (contract-based if M1 succeeded; flat-literal fallback if M1 found a real blocker)
+  across N distinct, genuinely-diverging recipe programs — reuse/extend `VIXEN_PROCEDURAL_UBER_DEMO`'s
+  shape/op/modifier product generator for the diversity itself (already proven to produce opcode-distinct
+  programs at arbitrary N), computing a real spatial distribution (a grid or scatter across a
+  meaningfully large world-space area — not stacked on one camera-facing line as the uber-demo does
+  today) instead of that demo's line-stacking. Respect the 192-total-instance ceiling explicitly
+  (document and enforce the instances-per-recipe math for the chosen N range, don't silently truncate or
+  overflow). **Live-run gate**: confirm the scene actually renders (no crash, no validation errors) at
+  both ends of the N range (N≈20 and N≈250) before proceeding.
+  - [x] **DONE (2026-07-18) — renders correctly at N=20 and N=250, mechanism generalized from
+    M1's single hand-authored recipe.** New gated demo `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO`
+    (env-var N, default 20) added to `BuildRenderGraph.cpp` — NOT an in-place extension of
+    `VIXEN_PROCEDURAL_UBER_DEMO`, so that demo's own N=100/500 measurement baseline stays
+    byte-identical for future reference (diff is purely additive, +286/-0). Every generated
+    recipe is prefixed with M1's meta segment (`[ReadParamFloat3(idx=0), DeclarePosition,
+    <shape/CSG/modifier resolve segment>]`), shapes authored body-local (not baked-literal
+    world positions), placed on a genuine 2D grid (spacing=30, centered) instead of the
+    uber-demo's stacked +Z line; each instance's declared position supplied via
+    `recipeParams[0..2]`. **192-instance ceiling decision**: register all N recipe programs
+    unconditionally, instantiate exactly `min(N,192)` strictly 1:1 (no rotation, no silent
+    truncation) — chosen because every recipe is genuinely unique, so cloning instances of the
+    same recipe would add count without adding diversity. Live-confirmed at N=250: "registered
+    250/250 distinct recipe programs, seeded 192 body instances on a 16x16 grid."
+    **Real production bug found+fixed in the same commit**: `UberShaderSplice.h`'s production
+    splice path unconditionally called the GLSL emitter with `emitDeclaredPositionOutParam=false`
+    — meaning M1's mechanism, despite being proven in isolation, was never actually reachable in
+    production and would have failed to compile any `DeclarePosition`-using recipe. Fixed via
+    per-recipe usage detection that threads the out-param + a local only for recipes that need
+    it; every other recipe's emitted call shape is unchanged (one precise caveat found in
+    validation: the spliced source as a whole gains one unconditional unused-local declaration
+    even for a zero-`DeclarePosition` registry — harmless, compiles fine, but means "byte-
+    identical" was slightly overstated in the original report). Commit: `10b37445`.
+  - **Implementer reported DONE_WITH_CONCERNS**: 2 of ~5 live-run attempts at N=100/250 silently
+    crashed (exit 1, no logged exception/VUID) during development, attributed to transient
+    concurrent-machine load rather than a bug in the diff, based on a clean isolated
+    `test_uber_shader_splice` repro (new N=100 case, production `ShaderBundleBuilder` path,
+    passing reliably) and process-monitoring evidence of heavy concurrent load at failure time.
+    Also saw a `KI-033`-signature VUID-`09600` cascade once, attributed to that already-open,
+    already-documented issue.
+  - **Opus re-validator: APPROVED (2026-07-18) — concern independently confirmed non-blocking.**
+    Did not accept the load attribution on its face — reproduced the crash directly (1 failure
+    in 6 N=250 runs; 4/4 at N=20, 5/5 at N=100, 3/3 on an untouched uber-demo control all clean),
+    then root-caused it via log forensics: the failure boundary sits at the shared, unconditional
+    Cornell-background voxel bake / `GaiaVoxelWorld` ECS-init transition — well after this
+    milestone's 250-recipe shader splice had already compiled successfully — and grep-confirmed
+    zero added non-comment lines in the M2 diff touch VoxelGrid/GaiaVoxelWorld/DDGI/descriptor/
+    swapchain code. This matches the documented-unsound path in **KI-027** (GaiaVoxelWorld
+    concurrent voxel creation heap corruption), a pre-existing issue this milestone doesn't
+    touch. Separately independently verified the VUID-09600 cascade reproduces byte-identically
+    on the untouched uber-demo control, confirming it's pre-existing and not newly introduced.
+    Confirmed the production-wiring bug fix is real and correct by reading the emitter's own
+    `assert(emitDeclaredPositionOutParam && ...)` plus unconditional `declaredPos` write that
+    prior code would have hit for any `DeclarePosition` recipe. Confirmed the 192-ceiling
+    `min(N,192)` 1:1 logic, both PNG live-captures (genuinely distinct shapes at genuinely
+    distinct grid positions, no stacking, no per-frame recompile storm), full regression suite
+    (own counts matched exactly: codegen 10, codegen_glsl 4, eval_parity 100, registry 16,
+    bake 3, glsl_numerical_parity 5, declared_position_render 1, uber_shader_splice 7 up from 6,
+    zero failures/skips), scope discipline (no M3 per-frame loop, no switch-cost fix, no
+    composer/enforcement tooling, `RecipeEntry` untouched), and the camera-preset framing
+    limitation (`kOrbitDistanceMax=120` vs. an actual ~450-unit/side N=250 grid span — the code
+    comment's own "~156-234" estimate undersells this, but the gate only requires confirming
+    SOME bodies at distinct positions, which is met). Tree integrity: `2ff25767..10b37445` one
+    coherent commit. **Own independent conclusion: M3 should proceed** — recommends (non-
+    blocking, for later) filing/escalating the Cornell/GaiaVoxelWorld boot-bake flakiness
+    separately, since M3's per-frame live gates will exercise this same shared path repeatedly.
+    - **Diversity generation**: reuses `VIXEN_PROCEDURAL_UBER_DEMO`'s own
+      `{sphere/box/torus} x {6 extra CSG ops} x {none/Round/Onion}` product generator verbatim
+      (same legacy-3 byte-for-byte preservation for i<3), confirmed to genuinely produce N=250
+      distinct opcode programs. Every generated program is prefixed with M1's proven meta
+      segment `[ReadParamFloat3(idx=0), DeclarePosition]` instead of baking each shape's world
+      center as a literal — shape instructions are now authored in body-local space (origin),
+      relying on `DeclarePosition`'s eval-time `curPos -= declaredPos` translation for world
+      placement. This is the actual generalization from M1 (1 hand-authored recipe) to N
+      programmatically-generated ones.
+    - **Spatial distribution**: replaced the uber-demo's stacked-Z-line layout with a genuine
+      2D grid in the XZ plane (`ceil(sqrt(N))` columns), spacing=30 world units (> 2×12 bound
+      radius, no neighbor bound-sphere overlap), centered on world (64,64,64) matching every
+      other demo's convention. Each instance's declared position is supplied via
+      `BodyInstanceGpu::recipeParams[0..2]` (the `ReadParamFloat3`-sourced parameter M1's
+      mechanism expects), authored ONCE at scene setup (a static-per-run layout, per this
+      milestone's own scope — M3 will later mutate this same field per-frame via the identical
+      `SetInstances()` path).
+    - **192-instance ceiling decision (documented, per the milestone's own requirement)**:
+      register ALL `N` distinct recipe programs unconditionally (registration has no hard cap),
+      but instantiate exactly `min(N, 192)` body instances — a strict 1:1 registered-recipe :
+      instantiated-instance mapping up to the ceiling, then flat-capped. At N=20:
+      registered=20, instantiated=20 (under the ceiling, no capping needed). At N=250:
+      registered=250, instantiated=192 (confirmed live: "registered 250/250 distinct recipe
+      programs, seeded 192 body instances on a 16x16 grid"). Chosen over a rotating-subset
+      scheme (option (a) in the milestone prompt) because every recipe here is genuinely
+      unique — cloning multiple instances of the SAME recipe adds instance count, not diversity
+      value, so 1:1 is both the simplest correct shape and avoids inventing subset-rotation
+      machinery M4 would have had to redo anyway.
+    - **Production wiring gap found and fixed**: `UberShaderSplice.h`'s
+      `SpliceProceduralRecipesIntoSource` (the real production emitter, used by
+      `BodyInstanceRayMarch.comp`'s splice — NOT the same path as M1's standalone test shader)
+      called `EmitProceduralFieldFunctionGlsl` with `emitDeclaredPositionOutParam` always
+      `false`. Any `DeclarePosition`-using recipe would have failed that emitter's own assert
+      (Debug) or emitted GLSL referencing an undeclared `declaredPos` identifier (Release) the
+      moment it reached production splicing — M1's mechanism was proven correct in isolation but
+      never actually wired into the real render path. Fixed centrally (not per-demo): the splice
+      now detects per-recipe whether a program contains `DeclarePosition` and, only for those
+      recipes, emits with the out-param flag true and supplies a throwaway local
+      (`unusedDeclaredPos`) at the `evalRecipeField` call site — every other recipe (every
+      pre-Inc6 demo, and any Inc6 recipe that doesn't use `DeclarePosition`) keeps the original
+      3-arg call shape byte-identical. Verified via a new isolated repro test
+      (`UberShaderSplice.OneHundredDeclarePositionRecipesCompile`, 100 `DeclarePosition`-using
+      recipes through the exact production `ShaderBundleBuilder` path) — passes standalone in
+      ~4.2s, proving the GLSL itself is correct independent of the full app.
+    - **Camera preset**: new `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO` orbit preset (center
+      (64,64,64), distance=118 near `CameraNode::kOrbitDistanceMax`=120's hard clamp, pitch≈0.9
+      rad looking down at the grid). Documented, accepted limitation: at N's upper end the full
+      grid (up to ~156-234 world units per side) cannot fit in one frame within the 120-unit
+      orbit-distance ceiling at the shared 45° FOV — the live-run gate only requires
+      confirming SOME bodies at genuinely distinct positions/shapes, not literally all N framed
+      simultaneously (no single screenshot could show 250 legible distinct shapes regardless of
+      framing).
+    - **Live-run results**: both N=20 and N=250 (interpreted as 192 instantiated, per the
+      ceiling decision above) rendered successfully on real Windows-native discrete GPU hardware,
+      validation layers on, `VIXEN_HUD_CAPTURE_FRAMES` screen captures inspected directly.
+      N=20 capture: 9 visibly distinct shapes on screen (spheres, boxes, a torus, rounded
+      variants) at clearly distinct grid positions, none stacked/overlapping. N=250 capture
+      (192 instantiated): similarly distinct shapes/positions across a denser field, "registered
+      250/250... seeded 192... on a 16x16 grid" confirmed in the log. No crash, no hang, no
+      per-frame recompile storm observed at either N (one-time boot recompile only, matching
+      every other demo's own startup behavior).
+    - **Known flakiness investigated and ruled non-blocking**: 2 of ~4 live-run attempts at
+      N=100/250 crashed with no exception/error logged (silent process termination) during
+      shader compile or Cornell-background-scene baking; retries succeeded cleanly. Isolated via
+      a standalone repro test (see above) that the GLSL/splice logic itself is correct
+      independent of the full app, and confirmed via `Get-Process`/`Get-CimInstance` that the
+      machine was under heavy concurrent multi-agent CPU load during the failing attempts (not
+      memory-exhausted) — consistent with transient resource contention, not a deterministic bug
+      in this milestone's code. One clean run at each N is on record with full logs + PNG
+      captures. Separately, a real but ALREADY-KNOWN, ALREADY-OPEN pre-existing issue,
+      `KI-033` (`VIXEN_PROCEDURAL_UBER_DEMO` boot-recompile leaves a shared descriptor set
+      stale, producing a VUID cascade — root-caused to `body_octree_scene`'s one-time boot
+      recompile racing swapchain-settle, unrelated to recipe content), reproduced on ONE of the
+      N=100 attempts (VUID-vkCmdDraw-None-09600 on 4 DDGI/probe images, not on any recipe/param
+      binding) — confirmed via git diff that this milestone's changes touch neither
+      `RecompileDirtyNodes` nor the DDGI/probe image lifecycle, so this is the same pre-existing
+      dormant bug, timing-exposed by a slower shader compile at higher N, not a new regression.
+    - **Regression suite**: all baseline counts unchanged — codegen 10, codegen_glsl 4,
+      eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5, declared_position_render 1;
+      `test_uber_shader_splice` grew from 6 to 7 (new N=100 repro test added, all passing).
+    - Files touched: `BuildRenderGraph.cpp` (new demo block + camera preset, additive only, no
+      existing demo modified), `UberShaderSplice.h` (per-recipe `DeclarePosition` detection —
+      a correctness fix required for ANY `DeclarePosition`-using recipe to reach production, not
+      new machinery scoped to this demo), `test_uber_shader_splice.cpp` (new regression test).
+- **M3 — Real-time parameter updates across all N instances.** Generalize the existing single-body
+  `ReadParam` sweep pattern (mutate parameters every `PreTick()`, re-submit via `SetInstances()`,
+  confirmed no recompile) from 1 body to all N — every recipe instance's parameters change every frame.
+  If M1's contract-based placement is in use, the declared position ITSELF should be one of the
+  per-frame-updated parameters for at least some instances (animated placement, exercising the
+  contract's own stated value proposition over flat placement), not just an unrelated shape parameter.
+  **Gate**: confirm the existing no-recompile invariant still holds at full N (re-run/extend the
+  existing `ReadParamValueSweepNeverMarksNodeNeedsRecompile`-style test logic, or a new equivalent, at
+  scale) — this is the single most important correctness bar, since a silent recompile-per-frame at
+  N=250 would be a severe, misleading performance artifact unrelated to the actual switch-cost question
+  this scene exists to measure.
+  - [x] **DONE (2026-07-18) — generalized from M3 Task 8's single ReadParam body to all
+    `min(N,192)` diversity-stress instances; no-recompile invariant confirmed at scale.**
+    Two per-frame-updated parameters, both genuinely consumed:
+    1. **Every instantiated instance**: every generated recipe program
+       (`BuildRenderGraph.cpp`'s `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO` block) now appends
+       `ReadParam(idx=3)`+`MathSub` after its resolve segment (idx=3 chosen so it doesn't
+       alias `ReadParamFloat3(idx=0)`'s 3-slot declared-position read) — a uniform
+       shrink/grow perturbation of the final SDF value, subtracted the same way the
+       uber-demo's own single swept-radius body already proved (sphere − ReadParam). Swept
+       every frame in `VulkanGraphApplication::PreTick` (`recipeParams[3] = amplitude *
+       sin(tick*speed + index)`, per-instance phase offset so instances don't move in
+       lockstep).
+    2. **A subset of instances (every 4th, `index % 4 == 0`)**: the DECLARED POSITION
+       ITSELF (`recipeParams[0..2]`, `ReadParamFloat3(idx=0)`) orbits its own resting grid
+       slot every frame — exercising the spatial contract's own stated value proposition
+       (a genuinely moving, `ReadParam`-sourced position) rather than only a shape
+       parameter, per this milestone's own explicit framing. Orbit is computed from a
+       CACHED base position (captured once per instance count, not the previous frame's
+       value) so per-frame writes never drift/accumulate.
+    - **No-recompile invariant at scale — the gate's own "single most important" bar**:
+      new test `DiversityStressParamSweepAtScaleNeverMarksNodeNeedsRecompile`
+      (`test_body_octree_lifetime.cpp`) registers 192 distinct `[ReadParamFloat3,
+      DeclarePosition, Sphere, ReadParam, MathSub]` recipes (the same program shape the
+      real demo generates), instantiates exactly 192 instances, then runs 120 consecutive
+      frames of pure `recipeParams[]` value updates (shape param on all 192, declared
+      position on the 48 instances with `index % 4 == 0`) — confirmed via direct
+      `NodeInstance::NeedsRecompile()` instrumentation (not a log-grep) that
+      `MarkNeedsRecompile()` never fires post-Compile, and instance count stayed exactly
+      192 for every one of the 120 frames (`ASSERT_EQ` per-frame, not just a final check).
+      Zero `ADD_FAILURE` hits for a recompile. (The test's own `ExpectNoValidationErrors`
+      assertions DID fail — but on the SAME pre-existing, already-documented
+      `EOSOverlayVkLayer-Win32.json` machine-local Vulkan-loader artifact the unmodified
+      sibling test `ReadParamValueSweepNeverMarksNodeNeedsRecompile` also hits identically
+      (see Recipe-Parameterization-Plan-2026-07.md's own M3 Task 9 entry) — unrelated to
+      this change, zero-diff on `EnabledValidationLayers()`/device wiring.)
+    - **Live-run gate**: real `VixenApp`, Windows-native, real discrete GPU (AMD Radeon),
+      validation layers on, at both N=20 and N=250 (192 instantiated). 3-frame HUD
+      captures (`VIXEN_HUD_CAPTURE_FRAMES=10,60,110`) at both N, visually inspected (not
+      just numerically asserted): shapes visibly morph over time (a box-shaped instance at
+      frame 10 becomes sphere-shaped by frame 60 and something else again by frame 110, at
+      both N — the shape-param sweep pushes the CSG result through different silhouettes,
+      not just a subtle radius wobble), and declared positions visibly drift (small
+      sphere/box instances at clearly different screen positions across the 3 captures at
+      both N). Exactly ONE `BodyInstanceRayMarch` shader-bundle build logged per run at
+      both N (no recompile storm), zero `VUID`/validation-ERROR lines in either log, clean
+      exit (code 0) both times.
+    - **Pre-existing flakiness encountered, matches the documented boundary, not fixed
+      here**: hit the SAME `GaiaVoxelWorld`/Cornell-boot-bake silent-crash signature M2's
+      validator already root-caused to **KI-027** — repeatedly (7 consecutive failures) at
+      N=20 during this session, all truncating mid-`GaiaVoxelWorld` ECS-init/batch-create,
+      no exception/VUID logged, no two failures at the identical log line (consistent with
+      timing-sensitive corruption, not a deterministic code path). Confirmed via
+      `Get-Process`/`Get-CimInstance` that the machine was under heavy concurrent
+      multi-agent load throughout (a SIBLING worktree's own `VIXEN.exe` observed running
+      at the same time, 40-51% CPU load, a dozen+ concurrent `claude` processes) — the 8th
+      attempt at N=20 succeeded cleanly with no code change in between, and N=250 then
+      succeeded on its very first attempt. Per this milestone's own explicit scope
+      boundary, this is NOT fixed here — out of scope, already tracked.
+    - **Regression suite**: all baseline counts unchanged — codegen 10, codegen_glsl 4,
+      eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5,
+      declared_position_render 1, uber_shader_splice 7 — zero failures, zero skips.
+    - **Scope discipline**: diff limited to exactly 3 files (`BuildRenderGraph.cpp`,
+      `VulkanGraphApplication.cpp`, `test_body_octree_lifetime.cpp`) — no
+      `RecipeEntry`/`boundCenter`/`boundRadius` handling changed beyond the existing
+      margin-widening already established by M2's own pattern, no switch-cost fix
+      attempted, no composer/enforcement tooling, no M4 measurement sweep run. Commit:
+      `b5d1e8b7`.
+  - **Opus re-validator: APPROVED (2026-07-18) — no-recompile invariant independently
+    instrumented, not just trusted.** Fresh full build confirmed (new test symbol present,
+    exe mtime postdates source). Read both `ReadParam(idx=3)` and `ReadParamFloat3(idx=0)`'s
+    actual slot arithmetic on CPU and GPU paths and confirmed no aliasing. Confirmed the
+    orbit's cached-base-position logic prevents drift. **Added temporary instrumentation to
+    the at-scale test itself** and re-ran on real GPU hardware, printing actual counters:
+    `recompileFlagCount=0 observedInstanceCount=192` after 120 frames — a direct measurement,
+    not an inferred pass — then reverted the instrumentation. Confirmed the 192 recipes used
+    by the test are genuinely distinct (distinct `recipeId` and `boundCenter`, simplified
+    bytecode content — noted as fine since content diversity is M2's concern, not this
+    invariant's). Independently confirmed the `ExpectNoValidationErrors` failures land on the
+    identical `EOSOverlayVkLayer-Win32.json` loader-artifact line in both the new test and the
+    unmodified sibling test, ruling out a regression there. Re-ran the live gate at both N
+    with its own captures (distinct hashes, visually confirmed shape morphing + position
+    drift at both N); confirmed exactly one growth-path recompile fires once after "Entering
+    render loop" and never again across 130 frames at both N (no storm), matching the
+    at-scale test's own finding. Re-ran the full regression suite independently, all counts
+    matched exactly. Confirmed the `boundRadius` widening is a value change only (12→21,
+    accounting for the +3 shape-sweep and +6 orbit-radius margins), not a semantics change.
+    **One reporting-accuracy caveat, non-blocking**: the implementer's "zero VUID/validation-
+    ERROR lines" claim is imprecise — every live run (including a plain default-boot control
+    the validator ran independently) emits 50 pre-existing `PushConstantGathererNode Type
+    mismatch` errors on `probe_update` (documented, KI-034-adjacent) and intermittent
+    first-frame `VUID-vkCmdDraw-None-09600` layout errors (documented KI-009/KI-034) — proven
+    identical on the default-boot control, so these are shared-render-path artifacts wholly
+    independent of M3's changes, not a regression. Correct framing: "no NEW validation errors
+    from M3," not "zero validation errors" — noted for M4 so its log-filtering expects these
+    pre-existing lines. **Own independent conclusion: M4 is cleared to proceed** — nothing
+    found touches the no-recompile invariant, which is the one thing that could have
+    invalidated M4's entire purpose.
+- **M4 — Sweep + measurement.** Run the scene across the N=20-250 range (a reasonable sampling, not
+  necessarily every integer — e.g. 20, 50, 100, 150, 200, 250, informed by where the existing N=100 knee
+  and N=500 hang already are), real live `VixenApp`, validation layers on for a correctness pass and off
+  (or noted as a fixed tax, per Inc4 M4's own precedent) for the FPS numbers, record honestly whatever
+  the curve looks like — record it plainly in [[Perf-Ledger]] whether it matches, differs from, or
+  refines the existing synthetic-scene N=100/500 findings. **This is a measurement milestone, hold its
+  own numbers to the same statistical scrutiny Inc4 M4 required** (multiple independent runs per N, not
+  single-sample points, given this machine's own documented run-to-run GPU clock-state noise).
+  - [x] **DONE (2026-07-18) — sweep complete, curve REFINES (does not match) the prior
+    synthetic-scene findings: the collapse in this diverse/spatial/dynamic scene is far more
+    GRADUAL than the sharp N=10→N=100 knee the synthetic scenes found.** Sample points: 20, 50,
+    100, 150, 200, 250 (the plan's own suggested set, used as-is). Full sweep methodology,
+    numbers, and honest findings recorded in [[Perf-Ledger]]'s new "Recipe Diversity Stress Scene
+    sweep (Inc6 M4, 2026-07-18)" section — summary here:
+    - **Validation layers ON throughout** (this repo's only Windows-native preset, `vixen-ninja`,
+      is Debug-only and turns validation on by default via `ProvisionVulkan.cmake` — same
+      single-binary-for-both-passes precedent Inc4 M4 established, not a separate toggle).
+    - **Correctness pass**: one run per N (20/50/100/150/200/250) plus a default-boot control,
+      all clean — exactly 50 pre-existing `PushConstantGathererNode Type mismatch` errors and 0
+      or 8 `VUID-vkCmdDraw-None-09600` lines (intermittent, matching KI-034/KI-009's own
+      documented pattern) at every N, byte-for-byte matching the control's own count. Zero NEW
+      error types at any N. Registration/instantiation confirmed correct at every N (1:1 up to
+      N=192, capped at 192 for N=200/250 exactly as M2 designed).
+    - **FPS sweep**: 3 independent runs per N (`VIXEN_EXIT_AFTER_FRAMES=900`, steady-state window
+      = frames 150-900, matching Inc4 M4's own convention), `PerfCsvWriter` via `VIXEN_PERF_CSV`.
+      Mean-of-run-means (rolling-window `steady_state_fps`, frames 150-900): **N=20: 161.0 · N=50:
+      124.5 (range 108-133, one run hit a real mid-run stall) · N=100: 90.0 · N=150: 66.8 · N=200:
+      55.9 · N=250: 56.3 (range 51-61)**. Run-to-run range at most N was tight (≤4%); N=50 and
+      N=250 both showed one run with a wider swing from a real transient stall/focus event, not a
+      new class of bug (see Perf-Ledger for the full per-run breakdown and root-cause).
+    - **Collapse ratio vs. N=20 baseline**: N=50 1.29x, N=100 1.79x, N=150 2.41x, N=200 2.88x,
+      N=250 2.86x. **This REFINES rather than matches the prior synthetic-scene finding**: the
+      original `VIXEN_PROCEDURAL_UBER_DEMO`/`test_switch_cost_isolation` measurements found a
+      sharp knee (~8x collapse N=10→N=100 in the original table, ~2x on the since-corrected
+      discrete-GPU re-capture) — this scene's own N=20→N=100 collapse is only ~1.8x, and the
+      degradation continues GRADUALLY out to N=200 rather than plateauing early, flattening only
+      between N=200 and N=250. Plausible explanation (not further investigated, out of this
+      milestone's scope): Inc3 M0 already found the knee is m_i/k_i-shaped (per-recipe complexity
+      x instance count), not case-count-shaped — this scene's per-recipe complexity is genuinely
+      varied (opcode-diverse CSG programs) rather than uniform, and instance count here is capped
+      at 192 (vs. the synthetic scene's own N-uncapped instance counts), which plausibly softens
+      and delays the knee rather than eliminating it. This is a legitimate, different result from
+      a more realistic scene, not a discrepancy to reconcile away.
+    - **KI-027 confound, encountered and handled per the prompt's guidance**: hit repeatedly
+      during the correctness-pass control run (6 of 7 attempts) and once during the N=100
+      correctness pass (5 of 6 attempts) and once during the N=150 FPS sweep's run1 (1 of 2
+      attempts) — all matching the documented signature exactly (silent truncation mid-
+      `GaiaVoxelWorld` batch-create, no exception/VUID, no two failures at the identical log
+      line/entity count). Retried per the prompt's instruction rather than treating as a new
+      finding; a SIBLING worktree's own concurrent `VIXEN.exe` + 12 concurrent `claude.exe`
+      processes were confirmed running throughout via `Get-CimInstance`/`Get-Process` (62-68% CPU
+      load), consistent with — and not contradicting — KI-027's own "worse under concurrent load"
+      characterization.
+    - **New confound found, NOT previously documented: window-minimization corrupts
+      `PerfCsvWriter`'s rolling-average FPS column.** `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO`'s
+      N=150 run2 lost window focus mid-run (another process/agent stealing focus on this shared
+      machine) and the app logged `Window state changed: MINIMIZED - pausing rendering,
+      continuing updates` — this makes `cpu_frame_time_ms` collapse toward ~0 (ticks continue,
+      render doesn't) while `steady_state_fps` is a ROLLING WINDOW average
+      (`PerfCsvWriter::RecordFrame`, `kFpsWindow`-frame rolling mean, not cumulative-since-boot
+      as an early misreading of the data assumed), so the ratio spikes to non-physical values
+      (up to ~10,800 "FPS") once the near-zero frame times dominate the window. Filtered out via
+      a `cpu_frame_time_ms < 0.5ms` exclusion rule and the affected run discarded/replaced
+      (run2→run4) rather than averaged in blind. **Not the same bug class as KI-027** (different
+      trigger — window focus, not ECS concurrency — and does not crash the process), but
+      filed as a new, separate known-issue below since it could silently corrupt any future
+      `VIXEN_PERF_CSV`-based measurement run on this same shared, multi-agent machine without a
+      human noticing the outlier.
+    - **Driver-hang boundary**: stayed well below the documented N=500
+      `vkCreateComputePipelines` hang throughout (max N=250). `BodyInstanceRayMarch` compile
+      times across the correctness-pass runs were noisy (557ms-12.9s) and did NOT show a clean
+      monotonic climb with N under this session's own heavy concurrent load — reported honestly
+      as inconclusive on this specific sub-question rather than forcing a trend that isn't
+      there; no run at any tested N approached the documented ~14-minute hang.
+    - **Regression suite**: all 8 tracked SVO test binaries re-run, all counts unchanged from
+      M3's baseline (codegen 10, codegen_glsl 4, eval_parity 100, registry 16, bake 3,
+      glsl_numerical_parity 5, declared_position_render 1, uber_shader_splice 7) — zero
+      failures, zero regressions.
+    - Files touched: none (pure measurement milestone, no source changes) — this doc and
+      [[Perf-Ledger]] only, plus new throwaway `.bat` sweep-driver scripts under `VIXEN/temp/`
+      (gitignored, not part of the diff).
+  - **Opus re-validator: APPROVED (2026-07-18) — soft-collapse finding independently
+    reproduced, not just trusted.** Ran an independent partial re-sweep (N=20/100/250, 3 runs
+    each, identical methodology) on a fresh confirmed M3 binary: own collapse ratios (1.78x at
+    N=100, 2.76x at N=250) matched the reported 1.79x/2.86x almost exactly — a sharp ~8x knee
+    would have produced ~20 FPS at N=100, the validator measured ~89, ruling that out directly.
+    Recomputed the entire reported FPS table from the implementer's own raw CSVs (still present
+    in `VIXEN/temp/`) and got matching numbers to rounding — confirmed genuine, not massaged.
+    Verified the prior-measurement comparison figures (8x/2x/m_i-k_i-shaped-knee) are accurately
+    quoted from their actual source docs. **Independently reproduced KI-042 from the raw
+    discarded CSV** (recomputed mean=8925.8/max=10832.6 FPS, matching the cited ~8,900/~10,800
+    exactly; found the literal `MINIMIZED — pausing rendering` log line) and traced the
+    mechanism in code (`VulkanGraphApplication.cpp`'s wall-clock `PostTick` timing +
+    `PerfCsvWriter`'s rolling window) — a genuine artifact, not a discarded inconvenient sample.
+    Confirmed the correctness-pass error counts match M3's already-established pre-existing
+    baseline exactly. Re-ran the full regression suite independently, zero regressions.
+    **Found independent corroborating evidence for the central claim**: N=200 (55.9 FPS) and
+    N=250 (56.3 FPS) are statistically indistinguishable in both the reported AND the
+    validator's own data — exactly where the 192-instance ceiling plateaus, not where N (25%
+    higher at 250) would predict a further slowdown if the collapse were driven by recipe/case
+    count alone. Cross-checked against `whole_frame_gpu_span_ms` (own measurement: 6.23ms →
+    11.22ms → 17.45ms across N=20/100/250, a ~2.8x climb mirroring the ~2.8x FPS collapse),
+    confirming the effect is genuinely GPU-bound, not a measurement artifact. Confirmed the
+    controller-added fullscreen-stutter note is honestly framed as unverified/unreproduced
+    (did not attempt to reproduce it live — explicitly optional per the prompt, machine under
+    concurrent load — flagged as skipped, not blocking). Reviewed the whole 4-milestone arc
+    (M1 mechanism → M2 generalization+real bug fix → M3 animation at scale → M4 measurement)
+    and found nothing that only becomes visible now that wasn't already caught per-milestone;
+    the one cross-cutting open item (KI-027's shared, pre-existing GaiaVoxelWorld flakiness,
+    hit in every milestone) remains correctly out of scope and non-blocking. **Own independent
+    verdict: all 4 milestones complete, measurement rigorous and independently reproduced,
+    findings honest — ready for final review/merge.**
+
+## Increment status: COMPLETE (2026-07-18)
+
+All 4 milestones (M1 spatial-contract prototype, M2 diversity+placement generalization at
+N=20-250, M3 real-time per-frame parameter animation at scale, M4 sweep+measurement) are DONE
+and independently Opus-validated APPROVED. Branch `feat/recipe-diversity-stress-inc6` is ready
+for a final whole-diff Opus review before merging to `main`, per this program's own standing
+discipline (a final reviewer over the entire diff, not just per-milestone review, before
+[[finishing-a-development-branch]]).
+
+**Headline result**: this increment's own central finding — the tier-0 switch-cost collapse in
+a genuinely diverse, spatially-distributed, dynamically-animated scene is far more gradual
+(~1.8x at N=100, ~2.9x at N=200-250) than either prior synthetic-scene measurement (~8x
+original, ~2x corrected) — should be considered the current authoritative number for this
+question. Anyone citing "N=100 knee ≈8x" going forward should also cite this scene's own ~1.8x
+as the more realistic, diverse-scene figure, with the instance-count-cap-at-192 explanation
+(corroborated independently by both the M4 implementer and its Opus validator via the
+N=200≈N=250 plateau) as the leading explanation for why it's softer.
+
+**Two real, separately-tracked follow-ups spun off, neither blocking this increment's own
+completion**:
+- **KI-027** (pre-existing `GaiaVoxelWorld`/Cornell-boot-bake concurrent-load crash) — hit in
+  every milestone of this increment, root-caused by M2's validator, confirmed unrelated to this
+  increment's own code by grep in every subsequent milestone. Worth its own dedicated
+  escalation/fix given how repeatedly it surfaced here.
+- **KI-042** (new, `VIXEN_PERF_CSV`'s rolling-average FPS column corrupting toward
+  non-physical values under a window-minimization event) — a measurement-tooling gap for any
+  future perf-sweep work on this same shared machine, not a render defect.
+- **Unverified, user-observed fullscreen-mode stutter at N≈50** — flagged in [[Perf-Ledger]],
+  outside this increment's own windowed-mode-only measurement scope, not investigated by any
+  agent this increment. Worth a dedicated look if display-mode-dependent performance becomes a
+  priority.
+
+## Risks / decision points
+
+- **M1 is a real fork point, not a formality — respect its own "fall back if it doesn't work cleanly"
+  clause.** The spatial contract doc itself is careful to call out real unresolved questions (composer,
+  enforcement, `RecipeEntry` bound coexistence) — this increment is not the place to force resolution of
+  all of them under stress-test time pressure. If the hand-authored prototype reveals the mechanism is
+  harder than the doc's own optimistic "structurally small" framing suggests, fall back to flat-literal
+  placement honestly rather than pushing a half-working contract mechanism into the rest of the
+  increment.
+- **Do not let recipe-diversity generation collapse into "N copies with different literals."** The
+  whole point (per the user's explicit framing: "unique actual diverging recipes") is genuine opcode/
+  structural diversity, not parameter-only variation — reuse `VIXEN_PROCEDURAL_UBER_DEMO`'s shape/op/
+  modifier product generator, which already does this, rather than a simpler but diversity-free
+  generator.
+- **The 192-instance ceiling interacts with the N=250 end non-trivially.** At N=250 distinct recipes,
+  even 1 instance per recipe already exceeds the ceiling (192 < 250) — M2 must explicitly decide and
+  document the instances-per-recipe shape across the N range (e.g. fewer instances per recipe as N
+  grows, or fewer total distinct recipes actually instantiated at any one frame even if 250 are
+  registered) rather than discovering this as a build-time surprise.
+- **M3's no-recompile invariant is the correctness bar that actually matters most for this increment.**
+  A stress test whose "FPS collapse" is secretly dominated by a per-frame recompile bug (not the switch-
+  dispatch cost this scene exists to characterize) would produce a misleading, unusable result — treat
+  this test as seriously as any of Inc4's mandatory live-app gates.
+- **This increment does not attempt to fix or work around the switch-cost wall** — it measures it, in a
+  more realistic scene than existing measurements used. Any fix (single-dispatch-unrolled-selection,
+  GPU-LRU eviction, etc.) stays out of scope, per the parent epic's own existing (separate, unstarted)
+  direction docs.
+- **This increment does NOT build the spatial contract's composer/authoring tooling or its enforcement
+  mechanism** — M1 hand-authors exactly one recipe's meta/resolve split to prove the underlying
+  mechanism, then M2 generalizes that PROVEN shape programmatically for the stress scene's own N
+  generated recipes (code generating the split directly, not a general-purpose recipe-authoring tool).
+  Building a real composer/authoring tool for arbitrary user-authored recipes stays out of scope,
+  deferred to whoever picks up the full contract direction later.
+- **Live-run gates are mandatory for every milestone**, per this program's established discipline
+  (Inc4's own history: every milestone that skipped a live gate shipped a real bug that only a live run
+  caught). M1's prototype, M2's placement/diversity generation, and M3's per-frame parameter churn all
+  touch production codegen/render-graph paths — do not accept a standalone-test-only pass for any of
+  them without also confirming live.

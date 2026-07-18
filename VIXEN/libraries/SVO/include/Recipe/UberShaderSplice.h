@@ -77,6 +77,26 @@ inline std::string SpliceProceduralRecipesIntoSource(
     std::ostringstream out;
     out << "\n#define VIXEN_UBER_RECIPE_SPLICED 1\n";
 
+    // Recipe-Diversity-Stress-Scene Inc6 M2: a recipe containing DeclarePosition (M1's
+    // spatial-contract opcode) MUST be emitted with emitDeclaredPositionOutParam=true —
+    // EmitProceduralFieldFunctionGlsl's DeclarePosition case unconditionally writes
+    // `declaredPos = vec3(...)`, which only compiles when the function signature actually
+    // declares that out-param (asserted in Debug, a raw GLSL compile error in Release either
+    // way). Every OTHER recipe (the overwhelming majority — every pre-Inc6 demo, and every
+    // Inc6-diversity-demo recipe that happens not to use DeclarePosition) keeps the plain
+    // 3-arg signature unchanged, so this is genuinely per-recipe opt-in, not a blanket
+    // signature change. The declared position itself is never read back by evalRecipeField's
+    // own callers (traceUberRecipeBody/occupancy sampling already get an instance's placement
+    // from RecipeEntry::boundCenter, authored separately at registration) — the out-param
+    // exists solely so DeclarePosition's assignment has somewhere to go; a throwaway local at
+    // the call site (below) is all production code needs.
+    auto usesDeclarePosition = [](const RecipeRegistry::RecipeEntry* entry) {
+        for (const auto& instr : entry->bytecode) {
+            if (static_cast<SdfOpCode>(instr.opCode) == SdfOpCode::DeclarePosition) return true;
+        }
+        return false;
+    };
+
     for (uint32_t id : ids) {
         const RecipeRegistry::RecipeEntry* entry = registry.Get(id);
         // Register() already guarantees a non-null, non-empty bytecode for every id in Ids() —
@@ -84,7 +104,8 @@ inline std::string SpliceProceduralRecipesIntoSource(
         if (!entry) continue;
         out << EmitProceduralFieldFunctionGlsl(entry->bytecode.data(),
                                                static_cast<uint32_t>(entry->bytecode.size()),
-                                               id)
+                                               id,
+                                               usesDeclarePosition(entry))
             << "\n";
     }
 
@@ -94,9 +115,16 @@ inline std::string SpliceProceduralRecipesIntoSource(
     // from the SSBO inside deeply-nested functions). Every case takes it uniformly even though
     // only ReadParam/ReadParamFloat3-using recipes reference it.
     out << "float evalRecipeField(uint recipeId, vec3 p, float params[6]) {\n"
+           "  vec3 unusedDeclaredPos;\n"  // Inc6 M2: throwaway sink for DeclarePosition-using cases below
            "  switch (recipeId) {\n";
     for (uint32_t id : ids) {
-        out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params);\n";
+        const RecipeRegistry::RecipeEntry* entry = registry.Get(id);
+        if (!entry) continue;
+        if (usesDeclarePosition(entry)) {
+            out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params, unusedDeclaredPos);\n";
+        } else {
+            out << "    case " << id << "u: return sdfRecipe_" << id << "(p, params);\n";
+        }
     }
     out << "    default: return 0.0;\n"
            "  }\n"

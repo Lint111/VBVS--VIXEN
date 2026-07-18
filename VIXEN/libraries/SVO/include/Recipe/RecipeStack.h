@@ -127,6 +127,12 @@ inline StackArity RecipeStackArity(SdfOpCode op) {
         case SdfOpCode::Float3Dot:
             return {6, 1, 0, 0};
 
+        // DeclarePosition (Inc6 M1 prototype, VIXEN-only, not canonical): pops a float3
+        // (declared world position), pushes nothing back to the value stack — it is a pure
+        // side-effecting capture, not a value producer. See SdfOpCodes.g.h for full rationale.
+        case SdfOpCode::DeclarePosition:
+            return {3, 0, 0, 0};
+
         // --- Domain-transform ops: push to position save stack ---
         case SdfOpCode::MirrorX:
         case SdfOpCode::MirrorY:

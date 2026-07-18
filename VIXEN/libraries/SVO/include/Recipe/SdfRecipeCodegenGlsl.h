@@ -27,10 +27,21 @@ namespace Vixen::SVO::Recipe {
 // `1.0f/6.0f` doesn't (the documented failure class this guard exists for). `f()` below
 // enforces that for every literal this emitter writes. ReadParam/ReadParamFloat3 (M2 Task 5)
 // are the one deliberate exception — see their case sites below for why.
+// emitDeclaredPositionOutParam (Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract
+// meta/resolve prototype): when true, the emitted function gains a trailing `out vec3
+// declaredPos` parameter, assigned inline the moment a DeclarePosition instruction is walked
+// (mirroring UberShaderSplice.h's getRecipeBoundSphere out-param convention, but position-
+// DEPENDENT rather than CPU-baked-constant — the gap Recipe-Spatial-Contract-Two-Pass-
+// Culling-Direction-2026-07.md's "suggested first step" calls out as unproven). Defaults to
+// false so every pre-Inc6 call site's composed shader (which hardcodes a call shape with no
+// out-param, e.g. test_recipe_glsl_numerical_parity.cpp's ComposeComputeShader) keeps
+// compiling unchanged — this is opt-in per the direction doc's own "contract is opt-in, not
+// universal" framing, not a change to the shared function's default shape.
 inline std::string EmitProceduralFieldFunctionGlsl(
     const SdfInstruction* prog,
     uint32_t count,
-    uint32_t recipeId)
+    uint32_t recipeId,
+    bool emitDeclaredPositionOutParam = false)
 {
     std::vector<std::string> stk;
     std::string body;
@@ -765,6 +776,29 @@ inline std::string EmitProceduralFieldFunctionGlsl(
                 stk.push_back(t + ".z");
                 break;
             }
+            case SdfOpCode::DeclarePosition: {     // meta segment: pop float3, assign out-param, translate curPos
+                // Inc6 M1 prototype (VIXEN-only opcode). Pops the 3 emit-time value-stack
+                // entries (deepest=x .. top=z, mirroring ReadParamFloat3's push order), emits
+                // an inline assignment to the `declaredPos` out-param the MOMENT this
+                // instruction is reached (the direction doc's own inline-assignment argument:
+                // GLSL locals/out-params stay in scope for the rest of the emitted function
+                // body, so no early-exit machinery is needed to keep walking into the resolve
+                // segment below), then rewrites curPos to sample in the translated frame — the
+                // same translation evalRecipe's DeclarePosition case applies at eval time, so
+                // the resolve segment's shape renders at the declared position on both paths.
+                assert(stk.size() >= 3 && "DeclarePosition: emit-time value stack underflow");
+                std::string dz = stk.back(); stk.pop_back();
+                std::string dy = stk.back(); stk.pop_back();
+                std::string dx = stk.back(); stk.pop_back();
+                assert(emitDeclaredPositionOutParam &&
+                       "DeclarePosition used but emitDeclaredPositionOutParam=false — the "
+                       "emitted function has no out-param to assign it to");
+                body += "  declaredPos = vec3(" + dx + ", " + dy + ", " + dz + ");\n";
+                std::string pN = "pp" + std::to_string(n++);
+                body += "  vec3 " + pN + " = " + curPos + " - declaredPos;\n";
+                curPos = pN;
+                break;
+            }
             case SdfOpCode::PushFloat3: {          // push data[0..2] as x,y,z scalars
                 std::string t = "t" + std::to_string(n++);
                 body += "  vec3 " + t + " = vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
@@ -898,7 +932,10 @@ inline std::string EmitProceduralFieldFunctionGlsl(
     }
 
     assert(!stk.empty() && "EmitProceduralFieldFunctionGlsl: empty value stack at return");
-    return "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6]) {\n"
+    std::string signature = emitDeclaredPositionOutParam
+        ? "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6], out vec3 declaredPos) {\n"
+        : "float sdfRecipe_" + std::to_string(recipeId) + "(vec3 p, float params[6]) {\n";
+    return signature
         + body
         + "  return " + stk.back() + ";\n"
         "}\n";

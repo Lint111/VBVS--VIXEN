@@ -25,8 +25,16 @@ namespace Vixen::SVO::Recipe {
 // compiles unchanged. Out-of-range reads fail safe to 0.0f (mirrors the Yeroket Burst reference's
 // `baseIdx < ctx.Parameters.Length ? ... : 0f` pattern) rather than asserting/crashing, since
 // content authoring will get an index wrong sometimes.
+//
+// outDeclaredPos (Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve
+// prototype): when non-null, receives the world position captured by a DeclarePosition
+// instruction encountered during the walk (mirroring the GLSL emitter's `out vec3` convention
+// from Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07.md). Left untouched (caller's
+// original value) if the program contains no DeclarePosition instruction — same "opt-in, not
+// universal" contract the direction doc describes. Defaults to nullptr so every pre-Inc6 call
+// site compiles unchanged.
 inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
-                         std::span<const float> params = {}) {
+                         std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr) {
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
@@ -485,6 +493,21 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                 stack[sp++] = base     < params.size() ? params[base]     : 0.0f; // x (deepest)
                 stack[sp++] = base + 1 < params.size() ? params[base + 1] : 0.0f; // y
                 stack[sp++] = base + 2 < params.size() ? params[base + 2] : 0.0f; // z (top)
+            } break;
+            case SdfOpCode::DeclarePosition: {     // meta segment: pop float3, capture + translate pos
+                // Inc6 M1 prototype (VIXEN-only opcode — see SdfOpCodes.g.h). Pops the declared
+                // world position (deepest=x, ..., top=z, mirroring ReadParamFloat3's push order),
+                // writes it to outDeclaredPos if the caller wants it, and folds it into `pos` as
+                // a pure translation for the REST of the walk (the resolve segment) — this is
+                // what makes the declared position actually move where the shape renders, not
+                // just a disconnected reported value. No position-stack/RestorePos bookkeeping
+                // needed since this is a one-way translation for the remainder of THIS program
+                // (no sibling branch needs the pre-translation pos back).
+                assert(sp >= 3 && "DeclarePosition: value stack underflow");
+                float dz = stack[--sp], dy = stack[--sp], dx = stack[--sp];
+                glm::vec3 declared(dx, dy, dz);
+                if (outDeclaredPos) *outDeclaredPos = declared;
+                pos = pos - declared;
             } break;
             case SdfOpCode::PushFloat3: {          // push data[0..2] as 3 floats (x then y then z)
                 assert(sp < 62 && "PushFloat3: value stack overflow");
