@@ -706,6 +706,76 @@ correct (walls don't eat ceiling/floor); parity passes (re-bless only if wedge-c
 
 ---
 
+## Milestone M11 — Cornell ceiling area-emitter + provider-symmetric emission (user-directed 2026-07-18)
+
+**User intent:** make the light clearly come from the top ceiling square (unambiguous light
+direction) and TEST per-body light/emission property handling across BOTH providers
+(PROVIDER_PROCEDURAL recipe emission vs PROVIDER_STORED baked-voxel emission), vs the VIRTUAL oracle.
+
+**Recon reframe (m11-scout, 2026-07-18 — what already EXISTS vs needs BUILDING):**
+- The ceiling area-emitter ALREADY exists: body 5 "light" (`CornellBoxSceneDefinition.h:39-44`,
+  kLightEmissionIntensity=6.0) bakes a per-voxel SEM_EMISSION channel → light-tree → already lights
+  the scene via ReSTIR-direct (`SpatialReuseShade.comp:438-540`) + DDGI-indirect (probes lit by
+  light-tree, `ProbeUpdate.comp:180-247`). NOT a build-from-scratch.
+- A SEPARATE always-on DIRECTIONAL light (global node default `LightingConfigNode.cpp:30-42`,
+  normalize(1,1,-1), maxShadowDistance=1000) that the Cornell scene never authored is an additive
+  analytic term (`computeLightingWithShadows`, SpatialReuseShade.comp:325-354). **This directional
+  light is the source of the M10 floor/wall shadow blotching** (grazing false-shadows).
+- Emission is a BAKE-TIME per-voxel concept (SEM_EMISSION channel via BakeSdfWorld's EmitFn,
+  `SdfBake.h:256`), NOT a per-instance field (`BodyInstanceGpu` has no emission field). The
+  procedural recipe VM has NO emission — every variant fakes procedural emission with a mandatory
+  side-bake of just the light body (`BuildRenderGraph.cpp:4400-4464`
+  BakeRecipeInstructionsToSdfWorldWithEmission). **PROVIDER_PROCEDURAL cannot natively emit** — the
+  biggest architectural gap.
+- The emissive panel does NOT render self-lit at the primary hit (no `outColor += emission` for the
+  camera-visible light face) — it only acts as a source for other surfaces.
+
+**User scope decisions (2026-07-18):** FULL scope (all three increments). Blotching SUBSUMED by
+M11 — verify it's gone once the directional light is off, don't chase it separately.
+**M11.3 architecture (user, pure-solution):** procedural-native emission must use the EXISTING
+kernel/content input→output convention — **emission becomes another recipe OUTPUT channel the
+recipe produces at every sample point**, exactly like distance/color/material outputs flow through
+the kernel-framework content configs. NOT a separate analytic light list, NOT a GPU tree rebuild.
+Unifies the provider asymmetry at the root: BOTH paths source emission from the same recipe-output
+contract — stored bakes the recipe's emission output into the channel, procedural evaluates it live.
+Same authored value, two materializations. → hinges on the recipe-output SCHEMA / kernel-content
+codegen boundary (guarded — `kernel-framework` skill, drift guards; never hand-edit `.g.*`).
+
+- [x] Task 11.1 — DONE · commit `eb7533f0` · 2026-07-18. Disabled the stray directional light for
+  Cornell (LightingConfigNode.cpp ExecuteImpl: `cfg.lightCount=0` when IsCornellDemo(), env-gate
+  idiom matching sibling ReservoirConfigNode; ambient=0.3 kept — the shadow RAY was the blotching
+  source, not ambient; non-Cornell scenes byte-identical). **RESULT: blotching GONE** (floor/walls
+  clean, matching virtual), scene still lit from ceiling emitter, geometry parity 0/625, **cross_path
+  luminance delta 1.80→0.07** (near-perfect parity). M10 residual/blotching CONFIRMED subsumed —
+  it was entirely the directional light's grazing false-shadows. Note: scene now purely ceiling-GI-lit
+  = softer/flatter (correct for a single area light) → motivates 11.2 self-lit panel + emission work.
+  ORIGINAL: Disable the stray directional light for the Cornell demo so the existing ceiling
+  emitter stands alone (zero/remove the LightingConfigNode directional contribution for Cornell, or
+  scene-author it off). Re-shoot the baked+virtual A/B. GATE: light visibly comes from the ceiling
+  square; the M10 floor/wall blotching is GONE (verify in the new A/B image vs virtual — this is the
+  blotching-subsumed check); geometry parity byte-identical 0/625; 8 bodies; scene still lit (GI from
+  ceiling emitter intact, not dark). If blotching persists, re-open it as a separate finding.
+- [ ] Task 11.2 — Primary-hit self-lit emission term: the camera-visible light-panel face renders
+  bright/glowing (add the emission contribution at the primary hit for an emissive body). Benefits
+  BOTH providers. GATE: light panel reads as self-lit in baked AND virtual, matched to oracle; no
+  regression to GI or geometry parity (0/625).
+- [ ] Task 11.3 — Procedural-native emission via the recipe-output contract (the pure-solution
+  engine addition): emission as a recipe OUTPUT channel evaluated per-sample, threaded through the
+  kernel-content codegen to BOTH (a) the stored bake EmitFn and (b) the procedural live shade/GI
+  path — so PROVIDER_PROCEDURAL emits without the mandatory side-bake. Remove/retire the
+  side-bake workaround once native emission matches. GATE (oracle-based): procedural-native emission
+  A/B vs the side-bake result AND vs virtual — light-tree/GI lighting from a procedural emissive body
+  matches the baked-emission body within parity threshold; both providers now provider-symmetric on
+  emission; geometry parity 0/625; codegen drift guards pass (no hand-edited `.g.*`). Depends on a
+  recipe-output/codegen recon (dispatched) — may split into 11.3a (schema+codegen) / 11.3b (wire both
+  consumers) / 11.3c (retire side-bake) once the contract is mapped.
+
+**M11 gate (milestone):** light unambiguously from the ceiling; blotching gone; light panel self-lit;
+procedural and stored emission provider-symmetric vs virtual oracle; geometry parity preserved
+throughout; codegen boundary respected. Branch `fix/baked-perf-pipeline`, incremental merge to main.
+
+---
+
 ## Milestone Map
 
 | # | Name | Tasks | Effort | Target |
