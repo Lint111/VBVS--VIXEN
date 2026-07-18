@@ -568,6 +568,17 @@ consistent with, not contradicting, KI-027's "worse under concurrent load" chara
 unattended `VIXEN_PERF_CSV` capture corrupts the rolling-average FPS column — a measurement-tooling gap,
 not a render or switch-cost bug, surfaced for the first time by this milestone's own multi-run sweep.
 
+**Unverified user-observed anomaly, controller-noted, NOT part of the measured sweep above (2026-07-18)**:
+while manually interacting with this build at N≈50, the user toggled the app to fullscreen mid-run and
+observed visible stuttering; reverting to windowed mode returned it to smooth. All FPS numbers in the
+table above were captured windowed (per `VIXEN_PERF_CSV`'s own convention — no run in this sweep toggled
+display mode mid-capture, so this is a genuinely untested axis, not a contradiction of the recorded
+numbers). Not independently reproduced or root-caused by any agent in this increment — flagged here as a
+real, display-mode-dependent performance signal worth a dedicated follow-up (does fullscreen change
+present-mode/vsync behavior, swapchain recreation cost, or compositor interaction in a way that
+compounds with this scene's own switch-cost collapse?), not something this measurement milestone's own
+windowed-mode sweep can speak to either way.
+
 **Regression suite**: all 8 tracked SVO test binaries re-run, all counts unchanged from M3's baseline
 (codegen 10, codegen_glsl 4, eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5,
 declared_position_render 1, uber_shader_splice 7) — zero failures, zero regressions. No source files
