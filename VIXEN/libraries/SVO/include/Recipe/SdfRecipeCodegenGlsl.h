@@ -37,11 +37,29 @@ namespace Vixen::SVO::Recipe {
 // out-param, e.g. test_recipe_glsl_numerical_parity.cpp's ComposeComputeShader) keeps
 // compiling unchanged — this is opt-in per the direction doc's own "contract is opt-in, not
 // universal" framing, not a change to the shared function's default shape.
+// Recipe-Nested-Invocation M1: `registry` backs InvokeRecipe's callee lookup at emit time —
+// required (asserted) only if `prog` (or, recursively, any callee it invokes) actually
+// contains an InvokeRecipe instruction; every pre-M1 call site (no InvokeRecipe anywhere in
+// its program) compiles and emits unchanged with the nullptr default.
+//
+// Unroll-strategy choice (M1, per the direction doc's §1.3 — recursive-inlining vs
+// call-to-already-unrolled-function): RECURSIVE INLINING, confirmed against this emitter's
+// actual structure rather than assumed from the doc's non-binding recommendation. This
+// emitter does emit-time symbolic execution over STRING expressions (`stk`/`curPos` are
+// std::string, not real GLSL locals it has to worry about scoping) — walking a callee's
+// bytecode is EXACTLY the same shape as walking the caller's own bytecode: append more `t<n>`/
+// `pp<n>` lines to the SAME `body`, push the callee's final string expression onto the SAME
+// `stk`. This makes recursive inlining not just "the more conservative first cut" but the
+// STRUCTURALLY NATURAL fit — no new codegen concept (cross-function calls, callee parameter
+// passing, a second function signature) is needed at all; the callee's walk is simply MORE
+// instructions in the caller's single self-contained sdfRecipe_<id> function, preserving
+// today's "one totally self-contained function per top-level recipe" shape exactly.
 inline std::string EmitProceduralFieldFunctionGlsl(
     const SdfInstruction* prog,
     uint32_t count,
     uint32_t recipeId,
-    bool emitDeclaredPositionOutParam = false)
+    bool emitDeclaredPositionOutParam = false,
+    const Vixen::SVO::RecipeRegistry* registry = nullptr)
 {
     std::vector<std::string> stk;
     std::string body;
@@ -63,8 +81,13 @@ inline std::string EmitProceduralFieldFunctionGlsl(
         return s;
     };
 
-    for (uint32_t i = 0; i < count; ++i) {
-        const SdfInstruction& in = prog[i];
+    // Recursive-inlining walk (Recipe-Nested-Invocation M1): a self-recursive lambda so
+    // InvokeRecipe can walk a callee's bytecode into the SAME body/stk/n/curPos state as the
+    // outer walk, without duplicating this whole function. Captures everything by reference;
+    // `self` is how a C++ lambda recurses into itself.
+    auto walk = [&](auto&& self, const SdfInstruction* wprog, uint32_t wcount) -> void {
+    for (uint32_t i = 0; i < wcount; ++i) {
+        const SdfInstruction& in = wprog[i];
         assert(IsValidSdfOpCode(in.opCode) && "EmitProceduralFieldFunctionGlsl: unknown opcode");
         // paramMask!=0 is now legal exactly for ReadParam/ReadParamFloat3 (Recipe-
         // Parameterization M1 Task 2's registry allow-list) — every other opcode still
@@ -799,6 +822,24 @@ inline std::string EmitProceduralFieldFunctionGlsl(
                 curPos = pN;
                 break;
             }
+            case SdfOpCode::InvokeRecipe: {        // recursive-inline: splice callee's walk into THIS body
+                // Recipe-Nested-Invocation M1. data[0] = calleeRecipeId (see SdfOpCodes.g.h).
+                // Recursive inlining (see this function's header comment for why): look up the
+                // callee's bytecode via `registry` and recurse `self` (the walk lambda) over
+                // it with the SAME curPos (position passthrough, matching evalRecipe's
+                // InvokeRecipe semantics exactly) — this appends the callee's t<n>/pp<n> lines
+                // directly into `body` and leaves the callee's final value on `stk`, so it
+                // composes with the caller's own CSG opcodes with zero special-casing.
+                assert(registry && "InvokeRecipe: EmitProceduralFieldFunctionGlsl called with "
+                                    "no RecipeRegistry — required when the program contains "
+                                    "InvokeRecipe");
+                uint32_t calleeId = static_cast<uint32_t>(in.data[0]);
+                const auto* callee = registry->Get(calleeId);
+                assert(callee && "InvokeRecipe: unknown calleeRecipeId (should have been "
+                                  "rejected at RecipeRegistry::Register time)");
+                self(self, callee->bytecode.data(), static_cast<uint32_t>(callee->bytecode.size()));
+                break;
+            }
             case SdfOpCode::PushFloat3: {          // push data[0..2] as x,y,z scalars
                 std::string t = "t" + std::to_string(n++);
                 body += "  vec3 " + t + " = vec3(" + f(in.data[0]) + ", " + f(in.data[1]) + ", " + f(in.data[2]) + ");\n";
@@ -930,6 +971,9 @@ inline std::string EmitProceduralFieldFunctionGlsl(
                 break;
         }
     }
+    };  // end walk lambda
+
+    walk(walk, prog, count);
 
     assert(!stk.empty() && "EmitProceduralFieldFunctionGlsl: empty value stack at return");
     std::string signature = emitDeclaredPositionOutParam

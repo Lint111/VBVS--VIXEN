@@ -13,6 +13,7 @@
 #undef abs
 
 #include "Recipe/generated/SdfCoreKernels.g.hpp"   // Yeroket::Sdf::Generated::SdfCore_*
+#include "Recipe/RecipeRegistry.h"  // Recipe-Nested-Invocation M1: InvokeRecipe's callee lookup
 #include <glm/glm.hpp>
 #include <cassert>
 #include <cstdint>
@@ -33,8 +34,13 @@ namespace Vixen::SVO::Recipe {
 // original value) if the program contains no DeclarePosition instruction — same "opt-in, not
 // universal" contract the direction doc describes. Defaults to nullptr so every pre-Inc6 call
 // site compiles unchanged.
+//
+// registry (Recipe-Nested-Invocation M1): backs InvokeRecipe's callee lookup — required
+// (asserted) only if `prog` actually contains an InvokeRecipe instruction; every pre-M1 call
+// site (no InvokeRecipe in its program) compiles and runs unchanged with the nullptr default.
 inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
-                         std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr) {
+                         std::span<const float> params = {}, glm::vec3* outDeclaredPos = nullptr,
+                         const RecipeRegistry* registry = nullptr) {
     float stack[64]; int sp = 0;
     glm::vec3 pos = p;                   // current sample point (mirrors C# VM ctx.Pos)
     glm::vec3 posStack[64]; int psp = 0; // domain-transform save stack (C# VM ctx.PosStack)
@@ -508,6 +514,29 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                 glm::vec3 declared(dx, dy, dz);
                 if (outDeclaredPos) *outDeclaredPos = declared;
                 pos = pos - declared;
+            } break;
+            case SdfOpCode::InvokeRecipe: {        // recursively eval a callee recipe, push its result
+                // Recipe-Nested-Invocation M1. data[0] = calleeRecipeId (see SdfOpCodes.g.h for
+                // the opcode's full semantics). Position passthrough: the callee samples the
+                // SAME `pos` this instruction is reached with — no implicit transform (a caller
+                // wanting a transformed nested instance wraps InvokeRecipe in an explicit
+                // Transform/RestorePos pair, the existing precedent, not new machinery here).
+                // Result composition: pushes exactly 1 value, identically to a leaf primitive,
+                // so Union/SmoothUnion/etc. work unmodified on nested results. `registry` must
+                // be supplied by the caller when the program contains this opcode — a cycle/
+                // depth-unsafe recursion can never reach here because RecipeRegistry::Register
+                // already rejected it at registration time (see RecipeRegistry.h).
+                assert(sp < 64 && "InvokeRecipe: value stack overflow");
+                assert(registry && "InvokeRecipe: evalRecipe called with no RecipeRegistry — "
+                                    "required when the program contains InvokeRecipe");
+                uint32_t calleeId = static_cast<uint32_t>(in.data[0]);
+                const RecipeRegistry::RecipeEntry* callee = registry->Get(calleeId);
+                assert(callee && "InvokeRecipe: unknown calleeRecipeId (should have been "
+                                  "rejected at RecipeRegistry::Register time)");
+                float calleeResult = evalRecipe(callee->bytecode.data(),
+                                                 static_cast<uint32_t>(callee->bytecode.size()),
+                                                 pos, params, /*outDeclaredPos=*/nullptr, registry);
+                stack[sp++] = calleeResult;
             } break;
             case SdfOpCode::PushFloat3: {          // push data[0..2] as 3 floats (x then y then z)
                 assert(sp < 62 && "PushFloat3: value stack overflow");
