@@ -45,7 +45,7 @@ direction, sequential, M2 depending on M1.
 
 ## Milestone Map
 
-- **M1 (minimal nesting mechanism): DONE.** Branch `feat/recipe-nested-invocation`, based on
+- **M1 (minimal nesting mechanism): DONE + APPROVED.** Branch `feat/recipe-nested-invocation`, based on
   `main` at `3ae96ec8`. Adds a new VIXEN-only opcode `InvokeRecipe = 113`
   (`SdfOpCodes.g.h`, next free slot after `DeclarePosition=112`, same hand-mirrored-addition
   category — no Yeroket `[SdfCoreOp]` counterpart). Semantics: `data[0]` = callee `recipeId`
@@ -111,6 +111,18 @@ direction, sequential, M2 depending on M1.
     recursive-inlining recommendation was independently confirmed (not just followed) against
     the actual emitter's string-splicing structure per the prompt's explicit instruction to do
     so.
+  - Opus-validated APPROVED 2026-07-18 — independently re-traced the cycle/depth-guard logic by
+    hand (confirmed the dependency-order argument holds via the 2-cycle test's `UnknownCalleeRecipe`
+    rejection), independently re-ran the GPU parity test (confirmed genuinely ran on real hardware,
+    not skipped) and 3 of the regression suites, confirmed the recursive-inlining choice is
+    collision-free (single monotonic temp-name counter shared across nesting levels). One
+    non-blocking concern noted: the cycle guard is registration-time only — `RecipeRegistry::GetMutable`
+    could theoretically let a caller rewrite bytecode post-registration to introduce a cycle the
+    runtime has no depth cap against, but the validator confirmed the only actual `GetMutable` caller
+    (`RecipeBaker.h`) never rewrites bytecode, so this is a theoretical gap with no live trigger,
+    appropriate for a minimal M1 mechanism. A separate build-system flake (a shared cross-worktree
+    Yeroket CodegenTool file-lock race unrelated to this commit's own files) was hit and independently
+    confirmed as infra noise, not a code defect, by re-running the affected target in isolation.
 - **M2 (the A/B test): NOT STARTED.** Depends on M1 (done above). Scope per §2 below — out of
   scope for M1's own dispatch.
 
