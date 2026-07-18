@@ -407,6 +407,36 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
       margin-widening already established by M2's own pattern, no switch-cost fix
       attempted, no composer/enforcement tooling, no M4 measurement sweep run. Commit:
       `b5d1e8b7`.
+  - **Opus re-validator: APPROVED (2026-07-18) — no-recompile invariant independently
+    instrumented, not just trusted.** Fresh full build confirmed (new test symbol present,
+    exe mtime postdates source). Read both `ReadParam(idx=3)` and `ReadParamFloat3(idx=0)`'s
+    actual slot arithmetic on CPU and GPU paths and confirmed no aliasing. Confirmed the
+    orbit's cached-base-position logic prevents drift. **Added temporary instrumentation to
+    the at-scale test itself** and re-ran on real GPU hardware, printing actual counters:
+    `recompileFlagCount=0 observedInstanceCount=192` after 120 frames — a direct measurement,
+    not an inferred pass — then reverted the instrumentation. Confirmed the 192 recipes used
+    by the test are genuinely distinct (distinct `recipeId` and `boundCenter`, simplified
+    bytecode content — noted as fine since content diversity is M2's concern, not this
+    invariant's). Independently confirmed the `ExpectNoValidationErrors` failures land on the
+    identical `EOSOverlayVkLayer-Win32.json` loader-artifact line in both the new test and the
+    unmodified sibling test, ruling out a regression there. Re-ran the live gate at both N
+    with its own captures (distinct hashes, visually confirmed shape morphing + position
+    drift at both N); confirmed exactly one growth-path recompile fires once after "Entering
+    render loop" and never again across 130 frames at both N (no storm), matching the
+    at-scale test's own finding. Re-ran the full regression suite independently, all counts
+    matched exactly. Confirmed the `boundRadius` widening is a value change only (12→21,
+    accounting for the +3 shape-sweep and +6 orbit-radius margins), not a semantics change.
+    **One reporting-accuracy caveat, non-blocking**: the implementer's "zero VUID/validation-
+    ERROR lines" claim is imprecise — every live run (including a plain default-boot control
+    the validator ran independently) emits 50 pre-existing `PushConstantGathererNode Type
+    mismatch` errors on `probe_update` (documented, KI-034-adjacent) and intermittent
+    first-frame `VUID-vkCmdDraw-None-09600` layout errors (documented KI-009/KI-034) — proven
+    identical on the default-boot control, so these are shared-render-path artifacts wholly
+    independent of M3's changes, not a regression. Correct framing: "no NEW validation errors
+    from M3," not "zero validation errors" — noted for M4 so its log-filtering expects these
+    pre-existing lines. **Own independent conclusion: M4 is cleared to proceed** — nothing
+    found touches the no-recompile invariant, which is the one thing that could have
+    invalidated M4's entire purpose.
 - **M4 — Sweep + measurement.** Run the scene across the N=20-250 range (a reasonable sampling, not
   necessarily every integer — e.g. 20, 50, 100, 150, 200, 250, informed by where the existing N=100 knee
   and N=500 hang already are), real live `VixenApp`, validation layers on for a correctness pass and off
