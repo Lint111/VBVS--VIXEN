@@ -121,5 +121,36 @@ enum class SdfOpCode : uint8_t {
     // dispatch and Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07.md for the
     // design this derisks.
     DeclarePosition        = 112,
+
+    // HAND-MIRRORED ADDITION (Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07 M1):
+    // InvokeRecipe is NOT a Yeroket canonical opcode at all (no C# SDFInstruction.cs
+    // counterpart exists or is planned — this is a VIXEN-runtime-only bytecode-level
+    // concept, same category as DeclarePosition above, not a real [SdfCoreOp]). Value 113
+    // chosen as the next free slot after DeclarePosition=112.
+    // Semantics: invokes an already-registered recipe (by ID) as a sub-expression of the
+    // CALLING recipe's bytecode, so recipes can compose other recipes (not just CSG-combine
+    // primitives within one flat bytecode array, which is all today's opcodes support).
+    //   - data[0] = calleeRecipeId (encoded as a float, truncated to uint32_t at dispatch —
+    //     same immediate-operand convention every other opcode already uses for compile-time
+    //     constants; resolved against RecipeRegistry at both interpret-time (SdfRecipeEval.h)
+    //     and unroll-time (SdfRecipeCodegenGlsl.h)).
+    //   - Position: the callee samples the CALLER's current `pos`/`curPos` unmodified — no
+    //     implicit transform is pushed. A caller wanting a translated/rotated nested instance
+    //     composes an explicit Transform/RestorePos pair around InvokeRecipe first (the exact
+    //     existing precedent, not new semantics) — InvokeRecipe itself is position-passthrough.
+    //   - Result composition: pops nothing from the value stack; pushes exactly ONE value (the
+    //     callee's evaluated distance), identically to how a leaf primitive (Sphere, etc.)
+    //     pushes one value — so existing CSG combinators (Union, SmoothUnion, ...) operate on
+    //     a nested-call result with zero changes.
+    //   - Cycle/recursion guard: enforced at RecipeRegistry::Register time (walks the callee
+    //     graph transitively; see RegisterResult::RecursiveInvocation /
+    //     RegisterResult::NestingTooDeep in RecipeRegistry.h) — never a runtime-only check, so
+    //     an unguarded cycle can never reach evalRecipe or the GLSL emitter in the first place.
+    //   - Max nesting depth: fixed at kMaxRecipeNestingDepth = 4 (RecipeRegistry.h), enforced
+    //     by the same registration-time graph walk as the cycle guard.
+    // See SdfRecipeEval.h::evalRecipe (interpreter dispatch) and SdfRecipeCodegenGlsl.h
+    // (recursive-inlining GLSL dispatch) for the two execution-path implementations, and
+    // Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07.md for the full design.
+    InvokeRecipe           = 113,
 };
 }  // namespace Vixen::SVO::Recipe

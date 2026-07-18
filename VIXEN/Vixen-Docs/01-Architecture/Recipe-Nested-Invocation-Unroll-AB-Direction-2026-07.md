@@ -43,6 +43,77 @@ scoped as a single step — nesting itself is unbuilt. Per explicit user directi
 **M1 (build minimal nesting)** and **M2 (the A/B test on top of it)** as two milestones of the same
 direction, sequential, M2 depending on M1.
 
+## Milestone Map
+
+- **M1 (minimal nesting mechanism): DONE.** Branch `feat/recipe-nested-invocation`, based on
+  `main` at `3ae96ec8`. Adds a new VIXEN-only opcode `InvokeRecipe = 113`
+  (`SdfOpCodes.g.h`, next free slot after `DeclarePosition=112`, same hand-mirrored-addition
+  category — no Yeroket `[SdfCoreOp]` counterpart). Semantics: `data[0]` = callee `recipeId`
+  (resolved via `RecipeRegistry` at both interpret- and unroll-time); **position passthrough**
+  — the callee samples the caller's current `pos`/`curPos` unmodified, no implicit transform (a
+  caller wanting a transformed nested instance wraps `InvokeRecipe` in an explicit
+  `Transform`/`RestorePos` pair, the existing precedent, not new machinery); **result
+  composition** — pushes exactly 1 value onto the caller's value stack, identically to a leaf
+  primitive, so `Union`/`SmoothUnion`/etc. operate on a nested-call result with zero changes
+  (`RecipeStackArity(InvokeRecipe) = {0,1,0,0}`).
+  - **Cycle/depth guard, registration-time (not runtime-only):** `RecipeRegistry::Register` gained
+    3 new `RegisterResult` values — `UnknownCalleeRecipe`, `RecursiveInvocation`,
+    `NestingTooDeep` — and a private `ValidateNestingGuard`/`WalkNestingGuard` transitive-graph
+    walk. Because recipes must register in dependency order (a callee must already exist in
+    `entries_` before a caller referencing it can register), the walk only needs `entries_` plus
+    the not-yet-inserted entry — no separate two-pass registration needed. A direct
+    self-invocation, an indirect 2-cycle (A→B, B→A), and a chain exceeding
+    `kMaxRecipeNestingDepth = 4` are all rejected cleanly at `Register()`, never reaching
+    `evalRecipe`/the GLSL emitter.
+  - **Interpreter path** (`SdfRecipeEval.h::evalRecipe`): gained an optional
+    `const RecipeRegistry* registry = nullptr` parameter (every pre-M1 call site compiles
+    unchanged) and an `InvokeRecipe` case that looks up the callee's `RecipeEntry` and
+    recursively calls `evalRecipe` on its bytecode with the same `pos`/`params`/`registry`.
+  - **Unrolled/GLSL path** (`SdfRecipeCodegenGlsl.h::EmitProceduralFieldFunctionGlsl`): unroll
+    strategy chosen was **recursive inlining**, confirmed against the actual emitter structure
+    (not just the direction doc's non-binding recommendation) — this emitter does emit-time
+    symbolic execution over STRING expressions (`stk`/`curPos` are `std::string`, not real GLSL
+    locals needing scope management), so walking a callee's bytecode is structurally IDENTICAL
+    to walking the caller's own: more `t<n>`/`pp<n>` lines appended to the same `body`, the
+    callee's final expression pushed onto the same `stk`. Implemented as a self-recursive
+    lambda (`auto walk = [&](auto&& self, ...){ ... }`) so `InvokeRecipe`'s case can recurse into
+    the SAME `body`/`stk`/`n`/`curPos` state with zero duplication — no new codegen concept
+    (cross-function calls, a callee parameter-passing convention, a second function signature)
+    was needed at all, preserving today's "one totally self-contained `sdfRecipe_<id>` function"
+    shape exactly. Gained the same optional `registry` parameter as the interpreter.
+  - **Correctness gate, all passing, 0 regressions:**
+    - New `test_recipe_nested_invocation.cpp` (7 tests): (1) CPU-interpreter parity — `evalRecipe`
+      on `A = SmoothUnion(InvokeRecipe(B), Box)` matches a hand-composed CPU reference across 126
+      sample points; (2) GLSL-emit — confirms the emitted source textually inlines B's own
+      `SdfCore_Sphere(...)` call (proving recursive inlining actually happened, not a stray
+      reference) and compiles through the real glslang-backed `ShaderCompiler`; (3)
+      **GPU-verified numerical parity, mandatory** — `RecipeNestedInvocationGpuParityTest` (real
+      discrete/integrated GPU, same device-gate/SKIP shape as
+      `test_recipe_glsl_numerical_parity.cpp`) dispatches the compiled recursive-inlined GLSL and
+      confirms it matches `evalRecipe`'s CPU values within tolerance — **ran on real hardware in
+      this session (not skipped), 425ms, PASSED**; (4) 4 cycle/depth-guard tests — self-invocation,
+      2-cycle, exceeding `kMaxRecipeNestingDepth`, and an unknown-callee reference, all rejected
+      with the correct `RegisterResult`, no crash/hang.
+    - `RecipeGlslOpcodeCoverage.CorpusCoversEveryValidOpcode` (existing test) needed one exemption
+      line added — `InvokeRecipe` requires a `RecipeRegistry`+registered callee the shared
+      corpus-loop harness doesn't thread through, same class of exemption `DeclarePosition`
+      already has there, with its own dedicated coverage in `test_recipe_nested_invocation.cpp`
+      instead of the shared loop.
+    - Zero regressions: every existing recipe test binary re-run after this change
+      (`test_recipe_eval_parity` 100/100, `test_recipe_codegen_glsl` 4/4, `test_recipe_registry`
+      16/16, `test_recipe_glsl_numerical_parity` 5/5 after the exemption fix, plus
+      `test_recipe_bake`/`test_recipe_bake_center`/`test_recipe_baker`/`test_recipe_boot_ingest`/
+      `test_recipe_bounds`/`test_recipe_codegen`/`test_recipe_container_parity`/
+      `test_recipe_ingest`/`test_recipe_manifest`/`test_recipe_occupancy`/
+      `test_recipe_pack_loader`/`test_sdf_recipes`) — all passing, all green.
+  - **Deviations from the implementer prompt:** none of substance. The prompt's suggested "2-4
+    levels" depth range was resolved to the fixed constant 4; the doc's own non-binding
+    recursive-inlining recommendation was independently confirmed (not just followed) against
+    the actual emitter's string-splicing structure per the prompt's explicit instruction to do
+    so.
+- **M2 (the A/B test): NOT STARTED.** Depends on M1 (done above). Scope per §2 below — out of
+  scope for M1's own dispatch.
+
 ## 1. M1 — minimal recipe-calling-recipe mechanism
 
 ### 1.1 Scope: the smallest mechanism that makes M2 possible, not a general composition system

@@ -648,6 +648,34 @@ endif()
 gtest_discover_tests(test_recipe_glsl_numerical_parity)
 
 # ===========================================================================
+# Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07 M1 — InvokeRecipe opcode
+# correctness gate: CPU interpreter parity + GLSL recursive-inlining emit/compile run on
+# every machine; GPU dispatch+compare only runs on a REAL (non-lavapipe, non-Dozen) GPU —
+# same SetUp()-GTEST_SKIP shape as test_recipe_glsl_numerical_parity above.
+# ===========================================================================
+add_executable(test_recipe_nested_invocation test_recipe_nested_invocation.cpp)
+if(TARGET SVO AND TARGET ShaderManagement AND TARGET VulkanResources)
+    target_link_libraries(test_recipe_nested_invocation PRIVATE
+        GTest::gtest_main SVO ShaderManagement VulkanResources)
+elseif(TARGET SVO AND TARGET ShaderManagement)
+    target_link_libraries(test_recipe_nested_invocation PRIVATE
+        GTest::gtest_main SVO ShaderManagement)
+else()
+    target_link_libraries(test_recipe_nested_invocation PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_nested_invocation PRIVATE
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_recipe_nested_invocation PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_recipe_nested_invocation POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_nested_invocation>
+        COMMENT "Copying TBB DLL for test_recipe_nested_invocation")
+endif()
+gtest_discover_tests(test_recipe_nested_invocation)
+
+# ===========================================================================
 # Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype's
 # live-render/visual gate (2D distance-field slice, not a full 3D ray-traced render — see
 # file header). Same GPU-required/SKIP behavior as test_recipe_glsl_numerical_parity above.
