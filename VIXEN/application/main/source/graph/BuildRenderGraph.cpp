@@ -4528,7 +4528,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     }
                 }
 
-                auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos, float renderScale) {
+                // M11.2: emissionIntensity defaults to 0.0 (every non-emissive body) and rides
+                // in recipeParams[3] -- STORED instances never touch recipeParams (PROVIDER_STORED
+                // is never read by TraceWorld.glsl's recipeParams accesses, all gated on
+                // PROVIDER_PROCEDURAL), so the slot is genuinely free. See TraceWorld.glsl's
+                // WorldHit.emission field for the shader-side read.
+                auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos,
+                                        float renderScale, float emissionIntensity = 0.0f) {
                     Vixen::SVO::BodyInstanceGpu inst{};
                     inst.worldPos[0] = worldPos.x;
                     inst.worldPos[1] = worldPos.y;
@@ -4538,6 +4544,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     inst.octreeIndex = octreeIdx;
                     inst.providerKind = 0u;  // PROVIDER_STORED
                     inst.recipeId = 0u;
+                    inst.recipeParams[3] = emissionIntensity;
                     return inst;
                 };
                 const float kWallRenderScale  = bodyRenderScale(kWallN, kWallSubdiv);
@@ -4548,7 +4555,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     makeInstance(2u, bodies[2].color, bodyWorldPos(bodies[2].worldCenter, kWallN, kWallSubdiv),  kWallRenderScale),   // backWall
                     makeInstance(3u, bodies[3].color, bodyWorldPos(bodies[3].worldCenter, kWallN, kWallSubdiv),  kWallRenderScale),   // floor
                     makeInstance(4u, bodies[4].color, bodyWorldPos(bodies[4].worldCenter, kWallN, kWallSubdiv),  kWallRenderScale),   // ceiling
-                    makeInstance(5u, bodies[5].color, kLightWorldPos,                                            kLightRenderScale),  // light
+                    makeInstance(5u, bodies[5].color, kLightWorldPos,                                            kLightRenderScale, kLightEmissionIntensity),  // light
                     makeInstance(6u, bodies[6].color, bodyWorldPos(bodies[6].worldCenter, kSmallN, kSmallSubdiv), kSmallRenderScale), // sphereObj
                     makeInstance(7u, bodies[7].color, bodyWorldPos(bodies[7].worldCenter, kSmallN, kSmallSubdiv), kSmallRenderScale), // boxObj
                 };
@@ -4708,6 +4715,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 inst.octreeIndex = 0u;    // unused by Procedural
                 inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
                 inst.recipeId = recipeId;
+                // M11.2: recipeParams[3..5] are unconditionally zero-initialized above and
+                // never written elsewhere in this loop (every body here "samples world p
+                // directly", per this block's own header comment) -- genuinely spare, so the
+                // light body's emission intensity rides in recipeParams[3] rather than a new
+                // BodyInstance field. Every other body stays 0.0 (non-emissive).
+                if (std::string(b.name) == "light") {
+                    inst.recipeParams[3] = kLightEmissionIntensity;
+                }
                 virtualBodies.push_back(inst);
             }
 

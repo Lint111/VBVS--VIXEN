@@ -313,7 +313,9 @@ void main() {
     // out-of-bounds hit, cheap enough (one extra uint write, no new binding) to leave
     // permanently available rather than scaffolding it in/out per round the way M1
     // round 4's own g_cornellDiagWinnerInstIdx was.
-    rec._pad0       = uint[3](worldHit.instIdx, 0u, 0u);
+    // M11.2: stash the winning instance's emission intensity alongside instIdx --
+    // SpatialReuseShade.comp reads it back to add a self-lit term at the primary hit.
+    rec._pad0       = uint[3](worldHit.instIdx, floatBitsToUint(worldHit.emission), 0u);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
 
