@@ -306,10 +306,12 @@ void main() {
         bucketIndices[recipeId * pc.maxMembersPerBucket + slot] = gid;
     }
 
-    // Load-Tier Contract M2 (precision tier): reuses the SAME footprint signal M1's gating
-    // check above already computed (distance * raySizeCoef + raySizeBias) -- no parallel
-    // distance computation, per the direction doc's own guidance ("a natural extension of
-    // M1's gating computation... is the most direct answer"). A recipe opts in by setting
+    // Load-Tier Contract M2 (precision tier): recomputes the footprint from the SAME inputs
+    // M1's gating check above already uses (sphereCenterWorld, pc.cameraPos, pc.raySizeCoef,
+    // pc.raySizeBias) -- not a parallel/independent distance SOURCE, though the value itself
+    // isn't hoisted out of M1's `if` (gating and precision are independent opt-ins; M1 may not
+    // have computed it), per the direction doc's own guidance ("a natural extension of M1's
+    // gating computation... is the most direct answer"). A recipe opts in by setting
     // precisionFootprintThreshold > 0.0; when opted in AND LOD is live, an instance whose
     // footprint falls below the threshold is tier 1 (half precision), else tier 0 (full).
     // A non-opted-in recipe or LOD-disabled build always resolves tier 0 -- byte-identical

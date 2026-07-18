@@ -28,7 +28,7 @@
   non-participating control recipe at the SAME far distance unaffected. Opus-validated APPROVED
   2026-07-18 — independent re-build, independent re-run of all 4 touched test binaries (11/11
   passing, 0 regressions), independent formula/wiring/scope-discipline verification.
-- **M2 (precision tier): DONE.** Two pieces, per [[GPU-Struct-Precision-Tiering-Direction-2026-07]]
+- **M2 (precision tier): DONE + APPROVED.** Two pieces, per [[GPU-Struct-Precision-Tiering-Direction-2026-07]]
   §3: (1) **Codegen** — a new `[PrecisionEligible]` field attribute (kernel-framework
   `Runtime/GpuStructAttributes.cs`, mirrors `[NotView]`'s exact shape/precedent) and a new
   `GpuStructPrecisionEmitter` + CLI `--struct-precision` flag that emit BOTH a full-precision and a
@@ -63,7 +63,12 @@
   `PushConstants`-mirror comment already flagged (KI-034), just for a struct/descriptor-count change
   instead of a push-constant field change. The content-detail tier (§1's third tier type) remains
   explicitly DEFERRED, pending mipmap-integration finalization — not part of this direction's build
-  until then.
+  until then. Opus-validated APPROVED 2026-07-18 — independent re-build (full configure+build,
+  253/254 targets, 0 failed), independent re-run of all 4 touched test binaries on real discrete
+  GPU (12/12 passing incl. M1's own gating test alongside M2's, 0 regressions), independent
+  confirmation of the dual-layout codegen (no `shaderFloat16`/16-bit-storage dependency), the
+  additive/non-colliding bucket-key math, the §6 single-vs-bucketed-dispatch reasoning, and that
+  the kernel-framework repo's changes are genuinely uncommitted (not pushed to a shared branch).
 
 ## 0. What this reconciles, precisely
 
