@@ -451,6 +451,11 @@ public:
     void PushHudView(int tick, int bodyCount, int activeLens, int activeLensCount,
                      std::span<const Vixen::App::HudFactionIn> factions,
                      std::span<const Vixen::App::HudEventIn> events);
+    // T1 inspect: forward the selected-entity detail to the HUD (see PushHudView's bridge rationale).
+    void PushHudInspect(bool selected, const char* name, const char* cause);
+    // Host sim-speed readout: forward the current speed multiplier to the HUD clock line (same bridge
+    // rationale as PushHudView). The host reads it from ut_speed each frame.
+    void PushHudSpeed(double speed);
     // Expose the GLFW window handle so the host can poll input (e.g. Space/period for pause/step).
     // Queries the WindowNode LIVE each call (the node owns the window post-de-own refactor + persists
     // across recompiles) — no cached handle, so no dangling-pointer window-capture bug.
@@ -469,4 +474,12 @@ public:
     // copy internally) — fine for a capture-then-exit tool, not for per-frame use. Returns false
     // (and logs) if the swapchain/device node isn't found or the write fails.
     bool CaptureFrameToPng(const std::string& path);
+
+    // M4b-fix (capture-on-aborted-frame): true only when main_swapchain currently holds a VALID
+    // acquired image (currentImageIndex in range). A frame that was aborted mid-flight — e.g. a
+    // swapchain recreation from the WSL launch focus toggle — leaves currentImageIndex == UINT32_MAX,
+    // and CaptureFrameToPng on that frame fails deep inside FrameCapture ("Image index out of range").
+    // The host polls this so it captures on a good frame instead of blindly at frame N. Returns false
+    // if the swapchain node/vars aren't ready yet.
+    bool SwapchainImageIsValid() const;
 };

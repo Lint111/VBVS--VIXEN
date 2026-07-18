@@ -23,9 +23,12 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kHud_fields[] = {
     {"activeLensCount", Vixen::RenderGraph::ViewKind::Int, {}},
     {"factions", Vixen::RenderGraph::ViewKind::ArrayOfStruct, kHudFaction_fields},
     {"events", Vixen::RenderGraph::ViewKind::ArrayOfStruct, kHudEvent_fields},
+    {"inspectSelected", Vixen::RenderGraph::ViewKind::Int, {}},
+    {"inspectName", Vixen::RenderGraph::ViewKind::String, {}},
+    {"inspectCause", Vixen::RenderGraph::ViewKind::String, {}},
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kHudBlob = {
-    "hud", kHud_fields, 0x7F78462Du /* generated version */ };
+    "hud", kHud_fields, 0x9D4ACFD2u /* generated version */ };
 
 }  // namespace Vixen::Views

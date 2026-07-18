@@ -3293,6 +3293,16 @@ void VulkanGraphApplication::PushHudView(int tick, int bodyCount, int activeLens
     Vixen::App::PushHudView(*hudView_, tick, bodyCount, activeLens, activeLensCount, factions, events);
 }
 
+void VulkanGraphApplication::PushHudInspect(bool selected, const char* name, const char* cause) {
+    if (!hudView_) return;
+    Vixen::App::PushHudInspect(*hudView_, selected, name, cause);
+}
+
+void VulkanGraphApplication::PushHudSpeed(double speed) {
+    if (!hudView_) return;
+    Vixen::App::PushHudSpeed(*hudView_, speed);
+}
+
 namespace {
 // Sparse-Mip ESVO LOD Inc1 M4c: conservative world-space bounding radius shared by every
 // body placed in BuildRenderGraph.cpp's default scenes (kRadius/kHalf, both 24.0f — the
@@ -3535,6 +3545,20 @@ bool VulkanGraphApplication::CaptureFrameToPng(const std::string& path) {
                                       std::to_string(result.capturedWidth) + "x" +
                                       std::to_string(result.capturedHeight) + ")");
     return true;
+}
+
+bool VulkanGraphApplication::SwapchainImageIsValid() const {
+    // Mirrors CaptureFrameToPng's node/vars lookup, but only checks that the currently-acquired
+    // image index is in range. An aborted frame (swapchain recreation) leaves currentImageIndex at
+    // UINT32_MAX; capturing then fails with "Image index out of range". The host polls this to pick
+    // a good frame.
+    if (!renderGraph) return false;
+    auto* swapChainNode = static_cast<Vixen::RenderGraph::SwapChainNode*>(
+        renderGraph->GetNodeByName("main_swapchain"));
+    if (!swapChainNode) return false;
+    SwapChainPublicVariables* swapVars = swapChainNode->GetSwapchainPublic();
+    if (!swapVars) return false;
+    return swapChainNode->GetCurrentImageIndex() < swapVars->colorBuffers.size();
 }
 
 bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {

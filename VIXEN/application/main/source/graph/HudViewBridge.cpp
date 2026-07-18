@@ -30,4 +30,12 @@ void PushHudView(HudView& view, int tick, int bodyCount, int activeLens, int act
     view.SetHudView(tick, bodyCount, activeLens, activeLensCount, factions, events);
 }
 
+void PushHudInspect(HudView& view, bool selected, const char* name, const char* cause) {
+    view.SetHudInspect(selected, name, cause);
+}
+
+void PushHudSpeed(HudView& view, double speed) {
+    view.SetSpeed(speed);
+}
+
 }  // namespace Vixen::App

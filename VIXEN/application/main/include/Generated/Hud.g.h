@@ -15,6 +15,9 @@ struct HudBind {
     int* activeLensCount;
     std::vector<HudFaction>* factions;
     std::vector<HudEvent>* events;
+    int* inspectSelected;
+    Rml::String* inspectName;
+    Rml::String* inspectCause;
 };
 
 inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
@@ -38,6 +41,9 @@ inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
     c.Bind("activeLensCount", b.activeLensCount);
     c.Bind("factions", b.factions);
     c.Bind("events", b.events);
+    c.Bind("inspectSelected", b.inspectSelected);
+    c.Bind("inspectName", b.inspectName);
+    c.Bind("inspectCause", b.inspectCause);
 }
 
 }  // namespace Vixen::Views

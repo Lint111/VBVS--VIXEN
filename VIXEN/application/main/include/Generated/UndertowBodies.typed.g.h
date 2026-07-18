@@ -46,6 +46,18 @@ public:
     float radiusAu(uint32_t i) const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_radiusAu).f;
     }
+    static constexpr size_t kElem_posX = 7;
+    float posX(uint32_t i) const {
+        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_posX).f;
+    }
+    static constexpr size_t kElem_posY = 8;
+    float posY(uint32_t i) const {
+        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_posY).f;
+    }
+    static constexpr size_t kElem_posZ = 9;
+    float posZ(uint32_t i) const {
+        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_posZ).f;
+    }
 
 private:
     Vixen::RenderGraph::ViewStore& store_;
