@@ -12,6 +12,29 @@
 > A/B testing → world-streaming load/unload); only this step is scoped for build now, the other two
 > are stubbed separately (see Related, below) so the shape is visible without committing to them.
 
+## Milestone Map
+
+- **M1 (gating tier): DONE + APPROVED.** Commit `41efea64` (branch `feat/recipe-load-tier-contract`,
+  worktree `recipe-load-tier-contract`). Threads `raySizeCoef`/`raySizeBias`/`cameraPos` into
+  `RecipeInstanceBucketing.comp`'s push constants (same live nodes the main march's own
+  push-constant gatherer already reads, including the tier-crossing-LOD-override branch). Adds a
+  per-recipe opt-in `gateFootprintThreshold` (`RecipeRegistry.h`, default 0.0 = not opted in,
+  rejected if set nonzero-non-positive via a new `BadGateFootprintThreshold` validation result). An
+  instance whose screen-space footprint (`distance * raySizeCoef + raySizeBias`, the SAME formula
+  `TraceWorld.glsl` already uses) falls below its recipe's threshold is excluded from
+  bucketing/promotion for that frame; non-participating recipes are byte-identical to before.
+  GPU-verified test `GatingTierExcludesFarInstanceKeepsNearInstanceAndNonParticipant` (real discrete
+  GPU) confirms: far gated instance excluded, near instance on the same recipe still bucketed, and a
+  non-participating control recipe at the SAME far distance unaffected. Opus-validated APPROVED
+  2026-07-18 — independent re-build, independent re-run of all 4 touched test binaries (11/11
+  passing, 0 regressions), independent formula/wiring/scope-discipline verification.
+- **M2 (precision tier): not yet started.** Per user direction ("1 and 3 sounds good, with 2 as next
+  step when we finalize mipmap integration"), M2 builds the precision tier next — dual-layout
+  codegen (`GpuStructModel`/`FieldShapeRecognizer`) + a live per-instance precision bit driving
+  bucketed dispatch, per [[GPU-Struct-Precision-Tiering-Direction-2026-07]] §3. The content-detail
+  tier (§1's third tier type) is explicitly DEFERRED, pending mipmap-integration finalization — not
+  part of this direction's build until then.
+
 ## 0. What this reconciles, precisely
 
 Both prior stubs independently rediscovered the same shape — **runtime, per-instance, live-distance-
