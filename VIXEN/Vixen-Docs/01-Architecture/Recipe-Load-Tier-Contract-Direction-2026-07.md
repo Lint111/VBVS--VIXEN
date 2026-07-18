@@ -28,12 +28,42 @@
   non-participating control recipe at the SAME far distance unaffected. Opus-validated APPROVED
   2026-07-18 — independent re-build, independent re-run of all 4 touched test binaries (11/11
   passing, 0 regressions), independent formula/wiring/scope-discipline verification.
-- **M2 (precision tier): not yet started.** Per user direction ("1 and 3 sounds good, with 2 as next
-  step when we finalize mipmap integration"), M2 builds the precision tier next — dual-layout
-  codegen (`GpuStructModel`/`FieldShapeRecognizer`) + a live per-instance precision bit driving
-  bucketed dispatch, per [[GPU-Struct-Precision-Tiering-Direction-2026-07]] §3. The content-detail
-  tier (§1's third tier type) is explicitly DEFERRED, pending mipmap-integration finalization — not
-  part of this direction's build until then.
+- **M2 (precision tier): DONE.** Two pieces, per [[GPU-Struct-Precision-Tiering-Direction-2026-07]]
+  §3: (1) **Codegen** — a new `[PrecisionEligible]` field attribute (kernel-framework
+  `Runtime/GpuStructAttributes.cs`, mirrors `[NotView]`'s exact shape/precedent) and a new
+  `GpuStructPrecisionEmitter` + CLI `--struct-precision` flag that emit BOTH a full-precision and a
+  half-precision (`packHalf2x16`-packed, core GLSL, no device feature needed) layout from ONE
+  `[GpuStruct]` schema — `FieldShapeRecognizer`/`GpuStructModel.StructLayout` themselves unchanged, a
+  new consumer behavior on top. First-ever `[GpuStruct]` schema for a recipe render-param block
+  (`codegen/config-schemas/RecipeParams.cs`, all 3 fields — radius/displaceAmp/displaceFreq — marked
+  eligible; no kind/index field on this struct to withhold, but the per-field mechanism itself is
+  proven). Generated: `libraries/SVO/include/Recipe/generated/RecipeParams.g.h` (12B full / 8B half,
+  a genuine ~33% bandwidth reduction) + `shaders/Generated/RecipeParams.glsl` (with an
+  `UnpackRecipeParams` helper). (2) **Runtime** — reuses M1's exact footprint signal
+  (`distance * raySizeCoef + raySizeBias`) to derive a per-instance precision tier in
+  `RecipeInstanceBucketing.comp`, and buckets ADDITIVELY into a second, parallel bucket dimension
+  (`PrecisionBucketCountBuffer`/`PrecisionBucketIndicesBuffer`, bindings 9-10, compound-keyed
+  `recipeId*2+tier`) alongside the existing plain recipe bucket — confirmed the
+  runtime-tiered-recipe-pipeline-JIT direction's §6 rejection of single-dispatch-multi-format
+  reasoning transfers to precision (a `VkPipeline` reads one buffer layout, so tier routing must be a
+  separate dispatch per format, not a per-thread branch). New opt-in `precisionFootprintThreshold`
+  (`RecipeRegistry.h`, same "0 = not opted in" convention as `gateFootprintThreshold`,
+  `BadPrecisionFootprintThreshold` validation). Wired into the live production graph
+  (`BuildRenderGraph.cpp`/`VulkanGraphApplication.cpp`/`VulkanGraphApplication.h`) as an additive
+  binding pair alongside M1's; a full specialized-precision-format dispatch consumer (the "give it a
+  real home in `VixenApp`" depth M1's own Inc4 reached) is NOT built this milestone — out of scope
+  per the prompt's own "hand-author, prove the mechanism" framing; the GPU-verified test is the
+  correctness gate for the mechanism itself. GPU-verified test
+  `PrecisionTierRoutesFarInstanceToHalfNearInstanceToFullNonParticipantAlwaysFull` confirms: near
+  instance -> tier 0, far instance on the same opted-in recipe -> tier 1, non-participating control
+  recipe at the SAME far distance always tier 0 (n=0 case), and the plain per-recipe bucket is
+  byte-unaffected (additive, not a replacement). All 4 M1-touched test binaries re-run clean (12/12
+  passing, 0 regressions) after updating their hand-mirrored `RecipeBoundSphere`/descriptor-binding
+  shapes to match the shader's new binding count — the SAME staleness-risk class M1's own
+  `PushConstants`-mirror comment already flagged (KI-034), just for a struct/descriptor-count change
+  instead of a push-constant field change. The content-detail tier (§1's third tier type) remains
+  explicitly DEFERRED, pending mipmap-integration finalization — not part of this direction's build
+  until then.
 
 ## 0. What this reconciles, precisely
 
@@ -168,6 +198,20 @@ types.** First:
 
 The user described this as Step 1 of a 3-step sequence. Steps 2 and 3 are captured here as pointers
 only, not designed, per "sequential build, parallel scoping so the shape is visible":
+
+- **M3 (precision-tier widening — beyond binary half/full), stubbed 2026-07-18, NOT started.** User
+  idea while M2 was in flight: don't stop at a binary half/full-precision switch — offer a small set
+  of named precision tiers, including a **packed-composite** layout that stacks multiple params into
+  one wider field (e.g. 4 short/half params packed into one `double`/`vec4`-width slot), not just a
+  narrower float format per param. User explicitly chose to let M2 land as scoped (half/full only)
+  first, then widen in a follow-on milestone once the dual-layout codegen mechanism is proven
+  end-to-end once — do NOT fold this into M2. Open questions for whoever scopes M3: which named tiers
+  to offer beyond full/half (a short list, not an open-ended format matrix); whether packing is
+  per-field-declared (like M1's/M2's own opt-in fields) or a separate schema-level grouping
+  construct; whether `GpuStructModel`/`FieldShapeRecognizer`'s dual-layout mechanism (from M2)
+  generalizes cleanly to N layouts or needs rework for a packed/composite shape specifically (packing
+  multiple logical fields into one physical slot is a different kind of transform than just narrowing
+  one field's own type — confirm this before assuming M2's codegen approach extends for free).
 
 - **Step 2 — unroll-vs-natural A/B testing.** Once load-tiered recipes exist, compare a fully-unrolled
   recipe program against a "natural" (interpreted/composed, presumably orchestration-path or

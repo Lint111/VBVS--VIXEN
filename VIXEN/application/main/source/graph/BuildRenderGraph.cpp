@@ -653,6 +653,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle recipeBucketCoverageMaxXBuffer{};
     NodeHandle recipeBucketCoverageMaxYBuffer{};
     NodeHandle recipeBucketIndirectCommandBuffer{};
+    NodeHandle recipePrecisionBucketCountBuffer{};   // Load-Tier Contract M2 (precision tier)
+    NodeHandle recipePrecisionBucketIndicesBuffer{}; // Load-Tier Contract M2 (precision tier)
     NodeHandle recipeBoundSphereBuffer{};
     NodeHandle recipeBucketingShaderLib{};
     NodeHandle recipeBucketingDescGatherer{};
@@ -691,6 +693,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         recipeBucketCoverageMaxXBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_coverage_maxx_buffer");
         recipeBucketCoverageMaxYBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_coverage_maxy_buffer");
         recipeBucketIndirectCommandBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_bucket_indirect_command_buffer");
+        // Load-Tier Contract M2 (precision tier): bindings 9-10, the precision-tier sub-bucket
+        // pair, additive to the recipe-only bucket above (see RecipeInstanceBucketing.comp's
+        // PrecisionBucketCountBuffer/PrecisionBucketIndicesBuffer declaration comment).
+        recipePrecisionBucketCountBuffer   = renderGraph->AddNode<StorageBufferNodeType>("recipe_precision_bucket_count_buffer");
+        recipePrecisionBucketIndicesBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_precision_bucket_indices_buffer");
 
         // --- Bucketing shader quintet (self-contained binding namespace 0-8, own descriptor set,
         // independent from the march's shader/pipeline/descriptor chain) ---
@@ -758,6 +765,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     recipeBucketCoverageMaxXBuffer_ = recipeBucketCoverageMaxXBuffer;
     recipeBucketCoverageMaxYBuffer_ = recipeBucketCoverageMaxYBuffer;
     recipeBucketIndirectCommandBuffer_ = recipeBucketIndirectCommandBuffer;
+    recipePrecisionBucketCountBuffer_ = recipePrecisionBucketCountBuffer;
+    recipePrecisionBucketIndicesBuffer_ = recipePrecisionBucketIndicesBuffer;
     recipeBoundSphereBuffer_ = recipeBoundSphereBuffer;
     recipeBucketMetaBuffer_ = recipeBucketMetaBuffer;
     recipeBucketingViewProjConstant_ = recipeBucketingViewProjConstant;
@@ -1014,6 +1023,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
         auto* indirectCmdInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketIndirectCommandBuffer));
         indirectCmdInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
             kRecipeBucketingMaxBuckets * 12u);  // VkDispatchIndirectCommand: 3x uint32, per bucket
+
+        // Load-Tier Contract M2 (precision tier): the precision sub-bucket pair is compound-keyed
+        // recipeId*2+tier (see RecipeInstanceBucketing.comp's PrecisionBucketCountBuffer comment),
+        // so both buffers are sized to TWICE the plain recipe-bucket buffers above.
+        auto* precisionCountInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipePrecisionBucketCountBuffer));
+        precisionCountInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+            kRecipeBucketingMaxBuckets * 2u * 4u);  // uint per (recipeId, tier) sub-bucket
+
+        auto* precisionIndicesInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipePrecisionBucketIndicesBuffer));
+        precisionIndicesInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+            kRecipeBucketingMaxBuckets * 2u * kRecipeBucketingMaxMembersPerBucket * 4u);  // uint per [sub-bucket][slot]
         // The specialized dispatch's own vkCmdDispatchIndirect (PreTick's QueueDispatch) reads
         // this buffer directly -- needs VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT in addition to the
         // STORAGE_BUFFER_BIT the bucketing shader's mode==2 pass writes it with (found live via
@@ -5866,6 +5886,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         batch.Connect(recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                       recipeBucketingDescGatherer, 8,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Bindings 9-10: Load-Tier Contract M2 (precision tier) precision sub-bucket pair.
+        batch.Connect(recipePrecisionBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 9,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipePrecisionBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingDescGatherer, 10,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
         // Three ComputeStageNode instances share the SAME pipeline/descriptor set (the shader's
         // push-constant `mode` field, not a different pipeline, selects behavior) -- each is its
@@ -6002,6 +6029,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       recipeBucketingBufSyncW, 4, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                       recipeBucketingBufSyncW, 5, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Load-Tier Contract M2 (precision tier): mode-init/mode-bucket also WRITE the precision
+        // sub-bucket pair (same hazard-declaration reasoning as the plain recipe bucket above).
+        batch.Connect(recipePrecisionBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 6, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(recipePrecisionBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      recipeBucketingBufSyncW, 7, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(recipeBucketingBufSyncW, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                       recipeBucketingModeBucket, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
                       SlotRoleModifier(SlotRole::Execute));

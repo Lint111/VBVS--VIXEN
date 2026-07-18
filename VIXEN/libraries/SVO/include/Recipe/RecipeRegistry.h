@@ -86,6 +86,19 @@ public:
         // 2026-07.md.
         float     gateFootprintThreshold = 0.f;
 
+        // Recipe Load-Tier Contract M2 (precision tier) — same "0 = not opted in" convention as
+        // gateFootprintThreshold above, and the SAME footprint signal/formula (distance *
+        // raySizeCoef + raySizeBias): a positive value is the screen-space footprint BELOW which
+        // this recipe's instances upload/evaluate render params (RecipeParams, see
+        // libraries/SVO/include/Recipe/generated/RecipeParams.g.h) at half precision
+        // (RecipeParamsHalf, packHalf2x16) instead of full float. Independent of
+        // gateFootprintThreshold — a recipe can opt into gating, precision, both, or neither (the
+        // direction doc's §1: these are not mutually exclusive). Non-participating recipes
+        // (default 0.0) always evaluate at full precision, byte-identical to before this
+        // milestone — see GPU-Struct-Precision-Tiering-Direction-2026-07.md §3 and
+        // Recipe-Load-Tier-Contract-Direction-2026-07.md's Milestone Map M2 entry.
+        float     precisionFootprintThreshold = 0.f;
+
         // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — coarse occupancy grid metadata.
         // Filled in by Recipe::DeriveOccupancyGrid (RecipeOccupancy.h) at the SAME
         // registration call site as boundCenter/boundRadius above (RegisterProceduralRecipe).
@@ -111,6 +124,7 @@ public:
         BadBoundRadius,    // boundRadius set (nonzero) but not > 0
         BadStepRelaxation, // stepRelaxation set (nonzero) but not in (0,1]
         BadGateFootprintThreshold, // gateFootprintThreshold set (nonzero) but not > 0
+        BadPrecisionFootprintThreshold, // precisionFootprintThreshold set (nonzero) but not > 0
     };
 
     RegisterResult Register(uint32_t recipeId, const RecipeEntry& entry) {
@@ -123,6 +137,8 @@ public:
             return RegisterResult::BadStepRelaxation;
         if (entry.gateFootprintThreshold != 0.f && !(entry.gateFootprintThreshold > 0.f))
             return RegisterResult::BadGateFootprintThreshold;
+        if (entry.precisionFootprintThreshold != 0.f && !(entry.precisionFootprintThreshold > 0.f))
+            return RegisterResult::BadPrecisionFootprintThreshold;
 
         int sp = 0, psp = 0;
         for (const auto& in : entry.bytecode) {

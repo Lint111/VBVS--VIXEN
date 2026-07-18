@@ -85,12 +85,19 @@ layout(std430, binding = 0) readonly buffer BodyInstanceBuffer {
 // RecipeRegistry.h). A positive value is a minimum screen-space footprint (same units as
 // TraceWorld.glsl's `footprint = distance * raySizeCoef + raySizeBias`); an instance whose
 // footprint falls below it is gated OUT of this frame's bucketing/promotion entirely.
+// Load-Tier Contract M2 (precision tier): precisionFootprintThreshold is a per-recipe opt-in,
+// CPU-uploaded from RecipeEntry::precisionFootprintThreshold — 0.0 (the default) means "not
+// opted in," so this pass's precision-tier decision below always resolves to full precision for
+// a non-participating recipe, byte-identical to before this milestone. Independent of
+// gateFootprintThreshold: a recipe may opt into gating, precision, both, or neither. Same units
+// as gateFootprintThreshold (screen-space footprint = distance * raySizeCoef + raySizeBias).
 struct RecipeBoundSphere {
     vec3  center;
     float radius;
     float relaxation;
     float gateFootprintThreshold;
-    float _pad[2];
+    float precisionFootprintThreshold;
+    float _pad;
 };
 
 layout(std430, binding = 1) readonly buffer RecipeBoundSphereBuffer {
@@ -127,6 +134,27 @@ layout(std430, binding = 7) buffer BucketCoverageMaxYBuffer { uint bucketCoverag
 // struct padding possible since std430's tightest-eligible layout for 3 consecutive uints is
 // already 4-byte-aligned/12-byte-stride). Populated by the mode==2 finalize pass below.
 layout(std430, binding = 8) buffer BucketIndirectCommandBuffer { uint bucketIndirectCommands[]; };
+
+// Load-Tier Contract M2 (precision tier): a SECOND, parallel bucket dimension alongside the
+// recipe-id bucket above -- per-recipe atomic counts/index-lists split further by precision
+// tier (0 = full, 1 = half), compound-keyed as `recipeId * 2 + tier`, sized to `maxBuckets * 2`.
+// This mirrors the JIT direction's own §6 rejection of a single-dispatch-multi-format trick
+// ("expect precision-BUCKETED dispatch, not a single dispatch branching per-instance on format
+// inside the shader") -- the SAME reasoning that already ruled out multi-entry-point/format-
+// branching for recipe-switching applies here: a VkPipeline reads ONE buffer layout, so an
+// instance destined for the half-precision RecipeParamsHalf buffer must be routed to a SEPARATE
+// dispatch from a full-precision instance, not interleaved in one dispatch that branches on
+// format per-thread. Kept as an ADDITIONAL bucket set (not a replacement of bucketCounts/
+// bucketIndices above) so the existing recipe-only bucket (M1's gating, Inc2's coverage/indirect
+// dispatch) stays completely untouched for a recipe that never opts into precision -- the
+// precision buckets below are read only by a NEW precision-aware dispatch path, additive to the
+// existing one, per this program's "opt-in, non-invasive-default" discipline.
+layout(std430, binding = 9) buffer PrecisionBucketCountBuffer {
+    uint precisionBucketCounts[];
+};
+layout(std430, binding = 10) buffer PrecisionBucketIndicesBuffer {
+    uint precisionBucketIndices[];
+};
 
 layout(push_constant) uniform Push {
     mat4  viewProj;            // CameraNodeConfig::CURRENT_VIEW_PROJ (Task 1)
@@ -191,6 +219,10 @@ void main() {
         bucketCoverageMinY[gid] = 0xFFFFFFFFu;
         bucketCoverageMaxX[gid] = 0u;
         bucketCoverageMaxY[gid] = 0u;
+        // Load-Tier Contract M2: zero both precision-tier sub-buckets for this recipeId
+        // (compound key recipeId*2+tier, see PrecisionBucketCountBuffer's declaration comment).
+        precisionBucketCounts[gid * 2u + 0u] = 0u;
+        precisionBucketCounts[gid * 2u + 1u] = 0u;
         return;
     }
 
@@ -272,6 +304,31 @@ void main() {
     uint slot = atomicAdd(bucketCounts[recipeId], 1u);
     if (slot < pc.maxMembersPerBucket) {
         bucketIndices[recipeId * pc.maxMembersPerBucket + slot] = gid;
+    }
+
+    // Load-Tier Contract M2 (precision tier): reuses the SAME footprint signal M1's gating
+    // check above already computed (distance * raySizeCoef + raySizeBias) -- no parallel
+    // distance computation, per the direction doc's own guidance ("a natural extension of
+    // M1's gating computation... is the most direct answer"). A recipe opts in by setting
+    // precisionFootprintThreshold > 0.0; when opted in AND LOD is live, an instance whose
+    // footprint falls below the threshold is tier 1 (half precision), else tier 0 (full).
+    // A non-opted-in recipe or LOD-disabled build always resolves tier 0 -- byte-identical
+    // dispatch behavior to before this milestone (the n=0 case). This is ADDITIVE to the
+    // recipe-only bucket above: an instance always lands in its recipe's plain bucket
+    // (unaffected consumers keep working) AND, only when precision is opted in, also in one
+    // of its two precision sub-buckets (consumed by the NEW precision-aware dispatch path).
+    uint precisionTier = 0u;
+    if (bound.precisionFootprintThreshold > 0.0 && pc.raySizeCoef > 0.0) {
+        float pDistance = length(sphereCenterWorld - pc.cameraPos);
+        float pFootprint = pDistance * pc.raySizeCoef + pc.raySizeBias;
+        if (pFootprint < bound.precisionFootprintThreshold) {
+            precisionTier = 1u;  // far enough: half-precision render params
+        }
+    }
+    uint precisionBucket = recipeId * 2u + precisionTier;
+    uint pSlot = atomicAdd(precisionBucketCounts[precisionBucket], 1u);
+    if (pSlot < pc.maxMembersPerBucket) {
+        precisionBucketIndices[precisionBucket * pc.maxMembersPerBucket + pSlot] = gid;
     }
     // slot >= maxMembersPerBucket: overflow, intentionally dropped (still counted above so
     // the host can detect truncation — see file header).

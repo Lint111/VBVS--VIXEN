@@ -129,13 +129,14 @@ struct BucketingPush {
 };
 
 // Byte-identical to the shader's RecipeBoundSphere struct. Load-Tier Contract M1 added
-// gateFootprintThreshold (0.0 = not opted in).
+// gateFootprintThreshold, M2 added precisionFootprintThreshold (both 0.0 = not opted in).
 struct RecipeBoundSphereCpu {
     float center[3];
     float radius;
     float relaxation;
     float gateFootprintThreshold;
-    float _pad[2];
+    float precisionFootprintThreshold;
+    float _pad;
 };
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
@@ -475,7 +476,7 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     constexpr uint32_t kScreenWidth = 256, kScreenHeight = 256;
 
     std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
-    boundSpheres[kHotRecipeId] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, entry.boundRadius, entry.stepRelaxation, 0.0f, {0, 0}};
+    boundSpheres[kHotRecipeId] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, entry.boundRadius, entry.stepRelaxation, 0.0f, 0.0f, 0.0f};
 
     // Camera: looks down -Z at the whole row of spheres from a distance, framing all 4.
     const glm::vec3 eye(0.0f, 3.0f, 20.0f);
@@ -491,8 +492,10 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     // STEP 1: bucketing pre-pass (M1 shader, unmodified bucketing logic) + M2's new mode==2
     // finalize pass emitting a real VkDispatchIndirectCommand.
     // ======================================================================
-    VkBuffer instBuf, boundBuf, countBuf, idxBuf, minXBuf, minYBuf, maxXBuf, maxYBuf, indirectBuf;
-    VkDeviceMemory instMem, boundMem, countMem, idxMem, minXMem, minYMem, maxXMem, maxYMem, indirectMem;
+    VkBuffer instBuf, boundBuf, countBuf, idxBuf, minXBuf, minYBuf, maxXBuf, maxYBuf, indirectBuf,
+             precCountBuf, precIdxBuf;
+    VkDeviceMemory instMem, boundMem, countMem, idxMem, minXMem, minYMem, maxXMem, maxYMem, indirectMem,
+                   precCountMem, precIdxMem;
 
     const VkDeviceSize instSize  = instanceCount * sizeof(Vixen::SVO::BodyInstanceGpu);
     const VkDeviceSize boundSize = kMaxBuckets * sizeof(RecipeBoundSphereCpu);
@@ -500,6 +503,11 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     const VkDeviceSize idxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * kMaxMembersPerBucket * sizeof(uint32_t);
     const VkDeviceSize extremaSize = kMaxBuckets * sizeof(uint32_t);
     const VkDeviceSize indirectSize = static_cast<VkDeviceSize>(kMaxBuckets) * 3 * sizeof(uint32_t);
+    // Load-Tier Contract M2: bindings 9-10 (precision sub-bucket pair) — this test doesn't
+    // exercise precision tiering, but the pipeline layout must still declare every binding the
+    // SPIR-V module references (same reasoning as the indirect-command buffer's own comment).
+    const VkDeviceSize precCountSize = static_cast<VkDeviceSize>(kMaxBuckets) * 2 * sizeof(uint32_t);
+    const VkDeviceSize precIdxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * 2 * kMaxMembersPerBucket * sizeof(uint32_t);
 
     CreateHostBuffer(instSize,  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf,  instMem,  false);
     CreateHostBuffer(boundSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, boundBuf, boundMem, false);
@@ -515,6 +523,8 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     CreateHostBuffer(indirectSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
         indirectBuf, indirectMem, true);
+    CreateHostBuffer(precCountSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, precCountBuf, precCountMem, true);
+    CreateHostBuffer(precIdxSize,   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, precIdxBuf,   precIdxMem,   true);
 
     UploadBuffer(instMem,  instances.data(),    instSize);
     UploadBuffer(boundMem, boundSpheres.data(), boundSize);
@@ -533,8 +543,9 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
         lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         return lb;
     };
-    const std::array<VkDescriptorSetLayoutBinding, 9> bucketingBindings = {
+    const std::array<VkDescriptorSetLayoutBinding, 11> bucketingBindings = {
         bind(0), bind(1), bind(2), bind(3), bind(4), bind(5), bind(6), bind(7), bind(8),
+        bind(9), bind(10),
     };
     VkDescriptorSetLayoutCreateInfo bdslci{};
     bdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -560,7 +571,7 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     VkPipeline bucketingPipeline = VK_NULL_HANDLE;
     ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &bcpci, nullptr, &bucketingPipeline), VK_SUCCESS);
 
-    VkDescriptorPoolSize bPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9};
+    VkDescriptorPoolSize bPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11};
     VkDescriptorPoolCreateInfo bdpci{};
     bdpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     bdpci.maxSets = 1; bdpci.poolSizeCount = 1; bdpci.pPoolSizes = &bPoolSize;
@@ -577,7 +588,8 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
         countInfo{countBuf, 0, VK_WHOLE_SIZE}, idxInfo{idxBuf, 0, VK_WHOLE_SIZE},
         minXInfo{minXBuf, 0, VK_WHOLE_SIZE}, minYInfo{minYBuf, 0, VK_WHOLE_SIZE},
         maxXInfo{maxXBuf, 0, VK_WHOLE_SIZE}, maxYInfo{maxYBuf, 0, VK_WHOLE_SIZE},
-        indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE};
+        indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE},
+        precCountInfo{precCountBuf, 0, VK_WHOLE_SIZE}, precIdxInfo{precIdxBuf, 0, VK_WHOLE_SIZE};
     auto wBuf = [&](uint32_t b, VkDescriptorBufferInfo* info) {
         VkWriteDescriptorSet w{};
         w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -585,10 +597,10 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
         w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
         return w;
     };
-    const std::array<VkWriteDescriptorSet, 9> bucketingWrites = {
+    const std::array<VkWriteDescriptorSet, 11> bucketingWrites = {
         wBuf(0, &instInfo), wBuf(1, &boundInfo), wBuf(2, &countInfo), wBuf(3, &idxInfo),
         wBuf(4, &minXInfo), wBuf(5, &minYInfo), wBuf(6, &maxXInfo), wBuf(7, &maxYInfo),
-        wBuf(8, &indirectInfo),
+        wBuf(8, &indirectInfo), wBuf(9, &precCountInfo), wBuf(10, &precIdxInfo),
     };
     vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(bucketingWrites.size()), bucketingWrites.data(), 0, nullptr);
 
@@ -911,4 +923,6 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     vkDestroyBuffer(logicalDevice_, maxXBuf, nullptr);  vkFreeMemory(logicalDevice_, maxXMem, nullptr);
     vkDestroyBuffer(logicalDevice_, maxYBuf, nullptr);  vkFreeMemory(logicalDevice_, maxYMem, nullptr);
     vkDestroyBuffer(logicalDevice_, indirectBuf, nullptr); vkFreeMemory(logicalDevice_, indirectMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, precCountBuf, nullptr); vkFreeMemory(logicalDevice_, precCountMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, precIdxBuf, nullptr);   vkFreeMemory(logicalDevice_, precIdxMem, nullptr);
 }

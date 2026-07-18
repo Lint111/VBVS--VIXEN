@@ -675,11 +675,11 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     // bucketing shader buckets ALL recipeIds unconditionally (subject to maxBuckets). ---
     if (auto* boundSphereNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bound_sphere_buffer"))) {
         if (void* mapped = boundSphereNode->MapForReadback(device)) {
-            // Load-Tier Contract M1: gateFootprintThreshold does NOT get a nonzero engine
-            // default like radius/relaxation below -- 0.0 IS the real "not opted in" value
-            // the shader's gating check tests for (RecipeInstanceBucketing.comp), so it must
-            // pass entry->gateFootprintThreshold straight through unmodified.
-            struct RecipeBoundSphereGpu { float center[3]; float radius; float relaxation; float gateFootprintThreshold; float _pad[2]; };
+            // Load-Tier Contract M1/M2: gateFootprintThreshold/precisionFootprintThreshold do
+            // NOT get a nonzero engine default like radius/relaxation below -- 0.0 IS the real
+            // "not opted in" value the shader's gating/precision checks test for
+            // (RecipeInstanceBucketing.comp), so both must pass through entry-> unmodified.
+            struct RecipeBoundSphereGpu { float center[3]; float radius; float relaxation; float gateFootprintThreshold; float precisionFootprintThreshold; float _pad; };
             auto* entries = reinterpret_cast<RecipeBoundSphereGpu*>(mapped);
             const size_t entryCount = static_cast<size_t>(boundSphereNode->GetSizeBytes() / sizeof(RecipeBoundSphereGpu));
             std::fill(entries, entries + entryCount, RecipeBoundSphereGpu{});
@@ -693,6 +693,7 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                 entries[recipeId].radius = (entry->boundRadius > 0.f) ? entry->boundRadius : 1.0f;
                 entries[recipeId].relaxation = (entry->stepRelaxation > 0.f) ? entry->stepRelaxation : 1.0f;
                 entries[recipeId].gateFootprintThreshold = entry->gateFootprintThreshold;
+                entries[recipeId].precisionFootprintThreshold = entry->precisionFootprintThreshold;
             }
             boundSphereNode->UnmapReadback(device);
         }
