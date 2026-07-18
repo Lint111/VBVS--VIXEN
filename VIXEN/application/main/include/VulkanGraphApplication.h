@@ -341,6 +341,10 @@ private:
     NodeHandle recipeBucketCoverageMaxXBuffer_{};
     NodeHandle recipeBucketCoverageMaxYBuffer_{};
     NodeHandle recipeBucketIndirectCommandBuffer_{};
+    // Load-Tier Contract M2 (precision tier): the precision sub-bucket pair, additive to the
+    // recipe-only bucket above (bindings 9-10, RecipeInstanceBucketing.comp).
+    NodeHandle recipePrecisionBucketCountBuffer_{};
+    NodeHandle recipePrecisionBucketIndicesBuffer_{};
     NodeHandle recipeBoundSphereBuffer_{};
     NodeHandle recipeBucketMetaBuffer_{};
     NodeHandle recipeSpecializedDispatch_{};
