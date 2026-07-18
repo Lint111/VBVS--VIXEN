@@ -210,15 +210,12 @@ only, not designed, per "sequential build, parallel scoping so the shape is visi
   tiers, including a packed-composite layout stacking multiple params into one wider field. See that
   doc for the full scoping (candidate tiers, open questions, suggested first step).
 
-- **Step 2 — unroll-vs-natural A/B testing.** Once load-tiered recipes exist, compare a fully-unrolled
-  recipe program against a "natural" (interpreted/composed, presumably orchestration-path or
-  partially-unrolled) equivalent, to determine whether unrolling is actually load-bearing for a dense,
-  recipes-calling-recipes scene (grass/terrain/city/biome composition), or whether it only matters at
-  the flat-N scales measured so far (Inc6, the switch-cost pre-check). Relates to
-  [[Recipe-Unroll-Mechanism-Single-Sourcing-Direction-2026-07]] (the codegen-mechanism-duplication
-  angle) but asks a different, currently-unmeasured question: does unrolling remain a win under
-  nested/composed recipe-calls-recipe pressure, not just flat top-level N. Not yet its own doc with
-  real grounding — needs one before scoping, once Step 1 exists to build the comparison on.
+- **Step 2 — nested invocation + unroll-vs-natural A/B testing: scoped as its own doc,**
+  [[Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07]] (2026-07-18), NOT started. Grounding
+  research found recipe-calling-recipe does not exist in this codebase today (no opcode, no
+  interpreter support, no unrolled-emitter precedent) — the doc scopes M1 (build a minimal nesting
+  mechanism) and M2 (the actual unrolled-vs-natural A/B test under nesting + flat-N pressure) as two
+  sequential milestones, per explicit user direction after this gap was surfaced.
 - **Step 3 — world-streaming load/unload of unrolled recipes at runtime.** Register/evict recipes (and
   their compiled tier variants) as a streaming world's working set changes — a live-churn cost this
   session flagged as genuinely untested by every existing measurement (Inc3 M0, the switch-cost
