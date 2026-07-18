@@ -64,18 +64,18 @@ Lift the output CONTRACT out of `com.utility.sdf` into domain-blind kernel-core,
 consume one source. AppFlow-style split: contract/attribute definitions kernel-owned; schema/graph
 INSTANCES stay consumer-side.
 
-- [ ] Task 1.1 — Study the AppFlow migration precedent (`$KF/Runtime/AppFlowAttributes.cs` + how
+- [x] Task 1.1 — Study the AppFlow migration precedent (`$KF/Runtime/AppFlowAttributes.cs` + how
   `AppFlowReference.cs` stays consumer-side + `[FlowNamespace]` schema-declared namespace). Confirm the
   exact split pattern before moving anything.
-- [ ] Task 1.2 — Move the domain-agnostic parts of `SDFOutputChannel` / `IMultiOutputNode` /
+- [x] Task 1.2 — Move the domain-agnostic parts of `SDFOutputChannel` / `IMultiOutputNode` /
   `SDFVariantResult` / `SDFOutputSlot` / (the non-Unity parts of) `SDFOutputNode` into kernel-core
   (`$KF/Runtime/`), namespace `Yeroket.Util.KernelFramework` (or the codegen namespace family per
   skill §11). Keep Unity-serialization/editor-specific bits (`[SerializeField]`, `ISerializationCallbackReceiver`,
   migration) on the consumer side — same as AppFlow's instance/definition split. Distance-always-present
   + Normal-derived-from-gradient semantics preserved.
-- [ ] Task 1.3 — Rewire `com.utility.sdf` (Unity) to reference the moved contract; confirm Unity-side
+- [x] Task 1.3 — Rewire `com.utility.sdf` (Unity) to reference the moved contract; confirm Unity-side
   compiles/tests still pass (the SDF graph editor still enumerates channels via the moved types).
-- [ ] Task 1.4 — VIXEN vendors the contract: it currently has NONE of these types. Vendor via the codegen
+- [x] Task 1.4 — VIXEN vendors the contract: it currently has NONE of these types. Vendor via the codegen
   path (if the contract becomes codegen-emitted) or as a referenced core type per the consumption pattern
   (skill §7). At this increment VIXEN only needs the TYPES available (no fused emit yet).
 
@@ -161,4 +161,19 @@ storage + output; subset-fused codegen (no per-property recompute); emission nat
 
 ## Progress Log
 
-- (pending) Increment 1 dispatch.
+- Increment 1 (Tasks 1.1–1.4): DONE · Yeroket branch `feat/kernel-multichannel-output` commit `6fa9cb2c`
+  (worktree `.worktrees/kernel-multichannel-output`) · Sonnet-medium impl · Opus validator APPROVED ·
+  2026-07-18. 4 domain-agnostic contract types (`SDFOutputChannel`/`SDFVariantResult`/`IMultiOutputNode`/
+  `SDFOutputSlot`+SDFOutputType) `git mv`'d to `$KF/Runtime/`, namespace `Utility.SDF.Graph`→
+  `Yeroket.Util.KernelFramework`, .meta GUIDs verified IDENTICAL old→new (asset refs survive). Diffs =
+  namespace line + lifted comment ONLY, zero logic edits (relocation not redesign). `SDFOutputNode.cs`
+  correctly STAYS consumer-side (Unity-serialization-bound = the "schema instance", AppFlow-style split).
+  NO UnityEngine leak in core (grep clean; only `System` + `Unity.Mathematics`). 33 consumer .cs files got
+  the `using` (commit prose says "31" — harmless surplus, rewire exhaustively complete per validator grep) +
+  2 asmdef refs added. dotnet tests reproduced NON-ZERO: SDFNodeGenerator 232/0, CodegenTool 124/0.
+  `SDFNodeGenerator.dll` NOT committed (non-deterministic, checkout'd clean). No `.g.*` hand-edited.
+  **DEFERRED (user-approved): Unity-editor verification** — agents can't run Unity MCP. Controller/user to
+  check: `com.utility.sdf` compiles clean; SDF graph editor still shows Distance/Normal/Color/… output slots;
+  no "missing script" on assets referencing SDFOutputSlot (GUIDs preserved, so expected clean). Touched-file
+  list captured in the implementer report (11 Runtime/Editor + 2 asmdefs + ~18 test files). NEXT: Increment 2
+  (channel-vocab unification) — but hold for the deferred Unity check + M11.2 validation first.
