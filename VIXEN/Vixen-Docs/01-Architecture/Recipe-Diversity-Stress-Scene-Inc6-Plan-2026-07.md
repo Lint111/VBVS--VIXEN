@@ -193,7 +193,58 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
     M1's single hand-authored recipe.** New gated demo `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO`
     (env-var N, default 20) added to `BuildRenderGraph.cpp` — NOT an in-place extension of
     `VIXEN_PROCEDURAL_UBER_DEMO`, so that demo's own N=100/500 measurement baseline stays
-    byte-identical for future reference.
+    byte-identical for future reference (diff is purely additive, +286/-0). Every generated
+    recipe is prefixed with M1's meta segment (`[ReadParamFloat3(idx=0), DeclarePosition,
+    <shape/CSG/modifier resolve segment>]`), shapes authored body-local (not baked-literal
+    world positions), placed on a genuine 2D grid (spacing=30, centered) instead of the
+    uber-demo's stacked +Z line; each instance's declared position supplied via
+    `recipeParams[0..2]`. **192-instance ceiling decision**: register all N recipe programs
+    unconditionally, instantiate exactly `min(N,192)` strictly 1:1 (no rotation, no silent
+    truncation) — chosen because every recipe is genuinely unique, so cloning instances of the
+    same recipe would add count without adding diversity. Live-confirmed at N=250: "registered
+    250/250 distinct recipe programs, seeded 192 body instances on a 16x16 grid."
+    **Real production bug found+fixed in the same commit**: `UberShaderSplice.h`'s production
+    splice path unconditionally called the GLSL emitter with `emitDeclaredPositionOutParam=false`
+    — meaning M1's mechanism, despite being proven in isolation, was never actually reachable in
+    production and would have failed to compile any `DeclarePosition`-using recipe. Fixed via
+    per-recipe usage detection that threads the out-param + a local only for recipes that need
+    it; every other recipe's emitted call shape is unchanged (one precise caveat found in
+    validation: the spliced source as a whole gains one unconditional unused-local declaration
+    even for a zero-`DeclarePosition` registry — harmless, compiles fine, but means "byte-
+    identical" was slightly overstated in the original report). Commit: `10b37445`.
+  - **Implementer reported DONE_WITH_CONCERNS**: 2 of ~5 live-run attempts at N=100/250 silently
+    crashed (exit 1, no logged exception/VUID) during development, attributed to transient
+    concurrent-machine load rather than a bug in the diff, based on a clean isolated
+    `test_uber_shader_splice` repro (new N=100 case, production `ShaderBundleBuilder` path,
+    passing reliably) and process-monitoring evidence of heavy concurrent load at failure time.
+    Also saw a `KI-033`-signature VUID-`09600` cascade once, attributed to that already-open,
+    already-documented issue.
+  - **Opus re-validator: APPROVED (2026-07-18) — concern independently confirmed non-blocking.**
+    Did not accept the load attribution on its face — reproduced the crash directly (1 failure
+    in 6 N=250 runs; 4/4 at N=20, 5/5 at N=100, 3/3 on an untouched uber-demo control all clean),
+    then root-caused it via log forensics: the failure boundary sits at the shared, unconditional
+    Cornell-background voxel bake / `GaiaVoxelWorld` ECS-init transition — well after this
+    milestone's 250-recipe shader splice had already compiled successfully — and grep-confirmed
+    zero added non-comment lines in the M2 diff touch VoxelGrid/GaiaVoxelWorld/DDGI/descriptor/
+    swapchain code. This matches the documented-unsound path in **KI-027** (GaiaVoxelWorld
+    concurrent voxel creation heap corruption), a pre-existing issue this milestone doesn't
+    touch. Separately independently verified the VUID-09600 cascade reproduces byte-identically
+    on the untouched uber-demo control, confirming it's pre-existing and not newly introduced.
+    Confirmed the production-wiring bug fix is real and correct by reading the emitter's own
+    `assert(emitDeclaredPositionOutParam && ...)` plus unconditional `declaredPos` write that
+    prior code would have hit for any `DeclarePosition` recipe. Confirmed the 192-ceiling
+    `min(N,192)` 1:1 logic, both PNG live-captures (genuinely distinct shapes at genuinely
+    distinct grid positions, no stacking, no per-frame recompile storm), full regression suite
+    (own counts matched exactly: codegen 10, codegen_glsl 4, eval_parity 100, registry 16,
+    bake 3, glsl_numerical_parity 5, declared_position_render 1, uber_shader_splice 7 up from 6,
+    zero failures/skips), scope discipline (no M3 per-frame loop, no switch-cost fix, no
+    composer/enforcement tooling, `RecipeEntry` untouched), and the camera-preset framing
+    limitation (`kOrbitDistanceMax=120` vs. an actual ~450-unit/side N=250 grid span — the code
+    comment's own "~156-234" estimate undersells this, but the gate only requires confirming
+    SOME bodies at distinct positions, which is met). Tree integrity: `2ff25767..10b37445` one
+    coherent commit. **Own independent conclusion: M3 should proceed** — recommends (non-
+    blocking, for later) filing/escalating the Cornell/GaiaVoxelWorld boot-bake flakiness
+    separately, since M3's per-frame live gates will exercise this same shared path repeatedly.
     - **Diversity generation**: reuses `VIXEN_PROCEDURAL_UBER_DEMO`'s own
       `{sphere/box/torus} x {6 extra CSG ops} x {none/Round/Onion}` product generator verbatim
       (same legacy-3 byte-for-byte preservation for i<3), confirmed to genuinely produce N=250
