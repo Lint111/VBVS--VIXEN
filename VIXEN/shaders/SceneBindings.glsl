@@ -358,6 +358,23 @@ layout(push_constant) uniform PushConstants {
 int g_octreeIdx      = 0;   // index into configs[] for the active octree
 int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 
+#ifdef VIXEN_SHADOW_DBG
+// M10 shadow-diagnostic (env-gated, off by default): populated ONLY when the
+// shade pass sets g_shadowDbgArm=1 for one target pixel just before its shadow
+// trace. marchBrickSdfAnyHit records, at the FIRST crossing it registers, the
+// d value it crossed on, the grid-arc-length of the crossing, and the step
+// index; TraceWorldShadow records which instIdx that occluder was. Zero cost
+// and zero behavior change when g_shadowDbgArm==0 (every store is guarded).
+int   g_shadowDbgArm      = 0;    // 1 = capture for THIS pixel's shadow trace
+int   g_shadowDbgCurInst  = -1;   // instIdx of the instance currently being marched
+int   g_shadowDbgInst     = -1;   // occluding instIdx (-1 = none/lit)
+int   g_shadowDbgLeafKind = -1;   // 0 = SDF march, 1 = binary DDA, 2 = procedural
+float g_shadowDbgD        = 1e9;  // d value at the crossing sample
+float g_shadowDbgSHitGrid = -1.0; // grid-arc-length to crossing (from brick entry)
+int   g_shadowDbgStep     = -1;   // step index within the brick where it crossed
+int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
+#endif
+
 // ============================================================================
 // MACRO OVERRIDE: octreeConfig
 // ============================================================================
@@ -700,6 +717,12 @@ bool handleLeafHitInstancedAnyHit(TraversalState state, RayCoefficients coef,
                             discardColor, discardNormal, discardAxisMask,
                             discardBrickLocalPos, discardVoxelIdx)) {
         hitT = tBias + tHit;
+#ifdef VIXEN_SHADOW_DBG
+        if (g_shadowDbgArm != 0) {
+            g_shadowDbgInst     = g_shadowDbgCurInst;
+            g_shadowDbgLeafKind = 1;  // binary DDA occupancy
+        }
+#endif
         return true;
     }
     return false;
@@ -1622,11 +1645,26 @@ bool traverseOctreeInstancedOnceAnyHit(vec3 rayOrigin, vec3 rayDir,
                                 bool childNotResident = (configs[childOctreeIdxTc].brickResident == 0u);
 
                                 if (subPixelFootprint || childNotResident) {
+                                    // M10 Task 10.2 MECH 1 fix: a coarse mipHasCoverage bit reports
+                                    // "occupied somewhere in this leaf's footprint," which for a
+                                    // dilated-band baked brick (kBand exterior shell, see
+                                    // marchBrickSdfAnyHit below) is true across the whole +band
+                                    // shell -- NOT "the true surface is here." That conservative
+                                    // coverage-bit fallback is correct for the PRIMARY visible-hit
+                                    // path (worst case: one extra shaded sample) but is a false
+                                    // occluder for a shadow/any-hit ray, which only cares about a
+                                    // real surface crossing. Any-hit rays therefore never accept
+                                    // this fallback as a hit; the causation A/B (env
+                                    // VIXEN_SHADOW_NO_MIP_ANYHIT, proven live) recovered exactly
+                                    // this 25/57-pixel false-occlusion set, so `return false`
+                                    // unconditionally reproduces that recovery as the default path.
                                     float hitTMip = tEntryWorld + state.t_min;
-                                    if (mipHasCoverage(leafDescriptorIndexTc) &&
+#ifdef VIXEN_SHADOW_DBG
+                                    if (g_shadowDbgArm != 0 && mipHasCoverage(leafDescriptorIndexTc) &&
                                         hitTMip >= tmin && hitTMip <= tmax) {
-                                        return true;
+                                        g_shadowDbgInst = g_shadowDbgCurInst; g_shadowDbgLeafKind = 3; g_shadowDbgSHitGrid = hitTMip;
                                     }
+#endif
                                     return false;
                                 }
 
@@ -1644,14 +1682,21 @@ bool traverseOctreeInstancedOnceAnyHit(vec3 rayOrigin, vec3 rayDir,
                 bool leafHit = false;
                 float hitTLeaf = 0.0;
                 if (octreeConfig.brickResident == 0u) {
+                    // M10 Task 10.2 MECH 1 fix: same coarse-coverage rationale as the
+                    // tier-crossing site above -- a not-yet-resident brick's mip coverage
+                    // bit is a conservative "occupied somewhere here" signal, not a real
+                    // surface crossing, so an any-hit/shadow ray must not accept it as an
+                    // occluder. leafHit stays false; only the debug snapshot still fires.
                     int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
                     if (localChildIdx >= 0 && localChildIdx <= 7) {
                         uint leafDescriptorIndex = resolveLeafDescriptorIndex(
                             parent_descriptor, validMask, leafMask, localChildIdx);
-                        if (mipHasCoverage(leafDescriptorIndex)) {
-                            leafHit  = true;
+#ifdef VIXEN_SHADOW_DBG
+                        if (g_shadowDbgArm != 0 && mipHasCoverage(leafDescriptorIndex)) {
                             hitTLeaf = tEntryWorld + state.t_min;
+                            g_shadowDbgInst = g_shadowDbgCurInst; g_shadowDbgLeafKind = 4; g_shadowDbgSHitGrid = hitTLeaf;
                         }
+#endif
                     }
                 } else {
                     if (octreeConfig.formatId == FORMAT_STORED_SDF) {
@@ -1672,10 +1717,16 @@ bool traverseOctreeInstancedOnceAnyHit(vec3 rayOrigin, vec3 rayDir,
 #ifdef LOD_ENABLED
                 if (pc.raySizeCoef > 0.0 &&
                     tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
+                    // M10 Task 10.2 MECH 1 fix: same coarse-coverage rationale -- a
+                    // LOD sub-pixel non-leaf's whole-footprint coverage bit is not a
+                    // real surface crossing, so any-hit rays must not accept it.
                     float hitTMip = tEntryWorld + state.t_min;
-                    if (mipHasCoverage(state.parentPtr) && hitTMip >= tmin && hitTMip <= tmax) {
-                        return true;
+#ifdef VIXEN_SHADOW_DBG
+                    if (g_shadowDbgArm != 0 && mipHasCoverage(state.parentPtr) &&
+                        hitTMip >= tmin && hitTMip <= tmax) {
+                        g_shadowDbgInst = g_shadowDbgCurInst; g_shadowDbgLeafKind = 5; g_shadowDbgSHitGrid = hitTMip;
                     }
+#endif
                     return false;
                 }
 #endif

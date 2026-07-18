@@ -48,9 +48,18 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
 // ============================================================================
 #include "HitRecord.glsl"
 
+#ifdef VIXEN_SHADOW_DBG
+// M10 shadow diagnostic: needs write access to stash the per-pixel shadow-trace
+// result into the target pixel's HitRecord._pad0[] (read back by CornellDiag).
+// Off-by-default; the production build keeps this buffer readonly.
+layout(std430, binding = 17) buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+#else
 layout(std430, binding = 17) readonly buffer HitRecordBuffer {
     HitRecord hitRecords[];
 };
+#endif
 
 // ============================================================================
 // SHADOW CONFIG (binding 18)
@@ -382,6 +391,43 @@ void main() {
     } else {
         outColor = skyColor;
     }
+
+#ifdef VIXEN_SHADOW_DBG
+    // M10 shadow diagnostic: for a SINGLE target pixel, re-run the first light's
+    // shadow trace with capture armed and stash the result into this pixel's
+    // HitRecord._pad0[0..2] (CornellDiag reads it back at tick 150). Uses the
+    // SAME shadowOrigin/lightDir/tmax as computeLightingWithShadows above, so the
+    // captured occlusion decision is byte-identical to the one that actually shaded.
+    // Does NOT alter outColor. Costs one extra shadow ray for one pixel per frame.
+    if (anyHitRT && pixelCoords.x == VIXEN_SHADOW_DBG_PX && pixelCoords.y == VIXEN_SHADOW_DBG_PY
+        && lightingConfig.lightCount > 0u) {
+        Light dlight = lightingConfig.lights[0];
+        vec3 dLightDir = normalize(dlight.direction_or_position);
+        float dNdotL = max(dot(bestNormal, dLightDir), 0.0);
+        vec3 dShadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
+        g_shadowDbgArm      = 1;
+        g_shadowDbgInst     = -1;
+        g_shadowDbgD        = 1e9;
+        g_shadowDbgSHitGrid = -1.0;
+        g_shadowDbgStep     = -1;
+        g_shadowDbgHops     = 0;
+        bool dOccluded = false;
+        if (shadowConfig.enabled != 0u && dNdotL > 0.0) {
+            dOccluded = TraceWorldShadow(dShadowOrigin, dLightDir, 0.0, shadowConfig.maxShadowDistance);
+        }
+        g_shadowDbgArm = 0;
+        // pack: pad0[0] = flags (bit0 occluded, bit1 NdotL>0, then instIdx<<8 signed via +1),
+        //       pad0[1] = floatBitsToUint(d at crossing), pad0[2] = floatBitsToUint(sHitGrid).
+        uint packed0 = (dOccluded ? 1u : 0u) | (dNdotL > 0.0 ? 2u : 0u)
+                     | (uint(g_shadowDbgStep + 1) << 2)          // [2..9]  steps: up to 96
+                     | (uint(g_shadowDbgHops + 1) << 10)         // [10..21] hops
+                     | ((uint(g_shadowDbgInst + 1) & 0x3Fu) << 22)   // [22..27] instIdx+1 (0=none)
+                     | ((uint(g_shadowDbgLeafKind + 1) & 0x7u) << 28); // [28..30] leafKind+1 (0=none,1=SDF,2=binary,3=proc)
+        hitRecords[hitRecordIdx]._pad0[0] = packed0;
+        hitRecords[hitRecordIdx]._pad0[1] = floatBitsToUint(g_shadowDbgD);
+        hitRecords[hitRecordIdx]._pad0[2] = floatBitsToUint(g_shadowDbgSHitGrid);
+    }
+#endif
 
     // -----------------------------------------------------------------------
     // ReSTIR DI: SPATIAL reservoir reuse (Sampled Lighting Inc3 M5) + shade.
