@@ -204,19 +204,11 @@ types.** First:
 The user described this as Step 1 of a 3-step sequence. Steps 2 and 3 are captured here as pointers
 only, not designed, per "sequential build, parallel scoping so the shape is visible":
 
-- **M3 (precision-tier widening — beyond binary half/full), stubbed 2026-07-18, NOT started.** User
-  idea while M2 was in flight: don't stop at a binary half/full-precision switch — offer a small set
-  of named precision tiers, including a **packed-composite** layout that stacks multiple params into
-  one wider field (e.g. 4 short/half params packed into one `double`/`vec4`-width slot), not just a
-  narrower float format per param. User explicitly chose to let M2 land as scoped (half/full only)
-  first, then widen in a follow-on milestone once the dual-layout codegen mechanism is proven
-  end-to-end once — do NOT fold this into M2. Open questions for whoever scopes M3: which named tiers
-  to offer beyond full/half (a short list, not an open-ended format matrix); whether packing is
-  per-field-declared (like M1's/M2's own opt-in fields) or a separate schema-level grouping
-  construct; whether `GpuStructModel`/`FieldShapeRecognizer`'s dual-layout mechanism (from M2)
-  generalizes cleanly to N layouts or needs rework for a packed/composite shape specifically (packing
-  multiple logical fields into one physical slot is a different kind of transform than just narrowing
-  one field's own type — confirm this before assuming M2's codegen approach extends for free).
+- **M3 (precision-tier widening — beyond binary half/full): scoped as its own doc,**
+  [[Precision-Tier-Widening-M3-Direction-2026-07]] (2026-07-18), NOT started. User idea while M2 was
+  in flight: don't stop at a binary half/full-precision switch — offer a small set of named precision
+  tiers, including a packed-composite layout stacking multiple params into one wider field. See that
+  doc for the full scoping (candidate tiers, open questions, suggested first step).
 
 - **Step 2 — unroll-vs-natural A/B testing.** Once load-tiered recipes exist, compare a fully-unrolled
   recipe program against a "natural" (interpreted/composed, presumably orchestration-path or
