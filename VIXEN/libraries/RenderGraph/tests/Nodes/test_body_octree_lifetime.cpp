@@ -721,6 +721,161 @@ TEST_F(BodyOctreeLifetimeTest, ReadParamValueSweepNeverMarksNodeNeedsRecompile) 
     ExpectNoValidationErrors("no-recompile-proof device destroy");
 }
 
+// ---------------------------------------------------------------------------
+// Recipe-Diversity-Stress-Scene Inc6 M3 — THE SCALED-UP VERSION OF THE ABOVE CLAIM:
+// the exact same no-recompile invariant, but at the diversity-stress demo's own ceiling
+// (min(N,192) instances, per M2's documented 192-instance tier-0 ceiling), with BOTH
+// per-frame-updated parameters M3 introduces exercised together every frame — a scalar
+// shape parameter (recipeParams[3]) on EVERY instance, plus an animated declared position
+// (recipeParams[0..2]) on a quarter of them (index % 4 == 0, mirroring
+// VulkanGraphApplication::PreTick's own subset choice). This is the single most important
+// correctness bar for M3 per its own plan doc: a silent per-frame recompile at N=192 would
+// be a severe, misleading performance artifact that would corrupt M4's entire measurement.
+// ---------------------------------------------------------------------------
+TEST_F(BodyOctreeLifetimeTest, DiversityStressParamSweepAtScaleNeverMarksNodeNeedsRecompile) {
+    std::cout << "[ device ] no-recompile-at-scale-proof device: '" << selectedDeviceName_ << "'\n";
+    using C = BodyOctreeSceneNodeConfig;
+    using Vixen::SVO::Recipe::SdfOpCode;
+    using Vixen::SVO::Recipe::SdfInstruction;
+
+    constexpr uint32_t kInstanceCount = 192u;  // M2's documented tier-0 ceiling, this demo's own upper bound
+
+    // Register kInstanceCount DISTINCT recipes — same meta-segment shape M2's
+    // VIXEN_RECIPE_DIVERSITY_STRESS_DEMO uses: [ReadParamFloat3(0), DeclarePosition,
+    // Sphere(origin, r), ReadParam(3), MathSub]. A bare sphere resolve segment is enough
+    // here (this test is about SetInstances's recompile-avoidance bookkeeping, not
+    // diversity-generation content — M2's own test/BuildRenderGraph.cpp already cover the
+    // shape/CSG diversity itself); what matters is that EVERY recipe genuinely declares a
+    // position AND reads a shape param, exactly like the real demo's programs.
+    Vixen::SVO::RecipeRegistry registry;
+    for (uint32_t i = 0; i < kInstanceCount; ++i) {
+        const uint32_t recipeId = 100u + i;  // arbitrary id space, distinct from other tests' ids
+        SdfInstruction readPos{}; readPos.opCode = (uint8_t)SdfOpCode::ReadParamFloat3;
+        readPos.paramMask = 1; readPos.data[0] = 0.0f;
+        SdfInstruction declarePos{}; declarePos.opCode = (uint8_t)SdfOpCode::DeclarePosition;
+        SdfInstruction sphere{}; sphere.opCode = (uint8_t)SdfOpCode::Sphere;
+        sphere.data[0] = 0.0f; sphere.data[1] = 0.0f; sphere.data[2] = 0.0f; sphere.data[3] = 6.0f;
+        SdfInstruction readShapeParam{}; readShapeParam.opCode = (uint8_t)SdfOpCode::ReadParam;
+        readShapeParam.paramMask = 1; readShapeParam.data[0] = 3.0f;
+        SdfInstruction subShapeParam{}; subShapeParam.opCode = (uint8_t)SdfOpCode::MathSub;
+
+        Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+        entry.bytecode    = { readPos, declarePos, sphere, readShapeParam, subShapeParam };
+        entry.boundCenter = glm::vec3(static_cast<float>(i) * 30.0f, 0.0f, 0.0f);
+        entry.boundRadius = 6.0f + 3.0f + 6.0f;  // sphere radius + shape-param sweep + orbit margin
+        auto regResult = registry.Register(recipeId, entry);
+        ASSERT_EQ(regResult, Vixen::SVO::RecipeRegistry::RegisterResult::Ok)
+            << "diversity-stress-shaped program " << i << " failed to register, code "
+            << static_cast<int>(regResult);
+    }
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_octree_diversity_scale_proof");
+    ASSERT_NE(nodeBase, nullptr);
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes;  SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;    SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;   uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    // Base declared positions (one per instance) — the orbit's fixed center, mirroring
+    // VulkanGraphApplication::PreTick's own "cache the base, recompute absolute position from
+    // base+phase every frame" approach (no drift/accumulation across frames).
+    std::vector<glm::vec3> basePositions;
+    basePositions.reserve(kInstanceCount);
+    for (uint32_t i = 0; i < kInstanceCount; ++i) {
+        basePositions.emplace_back(static_cast<float>(i) * 30.0f, 0.0f, 0.0f);
+    }
+
+    auto makeDiversityInstance = [&](uint32_t i, float shapeParam, const glm::vec3& declaredPos) {
+        Vixen::SVO::BodyInstanceGpu inst{};
+        inst.renderScale     = 1.0f;
+        inst.providerKind    = 1u;  // PROVIDER_PROCEDURAL
+        inst.recipeId        = 100u + i;
+        inst.recipeParams[0] = declaredPos.x;
+        inst.recipeParams[1] = declaredPos.y;
+        inst.recipeParams[2] = declaredPos.z;
+        inst.recipeParams[3] = shapeParam;
+        return inst;
+    };
+
+    std::vector<Vixen::SVO::BodyInstanceGpu> initial(kInstanceCount);
+    for (uint32_t i = 0; i < kInstanceCount; ++i) {
+        initial[i] = makeDiversityInstance(i, 0.0f, basePositions[i]);
+    }
+    // The very FIRST SetInstances legitimately flags NeedsRecompile (no ring exists yet) --
+    // same documented growth-path exemption ReadParamValueSweepNeverMarksNodeNeedsRecompile
+    // above relies on; the claim under test only applies POST-compile.
+    node->SetInstances(initial);
+
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    node->ClearNeedsRecompile();
+    ExpectNoValidationErrors("no-recompile-at-scale-proof compile");
+    ASSERT_FALSE(node->NeedsRecompile()) << "post-Compile baseline must start clean";
+
+    // =========================================================================
+    // THE ASSERTION: many frames of pure recipeParams[] value updates across ALL
+    // kInstanceCount instances (shape param every instance, declared position on a quarter of
+    // them) — SAME bytecode (registry never re-registers), SAME instance COUNT every frame —
+    // must produce ZERO recompile requests. More frames than the single-body test (120 vs 50)
+    // since this is the scale this milestone's live-run gate and M4's later sweep actually
+    // depend on being recompile-free.
+    // =========================================================================
+    constexpr uint32_t kFrames = 120u;
+    constexpr int kAnimatedPositionStride = 4;  // mirrors BuildRenderGraph.cpp/PreTick's own stride
+    uint32_t recompileFlagCount = 0;
+    uint32_t observedInstanceCount = 0;
+    for (uint32_t f = 0; f < kFrames; ++f) {
+        const float t = static_cast<float>(f);
+        std::vector<Vixen::SVO::BodyInstanceGpu> instances(kInstanceCount);
+        for (uint32_t i = 0; i < kInstanceCount; ++i) {
+            const float shapeParam = 3.0f * std::sin(t * 0.05f + static_cast<float>(i));
+            glm::vec3 declaredPos = basePositions[i];
+            if (i % kAnimatedPositionStride == 0) {
+                const float phase = t * 0.03f + static_cast<float>(i);
+                declaredPos = glm::vec3(basePositions[i].x + 6.0f * std::cos(phase),
+                                        basePositions[i].y,
+                                        basePositions[i].z + 6.0f * std::sin(phase));
+            }
+            instances[i] = makeDiversityInstance(i, shapeParam, declaredPos);
+        }
+        observedInstanceCount = static_cast<uint32_t>(instances.size());
+        ASSERT_EQ(observedInstanceCount, kInstanceCount)
+            << "frame " << f << ": instance count must stay constant across the whole test";
+
+        node->SetInstances(std::move(instances));
+        if (node->NeedsRecompile()) {
+            ++recompileFlagCount;
+            ADD_FAILURE() << "frame " << f << ": SetInstances raised NeedsRecompile on a pure "
+                              "same-size param-value update at N=" << kInstanceCount
+                           << " — a per-frame recompile at this scale would silently corrupt "
+                              "M4's later switch-cost measurement";
+        }
+
+        frameIndex = f;
+        SetHandleVal<uint32_t>(frameRes, frameIndex);
+        ASSERT_NO_THROW(node->Execute()) << "Execute threw on frame " << f;
+    }
+    EXPECT_EQ(recompileFlagCount, 0u)
+        << "expected ZERO recompiles across " << kFrames << " frames of pure recipeParams "
+           "value updates at N=" << kInstanceCount << " instances; got " << recompileFlagCount;
+    EXPECT_EQ(observedInstanceCount, kInstanceCount)
+        << "instance count must have stayed exactly " << kInstanceCount << " for the entire run";
+    ExpectNoValidationErrors("no-recompile-at-scale-proof execute sweep");
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+    ReleaseDeviceShell();
+    DestroyDeviceAndCommandPool();
+    ExpectNoValidationErrors("no-recompile-at-scale-proof device destroy");
+}
+
 // A second test instance: a separate fixture lifecycle so the device-destroy leak check
 // runs against a node that has been fully torn down. The body is intentionally identical
 // in spirit but minimal — it verifies vkDestroyDevice (in TearDown) is clean after a

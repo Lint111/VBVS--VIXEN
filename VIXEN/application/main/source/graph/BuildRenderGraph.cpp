@@ -2534,6 +2534,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
             constexpr float kGridSpacing     = 30.0f;  // > 2*kGridBoundRadius, no bound-sphere overlap
             constexpr float kGridBoundRadius = 12.0f;  // matches uber-demo's own non-legacy bound radius
             constexpr float kGridBaseY       = 64.0f;
+            // M3: per-instance runtime-mutated shape parameter (recipeParams[3], see the
+            // ReadParam/MathSub program suffix above) sweeps in [-kShapeParamSweepMax,
+            // +kShapeParamSweepMax] every frame (VulkanGraphApplication::PreTick) -- boundRadius
+            // must cover the full swept range, same reasoning as the uber-demo's own ReadParam
+            // body (kReadParamDemoBaseRadius + kReadParamDemoSweepMax + margin).
+            constexpr float kShapeParamSweepMax = 3.0f;
+            // M3: a subset of instances also gets its DECLARED POSITION animated every frame
+            // (orbiting around its own grid slot) -- exercising the spatial contract's own
+            // stated value proposition (a moving, ReadParam-sourced position) rather than only
+            // an unrelated shape parameter, per the M3 prompt's own framing ("the actual point
+            // of the milestone"). Every 4th instance (index % 4 == 0) is picked: a meaningful
+            // fraction (~25%) without animating literally every body, so the live-run capture
+            // can visually distinguish "still" grid neighbors from "orbiting" ones at both N
+            // extremes -- documented here, not left implicit.
+            constexpr int kAnimatedPositionStride = 4;
             const int gridCols = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(diversityN)))));
             const int gridRows = (diversityN + gridCols - 1) / gridCols;
             const float gridWidth  = static_cast<float>(gridCols - 1) * kGridSpacing;
@@ -2648,11 +2663,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 readPos.paramMask = 1; readPos.data[0] = 0.0f;
                 SdfInstruction declarePos{}; declarePos.opCode = (uint8_t)SdfOpCode::DeclarePosition;
 
+                // M3: every instance also gets a genuinely runtime-mutated SHAPE parameter --
+                // recipeParams[3] (a scalar, ReadParam idx=3; idx 0 is reserved by the float3
+                // declared-position read above, so idx=3 lands past that 3-slot range with no
+                // aliasing), subtracted from the resolve segment's own final SDF value via
+                // MathSub (a-b, a=resolveSegment result, b=params[3]) -- the exact same shape
+                // (sphere - ReadParam) VIXEN_PROCEDURAL_UBER_DEMO's single swept-radius body
+                // already proves (Recipe-Parameterization P4 M3 Task 8), just applied uniformly
+                // after an arbitrary CSG/modifier resolve segment instead of a bare sphere. This
+                // is genuinely consumed (perturbs the rendered iso-surface every frame via
+                // VulkanGraphApplication::PreTick's sweep below), not a disconnected value.
+                SdfInstruction readShapeParam{}; readShapeParam.opCode = (uint8_t)SdfOpCode::ReadParam;
+                readShapeParam.paramMask = 1; readShapeParam.data[0] = 3.0f;
+                SdfInstruction subShapeParam{}; subShapeParam.opCode = (uint8_t)SdfOpCode::MathSub;
+
                 std::vector<SdfInstruction> prog;
-                prog.reserve(resolveProg.size() + 2);
+                prog.reserve(resolveProg.size() + 4);
                 prog.push_back(readPos);
                 prog.push_back(declarePos);
                 prog.insert(prog.end(), resolveProg.begin(), resolveProg.end());
+                prog.push_back(readShapeParam);
+                prog.push_back(subShapeParam);
 
                 Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
                 entry.bytecode = std::move(prog);
@@ -2665,7 +2696,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // just authors the existing fields with this instance's placement, the same
                 // mechanism every prior demo already uses for a non-whitelisted program.
                 entry.boundCenter = declaredPos;
-                entry.boundRadius = kGridBoundRadius;
+                // Margin covers both the M3 shape-param sweep (kShapeParamSweepMax) and, for the
+                // animated-position subset, the orbit radius (kOrbitRadius, defined below near
+                // the PreTick-mirrored sweep constants) -- boundRadius must bound the instance's
+                // full swept footprint, not just its resting grid position.
+                entry.boundRadius = kGridBoundRadius + kShapeParamSweepMax + 6.0f;
 
                 auto regResult = RegisterProceduralRecipe(recipeId, entry);
                 if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -2693,6 +2728,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     inst.recipeParams[0] = declaredPos.x;
                     inst.recipeParams[1] = declaredPos.y;
                     inst.recipeParams[2] = declaredPos.z;
+                    inst.recipeParams[3] = 0.0f;  // M3: PreTick's per-frame sweep overwrites this
                     diversityBodies.push_back(inst);
                 }
             }
