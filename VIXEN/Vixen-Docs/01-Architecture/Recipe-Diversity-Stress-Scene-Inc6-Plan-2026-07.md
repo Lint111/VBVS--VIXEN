@@ -445,7 +445,79 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
   refines the existing synthetic-scene N=100/500 findings. **This is a measurement milestone, hold its
   own numbers to the same statistical scrutiny Inc4 M4 required** (multiple independent runs per N, not
   single-sample points, given this machine's own documented run-to-run GPU clock-state noise).
-  - [ ] Not started.
+  - [x] **DONE (2026-07-18) — sweep complete, curve REFINES (does not match) the prior
+    synthetic-scene findings: the collapse in this diverse/spatial/dynamic scene is far more
+    GRADUAL than the sharp N=10→N=100 knee the synthetic scenes found.** Sample points: 20, 50,
+    100, 150, 200, 250 (the plan's own suggested set, used as-is). Full sweep methodology,
+    numbers, and honest findings recorded in [[Perf-Ledger]]'s new "Recipe Diversity Stress Scene
+    sweep (Inc6 M4, 2026-07-18)" section — summary here:
+    - **Validation layers ON throughout** (this repo's only Windows-native preset, `vixen-ninja`,
+      is Debug-only and turns validation on by default via `ProvisionVulkan.cmake` — same
+      single-binary-for-both-passes precedent Inc4 M4 established, not a separate toggle).
+    - **Correctness pass**: one run per N (20/50/100/150/200/250) plus a default-boot control,
+      all clean — exactly 50 pre-existing `PushConstantGathererNode Type mismatch` errors and 0
+      or 8 `VUID-vkCmdDraw-None-09600` lines (intermittent, matching KI-034/KI-009's own
+      documented pattern) at every N, byte-for-byte matching the control's own count. Zero NEW
+      error types at any N. Registration/instantiation confirmed correct at every N (1:1 up to
+      N=192, capped at 192 for N=200/250 exactly as M2 designed).
+    - **FPS sweep**: 3 independent runs per N (`VIXEN_EXIT_AFTER_FRAMES=900`, steady-state window
+      = frames 150-900, matching Inc4 M4's own convention), `PerfCsvWriter` via `VIXEN_PERF_CSV`.
+      Mean-of-run-means (rolling-window `steady_state_fps`, frames 150-900): **N=20: 161.0 · N=50:
+      124.5 (range 108-133, one run hit a real mid-run stall) · N=100: 90.0 · N=150: 66.8 · N=200:
+      55.9 · N=250: 56.3 (range 51-61)**. Run-to-run range at most N was tight (≤4%); N=50 and
+      N=250 both showed one run with a wider swing from a real transient stall/focus event, not a
+      new class of bug (see Perf-Ledger for the full per-run breakdown and root-cause).
+    - **Collapse ratio vs. N=20 baseline**: N=50 1.29x, N=100 1.79x, N=150 2.41x, N=200 2.88x,
+      N=250 2.86x. **This REFINES rather than matches the prior synthetic-scene finding**: the
+      original `VIXEN_PROCEDURAL_UBER_DEMO`/`test_switch_cost_isolation` measurements found a
+      sharp knee (~8x collapse N=10→N=100 in the original table, ~2x on the since-corrected
+      discrete-GPU re-capture) — this scene's own N=20→N=100 collapse is only ~1.8x, and the
+      degradation continues GRADUALLY out to N=200 rather than plateauing early, flattening only
+      between N=200 and N=250. Plausible explanation (not further investigated, out of this
+      milestone's scope): Inc3 M0 already found the knee is m_i/k_i-shaped (per-recipe complexity
+      x instance count), not case-count-shaped — this scene's per-recipe complexity is genuinely
+      varied (opcode-diverse CSG programs) rather than uniform, and instance count here is capped
+      at 192 (vs. the synthetic scene's own N-uncapped instance counts), which plausibly softens
+      and delays the knee rather than eliminating it. This is a legitimate, different result from
+      a more realistic scene, not a discrepancy to reconcile away.
+    - **KI-027 confound, encountered and handled per the prompt's guidance**: hit repeatedly
+      during the correctness-pass control run (6 of 7 attempts) and once during the N=100
+      correctness pass (5 of 6 attempts) and once during the N=150 FPS sweep's run1 (1 of 2
+      attempts) — all matching the documented signature exactly (silent truncation mid-
+      `GaiaVoxelWorld` batch-create, no exception/VUID, no two failures at the identical log
+      line/entity count). Retried per the prompt's instruction rather than treating as a new
+      finding; a SIBLING worktree's own concurrent `VIXEN.exe` + 12 concurrent `claude.exe`
+      processes were confirmed running throughout via `Get-CimInstance`/`Get-Process` (62-68% CPU
+      load), consistent with — and not contradicting — KI-027's own "worse under concurrent load"
+      characterization.
+    - **New confound found, NOT previously documented: window-minimization corrupts
+      `PerfCsvWriter`'s rolling-average FPS column.** `VIXEN_RECIPE_DIVERSITY_STRESS_DEMO`'s
+      N=150 run2 lost window focus mid-run (another process/agent stealing focus on this shared
+      machine) and the app logged `Window state changed: MINIMIZED - pausing rendering,
+      continuing updates` — this makes `cpu_frame_time_ms` collapse toward ~0 (ticks continue,
+      render doesn't) while `steady_state_fps` is a ROLLING WINDOW average
+      (`PerfCsvWriter::RecordFrame`, `kFpsWindow`-frame rolling mean, not cumulative-since-boot
+      as an early misreading of the data assumed), so the ratio spikes to non-physical values
+      (up to ~10,800 "FPS") once the near-zero frame times dominate the window. Filtered out via
+      a `cpu_frame_time_ms < 0.5ms` exclusion rule and the affected run discarded/replaced
+      (run2→run4) rather than averaged in blind. **Not the same bug class as KI-027** (different
+      trigger — window focus, not ECS concurrency — and does not crash the process), but
+      filed as a new, separate known-issue below since it could silently corrupt any future
+      `VIXEN_PERF_CSV`-based measurement run on this same shared, multi-agent machine without a
+      human noticing the outlier.
+    - **Driver-hang boundary**: stayed well below the documented N=500
+      `vkCreateComputePipelines` hang throughout (max N=250). `BodyInstanceRayMarch` compile
+      times across the correctness-pass runs were noisy (557ms-12.9s) and did NOT show a clean
+      monotonic climb with N under this session's own heavy concurrent load — reported honestly
+      as inconclusive on this specific sub-question rather than forcing a trend that isn't
+      there; no run at any tested N approached the documented ~14-minute hang.
+    - **Regression suite**: all 8 tracked SVO test binaries re-run, all counts unchanged from
+      M3's baseline (codegen 10, codegen_glsl 4, eval_parity 100, registry 16, bake 3,
+      glsl_numerical_parity 5, declared_position_render 1, uber_shader_splice 7) — zero
+      failures, zero regressions.
+    - Files touched: none (pure measurement milestone, no source changes) — this doc and
+      [[Perf-Ledger]] only, plus new throwaway `.bat` sweep-driver scripts under `VIXEN/temp/`
+      (gitignored, not part of the diff).
 
 ## Risks / decision points
 

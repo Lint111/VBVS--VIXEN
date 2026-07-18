@@ -472,3 +472,103 @@ pre-pass itself (independent of whether anything is actually bucketed) is real a
 inside a real frame graph (+1.65ms CPU/frame, CI excludes zero). The large-N near-parity result is
 directionally interesting but not itself statistically distinguishable from the other mixes' outcomes;
 not a reason to flip the default given no mix tested here establishes gate-ON as a clear win.
+
+### Recipe Diversity Stress Scene sweep (Inc6 M4, 2026-07-18)
+
+**FIRST measurement of the tier-0-switch collapse curve in a genuinely diverse, spatially-distributed,
+per-frame-dynamic scene** (`VIXEN_RECIPE_DIVERSITY_STRESS_DEMO`, M1-M3, all Opus-APPROVED) — every prior
+switch-scaling measurement in this ledger (the original 2026-07-10 table, the Inc2 M4 re-capture, Inc3
+M0's isolation harness) used either a synthetic standalone-shader harness or `VIXEN_PROCEDURAL_UBER_DEMO`'s
+own stacked-+Z-line, single-parameterized-body layout — this is the first live-app measurement where every
+recipe is genuinely structurally distinct, spatially spread on a real 2D grid, and every instance's
+parameters (shape + a subset's declared position) animate every frame.
+
+**Methodology, mirroring Inc4 M4's own bar:** Windows-native Debug build (`vixen-ninja`, no Release
+preset), validation layers ON throughout (default for this preset; same single-binary-for-both-passes
+precedent Inc4 M4 established — see that section's own methodology note for why). Sample points: 20, 50,
+100, 150, 200, 250 (the plan doc's own suggested set, used as-is). **3 independent runs per N**
+(`VIXEN_EXIT_AFTER_FRAMES=900`, `VIXEN_PERF_CSV`), steady-state window = frames 150-900 (excludes startup/
+shader-compile transient, matching Inc4 M4's own convention). Correctness pass: one HUD-captured run per N
+plus a default-boot control, separate from the FPS runs.
+
+**Correctness pass — clean at every N, byte-identical to the default-boot control:**
+
+| N | registered | instantiated | `Type mismatch` errors | `VUID-vkCmdDraw-None-09600` lines | NEW error types |
+|---|---|---|---|---|---|
+| control (no demo) | — | — | 50 | 8 | — |
+| 20 | 20 | 20 | 50 | 8 | none |
+| 50 | 50 | 50 | 50 | 0 | none |
+| 100 | 100 | 100 | 50 | 0 | none |
+| 150 | 150 | 150 | 50 | 8 | none |
+| 200 | 200 | 192 (ceiling) | 50 | 0 | none |
+| 250 | 250 | 192 (ceiling) | 50 | 8 | none |
+
+(The 50 `PushConstantGathererNode Type mismatch` errors are the exact same pre-existing, shared artifact
+M3's validator already confirmed via its own default-boot control — count matches exactly at every N,
+including the control run captured fresh for this milestone. The `VUID-09600` cascade is intermittent
+per KI-034/KI-009's own documentation — 0 or 8 lines, never a new count, never a new VUID.)
+
+**FPS sweep — mean of 3 independent run-means, rolling-window `steady_state_fps` over frames 150-900:**
+
+| N | run means (fps) | mean-of-means | run-to-run range | collapse vs. N=20 |
+|---|---|---|---|---|
+| 20 | 164.7, 159.9, 158.3 | **161.0** | 158.3–164.7 (4.0%) | 1.00x (baseline) |
+| 50 | 132.5, 108.1†, 132.7 | **124.5** | 108.1–132.7 (19.7%) | 1.29x |
+| 100 | 89.8, 90.5, 89.6 | **90.0** | 89.6–90.5 (1.0%) | 1.79x |
+| 150 | 65.4, 67.4, 67.4‡ | **66.8** | 65.4–67.4 (3.0%) | 2.41x |
+| 200 | 55.7, 56.0, 56.1 | **55.9** | 55.7–56.1 (0.6%) | 2.88x |
+| 250 | 56.3, 61.1, 51.4† | **56.3** | 51.4–61.1 (17.3%) | 2.86x |
+
+† N=50 run2 and N=250 run3 each show one run with a real, wider swing — traced to a genuine mid-run
+frame-time stall / brief window-unfocus-then-refocus event (log-confirmed `Window state changed:
+UNFOCUSED`→`FOCUSED`, not a minimize-pause), not a new bug — consistent with this machine's own
+documented run-to-run noise floor (Inc4 M4 found ~15% swings from GPU clock-state alone; this session
+additionally had 12 concurrent `claude.exe` processes + a sibling worktree's own concurrent `VIXEN.exe`
+running throughout, confirmed via `Get-CimInstance`/`Get-Process`, 62-68% CPU load).
+
+‡ N=150's original `run2` was DISCARDED (not averaged in) — it hit a NEW confound, **KI-042**: the window
+was minimized mid-run (`Window state changed: MINIMIZED - pausing rendering, continuing updates`), which
+corrupts `PerfCsvWriter`'s rolling-average `steady_state_fps` column toward non-physical values (up to
+~10,800 "FPS" once near-zero `cpu_frame_time_ms` rows dominate the rolling window) — caught via a
+`cpu_frame_time_ms < 0.5ms` sanity filter (747 of 750 in-window rows flagged), the run discarded outright,
+and a clean replacement (`run4`) substituted. See KI-042 for the full mechanism — this is a measurement-
+capture artifact, not a render-correctness or switch-cost finding.
+
+**HONEST FINDING — REFINES, does not match, the prior synthetic-scene knee:** the original
+2026-07-10 table found a sharp ~8x FPS collapse from N=10→N=100 (Inc2 M4's discrete-GPU re-capture found
+~2x on that specific GPU); Inc3 M0 found the driver of that knee is m_i/k_i-shaped (per-recipe complexity
+× instance count), not case-count-shaped. **This scene's own N=20→N=100 collapse is only ~1.8x — far
+softer than either prior number** — and the degradation continues GRADUALLY out to N=200 (2.88x) rather
+than plateauing early, flattening only between N=200 and N=250 (2.86x, statistically indistinguishable
+from N=200 given the ~4-20% run-to-run noise floor observed here). Plausible explanation (not further
+investigated — out of this measurement milestone's scope): this scene's instance count is CAPPED at 192
+throughout (vs. the synthetic scenes' own uncapped-with-N instance counts), and Inc3 M0's own finding says
+the knee tracks `k_i` (instance count / re-evaluation count) as much as `m_i` (per-recipe complexity) —
+capping instances at 192 while N (recipe/case count) keeps growing plausibly softens and delays the knee
+this measurement was designed to characterize, rather than eliminating it outright. **This is reported as
+a legitimate, different result from a more realistic scene** — a softer, more gradual collapse curve than
+either prior measurement — not a discrepancy to reconcile away.
+
+**Driver-hang boundary**: stayed comfortably below the documented N=500 hang throughout (max tested
+N=250). `BodyInstanceRayMarch` compile times across the correctness-pass runs were noisy under this
+session's own heavy concurrent load (557ms at N=20, up to 12.9s at N=50 — an outlier larger than N=100's
+own 1.0s) and did **not** show a clean monotonic climb with N — reported honestly as inconclusive on this
+specific sub-question rather than forcing a trend the data doesn't clearly show; no run approached the
+~14-minute hang.
+
+**KI-027 confound, encountered and retried per this milestone's own explicit instruction (not treated as
+a new finding):** hit during the default-boot correctness control (6 of 7 attempts before a clean run),
+the N=100 correctness pass (5 of 6 attempts), and the N=150 FPS sweep's run1 (1 of 2 attempts) — every
+occurrence matched the documented signature exactly (silent truncation mid-`GaiaVoxelWorld` batch-create,
+no exception/VUID logged, no two failures at the identical log line/entity count). A sibling worktree's
+own concurrent `VIXEN.exe` plus 12 concurrent `claude.exe` processes were confirmed active throughout —
+consistent with, not contradicting, KI-027's "worse under concurrent load" characterization.
+
+**New confound found and filed as KI-042** (see Known-Issues.md): window-minimization during an
+unattended `VIXEN_PERF_CSV` capture corrupts the rolling-average FPS column — a measurement-tooling gap,
+not a render or switch-cost bug, surfaced for the first time by this milestone's own multi-run sweep.
+
+**Regression suite**: all 8 tracked SVO test binaries re-run, all counts unchanged from M3's baseline
+(codegen 10, codegen_glsl 4, eval_parity 100, registry 16, bake 3, glsl_numerical_parity 5,
+declared_position_render 1, uber_shader_splice 7) — zero failures, zero regressions. No source files
+touched by this milestone (pure measurement).

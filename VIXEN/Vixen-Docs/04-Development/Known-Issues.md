@@ -11,6 +11,45 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-042 — Window minimization during a `VIXEN_PERF_CSV` capture corrupts the rolling-average `steady_state_fps` column with non-physical spikes
+
+**Discovered:** 2026-07-18, Recipe Diversity Stress Scene Inc6 M4, during the N=150 FPS sweep (one of 3
+independent runs, `run2`).
+
+**Symptom:** mid-run, the app logs `Window state changed: UNFOCUSED` then `Window state changed: MINIMIZED
+- pausing rendering, continuing updates`. From that point, `cpu_frame_time_ms` collapses toward ~0 (the
+CPU tick loop keeps running but the GPU render is paused, so there's nothing to time), while
+`steady_state_fps` — a `kFpsWindow`-frame ROLLING AVERAGE (`PerfCsvWriter::RecordFrame`), not a
+cumulative-since-boot figure — spikes to non-physical values (observed: up to ~10,800 "FPS") once enough
+near-zero frame times enter the rolling window. A naive mean/min/max over the CSV's `steady_state_fps`
+column silently produces a wildly wrong aggregate (an ~8,900 mean in the affected run) unless the caller
+notices and excludes the affected rows.
+
+**Root cause:** `VulkanAppBase`'s minimize-pause behavior (pause rendering, keep ticking — reasonable
+behavior for a windowed app) was never expected to coexist with an unattended `VIXEN_PERF_CSV` capture run,
+which assumes the window stays focused/rendering for the whole capture. On this machine, window focus can
+be stolen by unrelated concurrent processes (another agent's window, in this case a sibling worktree's own
+concurrent `VIXEN.exe`), which is genuinely outside this app's control.
+
+**Impact:** LOW-MEDIUM for any future `VIXEN_PERF_CSV`-based measurement on a shared, multi-agent machine —
+silently corrupts the aggregate FPS figure for the affected run unless the caller inspects individual rows.
+Does not crash the process and does not affect correctness of the render itself (rendering resumes
+correctly once refocused) — purely a measurement-capture artifact.
+
+**Fix options:** (a) have `PerfCsvWriter`/`VulkanAppBase` skip writing rows (or write a sentinel) while the
+window is in the MINIMIZED-pause state, so a naive consumer can't accidentally include them; (b) document
+the `cpu_frame_time_ms < some-small-threshold` heuristic as the standard filter for any future perf-CSV
+consumer (used ad hoc by this milestone, not yet formalized); (c) have unattended capture runs suppress
+window-minimize handling entirely via an env-var (e.g. force `SW_SHOWNOACTIVATE`/prevent minimize) when
+`VIXEN_PERF_CSV` is set, so the capture is robust to focus-stealing on a shared machine.
+
+**Severity:** Low-Medium (measurement-only artifact, no correctness/crash impact; silently corruptible
+aggregate is the real risk) · **Status:** OPEN · found and worked around (row-filtered, affected run
+discarded and replaced) during Inc6 M4's own sweep, not fixed. Natural owner: whoever next does
+`VIXEN_PERF_CSV` capture-automation hardening.
+
+---
+
 ## KI-041 — Intermittent late-frame Vulkan-validation crash (~1-in-3 to 1-in-2 bench runs) + lingering `VIXEN.exe` survives the crash and poisons the next run
 
 **Discovered:** 2026-07-17, by the Baked-Perf M8 Task 8.2 implementer while pixel-diffing OMEGA=1.0 vs 1.5 renders (needed many clean runs, so the flakiness was frequent enough to characterize).
