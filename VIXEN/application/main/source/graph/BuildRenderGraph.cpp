@@ -1724,6 +1724,29 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           "SetPositionForTest flight path is authoritative, not overridden by "
                           "an orbit-mode recompute every frame");
     }
+    // Recipe-Diversity-Stress-Scene Inc6 M2: camera preset for VIXEN_RECIPE_DIVERSITY_STRESS_DEMO's
+    // spatial grid (centered on world (64,64,64), same convention as every other demo above).
+    // CameraNode::kOrbitDistanceMax (120.0, a hard clamp -- SetParameter/EngageOrbit both clamp
+    // into it) means the WHOLE grid cannot be framed in one shot at N's upper end (a 14x14 grid
+    // at N=192 spans ~156-234 world units per side depending on kGridSpacing, well beyond what
+    // 120 units of orbit distance can frame at the shared 45-degree FOV) -- this is a real,
+    // accepted limitation, not a bug: the live-run gate only requires visually confirming SOME
+    // bodies at genuinely distinct positions with distinct shapes, not literally all N in one
+    // screenshot (no single frame could show 250 legible distinct shapes regardless of framing).
+    // Pitch angled downward (looking down at the grid from above-and-outside, not a flat
+    // horizontal view into a wall of overlapping-in-screen-space spheres) gives the widest
+    // legible view of the grid's near corner within the distance cap.
+    if (std::getenv("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 118.0f);  // near kOrbitDistanceMax
+        camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.9f);  // ~51 degrees, looking down at the grid
+        mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_DIVERSITY_STRESS_DEMO: orbitCenter set to "
+                          "(64,64,64), orbitDistance=118 (near the 120 cap), pitch=0.9rad -- frames "
+                          "the grid's near region from above; the full grid may extend beyond frame "
+                          "at high N, which the live-run gate accounts for");
+    }
     // Sampled Lighting Cornell Box Demo M1: shared camera preset (ONE source, both
     // VIXEN_DDGI_CORNELL_BAKED_DEMO and M2's VIXEN_DDGI_CORNELL_VIRTUAL_DEMO read the SAME
     // CornellBoxSceneDefinition.h constants). BuildRenderGraph.cpp's own stale "Camera presets
@@ -2419,6 +2442,269 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                  std::to_string(kInstancesPerHot) + " instances each) + " +
                                  std::to_string(kColdRecipeCount) + " cold recipes (" +
                                  std::to_string(kInstancesPerCold) + " instances each)");
+            }
+        } else if (const char* diversityDemoEnv = std::getenv("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
+            // Recipe-Diversity-Stress-Scene Inc6 M2 — generalizes M1's hand-authored
+            // [ReadParamFloat3, DeclarePosition, <resolve segment>] contract (commit 754442d1)
+            // from ONE recipe to N=20-250 genuinely-diverging, spatially-distributed recipes,
+            // rendered live. A NEW gated demo (not an extension of VIXEN_PROCEDURAL_UBER_DEMO
+            // in place), per the M2 prompt's own "your call, document which" instruction — kept
+            // separate so the uber-demo's own N=100/500 measurement baseline (stacked-Z-line,
+            // no DeclarePosition) stays byte-identical for anyone still using it as a reference.
+            //
+            // Recipe-diversity generation: reuses VIXEN_PROCEDURAL_UBER_DEMO's OWN shape/CSG/
+            // modifier product generator verbatim (same {sphere/box/torus} x {6 extra CSG ops}
+            // x {none/Round/Onion} cycle, same legacy-3 byte-for-byte preservation for i<3) --
+            // per the plan doc's own Risk: "do not let recipe-diversity generation collapse
+            // into N copies with different literals." The ONLY change from the uber-demo's
+            // generator is that every program here is prefixed with the meta segment
+            // [ReadParamFloat3(idx=0), DeclarePosition] (M1's proven mechanism) instead of
+            // baking each shape's own world-space center into its data[] literals -- position
+            // is now genuinely ReadParam-sourced, not a baked constant, exactly the gap M1's
+            // prototype closed. Every generated shape instruction below is therefore authored
+            // in BODY-LOCAL space (center at the origin), consistent with DeclarePosition's
+            // eval-time translation (curPos -= declaredPos) applying BEFORE the resolve segment
+            // walks -- see SdfRecipeCodegenGlsl.h's DeclarePosition case / SdfRecipeEval.h's
+            // mirror.
+            //
+            // NOTE on the production wiring gap M1 left open: UberShaderSplice.h's
+            // SpliceProceduralRecipesIntoSource (the actual production emitter this demo's
+            // recipes go through, via BodyInstanceRayMarch.comp's VIXEN_UBER_RECIPE_SPLICE_MARKER)
+            // used to call EmitProceduralFieldFunctionGlsl with emitDeclaredPositionOutParam
+            // always false — M1's out-param plumbing was only proven in a standalone test shader
+            // (test_recipe_declared_position_render.cpp / test_recipe_glsl_numerical_parity.cpp's
+            // own ComposeComputeShaderWithDeclaredPosition), not the real evalRecipeField() switch
+            // TraceWorld.glsl actually calls; a DeclarePosition-using recipe would have failed
+            // EmitProceduralFieldFunctionGlsl's own assert (Debug) or emitted GLSL referencing an
+            // undeclared `declaredPos` identifier (Release). Fixed centrally in
+            // UberShaderSplice.h (not here): SpliceProceduralRecipesIntoSource now detects
+            // per-recipe whether its bytecode contains DeclarePosition and, only for those
+            // recipes, emits with emitDeclaredPositionOutParam=true and supplies a throwaway
+            // local (`unusedDeclaredPos`) at evalRecipeField's call site — every other recipe
+            // (every pre-Inc6 demo, and any Inc6 recipe that happens not to use DeclarePosition)
+            // keeps the original 3-arg call shape byte-identical. This is a correctness fix
+            // required for ANY DeclarePosition-using recipe to compile in production, not new
+            // machinery scoped to this demo alone.
+            constexpr int kMaxDiversityN = 250;  // plan doc's own documented N ceiling for Inc6
+            const int requestedDivN = std::atoi(diversityDemoEnv);
+            const int diversityN = std::clamp(requestedDivN <= 0 ? 20 : requestedDivN, 1, kMaxDiversityN);
+
+            // --- 192-total-instance ceiling decision (documented per M2 prompt's requirement) ---
+            // TraceWorld.glsl's tier-0 march hard-clamps numInstances = clamp(pc.instanceCount, 0,
+            // 3*64) = 192 total body instances, across ALL recipes combined. Decision: register
+            // ALL `diversityN` distinct recipe PROGRAMS (registration itself has no hard cap --
+            // RecipeRegistry is an unbounded std::map, per this plan's own §1 Grounding), but
+            // instantiate exactly ONE BodyInstanceGpu per registered recipe, i.e.
+            // instantiatedInstanceCount == registeredRecipeCount == diversityN, for the WHOLE
+            // documented N=20-250 range. This is option (b) from the M2 prompt ("cap actually-
+            // instantiated recipes at 192 and document that as the real ceiling for this scene's
+            // N range") specialized further: since 250 <= 192 is FALSE, N is explicitly clamped
+            // to min(diversityN, 192) for INSTANTIATION even though up to kMaxDiversityN=250
+            // distinct programs could in principle be registered -- chosen over option (a)
+            // (register 250, instantiate a rotating subset <=192) because a static subset-
+            // selection policy is exactly the kind of extra machinery ("which/how chosen") the
+            // prompt warns adds scope for no M2 benefit; M4's later sweep can choose to run at
+            // N=192 as its practical top end (already comfortably inside "approaching but below
+            // the documented N=500 driver-hang territory" per the plan's own framing) without
+            // this milestone inventing a rotation scheme it would just have to redo later.
+            // 1:1 registered-recipe:instantiated-instance is also the SIMPLEST correct shape for
+            // BOTH ends of the range (per the prompt's own "pick the simplest approach" framing):
+            // it needs no per-N branching between "multiple instances per recipe at low N" and
+            // "fewer instances per recipe at high N" -- every recipe in this demo is genuinely
+            // UNIQUE (that's the entire point of "diversity"), so there is no meaningful sense in
+            // which cloning multiple instances of the SAME recipe would add more diversity value;
+            // it would only add instance COUNT, which is not what this milestone is measuring.
+            const int diversityInstantiated = std::min(diversityN, 192);
+            if (diversityInstantiated < diversityN) {
+                mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_DIVERSITY_STRESS_DEMO: "
+                                 "requested N=" + std::to_string(diversityN) + " exceeds the "
+                                 "192-instance tier-0 ceiling -- registering " +
+                                 std::to_string(diversityN) + " distinct recipe programs but "
+                                 "instantiating only the first " + std::to_string(diversityInstantiated));
+            }
+            mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_DIVERSITY_STRESS_DEMO: registering " +
+                             std::to_string(diversityN) + " diverse ReadParamFloat3/DeclarePosition "
+                             "recipes, instantiating " + std::to_string(diversityInstantiated));
+
+            // --- Spatial distribution: 2D grid in the XZ plane (Y fixed), spacing large enough
+            // that neighboring bodies' bound spheres (radius kGridBoundRadius below) don't
+            // overlap. ceil(sqrt(N)) columns x however many rows needed, centered on the SAME
+            // world-space region the other demos use (around world (64,64,*)) so this demo's
+            // camera preset (below) has a well-known scene extent to frame.
+            constexpr float kGridSpacing     = 30.0f;  // > 2*kGridBoundRadius, no bound-sphere overlap
+            constexpr float kGridBoundRadius = 12.0f;  // matches uber-demo's own non-legacy bound radius
+            constexpr float kGridBaseY       = 64.0f;
+            const int gridCols = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(diversityN)))));
+            const int gridRows = (diversityN + gridCols - 1) / gridCols;
+            const float gridWidth  = static_cast<float>(gridCols - 1) * kGridSpacing;
+            const float gridDepth  = static_cast<float>(gridRows - 1) * kGridSpacing;
+            const float gridOriginX = 64.0f - gridWidth  * 0.5f;
+            const float gridOriginZ = 64.0f - gridDepth * 0.5f;
+
+            using Vixen::SVO::Recipe::SdfOpCode;
+            using Vixen::SVO::Recipe::SdfInstruction;
+            auto sphereInstr = [](glm::vec3 c, float r) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Sphere;
+                in.data[0] = c.x; in.data[1] = c.y; in.data[2] = c.z; in.data[3] = r;
+                return in;
+            };
+            auto boxInstr = [](glm::vec3 he) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Box;
+                in.data[0] = he.x; in.data[1] = he.y; in.data[2] = he.z;
+                return in;
+            };
+            auto torusInstr = [](float majorR, float minorR) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Torus;
+                in.data[0] = majorR; in.data[1] = minorR;
+                return in;
+            };
+            auto roundInstr = [](float r) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Round; in.data[0] = r;
+                return in;
+            };
+            auto onionInstr = [](float thickness) {
+                SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Onion; in.data[0] = thickness;
+                return in;
+            };
+            auto combineInstr = [](SdfOpCode op, float k) {
+                SdfInstruction in{}; in.opCode = (uint8_t)op; in.data[2] = k;
+                return in;
+            };
+            const SdfOpCode kExtraCsgOps[] = {
+                SdfOpCode::Union, SdfOpCode::Subtract, SdfOpCode::Intersect,
+                SdfOpCode::SmoothIntersect, SdfOpCode::Xor, SdfOpCode::SmoothMax,
+            };
+            const glm::vec3 kColors[3] = {
+                glm::vec3(1.00f, 0.55f, 0.55f),
+                glm::vec3(0.55f, 1.00f, 0.55f),
+                glm::vec3(0.55f, 0.70f, 1.00f),
+            };
+
+            std::vector<Vixen::SVO::BodyInstanceGpu> diversityBodies;
+            diversityBodies.reserve(static_cast<size_t>(diversityInstantiated));
+            int registeredCount = 0;
+            for (int i = 0; i < diversityN; ++i) {
+                const uint32_t recipeId = static_cast<uint32_t>(2 + i);
+                const int col = i % gridCols;
+                const int row = i / gridCols;
+                const glm::vec3 declaredPos(
+                    gridOriginX + kGridSpacing * static_cast<float>(col),
+                    kGridBaseY,
+                    gridOriginZ + kGridSpacing * static_cast<float>(row));
+
+                // Resolve segment: SAME shape/CSG/modifier generator as
+                // VIXEN_PROCEDURAL_UBER_DEMO, authored in BODY-LOCAL space (center at origin) --
+                // DeclarePosition's eval-time translation (curPos -= declaredPos) supplies the
+                // world placement, so these shape literals must NOT also bake a world center.
+                std::vector<SdfInstruction> resolveProg;
+                const int shape = i % 3;
+                if (i < 3) {
+                    if (shape == 0) {
+                        resolveProg = { sphereInstr(glm::vec3(0.0f), 8.0f) };
+                    } else if (shape == 1) {
+                        resolveProg = { boxInstr(glm::vec3(6.0f, 6.0f, 6.0f)),
+                                        sphereInstr(glm::vec3(4.0f, 0.0f, 0.0f), 5.0f),
+                                        combineInstr(SdfOpCode::SmoothUnion, 1.5f) };
+                    } else {
+                        resolveProg = { sphereInstr(glm::vec3(0.0f), 9.0f),
+                                        boxInstr(glm::vec3(5.0f, 5.0f, 5.0f)),
+                                        roundInstr(1.0f),
+                                        combineInstr(SdfOpCode::SmoothSubtract, 1.0f) };
+                    }
+                } else {
+                    const int leaf = (i / 3) % 3;
+                    const SdfOpCode csgOp = kExtraCsgOps[i % 6];
+                    const int modSel = (i / 6) % 3;
+                    const float k = 0.5f + 0.1f * static_cast<float>(i % 7);
+                    const float r1 = 6.0f + 0.05f * static_cast<float>(i % 40);
+                    const float r2 = 3.0f + 0.03f * static_cast<float>(i % 30);
+
+                    if (leaf == 0) {
+                        resolveProg = { sphereInstr(glm::vec3(0.0f), r1),
+                                        sphereInstr(glm::vec3(r2 * 0.4f, 0.0f, 0.0f), r2),
+                                        combineInstr(csgOp, k) };
+                    } else if (leaf == 1) {
+                        resolveProg = { boxInstr(glm::vec3(r1, r1 * 0.8f, r1 * 0.6f)),
+                                        sphereInstr(glm::vec3(r2 * 0.3f, 0.0f, 0.0f), r2),
+                                        combineInstr(csgOp, k) };
+                    } else {
+                        resolveProg = { torusInstr(r1, r2 * 0.4f),
+                                        boxInstr(glm::vec3(r2, r2, r2)),
+                                        combineInstr(csgOp, k) };
+                    }
+                    if (modSel == 1) {
+                        resolveProg.push_back(roundInstr(0.3f + 0.02f * static_cast<float>(i % 10)));
+                    } else if (modSel == 2) {
+                        resolveProg.push_back(onionInstr(0.2f + 0.02f * static_cast<float>(i % 10)));
+                    }
+                }
+
+                // Meta segment (M1's proven contract): ReadParamFloat3(idx=0) pushes
+                // recipeParams[0..2] as a float3, DeclarePosition pops it, assigns the GLSL
+                // out-param, and translates the sample point for the resolve segment that
+                // follows -- NOT a baked literal, per the M2 prompt's own "this is the actual
+                // point of the milestone" framing.
+                SdfInstruction readPos{}; readPos.opCode = (uint8_t)SdfOpCode::ReadParamFloat3;
+                readPos.paramMask = 1; readPos.data[0] = 0.0f;
+                SdfInstruction declarePos{}; declarePos.opCode = (uint8_t)SdfOpCode::DeclarePosition;
+
+                std::vector<SdfInstruction> prog;
+                prog.reserve(resolveProg.size() + 2);
+                prog.push_back(readPos);
+                prog.push_back(declarePos);
+                prog.insert(prog.end(), resolveProg.begin(), resolveProg.end());
+
+                Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+                entry.bytecode = std::move(prog);
+                // boundCenter/boundRadius are AUTHORED explicitly (matches this instance's own
+                // declared grid position) rather than derived -- ReadParamFloat3/DeclarePosition
+                // are not on DeriveConservativeBounds's whitelist (same reasoning
+                // VIXEN_PROCEDURAL_UBER_DEMO's own ReadParam demo body comment gives), and per
+                // the M2 prompt's own scope boundary this milestone does NOT touch RecipeEntry's
+                // boundCenter/boundRadius handling or attempt to resolve AABB coexistence -- it
+                // just authors the existing fields with this instance's placement, the same
+                // mechanism every prior demo already uses for a non-whitelisted program.
+                entry.boundCenter = declaredPos;
+                entry.boundRadius = kGridBoundRadius;
+
+                auto regResult = RegisterProceduralRecipe(recipeId, entry);
+                if (regResult != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_RECIPE_DIVERSITY_STRESS_DEMO: "
+                                     "RegisterProceduralRecipe(" + std::to_string(recipeId) +
+                                     ") failed, code " + std::to_string(static_cast<int>(regResult)));
+                    continue;
+                }
+                ++registeredCount;
+
+                if (i < diversityInstantiated) {
+                    Vixen::SVO::BodyInstanceGpu inst{};
+                    inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
+                    inst.renderScale = 1.0f;   // unused by Procedural
+                    const glm::vec3& tint = kColors[shape];
+                    inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
+                    inst.octreeIndex = 0u;    // unused by Procedural
+                    inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                    inst.recipeId = recipeId;
+                    // recipeParams[0..2] = the declared world position, sourced via
+                    // ReadParamFloat3(idx=0) inside the recipe above -- M2 supplies this ONCE at
+                    // scene setup (a static-per-run spatial layout, per the prompt's own "does
+                    // not need to animate every frame" scope note); M3 will later mutate this
+                    // same field per-frame via the identical SetInstances() path, not a new one.
+                    inst.recipeParams[0] = declaredPos.x;
+                    inst.recipeParams[1] = declaredPos.y;
+                    inst.recipeParams[2] = declaredPos.z;
+                    diversityBodies.push_back(inst);
+                }
+            }
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(diversityBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_RECIPE_DIVERSITY_STRESS_DEMO: registered " +
+                                 std::to_string(registeredCount) + "/" + std::to_string(diversityN) +
+                                 " distinct recipe programs, seeded " +
+                                 std::to_string(diversityInstantiated) + " body instances on a " +
+                                 std::to_string(gridCols) + "x" + std::to_string(gridRows) + " grid "
+                                 "(spacing=" + std::to_string(kGridSpacing) + ")");
             }
         } else if (std::getenv("VIXEN_TIER_CHAIN_DEMO")) {
             // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
