@@ -4,7 +4,7 @@ namespace Vixen.Views
 {
     public sealed partial class HudViewWriter
     {
-        public const uint SchemaVersion = 0x7F78462Du;
+        public const uint SchemaVersion = 0x9D4ACFD2u;
 
         public struct HudFactionRow
         {
@@ -27,6 +27,9 @@ namespace Vixen.Views
         public int activeLensCount;
         public System.Collections.Generic.List<HudFactionRow> factions = new System.Collections.Generic.List<HudFactionRow>();
         public System.Collections.Generic.List<HudEventRow> events = new System.Collections.Generic.List<HudEventRow>();
+        public int inspectSelected;
+        public string inspectName;
+        public string inspectCause;
 
         private static void W32(System.Collections.Generic.List<byte> b, uint v) { b.Add((byte)v); b.Add((byte)(v>>8)); b.Add((byte)(v>>16)); b.Add((byte)(v>>24)); }
         private static void WI32(System.Collections.Generic.List<byte> b, int v) => W32(b, unchecked((uint)v));
@@ -41,7 +44,7 @@ namespace Vixen.Views
             var b = new System.Collections.Generic.List<byte>();
             b.Add((byte)'U'); b.Add((byte)'T'); b.Add((byte)'V'); b.Add((byte)'A');
             W32(b, SchemaVersion);
-            W32(b, 6u);
+            W32(b, 9u);
             WI32(b, this.tick);
             WI32(b, this.bodyCount);
             WStr(b, this.activeLensName);
@@ -60,6 +63,9 @@ namespace Vixen.Views
                 WStr(b, __r_events.kind);
                 WI32(b, __r_events.tick);
             }
+            WI32(b, this.inspectSelected);
+            WStr(b, this.inspectName);
+            WStr(b, this.inspectCause);
             return b.ToArray();
         }
     }

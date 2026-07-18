@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowbodies
-version 0x124E43F3
+version 0x017289A2
 elem UndertowBodyRow
   kind int
   mass float
@@ -9,4 +9,7 @@ elem UndertowBodyRow
   ownerRecentEventAge int
   recipeId int
   radiusAu float
+  posX float
+  posY float
+  posZ float
 field rows array UndertowBodyRow

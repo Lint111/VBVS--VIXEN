@@ -705,6 +705,18 @@ VkResult RenderGraph::RenderFrame() {
         throw std::runtime_error("Graph must be compiled before rendering");
     }
 
+    // Drive the fixed-timestep loop accumulators (SimLoop 30Hz / PhysicsLoop 60Hz) every frame.
+    // This is the sole driver of LoopManager::UpdateLoops — without it ShouldStepLogic never fires
+    // and the embedded sim never ticks (NowTicks frozen at 0). It lived in the since-deleted
+    // RenderGraph::Execute(VkCommandBuffer) (removed as a stale duplicate in 864b0aa6, which missed
+    // that this call was load-bearing) and was never re-homed into the real RenderFrame() path.
+    // Placed BEFORE the renderPaused early-return below so logic loops keep advancing while
+    // rendering is paused (minimize / swapchain recreation) — the whole point of decoupling the
+    // 30Hz logic cadence from render fps. globalFrameIndex is incremented at frame-end (below), so
+    // only SetCurrentFrame is called here, not another increment.
+    loopManager.SetCurrentFrame(globalFrameIndex);
+    loopManager.UpdateLoops(frameTimer.GetDeltaTime());
+
     // Event processing now handled in application's Update() phase
     // This allows updating without rendering and different frame rates
 

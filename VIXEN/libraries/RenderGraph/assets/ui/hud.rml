@@ -12,10 +12,19 @@
              classes/ternary/data-class-* below are the HAND-AUTHORED shell wrapping those same
              bindings — composing here (rather than a literal file-include) is what preserves it.
              View Contract Inc-2, Task 8. -->
-        <div class="clock">tick {{tick}} · bodies {{bodyCount}}</div>
+        <div class="clock">tick {{tick}} · bodies {{bodyCount}} · {{speed}}</div>
         <!-- Active map lens (view:lens): the lens's display name + its member count, from the Hud
              ActiveLens / ActiveLensCount columns. "None (0)" when no lens is active. -->
         <div class="lens-status">Lens: {{activeLensName}} ({{activeLensCount}})</div>
+        <!-- T1 inspect panel: shown only while a body/entity is selected (inspectSelected != 0).
+             Placed near the top so it is visible above the (long) events list. Realizes the generated
+             inspectSelected/inspectName/inspectCause bindings (Hud.view.rml) as a hand-authored panel,
+             same compose-here convention as the faction/event rows. -->
+        <div class="inspect-panel" data-if="inspectSelected">
+            <div class="section-label">Inspect</div>
+            <div class="inspect-name">{{inspectName}}</div>
+            <div class="inspect-cause">{{inspectCause}}</div>
+        </div>
         <div class="factions">
             <div class="section-label">Factions</div>
             <!-- Per-row state from the View's HudFactions columns: data-class-focused tracks

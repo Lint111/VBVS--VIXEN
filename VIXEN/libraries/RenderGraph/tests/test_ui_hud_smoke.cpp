@@ -101,7 +101,9 @@ TEST_F(HudSmokeTest, DataModelConstructsAndBinds) {
 // Verify hud.rml loads, the data model drives SetHudData equivalence, and
 // GetInnerRML() contains the expected substituted values after Update().
 TEST_F(HudSmokeTest, HudDocumentLoadsAndBindsResolve) {
-    struct HudData { int tick = 0; int bodyCount = 0; } hud;
+    // speed is bound too: the clock line reads "tick {{tick}} · bodies {{bodyCount}} · {{speed}}",
+    // and an unbound {{speed}} would leave that whole line's data-binding unresolved.
+    struct HudData { int tick = 0; int bodyCount = 0; Rml::String speed = "\xC3\x97" "1"; } hud;
     Rml::DataModelHandle model;
 
     // Build the model before loading the document (same order as UIRenderNode::CompileImpl).
@@ -110,6 +112,7 @@ TEST_F(HudSmokeTest, HudDocumentLoadsAndBindsResolve) {
         ASSERT_TRUE(static_cast<bool>(c));
         c.Bind("tick", &hud.tick);
         c.Bind("bodyCount", &hud.bodyCount);
+        c.Bind("speed", &hud.speed);
         model = c.GetModelHandle();
     }
 
@@ -139,7 +142,7 @@ TEST_F(HudSmokeTest, HudDocumentLoadsAndBindsResolve) {
 
 // Verify DirtyVariable works across multiple SetHudData-equivalent calls.
 TEST_F(HudSmokeTest, DirtyVariableUpdatesCorrectly) {
-    struct HudData { int tick = 0; int bodyCount = 0; } hud;
+    struct HudData { int tick = 0; int bodyCount = 0; Rml::String speed = "\xC3\x97" "1"; } hud;
     Rml::DataModelHandle model;
 
     {
@@ -147,6 +150,7 @@ TEST_F(HudSmokeTest, DirtyVariableUpdatesCorrectly) {
         ASSERT_TRUE(static_cast<bool>(c));
         c.Bind("tick", &hud.tick);
         c.Bind("bodyCount", &hud.bodyCount);
+        c.Bind("speed", &hud.speed);   // {{speed}} on the clock line — see HudDocumentLoadsAndBindsResolve
         model = c.GetModelHandle();
     }
 

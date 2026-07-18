@@ -1,6 +1,6 @@
 # viewblob v1
 model hud
-version 0x7F78462D
+version 0x9D4ACFD2
 elem HudFaction
   name string
   grievance float
@@ -17,3 +17,6 @@ field activeLensName string
 field activeLensCount int
 field factions array HudFaction
 field events array HudEvent
+field inspectSelected int
+field inspectName string
+field inspectCause string

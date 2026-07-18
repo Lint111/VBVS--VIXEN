@@ -144,6 +144,14 @@ namespace Vixen.ViewSchemas
         public int ownerRecentEventAge; // U8, widened to int; source: el.OwnerRecentEventAge
         public int recipeId;            // U32, widened to int; source: el.RecipeId
         public float radiusAu;          // per-BODY: source el.RecipeParams.X (radius_AU); decomposed Vec3f component
+        // Per-body on-rails position (AU), decomposed into three plain float columns — the SAME
+        // emitter-gap sidestep as radiusAu above (a packed Vec3f struct-array-ELEMENT column still
+        // null-refs ViewWriterEmitter/TypedAccessorEmitter; three scalars do not). Sources el.Position.
+        // {X,Y,Z}. Closes the "every body renders at the origin" gap (body_view.cpp's
+        // WarnBodiesPositionUnbackedOnce) without the undesigned Vec3f-scalar-field emitter work.
+        public float posX;              // source el.Position.X (AU)
+        public float posY;              // source el.Position.Y (AU)
+        public float posZ;              // source el.Position.Z (AU)
     }
 
     [View]
