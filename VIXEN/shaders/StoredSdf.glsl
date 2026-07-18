@@ -833,6 +833,27 @@ bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDi
     const float SENTINEL_D  = 100.0;
     const int   MAX_BRICK_HOPS = 2048;
 
+    // Task 10.1 (baked-vs-virtual shadow parity fix): the stored Density channel is a
+    // TRUE signed distance (negative == inside solid, SdfRecipes.h:46/SdfBake.h:157) —
+    // occupancy is baked out to kBand(=2.0 grid-voxel) BEYOND the true surface purely so
+    // the trilinear stencil has honest neighbours (SdfBake.h:156-163), NOT because the
+    // surface itself is band-thick. marchBrickSdf's `d < EPS` crossing test is correct
+    // for the PRIMARY visible-hit march (camera rays converge onto the surface from
+    // outside, so the first d<EPS sample IS the true crossing) but is IMPRECISE for this
+    // any-hit occlusion march: a sample can read d in [0, EPS) while still outside the
+    // true surface (inside the exterior half of the dilated band). Tightening to a true
+    // sign-crossing (d < -EPS, i.e. past d==0 by the same EPS slack, now on the INSIDE)
+    // is strictly more correct and can only shrink false occlusion, never grow it — kept
+    // as a real correctness fix even though the live A/B below found it changes only a
+    // handful of grazing-edge pixels (4/250000, overall shadow-loss unchanged at ~10%)
+    // for THIS scene: the true false-occlusion source for the diagnosed 27%/0.88 gap was
+    // NOT reproduced by tightening this threshold alone (also tried OCCLUDE_EPS=-1.0 and
+    // a 2.5-grid-voxel self-occlusion skip at the march's own entry — both equally inert
+    // on the measured numbers), so a further root-cause is still open beyond this fix —
+    // see Task 10.1's completion report. Do NOT change marchBrickSdf (primary march) or
+    // the seam tie-break — this tightened test is scoped to the any-hit/shadow path only.
+    const float OCCLUDE_EPS = -EPS;
+
     float sBase = 0.0;
     ivec3 curBrick = brick;
 
@@ -863,11 +884,15 @@ bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDi
             vec4 cellZ0, cellZ1;
             _loadTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1);
             float d = _interpolateTrilinearCell(cellF, cellZ0, cellZ1);
-            if (d < EPS) {
+            if (d < OCCLUDE_EPS) {
                 sHit = sBase + s;
                 return true;
             }
-            s += (d > SENTINEL_D) ? 1.0 : max(d * 0.5773503, EPS);
+            // abs(d): step size is the unbounding-sphere radius, which is |d| regardless of
+            // sign. Was bare `d` when the crossing test only ever saw d>=EPS>0 here (a no-op
+            // change then); now that OCCLUDE_EPS lets d sit slightly negative (down to -EPS)
+            // without triggering the return above, a bare `d` would shrink/negate the step.
+            s += (d > SENTINEL_D) ? 1.0 : max(abs(d) * 0.5773503, EPS);
         }
         if (sBase + s > sMaxLimit) return false;  // exited the clamped span without a crossing -- no occluder in range
 
