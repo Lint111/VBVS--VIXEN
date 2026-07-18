@@ -79,6 +79,12 @@ struct WorldHit {
     // shader global, and left permanently available (cheap, always-written) rather than
     // scaffolded in/out per round. 0xFFFFFFFFu when anyHit is false (no winner).
     uint  instIdx;
+    // M11.2 (2026-07-18): winning instance's emission intensity, carried straight off
+    // BodyInstance.recipeParams[3] (see TraceWorld's instance loop below for why that slot)
+    // -- 0.0 for every non-emissive body. Lets the primary-hit shade pass add a
+    // self-lit term for the Cornell ceiling light without a new SEM_* channel or any
+    // change to the light-tree/GI path, which already samples emission independently.
+    float emission;
 };
 
 // ============================================================================
@@ -132,6 +138,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     uint  bestBrickIndex  = 0u;
     uint  bestVoxelIdx    = 0u;
     uint  bestInstIdx     = 0xFFFFFFFFu;  // M3 round 3: winning instance, see WorldHit.instIdx
+    float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
 
     // -----------------------------------------------------------------------
     // INSTANCE LOOP
@@ -262,6 +269,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
                 bestInstIdx    = uint(instIdx);
+                // M11.2: recipeParams[3..5] are unused by every registered Cornell recipe
+                // (recipeId>=2 bodies sample world p directly, see BuildRenderGraph.cpp's
+                // VIXEN_DDGI_CORNELL_VIRTUAL_DEMO seeding comment) and recipeId<2's legacy
+                // analytic path only reads recipeParams[0..2] -- recipeParams[3] is genuinely
+                // spare for both, so it carries the light body's emission intensity (0.0 for
+                // every non-emissive body) without a new BodyInstance field.
+                bestEmission   = inst.recipeParams[3];
                 anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -485,6 +499,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
             bestInstIdx     = uint(instIdx);
+            // M11.2: STORED bodies don't touch recipeParams (providerKind==PROVIDER_STORED
+            // never reads it), so recipeParams[3] is free here too -- same per-instance
+            // emission-intensity convention as the PROCEDURAL branch above, not a per-voxel
+            // SEM_EMISSION channel read (that channel is baked but stays reserved for the
+            // light-tree's own bake-side consumption, per the M11.2 brief's scope).
+            bestEmission    = inst.recipeParams[3];
             anyHit          = true;
         }
     }
@@ -496,6 +516,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.brickIndex = bestBrickIndex;
     hit.voxelIdx   = bestVoxelIdx;
     hit.instIdx    = bestInstIdx;
+    hit.emission   = bestEmission;
     return anyHit;
 }
 

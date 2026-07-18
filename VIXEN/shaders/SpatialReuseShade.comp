@@ -388,6 +388,21 @@ void main() {
     if (anyHitRT) {
         outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
                                                bestRoughness, lightingConfig);
+
+        // M11.2: self-lit emissive term at the PRIMARY (camera) hit. Without this the
+        // ceiling light panel only ever acts as a light SOURCE (via the light-tree/DDGI
+        // gather below) -- its own camera-visible face renders at whatever the analytic
+        // direct-lighting term above gives it, same as any other diffuse surface, so it
+        // never reads as "glowing". recReadback._pad0[1] carries WorldHit.emission
+        // (BodyInstanceRayMarch.comp's HitRecord write) -- 0.0 for every non-emissive
+        // body, so this is a no-op everywhere else in the scene. Tinted by bestColor
+        // (the light body's own instance color, flat white per BuildRenderGraph.cpp's
+        // light-body seeding) rather than a bare scalar, matching how every other
+        // shading term here composes color * intensity. Purely additive, applied BEFORE
+        // ReSTIR/DDGI accumulate their own terms below -- does not touch or double-count
+        // against the light-tree's independent emission sampling for indirect bounces.
+        float emission = uintBitsToFloat(recReadback._pad0[1]);
+        outColor += bestColor * emission;
     } else {
         outColor = skyColor;
     }

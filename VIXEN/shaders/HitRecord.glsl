@@ -36,6 +36,13 @@
 // Total: 64 bytes/element.
 //
 // flags: bit0 (0x1) = hit/miss (1 = TraceWorld found a hit; 0 = sky/miss).
+//
+// _pad0 usage: [0] = winning instance index (M3 round 3). [1] = M11.2:
+// floatBitsToUint(WorldHit.emission) -- the winning instance's emission
+// intensity, so SpatialReuseShade.comp can add a self-lit term at the primary
+// hit without re-deriving it from bodyInstances[] a second time. [2] is still
+// spare (VIXEN_SHADOW_DBG's debug packing reuses all three under #ifdef, but
+// that path never coexists with a real frame's [0]/[1] content).
 // ============================================================================
 
 #ifndef HITRECORD_GLSL
