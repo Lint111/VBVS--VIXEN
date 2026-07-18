@@ -755,10 +755,19 @@ codegen boundary (guarded — `kernel-framework` skill, drift guards; never hand
   square; the M10 floor/wall blotching is GONE (verify in the new A/B image vs virtual — this is the
   blotching-subsumed check); geometry parity byte-identical 0/625; 8 bodies; scene still lit (GI from
   ceiling emitter intact, not dark). If blotching persists, re-open it as a separate finding.
-- [ ] Task 11.2 — Primary-hit self-lit emission term: the camera-visible light-panel face renders
-  bright/glowing (add the emission contribution at the primary hit for an emissive body). Benefits
-  BOTH providers. GATE: light panel reads as self-lit in baked AND virtual, matched to oracle; no
-  regression to GI or geometry parity (0/625).
+- [x] Task 11.2 — DONE · commit `b4af3df4` · Opus validator APPROVED · 2026-07-18. Primary-hit self-lit
+  emission term. SEAM: per-body emission metadata via `BodyInstance.recipeParams[3]` (STORED makeInstance
+  param; VIRTUAL gates `b.name=="light"`) → `WorldHit.emission` (TraceWorld.glsl) → `HitRecord._pad0[1]` →
+  `SpatialReuseShade.comp:405` `outColor += bestColor * emission` (additive, AFTER computeLightingWithShadows,
+  BEFORE ReSTIR/DDGI). Chose this over a SEM_EMISSION voxel-channel read (which would need threading an
+  out-param through the tier-crossing traversal — scoped out). recipeParams[3] verified genuinely spare on
+  BOTH providers (STORED never reads recipeParams; Cornell recipes use literal data[], no ReadParam). RESULT:
+  ceiling panel renders self-lit (bright white trapezoid) in baked AND virtual, matched to oracle (baked
+  panel lum 210.6 vs oracle 233.5 — slightly BELOW, not over-blown). Geometry parity 0/625 (twice, md5).
+  No GI double-count (emission is screen-space camera-hit color, doesn't feed the light-tree gather). Seam/
+  march/M10-fix/light-tree untouched. **The light now unambiguously comes from the ceiling square — the
+  original user ask.** MINOR: commit incidentally added a `cache/global/manifest.txt` line ("RecipeContentCacher",
+  runtime-written cache registry, benign, not source) — future cleanup, not a correctness issue.
 - [ ] Task 11.3 — Procedural-native emission via the recipe-output contract (the pure-solution
   engine addition): emission as a recipe OUTPUT channel evaluated per-sample, threaded through the
   kernel-content codegen to BOTH (a) the stored bake EmitFn and (b) the procedural live shade/GI
