@@ -991,7 +991,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (recipeBucketedDispatchEnabled) {
         auto* boundSphereInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBoundSphereBuffer));
         boundSphereInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
-            kRecipeBucketingMaxBuckets * 32u);  // RecipeBoundSphere: 32B (vec3+float+float+pad[3])
+            kRecipeBucketingMaxBuckets * 32u);  // RecipeBoundSphere: 32B (vec3+float+float+float+pad[2],
+                                                // Load-Tier Contract M1 added gateFootprintThreshold)
 
         auto* bucketCountInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCountBuffer));
         bucketCountInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
@@ -5908,7 +5909,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         // Push-constant wiring: each mode stage's own PushConstantGathererNode reflects
         // RecipeInstanceBucketing.comp's Push block (viewProj, instanceCount, maxBuckets,
-        // maxMembersPerBucket, screenWidth, screenHeight, mode) via the shared shader bundle,
+        // maxMembersPerBucket, screenWidth, screenHeight, mode, raySizeCoef, raySizeBias,
+        // cameraPos -- the last 3 added by Load-Tier Contract M1) via the shared shader bundle,
         // and each field is wired from the same live source the main march already uses for the
         // equivalent value (camera view-proj, live instance count, render-target extent), so a
         // camera move or a live-resize is reflected correctly without any extra plumbing --
@@ -5953,7 +5955,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           s.pcGatherer, 5, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
                  // field 6: uint mode (THIS stage's own literal -- 1/0/2 for init/bucket/final).
                  .Connect(s.modeConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, 6, SlotRoleModifier(SlotRole::Execute));
+                          s.pcGatherer, 6, SlotRoleModifier(SlotRole::Execute))
+                 // Load-Tier Contract M1 (gating tier): fields 8/9 -- raySizeBias/cameraPos, SAME
+                 // live nodes the main march's own pushConstantGatherer already reads
+                 // (raySizeBiasConstant/cameraNode, both in scope from earlier in this function)
+                 // so a camera move is reflected identically in both the march and this
+                 // bucketing pre-pass, with no new plumbing.
+                 .Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          s.pcGatherer, 8, SlotRoleModifier(SlotRole::Execute))
+                 .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          s.pcGatherer, 9,
+                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));
+        }
+        // field 7: float raySizeCoef -- mirrors the tier-crossing-LOD-override branch the main
+        // march's own gatherer uses (line ~6338): if VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE is
+        // active, feed the same override ConstantNode here too so this bucketing gate agrees
+        // with what the march is actually using for LOD this frame, not the un-overridden live
+        // value. Kept as its own loop (rather than folded into the loop above) since the two
+        // branches connect different node TYPES (ConstantNode vs. RaySizeCoefNode), each with
+        // its own strongly-typed slot-config enum -- not expressible as a single Connect() call.
+        for (const auto& s : bucketingPcStages) {
+            if (tierCrossingLodCoefOverrideActive) {
+                batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
+                              s.pcGatherer, 7, SlotRoleModifier(SlotRole::Execute));
+            } else {
+                batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+                              s.pcGatherer, 7, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+            }
         }
 
         // Auto-sync hazard declarations: mode-init/mode-bucket WRITE the counters/indices/

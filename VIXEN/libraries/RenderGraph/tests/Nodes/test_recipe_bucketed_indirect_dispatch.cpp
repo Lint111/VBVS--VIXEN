@@ -110,7 +110,11 @@ TEST(DispatchPassIndirect, InvalidWhenIndirectBufferIsExplicitNullHandle) {
 
 namespace {
 
-// Byte-identical to RecipeInstanceBucketing.comp's Push block (M2: mode now also accepts 2).
+// Byte-identical to RecipeInstanceBucketing.comp's Push block (M2: mode now also accepts 2;
+// Load-Tier Contract M1 added raySizeCoef/raySizeBias/cameraPos -- KI-034 is the exact bug
+// class this staleness risks, keep every hand-mirrored copy of this struct in lockstep with
+// the shader). Value-init (`BucketingPush pc{};`) zero-inits the 3 new fields, which is
+// exactly "gating disabled" -- this file's existing scenes are unaffected.
 struct BucketingPush {
     glm::mat4 viewProj;
     uint32_t  instanceCount;
@@ -119,13 +123,19 @@ struct BucketingPush {
     uint32_t  screenWidth;
     uint32_t  screenHeight;
     uint32_t  mode;
+    float     raySizeCoef;
+    float     raySizeBias;
+    glm::vec3 cameraPos;
 };
 
+// Byte-identical to the shader's RecipeBoundSphere struct. Load-Tier Contract M1 added
+// gateFootprintThreshold (0.0 = not opted in).
 struct RecipeBoundSphereCpu {
     float center[3];
     float radius;
     float relaxation;
-    float _pad[3];
+    float gateFootprintThreshold;
+    float _pad[2];
 };
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
@@ -465,7 +475,7 @@ TEST_F(RecipeBucketedIndirectDispatchTest, SpecializedPipelineMatchesTier0Sphere
     constexpr uint32_t kScreenWidth = 256, kScreenHeight = 256;
 
     std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
-    boundSpheres[kHotRecipeId] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, entry.boundRadius, entry.stepRelaxation, {0, 0, 0}};
+    boundSpheres[kHotRecipeId] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, entry.boundRadius, entry.stepRelaxation, 0.0f, {0, 0}};
 
     // Camera: looks down -Z at the whole row of spheres from a distance, framing all 4.
     const glm::vec3 eye(0.0f, 3.0f, 20.0f);

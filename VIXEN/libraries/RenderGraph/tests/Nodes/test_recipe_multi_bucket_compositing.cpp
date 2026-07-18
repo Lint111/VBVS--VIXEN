@@ -170,7 +170,11 @@ TEST(HotnessGate, PromotesOnlyBucketsAboveThreshold) {
 
 namespace {
 
-// Byte-identical to RecipeInstanceBucketing.comp's Push block (mirrors M2's own copy).
+// Byte-identical to RecipeInstanceBucketing.comp's Push block (mirrors M2's own copy;
+// Load-Tier Contract M1 added raySizeCoef/raySizeBias/cameraPos -- KI-034 is the exact bug
+// class this staleness risks, keep every hand-mirrored copy of this struct in lockstep with
+// the shader). Value-init (`BucketingPush pc{};`) zero-inits the 3 new fields, which is
+// exactly "gating disabled" -- this file's existing scenes are unaffected.
 struct BucketingPush {
     glm::mat4 viewProj;
     uint32_t  instanceCount;
@@ -179,13 +183,19 @@ struct BucketingPush {
     uint32_t  screenWidth;
     uint32_t  screenHeight;
     uint32_t  mode;
+    float     raySizeCoef;
+    float     raySizeBias;
+    glm::vec3 cameraPos;
 };
 
+// Byte-identical to the shader's RecipeBoundSphere struct. Load-Tier Contract M1 added
+// gateFootprintThreshold (0.0 = not opted in).
 struct RecipeBoundSphereCpu {
     float center[3];
     float radius;
     float relaxation;
-    float _pad[3];
+    float gateFootprintThreshold;
+    float _pad[2];
 };
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
@@ -786,9 +796,9 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
 
     std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
     boundSpheres[kRecipeA] = RecipeBoundSphereCpu{
-        {entryA.boundCenter.x, entryA.boundCenter.y, entryA.boundCenter.z}, entryA.boundRadius, entryA.stepRelaxation, {0, 0, 0}};
+        {entryA.boundCenter.x, entryA.boundCenter.y, entryA.boundCenter.z}, entryA.boundRadius, entryA.stepRelaxation, 0.0f, {0, 0}};
     boundSpheres[kRecipeB] = RecipeBoundSphereCpu{
-        {entryB.boundCenter.x, entryB.boundCenter.y, entryB.boundCenter.z}, entryB.boundRadius, entryB.stepRelaxation, {0, 0, 0}};
+        {entryB.boundCenter.x, entryB.boundCenter.y, entryB.boundCenter.z}, entryB.boundRadius, entryB.stepRelaxation, 0.0f, {0, 0}};
     UploadBuffer(boundMem, boundSpheres.data(), boundSize);
 
     // NOTE: RecipeInstanceBucketing.comp's own bucketing/coverage pass computes

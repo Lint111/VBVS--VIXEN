@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -52,7 +53,13 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Byte-identical to RecipeInstanceBucketing.comp's Push block.
+// Byte-identical to RecipeInstanceBucketing.comp's Push block. Load-Tier Contract M1 added
+// raySizeCoef/raySizeBias/cameraPos (KI-034 is the exact bug class this staleness risks --
+// every hand-mirrored PushConstants struct for this shader MUST be updated in lockstep with
+// the shader's own push_constant block, or vkCreateComputePipelines fails
+// VUID-VkComputePipelineCreateInfo-layout-10069). Value-initialization (`PushConstants pc{};`)
+// below zero-inits the 3 new fields, which is exactly "gating disabled" -- existing tests that
+// never set them keep their pre-M1 behavior unchanged.
 struct PushConstants {
     glm::mat4 viewProj;
     uint32_t  instanceCount;
@@ -61,14 +68,19 @@ struct PushConstants {
     uint32_t  screenWidth;
     uint32_t  screenHeight;
     uint32_t  mode;
+    float     raySizeCoef;
+    float     raySizeBias;
+    glm::vec3 cameraPos;
 };
 
-// Byte-identical to the shader's RecipeBoundSphere struct.
+// Byte-identical to the shader's RecipeBoundSphere struct. Load-Tier Contract M1 added
+// gateFootprintThreshold (0.0 = not opted in, same convention RecipeEntry uses).
 struct RecipeBoundSphereCpu {
     float center[3];
     float radius;
     float relaxation;
-    float _pad[3];
+    float gateFootprintThreshold;
+    float _pad[2];
 };
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
@@ -349,9 +361,9 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
 
     // Per-recipe bound spheres (dense array indexed by recipeId, up to kMaxBuckets).
     std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
-    boundSpheres[kRecipeA] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, 1.0f, 1.0f, {0, 0, 0}};
-    boundSpheres[kRecipeB] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, 1.5f, 1.0f, {0, 0, 0}};
-    boundSpheres[kRecipeC] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, 0.75f, 1.0f, {0, 0, 0}};
+    boundSpheres[kRecipeA] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, 1.0f, 1.0f, 0.0f, {0, 0}};
+    boundSpheres[kRecipeB] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, 1.5f, 1.0f, 0.0f, {0, 0}};
+    boundSpheres[kRecipeC] = RecipeBoundSphereCpu{{0.0f, 0.0f, 0.0f}, 0.75f, 1.0f, 0.0f, {0, 0}};
 
     // Known camera: looks down -Z-ish at the whole scene from a distance, framing all 3 clusters.
     const glm::vec3 eye(0.0f, 15.0f, 40.0f);
@@ -593,6 +605,278 @@ TEST_F(RecipeInstanceBucketingTest, BucketsAndCoverageMatchKnownSyntheticScene) 
                     recipeId, bucketCounts[recipeId], actualMinX, actualMinY, actualMaxX, actualMaxY,
                     expected.minX, expected.minY, expected.maxX, expected.maxY);
     }
+
+    vkDeviceWaitIdle(logicalDevice_);
+    vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);
+    vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
+    vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(logicalDevice_, dsl, nullptr);
+    vkDestroyShaderModule(logicalDevice_, shaderModule, nullptr);
+    vkDestroyBuffer(logicalDevice_, instBuf, nullptr);  vkFreeMemory(logicalDevice_, instMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, boundBuf, nullptr); vkFreeMemory(logicalDevice_, boundMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, countBuf, nullptr); vkFreeMemory(logicalDevice_, countMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, idxBuf, nullptr);   vkFreeMemory(logicalDevice_, idxMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, minXBuf, nullptr);  vkFreeMemory(logicalDevice_, minXMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, minYBuf, nullptr);  vkFreeMemory(logicalDevice_, minYMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, maxXBuf, nullptr);  vkFreeMemory(logicalDevice_, maxXMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, maxYBuf, nullptr);  vkFreeMemory(logicalDevice_, maxYMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, indirectBuf, nullptr); vkFreeMemory(logicalDevice_, indirectMem, nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Recipe Load-Tier Contract M1 (gating tier): a recipe that opts in
+// (gateFootprintThreshold > 0) must have its far/small-footprint instances excluded from
+// bucketing/promotion entirely (no bucketIndices entry, no coverage contribution), while its
+// near/large-footprint instances bucket normally. A recipe that does NOT opt in
+// (gateFootprintThreshold == 0, the default) must be completely unaffected regardless of
+// distance -- this is the n=0 regression check the M1 prompt requires.
+// ---------------------------------------------------------------------------
+TEST_F(RecipeInstanceBucketingTest, GatingTierExcludesFarInstanceKeepsNearInstanceAndNonParticipant) {
+    std::cout << "[ bucketing-gate ] selected physical device: '" << selectedDeviceName_
+              << "'\n";
+    ASSERT_TRUE(deviceConfirmed_);
+
+    // recipeGated opts in (gateFootprintThreshold set below); recipeControl does not, and is
+    // placed at the SAME far distance as recipeGated's far instance to prove non-participation
+    // is unaffected by distance.
+    constexpr uint32_t kRecipeGated = 5, kRecipeControl = 9;
+    constexpr float kBoundRadius = 1.0f;
+
+    // Camera: pinhole, looking down -Z from the origin. raySizeCoef mirrors
+    // RaySizeCoefNode's real formula (2*tan(fov/screenHeight/2)) at a representative fov/height
+    // so the gate math below is realistic, not a contrived huge/tiny value.
+    const float fovYRadians = glm::radians(45.0f);
+    const float raySizeCoef = 2.0f * std::tan((fovYRadians / float(kScreenHeight)) * 0.5f);
+    const float raySizeBias = 0.0f;
+    const glm::vec3 cameraPos(0.0f, 0.0f, 0.0f);
+
+    // footprint(distance) = distance * raySizeCoef + raySizeBias. Pick a threshold, then a
+    // NEAR distance whose footprint is comfortably ABOVE it and a FAR distance whose footprint
+    // is comfortably BELOW it.
+    constexpr float kGateThreshold = 0.05f;
+    const float nearDistance = (kGateThreshold * 4.0f) / raySizeCoef;   // footprint ~4x threshold
+    const float farDistance  = (kGateThreshold * 0.25f) / raySizeCoef;  // footprint ~0.25x threshold
+    ASSERT_GT(nearDistance, farDistance) << "test construction sanity check";
+
+    std::vector<Vixen::SVO::BodyInstanceGpu> instances;
+    auto addInstance = [&](uint32_t recipeId, glm::vec3 pos) {
+        Vixen::SVO::BodyInstanceGpu inst{};
+        inst.worldPos[0] = pos.x; inst.worldPos[1] = pos.y; inst.worldPos[2] = pos.z;
+        inst.renderScale = 1.0f;
+        inst.recipeId = recipeId;
+        instances.push_back(inst);
+    };
+    // recipeGated: one near instance (should bucket normally) and one far instance (should be
+    // gated out entirely -- absent from bucketCounts/bucketIndices/coverage).
+    constexpr uint32_t kNearIdx = 0, kFarGatedIdx = 1, kFarControlIdx = 2;
+    addInstance(kRecipeGated, glm::vec3(0.0f, 0.0f, -nearDistance));
+    addInstance(kRecipeGated, glm::vec3(0.0f, 0.0f, -farDistance));
+    // recipeControl: same far distance as recipeGated's gated-out instance, but NOT opted in --
+    // must bucket normally (proves the gate doesn't leak onto non-participating recipes).
+    addInstance(kRecipeControl, glm::vec3(0.0f, 0.0f, -farDistance));
+    const uint32_t instanceCount = static_cast<uint32_t>(instances.size());
+    ASSERT_EQ(instanceCount, 3u);
+
+    std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
+    boundSpheres[kRecipeGated]   = RecipeBoundSphereCpu{{0, 0, 0}, kBoundRadius, 1.0f, kGateThreshold, {0, 0}};
+    boundSpheres[kRecipeControl] = RecipeBoundSphereCpu{{0, 0, 0}, kBoundRadius, 1.0f, 0.0f, {0, 0}};
+
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 projection = glm::perspective(fovYRadians,
+        float(kScreenWidth) / float(kScreenHeight), 0.01f, 10000.0f);
+    projection[1][1] *= -1.0f;  // Vulkan Y-flip, mirrors CameraNode.cpp
+    glm::mat4 viewProj = projection * view;
+
+    // --- GPU buffers (same shape as the decisive test above). ---
+    VkBuffer instBuf = VK_NULL_HANDLE, boundBuf = VK_NULL_HANDLE, countBuf = VK_NULL_HANDLE,
+             idxBuf = VK_NULL_HANDLE, minXBuf = VK_NULL_HANDLE, minYBuf = VK_NULL_HANDLE,
+             maxXBuf = VK_NULL_HANDLE, maxYBuf = VK_NULL_HANDLE, indirectBuf = VK_NULL_HANDLE;
+    VkDeviceMemory instMem = VK_NULL_HANDLE, boundMem = VK_NULL_HANDLE, countMem = VK_NULL_HANDLE,
+                   idxMem = VK_NULL_HANDLE, minXMem = VK_NULL_HANDLE, minYMem = VK_NULL_HANDLE,
+                   maxXMem = VK_NULL_HANDLE, maxYMem = VK_NULL_HANDLE, indirectMem = VK_NULL_HANDLE;
+
+    const VkDeviceSize instSize  = instanceCount * sizeof(Vixen::SVO::BodyInstanceGpu);
+    const VkDeviceSize boundSize = kMaxBuckets * sizeof(RecipeBoundSphereCpu);
+    const VkDeviceSize countSize = kMaxBuckets * sizeof(uint32_t);
+    const VkDeviceSize idxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * kMaxMembersPerBucket * sizeof(uint32_t);
+    const VkDeviceSize extremaSize = kMaxBuckets * sizeof(uint32_t);
+    const VkDeviceSize indirectSize = static_cast<VkDeviceSize>(kMaxBuckets) * 3 * sizeof(uint32_t);
+
+    CreateHostBuffer(instSize,  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf,  instMem,  false);
+    CreateHostBuffer(boundSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, boundBuf, boundMem, false);
+    CreateHostBuffer(countSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, countBuf, countMem, true);
+    CreateHostBuffer(idxSize,   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, idxBuf,   idxMem,   true);
+    CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, minXBuf, minXMem, true);
+    CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, minYBuf, minYMem, true);
+    CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, maxXBuf, maxXMem, true);
+    CreateHostBuffer(extremaSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, maxYBuf, maxYMem, true);
+    CreateHostBuffer(indirectSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, indirectBuf, indirectMem, true);
+
+    UploadBuffer(instMem,  instances.data(),    instSize);
+    UploadBuffer(boundMem, boundSpheres.data(), boundSize);
+
+    const std::vector<uint32_t> spirv = ReadSpirv(RECIPE_BUCKETING_SPV);
+    ASSERT_FALSE(spirv.empty()) << "Failed to read compiled SPIR-V at " << RECIPE_BUCKETING_SPV;
+    VkShaderModuleCreateInfo smci{};
+    smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    smci.codeSize = spirv.size() * sizeof(uint32_t); smci.pCode = spirv.data();
+    VkShaderModule shaderModule = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shaderModule), VK_SUCCESS);
+
+    auto bind = [](uint32_t b) {
+        VkDescriptorSetLayoutBinding lb{};
+        lb.binding = b; lb.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; lb.descriptorCount = 1;
+        lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        return lb;
+    };
+    const std::array<VkDescriptorSetLayoutBinding, 9> bindings = {
+        bind(0), bind(1), bind(2), bind(3), bind(4), bind(5), bind(6), bind(7), bind(8),
+    };
+    VkDescriptorSetLayoutCreateInfo dslci{};
+    dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dslci.bindingCount = static_cast<uint32_t>(bindings.size()); dslci.pBindings = bindings.data();
+    VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
+
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0; pcr.size = sizeof(PushConstants);
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 1; plci.pSetLayouts = &dsl;
+    plci.pushConstantRangeCount = 1; plci.pPushConstantRanges = &pcr;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &plci, nullptr, &pipelineLayout), VK_SUCCESS);
+
+    VkComputePipelineCreateInfo cpci{};
+    cpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    cpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    cpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    cpci.stage.module = shaderModule; cpci.stage.pName = "main";
+    cpci.layout = pipelineLayout;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline), VK_SUCCESS);
+
+    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9};
+    VkDescriptorPoolCreateInfo dpci{};
+    dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    dpci.maxSets = 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = &poolSize;
+    VkDescriptorPool descPool = VK_NULL_HANDLE;
+    ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &dpci, nullptr, &descPool), VK_SUCCESS);
+
+    VkDescriptorSetAllocateInfo dsai{};
+    dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    dsai.descriptorPool = descPool; dsai.descriptorSetCount = 1; dsai.pSetLayouts = &dsl;
+    VkDescriptorSet descSet = VK_NULL_HANDLE;
+    ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &descSet), VK_SUCCESS);
+
+    VkDescriptorBufferInfo instInfo{instBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo boundInfo{boundBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo countInfo{countBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo idxInfo{idxBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo minXInfo{minXBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo minYInfo{minYBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo maxXInfo{maxXBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo maxYInfo{maxYBuf, 0, VK_WHOLE_SIZE};
+    VkDescriptorBufferInfo indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE};
+
+    auto wBuf = [&](uint32_t b, VkDescriptorBufferInfo* info) {
+        VkWriteDescriptorSet w{};
+        w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w.dstSet = descSet; w.dstBinding = b; w.descriptorCount = 1;
+        w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
+        return w;
+    };
+    const std::array<VkWriteDescriptorSet, 9> writes = {
+        wBuf(0, &instInfo), wBuf(1, &boundInfo), wBuf(2, &countInfo), wBuf(3, &idxInfo),
+        wBuf(4, &minXInfo), wBuf(5, &minYInfo), wBuf(6, &maxXInfo), wBuf(7, &maxYInfo),
+        wBuf(8, &indirectInfo),
+    };
+    vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+
+    VkCommandBufferAllocateInfo cbai{};
+    cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool = commandPool_; cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &cbai, &cmd), VK_SUCCESS);
+
+    VkCommandBufferBeginInfo bi{};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    ASSERT_EQ(vkBeginCommandBuffer(cmd, &bi), VK_SUCCESS);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descSet, 0, nullptr);
+
+    PushConstants pcInit{};
+    pcInit.viewProj = viewProj;
+    pcInit.instanceCount = instanceCount;
+    pcInit.maxBuckets = kMaxBuckets;
+    pcInit.maxMembersPerBucket = kMaxMembersPerBucket;
+    pcInit.screenWidth = kScreenWidth;
+    pcInit.screenHeight = kScreenHeight;
+    pcInit.mode = 1;  // init pass
+    pcInit.raySizeCoef = raySizeCoef;
+    pcInit.raySizeBias = raySizeBias;
+    pcInit.cameraPos = cameraPos;
+    vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pcInit), &pcInit);
+    vkCmdDispatch(cmd, (kMaxBuckets + 63) / 64, 1, 1);
+
+    VkMemoryBarrier initBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    initBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    initBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &initBarrier, 0, nullptr, 0, nullptr);
+
+    PushConstants pcBucket = pcInit;
+    pcBucket.mode = 0;  // bucket + coverage pass
+    vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pcBucket), &pcBucket);
+    vkCmdDispatch(cmd, (instanceCount + 63) / 64, 1, 1);
+
+    VkMemoryBarrier hostBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    hostBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    hostBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                         0, 1, &hostBarrier, 0, nullptr, 0, nullptr);
+
+    ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
+
+    VkSubmitInfo si{};
+    si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
+    ASSERT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
+    ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+
+    auto readback = [&](VkDeviceMemory mem, VkDeviceSize size, auto& out) {
+        void* mapped = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, mem, 0, size, 0, &mapped), VK_SUCCESS);
+        out.resize(static_cast<size_t>(size) / sizeof(typename std::decay_t<decltype(out)>::value_type));
+        std::memcpy(out.data(), mapped, static_cast<size_t>(size));
+        vkUnmapMemory(logicalDevice_, mem);
+    };
+
+    std::vector<uint32_t> bucketCounts, bucketIndices;
+    readback(countMem, countSize, bucketCounts);
+    readback(idxMem, idxSize, bucketIndices);
+
+    // --- The decisive assertions ---
+    // recipeGated's bucket must contain EXACTLY the near instance (kNearIdx), NOT the far one
+    // (kFarGatedIdx) -- gated out entirely, not merely excluded from coverage.
+    ASSERT_EQ(bucketCounts[kRecipeGated], 1u)
+        << "recipeGated: expected exactly 1 bucketed instance (the near one), far instance "
+           "should have been gated out";
+    EXPECT_EQ(bucketIndices[kRecipeGated * kMaxMembersPerBucket + 0], kNearIdx)
+        << "recipeGated: the bucketed instance should be the NEAR one, not the far (gated) one";
+
+    // recipeControl (not opted in) must bucket its far instance normally -- proves the gate
+    // does not leak onto non-participating recipes regardless of distance.
+    ASSERT_EQ(bucketCounts[kRecipeControl], 1u)
+        << "recipeControl: non-participating recipe must bucket its instance normally "
+           "even though it is at the SAME far distance as recipeGated's gated-out instance";
+    EXPECT_EQ(bucketIndices[kRecipeControl * kMaxMembersPerBucket + 0], kFarControlIdx);
+
+    std::printf("[BUCKETING-GATE] recipeGated count=%u (expected 1, near only) "
+                "recipeControl count=%u (expected 1, far but non-participating)\n",
+                bucketCounts[kRecipeGated], bucketCounts[kRecipeControl]);
 
     vkDeviceWaitIdle(logicalDevice_);
     vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);

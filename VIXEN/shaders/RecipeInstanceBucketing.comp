@@ -76,11 +76,21 @@ layout(std430, binding = 0) readonly buffer BodyInstanceBuffer {
 // getRecipeBoundSphere's signature but unused by this pass's own coverage math (M1 does
 // screen-space AABB from center+radius only; relaxation affects step size, not bound
 // extent).
+//
+// Load-Tier Contract M1 (gating tier): gateFootprintThreshold is a per-recipe opt-in,
+// CPU-uploaded from RecipeEntry::gateFootprintThreshold — 0.0 (the default) means "not
+// opted in," and this pass's gating check below is skipped entirely, leaving a
+// non-participating recipe's bucketing behavior byte-identical to before this milestone
+// (mirrors boundRadius/stepRelaxation's own "0 = engine default/off" convention,
+// RecipeRegistry.h). A positive value is a minimum screen-space footprint (same units as
+// TraceWorld.glsl's `footprint = distance * raySizeCoef + raySizeBias`); an instance whose
+// footprint falls below it is gated OUT of this frame's bucketing/promotion entirely.
 struct RecipeBoundSphere {
     vec3  center;
     float radius;
     float relaxation;
-    float _pad[3];
+    float gateFootprintThreshold;
+    float _pad[2];
 };
 
 layout(std430, binding = 1) readonly buffer RecipeBoundSphereBuffer {
@@ -137,6 +147,20 @@ layout(push_constant) uniform Push {
     uint  screenWidth;
     uint  screenHeight;
     uint  mode;                // 0 = bucket + coverage; 1 = init extrema; 2 = emit indirect cmd
+    // Load-Tier Contract M1: same CameraNodeConfig-derived LOD cone-spread constants
+    // TraceWorld.glsl's pc.raySizeCoef/pc.raySizeBias already carry (RaySizeCoefNode +
+    // a pinhole-camera ConstantNode, wired identically here — see BuildRenderGraph.cpp).
+    // raySizeCoef == 0.0 disables the gating check entirely (same convention as every
+    // other raySizeCoef consumer in this codebase), independent of any per-recipe
+    // gateFootprintThreshold opt-in. cameraPos is the same CameraNodeConfig field
+    // SceneBindings.glsl's cameraPos already carries — needed here (unlike the main
+    // march) because this pass has no per-instance ray/entryT of its own; distance is
+    // computed directly from camera world position to the instance's bound-sphere center,
+    // the camera-to-content distance TraceWorld.glsl's entryT approximates for a ray that
+    // has already reached the sphere.
+    float raySizeCoef;
+    float raySizeBias;
+    vec3  cameraPos;
 } pc;
 
 // Projects a world-space point through viewProj to pixel-space (x,y); returns false if the
@@ -213,6 +237,37 @@ void main() {
     uint recipeId = inst.recipeId;
     if (recipeId >= pc.maxBuckets) return;  // out-of-range recipeId: dropped (see file header)
 
+    // Task 3 setup (moved ahead of Task 2's append, Load-Tier Contract M1): the bound
+    // sphere is needed for the new gating check below BEFORE deciding whether this
+    // instance gets appended at all. The bound sphere is a PER-RECIPE property (not
+    // per-instance), but its center is recipe-LOCAL — the actual world-space sphere for
+    // THIS instance is the recipe's bound sphere translated to this instance's worldPos
+    // (mirrors how getRecipeBoundSphere's center is combined with a BodyInstance's own
+    // worldPos at the existing TraceWorld.glsl call sites: boundCenter is added to
+    // inst.worldPos there too).
+    RecipeBoundSphere bound = recipeBounds[recipeId];
+    vec3 sphereCenterWorld = inst.worldPos + bound.center;
+    float radius = bound.radius;
+
+    // Load-Tier Contract M1 (gating tier): a recipe opts in by setting
+    // gateFootprintThreshold > 0.0 (RecipeEntry's own "0 = not opted in" convention,
+    // mirroring boundRadius/stepRelaxation — RecipeRegistry.h). When opted in AND LOD is
+    // live (pc.raySizeCoef > 0.0, same gate every other raySizeCoef consumer in this
+    // codebase uses), compute the SAME footprint formula TraceWorld.glsl:232 uses
+    // (footprint = distance * raySizeCoef + raySizeBias) from the camera-to-sphere-center
+    // distance, and drop this instance from bucketing/promotion entirely (no append, no
+    // coverage contribution) when its footprint falls below the recipe's threshold. A
+    // non-opted-in recipe (gateFootprintThreshold == 0.0) or a LOD-disabled build/test
+    // (raySizeCoef == 0.0) never evaluates this branch — byte-identical to pre-M1
+    // behavior, the n=0 case.
+    if (bound.gateFootprintThreshold > 0.0 && pc.raySizeCoef > 0.0) {
+        float distance = length(sphereCenterWorld - pc.cameraPos);
+        float footprint = distance * pc.raySizeCoef + pc.raySizeBias;
+        if (footprint < bound.gateFootprintThreshold) {
+            return;  // gated out: too small on screen to matter this frame
+        }
+    }
+
     // Task 2: atomic-append compaction into this bucket's slot list.
     uint slot = atomicAdd(bucketCounts[recipeId], 1u);
     if (slot < pc.maxMembersPerBucket) {
@@ -222,14 +277,7 @@ void main() {
     // the host can detect truncation — see file header).
 
     // Task 3: project this instance's recipe bound sphere and union into the bucket's
-    // screen-space AABB. The bound sphere is a PER-RECIPE property (not per-instance), but
-    // its center is recipe-LOCAL — the actual world-space sphere for THIS instance is the
-    // recipe's bound sphere translated to this instance's worldPos (mirrors how
-    // getRecipeBoundSphere's center is combined with a BodyInstance's own worldPos at the
-    // existing TraceWorld.glsl call sites: boundCenter is added to inst.worldPos there too).
-    RecipeBoundSphere bound = recipeBounds[recipeId];
-    vec3 sphereCenterWorld = inst.worldPos + bound.center;
-    float radius = bound.radius;
+    // screen-space AABB.
 
     // Conservative screen-space footprint: project the sphere center plus 6 axis-extremal
     // points (center +/- radius along world X/Y/Z) and union their pixel-space projections.

@@ -110,7 +110,11 @@ namespace {
 constexpr uint32_t kHotnessThreshold = 4;
 bool IsHot(uint32_t bucketInstanceCount) { return bucketInstanceCount >= kHotnessThreshold; }
 
-// Byte-identical to RecipeInstanceBucketing.comp's Push block (mirrors M2/M3's own copy).
+// Byte-identical to RecipeInstanceBucketing.comp's Push block (mirrors M2/M3's own copy;
+// Load-Tier Contract M1 added raySizeCoef/raySizeBias/cameraPos -- KI-034 is the exact bug
+// class this staleness risks, keep every hand-mirrored copy of this struct in lockstep with
+// the shader). Value-init (`BucketingPush pc{};`) zero-inits the 3 new fields, which is
+// exactly "gating disabled" -- this file's existing scenes are unaffected.
 struct BucketingPush {
     glm::mat4 viewProj;
     uint32_t  instanceCount;
@@ -119,13 +123,19 @@ struct BucketingPush {
     uint32_t  screenWidth;
     uint32_t  screenHeight;
     uint32_t  mode;
+    float     raySizeCoef;
+    float     raySizeBias;
+    glm::vec3 cameraPos;
 };
 
+// Byte-identical to the shader's RecipeBoundSphere struct. Load-Tier Contract M1 added
+// gateFootprintThreshold (0.0 = not opted in).
 struct RecipeBoundSphereCpu {
     float center[3];
     float radius;
     float relaxation;
-    float _pad[3];
+    float gateFootprintThreshold;
+    float _pad[2];
 };
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
@@ -561,7 +571,7 @@ protected:
         for (const auto& rd : recipes) {
             boundSpheres[rd.recipeId] = RecipeBoundSphereCpu{
                 {rd.entry.boundCenter.x, rd.entry.boundCenter.y, rd.entry.boundCenter.z},
-                rd.entry.boundRadius, rd.entry.stepRelaxation, {0, 0, 0}};
+                rd.entry.boundRadius, rd.entry.stepRelaxation, 0.0f, {0, 0}};
         }
         UploadBuffer(boundMem, boundSpheres.data(), boundSize);
 
