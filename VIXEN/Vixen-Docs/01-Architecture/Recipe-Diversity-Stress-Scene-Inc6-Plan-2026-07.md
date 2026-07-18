@@ -1,6 +1,8 @@
 # Recipe Diversity Stress-Test Scene — Increment 6 Plan (2026-07-17)
 
-> **Status: SCOPED, not yet started.** New increment, not a continuation of
+> **Status: COMPLETE (2026-07-18) — all 4 milestones DONE + Opus-validated APPROVED.** See
+> "Increment status: COMPLETE" below the Milestone Map for the headline result and follow-ups.
+> New increment, not a continuation of
 > [[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]]'s own numbered increment sketch (that epic's
 > next candidate item, single-dispatch-unrolled-selection, explicitly needs its own cheap pre-check
 > before scoping — separate, not started here). This increment builds a large, realistic stress-test
@@ -518,6 +520,69 @@ instances-each shape rather than assuming uniform per-recipe instance counts).
     - Files touched: none (pure measurement milestone, no source changes) — this doc and
       [[Perf-Ledger]] only, plus new throwaway `.bat` sweep-driver scripts under `VIXEN/temp/`
       (gitignored, not part of the diff).
+  - **Opus re-validator: APPROVED (2026-07-18) — soft-collapse finding independently
+    reproduced, not just trusted.** Ran an independent partial re-sweep (N=20/100/250, 3 runs
+    each, identical methodology) on a fresh confirmed M3 binary: own collapse ratios (1.78x at
+    N=100, 2.76x at N=250) matched the reported 1.79x/2.86x almost exactly — a sharp ~8x knee
+    would have produced ~20 FPS at N=100, the validator measured ~89, ruling that out directly.
+    Recomputed the entire reported FPS table from the implementer's own raw CSVs (still present
+    in `VIXEN/temp/`) and got matching numbers to rounding — confirmed genuine, not massaged.
+    Verified the prior-measurement comparison figures (8x/2x/m_i-k_i-shaped-knee) are accurately
+    quoted from their actual source docs. **Independently reproduced KI-042 from the raw
+    discarded CSV** (recomputed mean=8925.8/max=10832.6 FPS, matching the cited ~8,900/~10,800
+    exactly; found the literal `MINIMIZED — pausing rendering` log line) and traced the
+    mechanism in code (`VulkanGraphApplication.cpp`'s wall-clock `PostTick` timing +
+    `PerfCsvWriter`'s rolling window) — a genuine artifact, not a discarded inconvenient sample.
+    Confirmed the correctness-pass error counts match M3's already-established pre-existing
+    baseline exactly. Re-ran the full regression suite independently, zero regressions.
+    **Found independent corroborating evidence for the central claim**: N=200 (55.9 FPS) and
+    N=250 (56.3 FPS) are statistically indistinguishable in both the reported AND the
+    validator's own data — exactly where the 192-instance ceiling plateaus, not where N (25%
+    higher at 250) would predict a further slowdown if the collapse were driven by recipe/case
+    count alone. Cross-checked against `whole_frame_gpu_span_ms` (own measurement: 6.23ms →
+    11.22ms → 17.45ms across N=20/100/250, a ~2.8x climb mirroring the ~2.8x FPS collapse),
+    confirming the effect is genuinely GPU-bound, not a measurement artifact. Confirmed the
+    controller-added fullscreen-stutter note is honestly framed as unverified/unreproduced
+    (did not attempt to reproduce it live — explicitly optional per the prompt, machine under
+    concurrent load — flagged as skipped, not blocking). Reviewed the whole 4-milestone arc
+    (M1 mechanism → M2 generalization+real bug fix → M3 animation at scale → M4 measurement)
+    and found nothing that only becomes visible now that wasn't already caught per-milestone;
+    the one cross-cutting open item (KI-027's shared, pre-existing GaiaVoxelWorld flakiness,
+    hit in every milestone) remains correctly out of scope and non-blocking. **Own independent
+    verdict: all 4 milestones complete, measurement rigorous and independently reproduced,
+    findings honest — ready for final review/merge.**
+
+## Increment status: COMPLETE (2026-07-18)
+
+All 4 milestones (M1 spatial-contract prototype, M2 diversity+placement generalization at
+N=20-250, M3 real-time per-frame parameter animation at scale, M4 sweep+measurement) are DONE
+and independently Opus-validated APPROVED. Branch `feat/recipe-diversity-stress-inc6` is ready
+for a final whole-diff Opus review before merging to `main`, per this program's own standing
+discipline (a final reviewer over the entire diff, not just per-milestone review, before
+[[finishing-a-development-branch]]).
+
+**Headline result**: this increment's own central finding — the tier-0 switch-cost collapse in
+a genuinely diverse, spatially-distributed, dynamically-animated scene is far more gradual
+(~1.8x at N=100, ~2.9x at N=200-250) than either prior synthetic-scene measurement (~8x
+original, ~2x corrected) — should be considered the current authoritative number for this
+question. Anyone citing "N=100 knee ≈8x" going forward should also cite this scene's own ~1.8x
+as the more realistic, diverse-scene figure, with the instance-count-cap-at-192 explanation
+(corroborated independently by both the M4 implementer and its Opus validator via the
+N=200≈N=250 plateau) as the leading explanation for why it's softer.
+
+**Two real, separately-tracked follow-ups spun off, neither blocking this increment's own
+completion**:
+- **KI-027** (pre-existing `GaiaVoxelWorld`/Cornell-boot-bake concurrent-load crash) — hit in
+  every milestone of this increment, root-caused by M2's validator, confirmed unrelated to this
+  increment's own code by grep in every subsequent milestone. Worth its own dedicated
+  escalation/fix given how repeatedly it surfaced here.
+- **KI-042** (new, `VIXEN_PERF_CSV`'s rolling-average FPS column corrupting toward
+  non-physical values under a window-minimization event) — a measurement-tooling gap for any
+  future perf-sweep work on this same shared machine, not a render defect.
+- **Unverified, user-observed fullscreen-mode stutter at N≈50** — flagged in [[Perf-Ledger]],
+  outside this increment's own windowed-mode-only measurement scope, not investigated by any
+  agent this increment. Worth a dedicated look if display-mode-dependent performance becomes a
+  priority.
 
 ## Risks / decision points
 
