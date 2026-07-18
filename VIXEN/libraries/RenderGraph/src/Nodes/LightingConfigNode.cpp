@@ -9,6 +9,7 @@
 #include "Generated/LightingConfig.g.h"
 #include "VulkanDevice.h"
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 
@@ -42,6 +43,20 @@ Vixen::Gpu::LightingConfig MakeDefaultLightingConfig() {
     cfg.lights[0].radianceZ = 1.0f;
     cfg.lights[0].range     = 0.0f;  // unused for directional
     return cfg;
+}
+
+// M11.1: the Cornell demo authors its own light -- the ceiling area-emitter
+// (body 5, CornellBoxSceneDefinition.h kLightEmissionIntensity), baked into the
+// light-tree and lit via ReSTIR-direct + DDGI-indirect. This global default's
+// directional light was never authored by the Cornell scene; left on, it adds
+// an unwanted second light whose grazing shadow rays produced the M10 floor/
+// wall blotching. Scoped to the Cornell demo env-gate only (both variants, so
+// baked vs virtual A/B stays apples-to-apples) -- every other scene keeps the
+// directional light unchanged. Ambient stays: it's a flat baseline term, not
+// the blotching source (the shadow ray on the directional light is).
+bool IsCornellDemo() {
+    return std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") != nullptr ||
+           std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") != nullptr;
 }
 
 }  // namespace
@@ -100,7 +115,13 @@ void LightingConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Static default content (no UI/authoring this increment — Sampled Lighting
     // Inc0 §4). Re-uploaded every frame anyway: 144 B is negligible and this
     // keeps the node ready for a future SetLights() with no rewiring.
-    const Vixen::Gpu::LightingConfig cfg = MakeDefaultLightingConfig();
+    Vixen::Gpu::LightingConfig cfg = MakeDefaultLightingConfig();
+    if (IsCornellDemo()) {
+        // Ceiling area-emitter (light-tree/ReSTIR/DDGI) is the Cornell scene's
+        // sole light; drop the stray directional light but keep the ambient
+        // baseline (not the blotching source -- see IsCornellDemo() comment).
+        cfg.lightCount = 0u;
+    }
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);
