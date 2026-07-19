@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowbodies
-version 0xE5CC1228
+version 0x0A962057
 elem UndertowBodyRow
   kind int
   mass float
