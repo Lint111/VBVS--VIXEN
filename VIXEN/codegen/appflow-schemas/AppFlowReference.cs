@@ -116,7 +116,9 @@ namespace Vixen.AppFlow.Reference
 
     // Data names the [View] noun it mutates (design D16) — the View (Inc-1->3) is the single
     // source for data flowing engine<->consumer; a Data verb operates on a declared View noun,
-    // not an opaque blob. Compile-checked against the Hud [View] schema via --view-schema.
-    [FlowDataTarget(nameof(FlowAction.Data), "bodyCount")]
+    // not an opaque blob. Compile-checked against the [View] schema via --view-schema, resolving to
+    // the typed ViewNounId::UndertowHud_bodyCount member (seam M2b). QUALIFIED (UndertowHud.bodyCount)
+    // because bodyCount also appears on VIXEN's editor Hud [View]; the sim's HUD is UndertowHud.
+    [FlowDataTarget(nameof(FlowAction.Data), "UndertowHud.bodyCount")]
     public static class DataToBodyCount { }
 }
