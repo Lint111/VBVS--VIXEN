@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "AppFlowRuntime.h"
 #include "AppFlowLoader.h"
+#include "LayerControllerViewDataProvider.h"
 #include "MessageBus.h"
 #include "AppFlowEvents.h"
 using namespace Vixen::AppFlow;
@@ -75,6 +76,35 @@ TEST(AppFlowRuntime, DispatchByKeyRunsBoundActionUndoably) {
     EXPECT_EQ(value, 0);
     // An unbound chord is a no-op rejection, never a crash.
     EXPECT_EQ(rt.DispatchByKey({KeyId::A, KeyMod::None}), DispatchResult::RejectedByState);
+}
+
+// Seam M2c end-to-end: the generated Data action targets EditorNouns_layerMask; with a
+// LayerControllerViewDataProvider wired at Load(), DispatchData writes the mask through the
+// provider and ReadData reads it back — the seam closes from generated dataTarget to real mask.
+TEST(AppFlowRuntime, DataActionDrivesProviderMask) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    rt.Layers().SetLayerCount(16);   // LayerController::SetMask caps to count_ bits; 0 count = all masked off.
+    LayerControllerViewDataProvider provider(rt.Layers());
+    ASSERT_EQ(rt.Load(&provider), LoadResult::Ok);
+
+    EXPECT_EQ(rt.DispatchData(FlowActionId::Data, 0xABCDu), DispatchResult::Ok);
+    EXPECT_EQ(rt.Layers().Mask(), 0xABCDu);            // wrote through the provider (within 16 layers)
+    uint32_t got = 0;
+    EXPECT_TRUE(rt.ReadData(FlowActionId::Data, got));
+    EXPECT_EQ(got, 0xABCDu);                            // read back through the provider
+
+    // A non-Data action id has no target → rejected, not a crash.
+    EXPECT_EQ(rt.DispatchData(FlowActionId::ToggleLayer, 1u), DispatchResult::RejectedByState);
+}
+
+// No provider wired (the default Load()) → the Data leg is inert: the mapping still loads, but
+// dispatching a Data action is rejected rather than dereferencing a null provider.
+TEST(AppFlowRuntime, DataLegInertWithoutProvider) {
+    AppFlowRuntime rt(nullptr, /*sender*/1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);   // no provider
+    EXPECT_EQ(rt.DispatchData(FlowActionId::Data, 1u), DispatchResult::RejectedByState);
+    uint32_t got = 0;
+    EXPECT_FALSE(rt.ReadData(FlowActionId::Data, got));
 }
 
 // NavPop is an encapsulated pass-through to the FSM's entry-history pop — no raw

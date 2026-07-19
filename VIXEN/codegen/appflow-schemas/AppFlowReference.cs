@@ -117,8 +117,10 @@ namespace Vixen.AppFlow.Reference
     // Data names the [View] noun it mutates (design D16) — the View (Inc-1->3) is the single
     // source for data flowing engine<->consumer; a Data verb operates on a declared View noun,
     // not an opaque blob. Compile-checked against the [View] schema via --view-schema, resolving to
-    // the typed ViewNounId::UndertowHud_bodyCount member (seam M2b). QUALIFIED (UndertowHud.bodyCount)
-    // because bodyCount also appears on VIXEN's editor Hud [View]; the sim's HUD is UndertowHud.
-    [FlowDataTarget(nameof(FlowAction.Data), "UndertowHud.bodyCount")]
-    public static class DataToBodyCount { }
+    // the typed ViewNounId::EditorNouns_layerMask member (seam M2b/M2c). Targets the editor layer
+    // mask — the noun LayerControllerViewDataProvider serves — so AppFlowLoader wires the Data
+    // action end-to-end through IViewDataProvider (M2c). EditorNouns_layerMask is unambiguous, so
+    // the bare "layerMask" would resolve too; kept qualified for clarity.
+    [FlowDataTarget(nameof(FlowAction.Data), "EditorNouns.layerMask")]
+    public static class DataToLayerMask { }
 }

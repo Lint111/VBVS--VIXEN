@@ -85,7 +85,7 @@ inline constexpr AppFlowReturnEdge kReturnEdges[] = {
 };
 
 inline constexpr AppFlowDataTarget kDataTargets[] = {
-    { FlowActionId::Data, ViewNounId::UndertowHud_bodyCount }
+    { FlowActionId::Data, ViewNounId::EditorNouns_layerMask }
 };
 
 // Mirrors RecipeContainerView's role: the reader later tasks parse the artifact through.

@@ -26,8 +26,27 @@ void AppFlowRuntime::Publish(AppFlowChangedEvent::Kind kind, FlowStateId state,
 // and not read `.action` on non-Action* kinds. Inc-2 should either carry the affected id
 // or add an explicit "none" sentinel (there is no reserved sentinel enumerator yet).
 
-LoadResult AppFlowRuntime::Load() {
-    return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_, inputProfile_);
+LoadResult AppFlowRuntime::Load(IViewDataProvider* dataProvider) {
+    dataProvider_ = dataProvider;
+    return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_, inputProfile_,
+                              &dataTargets_);
+}
+
+DispatchResult AppFlowRuntime::DispatchData(FlowActionId id, uint32_t value) {
+    auto it = dataTargets_.find(uint16_t(id));
+    if (it == dataTargets_.end() || !dataProvider_) {
+        return DispatchResult::RejectedByState;
+    }
+    dataProvider_->WriteU32(ViewNounKey{it->second}, value);
+    return DispatchResult::Ok;
+}
+
+bool AppFlowRuntime::ReadData(FlowActionId id, uint32_t& out) const {
+    auto it = dataTargets_.find(uint16_t(id));
+    if (it == dataTargets_.end() || !dataProvider_) {
+        return false;
+    }
+    return dataProvider_->ReadU32(ViewNounKey{it->second}, out);
 }
 
 DispatchResult AppFlowRuntime::NavTo(FlowStateId to) {

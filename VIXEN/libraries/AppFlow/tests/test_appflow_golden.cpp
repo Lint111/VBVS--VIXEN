@@ -69,10 +69,13 @@ TEST(AppFlowGolden, ReturnActionAndBackButtonTriggerPresent) {
 }
 
 // Inc-4 reframe R3 (design D16): a Data action names the [View] noun it mutates,
-// compile-checked against the Hud [View] schema via --view-schema.
+// compile-checked against the [View] schema via --view-schema. Seam M2b made the noun a TYPED
+// ViewNounId member (was a raw string); seam M2c retargeted it to EditorNouns_layerMask -- the
+// noun LayerControllerViewDataProvider serves -- so the loader wires the Data action end-to-end
+// through the day-one direct-field provider.
 TEST(AppFlowGolden, DataTargetsTablePresent) {
     const std::string h = readFile(APPFLOW_GENERATED_HEADER_PATH);
     EXPECT_NE(h.find("Data=6"), std::string::npos);
     EXPECT_NE(h.find("kDataTargets"), std::string::npos);
-    EXPECT_NE(h.find("\"bodyCount\""), std::string::npos);
+    EXPECT_NE(h.find("ViewNounId::EditorNouns_layerMask"), std::string::npos);
 }

@@ -7,9 +7,11 @@
 #include "AppFlowEvents.h"
 #include "AppFlowResults.h"
 #include "ActionStack.h"
+#include "AppFlowLoader.h"
 #include "BindingStore.h"
 #include "FlowStateMachine.h"
 #include "InputProfile.h"
+#include "IViewDataProvider.h"
 #include "LayerController.h"
 #include "MessageBus.h"
 
@@ -30,8 +32,10 @@ public:
 
     AppFlowRuntime(Vixen::EventBus::MessageBus* bus, Vixen::EventBus::SenderID sender);
 
-    // Builds the generated AppFlowContainerView and loads it into the fsm/stack/bindings.
-    LoadResult Load();
+    // Builds the generated AppFlowContainerView and loads it into the fsm/stack/bindings (+ M2c
+    // dataTargets). Optionally wires an IViewDataProvider so a Data action's noun read/write goes
+    // through it (nullptr — the default — leaves the Data leg inert, never a crash).
+    LoadResult Load(IViewDataProvider* dataProvider = nullptr);
 
     // Pass-throughs to the fsm, exposed so a consumer (or test) can drive Inc-1's
     // externally-set guard stub without reaching into the owned FlowStateMachine.
@@ -71,6 +75,20 @@ public:
     // RejectedByState — never a crash.
     DispatchResult DispatchByKey(Generated::KeyChord chord);
 
+    // Seam M2c: dispatch a Data action — write `value` to the [View] noun the action targets,
+    // through the wired IViewDataProvider. RejectedByState if the id isn't a Data target, has no
+    // provider, or the provider rejects the noun (never a crash). ReadData is the read twin.
+    DispatchResult DispatchData(Generated::FlowActionId id, uint32_t value);
+    bool ReadData(Generated::FlowActionId id, uint32_t& out) const;
+
+    // Bind (or rebind) a Data action to a [View] noun beyond what Load() seeded from the generated
+    // dataTargets(). A consumer whose Data action targets a noun outside the shared schema (e.g. an
+    // editor Data verb on EditorNouns_layerMask) wires it here after Load(); the same
+    // DispatchData/ReadData path then services it.
+    void BindDataTarget(Generated::FlowActionId id, ViewNounId noun) {
+        dataTargets_[static_cast<uint16_t>(id)] = noun;
+    }
+
     // Pass-through so tests/consumers author bindings without reaching into the store.
     bool AddBinding(const BindingStore::BindingSpec& spec, std::string& warn) {
         return bindings_.AddBinding(spec, warn);
@@ -103,6 +121,10 @@ private:
     // than FlowActionId itself, since std::unordered_map has no default hash for a plain
     // enum class without <cstdint>-adjacent boilerplate.
     std::unordered_map<uint16_t, Handler> handlers_;
+    // Seam M2c: the (Data action -> View noun) map seeded at Load() + the wired provider (both
+    // nullable/empty until a consumer wires them). Non-owning provider pointer.
+    DataTargetTable dataTargets_;
+    IViewDataProvider* dataProvider_ = nullptr;
 };
 
 } // namespace Vixen::AppFlow

@@ -18,7 +18,8 @@ bool IsValidState(FlowStateId s) {
 } // namespace
 
 LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachine& fsm,
-                                ActionStack& stack, BindingStore& bindings, InputProfile& input) {
+                                ActionStack& stack, BindingStore& bindings, InputProfile& input,
+                                DataTargetTable* dataTargets) {
     const auto actions = view.actions();
     const auto transitions = view.transitions();
 
@@ -47,6 +48,13 @@ LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachin
     // scopes the binding so Esc only pops where a return edge is declared.
     for (const auto& r : view.returnEdges()) {
         input.Bind(Generated::FlowScope::State, r.from, r.trigger, Generated::FlowActionId::Return);
+    }
+
+    // Seed Data-action view-noun targets (M2c). nullptr (no provider wired) skips the leg.
+    if (dataTargets) {
+        for (const auto& d : view.dataTargets()) {
+            (*dataTargets)[static_cast<uint16_t>(d.action)] = d.viewNoun;
+        }
     }
 
     return LoadResult::Ok;
