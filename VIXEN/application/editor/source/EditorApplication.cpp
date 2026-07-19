@@ -184,7 +184,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     {
         using Vixen::AppFlow::ViewNounKey;
         using Vixen::AppFlow::ViewNounId;
-        layerProvider_.WriteU32(ViewNounKey{ViewNounId::LayerMask}, rt_.Layers().Mask());
+        layerProvider_.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask}, rt_.Layers().Mask());
     }
 
     // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
@@ -210,7 +210,7 @@ bool EditorApplication::LoadDocument(const std::string& path) {
                 // exactly as before) -- only the RMW's storage access is indirected.
                 using Vixen::AppFlow::ViewNounKey;
                 using Vixen::AppFlow::ViewNounId;
-                const ViewNounKey key{ViewNounId::LayerMask};
+                const ViewNounKey key{ViewNounId::EditorNouns_layerMask};
                 uint32_t mask = 0;
                 // Inc-B fix (Inc-A carry -- ReadU32 is genuinely fallible now that the provider is
                 // Gaia-backed: gaiaLayerEntity_'s LayerMask component could in principle be absent,

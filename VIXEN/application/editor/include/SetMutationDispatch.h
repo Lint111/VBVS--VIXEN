@@ -140,7 +140,7 @@ inline SetMutationResult DispatchSetMutation(Vixen::AppFlow::ActionStack& stack,
                 return;
             }
             GaiaLayerViewDataProvider provider(world, entity);
-            provider.WriteU32(ViewNounKey{ViewNounId::LayerMask, 0}, forward ? newValue : priorValue);
+            provider.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask, 0}, forward ? newValue : priorValue);
         };
 
         // ActionStack::Dispatch() itself invokes apply(true) exactly once (ActionStack.cpp) --

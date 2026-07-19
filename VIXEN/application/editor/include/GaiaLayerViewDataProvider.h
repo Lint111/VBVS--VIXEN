@@ -40,7 +40,7 @@ public:
         : world_(world), entity_(entity) {}
 
     bool ReadU32(Vixen::AppFlow::ViewNounKey key, uint32_t& out) const override {
-        if (key.noun != Vixen::AppFlow::ViewNounId::LayerMask) return false;
+        if (key.noun != Vixen::AppFlow::ViewNounId::EditorNouns_layerMask) return false;
         auto value = world_.getComponentValue<Vixen::GaiaVoxel::LayerMask>(entity_);
         if (!value.has_value()) return false;  // fallible: entity valid but component absent
         out = *value;
@@ -48,7 +48,7 @@ public:
     }
 
     void WriteU32(Vixen::AppFlow::ViewNounKey key, uint32_t value) override {
-        if (key.noun != Vixen::AppFlow::ViewNounId::LayerMask) return;
+        if (key.noun != Vixen::AppFlow::ViewNounId::EditorNouns_layerMask) return;
         // setComponent<T> -> world.add<T>(id, T{value}) -- Gaia's add() overwrites an existing
         // component AS an ordinary mutable write, so it auto-bumps the component's chunk version
         // and fires the func_set hook (design §3/§5) exactly like a direct set<T> would. This is

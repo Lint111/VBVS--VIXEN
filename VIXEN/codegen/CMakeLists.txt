@@ -144,6 +144,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # [KernelCallable] methods and contributes nothing to the emitted header.
         _codegen_to_wsl_path("${_cg}" _schema_callables_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
+        # seam M2a: the typed ViewNounId enum, generated from every [View] field in view-schemas/
+        # (struct-qualified members). #included by IViewDataProvider.h, replacing the Inc-A hand-stub.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h" _out_view_noun_hdr_run)
         # --callable-cpp's tool-owned output moved to AppFlowCallables.generated.g.hpp (row-deltas
         # link 2/step-7B): UndertowViewCallables.IdentityString is `string`-typed, and
         # CppMappingTables has no string->C++ mapping (no bare C++ type for it, unlike
@@ -207,6 +210,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # also picks up view-schemas/UndertowViewCallables.cs, not just appflow-schemas/.
         set(_schema_callables_run "${_cg}")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
+        # seam M2a: the typed ViewNounId enum (native-path mirror of the WSL-bridge block above).
+        set(_out_view_noun_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h")
         # See the WSL-bridge branch's comment above: tool-owned output moved to
         # AppFlowCallables.generated.g.hpp; AppFlowCallables.g.hpp is now a hand-authored shim.
         set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp")
@@ -511,6 +516,23 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(appflow_regen
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
         COMMENT "[codegen] regenerate AppFlow.g.h"
+        VERBATIM)
+
+    # --- ViewNounId enum (seam M2a): --view-noun-enum emits the typed noun id from every [View]
+    # field in view-schemas/ (struct-qualified {Struct}_{field}), replacing IViewDataProvider.h's
+    # Inc-A hand-stub. Committed + drift-guarded like every other generated artifact; the whole
+    # view-schemas dir is the noun source (a Data-action provider switches on these ids).
+    set(_view_noun_args
+        run --project "${_yk_tool_run}" -c Release --
+        --view-noun-enum --schema "${_schema_view_run}"
+        --out-header "${_out_view_noun_hdr_run}")
+    add_custom_target(view_noun_enum_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
+        COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
+        VERBATIM)
+    add_custom_target(view_noun_enum_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
+        COMMENT "[codegen] regenerate ViewNounId.g.h"
         VERBATIM)
 
     # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every

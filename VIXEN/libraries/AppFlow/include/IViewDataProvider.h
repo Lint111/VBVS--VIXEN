@@ -1,5 +1,10 @@
 #pragma once
 #include <cstdint>
+// Typed noun id, generated from the [View] schema (NOT a raw string) so both providers implement a
+// compile-checked switch. Struct-qualified members ({ViewStruct}_{field}); the editor's mask noun is
+// ViewNounId::EditorNouns_layerMask (seam M2a, --view-noun-enum). The header declares
+// `namespace Vixen::AppFlow { enum class ViewNounId ... }`, so it is included at file scope.
+#include "generated/ViewNounId.g.h"
 
 // The view<->model accessor seam (View-Data-Provider-Seam-Design-2026-07.md). Generated/handwritten
 // handlers read/write a view noun through this interface instead of a concrete store directly, so
@@ -8,13 +13,6 @@
 // get/set/ref are synchronous with no commit/defer gate -- see the seam doc's "decisive finding").
 
 namespace Vixen::AppFlow {
-
-// Typed noun id, generated from the same schema source as the view (NOT a raw string) so both
-// providers implement a compile-checked switch. Inc-A hand-declares the one noun it needs;
-// a future codegen pass emits this enum from the [View] schema.
-enum class ViewNounId : uint32_t {
-    LayerMask = 0,
-};
 
 // Provider-interpreted instance slot. Direct-field providers ignore it; a future Gaia provider
 // may use it as an entity/morton index. Present from day one so retrofitting per-instance

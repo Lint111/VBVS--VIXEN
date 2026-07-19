@@ -110,17 +110,17 @@ TEST(ViewSelectionProvider, SelectionResolvedReadWriteHitsCorrectEntityNotEntity
 
     // Selection index 0 must read e1's value (0xBB), NOT e0's (0xAA) and NOT e2's (0xCC).
     uint32_t valueAtIndex0 = 0;
-    ASSERT_TRUE(provider.ReadU32(ViewNounKey{ViewNounId::LayerMask, 0}, valueAtIndex0));
+    ASSERT_TRUE(provider.ReadU32(ViewNounKey{ViewNounId::EditorNouns_layerMask, 0}, valueAtIndex0));
     EXPECT_EQ(valueAtIndex0, 0xBBu) << "selection index 0 resolved to the wrong entity's value";
 
     // Selection index 1 must read e2's value (0xCC).
     uint32_t valueAtIndex1 = 0;
-    ASSERT_TRUE(provider.ReadU32(ViewNounKey{ViewNounId::LayerMask, 1}, valueAtIndex1));
+    ASSERT_TRUE(provider.ReadU32(ViewNounKey{ViewNounId::EditorNouns_layerMask, 1}, valueAtIndex1));
     EXPECT_EQ(valueAtIndex1, 0xCCu) << "selection index 1 resolved to the wrong entity's value";
 
     // WRITE through selection index 1 (e2) must land on e2, and must NOT perturb e1 or e0 --
     // varying which entity gets written proves this isn't coincidentally correct.
-    provider.WriteU32(ViewNounKey{ViewNounId::LayerMask, 1}, 0xDDu);
+    provider.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask, 1}, 0xDDu);
 
     auto e2Value = world.getComponentValue<Vixen::GaiaVoxel::LayerMask>(e2);
     ASSERT_TRUE(e2Value.has_value());
@@ -136,8 +136,8 @@ TEST(ViewSelectionProvider, SelectionResolvedReadWriteHitsCorrectEntityNotEntity
 
     // Out-of-range selection index must fail closed (false / no-op), not fall back to entity 0.
     uint32_t outOfRangeRead = 0;
-    EXPECT_FALSE(provider.ReadU32(ViewNounKey{ViewNounId::LayerMask, 2}, outOfRangeRead));
-    provider.WriteU32(ViewNounKey{ViewNounId::LayerMask, 2}, 0xFFu);  // must no-op, not touch e0
+    EXPECT_FALSE(provider.ReadU32(ViewNounKey{ViewNounId::EditorNouns_layerMask, 2}, outOfRangeRead));
+    provider.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask, 2}, 0xFFu);  // must no-op, not touch e0
     auto e0ValueAfter = world.getComponentValue<Vixen::GaiaVoxel::LayerMask>(e0);
     ASSERT_TRUE(e0ValueAfter.has_value());
     EXPECT_EQ(*e0ValueAfter, 0xAAu) << "out-of-range write incorrectly fell back to entity 0";

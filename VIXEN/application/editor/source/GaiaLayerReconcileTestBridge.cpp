@@ -47,7 +47,7 @@ bool RunReconcile(GaiaLayerReconcileFixture& fixture, uint32_t& outValue) {
 bool ReadLayerMaskViaProvider(const GaiaLayerReconcileFixture& fixture, uint32_t& outValue) {
     using Vixen::AppFlow::ViewNounKey;
     using Vixen::AppFlow::ViewNounId;
-    return fixture.provider.ReadU32(ViewNounKey{ViewNounId::LayerMask}, outValue);
+    return fixture.provider.ReadU32(ViewNounKey{ViewNounId::EditorNouns_layerMask}, outValue);
 }
 
 }  // namespace Vixen::App

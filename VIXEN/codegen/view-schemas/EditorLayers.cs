@@ -21,6 +21,16 @@ namespace Vixen.ViewSchemas
         public string elementId;
     }
 
+    // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML
+    // data-model: the layer bitmask the LayerControllerViewDataProvider reads/writes through
+    // IViewDataProvider. Kept as its own struct (not a field on EditorLayers) so EditorLayers.g.h's
+    // RmlDataModel binder is unaffected — nothing invokes --view on EditorNouns; only --view-noun-enum
+    // reads its field name into ViewNounId::EditorNouns_layerMask.
+    [View]
+    public struct EditorNouns {
+        public uint layerMask;
+    }
+
     [View]
     public struct EditorLayers {
         [ViewSection(Layout = ViewLayout.Aos)] public EditorLayerRow[] layers;
