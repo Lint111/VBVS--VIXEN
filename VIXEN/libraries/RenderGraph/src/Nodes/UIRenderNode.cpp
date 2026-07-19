@@ -14,7 +14,11 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Factory.h>
 
+#include <RmlUi/Core/DataModelHandle.h>
+
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 
@@ -175,6 +179,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
                 lastUiWriteTime_ = mtime;
             }
         }
+
     }
 
     // (Re)build the per-image GPU sync objects (command buffers + composite present semaphores) ONLY
@@ -252,6 +257,11 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
 
     renderInterface_.BeginFrame(cmd, extent_);
     if (context_) {
+        // M3 UI-composition spike: mount/unmount the second document from the guaranteed per-frame
+        // path (RecordFrame runs every frame; CompileImpl recompiles are cadence-dependent). Must run
+        // BEFORE Update()/Render() so a freshly mounted document renders the same frame. Env-gated so
+        // it never touches the steady state.
+        if (std::getenv("VIXEN_UI_SPIKE")) SpikeStep();
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         context_->Update();
         context_->Render();
@@ -365,6 +375,91 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     ctx.Out(UIRenderNodeConfig::COMMAND_BUFFERS, cmd);
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
+}
+
+void UIRenderNode::SpikeStep() {
+    // Runs once per frame from RecordFrame. Drives a mount/unmount cadence and logs std::chrono
+    // latencies. hud.rml's document_ + its "hud" data model are never touched here — survival of
+    // the HUD across a spike mount is exactly what we want to observe.
+    ++spikeFrame_;
+    if (spikeFrame_ == 1) std::fprintf(stderr, "[ui-spike] SpikeStep reached; context alive\n");
+
+    const int kMountAt   = 5;   // let the HUD settle first
+    const int kHoldFrames = 20; // frames the spike doc stays mounted
+    const int kGapFrames  = 8;  // frames it stays unmounted before remount
+    const int kMaxCycles  = 12; // N >= 10 mount cycles
+
+    auto ms = [](std::chrono::steady_clock::time_point a,
+                 std::chrono::steady_clock::time_point b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+
+    // After the measured cycles finish, leave the spike doc mounted permanently so the final-frame
+    // capture proves both documents render together. (Without this the doc is unmounted at end and
+    // the capture shows only the HUD.)
+    if (spikeCycles_ >= kMaxCycles) {
+        if (!spikeMounted_) {
+            if (Rml::DataModelConstructor c = context_->CreateDataModel("spike")) {
+                c.Bind("mounts", &spikeMounts_);
+                c.Bind("label", &spikeLabel_);
+                spikeModel_ = c.GetModelHandle();
+            }
+            spikeDoc_ = context_->LoadDocument(ResolveUiAsset("assets/ui/spike.rml"));
+            if (spikeDoc_) { spikeDoc_->Show(); spikeMounted_ = true; }
+            ++spikeMounts_;
+            if (spikeModel_) spikeModel_.DirtyVariable("mounts");
+            std::fprintf(stderr, "[ui-spike] FINAL persistent mount for capture; hudDocAlive=%d\n",
+                         document_ ? 1 : 0);
+        }
+        return;
+    }
+
+    const int cyclePeriod = kHoldFrames + kGapFrames;
+    const int phase = (spikeFrame_ < kMountAt) ? -1 : (spikeFrame_ - kMountAt) % cyclePeriod;
+
+    if (!spikeMounted_ && phase == 0) {
+        // MOUNT: isolated "spike" data model + second document, timed.
+        auto t0 = std::chrono::steady_clock::now();
+        if (Rml::DataModelConstructor c = context_->CreateDataModel("spike")) {
+            c.Bind("mounts", &spikeMounts_);
+            c.Bind("label", &spikeLabel_);
+            spikeModel_ = c.GetModelHandle();
+        }
+        auto t1 = std::chrono::steady_clock::now();
+        const std::string path = ResolveUiAsset("assets/ui/spike.rml");
+        spikeDoc_ = context_->LoadDocument(path);
+        auto t2 = std::chrono::steady_clock::now();
+        if (spikeDoc_) spikeDoc_->Show();
+        auto t3 = std::chrono::steady_clock::now();
+
+        ++spikeMounts_;
+        if (spikeModel_) spikeModel_.DirtyVariable("mounts");
+        spikeMounted_ = (spikeDoc_ != nullptr);
+
+        // fprintf(stderr) not NODE_LOG_INFO: the composite node's nodeLogger is null/disabled in
+        // capture mode, so the macro silently drops. Direct stderr is always visible for the spike.
+        std::fprintf(stderr,
+                     "[ui-spike] MOUNT cycle=%d model=%.4fms load=%.4fms show=%.4fms total=%.4fms hudDocAlive=%d\n",
+                     spikeCycles_, ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t0, t3), document_ ? 1 : 0);
+    } else if (spikeMounted_ && phase == kHoldFrames) {
+        // UNMOUNT: drop the document + isolated model, timed.
+        auto t0 = std::chrono::steady_clock::now();
+        if (spikeDoc_) context_->UnloadDocument(spikeDoc_);
+        spikeDoc_ = nullptr;
+        auto t1 = std::chrono::steady_clock::now();
+        context_->RemoveDataModel("spike");
+        spikeModel_ = Rml::DataModelHandle();
+        auto t2 = std::chrono::steady_clock::now();
+
+        spikeMounted_ = false;
+        ++spikeCycles_;
+
+        std::fprintf(stderr,
+                     "[ui-spike] UNMOUNT cycle=%d unload=%.4fms removeModel=%.4fms total=%.4fms hudDocAlive=%d\n",
+                     spikeCycles_ - 1, ms(t0, t1), ms(t1, t2), ms(t0, t2), document_ ? 1 : 0);
+        if (spikeCycles_ >= kMaxCycles)
+            std::fprintf(stderr, "[ui-spike] DONE %d cycles\n", spikeCycles_);
+    }
 }
 
 void UIRenderNode::SetView(std::shared_ptr<IView> view) { view_ = std::move(view); }

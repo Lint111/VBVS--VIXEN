@@ -114,6 +114,21 @@ private:
     // recording (BeginRenderPass..EndRenderPass) so a p99 hitch can be attributed to the UI pass
     // vs. the compute dispatch vs. neither (CPU/present).
     std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+    // --- M3 UI-composition spike (VIXEN_UI_SPIKE) --------------------------------------------------
+    // ponytail: throwaway proof, not a shipping feature. Mounts a SECOND RmlUi document (spike.rml)
+    // at runtime beside the HUD, in an isolated "spike" data-model namespace, and cycles
+    // mount/unmount to measure activation latency + observe whether the HUD document's state
+    // survives a mount. All spike-only; behind the env gate the steady state is untouched.
+    void SpikeStep();  // called from CompileImpl when VIXEN_UI_SPIKE is set
+    Rml::ElementDocument* spikeDoc_ = nullptr;
+    Rml::DataModelHandle  spikeModel_;
+    // Bound storage for the isolated "spike" model — proves the namespace holds its own state.
+    int         spikeMounts_ = 0;      // bound to {{mounts}}
+    std::string spikeLabel_ = "SPIKE"; // bound to {{label}}
+    int  spikeFrame_ = 0;              // frames since boot (drives the mount/unmount cadence)
+    int  spikeCycles_ = 0;             // completed mount+unmount cycles
+    bool spikeMounted_ = false;
 };
 
 } // namespace Vixen::RenderGraph

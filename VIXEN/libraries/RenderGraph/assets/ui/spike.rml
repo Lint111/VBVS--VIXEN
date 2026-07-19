@@ -1,0 +1,41 @@
+<rml>
+<head>
+    <title>Spike Overlay</title>
+    <style>
+        /* Inline styles: the spike deliberately links no external .rcss so it can't
+           perturb the HUD's stylesheet cache. Positioned bottom-right, distinct from
+           the HUD shell so a capture shows both documents at once. */
+        /* Stretch the body to fill the context, exactly like hud.rcss — otherwise an
+           absolute child anchored to right/bottom resolves against a 0x0 block and lands
+           off-screen. pointer-events:none so the overlay never eats clicks. */
+        body {
+            font-family: LatoLatin;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+        }
+        div#spike {
+            position: absolute;
+            right: 12px; bottom: 12px;
+            width: 220px;
+            padding: 8px 12px;
+            background-color: #201038dd;
+            border-width: 2px;
+            border-color: #a060ff;
+            border-radius: 4px;
+            color: #e8d8ff;
+            font-size: 15px;
+        }
+        div#spike .title { color: #c090ff; font-weight: bold; }
+        div#spike .row { color: #b0a0d0; }
+    </style>
+</head>
+<body>
+    <!-- Isolated data model: names (mounts/label) live in the "spike" namespace and must
+         NOT collide with the HUD's "hud" model (tick/bodyCount/speed/…). -->
+    <div data-model="spike" id="spike">
+        <div class="title">{{label}}</div>
+        <div class="row">mounts: {{mounts}}</div>
+    </div>
+</body>
+</rml>
