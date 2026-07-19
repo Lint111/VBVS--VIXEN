@@ -367,6 +367,27 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
 
 ---
 
+### FR-25 — `VIXEN/CMakeLists.txt:304` hardcodes capital `Include/glslang`; WSL/Linux SDK is lowercase `include`
+
+- **Context:** the GLSL→SPV compile-time path (`BUILD_SPV_ON_COMPILE_TIME`) sets
+  `set(GLSLANGDIR "${VULKAN_PATH}/Include/glslang")` (CMakeLists.txt:304, capital `Include`). The
+  provisioned Linux Vulkan SDK (`.vulkan-sdk/1.4.350.1/x86_64/`) extracts headers to **lowercase**
+  `include/glslang` (standard for the Linux SDK). On a case-sensitive filesystem (WSL/Linux) the
+  `if(NOT EXISTS "${GLSLANG_PREFIX}")` check fires: `Fatal Error: glslang directory not found in
+  Vulkan SDK path: .../x86_64/Include/glslang`. Works on Windows (case-insensitive), fails on WSL.
+- **Consumer impact:** any WSL/Linux super-build of the engine (e.g. undertow's `cmake --build
+  vixen/build`). Surfaced during the undertow engine-pin bump 09879f73→44e05ce0; **not a regression
+  — the line is byte-identical at both pins**, it's a standing case-sensitivity bug that only bites
+  on a lowercase-`include` Linux SDK. Worked around consumer-side with a local `Include -> include`
+  symlink; the super-build then completes 39/39 (incl. `app/undertow_host`).
+- **Suggested fix:** make the lookup case-tolerant — probe both `Include/glslang` and
+  `include/glslang` (or normalize to the SDK's actual layout), rather than hardcoding capital
+  `Include`. One-line-ish; the same applies to the sibling `Lib`/`lib` `GLSLANG_LIBS` path if it
+  hardcodes a case.
+- **Status:** OPEN (engine-side; consumer unblocked via local symlink).
+
+---
+
 ## Adding entries
 
 Number sequentially (`FR-N`). When an entry is fixed engine-side, set `Status: FIXED` and note the
