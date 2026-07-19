@@ -88,6 +88,7 @@ bool ViewWireReaderSoa::Apply(std::span<const std::byte> wire, ViewStore& store)
             case ViewKind::Float:  { float v = c.F32(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::F(v)); break; }
             case ViewKind::Bool:   { bool v = c.Bool(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::B(v)); break; }
             case ViewKind::String: { std::string v = c.Str(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::S(std::move(v))); break; }
+            case ViewKind::U64:    { uint64_t v = c.U64(); if (!c.ok) break; store.SetScalar(f.name, ViewValue::U64(v)); break; }
             case ViewKind::Vector: {
                 // 3 consecutive F32s (x,y,z), declared field order -- the wire's own field-loop
                 // structure carries no special Vector framing beyond "read 3 floats instead of 1".
@@ -118,6 +119,10 @@ bool ViewWireReaderSoa::Apply(std::span<const std::byte> wire, ViewStore& store)
                             case ViewKind::Int:    { int v = c.I32(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::I(v)); break; }
                             case ViewKind::Float:  { float v = c.F32(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::F(v)); break; }
                             case ViewKind::Bool:   { bool v = c.Bool(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::B(v)); break; }
+                            // U64 column: rowCount contiguous 8-byte little-endian values, same
+                            // fixed-size per-row read shape as Int/Float above (row-deltas step-7b's
+                            // stable RowId key column).
+                            case ViewKind::U64:    { uint64_t v = c.U64(); if (!c.ok) break; h.Set(r, ef.name, ViewValue::U64(v)); break; }
                             case ViewKind::Vector: {
                                 Vec3f v; v.x = c.F32(); if (!c.ok) break; v.y = c.F32(); if (!c.ok) break; v.z = c.F32(); if (!c.ok) break;
                                 h.Set(r, ef.name, ViewValue::Vec(v));

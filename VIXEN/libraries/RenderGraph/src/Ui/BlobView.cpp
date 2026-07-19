@@ -23,6 +23,11 @@ public:
             case ViewKind::Float:  variant = cell.f; return true;
             case ViewKind::Bool:   variant = cell.b; return true;
             case ViewKind::String: variant = cell.s; return true;
+            // Vector/SubjectRef/U64: no RmlUi Rml::Variant representation (no vec3/u64 variant
+            // type) -- not bindable through this data-model path, same precedent as the
+            // pre-existing Vector/SubjectRef gap; consumers read these via TypedAccessorSection
+            // (Ui/ViewStore.h's ScalarSlotPtr/Cell) instead.
+            case ViewKind::Vector: case ViewKind::SubjectRef: case ViewKind::U64:
             case ViewKind::ArrayOfStruct: return false;
         }
         return false;
@@ -35,6 +40,7 @@ public:
             case ViewKind::Float:  return variant.GetInto<float>(cell.f);
             case ViewKind::Bool:   return variant.GetInto<bool>(cell.b);
             case ViewKind::String: return variant.GetInto<Rml::String>(cell.s);
+            case ViewKind::Vector: case ViewKind::SubjectRef: case ViewKind::U64:
             case ViewKind::ArrayOfStruct: return false;
         }
         return false;
@@ -59,6 +65,8 @@ Rml::UniquePtr<Rml::VariableDefinition> MakeScalarDefinition(ViewKind kind) {
         case ViewKind::Float:  return Rml::MakeUnique<Rml::ScalarDefinition<float>>();
         case ViewKind::Bool:   return Rml::MakeUnique<Rml::ScalarDefinition<bool>>();
         case ViewKind::String: return Rml::MakeUnique<Rml::ScalarDefinition<Rml::String>>();
+        // Vector/SubjectRef/U64: not RmlUi-bindable top-level scalar kinds, same as ViewRowMemberDefinition above.
+        case ViewKind::Vector: case ViewKind::SubjectRef: case ViewKind::U64:
         case ViewKind::ArrayOfStruct: return nullptr;
     }
     return nullptr;

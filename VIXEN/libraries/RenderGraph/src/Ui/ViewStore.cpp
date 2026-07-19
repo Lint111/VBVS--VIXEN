@@ -29,6 +29,7 @@ static void AssignCell(ViewCell& c, ViewKind kind, const ViewValue& v) {
         case ViewKind::String:     c.s = v.s; break;
         case ViewKind::Vector:     c.vec = v.vec; break;
         case ViewKind::SubjectRef: c.subj = v.subj; break;
+        case ViewKind::U64:        c.u64 = v.u64; break;
         default: break;
     }
 }
@@ -46,6 +47,7 @@ void ViewStore::SetScalar(std::string_view field, ViewValue v) {
         case ViewKind::String:     slot.s = v.s; break;
         case ViewKind::Vector:     slot.vec = v.vec; break;
         case ViewKind::SubjectRef: slot.subj = v.subj; break;
+        case ViewKind::U64:        slot.u64 = v.u64; break;
         default: break;
     }
 }
@@ -83,6 +85,7 @@ void* ViewStore::ScalarSlotPtr(size_t fieldIndex) {
         case ViewKind::String:     return &slot.s;
         case ViewKind::Vector:     return &slot.vec;
         case ViewKind::SubjectRef: return &slot.subj;
+        case ViewKind::U64:        return &slot.u64;
         default: return nullptr;
     }
 }

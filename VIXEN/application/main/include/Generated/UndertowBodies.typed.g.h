@@ -25,11 +25,13 @@ public:
     }
     static constexpr size_t kElem_mass = 1;
     float mass(uint32_t i) const {
-        return Vixen::AppFlow::Generated::IdentityFloat(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_mass).f;
+        return Vixen::AppFlow::Generated::IdentityFloat(raw, i);
     }
     static constexpr size_t kElem_orbitParent = 2;
     int orbitParent(uint32_t i) const {
-        return Vixen::AppFlow::Generated::OrbitParentOrSentinel(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_orbitParent).i;
+        return Vixen::AppFlow::Generated::IdentityInt(raw, i);
     }
     static constexpr size_t kElem_ownerInLens = 3;
     int ownerInLens(uint32_t i) const {

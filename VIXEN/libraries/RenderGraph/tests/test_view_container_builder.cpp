@@ -579,27 +579,34 @@ TEST(ViewContainerBuilder, RealSimFrameRoundTripsThroughUtvcAndAllSixSections) {
         EXPECT_EQ(hf.strengthBand(3), 2);
     }
 
-    // --- HudEvents (38 real events; assert first 2 + last 1, non-vacuous sampling) ---
+    // --- HudEvents (106 real events; assert first 2 + last 1, non-vacuous sampling) ---
+    // Row count/values re-captured here (row-deltas link 2/step-7B): ad1ac8e8 re-captured
+    // kRealUtvcBytes from a live seed-7 run (adding the rowId column) but the count/value
+    // assertions below were left at their PRE-recapture literals (38 rows, row1=="war") --
+    // stale relative to the fixture actually committed alongside them, not something this
+    // increment's U64/callables work changed. Values below are read directly off the wire
+    // bytes above (kRealUtvcBytes, HudEvents section) via a byte-for-byte decode matching
+    // ViewWireReaderSoa::Apply's own field order.
     {
         ViewStore store(Vixen::Views::kUndertowHudEventsBlob, Vixen::Views::kUndertowHudEventsBlob.version);
         ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[2], store));
         Vixen::Views::UndertowHudEventsSection he(store);
-        ASSERT_EQ(he.count(), 38u);
+        ASSERT_EQ(he.count(), 106u);
 
         EXPECT_EQ(he.kind(0), "alliance");
         EXPECT_EQ(he.tick(0), -250);
         EXPECT_EQ(he.perpName(0), "The Empire");
         EXPECT_EQ(he.victimName(0), "Industrialists");
 
-        EXPECT_EQ(he.kind(1), "war");
+        EXPECT_EQ(he.kind(1), "rivalry");
         EXPECT_EQ(he.tick(1), -250);
         EXPECT_EQ(he.perpName(1), "The Empire");
-        EXPECT_EQ(he.victimName(1), "Traditionalists");
+        EXPECT_EQ(he.victimName(1), "Industrialists");
 
-        EXPECT_EQ(he.kind(37), "core:rebuilding");
-        EXPECT_EQ(he.tick(37), 0);
-        EXPECT_EQ(he.perpName(37), "");
-        EXPECT_EQ(he.victimName(37), "");
+        EXPECT_EQ(he.kind(105), "core:rebuilding");
+        EXPECT_EQ(he.tick(105), 0);
+        EXPECT_EQ(he.perpName(105), "");
+        EXPECT_EQ(he.victimName(105), "");
     }
 
     // --- HudInspect (nothing selected in this real frame -- zero/empty row) ---

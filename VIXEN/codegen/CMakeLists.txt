@@ -132,8 +132,25 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob" _out_hud_blob_data_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs" _out_hud_writer_cs_run)
         _codegen_to_wsl_path("${_cg}/appflow-schemas" _schema_appflow_run)
+        # Callables sweep is wider than the appflow schema itself (row-deltas link 2/step-7B):
+        # UndertowViewCallables.cs lives in view-schemas/, not appflow-schemas/, so --callable-cpp
+        # needs the codegen root (parent of both) to pick up both [KernelCallable] sources.
+        # --schema is a single recursive dir sweep filtered by attribute name (Program.cs's
+        # --callable-cpp branch), so sweeping the wider root is safe -- config-schemas/ has no
+        # [KernelCallable] methods and contributes nothing to the emitted header.
+        _codegen_to_wsl_path("${_cg}" _schema_callables_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp" _out_callables_hdr_run)
+        # --callable-cpp's tool-owned output moved to AppFlowCallables.generated.g.hpp (row-deltas
+        # link 2/step-7B): UndertowViewCallables.IdentityString is `string`-typed, and
+        # CppMappingTables has no string->C++ mapping (no bare C++ type for it, unlike
+        # int/float/bool/uint), so a transpiled `inline string IdentityString(string v)` never
+        # compiles -- a genuine tool gap, not fixable from the schema side alone without editing
+        # the kernel's CppMappingTables.cs. AppFlowCallables.g.hpp (the well-known path every
+        # UndertowHud*.typed.g.h #includes) is now a small, hand-authored, NOT-drift-checked shim
+        # (see the file itself) that #includes this tool-owned header and adds the one hand-written
+        # Rml::String overload the tool cannot express -- same "consumer defines by hand" precedent
+        # as EditorLayersView's activeLayerCountOverride hook.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp" _out_callables_hdr_run)
         # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHud.readmodel.g.h" _out_undertowhud_readmodel_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h" _out_undertowhudfactions_readmodel_run)
@@ -176,8 +193,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_hud_blob_data_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/hud.viewblob")
         set(_out_hud_writer_cs_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.view.g.cs")
         set(_schema_appflow_run "${_cg}/appflow-schemas")
+        # See the WSL-bridge branch's comment above: --callable-cpp sweeps the codegen root so it
+        # also picks up view-schemas/UndertowViewCallables.cs, not just appflow-schemas/.
+        set(_schema_callables_run "${_cg}")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
-        set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.g.hpp")
+        # See the WSL-bridge branch's comment above: tool-owned output moved to
+        # AppFlowCallables.generated.g.hpp; AppFlowCallables.g.hpp is now a hand-authored shim.
+        set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp")
         # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
         set(_out_undertowhud_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHud.readmodel.g.h")
         set(_out_undertowhudfactions_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h")
@@ -463,15 +485,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # (no [Flow*] attrs on it) so AppFlow.g.h stays byte-identical.
     set(_callables_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_appflow_run}" --callable-cpp
+        --schema "${_schema_callables_run}" --callable-cpp
         --out-header "${_out_callables_hdr_run}")
     add_custom_target(callables_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
-        COMMENT "[codegen] golden check: AppFlowCallables.g.hpp matches canonical [KernelCallable] schema"
+        COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
         VERBATIM)
     add_custom_target(callables_regen
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
-        COMMENT "[codegen] regenerate AppFlowCallables.g.hpp"
+        COMMENT "[codegen] regenerate AppFlowCallables.generated.g.hpp"
         VERBATIM)
 
     # --- View Read-Model Codegen Milestone 5 (R6): --readmodel-cpp DTO headers for the 4

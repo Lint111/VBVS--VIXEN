@@ -29,23 +29,28 @@ public:
     }
     static constexpr size_t kElem_focused = 2;
     int focused(uint32_t i) const {
-        return Vixen::AppFlow::Generated::BoolToByte(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_focused).i;
+        return Vixen::AppFlow::Generated::BoolToByte(raw, i);
     }
     static constexpr size_t kElem_known = 3;
     int known(uint32_t i) const {
-        return Vixen::AppFlow::Generated::BoolToByte(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_known).i;
+        return Vixen::AppFlow::Generated::BoolToByte(raw, i);
     }
     static constexpr size_t kElem_inLens = 4;
     int inLens(uint32_t i) const {
-        return Vixen::AppFlow::Generated::BoolToByte(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_inLens).i;
+        return Vixen::AppFlow::Generated::BoolToByte(raw, i);
     }
     static constexpr size_t kElem_strengthBand = 5;
     int strengthBand(uint32_t i) const {
-        return Vixen::AppFlow::Generated::StrengthBandToByte(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_strengthBand).i;
+        return Vixen::AppFlow::Generated::StrengthBandToByte(raw, i);
     }
     static constexpr size_t kElem_confidence = 6;
     int confidence(uint32_t i) const {
-        return Vixen::AppFlow::Generated::ConfidenceToByte(i, i);
+        auto raw = const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_confidence).i;
+        return Vixen::AppFlow::Generated::ConfidenceToByte(raw, i);
     }
     static constexpr size_t kElem_recentEventAge = 7;
     int recentEventAge(uint32_t i) const {

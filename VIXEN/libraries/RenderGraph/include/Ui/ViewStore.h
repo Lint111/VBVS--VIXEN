@@ -13,7 +13,7 @@ namespace Vixen::RenderGraph {
 // cell (3 floats); a struct-array element CAN declare a Vector-kind column (View Contract Inc-5b
 // Milestone 2.4b's row/element-Vector fix) and reads/writes through this same member, alongside
 // i/f/b/s, so ViewRow's per-element cell layout stays uniform across all ViewKinds.
-struct ViewCell { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; SubjectRef subj; };
+struct ViewCell { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; SubjectRef subj; uint64_t u64 = 0; };
 
 struct ViewRow {
     std::vector<ViewCell> cells;
@@ -44,7 +44,7 @@ public:
     void* ArraySlotPtr(size_t fieldIndex) { return &Array(fieldIndex); }
 
 private:
-    struct ScalarSlot { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; SubjectRef subj; };
+    struct ScalarSlot { int i = 0; float f = 0.0f; bool b = false; Rml::String s; Vec3f vec; SubjectRef subj; uint64_t u64 = 0; };
     int FindField(std::string_view name) const;      // -1 if absent
     int FindElemField(size_t fieldIndex, std::string_view name) const;
 

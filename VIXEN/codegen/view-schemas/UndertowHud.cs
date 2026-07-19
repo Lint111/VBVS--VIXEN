@@ -148,7 +148,15 @@ namespace Vixen.ViewSchemas
         public int kind;                // U8, widened to int; source: el.Kind
         [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.IdentityFloat))]
         public float mass;              // NAME MISMATCH + narrowing: source (float)el.MassKg (double)
-        [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.OrbitParentOrSentinel))]
+        // Projected via IdentityInt, not OrbitParentOrSentinel: UndertowFrameAdapter.Bodies already
+        // ran the nullable-unwrap+sentinel transform at WRITE time (el.Orbit.HasValue ? ParentBodyIndex
+        // : -1), so the wire's stored cell IS the final -1-or-real-index value. Post-Yeroket-main-
+        // 7d6c8b4e, the row-context typed accessor reads that stored cell and calls the [Projected]
+        // callable on it directly (real cell first arg, row index second) -- re-running
+        // OrbitParentOrSentinel here would treat the already-computed index as a fresh `hasOrbit`
+        // bool and double-apply the sentinel logic. IdentityInt is the correct name-binding-only
+        // callable, matching mass's IdentityFloat / HudInspect's cause/topRelSig pattern.
+        [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.IdentityInt))]
         public int orbitParent;         // source: el.Orbit.HasValue ? el.Orbit.Value.ParentBodyIndex : -1
         public int ownerInLens;         // U8, widened to int; source: el.OwnerInLens
         public int ownerRecentEventAge; // U8, widened to int; source: el.OwnerRecentEventAge

@@ -15,7 +15,10 @@ namespace Vixen::RenderGraph {
 // sub-fields (which would make fieldCount untruthful). Carries exactly 3 floats (x,y,z); a future
 // vector shape (Float2, Float4) would need its own ViewKind rather than overloading this one, since
 // ViewValue::Vec below is fixed at 3 components.
-enum class ViewKind : uint8_t { Int, Float, Bool, String, ArrayOfStruct, Vector, SubjectRef };
+// U64: a 64-bit unsigned scalar (row-deltas step-7b's stable RowId key column) -- a genuine
+// distinct kind, not an Int reuse, since Int is a 32-bit signed ViewCell/ViewValue member and a
+// RowId must round-trip the full 64-bit range without sign or truncation loss.
+enum class ViewKind : uint8_t { Int, Float, Bool, String, ArrayOfStruct, Vector, SubjectRef, U64 };
 
 struct ViewFieldDesc {
     std::string_view name;
@@ -42,19 +45,21 @@ struct Vec3f { float x = 0.0f, y = 0.0f, z = 0.0f; };
 struct SubjectRef { uint8_t kind = 0; uint64_t instance = 0; };
 
 struct ViewValue {
-    enum class Tag : uint8_t { Int, Float, Bool, String, Vector, SubjectRef } tag;
+    enum class Tag : uint8_t { Int, Float, Bool, String, Vector, SubjectRef, U64 } tag;
     int         i = 0;
     float       f = 0.0f;
     bool        b = false;
     std::string s;
     Vec3f       vec;
     SubjectRef  subj;
+    uint64_t    u64 = 0;
     static ViewValue I(int v)          { ViewValue r; r.tag = Tag::Int;    r.i = v; return r; }
     static ViewValue F(float v)        { ViewValue r; r.tag = Tag::Float;  r.f = v; return r; }
     static ViewValue B(bool v)         { ViewValue r; r.tag = Tag::Bool;   r.b = v; return r; }
     static ViewValue S(std::string v)  { ViewValue r; r.tag = Tag::String; r.s = std::move(v); return r; }
     static ViewValue Vec(Vec3f v)      { ViewValue r; r.tag = Tag::Vector; r.vec = v; return r; }
     static ViewValue Subject(SubjectRef v) { ViewValue r; r.tag = Tag::SubjectRef; r.subj = v; return r; }
+    static ViewValue U64(uint64_t v)   { ViewValue r; r.tag = Tag::U64;   r.u64 = v; return r; }
 };
 
 inline bool KindAcceptsValue(ViewKind k, const ViewValue& v) {
@@ -65,6 +70,7 @@ inline bool KindAcceptsValue(ViewKind k, const ViewValue& v) {
         case ViewKind::String:     return v.tag == ViewValue::Tag::String;
         case ViewKind::Vector:     return v.tag == ViewValue::Tag::Vector;
         case ViewKind::SubjectRef: return v.tag == ViewValue::Tag::SubjectRef;
+        case ViewKind::U64:        return v.tag == ViewValue::Tag::U64;
         case ViewKind::ArrayOfStruct: return false;
     }
     return false;
