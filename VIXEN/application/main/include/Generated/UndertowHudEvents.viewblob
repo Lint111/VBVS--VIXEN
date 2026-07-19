@@ -1,9 +1,10 @@
 # viewblob v1
 model undertowhudevents
-version 0x8CB39FF6
+version 0xB2C48BDD
 elem UndertowHudEventRow
   kind string
   tick int
   perpName string
   victimName string
+  rowId u64
 field rows array UndertowHudEventRow

@@ -15,12 +15,13 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowBodyRow_fields[] = {
     {"posX", Vixen::RenderGraph::ViewKind::Float, {}},
     {"posY", Vixen::RenderGraph::ViewKind::Float, {}},
     {"posZ", Vixen::RenderGraph::ViewKind::Float, {}},
+    {"rowId", Vixen::RenderGraph::ViewKind::U64, {}},
 };
 inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowBodies_fields[] = {
     {"rows", Vixen::RenderGraph::ViewKind::ArrayOfStruct, kUndertowBodyRow_fields},
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowBodiesBlob = {
-    "undertowbodies", kUndertowBodies_fields, 0x017289A2u /* generated version */ };
+    "undertowbodies", kUndertowBodies_fields, 0xE5CC1228u /* generated version */ };
 
 }  // namespace Vixen::Views

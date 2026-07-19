@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowhudinspect
-version 0x398FCD18
+version 0xDB8CF6DC
 field selected int
 field name string
 field maxGrievance float

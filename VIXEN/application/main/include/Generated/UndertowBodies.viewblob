@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowbodies
-version 0x017289A2
+version 0xE5CC1228
 elem UndertowBodyRow
   kind int
   mass float
@@ -12,4 +12,5 @@ elem UndertowBodyRow
   posX float
   posY float
   posZ float
+  rowId u64
 field rows array UndertowBodyRow

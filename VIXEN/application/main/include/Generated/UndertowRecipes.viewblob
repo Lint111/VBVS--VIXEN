@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowrecipes
-version 0xC9AE4EBC
+version 0x38F52BA4
 elem UndertowRecipeRow
   recipeId int
   provider int

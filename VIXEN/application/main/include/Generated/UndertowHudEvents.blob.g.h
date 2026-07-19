@@ -9,12 +9,13 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowHudEventRow_fields[]
     {"tick", Vixen::RenderGraph::ViewKind::Int, {}},
     {"perpName", Vixen::RenderGraph::ViewKind::String, {}},
     {"victimName", Vixen::RenderGraph::ViewKind::String, {}},
+    {"rowId", Vixen::RenderGraph::ViewKind::U64, {}},
 };
 inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowHudEvents_fields[] = {
     {"rows", Vixen::RenderGraph::ViewKind::ArrayOfStruct, kUndertowHudEventRow_fields},
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowHudEventsBlob = {
-    "undertowhudevents", kUndertowHudEvents_fields, 0x8CB39FF6u /* generated version */ };
+    "undertowhudevents", kUndertowHudEvents_fields, 0xB2C48BDDu /* generated version */ };
 
 }  // namespace Vixen::Views

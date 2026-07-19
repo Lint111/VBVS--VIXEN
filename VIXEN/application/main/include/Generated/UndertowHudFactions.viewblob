@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowhudfactions
-version 0x0D7F3F7A
+version 0x614A4C0D
 elem UndertowHudFactionRow
   name string
   grievance float
@@ -10,4 +10,5 @@ elem UndertowHudFactionRow
   strengthBand int
   confidence int
   recentEventAge int
+  rowId u64
 field rows array UndertowHudFactionRow

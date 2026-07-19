@@ -13,12 +13,13 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowHudFactionRow_fields
     {"strengthBand", Vixen::RenderGraph::ViewKind::Int, {}},
     {"confidence", Vixen::RenderGraph::ViewKind::Int, {}},
     {"recentEventAge", Vixen::RenderGraph::ViewKind::Int, {}},
+    {"rowId", Vixen::RenderGraph::ViewKind::U64, {}},
 };
 inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowHudFactions_fields[] = {
     {"rows", Vixen::RenderGraph::ViewKind::ArrayOfStruct, kUndertowHudFactionRow_fields},
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowHudFactionsBlob = {
-    "undertowhudfactions", kUndertowHudFactions_fields, 0x0D7F3F7Au /* generated version */ };
+    "undertowhudfactions", kUndertowHudFactions_fields, 0x614A4C0Du /* generated version */ };
 
 }  // namespace Vixen::Views

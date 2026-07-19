@@ -4,6 +4,7 @@
 #include <RmlUi/Core/Types.h>   // Rml::String
 #include <cstddef>
 #include <cstdint>
+#include "generated/AppFlowCallables.g.hpp"
 
 namespace Vixen::Views {
 
@@ -20,7 +21,8 @@ public:
     static constexpr size_t kField_cause = 6;
 
     int selected() const {
-        return *static_cast<int*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_selected));
+        auto raw = *static_cast<int*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_selected));
+        return Vixen::AppFlow::Generated::BoolToByte(raw);
     }
     Rml::String name() const {
         return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_name));
@@ -35,10 +37,12 @@ public:
         return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_topRelName));
     }
     float topRelSig() const {
-        return *static_cast<float*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_topRelSig));
+        auto raw = *static_cast<float*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_topRelSig));
+        return Vixen::AppFlow::Generated::IdentityFloat(raw);
     }
     Rml::String cause() const {
-        return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_cause));
+        auto raw = *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_cause));
+        return Vixen::AppFlow::Generated::IdentityString(raw);
     }
 
 private:

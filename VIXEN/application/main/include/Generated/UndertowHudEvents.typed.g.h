@@ -34,6 +34,10 @@ public:
     Rml::String victimName(uint32_t i) const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_victimName).s;
     }
+    static constexpr size_t kElem_rowId = 4;
+    uint64_t rowId(uint32_t i) const {
+        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_rows)[i].Cell(kElem_rowId).u64;
+    }
 
 private:
     Vixen::RenderGraph::ViewStore& store_;

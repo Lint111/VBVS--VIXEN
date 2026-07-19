@@ -15,6 +15,6 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowRecipes_fields[] = {
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowRecipesBlob = {
-    "undertowrecipes", kUndertowRecipes_fields, 0xC9AE4EBCu /* generated version */ };
+    "undertowrecipes", kUndertowRecipes_fields, 0x38F52BA4u /* generated version */ };
 
 }  // namespace Vixen::Views

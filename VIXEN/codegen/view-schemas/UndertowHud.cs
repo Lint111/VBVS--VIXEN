@@ -56,6 +56,11 @@ namespace Vixen.ViewSchemas
         [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.ConfidenceToByte))]
         public int confidence;         // source: (byte)el.Confidence
         public int recentEventAge;     // identity U8, widened to int
+        // Row-delta stable row key (undertow step-7b): the row's source EntityId (or synthetic id
+        // for entity-less HudEvents rows), u64 on the wire — LAST column, matching undertow
+        // ViewSchema.cs's VersionRowDelta ordering. Transport identity only: the kernel's
+        // RmlDataModelEmitter deliberately SKIPS u64 fields in every Rml binding surface.
+        public ulong rowId;
     }
 
     [View]
@@ -72,6 +77,11 @@ namespace Vixen.ViewSchemas
         public int tick;
         public string perpName;
         public string victimName;
+        // Row-delta stable row key (undertow step-7b): the row's source EntityId (or synthetic id
+        // for entity-less HudEvents rows), u64 on the wire — LAST column, matching undertow
+        // ViewSchema.cs's VersionRowDelta ordering. Transport identity only: the kernel's
+        // RmlDataModelEmitter deliberately SKIPS u64 fields in every Rml binding surface.
+        public ulong rowId;
     }
 
     [View]
@@ -152,6 +162,11 @@ namespace Vixen.ViewSchemas
         public float posX;              // source el.Position.X (AU)
         public float posY;              // source el.Position.Y (AU)
         public float posZ;              // source el.Position.Z (AU)
+        // Row-delta stable row key (undertow step-7b): the row's source EntityId (or synthetic id
+        // for entity-less HudEvents rows), u64 on the wire — LAST column, matching undertow
+        // ViewSchema.cs's VersionRowDelta ordering. Transport identity only: the kernel's
+        // RmlDataModelEmitter deliberately SKIPS u64 fields in every Rml binding surface.
+        public ulong rowId;
     }
 
     [View]

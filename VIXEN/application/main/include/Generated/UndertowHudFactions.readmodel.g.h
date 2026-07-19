@@ -16,6 +16,7 @@ struct UndertowHudFactionRowRow {
     int strengthBand;
     int confidence;
     int recentEventAge;
+    uint64_t rowId;
 };
 
 struct UndertowHudFactionsReadModel {
@@ -34,6 +35,7 @@ struct UndertowHudFactionsReadModel {
             r.strengthBand = s.strengthBand(i);
             r.confidence = s.confidence(i);
             r.recentEventAge = s.recentEventAge(i);
+            r.rowId = s.rowId(i);
             rm.rows.push_back(r);
         }
         return rm;

@@ -15,6 +15,6 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowHudInspect_fields[] 
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowHudInspectBlob = {
-    "undertowhudinspect", kUndertowHudInspect_fields, 0x398FCD18u /* generated version */ };
+    "undertowhudinspect", kUndertowHudInspect_fields, 0xDB8CF6DCu /* generated version */ };
 
 }  // namespace Vixen::Views

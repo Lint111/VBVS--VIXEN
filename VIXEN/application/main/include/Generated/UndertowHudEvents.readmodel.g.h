@@ -12,6 +12,7 @@ struct UndertowHudEventRowRow {
     int tick;
     Rml::String perpName;
     Rml::String victimName;
+    uint64_t rowId;
 };
 
 struct UndertowHudEventsReadModel {
@@ -26,6 +27,7 @@ struct UndertowHudEventsReadModel {
             r.tick = s.tick(i);
             r.perpName = s.perpName(i);
             r.victimName = s.victimName(i);
+            r.rowId = s.rowId(i);
             rm.rows.push_back(r);
         }
         return rm;
