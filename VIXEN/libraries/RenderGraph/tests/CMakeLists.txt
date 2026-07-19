@@ -619,6 +619,7 @@ if(TARGET GTest::gtest_main)
     target_link_libraries(test_view_hud_golden PRIVATE
         GTest::gtest_main
         RenderGraph
+        AppFlow   # regenerated *.typed.g.h #include "generated/AppFlowCallables.g.hpp"
     )
 
     # Hud.g.h is now a CONSUMER artifact (application/main) — the golden still verifies it, but
@@ -904,7 +905,10 @@ endif()
 
 if(TARGET GTest::gtest_main)
     add_executable(test_view_container_builder test_view_container_builder.cpp)
-    target_link_libraries(test_view_container_builder PRIVATE GTest::gtest_main RenderGraph)
+    # AppFlow: the regenerated Undertow*.typed.g.h now #include "generated/AppFlowCallables.g.hpp"
+    # ([Projected] typed-accessor transforms) — AppFlow's PUBLIC include dir resolves it (the same
+    # wiring test_view_editor_layers_golden documents above).
+    target_link_libraries(test_view_container_builder PRIVATE GTest::gtest_main RenderGraph AppFlow)
 
     # The 5 Undertow*.blob.g.h/.typed.g.h headers are CONSUMER artifacts (application/main) --
     # needs the app's include dir to resolve "Generated/..." (mirrors test_typed_accessor_emitter's
