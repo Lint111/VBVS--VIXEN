@@ -46,7 +46,7 @@ inline bool IsValidSdfOpCode(uint8_t raw) {
         case SdfOpCode::Float3Max: case SdfOpCode::Float3ScalarMul:
         case SdfOpCode::Float3Dot: case SdfOpCode::Float3Normalize:
         case SdfOpCode::ReadParam: case SdfOpCode::ReadParamFloat3:
-        case SdfOpCode::DeclarePosition:
+        case SdfOpCode::DeclarePosition: case SdfOpCode::InvokeRecipe:
             return true;
         default:
             return false;
@@ -56,6 +56,14 @@ inline bool IsValidSdfOpCode(uint8_t raw) {
 class RecipeRegistry {
 public:
     static constexpr uint32_t kUnbakedSlot = 0xFFFFFFFFu;
+
+    // Recipe-Nested-Invocation M1: fixed, small max nesting depth for InvokeRecipe chains.
+    // Chosen per the direction doc's own "2-4 levels is plausible" suggestion — enough to
+    // prove the mechanism and give a future A/B test (M2) something to sweep, without
+    // entertaining unbounded recursion. Depth 1 = a recipe that itself invokes zero further
+    // nested recipes; a chain A->B->C->D->E (4 InvokeRecipe hops) is the deepest chain this
+    // constant permits.
+    static constexpr uint32_t kMaxRecipeNestingDepth = 4;
 
     struct RecipeEntry {
         std::vector<Recipe::SdfInstruction> bytecode;
@@ -75,6 +83,29 @@ public:
         glm::vec3 boundCenter    = glm::vec3(0.0f);  // world-space bound-sphere center
         float     boundRadius    = 0.f;              // 0 = engine default (kResidencyBoundingRadius-style)
         float     stepRelaxation = 0.f;               // 0 = engine default; else must be in (0,1]
+
+        // Recipe Load-Tier Contract M1 (gating tier) — same "0 = not opted in" convention
+        // as boundRadius/stepRelaxation above. A positive value is a minimum screen-space
+        // footprint (same units/formula as TraceWorld.glsl's
+        // `footprint = distance * raySizeCoef + raySizeBias`); RecipeInstanceBucketing.comp
+        // drops an instance of this recipe from bucketing/promotion for a frame where its
+        // computed footprint falls below this threshold. Non-participating recipes (the
+        // default, 0.0) are entirely unaffected — see Recipe-Load-Tier-Contract-Direction-
+        // 2026-07.md.
+        float     gateFootprintThreshold = 0.f;
+
+        // Recipe Load-Tier Contract M2 (precision tier) — same "0 = not opted in" convention as
+        // gateFootprintThreshold above, and the SAME footprint signal/formula (distance *
+        // raySizeCoef + raySizeBias): a positive value is the screen-space footprint BELOW which
+        // this recipe's instances upload/evaluate render params (RecipeParams, see
+        // libraries/SVO/include/Recipe/generated/RecipeParams.g.h) at half precision
+        // (RecipeParamsHalf, packHalf2x16) instead of full float. Independent of
+        // gateFootprintThreshold — a recipe can opt into gating, precision, both, or neither (the
+        // direction doc's §1: these are not mutually exclusive). Non-participating recipes
+        // (default 0.0) always evaluate at full precision, byte-identical to before this
+        // milestone — see GPU-Struct-Precision-Tiering-Direction-2026-07.md §3 and
+        // Recipe-Load-Tier-Contract-Direction-2026-07.md's Milestone Map M2 entry.
+        float     precisionFootprintThreshold = 0.f;
 
         // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — coarse occupancy grid metadata.
         // Filled in by Recipe::DeriveOccupancyGrid (RecipeOccupancy.h) at the SAME
@@ -100,6 +131,11 @@ public:
         StackOverflow,     // static stack-depth exceeds 64 or underflows
         BadBoundRadius,    // boundRadius set (nonzero) but not > 0
         BadStepRelaxation, // stepRelaxation set (nonzero) but not in (0,1]
+        BadGateFootprintThreshold, // gateFootprintThreshold set (nonzero) but not > 0
+        BadPrecisionFootprintThreshold, // precisionFootprintThreshold set (nonzero) but not > 0
+        UnknownCalleeRecipe,   // InvokeRecipe references a recipeId not yet Register()-ed
+        RecursiveInvocation,   // InvokeRecipe graph contains a cycle (direct or indirect)
+        NestingTooDeep,        // InvokeRecipe chain exceeds kMaxRecipeNestingDepth
     };
 
     RegisterResult Register(uint32_t recipeId, const RecipeEntry& entry) {
@@ -110,6 +146,10 @@ public:
             return RegisterResult::BadBoundRadius;
         if (entry.stepRelaxation != 0.f && !(entry.stepRelaxation > 0.f && entry.stepRelaxation <= 1.f))
             return RegisterResult::BadStepRelaxation;
+        if (entry.gateFootprintThreshold != 0.f && !(entry.gateFootprintThreshold > 0.f))
+            return RegisterResult::BadGateFootprintThreshold;
+        if (entry.precisionFootprintThreshold != 0.f && !(entry.precisionFootprintThreshold > 0.f))
+            return RegisterResult::BadPrecisionFootprintThreshold;
 
         int sp = 0, psp = 0;
         for (const auto& in : entry.bytecode) {
@@ -139,6 +179,18 @@ public:
             if (psp > 64) return RegisterResult::StackOverflow;
         }
 
+        // Recipe-Nested-Invocation M1: InvokeRecipe cycle/depth guard, done at Register()
+        // time (never runtime-only) so an unguarded cycle can never reach evalRecipe or the
+        // GLSL emitter. Every InvokeRecipe callee referenced by `entry` must already be a
+        // registered entry (recipes register in dependency order — a callee must exist before
+        // a caller referencing it can be registered), so the ENTIRE transitive callee graph is
+        // already present in entries_ except for `entry` itself (about to be inserted as
+        // `recipeId`). This walk therefore only needs to look at entries_ plus `entry`.
+        {
+            RegisterResult guardResult = ValidateNestingGuard(recipeId, entry);
+            if (guardResult != RegisterResult::Ok) return guardResult;
+        }
+
         entries_.emplace(recipeId, entry);
         return RegisterResult::Ok;
     }
@@ -161,6 +213,44 @@ public:
     }
 
 private:
+    // Recipe-Nested-Invocation M1: walks `entry`'s InvokeRecipe callees (recursively, via
+    // already-registered entries_) to reject a cycle (direct self-invocation or an indirect
+    // cycle through other recipes) or a chain exceeding kMaxRecipeNestingDepth. `path` tracks
+    // the current call-chain (by recipeId, starting with the not-yet-inserted `recipeId` being
+    // registered) so a repeat anywhere in `path` is detected as a cycle; `depth` counts
+    // InvokeRecipe hops from the entry point.
+    RegisterResult ValidateNestingGuard(uint32_t recipeId, const RecipeEntry& entry) const {
+        return WalkNestingGuard(recipeId, entry, /*depth=*/0, /*path=*/{recipeId});
+    }
+
+    RegisterResult WalkNestingGuard(uint32_t /*ownerId*/, const RecipeEntry& entry,
+                                     uint32_t depth, std::vector<uint32_t> path) const {
+        for (const auto& in : entry.bytecode) {
+            if (static_cast<Recipe::SdfOpCode>(in.opCode) != Recipe::SdfOpCode::InvokeRecipe)
+                continue;
+
+            const uint32_t calleeId = static_cast<uint32_t>(in.data[0]);
+
+            // Cycle check: callee already appears earlier in the current call chain (covers
+            // both direct self-invocation, calleeId == path.front() with an empty chain so
+            // far, and an indirect A->B->A-style cycle).
+            for (uint32_t seen : path) {
+                if (seen == calleeId) return RegisterResult::RecursiveInvocation;
+            }
+
+            if (depth + 1 > kMaxRecipeNestingDepth) return RegisterResult::NestingTooDeep;
+
+            const RecipeEntry* callee = Get(calleeId);
+            if (!callee) return RegisterResult::UnknownCalleeRecipe;
+
+            std::vector<uint32_t> nextPath = path;
+            nextPath.push_back(calleeId);
+            RegisterResult sub = WalkNestingGuard(calleeId, *callee, depth + 1, nextPath);
+            if (sub != RegisterResult::Ok) return sub;
+        }
+        return RegisterResult::Ok;
+    }
+
     std::map<uint32_t, RecipeEntry> entries_;
 };
 

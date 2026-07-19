@@ -1135,6 +1135,15 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
     // it directly instead — this exemption only says "not in the SHARED loop," not "untested."
     validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::DeclarePosition));
 
+    // Recipe-Nested-Invocation M1 exemption, same shape as DeclarePosition above: InvokeRecipe
+    // requires a RecipeRegistry with an already-registered callee threaded through both
+    // evalRecipe and EmitProceduralFieldFunctionGlsl — a call shape this shared corpus-loop
+    // harness (single flat program, no registry) doesn't support. Its own dedicated correctness
+    // gate (test_recipe_nested_invocation.cpp) exercises it directly, including the mandatory
+    // GPU-verified CPU/GLSL parity check — this exemption only says "not in the SHARED loop,"
+    // not "untested."
+    validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe));
+
     std::vector<int> missingFromCorpus;   // valid but never exercised by the corpus
     for (uint8_t v : validOpcodes)
         if (!corpusOpcodes.count(v))

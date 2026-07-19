@@ -170,7 +170,11 @@ TEST(HotnessGate, PromotesOnlyBucketsAboveThreshold) {
 
 namespace {
 
-// Byte-identical to RecipeInstanceBucketing.comp's Push block (mirrors M2's own copy).
+// Byte-identical to RecipeInstanceBucketing.comp's Push block (mirrors M2's own copy;
+// Load-Tier Contract M1 added raySizeCoef/raySizeBias/cameraPos -- KI-034 is the exact bug
+// class this staleness risks, keep every hand-mirrored copy of this struct in lockstep with
+// the shader). Value-init (`BucketingPush pc{};`) zero-inits the 3 new fields, which is
+// exactly "gating disabled" -- this file's existing scenes are unaffected.
 struct BucketingPush {
     glm::mat4 viewProj;
     uint32_t  instanceCount;
@@ -179,13 +183,20 @@ struct BucketingPush {
     uint32_t  screenWidth;
     uint32_t  screenHeight;
     uint32_t  mode;
+    float     raySizeCoef;
+    float     raySizeBias;
+    glm::vec3 cameraPos;
 };
 
+// Byte-identical to the shader's RecipeBoundSphere struct. Load-Tier Contract M1 added
+// gateFootprintThreshold (0.0 = not opted in).
 struct RecipeBoundSphereCpu {
     float center[3];
     float radius;
     float relaxation;
-    float _pad[3];
+    float gateFootprintThreshold;
+    float precisionFootprintThreshold;
+    float _pad;
 };
 static_assert(sizeof(RecipeBoundSphereCpu) == 32, "RecipeBoundSphereCpu std430 mirror size");
 
@@ -760,8 +771,10 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     // this pass at all (mirrors the design doc §3.4 model: cold recipes' instances go straight
     // to the fallback path, not through the specialized-pipeline machinery).
     // ======================================================================
-    VkBuffer instBuf, boundBuf, countBuf, idxBuf, minXBuf, minYBuf, maxXBuf, maxYBuf, indirectBuf;
-    VkDeviceMemory instMem, boundMem, countMem, idxMem, minXMem, minYMem, maxXMem, maxYMem, indirectMem;
+    VkBuffer instBuf, boundBuf, countBuf, idxBuf, minXBuf, minYBuf, maxXBuf, maxYBuf, indirectBuf,
+             precCountBuf, precIdxBuf;
+    VkDeviceMemory instMem, boundMem, countMem, idxMem, minXMem, minYMem, maxXMem, maxYMem, indirectMem,
+                   precCountMem, precIdxMem;
 
     const VkDeviceSize instSize  = hotInstanceCount * sizeof(Vixen::SVO::BodyInstanceGpu);
     const VkDeviceSize boundSize = kMaxBuckets * sizeof(RecipeBoundSphereCpu);
@@ -769,6 +782,11 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     const VkDeviceSize idxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * kMaxMembersPerBucket * sizeof(uint32_t);
     const VkDeviceSize extremaSize = kMaxBuckets * sizeof(uint32_t);
     const VkDeviceSize indirectSize = static_cast<VkDeviceSize>(kMaxBuckets) * 3 * sizeof(uint32_t);
+    // Load-Tier Contract M2: bindings 9-10 (precision sub-bucket pair) — this test doesn't
+    // exercise precision tiering, but the pipeline layout must still declare every binding the
+    // SPIR-V module references (same reasoning as the indirect-command buffer's own comment).
+    const VkDeviceSize precCountSize = static_cast<VkDeviceSize>(kMaxBuckets) * 2 * sizeof(uint32_t);
+    const VkDeviceSize precIdxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * 2 * kMaxMembersPerBucket * sizeof(uint32_t);
 
     CreateHostBuffer(instSize,  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf,  instMem,  false);
     CreateHostBuffer(boundSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, boundBuf, boundMem, false);
@@ -781,14 +799,16 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     CreateHostBuffer(indirectSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
         indirectBuf, indirectMem, true);
+    CreateHostBuffer(precCountSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, precCountBuf, precCountMem, true);
+    CreateHostBuffer(precIdxSize,   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, precIdxBuf,   precIdxMem,   true);
 
     UploadBuffer(instMem, hotInstances.data(), instSize);
 
     std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
     boundSpheres[kRecipeA] = RecipeBoundSphereCpu{
-        {entryA.boundCenter.x, entryA.boundCenter.y, entryA.boundCenter.z}, entryA.boundRadius, entryA.stepRelaxation, {0, 0, 0}};
+        {entryA.boundCenter.x, entryA.boundCenter.y, entryA.boundCenter.z}, entryA.boundRadius, entryA.stepRelaxation, 0.0f, 0.0f, 0.0f};
     boundSpheres[kRecipeB] = RecipeBoundSphereCpu{
-        {entryB.boundCenter.x, entryB.boundCenter.y, entryB.boundCenter.z}, entryB.boundRadius, entryB.stepRelaxation, {0, 0, 0}};
+        {entryB.boundCenter.x, entryB.boundCenter.y, entryB.boundCenter.z}, entryB.boundRadius, entryB.stepRelaxation, 0.0f, 0.0f, 0.0f};
     UploadBuffer(boundMem, boundSpheres.data(), boundSize);
 
     // NOTE: RecipeInstanceBucketing.comp's own bucketing/coverage pass computes
@@ -813,8 +833,9 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
         lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         return lb;
     };
-    const std::array<VkDescriptorSetLayoutBinding, 9> bucketingBindings = {
+    const std::array<VkDescriptorSetLayoutBinding, 11> bucketingBindings = {
         bind(0), bind(1), bind(2), bind(3), bind(4), bind(5), bind(6), bind(7), bind(8),
+        bind(9), bind(10),
     };
     VkDescriptorSetLayoutCreateInfo bdslci{};
     bdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -840,7 +861,7 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
     VkPipeline bucketingPipeline = VK_NULL_HANDLE;
     ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &bcpci, nullptr, &bucketingPipeline), VK_SUCCESS);
 
-    VkDescriptorPoolSize bPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9};
+    VkDescriptorPoolSize bPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11};
     VkDescriptorPoolCreateInfo bdpci{};
     bdpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     bdpci.maxSets = 1; bdpci.poolSizeCount = 1; bdpci.pPoolSizes = &bPoolSize;
@@ -857,7 +878,8 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
         countInfo{countBuf, 0, VK_WHOLE_SIZE}, idxInfo{idxBuf, 0, VK_WHOLE_SIZE},
         minXInfo{minXBuf, 0, VK_WHOLE_SIZE}, minYInfo{minYBuf, 0, VK_WHOLE_SIZE},
         maxXInfo{maxXBuf, 0, VK_WHOLE_SIZE}, maxYInfo{maxYBuf, 0, VK_WHOLE_SIZE},
-        indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE};
+        indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE},
+        precCountInfo{precCountBuf, 0, VK_WHOLE_SIZE}, precIdxInfo{precIdxBuf, 0, VK_WHOLE_SIZE};
     auto wBuf = [&](uint32_t b, VkDescriptorBufferInfo* info) {
         VkWriteDescriptorSet w{};
         w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -865,10 +887,10 @@ TEST_F(RecipeMultiBucketCompositingTest, OverlappingHotRecipesCompositeCorrectly
         w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
         return w;
     };
-    const std::array<VkWriteDescriptorSet, 9> bucketingWrites = {
+    const std::array<VkWriteDescriptorSet, 11> bucketingWrites = {
         wBuf(0, &instInfo), wBuf(1, &boundInfo), wBuf(2, &countInfo), wBuf(3, &idxInfo),
         wBuf(4, &minXInfo), wBuf(5, &minYInfo), wBuf(6, &maxXInfo), wBuf(7, &maxYInfo),
-        wBuf(8, &indirectInfo),
+        wBuf(8, &indirectInfo), wBuf(9, &precCountInfo), wBuf(10, &precIdxInfo),
     };
     vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(bucketingWrites.size()), bucketingWrites.data(), 0, nullptr);
 
@@ -1593,4 +1615,6 @@ void main() {
     vkDestroyBuffer(logicalDevice_, maxXBuf, nullptr);  vkFreeMemory(logicalDevice_, maxXMem, nullptr);
     vkDestroyBuffer(logicalDevice_, maxYBuf, nullptr);  vkFreeMemory(logicalDevice_, maxYMem, nullptr);
     vkDestroyBuffer(logicalDevice_, indirectBuf, nullptr); vkFreeMemory(logicalDevice_, indirectMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, precCountBuf, nullptr); vkFreeMemory(logicalDevice_, precCountMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, precIdxBuf, nullptr);   vkFreeMemory(logicalDevice_, precIdxMem, nullptr);
 }

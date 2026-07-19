@@ -122,6 +122,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
+        # Recipe-Load-Tier-Contract M2 (precision tier): dual full/half layout for the recipe
+        # render-param block, via the new --struct-precision emitter.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -186,6 +190,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_lighttreebuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl")
         set(_out_reservoirrecord_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
         set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
+        set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
+        set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -225,6 +231,27 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(octreeconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
+        VERBATIM)
+
+    # --- RecipeParams via --struct-precision (Recipe-Load-Tier-Contract M2, precision tier):
+    # emits BOTH the full-precision RecipeParams struct and a half-precision RecipeParamsHalf
+    # packed layout (packHalf2x16) from the SAME [PrecisionEligible]-annotated schema, so the
+    # two can never drift apart. Not ALL (unlike the other config structs above) -- this is a
+    # milestone prototype, gated the same opt-in way the rest of this file already gates
+    # WSL-bridge-vs-native, so a build without dotnet reachable degrades to WARNING like every
+    # other target here, never a hard configure failure.
+    set(_rp_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_config_run}" --struct-precision RecipeParams
+        --out-cpp  "${_out_recipeparams_cpp_run}"
+        --out-glsl "${_out_recipeparams_glsl_run}")
+    add_custom_target(recipeparams_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_rp_args} --check
+        COMMENT "[codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)"
+        VERBATIM)
+    add_custom_target(recipeparams_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_rp_args}
+        COMMENT "[codegen] regenerate RecipeParams.g.h/.glsl (Yeroket tool, --struct-precision)"
         VERBATIM)
 
     # --- LightingConfig via the same Yeroket tool (Sampled Lighting Inc0 M1: lights

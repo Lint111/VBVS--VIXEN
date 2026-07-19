@@ -133,6 +133,12 @@ inline StackArity RecipeStackArity(SdfOpCode op) {
         case SdfOpCode::DeclarePosition:
             return {3, 0, 0, 0};
 
+        // InvokeRecipe (Recipe-Nested-Invocation M1, VIXEN-only, not canonical): pops nothing,
+        // pushes exactly 1 value (the callee recipe's evaluated distance) — same arity shape
+        // as a leaf primitive. See SdfOpCodes.g.h for full rationale.
+        case SdfOpCode::InvokeRecipe:
+            return {0, 1, 0, 0};
+
         // --- Domain-transform ops: push to position save stack ---
         case SdfOpCode::MirrorX:
         case SdfOpCode::MirrorY:
