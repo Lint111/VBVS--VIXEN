@@ -28,7 +28,11 @@ namespace Vixen.ViewSchemas
     // --- Hud (ViewSchema.cs SectionHud, "Hud"): Tick/BodyCount/ActiveLens/ActiveLensCount, all
     // identity 1:1 binds (U8 ActiveLens widens to int -- ViewScalar has no byte type; the adapter
     // narrows back to byte when it matters for decoded-value comparison against undertow's real U8). ---
+    // [ViewSection] here carries section-registry metadata only (Arg): this is a single-row scalar
+    // section, so the generated registry builds it from frame.Hud[0], not the frame.Hud list. The
+    // kernel round-trips the string verbatim (domain-blind); it does not move the ViewVersionHash.
     [View]
+    [ViewSection(Arg = "frame.Hud[0]")]
     public struct UndertowHud
     {
         public int tick;
@@ -103,7 +107,9 @@ namespace Vixen.ViewSchemas
     // does the actual (identity) copy -- these callables exist purely for documentation parity with
     // the 3 real Bodies-side name mismatches (Mass, out of scope this milestone), not because the
     // writer path invokes them (same gap #2 caveat as every other [Projected] use in this file).
+    // Single-row scalar section (like Hud) — registry builds it from the guarded first element.
     [View]
+    [ViewSection(Arg = "frame.HudInspect.Count > 0 ? frame.HudInspect[0] : default")]
     public struct UndertowHudInspect
     {
         [Projected(typeof(UndertowViewCallables), nameof(UndertowViewCallables.BoolToByte))]
@@ -198,7 +204,11 @@ namespace Vixen.ViewSchemas
         public float relCycles; // per-recipe: source el.RecipeParams.Z (relCycles); decomposed Vec3f component
     }
 
+    // Recipes is a DERIVED section (registry Arg = frame.Bodies): the recipe rows are a distinct-by-
+    // recipeId projection of the bodies list, not a standalone frame collection. No rowId column ⇒
+    // not delta-capable. Revision defaults to "Recipes" (its own SectionRevisions stamp).
     [View]
+    [ViewSection(Arg = "frame.Bodies")]
     public struct UndertowRecipes
     {
         [ViewSection(Layout = ViewLayout.Soa)] public UndertowRecipeRow[] rows;
@@ -235,7 +245,7 @@ namespace Vixen.ViewSchemas
     [View]
     public struct UndertowBuildingFacets
     {
-        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBuildingFacetRow[] rows;
+        [ViewSection(Layout = ViewLayout.Soa, Revision = "Buildings")] public UndertowBuildingFacetRow[] rows;
     }
 
     // --- BuildingPower row (ViewSchema.cs SectionBuildingPower, "BuildingPower"): per-building power
@@ -256,7 +266,7 @@ namespace Vixen.ViewSchemas
     [View]
     public struct UndertowBuildingPower
     {
-        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBuildingPowerRow[] rows;
+        [ViewSection(Layout = ViewLayout.Soa, Revision = "Buildings")] public UndertowBuildingPowerRow[] rows;
     }
 
     // --- BuildingLabor row (ViewSchema.cs SectionBuildingLabor, "BuildingLabor"): per-building labor
@@ -273,6 +283,6 @@ namespace Vixen.ViewSchemas
     [View]
     public struct UndertowBuildingLabor
     {
-        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBuildingLaborRow[] rows;
+        [ViewSection(Layout = ViewLayout.Soa, Revision = "Buildings")] public UndertowBuildingLaborRow[] rows;
     }
 }
