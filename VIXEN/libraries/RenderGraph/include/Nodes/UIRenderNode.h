@@ -10,6 +10,7 @@
 #include <RmlUi/Core/DataModelHandle.h>
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -40,7 +41,7 @@ public:
  * Render()). The swapchain-derived resources are owned + recreated-on-resize by those nodes, not
  * here; this node owns only its one-time RmlUi pipeline/context/document + per-image command buffers.
  */
-class UIRenderNode : public TypedNode<UIRenderNodeConfig> {
+class UIRenderNode : public TypedNode<UIRenderNodeConfig>, public IUiCompositionHost {
 public:
     UIRenderNode(const std::string& instanceName, NodeType* nodeType);
     ~UIRenderNode() override = default;
@@ -49,6 +50,14 @@ public:
     /// (CreateDataModel(view->ModelName()) -> view->Register(c) -> LoadDocument(view->DocumentPath()))
     /// without knowing any field. Call before the first compile.
     void SetView(std::shared_ptr<IView> view);
+
+    // --- IUiCompositionHost (relational-vertical-slice M-ui) ---
+    // A second-document mount lifecycle over this node's one shared Rml::Context, beside the primary
+    // (HUD) document_. Mounts are stored in mounts_ keyed by handle. See IView.h for the contract.
+    MountHandle Mount(IView& view) override;
+    void Unmount(MountHandle handle) override;
+    void MarkMountedDirty(MountHandle handle, const char* field) override;
+    [[nodiscard]] bool IsMounted(MountHandle handle) const override;
 
     /// Dirty a bound variable after the consumer mutated its storage (forwards to DataModelHandle).
     void MarkViewDirty(const char* field);
@@ -109,6 +118,25 @@ private:
     // -> view_->Register(c)); MarkViewDirty forwards to viewModel_.DirtyVariable.
     std::shared_ptr<IView>  view_;
     Rml::DataModelHandle    viewModel_;
+
+    // --- IUiCompositionHost mounts (M-ui) ---
+    // A live mounted fragment: its second document + its own isolated data model, in the shared
+    // context_. Keyed by an increasing MountHandle. Kept beside document_/viewModel_ (the primary
+    // HUD), never replacing them — the HUD document is byte-untouched when nothing is mounted.
+    struct Mount_ {
+        IView*               view = nullptr;   // borrowed (owned by the caller, like the HUD view)
+        Rml::ElementDocument* doc = nullptr;
+        Rml::DataModelHandle  model;
+    };
+    std::map<MountHandle, Mount_> mounts_;
+    MountHandle nextMountHandle_ = 1;   // 0 is the invalid sentinel
+    // Mount() can be called before the first CompileImpl (context_ still null); such requests park
+    // here and are realized on the first frame the context exists (RealizePendingMounts in RecordFrame).
+    std::vector<std::pair<MountHandle, IView*>> pendingMounts_;
+    // Do the actual RmlUi CreateDataModel + LoadDocument + validation for one view; returns false
+    // (leaving no partial state) on a namespace/degenerate-layout failure. Requires context_ != null.
+    bool MountNow(MountHandle handle, IView& view);
+    void RealizePendingMounts();   // drain pendingMounts_ once context_ exists
 
     // GPU timing (M5.1, mirrors ComputeDispatchNode's gpuPerfLogger_): times the render-pass
     // recording (BeginRenderPass..EndRenderPass) so a p99 hitch can be attributed to the UI pass

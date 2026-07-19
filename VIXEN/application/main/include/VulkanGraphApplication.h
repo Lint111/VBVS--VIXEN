@@ -10,6 +10,7 @@
 #include "Time/EngineTime.h"
 #include "MessageBus.h"
 #include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
+#include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Mount/PushBuildingInspector seam (gaia-free)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "ShaderCacheManager.h"  // Baked-perf-pipeline M2b: persistent disk cache for the 4 live shader builders (BuildRenderGraph.cpp)
 #include <chrono>
@@ -50,6 +51,9 @@ namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked r
 // pointer (constructed via MakeHudView(), an opaque factory in HudViewBridge.h) so this header
 // needs only the forward declaration -- see hudView_ below for why it isn't std::unique_ptr.
 namespace Vixen::App { class HudView; }
+// Building-inspector view (step-6 M-ui) — same forward-decl/opaque-factory pattern as HudView for the
+// same robin_hood ODR reason; constructed via MakeBuildingInspectorView() (BuildingInspectorBridge.h).
+namespace Vixen::App { class BuildingInspectorView; struct BuildingInspectorIn; }
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -383,6 +387,13 @@ private:
     // whose bodies live in HudViewBridge.cpp, the one gaia-free TU where HudView is complete.
     Vixen::App::HudView* hudView_ = nullptr;
 
+    // Step-6 M-ui: the building-inspector view, mounted as a SECOND document on the composite UI node
+    // via IUiCompositionHost (BuildRenderGraph → MountBuildingInspector). Owned here (raw pointer, same
+    // incomplete-type/ODR reason as hudView_); the mount stores a borrowed pointer. buildingMount_ is
+    // the handle returned by Mount (0 if there's no composite UI node / the mount was rejected).
+    Vixen::App::BuildingInspectorView* buildingInspectorView_ = nullptr;
+    uint32_t buildingMount_ = 0;
+
     // Inc1 M4 Task 6b: perf-CSV recorder + the steady_clock timestamp of the previous
     // PostTick call (for measuring this tick's CPU frame time). No-op object when
     // VIXEN_PERF_CSV is unset (IsEnabled()==false), so construction/RecordFrame/Flush are
@@ -457,6 +468,9 @@ public:
                      std::span<const Vixen::App::HudEventIn> events);
     // T1 inspect: forward the selected-entity detail to the HUD (see PushHudView's bridge rationale).
     void PushHudInspect(bool selected, const char* name, const char* cause);
+    // Step-6 M-ui: push the selected building's three-channel data into the mounted building-inspector
+    // fragment (same bridge rationale as PushHudView). No-op before Prepare() / when nothing is mounted.
+    void PushBuildingInspector(const Vixen::App::BuildingInspectorIn& in);
     // Host sim-speed readout: forward the current speed multiplier to the HUD clock line (same bridge
     // rationale as PushHudView). The host reads it from ut_speed each frame.
     void PushHudSpeed(double speed);

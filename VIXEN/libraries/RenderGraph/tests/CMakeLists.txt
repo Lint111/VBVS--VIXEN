@@ -605,6 +605,46 @@ else()
 endif()
 
 # ===========================================================================
+# Step-6 M-ui: UI multi-document composition host (headless — no Vulkan required)
+# ===========================================================================
+# Proves the IUiCompositionHost mount/unmount mechanics + the building_inspector.rml fragment +
+# BuildingInspectorView binding. Compiles BuildingInspectorView.cpp + HudView.cpp directly (same as
+# test_ui_hud_smoke — not the VixenApp library, to stay gaia-free / ODR-safe) and reuses the same
+# assets/ui staging (building_inspector.rml sits beside hud.rml in ../assets/ui, copied wholesale).
+if(TARGET GTest::gtest_main)
+    add_executable(test_ui_composition_host
+        test_ui_composition_host.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/HudView.cpp
+        ${CMAKE_SOURCE_DIR}/application/main/source/graph/BuildingInspectorView.cpp
+    )
+    target_link_libraries(test_ui_composition_host PRIVATE GTest::gtest_main RenderGraph)
+    target_include_directories(test_ui_composition_host PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
+
+    set(_UI_ASSETS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../assets/ui")
+    add_custom_command(TARGET test_ui_composition_host POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:test_ui_composition_host>/assets/ui"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${_UI_ASSETS_SRC}"
+            "$<TARGET_FILE_DIR:test_ui_composition_host>/assets/ui"
+        COMMENT "Staging UI assets for test_ui_composition_host"
+    )
+    if(TARGET TBB::tbb)
+        add_custom_command(TARGET test_ui_composition_host POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:TBB::tbb>
+                $<TARGET_FILE_DIR:test_ui_composition_host>
+            COMMENT "Copying TBB DLL for test_ui_composition_host"
+        )
+    endif()
+    set_target_properties(test_ui_composition_host PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_ui_composition_host)
+    message(STATUS "✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)")
+else()
+    message(STATUS "⊗ test_ui_composition_host skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
 # View Contract Inc-2: Hud golden-mirror gate (headless — no Vulkan required)
 # ===========================================================================
 # Proves the generated Generated/Hud.g.h RmlUi data-model registration block

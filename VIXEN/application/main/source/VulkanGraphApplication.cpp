@@ -135,7 +135,8 @@ VulkanGraphApplication::VulkanGraphApplication()
       graphCompiled(false),
       width(500),
       height(500),
-      hudView_(Vixen::App::MakeHudView()) {
+      hudView_(Vixen::App::MakeHudView()),
+      buildingInspectorView_(Vixen::App::MakeBuildingInspectorView()) {
 
     // Perf measurement (perf sweep 2026-07): fixed A/B window sizes without a rebuild.
     // VIXEN_WINDOW_WIDTH / VIXEN_WINDOW_HEIGHT override the 500x500 default when set.
@@ -161,6 +162,7 @@ VulkanGraphApplication::~VulkanGraphApplication() {
     // forward-declares HudView (see VulkanGraphApplication.h's rationale), so `delete hudView_`
     // here directly would be an incomplete-type-delete compile error.
     Vixen::App::DestroyHudView(hudView_);
+    Vixen::App::DestroyBuildingInspectorView(buildingInspectorView_);  // complete type in the bridge TU
     DeInitialize();
 }
 
@@ -3302,6 +3304,14 @@ void VulkanGraphApplication::PushHudView(int tick, int bodyCount, int activeLens
 void VulkanGraphApplication::PushHudInspect(bool selected, const char* name, const char* cause) {
     if (!hudView_) return;
     Vixen::App::PushHudInspect(*hudView_, selected, name, cause);
+}
+
+void VulkanGraphApplication::PushBuildingInspector(const Vixen::App::BuildingInspectorIn& in) {
+    // Forwards through the gaia-free bridge (never BuildingInspectorView.h directly — this TU sees
+    // gaia.h). The view dirties its own bound model, so no host round-trip is needed. Safe any time
+    // after construction; a no-op visually when nothing is mounted (buildingMount_ == 0).
+    if (!buildingInspectorView_) return;
+    Vixen::App::PushBuildingInspector(*buildingInspectorView_, in);
 }
 
 void VulkanGraphApplication::PushHudSpeed(double speed) {

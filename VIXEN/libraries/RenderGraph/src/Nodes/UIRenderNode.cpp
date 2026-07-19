@@ -14,9 +14,13 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Factory.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <string>
+#include <utility>
 
 namespace Vixen::RenderGraph {
 
@@ -252,6 +256,9 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
 
     renderInterface_.BeginFrame(cmd, extent_);
     if (context_) {
+        // M-ui: realize any mount requested before the context existed (the first frame it's alive).
+        // Must run BEFORE Update() so a freshly mounted fragment renders this same frame (spike §2).
+        RealizePendingMounts();
         context_->SetDimensions(Rml::Vector2i(static_cast<int>(extent_.width), static_cast<int>(extent_.height)));
         context_->Update();
         context_->Render();
@@ -371,6 +378,120 @@ void UIRenderNode::SetView(std::shared_ptr<IView> view) { view_ = std::move(view
 
 void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) viewModel_.DirtyVariable(field); }
 
+// --- IUiCompositionHost (M-ui) ---------------------------------------------------------------------
+// The mount lifecycle proven by the M3 spike, turned into the minimal committed interface: a second
+// document + its own isolated data model in the one shared context_, validated at mount, torn down at
+// unmount, and drained/realized once the context exists (Mount may be called before the first compile).
+
+bool UIRenderNode::MountNow(MountHandle handle, IView& view) {
+    // Precondition: context_ exists (caller-checked). Validate BEFORE mutating any state so a failed
+    // mount leaves nothing partial (spike §4: RmlUi silently renders nothing on these — we catch them).
+    const char* modelName = view.ModelName();
+    if (!modelName || !*modelName) {
+        std::fprintf(stderr, "[ui-host] mount rejected: empty model name\n");
+        return false;
+    }
+    // Namespace-collision check: the primary HUD model ("hud" via view_) and every already-mounted
+    // model own their names; a second CreateDataModel(name) with a live name would fail inside RmlUi
+    // and leave a half-mounted document. Reject up front.
+    if (view_ && view_->ModelName() && std::string(modelName) == view_->ModelName()) {
+        std::fprintf(stderr, "[ui-host] mount rejected: model '%s' collides with the primary document\n", modelName);
+        return false;
+    }
+    for (const auto& [h, m] : mounts_) {
+        if (m.view && m.view->ModelName() && std::string(modelName) == m.view->ModelName()) {
+            std::fprintf(stderr, "[ui-host] mount rejected: model '%s' already mounted (handle %u)\n", modelName, h);
+            return false;
+        }
+    }
+
+    Rml::DataModelHandle model;
+    if (Rml::DataModelConstructor c = context_->CreateDataModel(modelName)) {
+        view.Register(c);
+        model = c.GetModelHandle();
+    } else {
+        std::fprintf(stderr, "[ui-host] mount failed: CreateDataModel('%s') returned null\n", modelName);
+        return false;
+    }
+
+    const std::string docPath = ResolveUiAsset(view.DocumentPath());
+    Rml::ElementDocument* doc = context_->LoadDocument(docPath);
+    if (!doc) {
+        std::fprintf(stderr, "[ui-host] mount failed: LoadDocument('%s') returned null\n", docPath.c_str());
+        context_->RemoveDataModel(modelName);   // undo the half-mount
+        return false;
+    }
+    doc->Show();
+
+    // Degenerate-layout validation (spike §4): a body with only out-of-flow children collapses to 0×0
+    // and every anchored child lands off-screen — RmlUi renders nothing, no warning. The document must
+    // stretch to the context. Show() forced an initial layout; the body's border-box (offset) size is
+    // the reliable "did it stretch" signal (the content box can read 0 even for a correct stretched
+    // body whose children are all absolutely positioned).
+    const float w = doc->GetOffsetWidth();
+    const float h = doc->GetOffsetHeight();
+    if (w <= 0.0f || h <= 0.0f) {
+        std::fprintf(stderr,
+            "[ui-host] mount rejected: document '%s' has a degenerate %gx%g layout "
+            "(stretch its body top/left/right/bottom:0 like hud.rcss)\n",
+            docPath.c_str(), w, h);
+        context_->UnloadDocument(doc);
+        context_->RemoveDataModel(modelName);
+        return false;
+    }
+
+    mounts_[handle] = Mount_{ &view, doc, model };
+    std::fprintf(stderr, "[ui-host] mounted '%s' (handle %u, %gx%g)\n", modelName, handle, w, h);
+    return true;
+}
+
+void UIRenderNode::RealizePendingMounts() {
+    if (pendingMounts_.empty() || !context_) return;
+    for (auto& [handle, view] : pendingMounts_) {
+        if (view) MountNow(handle, *view);   // a rejected mount just doesn't appear in mounts_
+    }
+    pendingMounts_.clear();
+}
+
+UIRenderNode::MountHandle UIRenderNode::Mount(IView& view) {
+    const MountHandle handle = nextMountHandle_++;
+    if (context_) {
+        if (!MountNow(handle, view)) return 0;
+    } else {
+        // Context not built yet (Mount called before the first CompileImpl) — park it; RealizePendingMounts
+        // in RecordFrame does the actual mount once the context exists. Report the handle optimistically
+        // (mirrors the HUD's SetView-before-compile deferral); IsMounted() reflects the real state later.
+        pendingMounts_.emplace_back(handle, &view);
+    }
+    return handle;
+}
+
+void UIRenderNode::Unmount(MountHandle handle) {
+    if (handle == 0) return;
+    auto it = mounts_.find(handle);
+    if (it != mounts_.end()) {
+        if (context_) {
+            if (it->second.doc) context_->UnloadDocument(it->second.doc);
+            if (it->second.view && it->second.view->ModelName())
+                context_->RemoveDataModel(it->second.view->ModelName());
+        }
+        mounts_.erase(it);
+    }
+    // Also drop any still-pending (never-realized) request with this handle.
+    pendingMounts_.erase(std::remove_if(pendingMounts_.begin(), pendingMounts_.end(),
+        [handle](const auto& p) { return p.first == handle; }), pendingMounts_.end());
+}
+
+void UIRenderNode::MarkMountedDirty(MountHandle handle, const char* field) {
+    auto it = mounts_.find(handle);
+    if (it != mounts_.end() && it->second.model && field) it->second.model.DirtyVariable(field);
+}
+
+bool UIRenderNode::IsMounted(MountHandle handle) const {
+    auto it = mounts_.find(handle);
+    return it != mounts_.end() && it->second.doc != nullptr;
+}
+
 void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (device_ == VK_NULL_HANDLE) return;
 
@@ -421,10 +542,14 @@ void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // it so a second FinalTeardown (defensive) does not double-shutdown RmlUi.
     if (initialized_) {
         if (context_) {
-            Rml::RemoveContext("vixen_ui");  // releases context_ + document_ (owned by the context)
+            Rml::RemoveContext("vixen_ui");  // releases context_ + document_ + all mounted docs (context-owned)
             context_ = nullptr;
             document_ = nullptr;
         }
+        // M-ui: RemoveContext already destroyed every mounted document + data model; just drop the
+        // dangling bookkeeping so a defensive second teardown / reuse sees no stale handles.
+        mounts_.clear();
+        pendingMounts_.clear();
         Rml::Shutdown();              // RmlUi drops its references to renderInterface_ / systemInterface_
         renderInterface_.Shutdown(); // destroy our GPU objects AFTER RmlUi no longer references the interface
         initialized_ = false;

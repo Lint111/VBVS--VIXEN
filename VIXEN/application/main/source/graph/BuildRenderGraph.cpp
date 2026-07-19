@@ -5676,6 +5676,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // instantiates, in a TU that never sees gaia.h (see HudViewBridge.h's file header).
     Vixen::App::WireHudView(*uiComposite, *hudView_);
 
+    // Step-6 M-ui: mount the relational building-inspector fragment as a SECOND document on the same
+    // composite UI node, via the IUiCompositionHost seam (routed through the gaia-free bridge for the
+    // same robin_hood/ODR reason as WireHudView). The context doesn't exist until the node's first
+    // compile, so Mount PARKS the request and realizes it on the first frame (RealizePendingMounts);
+    // buildingMount_ is the returned handle (used by the M-ui gate's alive check). The HUD document is
+    // byte-untouched by this — it's an additive second mount.
+    buildingMount_ = Vixen::App::MountBuildingInspector(*uiComposite, *buildingInspectorView_);
+    mainLogger->Info("Mounted building-inspector fragment (M-ui), handle " + std::to_string(buildingMount_));
+
     mainLogger->Info("Configured all node parameters (including camera, voxel grid, and UI composite pass)");
 
     // ===================================================================

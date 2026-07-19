@@ -1,0 +1,78 @@
+<rml>
+<head>
+    <title>Building Inspector</title>
+    <style>
+        /* Inline styles (like spike.rml): the fragment links no external .rcss so it can't perturb
+           the HUD's stylesheet cache. Stretch the body to fill the context — an absolute child anchored
+           to left/bottom otherwise resolves against a 0x0 block and lands off-screen (spike §4 / hud.rcss
+           precedent). pointer-events:none so the read-only inspector never eats clicks. */
+        body {
+            font-family: LatoLatin;
+            font-size: 14px;
+            color: #d0d0d0;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+        }
+        /* Bottom-right panel, distinct from the HUD (top-right) so a capture shows both at once. */
+        div#building {
+            position: absolute;
+            left: 12px; bottom: 12px;
+            width: 240px;
+            padding: 8px 12px;
+            background-color: #101c2edd;
+            border-width: 1px;
+            border-color: #4080a0;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+        .title { color: #80c0ff; font-size: 15px; margin-bottom: 4px; }
+        .group-label {
+            display: block;
+            color: #607090;
+            font-size: 11px;
+            margin-top: 6px;
+            margin-bottom: 2px;
+            border-bottom-width: 1px;
+            border-color: #283048;
+            padding-bottom: 1px;
+        }
+        .kv { display: block; margin-top: 1px; }
+        .k  { display: inline-block; width: 96px; color: #8090a8; }
+        .v  { display: inline-block; color: #d8e0f0; }
+        .owned { display: block; margin-top: 6px; color: #80e0a0; }
+        .impact-ok       { color: #80e0a0; }
+        .impact-throttled{ color: #f0c060; }
+        .impact-halted   { color: #f07060; }
+    </style>
+</head>
+<body>
+    <!-- Isolated "building" data model — its variable names must not collide with the HUD's "hud"
+         model. Bound by BuildingInspectorView::Register (BuildingInspectorBridge.cpp). All display
+         transforms (impact label, unit formatting, "you own this") are computed host-side and pushed
+         as pre-formatted strings — no game logic in the fragment (spec §7.10 / §4). -->
+    <div data-model="building" id="building">
+        <!-- Identity -->
+        <div class="title">{{defId}}</div>
+        <div class="kv"><span class="k">Owner</span><span class="v">{{ownerName}}</span></div>
+
+        <!-- Power contribution (independently-authored region, spec §4) -->
+        <div class="group-label">Power</div>
+        <div class="kv"><span class="k">Demand</span><span class="v">{{powerDemand}}</span></div>
+        <div class="kv"><span class="k">Generated</span><span class="v">{{powerGenerated}}</span></div>
+        <div class="kv"><span class="k">Stored</span><span class="v">{{powerStored}}</span></div>
+        <div class="kv"><span class="k">Net</span><span class="v">{{powerNet}}</span></div>
+        <div class="kv"><span class="k">Connected</span><span class="v">{{powerConnected}}</span></div>
+        <div class="kv"><span class="k">Status</span><span class="v" data-class-impact-ok="impactOk" data-class-impact-throttled="impactThrottled" data-class-impact-halted="impactHalted">{{powerImpact}}</span></div>
+
+        <!-- Labor contribution (independently-authored region) -->
+        <div class="group-label">Labor</div>
+        <div class="kv"><span class="k">Supply</span><span class="v">{{laborSupply}}</span></div>
+        <div class="kv"><span class="k">Need</span><span class="v">{{laborNeed}}</span></div>
+        <div class="kv"><span class="k">Met</span><span class="v">{{laborNeedMet}}</span></div>
+
+        <!-- Ownership affordance line — shown only to the owning viewer (IsOwnerViewer, spec §5). -->
+        <div class="owned" data-if="isOwnerViewer">You own this.</div>
+    </div>
+</body>
+</rml>
