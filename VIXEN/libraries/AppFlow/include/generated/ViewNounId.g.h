@@ -35,7 +35,6 @@ enum class ViewNounId : uint32_t {
     UndertowBuildingFacets_rows = 27,
     UndertowBuildingPower_rows = 28,
     UndertowBuildingLabor_rows = 29,
-    VectorProof_position = 30,
 };
 
 }  // namespace Vixen::AppFlow

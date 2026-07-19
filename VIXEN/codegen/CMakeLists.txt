@@ -104,6 +104,12 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
+        # seam M-r7 (home-B): UndertowHud.cs moved to undertow (core/codegen/view-schemas). Its family
+        # targets (--readmodel-cpp UndertowHud*, the noun sweep, the umbrella --schema-file) read the
+        # UNDERTOW path, which only resolves under the superproject layout (engine-standalone caveat:
+        # the engine can no longer regen its undertow read-models without undertow present — it consumes
+        # the committed .g.h copies). VIXEN-native Hud/EditorLayers stay on _schema_view_run.
+        _codegen_to_wsl_path("${_cg}/../../../../core/codegen/view-schemas" _schema_undertow_view_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
@@ -171,7 +177,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # UndertowHud.cs [View] family -- --schema-file (a single .cs file, not the
         # directory-scoped --schema) + --out-dir (existence-probe root for each discovered
         # schema's sibling .blob/.typed/.readmodel.g.h files) + --out-header (the umbrella itself).
-        _codegen_to_wsl_path("${_cg}/view-schemas/UndertowHud.cs" _schema_undertowhud_file_run)
+        _codegen_to_wsl_path("${_cg}/../../../../core/codegen/view-schemas/UndertowHud.cs" _schema_undertowhud_file_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated" _out_undertowhud_gendir_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFamily.umbrella.g.h" _out_undertowhud_umbrella_run)
         set(_CODEGEN_RUNNER ${WSL_EXE} -e "${_wsl_dotnet}")
@@ -179,6 +185,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_yk_tool_run "${_yk_tool}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
+        # seam M-r7 (home-B): UndertowHud.cs now lives in undertow (superproject path). See the
+        # WSL-bridge block's comment for the engine-standalone caveat.
+        set(_schema_undertow_view_run "${_cg}/../../../../core/codegen/view-schemas")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
         set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
         set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
@@ -226,7 +235,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_undertowbuildinglabor_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingLabor.readmodel.g.h")
         # View Read-Model Codegen Milestone 6: umbrella include header (native-path mirror
         # of the WSL-bridge block above).
-        set(_schema_undertowhud_file_run "${_cg}/view-schemas/UndertowHud.cs")
+        set(_schema_undertowhud_file_run "${_cg}/../../../../core/codegen/view-schemas/UndertowHud.cs")
         set(_out_undertowhud_gendir_run "${VIXEN_ROOT}/application/main/include/Generated")
         set(_out_undertowhud_umbrella_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFamily.umbrella.g.h")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
@@ -507,7 +516,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     set(_appflow_args
         run --project "${_yk_tool_run}" -c Release --
         --schema "${_schema_appflow_run}" --appflow
-        --view-schema "${_schema_view_run}"
+        --view-schema "${_schema_view_run}" --view-schema "${_schema_undertow_view_run}"
+        --exclude VectorProof
         --out-header "${_out_appflow_hdr_run}")
     add_custom_target(appflow_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
@@ -522,9 +532,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # field in view-schemas/ (struct-qualified {Struct}_{field}), replacing IViewDataProvider.h's
     # Inc-A hand-stub. Committed + drift-guarded like every other generated artifact; the whole
     # view-schemas dir is the noun source (a Data-action provider switches on these ids).
+    # seam M-r7 (home-B): the noun space now spans TWO dirs — VIXEN-native view-schemas (Hud/
+    # EditorLayers) + undertow's relocated view-schemas (UndertowHud). Swept in that order so the ids
+    # stay byte-identical (UndertowHud_* keep 12-29). --exclude VectorProof drops the proof-schema leak
+    # (the orphan tail id 30) from the runtime dataTarget id space. The appflow --view-schema feed above
+    # uses the IDENTICAL two dirs + exclude, so [FlowDataTarget] ordinals match this enum.
     set(_view_noun_args
         run --project "${_yk_tool_run}" -c Release --
-        --view-noun-enum --schema "${_schema_view_run}"
+        --view-noun-enum --schema "${_schema_view_run}" --schema "${_schema_undertow_view_run}"
+        --exclude VectorProof
         --out-header "${_out_view_noun_hdr_run}")
     add_custom_target(view_noun_enum_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
@@ -563,7 +579,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # generated artifact here.
     set(_readmodel_undertowhud_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowHud
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHud
         --out-header "${_out_undertowhud_readmodel_run}")
     add_custom_target(readmodel_undertowhud_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args} --check
@@ -576,7 +592,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
     set(_readmodel_undertowhudfactions_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudFactions
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudFactions
         --out-header "${_out_undertowhudfactions_readmodel_run}")
     add_custom_target(readmodel_undertowhudfactions_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args} --check
@@ -589,7 +605,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
     set(_readmodel_undertowhudevents_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudEvents
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudEvents
         --out-header "${_out_undertowhudevents_readmodel_run}")
     add_custom_target(readmodel_undertowhudevents_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args} --check
@@ -602,7 +618,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
     set(_readmodel_undertowhudinspect_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowHudInspect
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudInspect
         --out-header "${_out_undertowhudinspect_readmodel_run}")
     add_custom_target(readmodel_undertowhudinspect_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args} --check
@@ -620,7 +636,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # these per-schema checks guard each committed .readmodel.g.h against the canonical schema.
     set(_readmodel_undertowbuildingfacets_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowBuildingFacets
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowBuildingFacets
         --out-header "${_out_undertowbuildingfacets_readmodel_run}")
     add_custom_target(readmodel_undertowbuildingfacets_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingfacets_args} --check
@@ -633,7 +649,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
     set(_readmodel_undertowbuildingpower_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowBuildingPower
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowBuildingPower
         --out-header "${_out_undertowbuildingpower_readmodel_run}")
     add_custom_target(readmodel_undertowbuildingpower_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingpower_args} --check
@@ -646,7 +662,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
     set(_readmodel_undertowbuildinglabor_args
         run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_view_run}" --readmodel-cpp UndertowBuildingLabor
+        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowBuildingLabor
         --out-header "${_out_undertowbuildinglabor_readmodel_run}")
     add_custom_target(readmodel_undertowbuildinglabor_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildinglabor_args} --check
