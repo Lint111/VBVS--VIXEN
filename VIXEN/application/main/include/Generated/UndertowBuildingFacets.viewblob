@@ -1,0 +1,10 @@
+# viewblob v1
+model undertowbuildingfacets
+version 0x657E4C79
+elem UndertowBuildingFacetRow
+  def string
+  flags int
+  owner u64
+  isOwnerViewer int
+  rowId u64
+field rows array UndertowBuildingFacetRow

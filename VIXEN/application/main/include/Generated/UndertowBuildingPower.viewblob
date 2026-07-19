@@ -1,0 +1,12 @@
+# viewblob v1
+model undertowbuildingpower
+version 0x302BE8A8
+elem UndertowBuildingPowerRow
+  demand float
+  generated float
+  stored float
+  net float
+  connected int
+  impact int
+  rowId u64
+field rows array UndertowBuildingPowerRow

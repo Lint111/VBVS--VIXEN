@@ -1,0 +1,9 @@
+# viewblob v1
+model undertowbuildinglabor
+version 0xC9C17A25
+elem UndertowBuildingLaborRow
+  supply float
+  need float
+  needMet int
+  rowId u64
+field rows array UndertowBuildingLaborRow

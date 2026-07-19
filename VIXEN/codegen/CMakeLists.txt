@@ -160,6 +160,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h" _out_undertowhudfactions_readmodel_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h" _out_undertowhudevents_readmodel_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h" _out_undertowhudinspect_readmodel_run)
+        # slice6 (relational vertical slice): the 3 building-relation --readmodel-cpp DTO headers.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingFacets.readmodel.g.h" _out_undertowbuildingfacets_readmodel_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingPower.readmodel.g.h" _out_undertowbuildingpower_readmodel_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingLabor.readmodel.g.h" _out_undertowbuildinglabor_readmodel_run)
         # View Read-Model Codegen Milestone 6: the umbrella include header for the whole
         # UndertowHud.cs [View] family -- --schema-file (a single .cs file, not the
         # directory-scoped --schema) + --out-dir (existence-probe root for each discovered
@@ -211,6 +215,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_undertowhudfactions_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h")
         set(_out_undertowhudevents_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h")
         set(_out_undertowhudinspect_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h")
+        # slice6 (relational vertical slice): the 3 building-relation --readmodel-cpp DTO headers.
+        set(_out_undertowbuildingfacets_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingFacets.readmodel.g.h")
+        set(_out_undertowbuildingpower_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingPower.readmodel.g.h")
+        set(_out_undertowbuildinglabor_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingLabor.readmodel.g.h")
         # View Read-Model Codegen Milestone 6: umbrella include header (native-path mirror
         # of the WSL-bridge block above).
         set(_schema_undertowhud_file_run "${_cg}/view-schemas/UndertowHud.cs")
@@ -583,6 +591,50 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMENT "[codegen] regenerate UndertowHudInspect.readmodel.g.h (Yeroket tool)"
         VERBATIM)
 
+    # --- slice6 (relational vertical slice): the 3 building-relation [View] read-models.
+    # Same --readmodel-cpp drift-guard pattern as the Hud family above -- these decode the
+    # BuildingFacets/BuildingPower/BuildingLabor sections undertow's ViewSchema.cs writer emits
+    # (ids 6/7/8, FormatVersion 12). The umbrella (--schema-file) auto-discovers the [View] structs;
+    # these per-schema checks guard each committed .readmodel.g.h against the canonical schema.
+    set(_readmodel_undertowbuildingfacets_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowBuildingFacets
+        --out-header "${_out_undertowbuildingfacets_readmodel_run}")
+    add_custom_target(readmodel_undertowbuildingfacets_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingfacets_args} --check
+        COMMENT "[codegen] golden check: UndertowBuildingFacets.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowbuildingfacets_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingfacets_args}
+        COMMENT "[codegen] regenerate UndertowBuildingFacets.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowbuildingpower_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowBuildingPower
+        --out-header "${_out_undertowbuildingpower_readmodel_run}")
+    add_custom_target(readmodel_undertowbuildingpower_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingpower_args} --check
+        COMMENT "[codegen] golden check: UndertowBuildingPower.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowbuildingpower_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingpower_args}
+        COMMENT "[codegen] regenerate UndertowBuildingPower.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
+    set(_readmodel_undertowbuildinglabor_args
+        run --project "${_yk_tool_run}" -c Release --
+        --schema "${_schema_view_run}" --readmodel-cpp UndertowBuildingLabor
+        --out-header "${_out_undertowbuildinglabor_readmodel_run}")
+    add_custom_target(readmodel_undertowbuildinglabor_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildinglabor_args} --check
+        COMMENT "[codegen] golden check: UndertowBuildingLabor.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
+        VERBATIM)
+    add_custom_target(readmodel_undertowbuildinglabor_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildinglabor_args}
+        COMMENT "[codegen] regenerate UndertowBuildingLabor.readmodel.g.h (Yeroket tool)"
+        VERBATIM)
+
     # --- View Read-Model Codegen Milestone 6: umbrella include header for the whole
     # UndertowHud.cs [View] family (UndertowHud/HudFactions/HudEvents/HudInspect/Bodies/
     # Recipes). --schema-file discovers every [View] type in that ONE .cs file via
@@ -622,7 +674,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # doesn't exist).
     add_dependencies(readmodel_umbrella_undertowhud_check
         readmodel_undertowhud_check readmodel_undertowhudfactions_check
-        readmodel_undertowhudevents_check readmodel_undertowhudinspect_check)
+        readmodel_undertowhudevents_check readmodel_undertowhudinspect_check
+        readmodel_undertowbuildingfacets_check readmodel_undertowbuildingpower_check
+        readmodel_undertowbuildinglabor_check)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
         "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/UndertowHud-readmodel/UndertowHudFamily-umbrella golden DRIFT GUARDS DISABLED; the committed generated artifacts "

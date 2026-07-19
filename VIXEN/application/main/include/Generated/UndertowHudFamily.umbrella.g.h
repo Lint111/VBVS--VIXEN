@@ -27,3 +27,15 @@
 #include "Generated/UndertowRecipes.blob.g.h"
 #include "Generated/UndertowRecipes.typed.g.h"
 
+#include "Generated/UndertowBuildingFacets.blob.g.h"
+#include "Generated/UndertowBuildingFacets.typed.g.h"
+#include "Generated/UndertowBuildingFacets.readmodel.g.h"
+
+#include "Generated/UndertowBuildingPower.blob.g.h"
+#include "Generated/UndertowBuildingPower.typed.g.h"
+#include "Generated/UndertowBuildingPower.readmodel.g.h"
+
+#include "Generated/UndertowBuildingLabor.blob.g.h"
+#include "Generated/UndertowBuildingLabor.typed.g.h"
+#include "Generated/UndertowBuildingLabor.readmodel.g.h"
+

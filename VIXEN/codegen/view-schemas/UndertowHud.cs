@@ -203,4 +203,76 @@ namespace Vixen.ViewSchemas
     {
         [ViewSection(Layout = ViewLayout.Soa)] public UndertowRecipeRow[] rows;
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // slice6 (relational vertical slice, step 6): three row-bearing sections that mirror undertow's
+    // ViewSchema.cs SectionBuildingFacets/SectionBuildingPower/SectionBuildingLabor (ids 6/7/8,
+    // FormatVersion 12). Columns match the undertow SectionDefs EXACTLY (name, kind, order; the U64
+    // key `rowId` LAST, mirroring UndertowBodyRow/UndertowHudFactionRow). No new ViewScalar kind is
+    // introduced -- every column is F32/I32/U8/U32/U64/Str, all shipped (U64 landed with the
+    // row-delta arc, ViewScalar.U64). These are the C++-reader half of the M-wire lockstep: the
+    // generated read-model decodes the wire the hand-authored undertow writers emit, and the kernel
+    // --view-writer regen recomputes the structural SchemaVersion hash that replaces undertow's
+    // M-wire placeholder writer files.
+
+    // --- BuildingFacets row (ViewSchema.cs SectionBuildingFacets, "BuildingFacets"): the lightweight
+    // facet-index + ownership row. def is the building definition id (identity Str); flags is the
+    // BuildingFacet bitset (identity U8, widened to int -- no byte ViewScalar); owner is the owning
+    // faction's EntityId (U64); isOwnerViewer is the §5 owner-only-affordance flag (bool->byte
+    // widened to int). Topology-cadence data (§7.10), keyed by rowId = Building.Id. ---
+    public struct UndertowBuildingFacetRow
+    {
+        public string def;              // identity Str; source: BuildingFacetView.Def id
+        public int flags;              // U8 widened to int; source: (byte)BuildingFacetView.Facets
+        public ulong owner;            // U64; source: BuildingFacetView.Owner (owning faction EntityId)
+        public int isOwnerViewer;      // bool->byte widened to int; source: IsOwnerViewer ? 1 : 0
+        // Row-delta stable row key: the building's source EntityId, u64 on the wire -- LAST column,
+        // matching undertow ViewSchema.cs's VersionBuildingRelational ordering. Transport identity
+        // only: the kernel's RmlDataModelEmitter SKIPS u64 fields in every Rml binding surface.
+        public ulong rowId;
+    }
+
+    [View]
+    public struct UndertowBuildingFacets
+    {
+        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBuildingFacetRow[] rows;
+    }
+
+    // --- BuildingPower row (ViewSchema.cs SectionBuildingPower, "BuildingPower"): per-building power
+    // telemetry (§7.10 load+generation+membership+impact). demand/generated/stored/net are F32;
+    // connected is a bool->byte (widened to int); impact is the BuildingImpact enum (Ok/Throttled/
+    // Halted) as a byte (widened to int). Hot channel (changes every settlement), keyed by rowId. ---
+    public struct UndertowBuildingPowerRow
+    {
+        public float demand;           // input kg/tick the recipe draws
+        public float generated;        // GeneratedPowerSupply share at the place
+        public float stored;           // battery StoreFlowState.Charge
+        public float net;              // NetFlow(faction, place, power)
+        public int connected;          // bool->byte widened to int; place connectivity
+        public int impact;             // BuildingImpact widened to int (0=Ok,1=Throttled,2=Halted)
+        public ulong rowId;            // key: Building.Id
+    }
+
+    [View]
+    public struct UndertowBuildingPower
+    {
+        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBuildingPowerRow[] rows;
+    }
+
+    // --- BuildingLabor row (ViewSchema.cs SectionBuildingLabor, "BuildingLabor"): per-building labor
+    // occupancy (§7.10 workforce:building-occupancy). supply/need are F32; needMet is a bool->byte
+    // (widened to int). Hot channel, keyed by rowId = Building.Id. ---
+    public struct UndertowBuildingLaborRow
+    {
+        public float supply;           // NetFlow/LaborSupplyAt labor at the place
+        public float need;             // recipe's labor need
+        public int needMet;            // bool->byte widened to int; whether the labor need is met
+        public ulong rowId;            // key: Building.Id
+    }
+
+    [View]
+    public struct UndertowBuildingLabor
+    {
+        [ViewSection(Layout = ViewLayout.Soa)] public UndertowBuildingLaborRow[] rows;
+    }
 }
