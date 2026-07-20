@@ -393,3 +393,20 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
 Number sequentially (`FR-N`). When an entry is fixed engine-side, set `Status: FIXED` and note the
 commit/branch. Keep this doc skimmable — detail belongs in the linked design doc or the code.
 Cross-link related engine docs with `[[wikilinks]]` (e.g. [[RenderGraph-System-Architecture-Analysis]]).
+
+### FR-26 — `PushConstantGathererNode` "Type mismatch" error spam (~50/boot, probe_update) on WSL/dzn boots
+
+- **Context:** every undertow-host WSL/Dozen boot logs ~50 `[ERROR]` lines from
+  `PushConstantGathererNode` ("Type mismatch", `probe_update` path) + one
+  `vkCreateDebugReportCallbackEXT` warning. Non-fatal — rendering, HUD, view decode, and captures
+  are all unaffected; observed consistently across dozens of seed-7 boots (2026-07-19→20, engine
+  main `98b927ca`→`97f0e5ed`).
+- **Provenance:** pre-existing engine-side shader-validation noise, believed introduced with the
+  Windows-side probe/recipe merge (probe_update); unrelated to the View wire (verified across the
+  row-delta, seam-closure, and manifest-handshake epochs — the errors persist bit-identically while
+  the View stack changed completely).
+- **Consumer impact:** log noise only, but it buries real errors (50 ERROR lines/boot forces
+  grep-filtering in every live-gate check) and reads as alarming in evidence captures.
+- **Suggested fix:** engine-side — either reconcile the probe_update push-constant layout with the
+  gatherer's expectation, or demote the mismatch to a one-line WARN with a count.
+- **Status:** OPEN (engine-side; consumer unaffected functionally).
