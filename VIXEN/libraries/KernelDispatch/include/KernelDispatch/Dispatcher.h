@@ -26,6 +26,8 @@
 #include "VirtualTask.h"
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 
 namespace Vixen::KernelDispatch {
 
@@ -116,8 +118,8 @@ inline bool StagesConflict(const Stage& a, const Stage& b) {
  * ponytail: stage-granular ordering (a whole-stage barrier between conflicting stages) is enough for
  * D1.5 -- the RAW column dep is stage->stage, not item->item. Per-item edges (item i of B depends only
  * on item i of A) would let B start before all of A finishes; that finer overlap is D2's hazard model,
- * not needed to prove ordered chaining. UPGRADE PATH: emit per-item edges keyed on (slot,index) when a
- * stage genuinely reads a DIFFERENT index than it writes.
+ * not needed to prove ordered chaining. The per-item edge model keyed on (slot,index) -- for a stage
+ * that genuinely reads a DIFFERENT index than it writes -- is delivered by RunChainPerItem below (D2).
  *
  * @param stages      Ordered stages; earlier-in-vector = earlier in program order for edge derivation.
  * @param profile     Backend/output policy per stage (empty = each stage's default backend).
@@ -160,6 +162,182 @@ inline Handle RunChain(const std::vector<Stage>& stages,
                 break;
             }
         }
+    }
+
+    h.completed = true;
+    h.succeeded = ok;
+    return h;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// E7 dispatch D2 -- PER-ITEM (slot,index) hazard model + WaveScheduler over the extracted graph.
+// ---------------------------------------------------------------------------------------------------
+
+/// The (stage, item) node id used by the per-item scheduler: owner = stage-owner hash, taskIndex =
+/// the item index. A whole-slot (non-opted-in) stage collapses to a SINGLE node with taskIndex 0,
+/// exactly the RunChain node id -- so the two paths agree for non-opted-in stages.
+inline TaskId PerItemNodeId(const Stage& s, uint32_t item) {
+    return TaskId{std::hash<std::string>{}(s.owner), item};
+}
+
+/// Record item i's accesses for an opted-in stage (empty if the stage has no per-item callback).
+inline AccessRecorder RecordItemAccess(const Stage& s, uint32_t i) {
+    AccessRecorder rec;
+    if (s.perItemAccess) s.perItemAccess(i, rec);
+    return rec;
+}
+
+/// True if any of `producerWrites` collides (same slot+index) with `consumerReadsOrWrites` -- a
+/// RAW/WAW hazard at index granularity. WAR is handled by the caller passing producer READS.
+inline bool KeysOverlap(const std::vector<StateAccessKey>& lhs, const std::vector<StateAccessKey>& rhs) {
+    // Small per-item access sets (a handful of keys) -- a nested scan is cheaper than building a set.
+    for (const auto& l : lhs)
+        for (const auto& r : rhs)
+            if (l == r) return true;
+    return false;
+}
+
+/**
+ * @brief Dispatch a chain with PER-ITEM (slot,index) hazard edges for stages that opt in (D2).
+ *
+ * This lifts RunChain's stage-granular ceiling: a stage may declare, per item, the exact (slot,index)
+ * keys it reads/writes (Stage.perItemAccess). The scheduler then builds a graph whose NODES are
+ * (stage,item) pairs for opted-in stages (one node per stage for whole-slot stages), derives edges
+ * from StateAccessKey OVERLAP at index granularity (RAW/WAW/WAR), and layers them into waves via the
+ * SAME extracted TaskDependencyGraph (AddEdge + GetParallelLevels) RunChain uses -- NO hand-rolled
+ * scheduler. A consumer item then depends ONLY on the producer items that actually touched the
+ * indices it reads, so an item reading only UNtouched indices runs in an earlier/parallel wave than a
+ * whole-stage barrier would ever allow.
+ *
+ * Edge rules for an ordered pair (A before B in `stages`):
+ *   - BOTH opt in:            A-item p -> B-item c iff p's writes overlap c's reads-or-writes (RAW/WAW)
+ *                             OR p's reads overlap c's writes (WAR), by (slot,index) key.
+ *   - one/both whole-slot:    fall back to stage-granular StagesConflict (a whole-slot stage touches
+ *                             every index, so it is the conservative-correct whole-stage barrier) --
+ *                             every node of the dependent stage waits for every node of the other.
+ * This keeps RunChain's whole-stage behavior byte-behavior-identical for non-opted-in stages
+ * (BACKWARD COMPATIBLE): a chain with no perItemAccess anywhere produces exactly RunChain's edges.
+ *
+ * @param stages      Ordered stages; earlier-in-vector = earlier program order for edge derivation.
+ * @param profile     Backend/output policy per stage (empty = each stage's default backend).
+ * @param workerCount TBB workers for the CpuTbb backend (>=1). Defaults to hardware concurrency.
+ * @param outLevels   OPTIONAL: the wave layering (GetParallelLevels) the scheduler produced, so a
+ *                    caller can WITNESS that per-item edges placed independent consumer items in an
+ *                    earlier wave than the dependent ones. Node ids are PerItemNodeId(stage,item).
+ */
+inline Handle RunChainPerItem(const std::vector<Stage>& stages,
+                              const DispatcherProfile& profile = {},
+                              int workerCount = DefaultWorkerCount(),
+                              std::vector<std::vector<TaskId>>* outLevels = nullptr) {
+    Handle h;
+
+    // Precompute per-item accesses for every opted-in stage (whole-slot stages record nothing).
+    // access[si][i] = item i's recorded (slot,index) reads/writes; empty for whole-slot stages.
+    std::vector<std::vector<AccessRecorder>> access(stages.size());
+    for (size_t si = 0; si < stages.size(); ++si) {
+        if (!stages[si].HasPerItemAccess()) continue;
+        access[si].reserve(stages[si].itemCount);
+        for (uint32_t i = 0; i < stages[si].itemCount; ++i)
+            access[si].push_back(RecordItemAccess(stages[si], i));
+    }
+
+    // Build the node set: one node per item for opted-in stages, one node per whole-slot stage.
+    TaskDependencyGraph graph;
+    for (size_t si = 0; si < stages.size(); ++si) {
+        if (stages[si].HasPerItemAccess())
+            for (uint32_t i = 0; i < stages[si].itemCount; ++i)
+                graph.AddTask(PerItemNodeId(stages[si], i));
+        else
+            graph.AddTask(PerItemNodeId(stages[si], 0));  // whole-slot: single node, taskIndex 0
+    }
+
+    // Derive edges for each ordered pair (A before B).
+    for (size_t a = 0; a < stages.size(); ++a) {
+        for (size_t b = a + 1; b < stages.size(); ++b) {
+            const Stage& A = stages[a];
+            const Stage& B = stages[b];
+            const bool bothPerItem = A.HasPerItemAccess() && B.HasPerItemAccess();
+            if (bothPerItem) {
+                // Per-item edges: only the producer items whose (slot,index) writes/reads collide with
+                // a consumer item's reads/writes create an edge. Items with no overlap stay unordered.
+                for (uint32_t p = 0; p < A.itemCount; ++p) {
+                    const AccessRecorder& pa = access[a][p];
+                    for (uint32_t c = 0; c < B.itemCount; ++c) {
+                        const AccessRecorder& ca = access[b][c];
+                        const bool raw_waw = KeysOverlap(pa.writes, ca.reads) ||
+                                             KeysOverlap(pa.writes, ca.writes);
+                        const bool war = KeysOverlap(pa.reads, ca.writes);
+                        if (raw_waw || war)
+                            graph.AddEdge(PerItemNodeId(A, p), PerItemNodeId(B, c));
+                    }
+                }
+            } else if (StagesConflict(A, B)) {
+                // At least one stage is whole-slot: fall back to a stage-granular barrier -- every
+                // node of B waits for every node of A (conservative-correct; a whole-slot stage
+                // touches all indices). This is exactly RunChain's edge for such a pair.
+                auto nodesOf = [](const Stage& s) {
+                    std::vector<TaskId> ns;
+                    if (s.HasPerItemAccess())
+                        for (uint32_t i = 0; i < s.itemCount; ++i) ns.push_back(PerItemNodeId(s, i));
+                    else
+                        ns.push_back(PerItemNodeId(s, 0));
+                    return ns;
+                };
+                for (const auto& an : nodesOf(A))
+                    for (const auto& bn : nodesOf(B))
+                        graph.AddEdge(an, bn);
+            }
+        }
+    }
+
+    const std::vector<std::vector<TaskId>> levels = graph.GetParallelLevels();
+    if (outLevels) *outLevels = levels;
+
+    // Map each node id back to its (stage,item) work and execute wave-by-wave through the SAME
+    // Tier-A executor. A whole-slot stage node runs ALL its items (like RunPerElementStage); an
+    // opted-in stage node runs exactly its one item. Waves run in dependency order; within a wave
+    // the executor runs nodes in parallel under `workerCount`.
+    bool ok = true;
+    // owner-hash -> stage index, for O(1) node->stage lookup.
+    std::unordered_map<uint64_t, size_t> ownerToStage;
+    for (size_t si = 0; si < stages.size(); ++si)
+        ownerToStage[std::hash<std::string>{}(stages[si].owner)] = si;
+
+    for (const auto& wave : levels) {
+        std::vector<VirtualTask> tasks;
+        tasks.reserve(wave.size());
+        for (const auto& nodeId : wave) {
+            auto it = ownerToStage.find(nodeId.owner);
+            if (it == ownerToStage.end()) continue;  // defensive; every node came from a stage
+            const Stage& s = stages[it->second];
+            const Backend backend = profile.BackendFor(s.owner, s.backend);
+            (void)backend;  // CpuInline vs CpuTbb only changes worker count, handled below per-wave
+            VirtualTask t;
+            t.id = nodeId;
+            if (s.HasPerItemAccess()) {
+                const uint32_t item = nodeId.taskIndex;
+                const auto& fn = s.perElement;
+                t.execute = [&fn, item] { if (fn) fn(item); };
+            } else {
+                const auto& fn = s.perElement;
+                const uint32_t n = s.itemCount;
+                t.execute = [&fn, n] { if (fn) for (uint32_t i = 0; i < n; ++i) fn(i); };
+            }
+            tasks.push_back(std::move(t));
+        }
+        // CpuInline forces serial: if ANY stage in this wave is routed CpuInline, run 1 worker.
+        int waveWorkers = workerCount;
+        for (const auto& nodeId : wave) {
+            auto it = ownerToStage.find(nodeId.owner);
+            if (it != ownerToStage.end() &&
+                profile.BackendFor(stages[it->second].owner, stages[it->second].backend) ==
+                    Backend::CpuInline) {
+                waveWorkers = 1;
+                break;
+            }
+        }
+        TaskExecutor executor;
+        ok = ok && executor.Run(tasks, {wave}, waveWorkers);
     }
 
     h.completed = true;

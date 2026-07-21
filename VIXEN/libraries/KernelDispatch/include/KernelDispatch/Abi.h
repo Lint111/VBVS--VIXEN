@@ -92,6 +92,53 @@ struct SlotRef {
 };
 
 /**
+ * @brief Per-item hazard identity: a single (slot, index) touched by one item (E7 dispatch D2).
+ *
+ * This is the domain-blind generalization of the render RenderGraph Tier-B hazard identity (its
+ * VirtualResourceAccessTracker keyed a hazard on a resource + subresource); here it is an opaque
+ * `slot` int plus an `index` int -- NO render/gaia types, the consumer binds the meaning. SlotRef
+ * (above) stays as the whole-slot identity a chain planner derives STAGE-granular edges from; this
+ * StateAccessKey is finer-grained access WITHIN a slot, so a consumer item can depend only on the
+ * producer items that actually touched the indices it reads.
+ *
+ * A whole-slot access = one key per index in [0, length) (or, equivalently, a stage that does NOT
+ * opt into per-item access = today's stage-granular behavior). A SPARSE access = only the specific
+ * indices an item touches -- that is where per-item edges produce OBSERVABLE independence over a
+ * whole-stage barrier.
+ */
+struct StateAccessKey {
+    int32_t slot = 0;   ///< Opaque slot identity (matches a SlotRef.id; consumer binds meaning).
+    int64_t index = 0;  ///< Element index WITHIN the slot the item read/wrote.
+
+    bool operator==(const StateAccessKey& o) const { return slot == o.slot && index == o.index; }
+};
+
+/// Hash for StateAccessKey -- enables (slot,index) overlap lookup in unordered containers.
+struct StateAccessKeyHash {
+    size_t operator()(const StateAccessKey& k) const {
+        size_t a = std::hash<int32_t>{}(k.slot);
+        size_t b = std::hash<int64_t>{}(k.index);
+        return a ^ (b << 16) ^ (b >> 16);
+    }
+};
+
+/**
+ * @brief Records the (slot,index) reads/writes one item performs (E7 dispatch D2).
+ *
+ * A stage that OPTS IN to per-item scheduling supplies a `perItemAccess(i, recorder)` callback that
+ * calls Read/Write for each (slot,index) item i touches. The scheduler then derives per-item edges
+ * from key overlap between a producer item's writes and a consumer item's reads/writes. The recorder
+ * is a plain accumulator -- no scheduling policy lives here.
+ */
+struct AccessRecorder {
+    std::vector<StateAccessKey> reads;
+    std::vector<StateAccessKey> writes;
+
+    void Read(int32_t slot, int64_t index) { reads.push_back({slot, index}); }
+    void Write(int32_t slot, int64_t index) { writes.push_back({slot, index}); }
+};
+
+/**
  * @brief A unit of dispatchable work: an owner id, slot read/write refs, and a per-element callable.
  *
  * The native counterpart of the kernel's `KernelStageBase` (owner + ReadSlotIds/WriteSlotIds +
@@ -111,6 +158,16 @@ struct Stage {
     std::vector<SlotRef> writes;                  ///< Slots this stage writes.
     Backend backend = Backend::CpuTbb;            ///< Default backend when the profile doesn't override.
     std::function<void(uint32_t /*i*/)> perElement;  ///< The emitted per-element work.
+
+    /// OPTIONAL per-item access declaration (E7 dispatch D2). When set, item i records the exact
+    /// (slot,index) keys it reads/writes into `rec`, and RunChainPerItem derives PER-ITEM edges from
+    /// key overlap. When ABSENT (default), the stage is scheduled whole-slot (stage-granular, exactly
+    /// as RunChain does today) -- so existing stages are unchanged and only opted-in stages get
+    /// finer edges. This is the minimal honest extension: reads/writes above stay the whole-slot
+    /// identity a stage-granular planner uses; this callback is the per-item refinement.
+    std::function<void(uint32_t /*i*/, AccessRecorder& /*rec*/)> perItemAccess;
+
+    [[nodiscard]] bool HasPerItemAccess() const { return static_cast<bool>(perItemAccess); }
 };
 
 /**
