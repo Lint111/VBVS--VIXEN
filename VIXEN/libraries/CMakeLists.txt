@@ -38,6 +38,11 @@ add_subdirectory(CashSystem)
 # RenderGraph static library (render graph system for managing Vulkan resources and execution)
 add_subdirectory(RenderGraph)
 
+# KernelDispatch static library (E7 dispatch D1: renderer-independent dispatch — Tier-A scheduling
+# primitives extracted from RenderGraph, decoupled from render identity, + the data-only ABI. Only
+# depends on TBB; MUST NOT depend on RenderGraph's NodeInstance/Resource types.)
+add_subdirectory(KernelDispatch)
+
 # VoxelComponents library (pure component definitions - no heavy dependencies, just Gaia + GLM)
 add_subdirectory(VoxelComponents)
 
