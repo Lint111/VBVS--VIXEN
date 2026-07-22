@@ -128,13 +128,19 @@ set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 FetchContent_Declare(
     gaia
     GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
-    # Pinned to the v0.9.2 release commit (2293594) rather than a moving ref.
+    # Pinned to a specific commit rather than a moving ref.
     # GIT_TAG main previously froze at whatever commit each build dir first fetched
     # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
-    # silently drifted ~18 commits behind upstream. A pinned SHA is reproducible
-    # across every build dir/worktree and cannot silently drift; bump it deliberately.
-    GIT_TAG        2293594cc5e676a44a50130ee1de64a9fd0a9666  # v0.9.2
-    GIT_SHALLOW    TRUE
+    # silently drifted. A pinned SHA is reproducible across every build dir/worktree
+    # and cannot silently drift; bump it deliberately.
+    # Current: gaia-ecs main @ 0f4d5d3 (2026-07-18, GAIA_VERSION 0.9.3-dev) — 29 commits
+    # past the year-old v0.9.2 tag, incl. runtime relationship data / pair-payload /
+    # SoA-field-access fixes the E7 pair-materialize path depends on. Bumped from the
+    # stale v0.9.2 release tag (2293594) because building E7 infra on it means building
+    # on a >1yr-old base missing the runtime-relationship features we emit against.
+    GIT_TAG        0f4d5d367eb9cfe930ca9323dcd685fbd3bcb2f4  # gaia main @ 0.9.3-dev
+    # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
+    GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
 )
 
