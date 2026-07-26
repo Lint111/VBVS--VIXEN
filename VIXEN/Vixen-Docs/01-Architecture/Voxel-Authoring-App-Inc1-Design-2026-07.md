@@ -8,11 +8,15 @@ status: ACTIVE
 # Voxel Authoring App — Inc1 Design (2026-07)
 
 > Engine-side increment 1 of the **Voxel/SDF Layered Editor + Blender Round-Trip** umbrella design
-> (undertow repo: `docs/superpowers/specs/2026-07-01-voxel-sdf-blender-editor-design.md`, currently on the
-> `vixen-host` worktree, branch `input-rework`). This doc is the VIXEN-side spec of record for Inc1 and records
+> (undertow repo: `docs/superpowers/specs/2026-07-01-voxel-sdf-blender-editor-design.md`). This doc is the
+> VIXEN-side spec of record for Inc1 and records
 > the spec-verification deltas found 2026-07-03. Per the ownership rule, **VIXEN owns the content format**;
 > undertow is one consumer. The editor app is a VIXEN application (game-agnostic); undertow hosting and the
 > query-injector roles (§4b/§4c/§4d of the umbrella) are LATER, undertow-side increments.
+>
+> **Product/UX continuation (2026-07-26):**
+> [[../03-Research/Voxel-Asset-Editor-Product-Research-2026-07]] reconciles the shipped Inc1/AppFlow
+> foundation with the proposed sculpt, material, procedural-graph, simulation-context, and Blender workflows.
 
 ## 1. Scope of Inc1
 
@@ -44,9 +48,9 @@ Verified against code at VIXEN `origin/main` = `1af1e65b`, Yeroket `main` = `ca4
 | D3 | §3 render_recipe "binds a compiled recipe id" | The **recipe authoring pipeline shipped** (2026-06-29): canonical VRC1 container (`Yeroket.GraphFramework.VM.RecipeContainer`, magic `0x31435256`) → generated `RecipeContainer.g.h` reader, `RecipeManifest`/`RecipeRegistry`, memory-budgeted octree pool, `SetRecipePool`, live CSG render gates | The document **flattens to a VRC1 blob**; the entire existing registry→pool→render path consumes documents **unchanged** in Inc1 |
 | D4 | §8 visitor table (Burst/Burst4/HLSL/C++ exist; Python to add) | Confirmed: P2.4 catalogue complete (87 opcodes, parity 91/91), HLSL+C++ emitters live, no Python emitter | Accurate; Inc1 adds Python **codec** emission only (see split above) |
 
-**Amendment note:** these deltas belong in the umbrella doc, but it lives in another session's active worktree
-(undertow `vixen-host`, branch `input-rework`) — do not edit it from this stream. Back-port the D1–D4 table to
-the umbrella when that worktree is free.
+**Amendment note (reconciled 2026-07-26):** the umbrella now carries a current-state pointer to this
+implementation record and the product/UX research companion. This D1–D4 table remains the detailed Inc1
+reality check.
 
 ## 3. Decisions (umbrella open questions answered for Inc1)
 
@@ -153,7 +157,7 @@ flatten(doc):
   (format/codegen only).
 - Yeroket `SDFNodeGenerator.dll` rebuilds non-deterministically — commit it only on real source change,
   else `git checkout --` it (standing gotcha).
-- rtk-wrapped git masks exit codes — verify HEAD/branch explicitly after any checkout/merge before chaining.
+- Verify HEAD/branch explicitly after any checkout/merge before chaining.
 
 ## 8. Worktrees / branches (this increment)
 
