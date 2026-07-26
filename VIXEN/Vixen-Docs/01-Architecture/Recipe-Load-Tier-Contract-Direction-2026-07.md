@@ -1,16 +1,16 @@
 # Recipe Load-Tier Contract — Reconciling Direction (2026-07-18)
 
-> **Status: SCOPING DOC, not yet a plan.** Reconciles two previously-separate, unstarted direction
-> stubs that each independently proposed "distance-driven runtime selection of which recipe
-> resource/variant/precision to use" without checking each other for overlap —
+> **Status: 🚧 PARTIAL, reconciled 2026-07-26.** The original scoping pass produced two implemented
+> milestones: **M1 footprint gating ✅ DONE** and **M2 precision-layout/routing 🚧 MECHANISM DONE**.
+> M2's complete specialized-precision dispatch consumer is not built. Authored **content-detail
+> recipe variants remain 💡 DEFERRED**, as do async compile/swap, GPU-LRU, and generalized
+> mip/lighting reuse. This document reconciles two previously-separate direction stubs that each
+> proposed "distance-driven runtime selection of which recipe resource/variant/precision to use" —
 > [[Recipe-Bucketing-LOD-Screen-Footprint-Reuse-Addendum-2026-07]] and
-> [[GPU-Struct-Precision-Tiering-Direction-2026-07]]. Written because the user described a "special
+> [[GPU-Struct-Precision-Tiering-Direction-2026-07]]. It was written because the user described a "special
 > recipe" abstraction — pluggable into a distance-based load ladder, reused for mip and lighting
-> selection — and asked for the existing design to be found first; grounding research
-> (2026-07-18) confirmed no such consolidated doc exists yet, only these two overlapping stubs. This
-> doc is Step 1 of a user-described 3-step sequence (special/load-tiered recipes → unroll-mechanism
-> A/B testing → world-streaming load/unload); only this step is scoped for build now, the other two
-> are stubbed separately (see Related, below) so the shape is visible without committing to them.
+> selection. It remains Step 1 of a user-described 3-step sequence (special/load-tiered recipes →
+> unroll-mechanism A/B testing → world-streaming load/unload); the status map below is authoritative.
 
 ## Milestone Map
 
@@ -111,18 +111,19 @@ pick a tier from a live distance/footprint signal — without forcing every reci
 (mirrors the spatial contract's own opt-in shape from [[Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07]]:
 recipes with no declared tiers keep working exactly as today, n=0 case).
 
-**What "a tier" is, concretely, is intentionally left open at this scoping stage** — the two source
-stubs propose two different answers, and this doc's job is to confirm they're the same abstraction at
-different granularities, not to force a premature choice between them:
+**The original scoping left the tier concrete type open. M1/M2 have now resolved two of the three
+instances:** gating and precision use the same footprint signal but retain distinct buffers/consumers.
+Content-detail remains the unbuilt semantic variant:
 
-- **Content-detail tier** (from the LOD addendum): a simplified RECIPE BODY at distance — fewer
+- **Content-detail tier — 💡 DEFERRED** (from the LOD addendum): a simplified RECIPE BODY at distance — fewer
   opcode steps, a coarser approximation of the same shape. Hard: interacts with
   [[Recipe-Unroll-Mechanism-Single-Sourcing-Direction-2026-07]]'s codegen work if pursued, since each
   tier is a genuinely different bytecode program needing its own unrolled emission.
-- **Gating tier** (also from the LOD addendum, the simpler alternative): not simplified content, just
+- **Gating tier — ✅ M1 SHIPPED** (also from the LOD addendum): not simplified content, just
   a binary/graduated threshold on whether an instance gets bucketed/promoted at all, based on
   footprint. No recipe-content changes needed — a threshold on the existing formula.
-- **Precision tier** (from the precision-tiering direction): same recipe body, same opcode program,
+- **Precision tier — 🚧 M2 ROUTING MECHANISM SHIPPED / FULL CONSUMER OPEN** (from the
+  precision-tiering direction): same recipe body, same opcode program,
   but render-param upload/storage at half vs. full float precision, selected per-instance.
 
 These are NOT mutually exclusive — a recipe could plausibly declare gating AND precision tiers
@@ -149,55 +150,50 @@ mip/lighting or whether those systems' own distance-selection mechanisms are dif
 practice that forcing them into one contract would be the wrong abstraction. Do not build the
 generalized version speculatively before the recipe-specific version exists and is validated.
 
-## 3. Explicitly NOT yet answered (real open questions, do not assume answers)
+## 3. Remaining open questions (post-M1/M2)
 
-Carried forward from both source stubs, not yet resolved by this reconciliation:
+Resolved facts:
 
-- **Content-detail tier vs. gating tier vs. precision tier — which is Step 1's actual first build
-  target?** These have very different implementation costs (gating is a threshold on an existing
-  formula; content-detail requires per-tier bytecode + codegen; precision requires dual-layout
-  codegen per [[GPU-Struct-Precision-Tiering-Direction-2026-07]] §3). This doc does not pick one —
-  that's the next scoping step, informed by which the user actually needs first for "grass, terrain,
-  city, biomes" content (plausibly gating first, since it's cheapest and already has a formula to
-  extend, but this is a recommendation, not a decision made here).
-- **Where does the per-instance tier signal get computed and threaded through?** Natural extension of
-  existing residency-trigger machinery, or a new independent per-recipe-instance pass? Both source
-  stubs left this open; the answer likely differs by which tier type is chosen (content-detail tiers
-  need this earlier, at bucketing time; precision tiers could plausibly be threaded through
-  `SetInstances()`'s existing per-frame update path used by Increment 6's `ReadParam` mechanism).
-- **`raySizeCoef`/`raySizeBias` are not currently passed into `RecipeInstanceBucketing.comp`'s push
-  constants** (only `viewProj`, `screenWidth/Height` are) — a real, small, concrete gap identified by
-  the LOD addendum that any content-detail or gating tier implementation will need to close first.
-- **Enforcement/composer question, inherited from the spatial-contract precedent**: who decides how
-  many tiers a recipe declares and where the thresholds sit — hand-authored per recipe (matching this
-  program's own established "prove it by hand first" discipline — see
-  [[Recipe-Diversity-Stress-Scene-Inc6-Plan-2026-07]] M1's spatial-contract prototype precedent) or
-  some later authoring/composer tool? Per that same precedent, do NOT build composer tooling before a
-  hand-authored prototype proves the mechanism.
-- **Does this need measured evidence before design locks in**, per this program's own
-  evidence-before-building discipline (the switch-scaling gate, the Inc6 M4 sweep, the switch-cost
-  knee pre-check all followed this)? Plausibly yes for the precision-tier question specifically (is
-  upload bandwidth actually measured as a bottleneck at realistic instance counts? — the precision
-  doc's own stated gating condition, still unmet) but plausibly less needed for the gating-tier
-  question (the "many registered recipes, only some instantiated" problem is already concretely felt —
-  Inc6 M2's 192-instance-ceiling handling is a live, already-encountered instance of exactly this
-  need, just solved with a flat cap rather than a distance-driven tier).
+- M1 threads `raySizeCoef`/`raySizeBias`/`cameraPos` into the real bucketing push constants and proves
+  distance/footprint gating on hardware.
+- M2 reuses that signal for additive full/half precision buckets and generates both layouts from one
+  `[GpuStruct]`.
+- Gating and precision can coexist, but a `VkPipeline` consumes one concrete layout; the full
+  specialized-precision consumer therefore needs separate dispatch plumbing.
 
-## 4. Suggested first step, if picked up (mirrors this program's own established discipline)
+Still open:
 
-Per the pattern that worked for [[Recipe-Diversity-Stress-Scene-Inc6-Plan-2026-07]] M1 (hand-author
-ONE recipe with the new contract before any tooling) and the switch-cost-knee pre-check (answer the
-narrow empirical question before scoping an increment): **do not jump to implementing all three tier
-types.** First:
+- **Content-detail representation:** how a recipe declares ordered semantic variants (separate VRC
+  programs, shared family id, param-layout compatibility, conservative bounds, minimum representation).
+- **Selection policy:** thresholds, hysteresis, retain-last/placeholder/drop fallback, and whether an
+  interactable instance may ever be fully gated.
+- **Complete precision consumption:** the production dispatch that actually binds/executes the half
+  layout selected by M2, with a fallback when the specialized pipeline is unavailable.
+- **Authoring ownership:** hand-authored variants first versus later composer tooling. Keep the
+  established rule: prove one family by hand before building a composer.
+- **Measured value:** real-scene transition frame-time percentiles, upload bytes, pop/continuity, and
+  fallback duration. The existing bucketed-specialization path is opt-in because its measurements did
+  not establish a clear win; content-detail work must not assume otherwise.
+- **Mipmap/lighting generalization:** plausible, still unproven, and not a reason to force one
+  abstraction across systems before the recipe-specific contract works.
 
-1. Resolve §3's first open question — pick ONE tier type to prototype (gating tier is the leading
-   candidate: cheapest, closes an already-identified concrete gap, doesn't require new codegen work).
-2. Hand-author the contract on ONE existing recipe (or reuse an Increment-6-style generated one),
-   threading `raySizeCoef`/`raySizeBias` into the bucketing pre-pass's push constants, and confirm a
-   distance-driven gate actually changes bucketing/instantiation behavior correctly on real hardware —
-   a live-run gate, per this program's own mandatory-live-gate discipline.
-3. Only after that prototype is proven: evaluate whether content-detail and precision tiers fit the
-   same contract shape cleanly, or need their own adjustments.
+For UNDERTOW integration, the sim-owned View/projection contract must provide recipe identity,
+compatible typed params, conservative bounds, allowed variants, visibility, and fallback policy.
+VIXEN may select presentation tiers from that projected contract; it must not query hidden
+authoritative sim state to invent policy.
+
+## 4. Recommended next slice
+
+1. Hand-author **one two-variant content-detail recipe family** with a shared semantic identity,
+   compatible typed param layout, conservative bounds, footprint thresholds, hysteresis, and an
+   explicit fallback. Do not add composer tooling.
+2. Route the existing M1 footprint signal to variant selection while preserving stable instance
+   identity and the existing gating/precision paths. An unavailable fine variant must retain the
+   coarse variant rather than silently drop an interactable target.
+3. Live-prove one continuous zoom/focus transition in the real app, then measure frame-time
+   percentiles, upload bytes, transition pop, fallback duration, and gate-off byte identity.
+4. Only after that gate, decide whether to add more content families, finish M2's precision consumer,
+   or generalize the contract toward mip/lighting.
 
 ## Related (Step 2 / Step 3 stubs, not scoped for build — parallel-scoping placeholders only)
 
@@ -211,11 +207,9 @@ only, not designed, per "sequential build, parallel scoping so the shape is visi
   doc for the full scoping (candidate tiers, open questions, suggested first step).
 
 - **Step 2 — nested invocation + unroll-vs-natural A/B testing: scoped as its own doc,**
-  [[Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07]] (2026-07-18), NOT started. Grounding
-  research found recipe-calling-recipe does not exist in this codebase today (no opcode, no
-  interpreter support, no unrolled-emitter precedent) — the doc scopes M1 (build a minimal nesting
-  mechanism) and M2 (the actual unrolled-vs-natural A/B test under nesting + flat-N pressure) as two
-  sequential milestones, per explicit user direction after this gap was surfaced.
+  [[Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07]] (2026-07-18): **M1 minimal nested-invocation
+  mechanism ✅ SHIPPED** (`0eb6c092`, merged by `d3d7066b`); **M2 actual unrolled-vs-natural A/B under
+  nesting + flat-N pressure remains open**.
 - **Step 3 — world-streaming load/unload of unrolled recipes at runtime.** Register/evict recipes (and
   their compiled tier variants) as a streaming world's working set changes — a live-churn cost this
   session flagged as genuinely untested by every existing measurement (Inc3 M0, the switch-cost

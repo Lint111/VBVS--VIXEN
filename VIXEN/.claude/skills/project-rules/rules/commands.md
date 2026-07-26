@@ -72,7 +72,10 @@ until ! kill -0 "$BUILD_PID" 2>/dev/null; do
 done
 echo "[watch] DONE ($(tail -3 "$LOG"))"
 ```
-Run this as a FOREGROUND command (it owns the turn until the op ends), or via the harness Monitor/until-loop pattern. Prefer this over `sleep 300` blind waits and over no-op polling. (Codified globally too — see `~/.claude/RTK.md` and the post-brainstorm-context-manager skill.)
+Run this as a FOREGROUND command (it owns the turn until the op ends), or via the harness
+Monitor/until-loop pattern. Prefer this over `sleep 300` blind waits and over no-op polling. The same
+polling rule is carried by the active global agent instructions and the post-brainstorm context
+manager.
 
 ## Build Times
 

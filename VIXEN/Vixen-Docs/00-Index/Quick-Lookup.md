@@ -15,12 +15,17 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-07-18 | Recipe load tiers: footprint gating ✅; precision routing 🚧 mechanism complete/full consumer open; content-detail LOD deferred | [[../01-Architecture/Recipe-Load-Tier-Contract-Direction-2026-07]] |
+| 2026-07-18 | Recipe nested invocation: M1 mechanism ✅; M2 unroll-vs-natural scale A/B open | [[../01-Architecture/Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07]] |
+| 2026-07-17 | Live recipe bucketing ✅ opt-in; measured no statistically clear performance win | [[../01-Architecture/Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]] |
+| 2026-07-15 | Recipe parameterization (`ReadParam`) + content-hash pipeline cache ✅ | [[../01-Architecture/Recipe-Parameterization-Plan-2026-07]] |
+| 2026-07-12 | Sparse-mip residency + true-scale nested/tiered ESVO traversal ✅ | [[../01-Architecture/Tiered-ESVO-Observer-Addressing-Design-2026-07]] |
 | 2026-07-12 | Lazy-Procedural Inc1b plan: resolvability-gated recipe evaluation ("mip for compute") | [[../01-Architecture/Lazy-Procedural-Delta-Baseline-Inc1b-Plan-2026-07]] |
 | 2026-07-10 | Kernel physics dispatch contract (field/mip-aware simulation job ABI) | [[../01-Architecture/Kernel-Physics-Dispatch-Contract-Spec-2026-07]] |
 | 2026-07-03 | Voxel authoring editor Inc1 (VoxelDocument format + vixen_editor app) | [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]] |
 | 2026-06-14 | Embedding VIXEN in a host (find_package → EngineContext → own-the-loop) [AR#12] | [[../06-Embedding/Hosting-VIXEN]] |
 | 2026-06-12 | Consumer feedback / feature requests (UNDERTOW integration) | [[../05-Progress/features/consumer-feedback-undertow]] |
-| 2026-01-04 | Sprint 6.0.1: Unified Connection System COMPLETE | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
+| 2026-01-04 | Sprint 6.0.1: Unified Connection System COMPLETE (archived record) | [[../_archive/2026-07/features-sprints/Sprint6.0.1-Unified-Connection-System]] |
 
 ---
 
@@ -30,11 +35,16 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 |-------|------|
 | System overview | [[../01-Architecture/Overview]] |
 | RenderGraph system | [[../01-Architecture/RenderGraph-System]] |
-| RenderGraph connection API | [[../05-Progress/features/Sprint6.0.1-Unified-Connection-System]] |
+| RenderGraph connection API (archived sprint record) | [[../_archive/2026-07/features-sprints/Sprint6.0.1-Unified-Connection-System]] |
 | Vulkan pipeline | [[../01-Architecture/Vulkan-Pipeline]] |
 | Type system | [[../01-Architecture/Type-System]] |
 | Voxel authoring app Inc1 (VoxelDocument format, flatten-to-VRC1, vixen_editor) | [[../01-Architecture/Voxel-Authoring-App-Inc1-Design-2026-07]] |
 | Kernel physics dispatch contract | [[../01-Architecture/Kernel-Physics-Dispatch-Contract-Spec-2026-07]] |
+| Sparse-mip ESVO LOD | [[../01-Architecture/Sparse-Mip-ESVO-LOD-Direction-2026-07]] |
+| Tiered ESVO observer addressing | [[../01-Architecture/Tiered-ESVO-Observer-Addressing-Design-2026-07]] |
+| Runtime tiered recipe pipeline/JIT | [[../01-Architecture/Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]] |
+| Recipe load-tier contract | [[../01-Architecture/Recipe-Load-Tier-Contract-Direction-2026-07]] |
+| Recipe spatial contract / two-pass culling (future) | [[../01-Architecture/Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07]] |
 
 ---
 
@@ -68,10 +78,10 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Topic | File |
 |-------|------|
-| ESVO (Efficient Sparse Voxel Octrees) | [[../03-Research/ESVO]] |
-| Voxel ray tracing | [[../03-Research/Voxel-Ray-Tracing]] |
+| ESVO (Efficient Sparse Voxel Octrees) | [[../03-Research/ESVO-Algorithm]] |
+| Voxel ray-tracing research overview | [[../03-Research/Overview]] |
 | Voxel / field physics | [[../03-Research/Voxel-Field-Physics-Research-2026-07]] |
-| DXT compression | [[../03-Research/DXT-Compression]] |
+| DXT compression | [[../02-Implementation/Compression]] |
 
 ---
 
@@ -81,8 +91,8 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 |------|---------|
 | `memory-bank/activeContext.md` | Current focus, recent changes |
 | `memory-bank/progress.md` | What's done, what's left |
-| [[../05-Progress/Current-Status]] | Detailed status |
-| [[../05-Progress/Phase-History]] | Project timeline |
+| [[../05-Progress/archive/2025-12/Current-Status]] | Archived detailed status (December 2025) |
+| [[../05-Progress/archive/2025-12/Phase-History]] | Archived project timeline |
 
 ---
 
@@ -92,7 +102,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 |-------|------|
 | HacknPlan integration guide | [[../04-Development/HacknPlan-Integration]] |
 | Session workflow integration | [[../04-Development/Session-Workflow-Integration]] |
-| MCP Sync Engine design | [[../05-Progress/mcp-development/glue-sync-engine]] |
+| MCP Sync Engine design (archived) | [[../_archive/2026-07/mcp-development/glue-sync-engine]] |
 
 ---
 

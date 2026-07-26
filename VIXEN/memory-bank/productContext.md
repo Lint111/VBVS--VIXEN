@@ -1,5 +1,12 @@
 # Product Context
 
+> **Status note (2026-07-26):** this file still describes the original research mission, but its
+> May-2026 publication and phase calendar is historical—not a current delivery schedule. Use
+> `memory-bank/activeContext.md`, `memory-bank/progress.md`, and
+> `Vixen-Docs/00-Index/Quick-Lookup.md` for current implementation status. Do not infer that a
+> capability is absent from the dated roadmap; sparse-mip/tiered ESVO and the July recipe pipeline
+> have advanced substantially beyond it.
+
 ## Why This Project Exists
 
 **Primary Mission** (November 2025): VIXEN is a **voxel ray tracing research platform** for comparative pipeline analysis targeting academic publication (May 2026).

@@ -26,7 +26,7 @@ temp/sandbox/active/{timestamp}-{purpose}/
   "params": {
     "key": "value passed to script"
   },
-  "mcpServersUsed": ["hacknplan", "obsidian-vault"],
+  "mcpServersUsed": ["hacknplan"],
   "estimatedOperations": 5,
   "destructiveOps": false,
   "relatedTask": "HacknPlan task ID if applicable"

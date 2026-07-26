@@ -1,16 +1,21 @@
 ---
 title: Per-Recipe-Type Declared Gaia Query — Direction
-status: future / not scheduled
+status: future / not scheduled; UNDERTOW authority boundary reconciled 2026-07-26
 created: 2026-07-15
 ---
 
 # Per-Recipe-Type Declared Gaia Query — Direction
 
-> **Not scheduled.** Captured while scoping
-> [[Recipe-Parameterization-Plan-2026-07]] (M1/M2 in flight) so the idea isn't lost. Depends on
-> that plan shipping first — there is no `ReadParam`/per-instance param array to batch-populate
-> until it does. This doc is a direction, not an implementation plan; write the plan doc when this
-> is actually picked up.
+> **💡 Not scheduled.** Captured while scoping
+> [[Recipe-Parameterization-Plan-2026-07]]. That prerequisite is now **✅ SHIPPED** (`ReadParam` and
+> per-instance param arrays exist), but this direction still has no implementation plan.
+>
+> **UNDERTOW authority amendment (2026-07-26):** VIXEN must never query UNDERTOW's authoritative
+> `GaiaSimWorld` directly. For UNDERTOW, “declared Gaia query” means either (a) a sim-owned generated
+> projection/query binding that emits typed, viewer-safe recipe-instance batches over
+> `Undertow.View`, or (b) a VIXEN-local query over the already-projected `GaiaVoxelWorld` mirror.
+> It may not bypass fog-of-war, pull hidden components, or make render state authoritative. The
+> original exploratory wording below is retained where useful, but this amendment wins.
 
 ## 1. The idea (user, 2026-07-15, verbatim intent)
 
@@ -36,10 +41,11 @@ almost the exact data shape needed:
   words: "closes the MODEL-layer half of Bodies' Vec3f-scalar..."). This is a schema-generated,
   byte-identical-on-both-sides SoA slice (`Undertow.View` C# `ViewWriter` ↔ VIXEN C++ reader) — the
   "declared view layer" the user is asking to read FROM, not around.
-- **The real sim→render seam is already Gaia-backed on the undertow side**
-  (`undertow-vixen-integration-map`: `ut_view` → `ReadBodies` reads Bodies SoA columns
-  Position/Kind/Mass/tint → `BuildBodyInstances` → `ToBodyInstanceGpu` → `BodyOctreeSceneNode`).
-  Today this mapping is a **hand-written, linear, one-loop-over-SoA-rows** projection (anti-
+- **The real sim→render seam is the generated `Undertow.View` contract; the authoritative UNDERTOW
+  sim is still managed while Gaia migration is partial.**
+  `ut_view` → `ReadBodies` reads Bodies SoA columns Position/Kind/Mass/tint →
+  `BuildBodyInstances` → `ToBodyInstanceGpu` → `BodyOctreeSceneNode`. Today the carrier mapping is a
+  **hand-written, linear, one-loop-over-SoA-rows** projection (anti-
   combinatorial by construction, per that memory doc) — not per-recipe-type, not queried, just one
   fixed loop that reads the same columns for every body regardless of its actual recipe/`providerKind`.
 - **`gaia-semantics` skill's query primitives are the natural implementation substrate**:
@@ -87,12 +93,10 @@ Sketch only — not a design, this needs its own scoping pass when picked up:
 
 ## 4. Open questions (for whoever scopes this properly)
 
-- Does the query run undertow-side (C#, Gaia... wait, undertow's `core/` is pure C# — check
-  whether it uses Gaia or a different ECS; `gaia-semantics` skill is scoped to VIXEN's own
-  `GaiaVoxelWorld`, need to confirm whether undertow's sim ECS is the same Gaia library or a
-  separate one) or VIXEN-engine-side against a Gaia-mirrored view of the sim state? The
-  `undertow-vixen-integration-map` memory doesn't establish this — needs a fresh read of
-  undertow's `core/` before assuming.
+- **RESOLVED for authority ownership:** the authoritative query/projection belongs UNDERTOW-side,
+  against managed state today and `GaiaSimWorld` after per-family cutover. VIXEN consumes the
+  generated result and may query/group only its `GaiaVoxelWorld` mirror. The two worlds share a
+  library lineage, not authority or direct access.
 - Per-recipe-type query declaration syntax/location: a new codegen face bolted onto the existing
   `[View]`/recipe-registration machinery, or a standalone mechanism? Given §2's finding that
   `RecipeParams` is already a `Bodies` column, the simplest version might be "no new query at
@@ -110,6 +114,6 @@ Sketch only — not a design, this needs its own scoping pass when picked up:
 
 See [[Recipe-Parameterization-Plan-2026-07]] (the prerequisite — `ReadParam`/`recipeParams[]` must
 exist before there's anything to batch-populate), [[Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]]
-(the GPU-side batching this may converge with), [[undertow-vixen-integration-map]] (the real
-sim→render seam this would extend), [[view-contract-codegen-program]] (the "declared schema removes
-a hand-maintained boundary" precedent this follows).
+(the GPU-side batching this may converge with), [[Renderer-Agnostic-View-Contract-Design-2026-07]]
+(the real sim→render seam this would extend), and [[View-Contract-Codegen-Design-2026-07]] (the
+"declared schema removes a hand-maintained boundary" precedent this follows).

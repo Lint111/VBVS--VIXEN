@@ -13,9 +13,9 @@ import { log, SandboxResult, SandboxContext } from 'sandbox/core';
 
 const SCRIPT_META = {
   purpose: '',           // Human-readable: "Fetch sprint tasks and format summary"
-  category: '',          // hacknplan | obsidian | filesystem | git | mixed
+  category: '',          // hacknplan | docs | filesystem | git | mixed
   destructive: false,    // true if modifies external state
-  mcpServers: [] as string[],  // ['hacknplan', 'obsidian-vault']
+  mcpServers: [] as string[],  // ['hacknplan']
 };
 
 // ============================================================================

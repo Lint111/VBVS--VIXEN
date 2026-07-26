@@ -1,7 +1,7 @@
 ---
 name: collaborative-development
-description: Multi-agent collaborative development workflow for features and complex problems. Orchestrates planning, implementation, peer review, and HacknPlan/Obsidian integration with design element linking.
-allowed-tools: Task, Read, Write, Edit, Grep, Glob, Bash, mcp__obsidian-vault__*, mcp__hacknplan__*
+description: Multi-agent collaborative development workflow for features and complex problems. Orchestrates planning, implementation, peer review, and HacknPlan/repository-document integration with design element linking.
+allowed-tools: Task, Read, Write, Edit, Grep, Glob, Bash, mcp__hacknplan__*
 ---
 
 # Collaborative Iterative Development
@@ -22,7 +22,7 @@ A structured workflow for feature implementation and problem-solving that combin
 2. **Multiple perspectives** - Architecture, coding, QA all contribute
 3. **Iterative refinement** - Plans and code improve through feedback
 4. **User in the loop** - Major decisions require explicit approval
-5. **Documentation-driven** - All plans live in Obsidian vault + HacknPlan
+5. **Documentation-driven** - All plans live in `Vixen-Docs/` + HacknPlan
 6. **Design element linked** - Every task has architecture documentation
 
 ---
@@ -60,19 +60,17 @@ Task(hacknplan-manager, "Ensure design element for task #<id>:
 4. Return: design element ID, name, vault reference")
 ```
 
-### 3. Create/Link Vault Documentation
+### 3. Create/link repository documentation
 
-```
-Task(obsidian-manager, "Setup vault doc for design element:
-1. Check if vault doc exists for design element
-2. If not: create in appropriate folder
-   - Architecture: 01-Architecture/
-   - Feature: 05-Progress/features/
-   - Research: 03-Research/
-3. Add HacknPlan cross-reference
-4. Update glue mapping if needed
-5. Return: vault doc path")
-```
+Use `Read`/`Write`/`Edit` directly against `Vixen-Docs/`:
+
+1. Check whether the design-element document exists.
+2. If not, create it in the appropriate folder:
+   - Architecture: `01-Architecture/`
+   - Feature: `05-Progress/features/`
+   - Research: `03-Research/`
+3. Add the HacknPlan work-item/design-element reference in the document.
+4. Return the repository-relative document path.
 
 ---
 
@@ -135,7 +133,7 @@ Task(obsidian-manager, "Setup vault doc for design element:
 **Actions:**
 1. Verify parent work item has:
    - Design element linked
-   - Vault doc referenced
+   - `Vixen-Docs` document referenced
    - Full description with requirements
 
 2. Create subtask work items for each plan step:
@@ -147,10 +145,10 @@ Task(obsidian-manager, "Setup vault doc for design element:
    Each with:
    - categoryId: 1 (Programming)
    - Link to parent design element
-   - Description with vault refs")
+   - Description with documentation refs")
    ```
 
-3. Update vault feature doc with task breakdown
+3. Update the `Vixen-Docs` feature document with the task breakdown
 
 **Output:** HacknPlan work items created with full metadata
 
@@ -171,7 +169,7 @@ Task(obsidian-manager, "Setup vault doc for design element:
 
 3. Update both:
    - Design element description
-   - Vault feature document
+   - `Vixen-Docs` feature document
 
 **Output:** Final approved plan in:
 - HacknPlan design element (architecture source of truth)
@@ -204,12 +202,12 @@ Task(obsidian-manager, "Setup vault doc for design element:
 5. After each subtask completion:
    - Create commit with `[HP-<id>]` reference
    - Log work session to HacknPlan
-   - Update vault progress tracker
+   - Update the `Vixen-Docs` progress tracker
 
 **Orchestration Rules:**
 - Max 3 parallel agents at once
 - Wait for dependencies before launching dependent tasks
-- Update Obsidian progress tracker after each subtask
+- Update the `Vixen-Docs` progress tracker after each subtask
 - Update HacknPlan task status after each subtask
 
 ---
@@ -284,7 +282,7 @@ Task(obsidian-manager, "Setup vault doc for design element:
    - Any deviations from plan
    - Lessons learned
 
-3. Update Obsidian documentation:
+3. Update `Vixen-Docs` documentation:
    - Mark feature doc status: COMPLETE
    - List all files changed
    - Document any deferred work
@@ -311,7 +309,7 @@ Every design element created for a task should have:
 |-------|---------|
 | Name | `[Component] Feature/System Name` |
 | Type | System (9), Mechanic (10), or Object (12) |
-| Description | Architecture overview + vault references |
+| Description | Architecture overview + repository-document references |
 
 ### Description Template
 
@@ -322,7 +320,7 @@ One paragraph describing the system/feature.
 ## Architecture
 Key design decisions and patterns used.
 
-## Vault Documentation
+## Repository Documentation
 - [[01-Architecture/RelatedDoc]]
 - [[05-Progress/features/FeaturePlan]]
 
@@ -339,7 +337,7 @@ Key design decisions and patterns used.
 
 ```
 ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│   HacknPlan     │      │  Design Element │      │  Obsidian Vault │
+│   HacknPlan     │      │  Design Element │      │   Vixen-Docs    │
 │   Work Item     │─────▶│  (Architecture) │◀─────│  Documentation  │
 │   #123          │      │  ID: 456        │      │  feature.md     │
 └─────────────────┘      └─────────────────┘      └─────────────────┘
@@ -347,10 +345,10 @@ Key design decisions and patterns used.
         │                        │                        │
         ▼                        ▼                        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Glue MCP Cross-References                    │
-│  - Maps vault folders to design element types                   │
-│  - Maps vault tags to HacknPlan tags                           │
-│  - Enables bidirectional lookup                                 │
+│                  Stable Repository References                  │
+│  - Design elements record Vixen-Docs paths                     │
+│  - Documents record HacknPlan work-item/design-element IDs     │
+│  - Either side remains discoverable without a vault MCP        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -362,13 +360,13 @@ See [agent-orchestration.md](agent-orchestration.md) for detailed agent coordina
 
 ## Feature Plan Template
 
-See [templates/feature-plan.md](templates/feature-plan.md) for the Obsidian document template.
+See [templates/feature-plan.md](templates/feature-plan.md) for the repository document template.
 
 ---
 
 ## Quick Reference
 
-| Phase | Primary Agent | HacknPlan Action | Vault Action |
+| Phase | Primary Agent | HacknPlan Action | Documentation Action |
 |-------|---------------|------------------|--------------|
 | Pre | hacknplan-manager | Create/verify task + design element | Create/link doc |
 | 1. Discovery | `architecture-critic` | Update design element | Create feature doc |
@@ -434,7 +432,8 @@ See [templates/feature-plan.md](templates/feature-plan.md) for the Obsidian docu
 This workflow benefits from extended context windows:
 
 - **Phase 1**: Load full architecture docs for discovery
-- **Phase 4**: Keep full design element + vault doc loaded
+- **Phase 4**: Keep the full design element + `Vixen-Docs` document loaded
 - **Phase 5**: Load all review feedback simultaneously
 
-Use context judiciously - summarize findings to HacknPlan/vault to preserve across sessions.
+Use context judiciously—summarize findings to HacknPlan and `Vixen-Docs` to preserve them across
+sessions.
