@@ -66,6 +66,21 @@ target_compile_definitions(test_probe_update_smoke PRIVATE
 include(GoogleTest)
 gtest_discover_tests(test_probe_update_smoke WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+# ShaderFamily (Semantic Shader Wiring S2 synthesis slice B) — separate
+# executable; real glslang compiles CPU-side, no Vulkan device.
+add_executable(test_shader_family
+    test_shader_family.cpp
+)
+target_link_libraries(test_shader_family
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_shader_family PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+include(GoogleTest)
+gtest_discover_tests(test_shader_family WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # Feature-tagged SDI variant merge (Semantic Shader Wiring S0) — separate
 # executable, pure data-level, no Vulkan device / no glslang compile.
 add_executable(test_sdi_variant_merge
