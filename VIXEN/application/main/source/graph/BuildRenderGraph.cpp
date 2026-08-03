@@ -6787,155 +6787,89 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // The shader's esvoNodes/brickData/materials/OctreeConfigsUBO at these bindings are now the
     // concatenated per-kind shell octrees, NOT the dense 128^3 grid.
 
-    // Binding 1: esvoNodes (SSBO) - concatenated shell octree node descriptors for <= 3 kinds
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::ESVOBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Semantic-wiring S2: the SHARED scene-provider registry, declared here at
+    // its FIRST consumer (the march) and extended by the lighting sections
+    // below. Every provider is a shader-declared member name -> world node
+    // output + roles, registered once regardless of how many passes consume it.
+    //
+    // Provenance preserved from the hand block: bindings 1/2/3/5 come from
+    // BodyOctreeSceneNode (concatenated per-kind SHELL octrees, not the dense
+    // grid — M-wire Task 8). RayTraceBuffer stays on voxelGridNode (it owns
+    // the debug-capture buffer; VoxelGridNode stays in-graph for this).
+    // ChannelPool/BrickLookup are the Surface-Shell COMPACT pool + remap
+    // (drop-in swap; placeholder 1-byte for binary/procedural bodies).
+    // idOutputImage/historyImage/outputImage are per-frame re-emitted views
+    // (Execute-only); outputImage is bound to the march SOLELY for
+    // imageSize() (never imageStore'd post-split — PARAM_WRITES_NO_IMAGE).
+    // InstanceSkipMask is read unconditionally by isInstanceSkipped(); the
+    // zeroed placeholder makes it a true no-op until the cull fills it.
+    // Binding 8 (ShaderCounters) is compiled out of the shader unconditionally
+    // — no member, no wire (the original binding-8 lesson: wiring an
+    // undeclared binding is a validation error).
+    SdiProviderRegistry sceneProviders;
+    const auto kSceneRoles = SlotRole::Dependency | SlotRole::Execute;
+    sceneProviders.Provide("ESVOBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BrickBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER, kSceneRoles);
+    sceneProviders.Provide("MaterialBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER, kSceneRoles);
+    sceneProviders.Provide("OctreeConfigsSSBO", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, kSceneRoles);
+    sceneProviders.Provide("MipPoolBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER, kSceneRoles);
+    sceneProviders.Provide("TierRefTableBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("historyImage", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
+                           SlotRole::Execute);
+    sceneProviders.Provide("OccupancyGridBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER, kSceneRoles);
+    sceneProviders.Provide("RayTraceBuffer", voxelGridNode,
+                           VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
+    sceneProviders.Provide("idOutputImage", pickIdTargetNode,
+                           PickIdTargetNodeConfig::ID_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("outputImage", renderTargetNode,
+                           RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
+                           LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
+    sceneProviders.Provide("HitRecordBuffer", hitRecordBufferNode,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("ShadowConfigSSBO", shadowConfigNode,
+                           ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER, kSceneRoles);
+    sceneProviders.Provide("AccumulationConfigSSBO", accumulationConfigNode,
+                           AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER, kSceneRoles);
+    sceneProviders.Provide("PrevCameraConfigSSBO", prevCameraConfigNode,
+                           PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, kSceneRoles);
 
-    // Binding 2: brickData (SSBO) - concatenated brick voxel data
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::BrickBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 3: materials (SSBO) - material palette
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::MaterialBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 4: RayTraceBuffer (debug capture) — still from voxelGridNode (it has the buffer;
-    // BodyOctreeSceneNode has no debug capture). VoxelGridNode stays in graph for this purpose.
-    batch.Connect(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::RayTraceBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug));
-
-    // Binding 5: OctreeConfigsSSBO (std430, N x 432 B) — runtime-sized per-octree config (I3.2).
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::OctreeConfigsSSBO::BINDING,  // Binding 5: OctreeConfigsSSBO (named via merged SDI)
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 9: idOutputImage (R32_UINT storage image) - AR#35 GPU picking P1. The compute shader
-    // writes the per-pixel pick ID here. Execute-only, exactly like the swapchain output at binding 0:
-    // PickIdTargetNode re-emits the current ring image's view each frame and the gatherer refreshes it.
-    // The shader reflects binding 9 as a STORAGE_IMAGE; DescriptorSetNode writes it with layout GENERAL.
-    batch.Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE_VIEW,
-                          descriptorGatherer, MarchSdi::Bind::idOutputImage::BINDING,  // Binding 9: idOutputImage
-                          SlotRoleModifier(SlotRole::Execute));
-
-    // Binding 36: depthDistanceImage (R32F storage image) — Raster-proxy B1. The march
-    // shader only DECLARES this binding when the VIXEN_B1_OCCLUSION_CULL define is
-    // injected (see the shader builder above), so the Connect is gated identically —
-    // wiring a descriptor for a binding the shader doesn't declare is a validation
-    // error (the binding-8 lesson). Execute-only re-emit per frame, exactly like the
-    // pickId image above: DepthTargetNode alternates the write slot by frame parity.
+    // The march's feature set: B1 enables the gated depthDistanceImage member
+    // (binding 36) AND registers its provider — the builder-side `if` now
+    // gates only the FEATURE + provider; the Connect itself is derived from
+    // the member table (the epoch's original promise for this exact site).
+    SdiFeatureSet marchFeatures;
     if (b1OcclusionCullEnabled) {
-        // Semantic-wiring S1: the merged march SDI carries this member's feature
-        // predicate (FEATURES = {VIXEN_B1_OCCLUSION_CULL}) — the env gate above and
-        // this constant now assert the same fact from one generated source.
-        batch.Connect(b1DepthTarget, DepthTargetNodeConfig::DEPTH_WRITE_VIEW,
-                              descriptorGatherer,
-                              ShaderInterface::BodyInstanceRayMarch::Bind::depthDistanceImage::BINDING,
-                              SlotRoleModifier(SlotRole::Execute));
+        marchFeatures.Enable(kFeatureB1OcclusionCull);
+        sceneProviders.Provide("depthDistanceImage", b1DepthTarget,
+                               DepthTargetNodeConfig::DEPTH_WRITE_VIEW,
+                               SlotRole::Execute);
     }
 
-    // Binding 8: ShaderCounters is compiled out of BodyInstanceRayMarch.comp unconditionally
-    // (see shader builder above), so binding 8 no longer exists in the reflected SPIR-V —
-    // wiring a descriptor for a binding the shader doesn't declare is itself a validation
-    // error, so this Connect() is deliberately removed, not just disabled.
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected debug: binding 4 (voxelGridNode debug capture); shader counters (binding 8) compiled out");
-    }
-
-    // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
-    // M-wire Task 8: this is the NEW binding not present in the dense path.
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::BodyInstanceBuffer::BINDING,  // Binding 10: BodyInstanceBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    WireStageFromSdi<MarchSdi::Metadata, MarchSdi::MEMBERS>(
+        batch, sceneProviders, descriptorGatherer,
+        /*pushGatherer (unused in this scope)*/ descriptorGatherer,
+        marchFeatures, SdiWireSet::DescriptorsOnly);
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected body instance SSBO at binding 10 (BodyOctreeSceneNode)");
-    }
-
-    // Binding 11/12: Surface-Shell ESVO cache (the bandwidth win). The render now
-    // reads the COMPACT shell pool (SHELL_DATA_BUFFER) + grid->shellSlot remap
-    // (SHELL_LOOKUP_BUFFER) instead of the full-interior OCTREE_SDF_BUFFER /
-    // OCTREE_BRICKLOOKUP_BUFFER. This is a DROP-IN swap: DeriveShell builds the
-    // remap so the shader's existing addressing (brickIdx = brickLookup[flat];
-    // channelPool[poolBrickBase + brickIdx*stride + ...]) reads the compact pool
-    // with NO shader-logic change. The full-interior buffers stay live as the
-    // ShellRevalidate compute pass's SOURCE (bindings on that node), never bound
-    // to the render. BodyOctreeSceneNode re-emits SHELL_DATA/SHELL_LOOKUP each
-    // frame as the current double-buffer read slot [frame&1].
-    // (Placeholder 1-byte for binary/Procedural bodies — shader only reads these
-    //  when OctreeConfig.formatId == FORMAT_STORED_SDF.)
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::ChannelPoolBuffer::BINDING,  // Binding 11: compact shell pool
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::BrickLookupBuffer::BINDING,  // Binding 12: grid->shellSlot remap
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Sparse-Mip ESVO LOD Inc1 M3: Binding 13: mip pool SSBO (packed {value,coverage}
-    // floats, one per node/channel). Placeholder for a tree that was never mip-baked;
-    // read by the shader's leaf-existence (Task 7) and LOD-cutoff (Task 8) fallbacks.
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::MipPoolBuffer::BINDING,  // Binding 13: MipPoolBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected SoA-SDF buffer at binding 11, brick-grid lookup at binding 12, mip pool at binding 13 (Inc1 M3)");
-    }
-
-    // Tiered-ESVO Inc2 M3: Binding 15: tier-ref table SSBO (TierRef records, one
-    // per registered tier-crossing leaf). Placeholder for a scene with no
-    // tier-crossing leaves; read by the shader's traversal-restart (Task 6/7)
-    // when a farBit==1 leaf is hit. (Binding 14 is InstanceIterDebugBuffer.)
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::TierRefTableBuffer::BINDING,  // Binding 15: TierRefTableBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected tier-ref table at binding 15 (Tiered-ESVO Inc2 M3)");
-    }
-
-    // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: Binding 16: coarse occupancy grid
-    // SSBO (concatenated per-recipe min-|sd| grids for empty-space skip / far early-out
-    // in traceUberRecipeBody). Placeholder 1-byte buffer for a scene where no registered
-    // recipe has a derivable grid; read by the shader only when getRecipeOccupancyGrid
-    // reports gridDim>0 for the current recipeId (see SdfRecipes.glsl).
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::OccupancyGridBuffer::BINDING,  // Binding 16: OccupancyGridBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected recipe occupancy grid at binding 16 (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13)");
-    }
-
-    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
-    // SPIR-V reflection marks this REQUIRED in BodyInstanceRayMarch.comp's descriptor set (it's
-    // read unconditionally by isInstanceSkipped(), called from both TraceWorld's and
-    // TraceWorldShadow's instance loops) -- without this wire, binding 35 is an unbound
-    // STORAGE_BUFFER descriptor at vkCmdDispatch time (VUID-vkCmdDispatch-None-08114) on every
-    // default-scene frame. Never populated with real skip data this milestone (M3's job) --
-    // the 256-byte zeroed placeholder makes isInstanceSkipped() a true no-op (see that
-    // function's own bounds-check comment in SceneBindings.glsl).
-    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::InstanceSkipMaskBuffer::BINDING,  // Binding 35: InstanceSkipMaskBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected instance skip mask at binding 35 (Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round)");
-    }
-
-    // Sampled Lighting Inc0 M3: Binding 17: LightingConfig SSBO (single record, re-uploaded
-    // per-frame from LightingConfigNode's ring). Default content = one directional light
-    // matching Lighting.glsl's previous hardcoded default (zero-visual-delta gate).
-    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::LightingConfigSSBO::BINDING,  // Binding 17: LightingConfigSSBO
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected lighting config at binding 17 (Sampled Lighting Inc0 M3)");
+        mainLogger->Info("[BuildRenderGraph] March descriptors wired from merged SDI (sceneProviders registry)");
     }
 
     // Sampled Lighting Inc1 M3: Binding 18: HitRecord SSBO. Device input + extent-driven sizing
@@ -6947,61 +6881,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   hitRecordBufferNode, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
          .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   hitRecordBufferNode, StorageBufferNodeConfig::SWAPCHAIN_INFO);
-
-    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::HitRecordBuffer::BINDING,  // Binding 18: HitRecordBuffer
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected HitRecord SSBO at binding 18 (Sampled Lighting Inc1 M3)");
-    }
-
-    // Sampled Lighting Inc1 M4: Binding 19: ShadowConfig SSBO (single record, re-uploaded
-    // per-frame from ShadowConfigNode's ring). Default content = enabled hard shadows,
-    // whole-scene reach, tuned bias (see ShadowConfigNode.cpp's MakeDefaultShadowConfig).
-    batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::ShadowConfigSSBO::BINDING,  // Binding 19: ShadowConfigSSBO
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected shadow config at binding 19 (Sampled Lighting Inc1 M4)");
-    }
-
-    // Sampled Lighting Inc2 M1: Binding 20: AccumulationConfig SSBO (single record, re-uploaded
-    // per-frame from AccumulationConfigNode's ring). Default content = enabled=0 (pure
-    // passthrough — this milestone's byte-identity gate vs Inc1).
-    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::AccumulationConfigSSBO::BINDING,  // Binding 20: AccumulationConfigSSBO
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected accumulation config at binding 20 (Sampled Lighting Inc2 M1)");
-    }
-
-    // Sampled Lighting Inc2 M1: Binding 21: historyImage (persistent R8G8B8A8_UNORM storage
-    // image, AccumulationHistoryNode). Declared in the shader but not yet read/written this
-    // milestone (M2 consumes it) — a pure plumbing wire. Execute-only, mirroring
-    // pickIdTargetNode's own binding-9 storage-image wiring above (re-emitted each frame; no
-    // compile-time dependency edge needed beyond the initial Compile-time publish).
-    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
-                          descriptorGatherer, MarchSdi::Bind::historyImage::BINDING,  // Binding 21: historyImage
-                          SlotRoleModifier(SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected accumulation history image at binding 21 (Sampled Lighting Inc2 M1)");
-    }
-
-    // Sampled Lighting Inc2 M3: Binding 22: PrevCameraConfig SSBO (single record, re-uploaded
-    // per-frame from PrevCameraConfigNode's ring). Declared in the shader but not yet read
-    // this milestone (M4 consumes it for reprojection) — a pure plumbing wire, mirroring
-    // binding 20/21's own M1 plumbing-only precedent.
-    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
-                          descriptorGatherer, MarchSdi::Bind::PrevCameraConfigSSBO::BINDING,  // Binding 22: PrevCameraConfigSSBO
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Connected prev-camera config at binding 22 (Sampled Lighting Inc2 M3)");
-    }
 
     // Swapchain connections to descriptor set and dispatch
     // Pass swapchain public vars; DescriptorSetNode reads swapChainImageCount during Compile.
@@ -7033,14 +6912,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE);
-
-    // M-wire/M4: the march's binding-0 outputImage is kept wired to the render target's current
-    // view SOLELY so imageSize(outputImage) resolves the dispatch's pixel bounds (never
-    // imageStore'd post-split — see PARAM_WRITES_NO_IMAGE's doc comment). The real write happens
-    // on DirectLighting's OWN gatherer binding 0, wired further below.
-    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
-                          descriptorGatherer, MarchSdi::Bind::outputImage::BINDING,  // outputImage at binding 0 (extent query only)
-                          SlotRoleModifier(SlotRole::Execute));
 
     // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
     // resize->recompile cascade as the render target itself.
@@ -7246,51 +7117,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // historyImage to SpatialReuseShade (DirectLighting.comp:84) and DL's
     // compiled interface has no binding 20; the member table simply has no
     // such member (the dead wire the strict contract flagged).
-    SdiProviderRegistry sceneProviders;
-    sceneProviders.Provide("outputImage", renderTargetNode,
-                           RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-    // (Each config slot is its own tag TYPE — typed-connection design — so
-    // these enumerate individually rather than via a table.)
-    const auto kSceneRoles = SlotRole::Dependency | SlotRole::Execute;
     sceneProviders.Provide("ESVOBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER, kSceneRoles);
-    sceneProviders.Provide("BrickBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER, kSceneRoles);
-    sceneProviders.Provide("MaterialBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER, kSceneRoles);
-    sceneProviders.Provide("OctreeConfigsSSBO", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER, kSceneRoles);
-    sceneProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, kSceneRoles);
-    sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
-    sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, kSceneRoles);
-    sceneProviders.Provide("MipPoolBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER, kSceneRoles);
-    sceneProviders.Provide("TierRefTableBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, kSceneRoles);
-    // RayTraceBuffer: the march wires this from voxelGridNode's debug-capture
-    // buffer (Dependency|Execute|Debug) — the SAME provider serves DL now
-    // (previously placeholder-bound here; the registry makes it real).
-    sceneProviders.Provide("RayTraceBuffer", voxelGridNode,
-                           VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
-    sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
-                           LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
-                           StorageBufferNodeConfig::STORAGE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("ShadowConfigSSBO", shadowConfigNode,
-                           ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("AccumulationConfigSSBO", accumulationConfigNode,
-                           AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("PrevCameraConfigSSBO", prevCameraConfigNode,
-                           PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
     sceneProviders.Provide("worldPosHistoryImage", worldPosHistoryNode,
                            WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
                            SlotRole::Execute);
@@ -7304,9 +7132,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            StorageBufferNodeConfig::STORAGE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
     sceneProviders.Provide("ReservoirBufferB", reservoirBufferB,
-                           StorageBufferNodeConfig::STORAGE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("HitRecordBuffer", hitRecordBufferNode,
                            StorageBufferNodeConfig::STORAGE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
 
@@ -7419,9 +7244,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // gate's host-readback-only instrument; DDGILeakGateDebugShadeSSBO is the
     // shared M5 live-gate buffer ProbeUpdate also binds at 31. HitRecord is a
     // SECOND reader of the already-synced march write (read-after-read).
-    sceneProviders.Provide("historyImage", accumulationHistoryNode,
-                           AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
-                           SlotRole::Execute);
+
     sceneProviders.Provide("SpatialReservoirDebugBuffer", spatialReservoirDebugBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
