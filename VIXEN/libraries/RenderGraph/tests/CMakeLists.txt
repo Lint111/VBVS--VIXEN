@@ -290,6 +290,21 @@ endif()
 # Confirmed live during this milestone: merging it into test_rendergraph_nodeconn
 # silently zeroed out that group's other 3 files' test execution. Stays standalone.
 
+# Semantic Shader Wiring S2: provider-registry wire plan (pure data-level,
+# no device) — standalone for the same main()-monopoly reason as its siblings.
+if(TARGET GTest::gtest_main)
+    add_executable(test_sdi_stage_wiring
+        test_sdi_stage_wiring.cpp
+    )
+    target_link_libraries(test_sdi_stage_wiring PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+    set_target_properties(test_sdi_stage_wiring PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_sdi_stage_wiring)
+    message(STATUS "✓ test_sdi_stage_wiring configured (Semantic Wiring S2)")
+endif()
+
 if(TARGET GTest::gtest_main)
     add_executable(test_connection_concepts
         test_connection_concepts.cpp

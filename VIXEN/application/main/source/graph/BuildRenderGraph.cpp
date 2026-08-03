@@ -22,6 +22,7 @@
 #include "graph/CornellBoxSceneDefinition.h"  // Sampled Lighting Cornell Box Demo M1: shared scene-definition constants (M1+M2 both read this verbatim)
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
 #include "Connection/ConnectionModifier.h"
+#include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
@@ -6385,48 +6386,50 @@ void VulkanGraphApplication::BuildRenderGraph() {
         namespace HizSdi = ShaderInterface::HiZDownsample;
         namespace CullSdi = ShaderInterface::InstanceOcclusionCull;
 
-        // HiZ descriptors: last frame's depth (re-emitted per frame, Execute role
-        // like the march's pickId binding) + the tile image's view.
-        batch.Connect(b1DepthTarget, DepthTargetNodeConfig::DEPTH_READ_VIEW,
-                      b1HizDescGatherer, HizSdi::Bind::srcDepthImage::BINDING,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                      b1HizDescGatherer, HizSdi::Bind::tileMaxImage::BINDING,
-                      SlotRoleModifier(SlotRole::Execute));
-        // HiZ push constants: srcWidth/srcHeight from the render target's live
-        // extent — the same source the bucketing pre-pass uses for its own screen dims.
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
-                      b1HizPushGatherer, HizSdi::Push::srcWidth::INDEX,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
-                      b1HizPushGatherer, HizSdi::Push::srcHeight::INDEX,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Semantic-wiring S2: the shader is the declaration — the builder declares
+        // only PROVIDERS (shader member name -> world node output + roles), once,
+        // regardless of how many stages consume them (the tile view feeds BOTH the
+        // HiZ writer and the cull reader from one registration). WireStageFromSdi
+        // walks each stage's merged-SDI MEMBERS table and emits the exact Connects
+        // the hand block used to write; an unmatched member is a configure-time
+        // hard error naming the shader, the member, and the candidates.
+        SdiProviderRegistry b1Providers;
+        // HiZ inputs: last frame's depth (re-emitted per frame, Execute role like
+        // the march's pickId binding) + the render target's live extent.
+        b1Providers.Provide("srcDepthImage", b1DepthTarget,
+                            DepthTargetNodeConfig::DEPTH_READ_VIEW, SlotRole::Execute);
+        b1Providers.Provide("srcWidth", renderTargetNode,
+                            RenderTargetNodeConfig::WIDTH_OUT,
+                            SlotRole::Dependency | SlotRole::Execute);
+        b1Providers.Provide("srcHeight", renderTargetNode,
+                            RenderTargetNodeConfig::HEIGHT_OUT,
+                            SlotRole::Dependency | SlotRole::Execute);
+        // The tile image's view: written by HiZ, read by the cull — one provider.
+        b1Providers.Provide("tileMaxImage", b1HizTileImage,
+                            ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+        // Cull inputs: instances + configs (the march's own sources), the EXISTING
+        // skip-mask buffer, and the ONE-FRAME-DELAYED camera ConstantNodes that
+        // RunB1OcclusionCullPreTick refreshes.
+        b1Providers.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
+                            BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                            SlotRole::Dependency | SlotRole::Execute);
+        b1Providers.Provide("OctreeConfigsSSBO", bodyOctreeSceneNode,
+                            BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                            SlotRole::Dependency | SlotRole::Execute);
+        b1Providers.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
+                            StorageBufferNodeConfig::STORAGE_BUFFER,
+                            SlotRole::Dependency | SlotRole::Execute);
+        b1Providers.Provide("prevViewProj", b1CullPrevViewProjConstant,
+                            ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        b1Providers.Provide("prevCamPos", b1CullPrevCamPosConstant,
+                            ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        b1Providers.Provide("dims", b1CullDimsConstant,
+                            ConstantNodeConfig::OUTPUT, SlotRole::Execute);
 
-        // Cull descriptors: instances + configs (the march's own sources), the tile view,
-        // and the EXISTING skip-mask buffer — each addressed by its shader-declared name.
-        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                      b1CullDescGatherer, CullSdi::Bind::BodyInstanceBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                      b1CullDescGatherer, CullSdi::Bind::OctreeConfigsSSBO::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                      b1CullDescGatherer, CullSdi::Bind::tileMaxImage::BINDING,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      b1CullDescGatherer, CullSdi::Bind::InstanceSkipMaskBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Cull push constants: prevViewProj / prevCamPos / dims — all ConstantNodes
-        // PreTick refreshes with ONE-FRAME-DELAYED camera values.
-        batch.Connect(b1CullPrevViewProjConstant, ConstantNodeConfig::OUTPUT,
-                      b1CullPushGatherer, CullSdi::Push::prevViewProj::INDEX,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(b1CullPrevCamPosConstant, ConstantNodeConfig::OUTPUT,
-                      b1CullPushGatherer, CullSdi::Push::prevCamPos::INDEX,
-                      SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(b1CullDimsConstant, ConstantNodeConfig::OUTPUT,
-                      b1CullPushGatherer, CullSdi::Push::dims::INDEX,
-                      SlotRoleModifier(SlotRole::Execute));
+        WireStageFromSdi<HizSdi::Metadata, HizSdi::MEMBERS>(
+            batch, b1Providers, b1HizDescGatherer, b1HizPushGatherer, {});
+        WireStageFromSdi<CullSdi::Metadata, CullSdi::MEMBERS>(
+            batch, b1Providers, b1CullDescGatherer, b1CullPushGatherer, {});
 
         // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
         // the cull writes the skip-mask buffer the march + lighting passes already read.
