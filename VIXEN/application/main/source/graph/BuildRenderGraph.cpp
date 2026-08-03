@@ -1294,157 +1294,106 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // M-wire Task 8: use the instanced shell-octree ray-march shader (BodyInstanceRayMarch.comp).
     // Replaces VoxelRayMarch_Compressed.comp. Bindings 1/2/3/5 come from BodyOctreeSceneNode;
     // binding 10 = per-body instance SSBO; bindings 4/8 = debug/counters from voxelGridNode.
-    computeShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
-        ShaderManagement::ShaderBundleBuilder builder;
-
-        constexpr const char* shaderName = "BodyInstanceRayMarch.comp";
-        constexpr const char* programName = "BodyInstanceRayMarch";
-
-        // Find shader source — try compile-time dir first, then fallback runtime paths.
-        std::vector<std::filesystem::path> possiblePaths = {
+    //
+    // Semantic-wiring S2 slice B (march adoption): the march is a ShaderFamily.
+    // The SourceProvider owns the CONTENT pipeline — path resolve, raw read,
+    // procedural-recipe splice (Inc0 M5: AddStage source text, not
+    // AddStageFromFile; #include resolution rides the explicit include paths)
+    // + the occupancy-grid side effect (M6 Task 13, pushed to
+    // BodyOctreeSceneNode, re-derived per member build like before). The
+    // FEATURE axis is typed at the registration site below; the family
+    // applies the canonical after-#version splice. Ordering note: the old
+    // LIFO hand-splices produced #version, B1, TRACE — the family's sorted
+    // canonical order produces the SAME bytes, so every variant's cache key
+    // is preserved. (Shader counters remain compiled OUT unconditionally —
+    // see ShaderCounters.glsl's #ifdef; SetStageDefines cannot drive #ifdefs.)
+    auto marchFamily = std::make_shared<ShaderManagement::ShaderFamily>(
+        ShaderManagement::ShaderFamily::Config{"BodyInstanceRayMarch",
+                                              ShaderManagement::ShaderStage::Compute},
+        [this]() -> std::string {
+            constexpr const char* shaderName = "BodyInstanceRayMarch.comp";
+            std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-            std::string("shaders/") + shaderName,
-            std::string("../shaders/") + shaderName,
-            shaderName
-        };
-
-        std::filesystem::path compPath;
-        for (const auto& path : possiblePaths) {
-            if (std::filesystem::exists(path)) {
-                compPath = path;
-                break;
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName
+            };
+            std::filesystem::path compPath;
+            for (const auto& path : possiblePaths) {
+                if (std::filesystem::exists(path)) { compPath = path; break; }
             }
-        }
-
-        if (compPath.empty()) {
-            if (mainLogger && mainLogger->IsEnabled()) {
-                mainLogger->Error("[BuildRenderGraph] " + std::string(shaderName) + " not found in search paths");
-                mainLogger->Error("[BuildRenderGraph] Current working directory: " + std::filesystem::current_path().string());
+            if (compPath.empty()) {
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Error("[BuildRenderGraph] " + std::string(shaderName) + " not found in search paths");
+                    mainLogger->Error("[BuildRenderGraph] Current working directory: " + std::filesystem::current_path().string());
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                mainLogger->Error("[BuildRenderGraph] VIXEN_SHADER_SOURCE_DIR: " VIXEN_SHADER_SOURCE_DIR);
+                    mainLogger->Error("[BuildRenderGraph] VIXEN_SHADER_SOURCE_DIR: " VIXEN_SHADER_SOURCE_DIR);
 #endif
+                }
+                throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
             }
-            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
-        }
 
-        // Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11: read the raw source and splice in
-        // every registered procedural recipe's emitted field function + the evalRecipeField/
-        // getRecipeBoundSphere switches, BEFORE handing the source to the builder. Uses
-        // AddStage (source text), NOT AddStageFromFile — the file is still the origin of the
-        // #include-relative-path text, but the text itself is no longer the file's own bytes
-        // verbatim. #include resolution is unaffected: it goes through the explicit
-        // AddIncludePath calls below (preprocessor-driven), not sourcePath (AddStageFromFile's
-        // OWN #include convenience, which this path deliberately bypasses).
-        std::ifstream compFile(compPath);
-        std::ostringstream compBuf;
-        compBuf << compFile.rdbuf();
-        const std::string rawSource = compBuf.str();
+            std::ifstream compFile(compPath);
+            std::ostringstream compBuf;
+            compBuf << compFile.rdbuf();
+            const std::string rawSource = compBuf.str();
 
-        std::string splicedSource;
-        // M6 Task 13: collect the concatenated per-recipe occupancy-grid blob alongside the
-        // splice, then push it to BodyOctreeSceneNode's new SSBO (binding 16) — same "derived
-        // once at shader-build time, forces a recompile like everything else the splice
-        // touches" discipline as the bound-sphere/relaxation literals already baked in.
-        std::vector<float> occupancyGridBlob;
-        try {
-            splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
-                rawSource, proceduralRecipes_, &occupancyGridBlob);
-        } catch (const std::exception& e) {
+            std::string splicedSource;
+            std::vector<float> occupancyGridBlob;
+            try {
+                splicedSource = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
+                    rawSource, proceduralRecipes_, &occupancyGridBlob);
+            } catch (const std::exception& e) {
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
+                }
+                throw;
+            }
+            if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
+                    renderGraph->GetInstance(bodyOctreeSceneNode_))) {
+                bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
+            }
+
             if (mainLogger && mainLogger->IsEnabled()) {
-                mainLogger->Error(std::string("[BuildRenderGraph] procedural recipe splice failed: ") + e.what());
+                mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string() +
+                                 " (" + std::to_string(proceduralRecipes_.Ids().size()) + " procedural recipes spliced)");
+                mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
             }
-            throw;
-        }
-        if (auto* bodyScene = static_cast<Vixen::RenderGraph::BodyOctreeSceneNode*>(
-                renderGraph->GetInstance(bodyOctreeSceneNode_))) {
-            bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
-        }
+            return splicedSource;
+        });
 
-        // Baked-perf-pipeline M2 (audit D1, Task 2.1): VIXEN_GPU_TRACE_HOOKS gates
-        // TraceRecording.glsl's grid-capture recording, snapshotTraversalState's per-step
-        // debug-visualization writes (ESVOTraversal.glsl), and the instanceIterCount[]
-        // stores (TraceWorld.glsl) -- all dead weight paid every pixel/iteration when
-        // nothing consumes them. Reuses VIXEN_DEBUG_CAPTURE (already the CPU-side knob for
-        // RayTraceBuffer readback/export, see the debugCaptureEnabled wiring below) as the
-        // SINGLE end-to-end toggle for the whole trace-recording feature, rather than a
-        // second env var the user would also need to set: with only the CPU-side capture
-        // enabled but the GPU-side writes still gated off, DebugBufferReaderNode would read
-        // back an empty buffer -- one flag now drives both halves consistently.
-        // Textual #define injection (NOT ShaderBundleBuilder::SetStageDefines, which does
-        // token substitution on EXISTING text and cannot create a new #ifdef-driving
-        // #define -- see the ShaderCounters/binding-8 comment a few lines below); cache key
-        // is the full post-splice source text (ShaderBundleBuilder::Build), so this
-        // insertion automatically produces a distinct .spv cache entry -- no manual
-        // cache-bust needed. Inserted after the FIRST LINE (i.e. after "#version 460"), NOT
-        // prepended at position 0 -- GLSL requires #version to be the literal first line
-        // (glslang: "'#version' : must occur first in shader"); a naive prepend pushes it to
-        // line 2 and fails compilation (caught live: ProbeUpdate.comp failed exactly this way
-        // on the first real VIXEN_DEBUG_CAPTURE=1 end-to-end run).
-        if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
-            const size_t firstNewline = splicedSource.find('\n');
-            const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
-            if (firstNewline == std::string::npos) {
-                splicedSource += "\n" + defineLine;
-            } else {
-                splicedSource.insert(firstNewline + 1, defineLine);
-            }
-        }
+    // The march's feature axis, typed — the SAME env knobs, decided in ONE
+    // visible place instead of buried string splices (VIXEN_DEBUG_CAPTURE is
+    // the single end-to-end trace-recording toggle: CPU readback + GPU
+    // writes; audit D1 Task 2.1).
+    std::vector<std::string> marchShaderFeatures;
+    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+        marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
+    }
+    if (std::getenv("VIXEN_B1_OCCLUSION_CULL") != nullptr) {
+        marchShaderFeatures.push_back(kFeatureB1OcclusionCull.define);
+    }
 
-        // Raster-proxy B1 M2: VIXEN_B1_OCCLUSION_CULL gates the depthDistanceImage
-        // declaration + store (binding 36) in the march. Same after-#version textual
-        // injection as VIXEN_GPU_TRACE_HOOKS above (and for the same cache-key reason);
-        // flag-off keeps the pre-B1 descriptor interface so nothing needs to bind 36.
-        if (std::getenv("VIXEN_B1_OCCLUSION_CULL") != nullptr) {
-            const size_t b1Newline = splicedSource.find('\n');
-            const std::string b1Define = "#define VIXEN_B1_OCCLUSION_CULL 1\n";
-            if (b1Newline == std::string::npos) {
-                splicedSource += "\n" + b1Define;
-            } else {
-                splicedSource.insert(b1Newline + 1, b1Define);
-            }
-        }
-
-        builder.SetProgramName(programName)
-               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
-               .SetTargetVulkanVersion(vulkanVer)
+    computeShaderLibNode->RegisterShaderBuilder(
+        [this, marchFamily, marchShaderFeatures](int vulkanVer, int spirvVer) {
+        auto builder = marchFamily->MakeBuilder(marchShaderFeatures);
+        builder.SetTargetVulkanVersion(vulkanVer)
                .SetTargetSpirvVersion(spirvVer)
                .AddIncludePath("shaders")
                .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               // Inc0 M5: BodyInstanceRayMarch.comp now #includes "recipe/SdfCoreKernels.glsl"
-               // (the SdfCore_* kernel set the spliced recipe field functions call), which
-               // lives under libraries/SVO/shaders — a different tree than the paths above.
+               // Inc0 M5: BodyInstanceRayMarch.comp #includes "recipe/SdfCoreKernels.glsl"
+               // under libraries/SVO/shaders — a different tree than the paths above.
                .AddIncludePath("libraries/SVO/shaders")
                .AddIncludePath("../libraries/SVO/shaders")
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
-               // Baked-perf-pipeline M2b (Task 2b.1): splicedSource here is ALREADY the final
-               // effective source (post-recipe-splice, post-VIXEN_GPU_TRACE_HOOKS #define
-               // injection above) -- Build() hashes exactly this text (plus stage/entry/
-               // options) for the cache key, so either input changing busts the cache with no
-               // extra plumbing.
-               .EnableCaching(&shaderCacheManager_)
-               .AddStage(ShaderManagement::ShaderStage::Compute, splicedSource, "main");
-
-        // Shader counters (perf sweep rank 2) are compiled OUT unconditionally: the live
-        // app has no consumer for them, and every pixel was paying 3-4 unread atomic RMWs
-        // into a HOST_COHERENT SSBO. No env opt-in — ShaderBundleBuilder::SetStageDefines
-        // does line-level token substitution, not textual #define injection, so it cannot
-        // drive ShaderCounters.glsl's #ifdef ENABLE_SHADER_COUNTERS guard (verified: passing
-        // an empty-value define here turns "#ifdef ENABLE_SHADER_COUNTERS" into "#ifdef ",
-        // a glslang compile error). Re-enable by hand-editing this .comp's #define if needed.
-
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string() +
-                             " (" + std::to_string(proceduralRecipes_.Ids().size()) + " procedural recipes spliced)");
-            mainLogger->Info("[BuildRenderGraph] Octree buffers at bindings 1/2/3/5 (BodyOctreeSceneNode); instances at binding 10");
-        }
-
+               .EnableCaching(&shaderCacheManager_);
         return builder;
     });
 
