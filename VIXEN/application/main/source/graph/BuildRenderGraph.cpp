@@ -23,6 +23,7 @@
 #include "BakeArtifactCache.h"  // Baked-Perf M7 Task 7.4: bake-artifact disk cache
 #include "Connection/ConnectionModifier.h"
 #include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
+#include "Nodes/SdiStageSynthesis.h"    // Semantic-wiring S2 synthesis: gatherer/descSet/pipeline plumbing from merged SDI
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
@@ -813,18 +814,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         b1DepthTarget  = renderGraph->AddNode<DepthTargetNodeType>("b1_depth_target");
         b1HizTileImage = renderGraph->AddNode<ProbeAtlasNodeType>("b1_hiz_tile_image");
 
+        // Semantic-wiring S2 synthesis: only the AUTHORED halves are created
+        // here — shader identity (shader-lib) + dispatch (stage). The
+        // gatherer/descriptor-set/pipeline plumbing nodes are synthesized by
+        // SynthesizeComputeStage at the connect section below.
         b1HizShaderLib     = renderGraph->AddNode<ShaderLibraryNodeType>("b1_hiz_shader_lib");
-        b1HizDescGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("b1_hiz_desc_gatherer");
-        b1HizPushGatherer  = renderGraph->AddNode<PushConstantGathererNodeType>("b1_hiz_push_gatherer");
-        b1HizDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("b1_hiz_descriptors");
-        b1HizPipeline      = renderGraph->AddNode<ComputePipelineNodeType>("b1_hiz_pipeline");
         b1HizStage         = renderGraph->AddNode<ComputeStageNodeType>("b1_hiz_downsample");
-
         b1CullShaderLib     = renderGraph->AddNode<ShaderLibraryNodeType>("b1_cull_shader_lib");
-        b1CullDescGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("b1_cull_desc_gatherer");
-        b1CullPushGatherer  = renderGraph->AddNode<PushConstantGathererNodeType>("b1_cull_push_gatherer");
-        b1CullDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("b1_cull_descriptors");
-        b1CullPipeline      = renderGraph->AddNode<ComputePipelineNodeType>("b1_cull_pipeline");
         b1CullStage         = renderGraph->AddNode<ComputeStageNodeType>("b1_instance_occlusion_cull");
 
         // Same-frame HiZ(write)→cull(read) hazard on the tile image: the established
@@ -6299,72 +6295,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
              .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                       b1HizTileImage, ProbeAtlasNodeConfig::COMMAND_POOL);
 
-        // Shader-lib/descriptor/pipeline chains for both quintets (bucketing template).
-        struct B1Quintet {
-            NodeHandle shaderLib, descGatherer, pushGatherer, descriptorSet, pipeline, stage;
-        };
-        const B1Quintet b1Quintets[] = {
-            { b1HizShaderLib,  b1HizDescGatherer,  b1HizPushGatherer,  b1HizDescriptorSet,  b1HizPipeline,  b1HizStage },
-            { b1CullShaderLib, b1CullDescGatherer, b1CullPushGatherer, b1CullDescriptorSet, b1CullPipeline, b1CullStage },
-        };
-        for (const auto& q : b1Quintets) {
-            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          q.shaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
-                 .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          q.descriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-                 .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          q.pipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
-                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          q.descGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(q.descGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
-                          q.descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
-                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          q.descriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          q.pipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(q.descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                          q.pipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
-                 .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                          q.descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-                 .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                          q.descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                          q.descriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
-            // Stage common inputs (bucketing's own per-stage list).
-            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          q.stage, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
-                 .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                          q.stage, ComputeStageNodeConfig::COMMAND_POOL)
-                 .Connect(q.pipeline, ComputePipelineNodeConfig::PIPELINE,
-                          q.stage, ComputeStageNodeConfig::COMPUTE_PIPELINE)
-                 .Connect(q.pipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
-                          q.stage, ComputeStageNodeConfig::PIPELINE_LAYOUT)
-                 .Connect(q.descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                          q.stage, ComputeStageNodeConfig::DESCRIPTOR_SETS)
-                 .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                          q.stage, ComputeStageNodeConfig::IMAGE_INDEX)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                          q.stage, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                          q.stage, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                          q.stage, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-                 .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                          q.stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          q.stage, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
-                          q.stage, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                          q.stage, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
-            // Push-constant plumbing (fields wired per stage below).
-            batch.Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          q.pushGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(q.pushGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
-                          q.stage, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
-                 .Connect(q.pushGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
-                          q.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES);
-        }
+        // Semantic-wiring S2 synthesis: the entire gatherer/descriptor-set/
+        // pipeline plumbing of both B1 stages — node creation, quintet chain,
+        // stage common inputs, push plumbing, AND the SDI member wires — is
+        // synthesized from each stage's merged SDI (below, after the
+        // providers are registered).
+        const SdiStageCommon b1Common{deviceNode, commandPoolNode,
+                                      swapChainNode, frameSyncNode};
 
         // Semantic-wiring S1: slot indices come from the feature-tagged merged SDI
         // (generated/sdi/merged/*-SDI.h) — names, not hand-written numbers. The
@@ -6418,10 +6355,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // grows a feature-gated member.
         SdiFeatureSet b1Features;
         b1Features.Enable(kFeatureB1OcclusionCull);
-        WireStageFromSdi<HizSdi::Metadata, HizSdi::MEMBERS>(
-            batch, b1Providers, b1HizDescGatherer, b1HizPushGatherer, b1Features);
-        WireStageFromSdi<CullSdi::Metadata, CullSdi::MEMBERS>(
-            batch, b1Providers, b1CullDescGatherer, b1CullPushGatherer, b1Features);
+        const auto hizSynth = SynthesizeComputeStage<HizSdi::Metadata, HizSdi::MEMBERS>(
+            renderGraph, batch, "b1_hiz",
+            b1HizShaderLib, b1HizStage, b1Common, b1Providers, b1Features);
+        b1HizDescGatherer  = hizSynth.descGatherer;
+        b1HizPushGatherer  = hizSynth.pushGatherer;
+        b1HizDescriptorSet = hizSynth.descriptorSet;
+        b1HizPipeline      = hizSynth.pipeline;
+        const auto cullSynth = SynthesizeComputeStage<CullSdi::Metadata, CullSdi::MEMBERS>(
+            renderGraph, batch, "b1_cull",
+            b1CullShaderLib, b1CullStage, b1Common, b1Providers, b1Features);
+        b1CullDescGatherer  = cullSynth.descGatherer;
+        b1CullPushGatherer  = cullSynth.pushGatherer;
+        b1CullDescriptorSet = cullSynth.descriptorSet;
+        b1CullPipeline      = cullSynth.pipeline;
 
         // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
         // the cull writes the skip-mask buffer the march + lighting passes already read.
