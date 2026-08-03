@@ -12,6 +12,10 @@
 //                            replayed through RevalidateShellBricks, updates exactly
 //                            those shell slots and nothing else.
 //   ShellThicknessGrows    — dilation 2 ⊇ dilation 1 ⊇ surface (thickness param).
+//   ProxyAabbsEmittedForExactlyShellBricks — one local-space [0,1]^3 AABB per shell
+//                            brick, mirroring shellLookup order (raster-proxy artifact).
+//   DeriveShellPoolEmitsProxiesWithOctreeIndex — per-octree proxy lists carry the
+//                            owning octree index through the multi-octree pool.
 
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
@@ -465,6 +469,165 @@ TEST(ShellDerive, DirtyRevalidateUpdatesRightBricks) {
                                      stride * sizeof(float)))
                 << "non-dirty slot " << slot << " was corrupted";
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ProxyAabbsEmittedForExactlyShellBricks — the raster-proxy artifact (hybrid
+// slice A): DeriveShell emits one template-LOCAL-space ([0,1]^3, the traceBounds
+// convention) AABB per SHELL brick, in shellLookup (ascending source-brick)
+// order, each carrying its source brickId and owning octreeIndex. Grid coords
+// are oracled independently by inverting the source brickGridLookup.
+// ---------------------------------------------------------------------------
+TEST(ShellDerive, ProxyAabbsEmittedForExactlyShellBricks) {
+    ShellFixture f;
+    ShellDeriveResult r = DeriveShell(f.cat, 0);
+    ASSERT_GT(r.shellBrickCount, 0u);
+
+    // 32-byte std430-friendly element: {vec3 min, uint brickId, vec3 max, uint octree}.
+    EXPECT_EQ(sizeof(ShellProxyAabb), 32u);
+
+    // Exactly one proxy per shell brick, mirroring shellLookup order.
+    ASSERT_EQ(r.proxyAabbs.size(), static_cast<size_t>(r.shellBrickCount));
+
+    // Independent grid-coord oracle: invert the source grid lookup.
+    const OctreeConfig& cfg = f.cat.configs[0];
+    const uint32_t bpa = static_cast<uint32_t>(cfg.bricksPerAxis);
+    const uint32_t* lu =
+        reinterpret_cast<const uint32_t*>(f.cat.brickGridLookup.data());
+    std::vector<uint32_t> brickToFlat(r.sourceBrickCount, 0xFFFFFFFFu);
+    for (uint32_t flat = 0; flat < bpa * bpa * bpa; ++flat) {
+        const uint32_t bi = lu[flat];
+        if (bi != 0xFFFFFFFFu && bi < r.sourceBrickCount) brickToFlat[bi] = flat;
+    }
+
+    const float inv = 1.0f / static_cast<float>(bpa);
+    for (uint32_t slot = 0; slot < r.shellBrickCount; ++slot) {
+        const ShellProxyAabb& p = r.proxyAabbs[slot];
+        EXPECT_EQ(p.brickId, r.shellLookup[slot])
+            << "proxy order must mirror shellLookup at slot " << slot;
+        EXPECT_EQ(p.octreeIndex, 0u);
+
+        const uint32_t flat = brickToFlat[p.brickId];
+        ASSERT_NE(flat, 0xFFFFFFFFu) << "shell brick " << p.brickId << " not grid-addressable";
+        const uint32_t gx = flat % bpa;
+        const uint32_t gy = (flat / bpa) % bpa;
+        const uint32_t gz = flat / (bpa * bpa);
+
+        EXPECT_FLOAT_EQ(p.minLocal[0], static_cast<float>(gx) * inv);
+        EXPECT_FLOAT_EQ(p.minLocal[1], static_cast<float>(gy) * inv);
+        EXPECT_FLOAT_EQ(p.minLocal[2], static_cast<float>(gz) * inv);
+        EXPECT_FLOAT_EQ(p.maxLocal[0], static_cast<float>(gx + 1u) * inv);
+        EXPECT_FLOAT_EQ(p.maxLocal[1], static_cast<float>(gy + 1u) * inv);
+        EXPECT_FLOAT_EQ(p.maxLocal[2], static_cast<float>(gz + 1u) * inv);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeriveShellPoolEmitsProxiesWithOctreeIndex — the multi-octree pool carries a
+// per-octree proxy list whose elements name their owning octree (what the
+// instanced proxy draw expands per template).
+// ---------------------------------------------------------------------------
+TEST(ShellDerive, DeriveShellPoolEmitsProxiesWithOctreeIndex) {
+    std::vector<SdfBodyOctree> bodies;
+    const float radii[2] = {10.0f, 14.0f};
+    for (int k = 0; k < 2; ++k) {
+        const int n = 32; const glm::vec3 center{16.0f, 16.0f, 16.0f};
+        RecipeParams rp{radii[k], 0, 0, 0, 0, 0};
+        SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, rp, n, 2.0f);
+        bodies.push_back(BuildSdfBodyOctree(baked, 3));
+    }
+    std::vector<const SdfBodyOctree*> ptrs{ &bodies[0], &bodies[1] };
+    ConcatenatedOctrees src = ConcatenateSdf(ptrs);
+    ASSERT_EQ(src.count, 2u);
+
+    ShellPool sp = DeriveShellPool(src);
+    ASSERT_EQ(sp.perOctree.size(), 2u);
+
+    for (uint32_t oi = 0; oi < 2u; ++oi) {
+        const ShellDeriveResult& r = sp.perOctree[oi];
+        ASSERT_GT(r.shellBrickCount, 0u);
+        EXPECT_EQ(r.proxyAabbs.size(), static_cast<size_t>(r.shellBrickCount));
+        for (const ShellProxyAabb& p : r.proxyAabbs) {
+            EXPECT_EQ(p.octreeIndex, oi);
+            for (int a = 0; a < 3; ++a) {
+                EXPECT_LT(p.minLocal[a], p.maxLocal[a]);
+                EXPECT_GE(p.minLocal[a], 0.0f);
+                EXPECT_LE(p.maxLocal[a], 1.0f);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ApplyBrickSdfEditFeedsRevalidateAndKeepsProxiesValid — the dirty-path
+// PRODUCER seam (hybrid slice A): ApplyBrickSdfEdit is the one value-edit
+// entry point; what it writes is exactly what RevalidateShellBricks consumes,
+// and a value edit never moves a brick's box (proxy AABBs need no incremental
+// path — byte-identical across a membership-preserving edit).
+// ---------------------------------------------------------------------------
+TEST(ShellDerive, ApplyBrickSdfEditFeedsRevalidateAndKeepsProxiesValid) {
+    ShellFixture f;
+    ShellDeriveResult baseline = DeriveShell(f.cat, 0);
+    ASSERT_GT(baseline.shellBrickCount, 1u);
+
+    // Target a SURFACE brick (sign-crossing guaranteed) so a uniform scale is
+    // membership-preserving for the whole octree.
+    uint32_t target = 0xFFFFFFFFu;
+    for (uint32_t slot = 0; slot < baseline.shellBrickCount; ++slot) {
+        const uint32_t src = baseline.shellLookup[slot];
+        if (baseline.surface[src]) { target = src; break; }
+    }
+    ASSERT_NE(target, 0xFFFFFFFFu);
+
+    const OctreeConfig& cfg = f.cat.configs[0];
+    const uint32_t stride = cfg.brickStrideFloats;
+    const float* srcPool = reinterpret_cast<const float*>(f.cat.channelPool.data());
+    std::vector<float> edited(SerializedOctree::kVoxelsPerBrick);
+    for (uint32_t v = 0; v < SerializedOctree::kVoxelsPerBrick; ++v)
+        edited[v] = srcPool[static_cast<size_t>(target) * stride + v] * 1.25f;
+
+    // The edit path writes exactly the SDF lane of exactly that brick.
+    ConcatenatedOctrees fresh = f.cat;
+    ASSERT_TRUE(ApplyBrickSdfEdit(fresh, 0, target, edited.data(), edited.size()));
+    const float* freshPool = reinterpret_cast<const float*>(fresh.channelPool.data());
+    EXPECT_FLOAT_EQ(freshPool[static_cast<size_t>(target) * stride], edited[0]);
+    const uint32_t neighbour = (target == 0u) ? 1u : target - 1u;
+    EXPECT_EQ(0, std::memcmp(&freshPool[static_cast<size_t>(neighbour) * stride],
+                             &srcPool[static_cast<size_t>(neighbour) * stride],
+                             SerializedOctree::kVoxelsPerBrick * sizeof(float)))
+        << "edit leaked into neighbouring brick " << neighbour;
+
+    // Out-of-range ids are rejected, pool untouched.
+    EXPECT_FALSE(ApplyBrickSdfEdit(fresh, 0, baseline.sourceBrickCount,
+                                   edited.data(), edited.size()));
+    EXPECT_FALSE(ApplyBrickSdfEdit(fresh, 9u, target, edited.data(), edited.size()));
+
+    // Revalidate consumes the edit into the compact shell slot.
+    std::vector<uint8_t> shellData = baseline.shellData;
+    std::vector<uint32_t> dirty{ target };
+    EXPECT_EQ(RevalidateShellBricks(fresh, 0, baseline, dirty, shellData), 1u);
+    const float* shell = reinterpret_cast<const float*>(shellData.data());
+    const uint32_t slot = baseline.sourceToShellSlot[target];
+    ASSERT_NE(slot, 0xFFFFFFFFu);
+    EXPECT_FLOAT_EQ(shell[static_cast<size_t>(slot) * stride], edited[0]);
+
+    // Value edits never move a brick's box: a full re-derive of the edited pool
+    // yields byte-identical proxy AABBs — the raster proxy artifact stays valid
+    // across the dirty path with zero incremental work.
+    ShellDeriveResult again = DeriveShell(fresh, 0);
+    ASSERT_EQ(again.proxyAabbs.size(), baseline.proxyAabbs.size());
+    EXPECT_EQ(0, std::memcmp(again.proxyAabbs.data(), baseline.proxyAabbs.data(),
+                             baseline.proxyAabbs.size() * sizeof(ShellProxyAabb)));
+
+    // A dirty id that never made the shell is skipped (membership territory —
+    // full-rederive handles it), never written.
+    uint32_t dropped = 0xFFFFFFFFu;
+    for (uint32_t bi = 0; bi < baseline.sourceBrickCount; ++bi)
+        if (!baseline.shell[bi]) { dropped = bi; break; }
+    if (dropped != 0xFFFFFFFFu) {
+        std::vector<uint32_t> dirtyDropped{ dropped };
+        EXPECT_EQ(RevalidateShellBricks(fresh, 0, baseline, dirtyDropped, shellData), 0u);
     }
 }
 

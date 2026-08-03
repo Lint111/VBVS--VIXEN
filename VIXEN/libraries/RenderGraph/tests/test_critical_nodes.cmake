@@ -219,6 +219,30 @@ add_custom_command(
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
 
+# Raster-proxy B1 M2/M4: a SECOND SPV variant with VIXEN_B1_OCCLUSION_CULL defined —
+# the depthDistanceImage declaration+store (binding 36) is #ifdef-gated in the shader
+# (production injects the define only when the env flag is set). ONLY gpurender1's
+# fixture binds an image at 36 (its DepthDistanceImageMatchesHitRecords test needs the
+# B1-ON variant); every other consumer keeps the PLAIN spv above — binding a descriptor
+# the shader doesn't declare, or declaring a binding nothing binds, are both errors
+# (the binding-8 lesson), so each bundle gets exactly the variant its fixture matches.
+set(_brm_spv_b1 "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch_b1.spv")
+add_custom_command(
+    OUTPUT  ${_brm_spv_b1}
+    COMMAND ${VIXEN_GLSLC}
+            -fshader-stage=compute
+            -I ${_brm_shader_dir}
+            -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
+            --target-env=vulkan1.3
+            -DVIXEN_GPU_TRACE_HOOKS=1
+            -DVIXEN_B1_OCCLUSION_CULL=1
+            ${_brm_src}
+            -o ${_brm_spv_b1}
+    DEPENDS ${_brm_src} ${_brm_includes}
+    COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (B1-ON variant, binding 36 declared)"
+    VERBATIM)
+add_custom_target(body_instance_raymarch_spv_b1 DEPENDS ${_brm_spv_b1})
+
 # ===========================================================================
 # Group 5: test_rendergraph_criticalnodes_gpurender1 — real-shader GPU render
 # tests sharing body_instance_raymarch_spv, SVO + (conditional) stb, single
@@ -240,7 +264,7 @@ add_executable(test_rendergraph_criticalnodes_gpurender1
     Nodes/test_body_instance_raymarch_render.cpp
     Nodes/test_hitrecord_readback.cpp
 )
-add_dependencies(test_rendergraph_criticalnodes_gpurender1 body_instance_raymarch_spv)
+add_dependencies(test_rendergraph_criticalnodes_gpurender1 body_instance_raymarch_spv body_instance_raymarch_spv_b1)
 target_link_libraries(test_rendergraph_criticalnodes_gpurender1 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 if(TARGET SVO)
     target_link_libraries(test_rendergraph_criticalnodes_gpurender1 PRIVATE SVO)
@@ -252,8 +276,14 @@ else()
     target_include_directories(test_rendergraph_criticalnodes_gpurender1 PRIVATE
         "${stb_SOURCE_DIR}")
 endif()
-target_compile_definitions(test_rendergraph_criticalnodes_gpurender1 PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
+# Per-SOURCE SPV variants (B1 M4, found by native validation VUID-07988, masked on Dozen):
+# the render fixture binds the depth image at 36 → B1-ON variant; the hitrecord fixture's
+# own pipeline layout does NOT declare 36 → plain variant. One bundle, each TU gets exactly
+# the variant its fixture matches — same doctrine as the per-bundle split above.
+set_source_files_properties(Nodes/test_body_instance_raymarch_render.cpp PROPERTIES
+    COMPILE_DEFINITIONS GLSL_RAYMARCH_SPV="${_brm_spv_b1}")
+set_source_files_properties(Nodes/test_hitrecord_readback.cpp PROPERTIES
+    COMPILE_DEFINITIONS GLSL_RAYMARCH_SPV="${_brm_spv}")
 if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_rendergraph_criticalnodes_gpurender1 PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
@@ -849,4 +879,131 @@ gtest_discover_tests(test_switch_cost_isolation
 message(STATUS "[RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)")
 else()
     message(STATUS "[RenderGraph Tests] SKIPPED test_switch_cost_isolation — no glslc runnable on this platform found")
+endif()
+
+# ---------------------------------------------------------------------------
+# Raster-proxy B1 M2: HiZDownsample CPU mirror (gpu-shader-debug discipline).
+# Device-less — pure reduce-math unit tests against Nodes/HiZDownsampleMirror.h,
+# the 1:1 mirror of shaders/HiZDownsample.comp.
+# ---------------------------------------------------------------------------
+add_executable(test_hiz_downsample_mirror
+    Nodes/test_hiz_downsample_mirror.cpp
+)
+target_link_libraries(test_hiz_downsample_mirror PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+set_target_properties(test_hiz_downsample_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_hiz_downsample_mirror)
+message(STATUS "[RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)")
+
+# glslc-validate the mirrored shader at build time (same VIXEN_GLSLC resolved
+# above for the march SPV): building the mirror test proves the .comp compiles.
+if(VIXEN_GLSLC)
+    set(_hiz_src "${_brm_shader_dir}/HiZDownsample.comp")
+    set(_hiz_spv "${CMAKE_CURRENT_BINARY_DIR}/HiZDownsample.spv")
+    add_custom_command(
+        OUTPUT  ${_hiz_spv}
+        COMMAND ${VIXEN_GLSLC}
+                -fshader-stage=compute
+                --target-env=vulkan1.3
+                ${_hiz_src}
+                -o ${_hiz_spv}
+        DEPENDS ${_hiz_src}
+        COMMENT "Compiling HiZDownsample.comp -> SPIR-V (B1 M2 mirror-parity validation)"
+        VERBATIM)
+    add_custom_target(hiz_downsample_spv DEPENDS ${_hiz_spv})
+    add_dependencies(test_hiz_downsample_mirror hiz_downsample_spv)
+endif()
+
+# ---------------------------------------------------------------------------
+# Raster-proxy B1 M3: InstanceOcclusionCull CPU mirror (gpu-shader-debug
+# discipline). Device-less — per-word cull math (AABB compose / reproject /
+# tile test / conservatism escapes / OR-compose) against
+# Nodes/InstanceOcclusionCullMirror.h, the 1:1 mirror of
+# shaders/InstanceOcclusionCull.comp.
+# ---------------------------------------------------------------------------
+add_executable(test_instance_occlusion_cull_mirror
+    Nodes/test_instance_occlusion_cull_mirror.cpp
+)
+target_link_libraries(test_instance_occlusion_cull_mirror PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+set_target_properties(test_instance_occlusion_cull_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_instance_occlusion_cull_mirror)
+message(STATUS "[RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)")
+
+# ---------------------------------------------------------------------------
+# Raster-proxy B1 M3 device gate: dispatch the SHIPPED InstanceOcclusionCull.comp
+# against synthetic buffers; skip-mask words must equal the CPU mirror's output
+# on identical inputs. Same glslc/device-selection contract as
+# test_recipe_instance_bucketing above.
+# ---------------------------------------------------------------------------
+if(VIXEN_GLSLC)
+    set(_cull_src "${_brm_shader_dir}/InstanceOcclusionCull.comp")
+    set(_cull_spv "${CMAKE_CURRENT_BINARY_DIR}/InstanceOcclusionCull.spv")
+    add_custom_command(
+        OUTPUT  ${_cull_spv}
+        COMMAND ${VIXEN_GLSLC}
+                -fshader-stage=compute
+                -I ${_brm_shader_dir}
+                --target-env=vulkan1.3
+                ${_cull_src}
+                -o ${_cull_spv}
+        DEPENDS ${_cull_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl"
+        COMMENT "Compiling InstanceOcclusionCull.comp -> SPIR-V (B1 M3)"
+        VERBATIM)
+    add_custom_target(instance_occlusion_cull_spv DEPENDS ${_cull_spv})
+
+    add_executable(test_instance_occlusion_cull_device
+        Nodes/test_instance_occlusion_cull_device.cpp
+    )
+    add_dependencies(test_instance_occlusion_cull_device instance_occlusion_cull_spv)
+    target_link_libraries(test_instance_occlusion_cull_device PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+    if(TARGET SVO)
+        target_link_libraries(test_instance_occlusion_cull_device PRIVATE SVO)
+    endif()
+    target_compile_definitions(test_instance_occlusion_cull_device PRIVATE
+        INSTANCE_OCCLUSION_CULL_SPV="${_cull_spv}")
+    if(VIXEN_WSL_DZN_ICD)
+        target_compile_definitions(test_instance_occlusion_cull_device PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+    endif()
+    set_target_properties(test_instance_occlusion_cull_device PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_instance_occlusion_cull_device
+        DISCOVERY_MODE PRE_TEST
+        DISCOVERY_TIMEOUT 120)
+    message(STATUS "[RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_instance_occlusion_cull_device — no glslc runnable on this platform found")
+endif()
+
+# ---------------------------------------------------------------------------
+# Raster-proxy B1 M4 A/B gate: runs the FULL march(A) -> HiZ -> cull -> march(B)
+# chain on one synthetic scene and asserts both the exclusion mechanism AND the
+# measured win (>=40% total-iteration reduction, byte-identical pixels). Reuses
+# the B1-ON march SPV (body_instance_raymarch_spv_b1, binding 36 declared) plus
+# the M2/M3 HiZ + cull SPVs already built above. Same glslc/device-selection
+# contract as test_instance_occlusion_cull_device above.
+# ---------------------------------------------------------------------------
+if(VIXEN_GLSLC)
+    add_executable(test_b1_occlusion_ab
+        Nodes/test_b1_occlusion_ab.cpp
+    )
+    add_dependencies(test_b1_occlusion_ab
+        body_instance_raymarch_spv_b1
+        hiz_downsample_spv
+        instance_occlusion_cull_spv)
+    target_link_libraries(test_b1_occlusion_ab PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+    if(TARGET SVO)
+        target_link_libraries(test_b1_occlusion_ab PRIVATE SVO)
+    endif()
+    target_compile_definitions(test_b1_occlusion_ab PRIVATE
+        GLSL_RAYMARCH_SPV="${_brm_spv_b1}"
+        HIZ_DOWNSAMPLE_SPV="${_hiz_spv}"
+        INSTANCE_OCCLUSION_CULL_SPV="${_cull_spv}")
+    if(VIXEN_WSL_DZN_ICD)
+        target_compile_definitions(test_b1_occlusion_ab PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+    endif()
+    set_target_properties(test_b1_occlusion_ab PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_b1_occlusion_ab
+        DISCOVERY_MODE PRE_TEST
+        DISCOVERY_TIMEOUT 120)
+    message(STATUS "[RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)")
+else()
+    message(STATUS "[RenderGraph Tests] SKIPPED test_b1_occlusion_ab — no glslc runnable on this platform found")
 endif()

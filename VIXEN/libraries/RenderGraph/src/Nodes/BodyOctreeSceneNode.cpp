@@ -210,6 +210,19 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
                   std::to_string(providedPool_.count) + " octrees staged");
 }
 
+bool BodyOctreeSceneNode::EditSourceBrickSdf(uint32_t brickId,
+                                             const std::vector<float>& sdf512) {
+    if (!Vixen::SVO::ApplyBrickSdfEdit(concatenated_, /*octreeIdx=*/0u, brickId,
+                                       sdf512.data(), sdf512.size())) {
+        return false;
+    }
+    dirtyBricks_.push_back(brickId);
+    NODE_LOG_DEBUG("[BodyOctreeSceneNode] EditSourceBrickSdf: brick " +
+                   std::to_string(brickId) + " edited + marked dirty (" +
+                   std::to_string(dirtyBricks_.size()) + " pending)");
+    return true;
+}
+
 void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) {
     // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: stash the blob; CreateOctreeBuffers
     // uploads it on the next (re)Compile. Does NOT set recipeDirty_ itself — the shader
@@ -693,11 +706,21 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // stamping brickResident=1 config bytes once the brick copy lands) targets this buffer via
     // the same vkCmdCopyBuffer path and hit the identical VUID-vkCmdCopyBuffer-dstBuffer-00120
     // without it.
+    //
+    // B1 M4 A/B gate: also needs TRANSFER_SRC_BIT -- test_b1_occlusion_ab.cpp reads this buffer
+    // back via vkCmdCopyBuffer (to patch traceBounds and cross-check the CPU cull mirror against
+    // the real device config), which requires TRANSFER_SRC_BIT on the copy source
+    // (VUID-vkCmdCopyBuffer-srcBuffer-00118). The node only exposes VkBuffer via
+    // OCTREE_CONFIG_BUFFER (never the backing VkDeviceMemory), so a caller-side vkMapMemory
+    // readback isn't possible -- a copy is the only externally-reachable path. This VUID silently
+    // downgrades to a no-op instead of failing on WSL/Dozen's weaker validation, which is why the
+    // gap surfaced only on native Windows/AMD (iterCounts read back all-zero from a copy whose
+    // destination buffer was never actually written).
     const VkDeviceSize configSize =
         static_cast<VkDeviceSize>(std::max<uint32_t>(concatenated_.count, 1u)) *
         static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
     CreateHostBuffer(device, configSize,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         concatenated_.configs.empty() ? nullptr : concatenated_.configs.data(),
         configBuffer_, configMemory_, "octree config SSBO");
 
@@ -914,6 +937,25 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
     ensure(shellLookupBuffer_[slot], shellLookupMemory_[slot], shellLookupCapacity_[slot],
            lookupSize, sp.compact.brickGridLookup.empty() ? nullptr : sp.compact.brickGridLookup.data(),
            sp.compact.brickGridLookup.size(), "shell lookup SSBO");
+
+    // Raster-proxy artifact: flatten the per-octree proxy AABB lists (template-
+    // local space) into one contiguous SSBO for the proxy raster pre-pass. Value
+    // edits never move a brick's box, so a revalidate re-upload rewrites identical
+    // bytes; the flatten stays here (not just Create) so a future re-derive at a
+    // new dilation/membership keeps slot content and capacity honest.
+    std::vector<Vixen::SVO::ShellProxyAabb> flatProxies;
+    {
+        size_t proxyCount = 0;
+        for (const auto& r : sp.perOctree) proxyCount += r.proxyAabbs.size();
+        flatProxies.reserve(proxyCount);
+        for (const auto& r : sp.perOctree)
+            flatProxies.insert(flatProxies.end(), r.proxyAabbs.begin(), r.proxyAabbs.end());
+    }
+    const VkDeviceSize proxySize = std::max<VkDeviceSize>(
+        flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), 1);
+    ensure(proxyAabbBuffer_[slot], proxyAabbMemory_[slot], proxyAabbCapacity_[slot],
+           proxySize, flatProxies.empty() ? nullptr : flatProxies.data(),
+           flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), "shell proxy AABB SSBO");
 }
 
 void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
@@ -938,11 +980,14 @@ void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
             vkUnmapMemory(device->device, configMemory_);
         }
     }
+    size_t proxyCount = 0;
+    for (const auto& r : sp.perOctree) proxyCount += r.proxyAabbs.size();
     NODE_LOG_INFO("[BodyOctreeSceneNode] Shell GPU buffers created (slot0 data=" +
                   std::to_string(static_cast<uint64_t>(shellDataCapacity_[0])) + "B lookup=" +
                   std::to_string(static_cast<uint64_t>(shellLookupCapacity_[0])) + "B; slot1 data=" +
                   std::to_string(static_cast<uint64_t>(shellDataCapacity_[1])) + "B lookup=" +
-                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_[1])) + "B)");
+                  std::to_string(static_cast<uint64_t>(shellLookupCapacity_[1])) + "B; proxyAabbs=" +
+                  std::to_string(proxyCount) + " x32B x2 slots)");
 }
 
 void BodyOctreeSceneNode::UploadBrickPool() {
@@ -1073,8 +1118,10 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
     for (uint32_t i = 0; i < 2; ++i) {
         destroy(shellDataBuffer_[i],   shellDataMemory_[i]);
         destroy(shellLookupBuffer_[i], shellLookupMemory_[i]);
+        destroy(proxyAabbBuffer_[i],   proxyAabbMemory_[i]);
         shellDataCapacity_[i]   = 0;
         shellLookupCapacity_[i] = 0;
+        proxyAabbCapacity_[i]   = 0;
     }
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3

@@ -112,6 +112,7 @@
 #include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
 #include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Nodes/DepthTargetNode.h"          // Raster-proxy B1 M4: occlusion depth ping-pong pair
 #include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
 #include "Nodes/PickIdTargetNode.h"
@@ -773,6 +774,61 @@ void VulkanGraphApplication::BuildRenderGraph() {
     recipeSpecializedDispatch_ = recipeSpecializedDispatch;
     instanceSkipMaskBuffer_ = instanceSkipMaskBuffer;
 
+    // --- Raster-proxy B1 M4: occlusion-probe chain (VIXEN_B1_OCCLUSION_CULL) ---
+    // ONE env-gated block creating everything M1-M3 built the pieces for: the depth
+    // ping-pong pair (march writes binding 36, HiZ reads last frame's slot — NO sync
+    // edges by construction, see DepthTargetNode.h), the HiZ tile image (a ProbeAtlasNode
+    // instance — generic persistent R32F storage image), and the reduce + cull quintets.
+    // Flag-unset ⇒ zero nodes created, the frame is byte-identical (decision 5 of the B1
+    // plan; the march shader only declares binding 36 under the same flag).
+    const bool b1OcclusionCullEnabled = (std::getenv("VIXEN_B1_OCCLUSION_CULL") != nullptr);
+    b1OcclusionCullEnabled_ = b1OcclusionCullEnabled;
+    NodeHandle b1DepthTarget{};
+    NodeHandle b1HizTileImage{};
+    NodeHandle b1HizShaderLib{}, b1HizDescGatherer{}, b1HizPushGatherer{};
+    NodeHandle b1HizDescriptorSet{}, b1HizPipeline{}, b1HizStage{};
+    NodeHandle b1CullShaderLib{}, b1CullDescGatherer{}, b1CullPushGatherer{};
+    NodeHandle b1CullDescriptorSet{}, b1CullPipeline{}, b1CullStage{};
+    NodeHandle b1HizTileWriteGatherer{}, b1CullTileReadGatherer{}, b1CullMaskWriteGatherer{};
+    NodeHandle b1CullPrevViewProjConstant{}, b1CullPrevCamPosConstant{}, b1CullDimsConstant{};
+    if (b1OcclusionCullEnabled) {
+        b1DepthTarget  = renderGraph->AddNode<DepthTargetNodeType>("b1_depth_target");
+        b1HizTileImage = renderGraph->AddNode<ProbeAtlasNodeType>("b1_hiz_tile_image");
+
+        b1HizShaderLib     = renderGraph->AddNode<ShaderLibraryNodeType>("b1_hiz_shader_lib");
+        b1HizDescGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("b1_hiz_desc_gatherer");
+        b1HizPushGatherer  = renderGraph->AddNode<PushConstantGathererNodeType>("b1_hiz_push_gatherer");
+        b1HizDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("b1_hiz_descriptors");
+        b1HizPipeline      = renderGraph->AddNode<ComputePipelineNodeType>("b1_hiz_pipeline");
+        b1HizStage         = renderGraph->AddNode<ComputeStageNodeType>("b1_hiz_downsample");
+
+        b1CullShaderLib     = renderGraph->AddNode<ShaderLibraryNodeType>("b1_cull_shader_lib");
+        b1CullDescGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("b1_cull_desc_gatherer");
+        b1CullPushGatherer  = renderGraph->AddNode<PushConstantGathererNodeType>("b1_cull_push_gatherer");
+        b1CullDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("b1_cull_descriptors");
+        b1CullPipeline      = renderGraph->AddNode<ComputePipelineNodeType>("b1_cull_pipeline");
+        b1CullStage         = renderGraph->AddNode<ComputeStageNodeType>("b1_instance_occlusion_cull");
+
+        // Same-frame HiZ(write)→cull(read) hazard on the tile image: the established
+        // two-gatherer-instances pattern (probeAtlasGatherer precedent). The cull's
+        // skip-mask write gets its own 1-entry write gatherer, which orders the cull
+        // before EVERY existing skip-mask reader (march + lighting passes).
+        b1HizTileWriteGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("b1_hiz_tile_write_gatherer");
+        b1CullTileReadGatherer = renderGraph->AddNode<ImageSyncGathererNodeType>("b1_cull_tile_read_gatherer");
+        b1CullMaskWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("b1_cull_mask_write_gatherer");
+
+        // Push-constant feeds: prevViewProj/prevCamPos are ONE-FRAME-DELAYED values PreTick
+        // refreshes (RunB1OcclusionCullPreTick) — same ConstantNode-not-direct-wire rationale
+        // as recipeBucketingViewProjConstant (reference-typed camera outputs cannot feed a
+        // variadic push-constant field by value). dims = {srcW, srcH, instanceCount, 0}.
+        b1CullPrevViewProjConstant = renderGraph->AddNode<ConstantNodeType>("b1_cull_prev_view_proj");
+        b1CullPrevCamPosConstant   = renderGraph->AddNode<ConstantNodeType>("b1_cull_prev_cam_pos");
+        b1CullDimsConstant         = renderGraph->AddNode<ConstantNodeType>("b1_cull_dims");
+        b1CullPrevViewProjConstant_ = b1CullPrevViewProjConstant;
+        b1CullPrevCamPosConstant_   = b1CullPrevCamPosConstant;
+        b1CullDimsConstant_         = b1CullDimsConstant;
+    }
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -1091,6 +1147,50 @@ void VulkanGraphApplication::BuildRenderGraph() {
         modeFinalStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     }
 
+    // Raster-proxy B1 M4: occlusion-probe parameters. Depth/tile extents are fixed at
+    // graph build from the same width*renderScale derivation the lighting dispatch dims
+    // use (a live window resize rebuilds the graph; renderScale is process-fixed).
+    if (b1OcclusionCullEnabled) {
+        const uint32_t b1SrcW = static_cast<uint32_t>(width * renderScale);
+        const uint32_t b1SrcH = static_cast<uint32_t>(height * renderScale);
+        const uint32_t b1TilesX = (b1SrcW + 15u) / 16u;   // HiZDownsampleMirror::HiZTileCount
+        const uint32_t b1TilesY = (b1SrcH + 15u) / 16u;
+        b1SrcWidth_  = b1SrcW;
+        b1SrcHeight_ = b1SrcH;
+
+        auto* b1TileImage = static_cast<ProbeAtlasNode*>(renderGraph->GetInstance(b1HizTileImage));
+        b1TileImage->SetParameter(ProbeAtlasNodeConfig::PARAM_WIDTH,  b1TilesX);
+        b1TileImage->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, b1TilesY);
+        b1TileImage->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
+            static_cast<uint32_t>(VK_FORMAT_R32_SFLOAT));
+
+        // 8x8 local size (HiZDownsample.comp), thread per output tile texel.
+        auto* b1HizStageInst = static_cast<ComputeStageNode*>(renderGraph->GetInstance(b1HizStage));
+        b1HizStageInst->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        b1HizStageInst->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (b1TilesX + 7u) / 8u);
+        b1HizStageInst->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (b1TilesY + 7u) / 8u);
+        b1HizStageInst->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        // One 64-thread group covers the 192-instance cap's 6 skip words (InstanceOcclusionCull.comp).
+        auto* b1CullStageInst = static_cast<ComputeStageNode*>(renderGraph->GetInstance(b1CullStage));
+        b1CullStageInst->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        b1CullStageInst->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 1u);
+        b1CullStageInst->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+        b1CullStageInst->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        // Frame-0 sane values; PreTick refreshes every frame (one-frame-delayed camera).
+        static_cast<ConstantNode*>(renderGraph->GetInstance(b1CullPrevViewProjConstant))->SetValue<glm::mat4>(glm::mat4(1.0f));
+        static_cast<ConstantNode*>(renderGraph->GetInstance(b1CullPrevCamPosConstant))->SetValue<glm::vec4>(glm::vec4(0.0f));
+        static_cast<ConstantNode*>(renderGraph->GetInstance(b1CullDimsConstant))->SetValue<glm::uvec4>(glm::uvec4(b1SrcW, b1SrcH, 0u, 0u));
+
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] B1 occlusion probe enabled: depth " +
+                             std::to_string(b1SrcW) + "x" + std::to_string(b1SrcH) +
+                             " ping-pong, HiZ tiles " + std::to_string(b1TilesX) + "x" +
+                             std::to_string(b1TilesY));
+        }
+    }
+
     // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     // Critique R6: no vkDeviceWaitIdle per present. The frame is already paced by the
@@ -1274,6 +1374,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 splicedSource += "\n" + defineLine;
             } else {
                 splicedSource.insert(firstNewline + 1, defineLine);
+            }
+        }
+
+        // Raster-proxy B1 M2: VIXEN_B1_OCCLUSION_CULL gates the depthDistanceImage
+        // declaration + store (binding 36) in the march. Same after-#version textual
+        // injection as VIXEN_GPU_TRACE_HOOKS above (and for the same cache-key reason);
+        // flag-off keeps the pre-B1 descriptor interface so nothing needs to bind 36.
+        if (std::getenv("VIXEN_B1_OCCLUSION_CULL") != nullptr) {
+            const size_t b1Newline = splicedSource.find('\n');
+            const std::string b1Define = "#define VIXEN_B1_OCCLUSION_CULL 1\n";
+            if (b1Newline == std::string::npos) {
+                splicedSource += "\n" + b1Define;
+            } else {
+                splicedSource.insert(b1Newline + 1, b1Define);
             }
         }
 
@@ -1583,6 +1697,51 @@ void VulkanGraphApplication::BuildRenderGraph() {
         });
     }
 
+    // Raster-proxy B1 M4: HiZDownsample.comp + InstanceOcclusionCull.comp registration —
+    // both plain static shader FILES with self-contained bindings (neither #includes
+    // SceneBindings.glsl), same search-path template as RecipeInstanceBucketing.comp above.
+    // InstanceOcclusionCull.comp #includes "Generated/OctreeConfig.glsl", resolved by the
+    // same AddIncludePath("shaders") set every builder here already carries.
+    if (b1OcclusionCullEnabled) {
+        const auto registerB1Shader = [this](NodeHandle libHandle, const char* shaderName,
+                                             const char* programName) {
+            auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
+            libNode->RegisterShaderBuilder([this, shaderName, programName](int vulkanVer, int spirvVer) {
+                ShaderManagement::ShaderBundleBuilder builder;
+                std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                    std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+                    std::string("shaders/") + shaderName,
+                    std::string("../shaders/") + shaderName,
+                    shaderName
+                };
+                std::filesystem::path compPath;
+                for (const auto& path : possiblePaths) {
+                    if (std::filesystem::exists(path)) { compPath = path; break; }
+                }
+                if (compPath.empty()) {
+                    throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
+                }
+                const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
+                builder.SetProgramName(programName)
+                       .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                       .SetTargetVulkanVersion(vulkanVer)
+                       .SetTargetSpirvVersion(spirvVer)
+                       .AddIncludePath("shaders")
+                       .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                       .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                       .EnableCaching(&shaderCacheManager_)
+                       .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
+                return builder;
+            });
+        };
+        registerB1Shader(b1HizShaderLib,  "HiZDownsample.comp",        "HiZDownsample");
+        registerB1Shader(b1CullShaderLib, "InstanceOcclusionCull.comp", "InstanceOcclusionCull");
+    }
+
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
     // PRESENT_SRC). Sampled Lighting Inc3 M5: this pass no longer owns IMAGE_WRITE (moved to
     // SpatialReuseNode below — DirectLighting.comp is now a pure buffer producer, see that
@@ -1644,6 +1803,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // spatialReuseNode's IMAGE_READ_ARRAY (see spatialReuseProbeAtlasReadGatherer's own
     // declaration comment above).
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(2);
+
+    // Raster-proxy B1 M4: one tile image each side (HiZ write / cull read), one skip-mask
+    // buffer entry on the cull's write side.
+    if (b1OcclusionCullEnabled) {
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(b1HizTileWriteGatherer))->PreRegisterImageSlots(1);
+        static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(b1CullTileReadGatherer))->PreRegisterImageSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(b1CullMaskWriteGatherer))->PreRegisterBufferSlots(1);
+    }
 
     // Sampled Lighting Inc4 M3: ProbeUpdateNode dispatch — ONE WORKGROUP PER PROBE
     // (ProbeUpdate.comp's local_size_x=PROBE_UPDATE_MAX_RAYS_PER_PROBE=256 covers every
@@ -6102,6 +6269,147 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // upload" pattern the DDGI leak-gate debug buffer already uses).
     }
 
+    // --- Raster-proxy B1 M4: occlusion-probe chain connections (VIXEN_B1_OCCLUSION_CULL) ---
+    // Frame order baked by resource hazards alone: HiZ writes the tile image the cull reads
+    // (ImageSync pair) and the cull writes the skip-mask buffer every existing reader already
+    // has in its read arrays — so HiZ → cull → march/lighting without any hand-rolled edges.
+    // The depth ping-pong needs NO edges at all (distinct VkImage per parity slot).
+    if (b1OcclusionCullEnabled) {
+        // Depth ping-pong provider: extent follows the render target, parity follows FrameSync.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b1DepthTarget, DepthTargetNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                      b1DepthTarget, DepthTargetNodeConfig::COMMAND_POOL)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                      b1DepthTarget, DepthTargetNodeConfig::WIDTH,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+             .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                      b1DepthTarget, DepthTargetNodeConfig::HEIGHT,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      b1DepthTarget, DepthTargetNodeConfig::CURRENT_FRAME_INDEX);
+
+        // Tile image provider (a generic ProbeAtlasNode instance, R32F tilesX x tilesY).
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b1HizTileImage, ProbeAtlasNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                      b1HizTileImage, ProbeAtlasNodeConfig::COMMAND_POOL);
+
+        // Shader-lib/descriptor/pipeline chains for both quintets (bucketing template).
+        struct B1Quintet {
+            NodeHandle shaderLib, descGatherer, pushGatherer, descriptorSet, pipeline, stage;
+        };
+        const B1Quintet b1Quintets[] = {
+            { b1HizShaderLib,  b1HizDescGatherer,  b1HizPushGatherer,  b1HizDescriptorSet,  b1HizPipeline,  b1HizStage },
+            { b1CullShaderLib, b1CullDescGatherer, b1CullPushGatherer, b1CullDescriptorSet, b1CullPipeline, b1CullStage },
+        };
+        for (const auto& q : b1Quintets) {
+            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                          q.shaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+                 .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                          q.descriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+                 .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                          q.pipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          q.descGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(q.descGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                          q.descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          q.descriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          q.pipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(q.descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                          q.pipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
+                 .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                          q.descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+                 .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                          q.descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                          q.descriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+            // Stage common inputs (bucketing's own per-stage list).
+            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                          q.stage, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
+                 .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                          q.stage, ComputeStageNodeConfig::COMMAND_POOL)
+                 .Connect(q.pipeline, ComputePipelineNodeConfig::PIPELINE,
+                          q.stage, ComputeStageNodeConfig::COMPUTE_PIPELINE)
+                 .Connect(q.pipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                          q.stage, ComputeStageNodeConfig::PIPELINE_LAYOUT)
+                 .Connect(q.descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                          q.stage, ComputeStageNodeConfig::DESCRIPTOR_SETS)
+                 .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                          q.stage, ComputeStageNodeConfig::IMAGE_INDEX)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                          q.stage, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                          q.stage, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                          q.stage, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+                 .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                          q.stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+                 .Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          q.stage, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                          q.stage, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                          q.stage, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+            // Push-constant plumbing (fields wired per stage below).
+            batch.Connect(q.shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                          q.pushGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE)
+                 .Connect(q.pushGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                          q.stage, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
+                 .Connect(q.pushGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                          q.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES);
+        }
+
+        // HiZ descriptors: binding 0 = last frame's depth (re-emitted per frame, Execute
+        // role like the march's pickId binding), binding 1 = the tile image's view.
+        batch.Connect(b1DepthTarget, DepthTargetNodeConfig::DEPTH_READ_VIEW,
+                      b1HizDescGatherer, 0, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                      b1HizDescGatherer, 1, SlotRoleModifier(SlotRole::Execute));
+        // HiZ push constants: srcWidth/srcHeight (fields 0/1) from the render target's live
+        // extent — the same source the bucketing pre-pass uses for its own screen dims.
+        batch.Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                      b1HizPushGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                      b1HizPushGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+        // Cull descriptors: instances + configs (the march's own sources), the tile view,
+        // and the EXISTING skip-mask buffer (binding 3 in the shader's own namespace).
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                      b1CullDescGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                      b1CullDescGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::CURRENT_VIEW,
+                      b1CullDescGatherer, 2, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      b1CullDescGatherer, 3, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Cull push constants: prevViewProj (field 0) / prevCamPos (field 1) / dims (field 2)
+        // — all ConstantNodes PreTick refreshes with ONE-FRAME-DELAYED camera values.
+        batch.Connect(b1CullPrevViewProjConstant, ConstantNodeConfig::OUTPUT,
+                      b1CullPushGatherer, 0, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(b1CullPrevCamPosConstant, ConstantNodeConfig::OUTPUT,
+                      b1CullPushGatherer, 1, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(b1CullDimsConstant, ConstantNodeConfig::OUTPUT,
+                      b1CullPushGatherer, 2, SlotRoleModifier(SlotRole::Execute));
+
+        // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
+        // the cull writes the skip-mask buffer the march + lighting passes already read.
+        batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                      b1HizTileWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b1HizTileWriteGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                      b1HizStage, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::PROBE_ATLAS,
+                      b1CullTileReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b1CullTileReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
+                      b1CullStage, ComputeStageNodeConfig::IMAGE_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      b1CullMaskWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b1CullMaskWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      b1CullStage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    }
+
     // --- Ray Marching Resource Connections ---
     // Camera node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -6483,6 +6791,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE_VIEW,
                           descriptorGatherer, 9,  // Binding 9: idOutputImage
                           SlotRoleModifier(SlotRole::Execute));
+
+    // Binding 36: depthDistanceImage (R32F storage image) — Raster-proxy B1. The march
+    // shader only DECLARES this binding when the VIXEN_B1_OCCLUSION_CULL define is
+    // injected (see the shader builder above), so the Connect is gated identically —
+    // wiring a descriptor for a binding the shader doesn't declare is a validation
+    // error (the binding-8 lesson). Execute-only re-emit per frame, exactly like the
+    // pickId image above: DepthTargetNode alternates the write slot by frame parity.
+    if (b1OcclusionCullEnabled) {
+        batch.Connect(b1DepthTarget, DepthTargetNodeConfig::DEPTH_WRITE_VIEW,
+                              descriptorGatherer, 36,  // Binding 36: depthDistanceImage
+                              SlotRoleModifier(SlotRole::Execute));
+    }
 
     // Binding 8: ShaderCounters is compiled out of BodyInstanceRayMarch.comp unconditionally
     // (see shader builder above), so binding 8 no longer exists in the reflected SPIR-V —

@@ -270,6 +270,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/AccumulationConfigNode.cpp  # Sampled Lighting Inc2 M1: AccumulationConfig upload ring
     src/Nodes/AccumulationHistoryNode.cpp # Sampled Lighting Inc2 M1: persistent temporal-accumulation history image
     src/Nodes/WorldPosHistoryNode.cpp     # Sampled Lighting Inc3 M2: persistent worldPos/depth companion history image (KI-023)
+    src/Nodes/DepthTargetNode.cpp         # Raster-proxy B1 M4: occlusion depth ping-pong pair (march writes, HiZ reads last frame's)
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
     src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
     src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)

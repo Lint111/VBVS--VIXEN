@@ -43,6 +43,15 @@ layout(binding = 0) uniform writeonly image2D outputImage;
 
 // Per-pixel hit identity: packed (brickIndex<<10)|voxelLinearIdx, 0xFFFFFFFF on miss
 layout(binding = 9) uniform writeonly uimage2D idOutputImage;
+// Raster-proxy B1 M1: per-pixel euclidean hit distance (merged nearest hitT across
+// both writer regimes; miss = 1e30) as a real R32F image — the HiZ reduce and the
+// per-instance occlusion cull consume an image, not the HitRecord SSBO.
+// B1 M2: #ifdef-gated (define injected by the shader builder when
+// VIXEN_B1_OCCLUSION_CULL is set, like VIXEN_GPU_TRACE_HOOKS) — an unbound
+// declared storage image would break the flag-off app's descriptor set.
+#ifdef VIXEN_B1_OCCLUSION_CULL
+layout(r32f, binding = 36) uniform writeonly image2D depthDistanceImage;
+#endif
 
 // ============================================================================
 // PROCEDURAL RECIPE OCCUPANCY GRID (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — binding 16)
@@ -387,6 +396,10 @@ void main() {
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
     imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
+#ifdef VIXEN_B1_OCCLUSION_CULL
+    imageStore(depthDistanceImage, pixelCoords,
+               vec4(anyHitRT ? recReadback.hitT : 1.0e30, 0.0, 0.0, 0.0));
+#endif
 
     // Metrics
     bool earlyTerm = false; // no single iteration count with multiple instances

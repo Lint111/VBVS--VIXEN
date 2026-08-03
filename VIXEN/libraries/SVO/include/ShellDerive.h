@@ -43,6 +43,26 @@
 namespace Vixen::SVO {
 
 // ---------------------------------------------------------------------------
+// ShellProxyAabb — raster-proxy artifact element (hybrid slice A).
+//
+// One per SHELL brick, in the brick's TEMPLATE-LOCAL [0,1]^3 frame (the same
+// convention OctreeConfig.traceBoundsMin/Max and TraceWorld's body-local space
+// use): min = gridCoord/bpa, max = (gridCoord+1)/bpa. Instance transforms
+// (worldPos/renderScale + localToWorld) are composed at draw time, so this
+// artifact is instance-independent. std430-friendly 32-byte layout.
+//
+// CPU-side artifact generation only — ShellDerive.comp mirrors the surface/
+// shell CLASSIFICATION bit-for-bit, not this emission.
+// ---------------------------------------------------------------------------
+struct ShellProxyAabb {
+    float    minLocal[3];
+    uint32_t brickId;       // source brick id (== shellLookup[slot])
+    float    maxLocal[3];
+    uint32_t octreeIndex;   // owning octree's index in the concatenation
+};
+static_assert(sizeof(ShellProxyAabb) == 32, "ShellProxyAabb must stay 32B (std430 pair of vec4-ish rows)");
+
+// ---------------------------------------------------------------------------
 // ShellDeriveResult — the compacted cache slot + provenance for verification.
 // ---------------------------------------------------------------------------
 struct ShellDeriveResult {
@@ -76,6 +96,11 @@ struct ShellDeriveResult {
     // brick was dropped. Length == source brickCount. Lets a dirty revalidate
     // find the shell slot to overwrite for a given source brick.
     std::vector<uint32_t> sourceToShellSlot;
+
+    // Raster-proxy artifact: one local-space AABB per shell brick, in shellLookup
+    // order. Invariant under RevalidateShellBricks (value edits never move a
+    // brick's box); membership changes re-derive and re-emit the whole list.
+    std::vector<ShellProxyAabb> proxyAabbs;
 
     uint32_t sourceBrickCount = 0;
     uint32_t surfaceBrickCount = 0;
@@ -270,14 +295,32 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
 
     r.shellBrickCount = shellCount;
     r.shellLookup.reserve(shellCount);
+    r.proxyAabbs.reserve(shellCount);
     r.shellData.resize(static_cast<size_t>(shellCount) * stride * sizeof(float));
 
+    const float invBpa = 1.0f / static_cast<float>(bpa);
     float* shellFloats = reinterpret_cast<float*>(r.shellData.data());
     uint32_t slot = 0;
     for (uint32_t bi = 0; bi < brickCount; ++bi) {
         if (!r.shell[bi]) continue;
         r.shellLookup.push_back(bi);
         r.sourceToShellSlot[bi] = slot;
+        const uint32_t packed = brickToGrid[bi];
+        if (packed != 0xFFFFFFFFu) {
+            const uint32_t gx = packed & 0x3FFu;
+            const uint32_t gy = (packed >> 10) & 0x3FFu;
+            const uint32_t gz = (packed >> 20) & 0x3FFu;
+            ShellProxyAabb p;
+            p.minLocal[0] = static_cast<float>(gx) * invBpa;
+            p.minLocal[1] = static_cast<float>(gy) * invBpa;
+            p.minLocal[2] = static_cast<float>(gz) * invBpa;
+            p.brickId     = bi;
+            p.maxLocal[0] = static_cast<float>(gx + 1u) * invBpa;
+            p.maxLocal[1] = static_cast<float>(gy + 1u) * invBpa;
+            p.maxLocal[2] = static_cast<float>(gz + 1u) * invBpa;
+            p.octreeIndex = octreeIdx;
+            r.proxyAabbs.push_back(p);
+        }
         // Copy the whole brick stride (all channels) from source pool to shell pool.
         const size_t srcStart =
             static_cast<size_t>(poolBase) + static_cast<size_t>(bi) * stride;
@@ -314,6 +357,45 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
         }
     }
     return r;
+}
+
+// ---------------------------------------------------------------------------
+// ApplyBrickSdfEdit — THE value-edit entry point for the dirty path (§C).
+//
+// Writes one source brick's SDF lane in the source pool. Callers pair this
+// with appending the brick to their dirty list (BodyOctreeSceneNode::
+// EditSourceBrickSdf does both in one call) so RevalidateShellBricks consumes
+// exactly what was written — the producer and the mark cannot drift apart.
+// Membership-changing edits are legal here (this only writes values); whether
+// the edit stayed value-only is the re-derive path's concern. Returns false,
+// pool untouched, on an invalid octree/brick/channel or a short value span.
+// ---------------------------------------------------------------------------
+inline bool ApplyBrickSdfEdit(ConcatenatedOctrees& cat, uint32_t octreeIdx,
+                              uint32_t brickId, const float* sdf, size_t count) {
+    if (octreeIdx >= cat.count) return false;
+    if (sdf == nullptr || count < SerializedOctree::kVoxelsPerBrick) return false;
+    if (brickId >= cat.brickCounts[octreeIdx]) return false;
+    const OctreeConfig& cfg = cat.configs[octreeIdx];
+    const uint32_t stride = cfg.brickStrideFloats;
+    if (stride == 0u) return false;
+    uint32_t sdfBase = 0u;
+    bool found = false;
+    for (uint32_t i = 0; i < cfg.channelCount && i < kMaxChannels; ++i) {
+        if (cfg.channels[i].semanticId == static_cast<uint32_t>(SEM_SDF)) {
+            sdfBase = cfg.channels[i].channelBaseFloats;
+            found = true;
+            break;
+        }
+    }
+    if (!found) return false;
+    float* poolFloats = reinterpret_cast<float*>(cat.channelPool.data());
+    const size_t poolFloatCount = cat.channelPool.size() / sizeof(float);
+    const size_t start = static_cast<size_t>(cfg.poolBrickBase)
+                       + static_cast<size_t>(brickId) * stride + sdfBase;
+    if (start + SerializedOctree::kVoxelsPerBrick > poolFloatCount) return false;
+    std::memcpy(poolFloats + start, sdf,
+                SerializedOctree::kVoxelsPerBrick * sizeof(float));
+    return true;
 }
 
 // ---------------------------------------------------------------------------

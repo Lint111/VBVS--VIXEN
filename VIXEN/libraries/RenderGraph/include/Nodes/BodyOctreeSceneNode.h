@@ -159,6 +159,24 @@ public:
      */
     void SetShellThickness(uint32_t dilation);
 
+    /**
+     * @brief Surface-Shell §C dirty-path PRODUCER — value-edit one source brick's SDF lane.
+     *
+     * The ONE public way to value-edit octree 0's baked SDF post-Compile: writes the
+     * source pool via Vixen::SVO::ApplyBrickSdfEdit AND appends the brick to the dirty
+     * list in the same call, so the mark can never drift from the mutation. ExecuteImpl
+     * consumes the list on the next frame — RevalidateShellBricks into the WRITE shell
+     * slot + re-upload of that slot only (no full Rematerialize, no barrier vs the
+     * render reading the other slot). Membership-changing edits (a brick entering or
+     * leaving the shell set) are NOT detected here; per the §C increment-1 contract
+     * those go through SetBakeRecipe/SetRecipePool (full re-derive). Proxy AABBs are
+     * invariant under value edits (grid boxes don't move), so no proxy work is queued.
+     *
+     * @return false (nothing written, nothing marked) if the pool/brick/SDF channel is
+     *         invalid or sdf512 holds fewer than kVoxelsPerBrick values.
+     */
+    bool EditSourceBrickSdf(uint32_t brickId, const std::vector<float>& sdf512);
+
     /// Accessors for verification/tests (no GPU needed). ShellCacheSlot returns
     /// octree 0's per-octree derivation (the primary Stored-SDF body); ShellPoolSlot
     /// returns the whole multi-octree compact pool. Slot 0/1 = CPU double buffer.
@@ -373,6 +391,15 @@ private:
     VkDeviceMemory shellLookupMemory_[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
     VkDeviceSize   shellDataCapacity_[2]   = { 0, 0 };  // bytes allocated per slot
     VkDeviceSize   shellLookupCapacity_[2] = { 0, 0 };
+
+    // Raster-proxy artifact (hybrid slice A): per-shell-brick template-local AABBs
+    // (ShellProxyAabb, 32B), flattened across octree templates, on the SAME
+    // two-distinct-VkBuffer double-buffer pattern as shellData/shellLookup (the
+    // FrameSyncScheduler hazard-keys by Resource/pointer identity). No graph output
+    // slot yet — the proxy raster pre-pass (slice B2) is its first binder.
+    VkBuffer       proxyAabbBuffer_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceMemory proxyAabbMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceSize   proxyAabbCapacity_[2] = { 0, 0 };
 
     // CPU double-buffer (source of truth; also what the tests inspect). Each slot
     // holds the multi-octree compact ShellPool (drop-in ConcatenatedOctrees +

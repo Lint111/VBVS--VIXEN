@@ -368,7 +368,8 @@ protected:
         ci.arrayLayers   = 1;
         ci.samples       = VK_SAMPLE_COUNT_1_BIT;
         ci.tiling        = VK_IMAGE_TILING_OPTIMAL;
-        ci.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ci.usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                           VK_IMAGE_USAGE_TRANSFER_DST_BIT;  // DST: canary clears (depth-distance readback)
         ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
         ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         ASSERT_EQ(vkCreateImage(logicalDevice_, &ci, nullptr, &outImage), VK_SUCCESS);
@@ -470,7 +471,12 @@ protected:
                       // prove the conditional compositing write without M3's real indirect-dispatch
                       // plumbing existing yet. Must be exactly w*h HitRecordCpu entries when
                       // provided. nullptr (default) preserves today's zeroed-fresh-buffer behavior.
-                      const std::vector<HitRecordCpu>* preSeedHitRecords = nullptr) {
+                      const std::vector<HitRecordCpu>* preSeedHitRecords = nullptr,
+                      // Raster-proxy B1 M1: when non-null, read back the depth-distance image
+                      // (binding 36, R32F euclidean hitT, miss = 1e30) as w*h floats. The image
+                      // is canary-cleared to -1 before dispatch so an unwritten binding is
+                      // unmistakable in assertions.
+                      std::vector<float>* outDepthDistances = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
@@ -599,6 +605,13 @@ protected:
         ASSERT_NE(idView, VK_NULL_HANDLE);
         ASSERT_NE(historyView, VK_NULL_HANDLE);
 
+        // Raster-proxy B1 M1: depth-distance image (binding 36, R32F euclidean hitT).
+        const VkFormat kDepthFmt = VK_FORMAT_R32_SFLOAT;
+        VkImage depthImg = VK_NULL_HANDLE; VkDeviceMemory depthMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kDepthFmt, depthImg, depthMem));
+        VkImageView depthView = CreateView(depthImg, kDepthFmt);
+        ASSERT_NE(depthView, VK_NULL_HANDLE);
+
         // SPIR-V -> shader module.
         const std::vector<uint32_t> spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
         ASSERT_FALSE(spirv.empty()) << "Failed to read compiled SPIR-V at " << GLSL_RAYMARCH_SPV;
@@ -616,7 +629,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 22> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 23> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -639,6 +652,7 @@ protected:
             bind(21, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
             bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bind(36, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Raster-proxy B1 M1: depthDistanceImage
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -668,7 +682,7 @@ protected:
                   VK_SUCCESS);
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  4},
             {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
         }};
         VkDescriptorPoolCreateInfo dpci{};
@@ -688,6 +702,7 @@ protected:
         VkDescriptorImageInfo colorInfo{VK_NULL_HANDLE, colorView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo idInfo{VK_NULL_HANDLE, idView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo historyInfo{VK_NULL_HANDLE, historyView, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo depthInfo{VK_NULL_HANDLE, depthView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo nodesInfo{nodesBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bricksInfo{bricksBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo matsInfo{materialsBuf, 0, VK_WHOLE_SIZE};
@@ -722,7 +737,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 22> writes = {
+        const std::array<VkWriteDescriptorSet, 23> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -745,6 +760,7 @@ protected:
             wImg(21, &historyInfo),                                     // Sampled Lighting Inc2 M1
             wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
             wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wImg(36, &depthInfo),                                        // Raster-proxy B1 M1
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -775,6 +791,24 @@ protected:
         barrierToGeneral(colorImg);
         barrierToGeneral(idImg);
         barrierToGeneral(historyImg);
+        barrierToGeneral(depthImg);
+
+        // Canary-clear the depth image to -1: a binding the shader never writes stays
+        // uniformly -1, which no legitimate value (hitT >= 0, miss = 1e30) can produce.
+        {
+            VkClearColorValue canary{}; canary.float32[0] = -1.0f;
+            VkImageSubresourceRange full{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdClearColorImage(cmd, depthImg, VK_IMAGE_LAYOUT_GENERAL, &canary, 1, &full);
+            VkImageMemoryBarrier clearToWrite{};
+            clearToWrite.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            clearToWrite.oldLayout = VK_IMAGE_LAYOUT_GENERAL; clearToWrite.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            clearToWrite.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; clearToWrite.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            clearToWrite.image = depthImg; clearToWrite.subresourceRange = full;
+            clearToWrite.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            clearToWrite.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &clearToWrite);
+        }
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descSet, 0, nullptr);
@@ -813,6 +847,18 @@ protected:
         copy.imageExtent = {w, h, 1};
         vkCmdCopyImageToBuffer(cmd, colorImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rbBuf, 1, &copy);
 
+        // Raster-proxy B1 M1: read the depth-distance image back alongside the colour image.
+        const VkDeviceSize depthRbSize = static_cast<VkDeviceSize>(w) * h * sizeof(float);
+        VkBuffer depthRbBuf = VK_NULL_HANDLE; VkDeviceMemory depthRbMem = VK_NULL_HANDLE;
+        CreateHostBuffer(depthRbSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT, depthRbBuf, depthRbMem, false);
+        {
+            VkImageMemoryBarrier depthToSrc = toSrc;
+            depthToSrc.image = depthImg;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &depthToSrc);
+            vkCmdCopyImageToBuffer(cmd, depthImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, depthRbBuf, 1, &copy);
+        }
+
         ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
 
         VkSubmitInfo si{};
@@ -842,8 +888,19 @@ protected:
             vkUnmapMemory(logicalDevice_, dummyHitRecordMem);
         }
 
+        if (outDepthDistances != nullptr) {
+            void* dMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, depthRbMem, 0, depthRbSize, 0, &dMapped), VK_SUCCESS);
+            outDepthDistances->assign(static_cast<size_t>(w) * h, 0.0f);
+            std::memcpy(outDepthDistances->data(), dMapped, static_cast<size_t>(depthRbSize));
+            vkUnmapMemory(logicalDevice_, depthRbMem);
+        }
+
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_, rbBuf, nullptr);    vkFreeMemory(logicalDevice_, rbMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, depthRbBuf, nullptr); vkFreeMemory(logicalDevice_, depthRbMem, nullptr);
+        vkDestroyImageView(logicalDevice_, depthView, nullptr);
+        vkDestroyImage(logicalDevice_, depthImg, nullptr);  vkFreeMemory(logicalDevice_, depthMem, nullptr);
         vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);
         vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
         vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
@@ -1006,6 +1063,106 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
     std::printf("[NEAR] %ux%u | device='%s' | render=%.0f ms | body pixels=%d / %u | -> %s\n",
                 kW, kH, selectedDeviceName_.c_str(), renderMs, hitPixels, kW * kH, outPath);
     EXPECT_GT(hitPixels, 0) << "Shader produced an all-sky image — the body was not hit.";
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Raster-proxy B1 M1 — the march must publish per-pixel euclidean hit distance
+// as a real R32F storage image (binding 36): depth[px] == hitRecords[px].hitT
+// for hits, 1e30 for misses (HiZ needs an image, not the HitRecord SSBO). The
+// harness canary-clears the image to -1, so an unwritten binding fails loudly.
+// One analytic spot-check pins the metric: the centre ray's first hit sits at
+// ~|eye-centre| - R (hollow shell, camera looking at the centre).
+// ---------------------------------------------------------------------------
+TEST_F(BodyInstanceRayMarchRenderTest, DepthDistanceImageMatchesHitRecords) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_depth_image");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(0.0f, 0.0f, 0.0f, kBaseRadiusAu * 2.0f, 0, 1.00f, 0.95f, 0.60f),
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers b;
+    b.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(b.nodes, VK_NULL_HANDLE);
+
+    constexpr uint32_t kW = 256, kH = 256;
+    const glm::vec3 focus = ShaderBodyCentre(instances[0]);
+    const float     R     = ShaderBodyRadius(instances[0]);
+    const glm::vec3 eye   = focus + glm::normalize(glm::vec3(0.3f, 0.25f, 1.0f)) * (R * 4.0f);
+    const PushConstants pc = MakeCamera(eye, focus, kW, kH, static_cast<int32_t>(instances.size()));
+
+    std::vector<uint8_t> rgba; double renderMs = 0.0;
+    std::vector<HitRecordCpu> hitRecords;
+    std::vector<float> depth;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+                                         VK_NULL_HANDLE, VK_NULL_HANDLE,
+                                         pc, kW, kH, rgba, renderMs, &hitRecords,
+                                         /*skipMaskWords=*/nullptr, /*preSeedHitRecords=*/nullptr,
+                                         &depth));
+    ASSERT_EQ(depth.size(), static_cast<size_t>(kW) * kH);
+
+    constexpr float kMissSentinel = 1.0e30f;
+    uint32_t hitPixels = 0, missPixels = 0, mismatches = 0;
+    for (uint32_t i = 0; i < kW * kH; ++i) {
+        const bool hit = (hitRecords[i].flags & kHitRecordFlagHit) != 0u;
+        if (hit) {
+            ++hitPixels;
+            if (depth[i] != hitRecords[i].hitT) {
+                if (++mismatches <= 5) {
+                    ADD_FAILURE() << "depth[" << i << "]=" << depth[i]
+                                  << " != hitT=" << hitRecords[i].hitT;
+                }
+            }
+        } else {
+            ++missPixels;
+            if (depth[i] != kMissSentinel) {
+                if (++mismatches <= 5) {
+                    ADD_FAILURE() << "miss depth[" << i << "]=" << depth[i]
+                                  << " != sentinel 1e30";
+                }
+            }
+        }
+    }
+    EXPECT_EQ(mismatches, 0u) << mismatches << " of " << (kW * kH)
+                              << " pixels disagree between depth image and HitRecords";
+    EXPECT_GT(hitPixels, 0u)  << "all-sky render: the body was not hit at all";
+    EXPECT_GT(missPixels, 0u) << "no sky pixels: miss-sentinel path untested";
+
+    // Metric pin: the centre ray's first hit is the shell's near surface.
+    const uint32_t centreIdx = (kH / 2) * kW + (kW / 2);
+    ASSERT_TRUE((hitRecords[centreIdx].flags & kHitRecordFlagHit) != 0u)
+        << "centre pixel missed the body — camera setup broke";
+    const float expected = glm::length(eye - focus) - R;
+    EXPECT_NEAR(depth[centreIdx], expected, 0.15f * R)
+        << "centre-pixel distance is not euclidean ray distance (expected ~|eye-centre| - R)";
+
+    std::printf("[B1-M1] %ux%u | hits=%u misses=%u | centre depth=%.4f expected~%.4f\n",
+                kW, kH, hitPixels, missPixels,
+                depth[centreIdx], expected);
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

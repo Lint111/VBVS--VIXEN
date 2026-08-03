@@ -602,6 +602,13 @@ void VulkanGraphApplication::PreTick() {
         if (recipeBucketedDispatchEnabled_) {
             RunRecipeBucketedDispatchPreTick();
         }
+
+        // Raster-proxy B1 M4: one-frame-delayed camera feed for the occlusion cull.
+        // Ordering note: runs AFTER RunRecipeBucketedDispatchPreTick's skip-mask CPU fill —
+        // the GPU cull pass OR-composes on top of whatever that fill wrote this frame.
+        if (b1OcclusionCullEnabled_) {
+            RunB1OcclusionCullPreTick();
+        }
     } catch (const std::exception& e) {
         lastError_ = std::string("PreTick failed: ") + e.what();
         if (mainLogger) mainLogger->Error("[VulkanGraphApplication::PreTick] " + lastError_);
@@ -619,6 +626,33 @@ void VulkanGraphApplication::PreTick() {
 // per-bucket indirect-dispatch command + screen-space coverage) is what the specialized
 // indirect dispatch actually consumes below, so the mechanism this milestone gives a live home
 // to is the real one, not a CPU-only stand-in.
+// Raster-proxy B1 M4: feed the occlusion cull's push constants. The cull tests instance
+// AABBs against LAST frame's depth tiles, so it must reproject with LAST frame's camera —
+// feed the stashed previous-frame viewProj/cameraPos, then stash this frame's values.
+// dims.z carries the live instance count (the shader's word loop clamps on it).
+void VulkanGraphApplication::RunB1OcclusionCullPreTick() {
+    if (!renderGraph) return;
+    auto* cameraInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_));
+    if (!cameraInst) return;
+
+    if (auto* vpConst = static_cast<ConstantNode*>(renderGraph->GetInstance(b1CullPrevViewProjConstant_))) {
+        vpConst->SetValue<glm::mat4>(b1PrevViewProj_);
+    }
+    if (auto* cpConst = static_cast<ConstantNode*>(renderGraph->GetInstance(b1CullPrevCamPosConstant_))) {
+        cpConst->SetValue<glm::vec4>(glm::vec4(b1PrevCamPos_, 0.0f));
+    }
+    uint32_t instanceCount = 0;
+    if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstanceByName("body_octree_scene"))) {
+        instanceCount = static_cast<uint32_t>(bodyScene->GetInstances().size());
+    }
+    if (auto* dimsConst = static_cast<ConstantNode*>(renderGraph->GetInstance(b1CullDimsConstant_))) {
+        dimsConst->SetValue<glm::uvec4>(glm::uvec4(b1SrcWidth_, b1SrcHeight_, instanceCount, 0u));
+    }
+
+    b1PrevViewProj_ = cameraInst->GetCurrentViewProj();
+    b1PrevCamPos_   = cameraInst->GetCameraPositionForTest();  // documented read-only introspection getter
+}
+
 void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     if (!renderGraph) return;
 

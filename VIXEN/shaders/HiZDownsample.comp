@@ -1,0 +1,51 @@
+#version 460
+// HiZDownsample.comp — Raster-proxy B1 M2: coarse occlusion tile image.
+//
+// One thread per OUTPUT texel: dst(tile) = MAX euclidean ray distance over the
+// tile's 16x16 source block (BodyInstanceRayMarch's depthDistanceImage), block
+// clipped at the source edge. Miss pixels carry 1e30, so any sky pixel in a
+// tile makes the tile unoccludable — the conservative direction.
+//
+// @mirror libraries/RenderGraph/include/Nodes/HiZDownsampleMirror.h
+// 1:1 CPU mirror per the gpu-shader-debug discipline (HiZDownsampleTexel).
+// Any fix here MUST be applied there and vice versa.
+//
+// Self-contained descriptor namespace like RecipeInstanceBucketing.comp — does
+// NOT #include SceneBindings.glsl; bindings 0/1 are this shader's own.
+// ponytail: plain 256-read loop per thread; shared-mem reduce only if measured.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(r32f, binding = 0) uniform readonly image2D srcDepthImage;
+layout(r32f, binding = 1) uniform writeonly image2D tileMaxImage;
+
+layout(push_constant) uniform PushConstants {
+    uint srcWidth;
+    uint srcHeight;
+} pc;
+
+const uint kHiZTileSize = 16u;
+
+void main() {
+    // Mirror: HiZTileCount(pixels) = (pixels + 15) / 16
+    const uint tilesX = (pc.srcWidth + kHiZTileSize - 1u) / kHiZTileSize;
+    const uint tilesY = (pc.srcHeight + kHiZTileSize - 1u) / kHiZTileSize;
+    const uint tileX = gl_GlobalInvocationID.x;
+    const uint tileY = gl_GlobalInvocationID.y;
+    if (tileX >= tilesX || tileY >= tilesY) return;
+
+    // Mirror: HiZDownsampleTexel — distances are non-negative, 0 is a safe
+    // reduce identity; clip the block at the source extent.
+    const uint x0 = tileX * kHiZTileSize;
+    const uint y0 = tileY * kHiZTileSize;
+    const uint x1 = min(x0 + kHiZTileSize, pc.srcWidth);
+    const uint y1 = min(y0 + kHiZTileSize, pc.srcHeight);
+    float maxDist = 0.0;
+    for (uint y = y0; y < y1; ++y) {
+        for (uint x = x0; x < x1; ++x) {
+            maxDist = max(maxDist, imageLoad(srcDepthImage, ivec2(int(x), int(y))).r);
+        }
+    }
+    imageStore(tileMaxImage, ivec2(int(tileX), int(tileY)),
+               vec4(maxDist, 0.0, 0.0, 0.0));
+}

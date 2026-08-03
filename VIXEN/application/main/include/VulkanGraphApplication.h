@@ -226,6 +226,12 @@ private:
     // is true. See its own definition (VulkanGraphApplication.cpp) for the full account.
     void RunRecipeBucketedDispatchPreTick();
 
+    // Raster-proxy B1 M4: per-frame push-constant feed for the occlusion-cull pass, called
+    // from PreTick() only when b1OcclusionCullEnabled_ is true. Feeds LAST frame's
+    // viewProj/cameraPos (the cull reprojects against last frame's depth) + the live
+    // instance count, then stashes this frame's values for next frame.
+    void RunB1OcclusionCullPreTick();
+
     // ====== Engine (AR#7) ======
     // EngineContext OWNS the core graph subsystems (registry, bus, graph, and the autonomous
     // CalibrationStore). The app keeps non-owning views named as before so the existing call
@@ -354,6 +360,19 @@ private:
     NodeHandle recipeSpecializedDispatch_{};
     NodeHandle recipeBucketingViewProjConstant_{};  // ConstantNode PreTick refreshes every frame (see .cpp)
     NodeHandle instanceSkipMaskBuffer_{};             // Inc4 M1's placeholder buffer, populated live by PreTick when Inc4 M3's flag is set
+
+    // Raster-proxy B1 M4 (VIXEN_B1_OCCLUSION_CULL): occlusion-probe chain state. PreTick feeds
+    // the cull's push constants ONE-FRAME-DELAYED (the cull reprojects against last frame's
+    // depth, so it needs last frame's camera) plus the live instance count; complete no-op when
+    // the flag is unset (handles stay invalid, guarded like the bucketing path above).
+    bool b1OcclusionCullEnabled_ = false;
+    NodeHandle b1CullPrevViewProjConstant_{};
+    NodeHandle b1CullPrevCamPosConstant_{};
+    NodeHandle b1CullDimsConstant_{};
+    glm::mat4 b1PrevViewProj_{1.0f};
+    glm::vec3 b1PrevCamPos_{0.0f};
+    uint32_t b1SrcWidth_ = 0;    // depth/tile extents fixed at graph build (render-scale applied)
+    uint32_t b1SrcHeight_ = 0;
 
     // Per-recipeId compiled specialized pipeline cache (Inc4 M3): avoids recompiling the same
     // recipe's shader every frame it stays hot. Key = recipeId; value = the compiled

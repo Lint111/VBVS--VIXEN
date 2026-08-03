@@ -1,3 +1,21 @@
+> **⚠️ 2026-08-03 — Raster-proxy hybrid SLICE A COMPLETE (not merged/pushed; live tree = undertow submodule).**
+> Shell derive now emits the raster-proxy artifact + the dirty path has a real producer. Built, TDD (red→green each):
+> (1) `ShellProxyAabb` (32B, template-local [0,1]³ = traceBounds convention) + `ShellDeriveResult::proxyAabbs`,
+> emitted in `DeriveShell`'s compact loop, per-octree through `DeriveShellPool` (`libraries/SVO/include/ShellDerive.h`);
+> (2) `ApplyBrickSdfEdit` — THE value-edit entry point; `BodyOctreeSceneNode::EditSourceBrickSdf` wraps it +
+> marks `dirtyBricks_` in one call (first real producer for the §C revalidate path; membership edits remain
+> full-rederive by contract, and proxies are PROVEN byte-invariant under value edits);
+> (3) `proxyAabbBuffer_[2]` double-buffered upload in `UploadShellSlot` (same distinct-VkBuffer hazard-keying
+> pattern; no graph output slot yet — slice B2 binds it). Tests: test_shell_derive 11/11 (+3 new),
+> shell_octree 11/11, shell_octree_gpu 9/9, shell_revalidate_node 2/2, criticalnodes_infra2 128/128 — all
+> freshness-verified after TWO vacuous-pass traps (batched ninja died on unknown target `RenderGraph` →
+> stale-binary "passes"; and `build/wsl/libraries/RenderGraph/tests/test_body_octree_lifetime` is an ORPHAN
+> binary of a retired target — lifetime tests live in `test_rendergraph_criticalnodes_infra2` now; lib target
+> is `RenderGraphCore`). Design: undertow `docs/plans/2026-08-03-raster-proxy-hybrid-seam.md`. **Next:** slice B1
+> (march depth image → HiZ → per-instance cull writing InstanceSkipMaskBuffer), then B2 raster pre-pass binds the
+> proxy buffer. EditSourceBrickSdf wrapper is 4-line glue over two tested halves — no dedicated device test (flagged).
+> The 2026-07-03 banner below is prior context.
+
 > **⚠️ 2026-07-03 — Voxel authoring editor Inc1 (VoxelDocument format + `vixen_editor` app) COMPLETE, all 5**
 > **milestones (M1–M5) Opus-approved. NOT yet merged/pushed** (isolated worktrees, awaiting a separate
 > integration step). VIXEN worktree `.claude/worktrees/voxel-authoring-inc1`, branch

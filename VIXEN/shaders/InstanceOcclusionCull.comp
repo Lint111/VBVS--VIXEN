@@ -1,0 +1,168 @@
+#version 460
+// InstanceOcclusionCull.comp — Raster-proxy B1 M3: per-instance HiZ occlusion
+// cull writing the existing instance skip mask.
+//
+// One thread owns one 32-bit skip-mask word (32 instances; 64x1x1 groups, so
+// one group covers TraceWorld's 192-instance cap six times over). Per ESVO
+// instance: compose the world AABB from the octree's template-local
+// traceBounds (world = worldPos + renderScale * (localToWorld * corner) —
+// TraceWorld.glsl's inverse), reproject the 8 corners into the PREVIOUS frame
+// (uv = ndc*0.5+0.5, texel = uv*dims, valid iff w > 1e-5 —
+// SpatialReuseShade.comp's convention), and cull only if EVERY tile of the
+// one-tile-dilated clamped rect saw all its rays stop NEARER than the AABB's
+// nearest euclidean distance from the previous camera position.
+//
+// Conservatism escapes (→ visible): non-ESVO provider, invalid traceBounds,
+// any corner behind the near plane, undilated rect fully offscreen,
+// > 64 covered tiles, camera inside the AABB, any covered miss tile (the 1e30
+// sentinel loses every compare — sky never occludes).
+//
+// Bit set = SKIP (isInstanceSkipped, SceneBindings.glsl). The word is
+// OR-composed over its existing content so the bucketed-dispatch CPU writer's
+// bits survive; single writer per word ⇒ no atomics.
+//
+// @mirror libraries/RenderGraph/include/Nodes/InstanceOcclusionCullMirror.h
+// 1:1 CPU mirror per the gpu-shader-debug discipline. Any fix here MUST be
+// applied there and vice versa.
+//
+// Self-contained descriptor namespace like RecipeInstanceBucketing.comp — does
+// NOT #include SceneBindings.glsl; bindings 0-3 are this shader's own.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "Generated/OctreeConfig.glsl"
+
+// std430 SSBO record, 64 bytes — byte-for-byte identical to C++ BodyInstanceGpu
+// (SceneBindings.glsl's BodyInstance; redeclared here for the self-contained
+// namespace).
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;      // 0 = Stored/ESVO, 1 = Procedural
+    uint  recipeId;
+    float recipeParams[6];
+};
+
+layout(std430, binding = 0) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+layout(std430, binding = 1) readonly buffer OctreeConfigsSSBO {
+    OctreeConfig configs[];
+};
+layout(r32f, binding = 2) uniform readonly image2D tileMaxImage;
+layout(std430, binding = 3) buffer InstanceSkipMaskBuffer {
+    uint skipMask[];
+};
+
+layout(push_constant) uniform PushConstants {
+    mat4 prevViewProj;
+    vec4 prevCamPos;   // xyz used
+    uvec4 dims;        // x = srcWidth, y = srcHeight, z = instanceCount, w = pad
+} pc;
+
+const uint  kHiZTileSize      = 16u;
+const uint  kCullTileCap      = 64u;
+const float kCullMinClipW     = 1e-5;
+
+// Mirror: HiZTileCount
+uint hiZTileCount(uint pixels) { return (pixels + kHiZTileSize - 1u) / kHiZTileSize; }
+
+// Mirror: CullWorldAabb
+void cullWorldAabb(in BodyInstance inst, in OctreeConfig cfg,
+                   out vec3 outMin, out vec3 outMax) {
+    outMin = vec3(3.4e38);
+    outMax = vec3(-3.4e38);
+    for (uint i = 0u; i < 8u; ++i) {
+        vec3 l = vec3((i & 1u) != 0u ? cfg.traceBoundsMax.x : cfg.traceBoundsMin.x,
+                      (i & 2u) != 0u ? cfg.traceBoundsMax.y : cfg.traceBoundsMin.y,
+                      (i & 4u) != 0u ? cfg.traceBoundsMax.z : cfg.traceBoundsMin.z);
+        vec3 base = (cfg.localToWorld * vec4(l, 1.0)).xyz;
+        vec3 w = inst.worldPos + inst.renderScale * base;
+        outMin = min(outMin, w);
+        outMax = max(outMax, w);
+    }
+}
+
+// Mirror: InstanceOccluded
+bool instanceOccluded(uint instIdx) {
+    BodyInstance inst = bodyInstances[instIdx];
+    if (inst.providerKind != 0u) return false;
+
+    OctreeConfig cfg = configs[inst.octreeIndex];
+    // getOctreeTraceBounds validity (TraceWorld.glsl): max > min, within [0,1].
+    bool validBounds =
+        all(greaterThan(cfg.traceBoundsMax, cfg.traceBoundsMin)) &&
+        all(greaterThanEqual(cfg.traceBoundsMin, vec3(0.0))) &&
+        all(lessThanEqual(cfg.traceBoundsMax, vec3(1.0)));
+    if (!validBounds) return false;
+
+    vec3 mn, mx;
+    cullWorldAabb(inst, cfg, mn, mx);
+
+    // Nearest euclidean distance from the previous camera position to the AABB
+    // — the same distance metric the march's hitT/tile maxes carry.
+    vec3 d = max(max(mn - pc.prevCamPos.xyz, vec3(0.0)), pc.prevCamPos.xyz - mx);
+    float dNear = length(d);
+    if (dNear <= 0.0) return false;  // camera inside the box
+
+    // Project the 8 AABB corners into the previous frame.
+    vec2 uvMin = vec2(3.4e38);
+    vec2 uvMax = vec2(-3.4e38);
+    for (uint i = 0u; i < 8u; ++i) {
+        vec3 c = vec3((i & 1u) != 0u ? mx.x : mn.x,
+                      (i & 2u) != 0u ? mx.y : mn.y,
+                      (i & 4u) != 0u ? mx.z : mn.z);
+        vec4 clip = pc.prevViewProj * vec4(c, 1.0);
+        if (clip.w <= kCullMinClipW) return false;  // behind/at the near plane
+        vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
+        uvMin = min(uvMin, uv);
+        uvMax = max(uvMax, uv);
+    }
+
+    vec2 dims = vec2(float(pc.dims.x), float(pc.dims.y));
+    vec2 pxMin = uvMin * dims;
+    vec2 pxMax = uvMax * dims;
+    if (pxMax.x < 0.0 || pxMax.y < 0.0 || pxMin.x >= dims.x || pxMin.y >= dims.y) {
+        return false;  // undilated rect fully offscreen — no occlusion evidence
+    }
+
+    // Tile rect: floor-divide (NOT int-truncate — negative px must round down),
+    // dilate one tile each side, clamp to the grid.
+    int tilesX = int(hiZTileCount(pc.dims.x));
+    int tilesY = int(hiZTileCount(pc.dims.y));
+    float ts = float(kHiZTileSize);
+    int t0x = clamp(int(floor(pxMin.x / ts)) - 1, 0, tilesX - 1);
+    int t0y = clamp(int(floor(pxMin.y / ts)) - 1, 0, tilesY - 1);
+    int t1x = clamp(int(floor(pxMax.x / ts)) + 1, 0, tilesX - 1);
+    int t1y = clamp(int(floor(pxMax.y / ts)) + 1, 0, tilesY - 1);
+
+    uint covered = uint(t1x - t0x + 1) * uint(t1y - t0y + 1);
+    if (covered > kCullTileCap) return false;  // big things are visible anyway
+
+    for (int ty = t0y; ty <= t1y; ++ty) {
+        for (int tx = t0x; tx <= t1x; ++tx) {
+            // A miss tile's sentinel (1e30) loses this compare — sky never occludes.
+            if (!(dNear > imageLoad(tileMaxImage, ivec2(tx, ty)).r)) return false;
+        }
+    }
+    return true;
+}
+
+// Mirror: CullMaskWord
+void main() {
+    uint wordIdx = gl_GlobalInvocationID.x;
+    uint wordCount = (pc.dims.z + 31u) / 32u;
+    if (wordIdx >= wordCount) return;
+
+    uint word = skipMask[wordIdx];  // OR-compose over the CPU writer's bits
+    for (uint lane = 0u; lane < 32u; ++lane) {
+        uint instIdx = wordIdx * 32u + lane;
+        if (instIdx >= pc.dims.z) break;
+        if (instanceOccluded(instIdx)) {
+            word |= (1u << lane);
+        }
+    }
+    skipMask[wordIdx] = word;
+}
