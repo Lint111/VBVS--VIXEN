@@ -49,6 +49,17 @@ public:
      */
     std::shared_ptr<ShaderDataBundle> Get(std::vector<std::string> features);
 
+    /**
+     * @brief A configured (unbuilt) builder for a feature-set member.
+     *
+     * The adoption seam for the graph's RegisterShaderBuilder path: the
+     * family owns the source recipe + feature splice; the caller layers its
+     * runtime options (target versions, include paths, cache manager) and
+     * Build()s. Does NOT touch SDI generation — the runtime path generates
+     * SDI at boot by design; Get() disables it for its own cached builds.
+     */
+    ShaderBundleBuilder MakeBuilder(std::vector<std::string> features) const;
+
     const std::string& GetName() const { return config_.name; }
 
 private:

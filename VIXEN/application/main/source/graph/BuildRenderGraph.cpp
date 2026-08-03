@@ -24,6 +24,7 @@
 #include "Connection/ConnectionModifier.h"
 #include "Connection/SdiStageWiring.h"  // Semantic-wiring S2: provider registry + SDI-driven stage wiring
 #include "Nodes/SdiStageSynthesis.h"    // Semantic-wiring S2 synthesis: gatherer/descSet/pipeline plumbing from merged SDI
+#include "ShaderFamily.h"               // Semantic-wiring S2 slice B: feature variants cached as shader families
 #include "Connection/Modifiers/FieldExtractionModifier.h"
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
@@ -1717,43 +1718,63 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // InstanceOcclusionCull.comp #includes "Generated/OctreeConfig.glsl", resolved by the
     // same AddIncludePath("shaders") set every builder here already carries.
     if (b1OcclusionCullEnabled) {
-        const auto registerB1Shader = [this](NodeHandle libHandle, const char* shaderName,
-                                             const char* programName) {
-            auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
-            libNode->RegisterShaderBuilder([this, shaderName, programName](int vulkanVer, int spirvVer) {
-                ShaderManagement::ShaderBundleBuilder builder;
-                std::vector<std::filesystem::path> possiblePaths = {
+        // Semantic-wiring S2 slice B (app adoption): each shader is a
+        // ShaderFamily — the SOURCE recipe declared once (raw file read, NO
+        // env splicing inside), the feature axis TYPED at the registration
+        // site. The env decision that used to hide inside
+        // ReadShaderSourceWithTraceHooksGate is now one visible line building
+        // the feature list from the same vocabulary the wiring layer uses;
+        // the family applies the identical after-#version splice, so cache
+        // keys are byte-identical to the old path.
+        const auto makeB1Family = [](const char* shaderName, const char* programName) {
+            ShaderManagement::ShaderFamily::Config cfg;
+            cfg.name = programName;
+            cfg.stage = ShaderManagement::ShaderStage::Compute;
+            return std::make_shared<ShaderManagement::ShaderFamily>(cfg,
+                [shaderName]() {
+                    std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-                    std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                        std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-                    std::string("shaders/") + shaderName,
-                    std::string("../shaders/") + shaderName,
-                    shaderName
-                };
-                std::filesystem::path compPath;
-                for (const auto& path : possiblePaths) {
-                    if (std::filesystem::exists(path)) { compPath = path; break; }
-                }
-                if (compPath.empty()) {
-                    throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
-                }
-                const std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
-                builder.SetProgramName(programName)
-                       .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
-                       .SetTargetVulkanVersion(vulkanVer)
+                        std::string("shaders/") + shaderName,
+                        std::string("../shaders/") + shaderName,
+                        shaderName
+                    };
+                    for (const auto& path : possiblePaths) {
+                        if (std::filesystem::exists(path)) {
+                            std::ifstream in(path);
+                            std::stringstream buf;
+                            buf << in.rdbuf();
+                            return buf.str();
+                        }
+                    }
+                    throw std::runtime_error(std::string(shaderName) +
+                                             " not found - check shader search paths");
+                });
+        };
+        std::vector<std::string> b1ShaderFeatures;
+        if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+            b1ShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
+        }
+        const auto registerFamily = [this, b1ShaderFeatures](
+                                        NodeHandle libHandle,
+                                        std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+            auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
+            libNode->RegisterShaderBuilder([this, family, b1ShaderFeatures](int vulkanVer, int spirvVer) {
+                auto builder = family->MakeBuilder(b1ShaderFeatures);
+                builder.SetTargetVulkanVersion(vulkanVer)
                        .SetTargetSpirvVersion(spirvVer)
                        .AddIncludePath("shaders")
                        .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                        .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-                       .EnableCaching(&shaderCacheManager_)
-                       .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
+                       .EnableCaching(&shaderCacheManager_);
                 return builder;
             });
         };
-        registerB1Shader(b1HizShaderLib,  "HiZDownsample.comp",        "HiZDownsample");
-        registerB1Shader(b1CullShaderLib, "InstanceOcclusionCull.comp", "InstanceOcclusionCull");
+        registerFamily(b1HizShaderLib,  makeB1Family("HiZDownsample.comp",         "HiZDownsample"));
+        registerFamily(b1CullShaderLib, makeB1Family("InstanceOcclusionCull.comp", "InstanceOcclusionCull"));
     }
 
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
