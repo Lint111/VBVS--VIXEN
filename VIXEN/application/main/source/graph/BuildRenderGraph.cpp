@@ -6046,47 +6046,73 @@ void VulkanGraphApplication::BuildRenderGraph() {
              .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                       recipeBucketingDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
 
-        // Binding 0: BodyInstanceBuffer -- reuses bodyOctreeSceneNode's own INSTANCE_BUFFER
-        // (the SAME buffer the march reads at its own binding 10) -- no new instance data node.
-        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BodyInstanceBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Binding 1: RecipeBoundSphereBuffer.
-        batch.Connect(recipeBoundSphereBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::RecipeBoundSphereBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Binding 2: BucketCountBuffer.
-        batch.Connect(recipeBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCountBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Binding 3: BucketIndicesBuffer.
-        batch.Connect(recipeBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketIndicesBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Bindings 4-7: coverage AABB extrema.
-        batch.Connect(recipeBucketCoverageMinXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMinXBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(recipeBucketCoverageMinYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMinYBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(recipeBucketCoverageMaxXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMaxXBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMaxYBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Binding 8: BucketIndirectCommandBuffer.
-        batch.Connect(recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketIndirectCommandBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Bindings 9-10: Load-Tier Contract M2 (precision tier) precision sub-bucket pair.
-        batch.Connect(recipePrecisionBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::PrecisionBucketCountBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(recipePrecisionBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, BucketSdi::Bind::PrecisionBucketIndicesBuffer::BINDING,
-                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Semantic-wiring S2: providers once — every descriptor member resolved
+        // from the shader's own merged-SDI member table. All eleven bindings are
+        // persistent storage buffers (Dependency|Execute); the instance buffer
+        // reuses bodyOctreeSceneNode's own INSTANCE_BUFFER (the SAME buffer the
+        // march reads), the 9-10 pair is Load-Tier Contract M2's precision tier.
+        SdiProviderRegistry bucketingProviders;
+        bucketingProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
+                                   BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                                   SlotRole::Dependency | SlotRole::Execute);
+        const struct { const char* name; NodeHandle node; } bucketingSsbos[] = {
+            {"RecipeBoundSphereBuffer",     recipeBoundSphereBuffer},
+            {"BucketCountBuffer",           recipeBucketCountBuffer},
+            {"BucketIndicesBuffer",         recipeBucketIndicesBuffer},
+            {"BucketCoverageMinXBuffer",    recipeBucketCoverageMinXBuffer},
+            {"BucketCoverageMinYBuffer",    recipeBucketCoverageMinYBuffer},
+            {"BucketCoverageMaxXBuffer",    recipeBucketCoverageMaxXBuffer},
+            {"BucketCoverageMaxYBuffer",    recipeBucketCoverageMaxYBuffer},
+            {"BucketIndirectCommandBuffer", recipeBucketIndirectCommandBuffer},
+            {"PrecisionBucketCountBuffer",  recipePrecisionBucketCountBuffer},
+            {"PrecisionBucketIndicesBuffer", recipePrecisionBucketIndicesBuffer},
+        };
+        for (const auto& p : bucketingSsbos) {
+            bucketingProviders.Provide(p.name, p.node,
+                                       StorageBufferNodeConfig::STORAGE_BUFFER,
+                                       SlotRole::Dependency | SlotRole::Execute);
+        }
+        // Push providers (shared by all three mode stages; `mode` itself is the
+        // per-stage overlay below). raySizeCoef mirrors the march's own
+        // tier-crossing-LOD-override branch so this gate agrees with what the
+        // march actually uses for LOD this frame.
+        bucketingProviders.Provide("viewProj", recipeBucketingViewProjConstant,
+                                   ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        bucketingProviders.Provide("instanceCount", bodyOctreeSceneNode,
+                                   BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                                   SlotRole::Dependency | SlotRole::Execute);
+        bucketingProviders.Provide("maxBuckets", recipeBucketingMaxBucketsConstant,
+                                   ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        bucketingProviders.Provide("maxMembersPerBucket", recipeBucketingMaxMembersConstant,
+                                   ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        bucketingProviders.Provide("screenWidth", renderTargetNode,
+                                   RenderTargetNodeConfig::WIDTH_OUT,
+                                   SlotRole::Dependency | SlotRole::Execute);
+        bucketingProviders.Provide("screenHeight", renderTargetNode,
+                                   RenderTargetNodeConfig::HEIGHT_OUT,
+                                   SlotRole::Dependency | SlotRole::Execute);
+        if (tierCrossingLodCoefOverrideActive) {
+            bucketingProviders.Provide("raySizeCoef", tierCrossingLodCoefOverrideConstant,
+                                       ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        } else {
+            bucketingProviders.Provide("raySizeCoef", raySizeCoefNode,
+                                       RaySizeCoefNodeConfig::RAY_SIZE_COEF,
+                                       SlotRole::Dependency | SlotRole::Execute);
+        }
+        bucketingProviders.Provide("raySizeBias", raySizeBiasConstant,
+                                   ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+        // cameraPos extracts a field from CAMERA_DATA — the custom escape hatch.
+        bucketingProviders.ProvideCustom("cameraPos",
+            [cameraNode](ConnectionBatch& b, NodeHandle target, uint32_t slot) {
+                b.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, target, slot,
+                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));
+            });
+
+        // Descriptors wire ONCE (the three mode stages share this gatherer).
+        WireStageFromSdi<BucketSdi::Metadata, BucketSdi::MEMBERS>(
+            batch, bucketingProviders, recipeBucketingDescGatherer,
+            /*pushGatherer (unused in this scope)*/ recipeBucketingDescGatherer,
+            {}, SdiWireSet::DescriptorsOnly);
 
         // Three ComputeStageNode instances share the SAME pipeline/descriptor set (the shader's
         // push-constant `mode` field, not a different pipeline, selects behavior) -- each is its
@@ -6143,66 +6169,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
             { recipeBucketingModeFinal,  recipeBucketingModeFinalPushGatherer,  recipeBucketingModeFinalConstant },
         };
         for (const auto& s : bucketingPcStages) {
+            // Stage plumbing (bundle/data/ranges) stays hand-wired — S4's
+            // AttachStage territory. NOTE viewProj rides a ConstantNode, never
+            // CameraNodeConfig::CURRENT_VIEW_PROJ directly (const glm::mat4&
+            // reference slot throws bad_any_cast in the gatherer's by-VALUE
+            // extraction — found live; see the ConstantNode creation site).
             batch.Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                           s.pcGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE)
                  .Connect(s.pcGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
                           s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
                  .Connect(s.pcGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
-                          s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
-                 // field 0: mat4 viewProj -- via recipeBucketingViewProjConstant (a ConstantNode
-                 // PreTick updates every frame from CameraNode::GetCurrentViewProj()), NOT
-                 // CameraNodeConfig::CURRENT_VIEW_PROJ directly: that slot is `const glm::mat4&`
-                 // (reference/ConstRefTag), which throws std::bad_any_cast when wired straight
-                 // into a variadic push-constant field (PushConstantGathererNode's generic
-                 // extraction path always does a by-VALUE GetHandle<T>() -- see this node's own
-                 // creation-site comment for the full account of this bug, found live).
-                 .Connect(recipeBucketingViewProjConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, BucketSdi::Push::viewProj::INDEX, SlotRoleModifier(SlotRole::Execute))
-                 // field 1: uint instanceCount (SAME live source as the march's own binding-10
-                 // instanceCount push-constant field -- bodyOctreeSceneNode's own live count).
-                 .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
-                          s.pcGatherer, BucketSdi::Push::instanceCount::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
-                 // field 2: uint maxBuckets (fixed literal, matches SSBO sizing above).
-                 .Connect(recipeBucketingMaxBucketsConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, BucketSdi::Push::maxBuckets::INDEX, SlotRoleModifier(SlotRole::Execute))
-                 // field 3: uint maxMembersPerBucket (fixed literal, matches SSBO sizing above).
-                 .Connect(recipeBucketingMaxMembersConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, BucketSdi::Push::maxMembersPerBucket::INDEX, SlotRoleModifier(SlotRole::Execute))
-                 // fields 4/5: uint screenWidth/screenHeight (render-target's live extent, same
-                 // source the main march's dispatch sizing derives from).
-                 .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
-                          s.pcGatherer, BucketSdi::Push::screenWidth::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
-                 .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
-                          s.pcGatherer, BucketSdi::Push::screenHeight::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
-                 // field 6: uint mode (THIS stage's own literal -- 1/0/2 for init/bucket/final).
-                 .Connect(s.modeConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, BucketSdi::Push::mode::INDEX, SlotRoleModifier(SlotRole::Execute))
-                 // Load-Tier Contract M1 (gating tier): fields 8/9 -- raySizeBias/cameraPos, SAME
-                 // live nodes the main march's own pushConstantGatherer already reads
-                 // (raySizeBiasConstant/cameraNode, both in scope from earlier in this function)
-                 // so a camera move is reflected identically in both the march and this
-                 // bucketing pre-pass, with no new plumbing.
-                 .Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, BucketSdi::Push::raySizeBias::INDEX, SlotRoleModifier(SlotRole::Execute))
-                 .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          s.pcGatherer, BucketSdi::Push::cameraPos::INDEX,
-                          ExtractField(&CameraData::cameraPos, SlotRole::Execute));
-        }
-        // field 7: float raySizeCoef -- mirrors the tier-crossing-LOD-override branch the main
-        // march's own gatherer uses (line ~6338): if VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE is
-        // active, feed the same override ConstantNode here too so this bucketing gate agrees
-        // with what the march is actually using for LOD this frame, not the un-overridden live
-        // value. Kept as its own loop (rather than folded into the loop above) since the two
-        // branches connect different node TYPES (ConstantNode vs. RaySizeCoefNode), each with
-        // its own strongly-typed slot-config enum -- not expressible as a single Connect() call.
-        for (const auto& s : bucketingPcStages) {
-            if (tierCrossingLodCoefOverrideActive) {
-                batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
-                              s.pcGatherer, BucketSdi::Push::raySizeCoef::INDEX, SlotRoleModifier(SlotRole::Execute));
-            } else {
-                batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
-                              s.pcGatherer, BucketSdi::Push::raySizeCoef::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-            }
+                          s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES);
+            // Per-stage overlay: copy the shared providers, add THIS stage's own
+            // `mode` constant (1/0/2 for init/bucket/final), wire the push half.
+            SdiProviderRegistry stageProviders = bucketingProviders;
+            stageProviders.Provide("mode", s.modeConstant,
+                                   ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+            WireStageFromSdi<BucketSdi::Metadata, BucketSdi::MEMBERS>(
+                batch, stageProviders,
+                /*descGatherer (unused in this scope)*/ recipeBucketingDescGatherer,
+                s.pcGatherer, {}, SdiWireSet::PushOnly);
         }
 
         // Auto-sync hazard declarations: mode-init/mode-bucket WRITE the counters/indices/
@@ -6426,10 +6412,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         b1Providers.Provide("dims", b1CullDimsConstant,
                             ConstantNodeConfig::OUTPUT, SlotRole::Execute);
 
+        // Typed feature set: identity is the GLSL define, requirements (when a
+        // feature gains any) reference the CapabilityGraph. Both B1 interfaces
+        // are unconditional today; the set matters the moment either shader
+        // grows a feature-gated member.
+        SdiFeatureSet b1Features;
+        b1Features.Enable(kFeatureB1OcclusionCull);
         WireStageFromSdi<HizSdi::Metadata, HizSdi::MEMBERS>(
-            batch, b1Providers, b1HizDescGatherer, b1HizPushGatherer, {});
+            batch, b1Providers, b1HizDescGatherer, b1HizPushGatherer, b1Features);
         WireStageFromSdi<CullSdi::Metadata, CullSdi::MEMBERS>(
-            batch, b1Providers, b1CullDescGatherer, b1CullPushGatherer, {});
+            batch, b1Providers, b1CullDescGatherer, b1CullPushGatherer, b1Features);
 
         // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
         // the cull writes the skip-mask buffer the march + lighting passes already read.

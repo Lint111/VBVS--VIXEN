@@ -13,12 +13,24 @@
 
 #include <gtest/gtest.h>
 #include "Connection/SdiStageWiring.h"
+#include "Connection/ShaderFeature.h"
+#include "CapabilityGraph.h"
 
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
 
 using namespace Vixen::RenderGraph;
+
+// The feature under test, typed — identity is the GLSL define; requirements
+// reference CapabilityGraph node names.
+inline constexpr ShaderFeature kMockB1Feature{"VIXEN_B1_OCCLUSION_CULL"};
+
+namespace {
+inline constexpr const char* kMockReqNames[] = {"mock:required-cap"};
+}
+inline constexpr ShaderFeature kMockGatedFeature{
+    "MOCK_DEVICE_GATED", kMockReqNames, 1};
 
 namespace MockSdi {
 
@@ -103,13 +115,46 @@ TEST(SdiStageWiring, PlanFiltersByActiveFeatures) {
                        "prevViewProj", "prevCamPos", "dims"}));
     EXPECT_EQ(Find(base, "depthDistanceImage"), nullptr);
 
+    SdiFeatureSet b1Features;
+    b1Features.Enable(kMockB1Feature);
     auto b1 = BuildSdiWirePlan<MockSdi::Metadata, MockSdi::MEMBERS>(
-        {"VIXEN_B1_OCCLUSION_CULL"},
+        b1Features,
         Providers({"BodyInstanceBuffer", "OctreeConfigsSSBO", "tileMaxImage",
                    "depthDistanceImage", "prevViewProj", "prevCamPos", "dims"}));
     const auto* depth = Find(b1, "depthDistanceImage");
     ASSERT_NE(depth, nullptr);
     EXPECT_EQ(depth->targetSlot, 36u);
+}
+
+TEST(SdiStageWiring, EnableIfAvailableConsultsCapabilityGraph) {
+    // A typed feature carries requirement references into the capability
+    // graph; enabling is gated on ALL of them being available.
+    class TestCapability : public Vixen::CapabilityNode {
+    public:
+        TestCapability(const std::string& name, bool available)
+            : CapabilityNode(name), available_(available) {}
+    protected:
+        bool CheckAvailability() const override { return available_; }
+    private:
+        bool available_;
+    };
+
+    Vixen::CapabilityGraph capsWithout;
+    SdiFeatureSet setA;
+    EXPECT_FALSE(setA.EnableIfAvailable(kMockGatedFeature, capsWithout));
+    EXPECT_FALSE(setA.Contains("MOCK_DEVICE_GATED"));
+
+    Vixen::CapabilityGraph capsWith;
+    capsWith.RegisterCapability(
+        std::make_shared<TestCapability>("mock:required-cap", true));
+    SdiFeatureSet setB;
+    EXPECT_TRUE(setB.EnableIfAvailable(kMockGatedFeature, capsWith));
+    EXPECT_TRUE(setB.Contains("MOCK_DEVICE_GATED"));
+
+    // Requirement-free features enable unconditionally.
+    SdiFeatureSet setC;
+    EXPECT_TRUE(setC.EnableIfAvailable(kMockB1Feature, capsWithout));
+    EXPECT_TRUE(setC.Contains("VIXEN_B1_OCCLUSION_CULL"));
 }
 
 TEST(SdiStageWiring, UnmatchedMemberFailsNamingCandidates) {
@@ -133,4 +178,57 @@ TEST(SdiStageWiring, GatedMemberAbsentNeedsNoProvider) {
     EXPECT_NO_THROW((BuildSdiWirePlan<MockSdi::Metadata, MockSdi::MEMBERS>(
         {}, Providers({"BodyInstanceBuffer", "OctreeConfigsSSBO", "tileMaxImage",
                        "prevViewProj", "prevCamPos", "dims"}))));
+}
+
+TEST(SdiStageWiring, FilterPlanSplitsDescriptorsAndPush) {
+    // Multi-stage programs share ONE descriptor gatherer but have per-stage
+    // push gatherers (bucketing's three modes): descriptors wire once,
+    // push wires per stage — the filter is that seam.
+    auto plan = BuildSdiWirePlan<MockSdi::Metadata, MockSdi::MEMBERS>(
+        {}, Providers({"BodyInstanceBuffer", "OctreeConfigsSSBO", "tileMaxImage",
+                       "prevViewProj", "prevCamPos", "dims"}));
+
+    auto desc = FilterPlan(plan, SdiWireSet::DescriptorsOnly);
+    EXPECT_EQ(desc.entries.size(), 3u);
+    for (const auto& e : desc.entries) EXPECT_FALSE(e.isPush);
+
+    auto push = FilterPlan(plan, SdiWireSet::PushOnly);
+    EXPECT_EQ(push.entries.size(), 3u);
+    for (const auto& e : push.entries) EXPECT_TRUE(e.isPush);
+
+    auto all = FilterPlan(plan, SdiWireSet::All);
+    EXPECT_EQ(all.entries.size(), plan.entries.size());
+}
+
+TEST(SdiStageWiring, ScopedPlanSkipsOtherHalfProviders) {
+    // A DescriptorsOnly plan must not demand PUSH providers (bucketing wires
+    // its shared descriptor gatherer before the per-stage push overlays that
+    // carry `mode`) — scope gates resolution, not just the output.
+    auto desc = BuildSdiWirePlan<MockSdi::Metadata, MockSdi::MEMBERS>(
+        {}, Providers({"BodyInstanceBuffer", "OctreeConfigsSSBO", "tileMaxImage"}),
+        SdiWireSet::DescriptorsOnly);
+    EXPECT_EQ(desc.entries.size(), 3u);
+
+    auto push = BuildSdiWirePlan<MockSdi::Metadata, MockSdi::MEMBERS>(
+        {}, Providers({"prevViewProj", "prevCamPos", "dims"}),
+        SdiWireSet::PushOnly);
+    EXPECT_EQ(push.entries.size(), 3u);
+    EXPECT_EQ(push.entries[0].targetSlot, 0u);
+    EXPECT_EQ(push.entries[2].targetSlot, 2u);
+}
+
+TEST(SdiStageWiring, RegistryCopyIsIndependent) {
+    // Per-stage overlay pattern: copy the shared registry, add the stage's own
+    // provider (bucketing's per-stage `mode` constant) — the shared registry
+    // must not see it.
+    SdiProviderRegistry shared;
+    shared.ProvideCustom("viewProj",
+                         [](ConnectionBatch&, NodeHandle, uint32_t) {});
+
+    SdiProviderRegistry stage = shared;
+    stage.ProvideCustom("mode", [](ConnectionBatch&, NodeHandle, uint32_t) {});
+
+    EXPECT_TRUE(stage.Has("viewProj"));
+    EXPECT_TRUE(stage.Has("mode"));
+    EXPECT_FALSE(shared.Has("mode"));
 }

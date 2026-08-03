@@ -20,6 +20,7 @@
 
 #include "Core/TypedConnection.h"
 #include "Connection/ConnectionModifier.h"
+#include "Connection/ShaderFeature.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -44,6 +45,24 @@ struct SdiWirePlan {
 };
 
 /**
+ * @brief Which half of a plan to apply.
+ *
+ * Multi-stage programs (bucketing's three modes) share ONE descriptor
+ * gatherer but have per-stage push gatherers: descriptors wire once,
+ * push wires per stage.
+ */
+enum class SdiWireSet { All, DescriptorsOnly, PushOnly };
+
+inline SdiWirePlan FilterPlan(const SdiWirePlan& plan, SdiWireSet set) {
+    if (set == SdiWireSet::All) return plan;
+    SdiWirePlan out;
+    for (const auto& e : plan.entries) {
+        if ((set == SdiWireSet::PushOnly) == e.isPush) out.entries.push_back(e);
+    }
+    return out;
+}
+
+/**
  * @brief Resolve a merged-SDI MEMBERS table against provider names.
  *
  * @tparam Meta     The generated Metadata type (PROGRAM_NAME for errors)
@@ -51,20 +70,26 @@ struct SdiWirePlan {
  *                  isPushMember / binding / featureCount / features)
  */
 template<typename Meta, const auto& Members>
-SdiWirePlan BuildSdiWirePlan(const std::unordered_set<std::string>& activeFeatures,
-                             const std::unordered_set<std::string>& providerNames) {
+SdiWirePlan BuildSdiWirePlan(const SdiFeatureSet& activeFeatures,
+                             const std::unordered_set<std::string>& providerNames,
+                             SdiWireSet scope = SdiWireSet::All) {
     SdiWirePlan plan;
     uint32_t pushOrdinal = 0;
 
     for (const auto& m : Members) {
         bool present = true;
         for (uint32_t i = 0; i < m.featureCount; ++i) {
-            if (activeFeatures.count(m.features[i]) == 0) { present = false; break; }
+            if (!activeFeatures.Contains(m.features[i])) { present = false; break; }
         }
         if (!present) continue;
 
         const uint32_t slot = m.isPushMember ? pushOrdinal : m.binding;
         if (m.isPushMember) ++pushOrdinal;
+
+        // Scope gates RESOLUTION, not just output: a DescriptorsOnly plan
+        // must not demand push providers (and vice versa).
+        if (scope == SdiWireSet::DescriptorsOnly && m.isPushMember) continue;
+        if (scope == SdiWireSet::PushOnly && !m.isPushMember) continue;
 
         if (providerNames.count(m.name) == 0) {
             std::ostringstream msg;
@@ -91,6 +116,19 @@ SdiWirePlan BuildSdiWirePlan(const std::unordered_set<std::string>& activeFeatur
  */
 class SdiProviderRegistry {
 public:
+    using ConnectFn = std::function<void(ConnectionBatch&, NodeHandle, uint32_t)>;
+
+    /**
+     * @brief Escape hatch: register a fully custom Connect closure.
+     *
+     * For providers that need connection modifiers beyond SlotRoleModifier —
+     * e.g. ExtractField(&CameraData::cameraPos) — the closure writes the
+     * Connect itself; the registry only routes the target gatherer + slot.
+     */
+    void ProvideCustom(const std::string& name, ConnectFn fn) {
+        providers_[name] = std::move(fn);
+    }
+
     /**
      * @brief Register a provider under the shader-side member name.
      *
@@ -124,8 +162,9 @@ public:
 
 private:
     // std::map: deterministic iteration wherever the registry is enumerated.
-    std::map<std::string,
-             std::function<void(ConnectionBatch&, NodeHandle, uint32_t)>> providers_;
+    // Copyable by design — the per-stage overlay pattern copies the shared
+    // registry and adds stage-local providers (e.g. bucketing's `mode`).
+    std::map<std::string, ConnectFn> providers_;
 };
 
 /**
@@ -137,9 +176,10 @@ private:
 template<typename Meta, const auto& Members>
 void WireStageFromSdi(ConnectionBatch& batch, const SdiProviderRegistry& registry,
                       NodeHandle descGatherer, NodeHandle pushGatherer,
-                      const std::unordered_set<std::string>& activeFeatures) {
+                      const SdiFeatureSet& activeFeatures,
+                      SdiWireSet wireSet = SdiWireSet::All) {
     const SdiWirePlan plan =
-        BuildSdiWirePlan<Meta, Members>(activeFeatures, registry.Names());
+        BuildSdiWirePlan<Meta, Members>(activeFeatures, registry.Names(), wireSet);
     for (const auto& entry : plan.entries) {
         registry.Apply(entry.name, batch,
                        entry.isPush ? pushGatherer : descGatherer,
