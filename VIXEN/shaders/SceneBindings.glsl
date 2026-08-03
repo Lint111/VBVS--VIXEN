@@ -86,11 +86,20 @@ layout(std430, binding = 13) readonly buffer MipPoolBuffer { float mipPool[]; };
 // reject.cpp, test_tier_crossing_lod_residency.cpp) compile BodyInstanceRayMarch.comp
 // with VIXEN_GPU_TRACE_HOOKS defined (see body_instance_raymarch_spv's glslc -D flag)
 // and bind the buffer at its real size, so the UB case never arises in either
-// configuration. The SSBO declaration itself (this line) stays unconditional in
-// every variant -- only the writes are gated -- so the reflected descriptor
-// interface never changes shape (binding 14 always exists), unlike
-// ENABLE_SHADER_COUNTERS' binding-8 removal.
+// configuration.
+//
+// Semantic-wiring S2 (2026-08-03): the DECLARATION now shares the same gate as
+// the stores. The old unconditional-declaration defense ("the reflected
+// interface never changes shape, unlike ENABLE_SHADER_COUNTERS' binding-8
+// removal") predates the feature-tagged merged SDI: binding 14 is now a
+// DECLARED feature member (FEATURES = {VIXEN_GPU_TRACE_HOOKS} in
+// generated/sdi/merged/*, checked by ctest sdi_merged_drift_check), so the
+// wiring layer sees exactly the members each compiled variant has — a
+// feature-shaped interface is the CONTRACT now, not a drift hazard. Default
+// builds drop the 1-byte placeholder binding (and its UB guard) entirely.
+#ifdef VIXEN_GPU_TRACE_HOOKS
 layout(std430, binding = 14) writeonly buffer InstanceIterDebugBuffer { uint instanceIterCount[]; };
+#endif
 
 // ============================================================================
 // TIER-CROSSING REFERENCE TABLE (Tiered-ESVO Inc2 M3 — binding 15)

@@ -666,6 +666,7 @@ namespace Set0 {
     /**
      * @brief InstanceIterDebugBuffer
      * Type: STORAGE_BUFFER
+     * Requires: VIXEN_GPU_TRACE_HOOKS
      */
     struct Binding14 {
         static constexpr const char* NAME = "InstanceIterDebugBuffer";
@@ -673,7 +674,8 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 14;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr uint32_t FEATURE_COUNT = 0;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_GPU_TRACE_HOOKS"};
         using DataType = InstanceIterDebugBuffer;
     };
 
@@ -1084,6 +1086,7 @@ struct MemberInfo {
     const char* const* features;
 };
 
+inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, 0, nullptr},
@@ -1096,7 +1099,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ChannelPoolBuffer", false, 0, 11, 0, 0, nullptr},
     {"BrickLookupBuffer", false, 0, 12, 0, 0, nullptr},
     {"MipPoolBuffer", false, 0, 13, 0, 0, nullptr},
-    {"InstanceIterDebugBuffer", false, 0, 14, 0, 0, nullptr},
+    {"InstanceIterDebugBuffer", false, 0, 14, 0, 1, kFeatures_Set0_Binding14},
     {"TierRefTableBuffer", false, 0, 15, 0, 0, nullptr},
     {"LightingConfigSSBO", false, 0, 16, 0, 0, nullptr},
     {"HitRecordBuffer", false, 0, 17, 0, 0, nullptr},
