@@ -693,10 +693,33 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // "fully uploaded" — hasBrick()/contourPointer alone cannot (M2's descriptor
     // pointer stays valid regardless of residency). Config bytes are re-uploaded
     // below this same Compile/Rematerialize call, so this always reflects the
-    // brickPoolUploaded_ value just computed above.
-    for (auto& cfg : concatenated_.configs) {
-        Vixen::SVO::setBrickResident(cfg, brickPoolUploaded_);
+    // brickPoolUploaded_ value just computed above -- UNLESS a caller already
+    // stamped heterogeneous per-octree residency directly on the provided pool
+    // (SetRecipePool, before this Compile) -- test_tier_crossing_lod_residency.cpp's
+    // documented convention for driving one octree non-resident within an otherwise-
+    // resident concatenated pool, since RequestBrickResidency is a whole-node flag
+    // and structurally cannot express per-octree divergence. Detected by scanning for
+    // any two configs that already disagree; if none disagree, every config is at
+    // either its post-copy default or a prior uniform stamp, so the normal uniform
+    // stamp applies exactly as before (zero behavior change for every ordinary
+    // single-residency scene). brickPoolUploaded_==false is a hard hardware truth
+    // (no bricks physically landed in bricksBuffer_ at all) and always wins --
+    // heterogeneous-but-unuploaded configs are still forced to non-resident.
+    bool residencyHeterogeneous = false;
+    for (size_t i = 1; i < concatenated_.configs.size(); ++i) {
+        if (Vixen::SVO::brickResidentOf(concatenated_.configs[i]) !=
+            Vixen::SVO::brickResidentOf(concatenated_.configs[0])) {
+            residencyHeterogeneous = true;
+            break;
+        }
     }
+    if (!brickPoolUploaded_ || !residencyHeterogeneous) {
+        for (auto& cfg : concatenated_.configs) {
+            Vixen::SVO::setBrickResident(cfg, brickPoolUploaded_);
+        }
+    }
+    // else: bricks are uploaded AND the caller's per-octree stamps already diverge
+    // -- preserve them untouched (this is the ONLY branch that changes behavior).
 
     // Config SSBO (binding 5, std430): one 432-byte OctreeConfig per octree.
     // ponytail: min 1 entry so the buffer is never zero-byte.

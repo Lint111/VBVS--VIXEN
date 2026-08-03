@@ -461,7 +461,14 @@ else()
         "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_rendergraph_criticalnodes_gpurender2b PRIVATE
-    GLSL_RAYMARCH_SPV="${_brm_spv}")
+    GLSL_RAYMARCH_SPV="${_brm_spv}"
+    # ShadowCorrectness fix (2026-08-03): compiles SpatialReuseShade.comp at TEST RUNTIME via
+    # ShaderManagement (already in RENDERGRAPH_TEST_COMMON_LIBS -- see that list's own
+    # `if(TARGET ShaderManagement)` append above), same VIXEN_SHADER_SOURCE_DIR-based
+    # AddIncludePath() pattern test_sampling_compile_gate.cpp and BuildRenderGraph.cpp's own
+    # spatialReuseShaderLibNode registration both use, so #include "SceneBindings.glsl" /
+    # "Generated/*.glsl" resolve against the real shader tree.
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
 if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_rendergraph_criticalnodes_gpurender2b PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()

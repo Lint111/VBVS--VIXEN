@@ -351,6 +351,7 @@ protected:
     // for a genuine (not placeholder) tier-crossing scene.
     void RenderAndReadIterCounts(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
                                  VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer tierRefTableBuf,
+                                 VkBuffer sdfChannelPoolBuf, VkBuffer brickLookupBuf, VkBuffer mipPoolBuf,
                                  const PushConstants& pc, uint32_t w, uint32_t h,
                                  uint32_t maxInstances,
                                  std::vector<uint32_t>& instanceIterCounts,
@@ -368,11 +369,18 @@ protected:
         CreateHostBuffer(kRayTraceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, counterBuf, counterMem, true);
 
-        VkBuffer dummySdf = VK_NULL_HANDLE, dummyLookup = VK_NULL_HANDLE, dummyMip = VK_NULL_HANDLE;
-        VkDeviceMemory dummySdfMem = VK_NULL_HANDLE, dummyLookupMem = VK_NULL_HANDLE, dummyMipMem = VK_NULL_HANDLE;
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySdf, dummySdfMem, true);
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyLookup, dummyLookupMem, true);
-        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyMip, dummyMipMem, true);
+        // FIX (was: 256-byte zeroed placeholders copy-pasted from
+        // test_body_instance_occlusion_reject.cpp's BINARY-format scenes, which never read
+        // channelPool/brickLookup). THIS test's scenes are FORMAT_STORED_SDF (SerializeSdf) --
+        // handleLeafHitInstancedSdf reads real color/density data from these SSBOs at
+        // poolBrickBase-offset addresses that exceed 256 bytes for any octree past the first
+        // (measured: child's poolBrickBase=24576 floats), so the placeholder was silently
+        // serving out-of-bounds/zero reads for every SDF leaf hit -- the root cause of the
+        // magenta-child-color check always reading black. Bind the node's REAL SDF channel
+        // pool / brick lookup / mip pool outputs instead.
+        VkBuffer sdfBuf    = sdfChannelPoolBuf;
+        VkBuffer lookupBuf = brickLookupBuf;
+        VkBuffer mipBuf    = mipPoolBuf;
 
         // Baked-perf-pipeline M2: binding 18 (HitRecordBuffer) is a real SSBO the shader has
         // declared since before this M2's own work (M-wire Task 8) -- this test's descriptor
@@ -490,9 +498,9 @@ protected:
         VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo sdfInfo{dummySdf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo lookupInfo{dummyLookup, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo sdfInfo{sdfBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo lookupInfo{lookupBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo mipInfo{mipBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo iterInfo{iterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo tierRefInfo{tierRefTableBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo hitRecordInfo{dummyHitRecord, 0, VK_WHOLE_SIZE};
@@ -641,9 +649,8 @@ protected:
         vkDestroyImage(logicalDevice_, idImg, nullptr);    vkFreeMemory(logicalDevice_, idMem, nullptr);
         vkDestroyBuffer(logicalDevice_, traceBuf, nullptr);   vkFreeMemory(logicalDevice_, traceMem, nullptr);
         vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
-        vkDestroyBuffer(logicalDevice_, dummySdf, nullptr);    vkFreeMemory(logicalDevice_, dummySdfMem, nullptr);
-        vkDestroyBuffer(logicalDevice_, dummyLookup, nullptr); vkFreeMemory(logicalDevice_, dummyLookupMem, nullptr);
-        vkDestroyBuffer(logicalDevice_, dummyMip, nullptr);    vkFreeMemory(logicalDevice_, dummyMipMem, nullptr);
+        // sdfBuf/lookupBuf/mipBuf are the NODE's own persistent output buffers (borrowed,
+        // not owned here) -- destroyed by node->Cleanup(), never by this function.
         vkDestroyBuffer(logicalDevice_, iterBuf, nullptr);     vkFreeMemory(logicalDevice_, iterMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyHitRecord, nullptr); vkFreeMemory(logicalDevice_, dummyHitRecordMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummySkipMask, nullptr);  vkFreeMemory(logicalDevice_, dummySkipMaskMem, nullptr);
@@ -851,7 +858,14 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         VkBuffer configBuf   = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
         VkBuffer instanceBuf = buf(C::INSTANCE_BUFFER_Slot::index);
         VkBuffer tierRefBuf  = buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index);
+        // FIX: this scene is FORMAT_STORED_SDF (SerializeSdf) -- handleLeafHitInstancedSdf
+        // reads real color/density data from these, unlike the binary-body sibling test this
+        // file's dispatch pattern was copied from.
+        VkBuffer sdfBuf      = buf(C::OCTREE_SDF_BUFFER_Slot::index);
+        VkBuffer lookupBuf   = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
+        VkBuffer mipBuf      = buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index);
         ASSERT_NE(nodesBuf, VK_NULL_HANDLE); ASSERT_NE(tierRefBuf, VK_NULL_HANDLE);
+        ASSERT_NE(sdfBuf, VK_NULL_HANDLE); ASSERT_NE(lookupBuf, VK_NULL_HANDLE);
 
         // 500x500, matching BuildRenderGraph.cpp's own standalone-window default,
         // camera looking down -Z at the sphere's world centre.
@@ -874,6 +888,7 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
 
         ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
             nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+            sdfBuf, lookupBuf, mipBuf,
             pc, kW, kH, 1u, iterCounts, rgba, hitRecords));
 
         vkDeviceWaitIdle(logicalDevice_);
@@ -976,7 +991,18 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     VkBuffer configBuf    = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
     VkBuffer instanceBuf  = buf(C::INSTANCE_BUFFER_Slot::index);
     VkBuffer tierRefBuf   = buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index);
+    // FIX: this scene is FORMAT_STORED_SDF (SerializeSdf) -- shadeFromMipSample /
+    // handleLeafHitInstancedSdf both read real data from these, unlike the binary-body
+    // sibling test this file's dispatch pattern was copied from. Also closes the
+    // "passes vacuously" hazard this test's own header comment flags: the mip-fallback
+    // shade this test's decisive assertion depends on was reading a 256-byte placeholder,
+    // so EVERY pixel (fallback or not) read zero -- indistinguishable from "LOD gate
+    // correctly produced zero magenta."
+    VkBuffer sdfBuf       = buf(C::OCTREE_SDF_BUFFER_Slot::index);
+    VkBuffer lookupBuf    = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
+    VkBuffer mipBuf       = buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index);
     ASSERT_NE(nodesBuf, VK_NULL_HANDLE); ASSERT_NE(tierRefBuf, VK_NULL_HANDLE);
+    ASSERT_NE(sdfBuf, VK_NULL_HANDLE); ASSERT_NE(lookupBuf, VK_NULL_HANDLE);
 
     constexpr uint32_t kW = 500, kH = 500;
     const glm::vec3 eye(64.0f, 64.0f, 300.0f);
@@ -1011,10 +1037,19 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
         nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        sdfBuf, lookupBuf, mipBuf,
         pc, kW, kH, 1u, iterCounts, rgba, hitRecords));
 
     ASSERT_EQ(iterCounts.size(), 1u);
-    std::printf("[TIER-CROSSING LOD] instance iteration count with huge raySizeCoef=%u\n", iterCounts[0]);
+    // NOT printed: InstanceIterDebugBuffer (binding 14) is written per-INSTANCE
+    // (instanceIterCount[instIdx]), but this test dispatches the full 500x500 image
+    // against a single instance (maxInstances=1) -- all 250,000 threads that reach the
+    // instance loop race-write the SAME instanceIterCount[0] with no ordering guarantee
+    // (undefined per the Vulkan memory model), so iterCounts[0] is whichever thread's
+    // write happened to land last, not a meaningful per-instance total. Only the size
+    // assertion above is load-bearing; the buffer's real per-pixel iteration count is
+    // the DebugRaySample the shader ALREADY captures per-pixel via VIXEN_GPU_TRACE_HOOKS
+    // trace recording (binding 4), not this whole-instance debug counter.
 
     // M2c fix: read HitRecord.albedo instead of the dead colorImg — colorImg has been
     // permanently unwritten since 784adff7 (Sampled Lighting Inc3 M1, KI-018); DO NOT
