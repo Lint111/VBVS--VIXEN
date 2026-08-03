@@ -7226,123 +7226,99 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // slots, not here. Binding 0 (outputImage) is the genuine write hazard — also wired below via
     // IMAGE_WRITE, not here (it needs the render target's CURRENT view, same as the march's own
     // binding-0 wiring further up).
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          directLightingGatherer, DirectSdi::Bind::ESVOBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          directLightingGatherer, DirectSdi::Bind::BrickBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          directLightingGatherer, DirectSdi::Bind::MaterialBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                          directLightingGatherer, 5,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                          directLightingGatherer, 10,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
-                          directLightingGatherer, 11,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
-                          directLightingGatherer, 12,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
-                          directLightingGatherer, 13,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
-                          directLightingGatherer, 15,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
-                          directLightingGatherer, 16,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
-    // DirectLighting.comp #includes SceneBindings.glsl too (KI-018 shared-scene-code precedent),
-    // so SPIR-V reflection marks binding 35 REQUIRED here as well, even though this shader never
-    // calls isInstanceSkipped() itself -- same reasoning as this gatherer's own binding 31
-    // (ddgiLeakGateDebugBuffer) wire below. Same shared placeholder buffer as descriptorGatherer's
-    // binding 35 above.
-    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          directLightingGatherer, 35,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
-                          directLightingGatherer, 18,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
-                          directLightingGatherer, 19,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
-                          directLightingGatherer, 20,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
-                          directLightingGatherer, 21,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Semantic-wiring S2: the SHARED scene-provider registry — every member of
+    // DirectLighting's interface resolved by its shader-declared name from the
+    // merged SDI (binding-number divergence vs the march — LightingConfig 16
+    // vs 17, HitRecord 17 vs 18 — is absorbed by the names). SpatialReuse/
+    // ProbeUpdate/the march migrate onto this same registry next.
+    //
+    // Provenance preserved from the hand block: InstanceSkipMask is REQUIRED
+    // here because DirectLighting.comp #includes SceneBindings.glsl (KI-018)
+    // even though this shader never calls isInstanceSkipped(). worldPosImage
+    // (KI-023) is the accumulate seam's self-contained read-then-write-back —
+    // Execute-only, no sync slot. Reservoir A/B are BOTH always bound; the
+    // shader picks current-vs-previous via reservoirConfig.frameParity&1 (the
+    // M5 cross-dispatch hazard is declared separately via the sync gatherers,
+    // per the descriptor-vs-sync-slot split). outputImage is read-only here
+    // since M5 (imageSize() only — SpatialReuse owns the write). HitRecord's
+    // cross-submit hazard is likewise declared via the sync-slot pair below.
+    // The old binding-20 historyImage wire is GONE — the M5 pass split moved
+    // historyImage to SpatialReuseShade (DirectLighting.comp:84) and DL's
+    // compiled interface has no binding 20; the member table simply has no
+    // such member (the dead wire the strict contract flagged).
+    SdiProviderRegistry sceneProviders;
+    sceneProviders.Provide("outputImage", renderTargetNode,
+                           RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    // (Each config slot is its own tag TYPE — typed-connection design — so
+    // these enumerate individually rather than via a table.)
+    const auto kSceneRoles = SlotRole::Dependency | SlotRole::Execute;
+    sceneProviders.Provide("ESVOBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BrickBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER, kSceneRoles);
+    sceneProviders.Provide("MaterialBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER, kSceneRoles);
+    sceneProviders.Provide("OctreeConfigsSSBO", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, kSceneRoles);
+    sceneProviders.Provide("MipPoolBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER, kSceneRoles);
+    sceneProviders.Provide("TierRefTableBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, kSceneRoles);
+    // RayTraceBuffer: the march wires this from voxelGridNode's debug-capture
+    // buffer (Dependency|Execute|Debug) — the SAME provider serves DL now
+    // (previously placeholder-bound here; the registry makes it real).
+    sceneProviders.Provide("RayTraceBuffer", voxelGridNode,
+                           VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
+    sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
+                           LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ShadowConfigSSBO", shadowConfigNode,
+                           ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("AccumulationConfigSSBO", accumulationConfigNode,
+                           AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("PrevCameraConfigSSBO", prevCameraConfigNode,
+                           PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("worldPosHistoryImage", worldPosHistoryNode,
+                           WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
+                           SlotRole::Execute);
+    sceneProviders.Provide("ReservoirConfigSSBO", reservoirConfigNode,
+                           ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("LightTreeBufferSSBO", lightTreeBufferNode,
+                           LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ReservoirBufferA", reservoirBufferA,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ReservoirBufferB", reservoirBufferB,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("HitRecordBuffer", hitRecordBufferNode,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Sampled Lighting Inc3 M2 (KI-023): Binding 22: worldPosImage (persistent rgba32f storage
-    // image, WorldPosHistoryNode). Read+written by DirectLighting.comp itself in the SAME
-    // dispatch it also reads/writes historyImage in (both are the accumulate seam's own
-    // read-then-write-back pattern, same shape as PickIdTargetNode's binding-9 self-contained
-    // read/write) — no cross-submit hazard, no sync slot needed, mirrors binding 20's own
-    // Execute-only wiring exactly.
-    batch.Connect(worldPosHistoryNode, WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
-                          directLightingGatherer, 22,
-                          SlotRoleModifier(SlotRole::Execute));
-
-    // Sampled Lighting Inc3 M3: Binding 23: ReservoirConfig SSBO (single record, re-uploaded
-    // per-frame from ReservoirConfigNode's ring). Declared in the shader but not yet read
-    // this milestone (M4/M5 wire the reservoir/RIS shading logic) — a pure plumbing wire,
-    // mirroring binding 21's own M3-predecessor plumbing-only precedent (PrevCameraConfig).
-    batch.Connect(reservoirConfigNode, ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
-                          directLightingGatherer, 23,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Sampled Lighting Inc3 M4: Binding 24: LightTreeBuffer SSBO (mip-cut light-tree, re-uploaded
-    // per-frame from LightTreeBufferNode's ring). RIS candidate generation samples this — read-only
-    // in DirectLighting.comp, so plain Dependency|Execute wiring (like binding 23) is sufficient.
-    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
-                          directLightingGatherer, 24,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Sampled Lighting Inc3 M4/M5: Bindings 25/26: reservoir CURRENT/PREVIOUS ping-pong SSBOs
-    // (Vixen::Gpu::ReservoirRecord[], one per pixel). BOTH buffers are ALWAYS bound at BOTH
-    // bindings 25/26 — DirectLighting.comp itself picks which is "current" (write) vs "previous"
-    // (read, for TEMPORAL reuse — the previous FRAME's reservoir) each frame via
-    // reservoirConfig.frameParity&1 (see ReservoirConfig.cs's own doc comment), so no CPU-side
-    // rewiring/swap is needed frame-to-frame. This descriptor binding is purely the DATA path
-    // (which buffer this SHADER instance sees at binding 25 vs 26); M4's own SAME-NODE cross-
-    // FRAME write/read (temporal reuse, still true this milestone) needs no sync slot on ITS
-    // OWN — same historyImage/worldPosHistoryImage precedent as before (the M2 Progress Log's
-    // "benign intra-dispatch race" reasoning). M5 ADDS a genuine CROSS-DISPATCH, SAME-FRAME
-    // hazard on TOP of this (SpatialReuseNode reading THIS pass's own just-written reservoirs,
-    // including neighbors' pixels) — that hazard is declared separately via the array-hazard
-    // write-gatherer/read-gatherer pair further below, NOT here (this connection stays plain
-    // Dependency|Execute, matching every other descriptor-only binding in this function —
-    // descriptor binding and sync-slot declaration are deliberately separate connections, per
-    // ComputeStageNodeConfig's own doc comment).
-    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          directLightingGatherer, 25,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          directLightingGatherer, 26,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 0 (outputImage): Sampled Lighting Inc3 M5 — DirectLighting no longer WRITES this
-    // (SpatialReuseNode below is the genuine writer now); DirectLighting.comp keeps a read-only
-    // binding purely for imageSize() (see that shader's own binding-0 comment), so it still needs
-    // the descriptor bound — same renderTargetNode::CURRENT_VIEW source, just no sync-slot hazard
-    // paired with it any more (moved to SpatialReuseNode's own IMAGE_WRITE below).
-    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
-                          directLightingGatherer, 0,
-                          SlotRoleModifier(SlotRole::Execute));
-
-    // Binding 17 (HitRecord): DirectLighting READS what the march WROTE — the genuine cross-submit
-    // hazard this whole milestone exists to correctly bake. Descriptor binding (plain gatherer,
-    // Dependency|Execute) + the BUFFER_WRITE/BUFFER_READ_A sync-slot pair further below (the
-    // auto-sync hazard DECLARATION — see ComputeStageNodeConfig's own doc comment on the split
-    // between descriptor binding and sync-slot declaration).
-    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          directLightingGatherer, 17,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Feature set deliberately EMPTY here: the one trace-gated member
+    // (InstanceIterDebugBuffer, binding 14) has no app-side owner — under
+    // VIXEN_DEBUG_CAPTURE it falls through to the DescriptorSetNode's
+    // placeholder fallback exactly as before (byte-identical both modes);
+    // providing a real buffer is the capture path's own future slice.
+    WireStageFromSdi<DirectSdi::Metadata, DirectSdi::MEMBERS>(
+        batch, sceneProviders, directLightingGatherer,
+        /*pushGatherer (unused in this scope)*/ directLightingGatherer,
+        {}, SdiWireSet::DescriptorsOnly);
 
     // ===================================================================
     // Sampled Lighting Inc3 M5: SpatialReuseNode wiring — the second half of the pass
@@ -7428,135 +7404,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           spatialReusePushConstantGatherer, 12,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // SpatialReuse's descriptor bindings: same scene SSBOs (read-only, no hazard) as
-    // DirectLighting's own gatherer above.
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          spatialReuseGatherer, ReuseSdi::Bind::ESVOBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          spatialReuseGatherer, ReuseSdi::Bind::BrickBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          spatialReuseGatherer, ReuseSdi::Bind::MaterialBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                          spatialReuseGatherer, 5,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                          spatialReuseGatherer, 10,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
-                          spatialReuseGatherer, 11,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
-                          spatialReuseGatherer, 12,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
-                          spatialReuseGatherer, 13,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
-                          spatialReuseGatherer, 15,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
-                          spatialReuseGatherer, 16,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
-    // SpatialReuseShade.comp #includes SceneBindings.glsl too, so SPIR-V reflection marks
-    // binding 35 REQUIRED here as well (same reasoning as descriptorGatherer/directLightingGatherer
-    // above). Same shared placeholder buffer.
-    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          spatialReuseGatherer, 35,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
-                          spatialReuseGatherer, 18,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
-                          spatialReuseGatherer, 19,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Binding 20 (historyImage): SpatialReuseNode now owns BOTH the read and the write (moved
-    // from DirectLightingNode, M5) — Execute-only, same self-contained read/write-in-one-
-    // dispatch pattern historyImage has always used.
-    batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
-                          spatialReuseGatherer, 20,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
-                          spatialReuseGatherer, 21,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Binding 22 (worldPosHistoryImage): SpatialReuseNode now owns BOTH the read (accumulate
-    // seam's own reproject-validity check) and the write (moved from DirectLightingNode, M5) —
-    // still Execute-only (same-node self-contained read/write-in-one-dispatch, no cross-submit
-    // hazard — mirrors historyImage@20's own precedent exactly).
-    batch.Connect(worldPosHistoryNode, WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
-                          spatialReuseGatherer, 22,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(reservoirConfigNode, ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
-                          spatialReuseGatherer, 23,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
-                          spatialReuseGatherer, 24,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Semantic-wiring S2: SpatialReuseShade wires from the SAME sceneProviders
+    // registry DirectLighting uses — its six pass-specific members extend the
+    // registry here; everything shared resolves to the identical providers.
+    //
+    // Provenance preserved: historyImage + worldPosHistoryImage are owned
+    // (read AND write) by this pass since the M5 split — Execute-only,
+    // self-contained read/write-in-one-dispatch. Reservoir A/B are READ here
+    // (DirectLighting is the sole writer; the cross-dispatch hazard is
+    // declared via the array-hazard gatherer pair, not the descriptor). The
+    // probe atlases/grid config are READ (probeUpdate writes; hazard via
+    // IMAGE_READ_ARRAY; CURRENT_VIEW per KI-028 — an IRenderTarget* can never
+    // populate a descriptor slot). SpatialReservoirDebugBuffer is the M6
+    // gate's host-readback-only instrument; DDGILeakGateDebugShadeSSBO is the
+    // shared M5 live-gate buffer ProbeUpdate also binds at 31. HitRecord is a
+    // SECOND reader of the already-synced march write (read-after-read).
+    sceneProviders.Provide("historyImage", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
+                           SlotRole::Execute);
+    sceneProviders.Provide("SpatialReservoirDebugBuffer", spatialReservoirDebugBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("probeIrradianceAtlasRead", probeIrradianceAtlasNode,
+                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("probeVisibilityAtlasRead", probeVisibilityAtlasNode,
+                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("ProbeGridConfigReadSSBO", probeGridConfigNode,
+                           ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("DDGILeakGateDebugShadeSSBO", ddgiLeakGateDebugBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Bindings 25/26 (reservoir A/B): SpatialReuseNode READS ONLY (DirectLightingNode is now the
-    // sole writer, M5) — descriptor binding here, the genuine cross-dispatch READ hazard declared
-    // via the array-hazard read-gatherer further below (paired with DirectLightingNode's own
-    // array-hazard write-gatherer on the SAME two StorageBufferNode Resource*s).
-    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          spatialReuseGatherer, 25,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          spatialReuseGatherer, 26,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 27 (spatial-combine debug buffer): Sampled Lighting Inc3 M6 — SpatialReuseNode
-    // is the SOLE writer (debug/gate-only, never read by any shader), read back host-side by
-    // the M6 gate after vkDeviceWaitIdle (same as reservoirBufferA/B's own gate-readback
-    // precedent) — Execute-only wiring, no sync-slot/hazard declaration needed (no other GPU
-    // consumer exists to race against).
-    batch.Connect(spatialReservoirDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          spatialReuseGatherer, 27,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Bindings 32/33/34 (Sampled Lighting Inc4 M5): DDGI probe atlases + ProbeGridConfig —
-    // SpatialReuseNode READS ONLY (probeUpdateNode is the sole writer). Same CURRENT_VIEW
-    // precedent as probeUpdateGatherer's own bindings 29/30 (raw VkImageView, not the
-    // IRenderTarget* PROBE_ATLAS output — see ProbeAtlasNodeConfig::CURRENT_VIEW's own doc
-    // comment on why IRenderTarget* can never populate a descriptor slot, KI-028's
-    // established discipline). The genuine cross-dispatch READ hazard against
-    // probeUpdateNode's write is declared separately via IMAGE_READ_ARRAY above (same split
-    // IMAGE_WRITE_ARRAY/descriptor-binding already uses) — these bindings are Execute-only.
-    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                          spatialReuseGatherer, 32,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                          spatialReuseGatherer, 33,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(probeGridConfigNode, ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
-                          spatialReuseGatherer, 34,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 31 (M5 live-gate instrumentation): the SAME ddgi_leak_gate_debug_buffer
-    // ProbeUpdate.comp's gatherer already binds at 31 -- SpatialReuseShade.comp additionally
-    // writes shadeM5IndirectLuma into it (see DDGILeakGateDebugShade's own doc comment).
-    // Read-write, same role shape as probeUpdateGatherer's own binding-31 connection.
-    batch.Connect(ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          spatialReuseGatherer, 31,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Binding 0 (outputImage): SpatialReuseNode is the genuine writer now (M5 — moved from
-    // DirectLightingNode). Same renderTargetNode::CURRENT_VIEW source.
-    batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
-                          spatialReuseGatherer, 0,
-                          SlotRoleModifier(SlotRole::Execute));
-
-    // Binding 17 (HitRecord): SpatialReuseNode reads it too (own-pixel AND neighbor shading) —
-    // same march-write hazard HitRecord already has against DirectLightingNode; SpatialReuseNode
-    // is a SECOND reader of the SAME already-synced buffer (read-after-read is not a NEW hazard
-    // once the march->DirectLighting write->read edge already forces the write visible before
-    // DirectLighting's group runs — SpatialReuseNode runs strictly after DirectLighting in
-    // execution order, so the write is already visible to it with no additional slot needed).
-    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          spatialReuseGatherer, 17,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    WireStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
+        batch, sceneProviders, spatialReuseGatherer,
+        /*pushGatherer (unused in this scope)*/ spatialReuseGatherer,
+        {}, SdiWireSet::DescriptorsOnly);
 
     // --- SpatialReuseNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
     // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
@@ -7766,81 +7649,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           probeUpdatePushConstantGatherer, 9,
                           SlotRoleModifier(SlotRole::Execute));
 
-    // ProbeUpdate's descriptor bindings: the scene SSBOs (read-only, same as DirectLighting/
-    // SpatialReuse's own gatherer bindings — read-read is not a hazard) + ProbeGridConfig
-    // (binding 28) + the light-tree cut (binding 24, read-only, same buffer DirectLighting.comp
-    // samples for RIS). NO HitRecord/reservoir/outputImage bindings — this pass never touches
-    // those resources, the structural basis for its disjointness from the direct/ReSTIR pass.
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          probeUpdateGatherer, ProbeSdi::Bind::ESVOBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          probeUpdateGatherer, ProbeSdi::Bind::BrickBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          probeUpdateGatherer, ProbeSdi::Bind::MaterialBuffer::BINDING,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                          probeUpdateGatherer, 5,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                          probeUpdateGatherer, 10,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
-                          probeUpdateGatherer, 11,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
-                          probeUpdateGatherer, 12,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
-                          probeUpdateGatherer, 13,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
-                          probeUpdateGatherer, 15,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: Binding 35: InstanceSkipMaskBuffer.
-    // ProbeUpdate.comp #includes SceneBindings.glsl too, so SPIR-V reflection marks binding 35
-    // REQUIRED here as well (same reasoning as the other three gatherers). Same shared
-    // placeholder buffer.
-    batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          probeUpdateGatherer, 35,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(lightTreeBufferNode, LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
-                          probeUpdateGatherer, 24,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(probeGridConfigNode, ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
-                          probeUpdateGatherer, 28,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-
-    // Bindings 29/30 (probe atlases): descriptor binding here (plain gatherer, CURRENT_VIEW
-    // handles) + the genuine write hazard declared via IMAGE_WRITE_ARRAY below (Inc4 M1's
-    // mechanism — this pass writes BOTH atlases in the SAME dispatch, mirroring how
-    // DirectLightingNode's reservoir write-array covers 2 buffers in one BUFFER_WRITE_ARRAY).
+    // Semantic-wiring S2: ProbeUpdate wires from the SAME sceneProviders
+    // registry — the leanest of the four consumers (NO HitRecord/reservoir/
+    // outputImage members: the pass's disjointness from the direct/ReSTIR
+    // path is structural, visible in its own merged member table).
     //
-    // Validator-found fix: MUST connect ProbeAtlasNodeConfig::CURRENT_VIEW (raw VkImageView), NOT
-    // PROBE_ATLAS (IRenderTarget*) — IRenderTarget has no `conversion_type` (only an `operator
-    // VkImageView()`), so a Resource holding an IRenderTarget* is typed PassThroughStorage and
-    // GetDescriptorHandle() can never produce a VkImageView from it; vkUpdateDescriptorSets was
-    // never actually called for these bindings (VUID-vkCmdDispatch-None-08114 on both). Same
-    // precedent + role shape as DirectLighting/SpatialReuseShade's own binding-0 connection just
-    // above (renderTargetNode's CURRENT_VIEW, not RENDER_TARGET, Execute-only — the hazard side is
-    // declared separately via IMAGE_WRITE_ARRAY/probeAtlasGatherer below, same split those passes
-    // use between their descriptor-binding Connect and their IMAGE_WRITE sync-slot Connect).
-    batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                          probeUpdateGatherer, 29,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                          probeUpdateGatherer, 30,
-                          SlotRoleModifier(SlotRole::Execute));
+    // Provenance preserved: probe atlases at 29/30 are the WRITE side —
+    // CURRENT_VIEW (raw VkImageView), never PROBE_ATLAS (IRenderTarget* has
+    // no conversion_type; validator-found VUID-08114), Execute-only with the
+    // write hazard declared via IMAGE_WRITE_ARRAY. ProbeGridConfigSSBO@28 and
+    // DDGILeakGateDebugSSBO@31 are CPU-written-GPU-read (and 31 written back:
+    // gatheredLuma) — Dependency|Execute. These names differ from
+    // SpatialReuseShade's read-side blocks (ProbeGridConfigReadSSBO@34,
+    // DDGILeakGateDebugShadeSSBO@31→sharing the same buffer node): per-shader
+    // block names, same providers where the resource is the same.
+    sceneProviders.Provide("ProbeGridConfigSSBO", probeGridConfigNode,
+                           ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("probeIrradianceAtlas", probeIrradianceAtlasNode,
+                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("probeVisibilityAtlas", probeVisibilityAtlasNode,
+                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("DDGILeakGateDebugSSBO", ddgiLeakGateDebugBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 31 (Sampled Lighting Inc4 M4): DDGI leak-test gate debug SSBO — read-write
-    // (the shader reads ddgiLeakGateEnabled/chebyshevTestEnabled/near-far probe indices +
-    // farShadingPos the CPU sets, and writes gatheredLuma back), same Dependency|Execute
-    // role shape every other read-then-write SSBO binding on this gatherer uses (e.g.
-    // binding 28's ProbeGridConfig, also CPU-written then GPU-read every frame).
-    batch.Connect(ddgiLeakGateDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          probeUpdateGatherer, 31,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    WireStageFromSdi<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
+        batch, sceneProviders, probeUpdateGatherer,
+        /*pushGatherer (unused in this scope)*/ probeUpdateGatherer,
+        {}, SdiWireSet::DescriptorsOnly);
 
     // --- ProbeUpdateNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
     // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
