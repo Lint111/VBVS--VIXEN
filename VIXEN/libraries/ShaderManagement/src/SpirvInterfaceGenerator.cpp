@@ -355,15 +355,43 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
     }
     if (setOpen) code << "} // namespace Set" << currentSet << "\n\n";
 
-    // Push-constant members with feature tags.
+    // Name-keyed aliases for descriptor bindings (the S1 connect-site face:
+    // `Cull::Bind::BodyInstanceBuffer::BINDING` instead of a bare index).
+    // Nested in `Bind` so a fallback-named binding can never collide with its
+    // own layout struct definition above. Skipped entirely for any name shared
+    // by two members — an alias must never lie.
+    {
+        std::map<std::string, uint32_t> nameCounts;
+        for (const auto& b : merged.bindings) {
+            ++nameCounts[SanitizeName(b.binding.name)];
+        }
+        bool wroteAlias = false;
+        for (const auto& b : merged.bindings) {
+            const std::string alias = SanitizeName(b.binding.name);
+            if (alias.empty() || nameCounts[alias] != 1) continue;
+            if (!wroteAlias) {
+                code << "// Name-keyed binding aliases (duplicate names skipped)\n";
+                code << "namespace Bind {\n";
+                wroteAlias = true;
+            }
+            code << "using " << alias << " = Set" << b.binding.set
+                 << "::Binding" << b.binding.binding << ";\n";
+        }
+        if (wroteAlias) code << "} // namespace Bind\n\n";
+    }
+
+    // Push-constant members with feature tags. INDEX is the field ordinal in
+    // offset order — the PushConstantGathererNode slot index.
     if (!merged.pushMembers.empty()) {
         code << "namespace Push {\n\n";
         code << Indent(1) << "static constexpr uint32_t SIZE = "
              << merged.pushSize << ";\n\n";
-        for (const auto& m : merged.pushMembers) {
+        for (size_t idx = 0; idx < merged.pushMembers.size(); ++idx) {
+            const auto& m = merged.pushMembers[idx];
             code << Indent(1) << "struct " << SanitizeName(m.member.name) << " {\n";
             code << Indent(2) << "static constexpr const char* NAME = \""
                  << m.member.name << "\";\n";
+            code << Indent(2) << "static constexpr uint32_t INDEX = " << idx << ";\n";
             code << Indent(2) << "static constexpr uint32_t OFFSET = "
                  << m.member.offset << ";\n";
             code << Indent(2) << "static constexpr uint32_t SIZE = "

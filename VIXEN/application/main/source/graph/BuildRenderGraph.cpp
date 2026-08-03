@@ -26,7 +26,24 @@
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
 #include "MeshData.h"
-#include "VoxelRayMarchNames.h"  // Generated SDI shader-binding constants (VoxelRayMarch::*)
+#include "merged/BodyInstanceRayMarch-SDI.h"   // Semantic-wiring S1: feature-tagged merged SDI (ShaderInterface::*)
+#include "merged/HiZDownsample-SDI.h"          // Semantic-wiring S1: B1 HiZ named binding/push constants
+#include "merged/InstanceOcclusionCull-SDI.h"  // Semantic-wiring S1: B1 cull named binding/push constants
+#include "merged/RecipeInstanceBucketing-SDI.h" // Semantic-wiring S1: bucketing named binding/push constants
+#include "merged/DirectLighting-SDI.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
+#include "merged/SpatialReuseShade-SDI.h"
+#include "merged/ProbeUpdate-SDI.h"
+
+// Semantic-wiring S1: short aliases for the merged-SDI namespaces used at many
+// Connect sites below (drift-gated by ctest sdi_merged_drift_check). The three
+// lighting passes share the march's push layout TODAY (verified via the merged
+// headers), but each cites its own interface so divergence breaks at regen —
+// not silently at runtime like the old borrowed VoxelRayMarch:: constants.
+namespace MarchSdi = ShaderInterface::BodyInstanceRayMarch;
+namespace BucketSdi = ShaderInterface::RecipeInstanceBucketing;
+namespace DirectSdi = ShaderInterface::DirectLighting;
+namespace ReuseSdi = ShaderInterface::SpatialReuseShade;
+namespace ProbeSdi = ShaderInterface::ProbeUpdate;
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -6031,43 +6048,43 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // Binding 0: BodyInstanceBuffer -- reuses bodyOctreeSceneNode's own INSTANCE_BUFFER
         // (the SAME buffer the march reads at its own binding 10) -- no new instance data node.
         batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                      recipeBucketingDescGatherer, 0,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BodyInstanceBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Binding 1: RecipeBoundSphereBuffer.
         batch.Connect(recipeBoundSphereBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 1,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::RecipeBoundSphereBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Binding 2: BucketCountBuffer.
         batch.Connect(recipeBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 2,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCountBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Binding 3: BucketIndicesBuffer.
         batch.Connect(recipeBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 3,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketIndicesBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Bindings 4-7: coverage AABB extrema.
         batch.Connect(recipeBucketCoverageMinXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 4,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMinXBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(recipeBucketCoverageMinYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 5,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMinYBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(recipeBucketCoverageMaxXBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 6,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMaxXBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 7,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketCoverageMaxYBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Binding 8: BucketIndirectCommandBuffer.
         batch.Connect(recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 8,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::BucketIndirectCommandBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Bindings 9-10: Load-Tier Contract M2 (precision tier) precision sub-bucket pair.
         batch.Connect(recipePrecisionBucketCountBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 9,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::PrecisionBucketCountBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(recipePrecisionBucketIndicesBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      recipeBucketingDescGatherer, 10,
+                      recipeBucketingDescGatherer, BucketSdi::Bind::PrecisionBucketIndicesBuffer::BINDING,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
         // Three ComputeStageNode instances share the SAME pipeline/descriptor set (the shader's
@@ -6139,35 +6156,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
                  // extraction path always does a by-VALUE GetHandle<T>() -- see this node's own
                  // creation-site comment for the full account of this bug, found live).
                  .Connect(recipeBucketingViewProjConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, 0, SlotRoleModifier(SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::viewProj::INDEX, SlotRoleModifier(SlotRole::Execute))
                  // field 1: uint instanceCount (SAME live source as the march's own binding-10
                  // instanceCount push-constant field -- bodyOctreeSceneNode's own live count).
                  .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
-                          s.pcGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::instanceCount::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
                  // field 2: uint maxBuckets (fixed literal, matches SSBO sizing above).
                  .Connect(recipeBucketingMaxBucketsConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, 2, SlotRoleModifier(SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::maxBuckets::INDEX, SlotRoleModifier(SlotRole::Execute))
                  // field 3: uint maxMembersPerBucket (fixed literal, matches SSBO sizing above).
                  .Connect(recipeBucketingMaxMembersConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, 3, SlotRoleModifier(SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::maxMembersPerBucket::INDEX, SlotRoleModifier(SlotRole::Execute))
                  // fields 4/5: uint screenWidth/screenHeight (render-target's live extent, same
                  // source the main march's dispatch sizing derives from).
                  .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
-                          s.pcGatherer, 4, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::screenWidth::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
                  .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
-                          s.pcGatherer, 5, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::screenHeight::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute))
                  // field 6: uint mode (THIS stage's own literal -- 1/0/2 for init/bucket/final).
                  .Connect(s.modeConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, 6, SlotRoleModifier(SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::mode::INDEX, SlotRoleModifier(SlotRole::Execute))
                  // Load-Tier Contract M1 (gating tier): fields 8/9 -- raySizeBias/cameraPos, SAME
                  // live nodes the main march's own pushConstantGatherer already reads
                  // (raySizeBiasConstant/cameraNode, both in scope from earlier in this function)
                  // so a camera move is reflected identically in both the march and this
                  // bucketing pre-pass, with no new plumbing.
                  .Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
-                          s.pcGatherer, 8, SlotRoleModifier(SlotRole::Execute))
+                          s.pcGatherer, BucketSdi::Push::raySizeBias::INDEX, SlotRoleModifier(SlotRole::Execute))
                  .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          s.pcGatherer, 9,
+                          s.pcGatherer, BucketSdi::Push::cameraPos::INDEX,
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));
         }
         // field 7: float raySizeCoef -- mirrors the tier-crossing-LOD-override branch the main
@@ -6180,10 +6197,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         for (const auto& s : bucketingPcStages) {
             if (tierCrossingLodCoefOverrideActive) {
                 batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
-                              s.pcGatherer, 7, SlotRoleModifier(SlotRole::Execute));
+                              s.pcGatherer, BucketSdi::Push::raySizeCoef::INDEX, SlotRoleModifier(SlotRole::Execute));
             } else {
                 batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
-                              s.pcGatherer, 7, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                              s.pcGatherer, BucketSdi::Push::raySizeCoef::INDEX, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
             }
         }
 
@@ -6362,37 +6379,54 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           q.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES);
         }
 
-        // HiZ descriptors: binding 0 = last frame's depth (re-emitted per frame, Execute
-        // role like the march's pickId binding), binding 1 = the tile image's view.
+        // Semantic-wiring S1: slot indices come from the feature-tagged merged SDI
+        // (generated/sdi/merged/*-SDI.h) — names, not hand-written numbers. The
+        // constants are drift-gated by ctest sdi_merged_drift_check.
+        namespace HizSdi = ShaderInterface::HiZDownsample;
+        namespace CullSdi = ShaderInterface::InstanceOcclusionCull;
+
+        // HiZ descriptors: last frame's depth (re-emitted per frame, Execute role
+        // like the march's pickId binding) + the tile image's view.
         batch.Connect(b1DepthTarget, DepthTargetNodeConfig::DEPTH_READ_VIEW,
-                      b1HizDescGatherer, 0, SlotRoleModifier(SlotRole::Execute));
+                      b1HizDescGatherer, HizSdi::Bind::srcDepthImage::BINDING,
+                      SlotRoleModifier(SlotRole::Execute));
         batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                      b1HizDescGatherer, 1, SlotRoleModifier(SlotRole::Execute));
-        // HiZ push constants: srcWidth/srcHeight (fields 0/1) from the render target's live
+                      b1HizDescGatherer, HizSdi::Bind::tileMaxImage::BINDING,
+                      SlotRoleModifier(SlotRole::Execute));
+        // HiZ push constants: srcWidth/srcHeight from the render target's live
         // extent — the same source the bucketing pre-pass uses for its own screen dims.
         batch.Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
-                      b1HizPushGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                      b1HizPushGatherer, HizSdi::Push::srcWidth::INDEX,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
-                      b1HizPushGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                      b1HizPushGatherer, HizSdi::Push::srcHeight::INDEX,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
         // Cull descriptors: instances + configs (the march's own sources), the tile view,
-        // and the EXISTING skip-mask buffer (binding 3 in the shader's own namespace).
+        // and the EXISTING skip-mask buffer — each addressed by its shader-declared name.
         batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                      b1CullDescGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                      b1CullDescGatherer, CullSdi::Bind::BodyInstanceBuffer::BINDING,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                      b1CullDescGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                      b1CullDescGatherer, CullSdi::Bind::OctreeConfigsSSBO::BINDING,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::CURRENT_VIEW,
-                      b1CullDescGatherer, 2, SlotRoleModifier(SlotRole::Execute));
+                      b1CullDescGatherer, CullSdi::Bind::tileMaxImage::BINDING,
+                      SlotRoleModifier(SlotRole::Execute));
         batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      b1CullDescGatherer, 3, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        // Cull push constants: prevViewProj (field 0) / prevCamPos (field 1) / dims (field 2)
-        // — all ConstantNodes PreTick refreshes with ONE-FRAME-DELAYED camera values.
+                      b1CullDescGatherer, CullSdi::Bind::InstanceSkipMaskBuffer::BINDING,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        // Cull push constants: prevViewProj / prevCamPos / dims — all ConstantNodes
+        // PreTick refreshes with ONE-FRAME-DELAYED camera values.
         batch.Connect(b1CullPrevViewProjConstant, ConstantNodeConfig::OUTPUT,
-                      b1CullPushGatherer, 0, SlotRoleModifier(SlotRole::Execute));
+                      b1CullPushGatherer, CullSdi::Push::prevViewProj::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
         batch.Connect(b1CullPrevCamPosConstant, ConstantNodeConfig::OUTPUT,
-                      b1CullPushGatherer, 1, SlotRoleModifier(SlotRole::Execute));
+                      b1CullPushGatherer, CullSdi::Push::prevCamPos::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
         batch.Connect(b1CullDimsConstant, ConstantNodeConfig::OUTPUT,
-                      b1CullPushGatherer, 2, SlotRoleModifier(SlotRole::Execute));
+                      b1CullPushGatherer, CullSdi::Push::dims::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
 
         // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
         // the cull writes the skip-mask buffer the march + lighting passes already read.
@@ -6679,7 +6713,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,  // vec3 cameraPos
+                          pushConstantGatherer, MarchSdi::Push::cameraPos::INDEX,  // vec3 cameraPos
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));  // Mark as Execute-only
 
     // Note: time field (index 1) NOT connected - will be filled with zero by gatherer
@@ -6687,25 +6721,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // TODO: Connect actual time source when animation is needed
 
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,  // vec3 cameraDir
+                          pushConstantGatherer, MarchSdi::Push::cameraDir::INDEX,  // vec3 cameraDir
                           ExtractField(&CameraData::cameraDir, SlotRole::Execute));  // Mark as Execute-only
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::fov::BINDING,  // float fov
+                          pushConstantGatherer, MarchSdi::Push::fov::INDEX,  // float fov
                           ExtractField(&CameraData::fov, SlotRole::Execute));  // Mark as Execute-only
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,  // vec3 cameraUp
+                          pushConstantGatherer, MarchSdi::Push::cameraUp::INDEX,  // vec3 cameraUp
                           ExtractField(&CameraData::cameraUp, SlotRole::Execute));  // Mark as Execute-only
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::aspect::BINDING,  // float aspect
+                          pushConstantGatherer, MarchSdi::Push::aspect::INDEX,  // float aspect
                           ExtractField(&CameraData::aspect, SlotRole::Execute));  // Mark as Execute-only
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,  // vec3 cameraRight
+                          pushConstantGatherer, MarchSdi::Push::cameraRight::INDEX,  // vec3 cameraRight
                           ExtractField(&CameraData::cameraRight, SlotRole::Execute));  // Mark as Execute-only
 
     // Connect debugMode from InputState to push constant gatherer for debug visualization
     // Press 0-9 keys to switch between visualization modes at runtime
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
-                          pushConstantGatherer, VoxelRayMarch::debugMode::BINDING,  // int debugMode
+                          pushConstantGatherer, MarchSdi::Push::debugMode::INDEX,  // int debugMode
                           ExtractField(&InputState::debugMode, SlotRole::Execute));  // Mark as Execute-only
 
     // M-wire Task 8: new push constant fields 8, 9, 10 for BodyInstanceRayMarch.comp.
@@ -6720,38 +6754,38 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // unset) is the unchanged pre-M4 connection.
     if (tierCrossingLodCoefOverrideActive) {
         batch.Connect(tierCrossingLodCoefOverrideConstant, ConstantNodeConfig::OUTPUT,
-                              pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
+                              pushConstantGatherer, MarchSdi::Push::raySizeCoef::INDEX,  // push constant field 8: float raySizeCoef
                               SlotRoleModifier(SlotRole::Execute));
     } else {
         batch.Connect(raySizeCoefNode, RaySizeCoefNodeConfig::RAY_SIZE_COEF,
-                              pushConstantGatherer, 8,  // push constant field 8: float raySizeCoef
+                              pushConstantGatherer, MarchSdi::Push::raySizeCoef::INDEX,  // push constant field 8: float raySizeCoef
                               SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     }
     // raySizeBias (binding 9): LOD origin cone size; 0.0 for pinhole camera.
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
-                          pushConstantGatherer, 9,  // push constant field 9: float raySizeBias
+                          pushConstantGatherer, MarchSdi::Push::raySizeBias::INDEX,  // push constant field 9: float raySizeBias
                           SlotRoleModifier(SlotRole::Execute));
     // instanceCount (binding 10): number of valid entries in bodyInstances[]; from BodyOctreeSceneNode.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
-                          pushConstantGatherer, 10,  // push constant field 10: int instanceCount
+                          pushConstantGatherer, MarchSdi::Push::instanceCount::INDEX,  // push constant field 10: int instanceCount
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     // debugTargetPixel (binding 11): TEMP DEBUG — last left-click pixel, so the ray-trace debug
     // buffer (TraceRecording.glsl) force-captures that exact ray regardless of DEBUG_GRID_SPACING.
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
-                          pushConstantGatherer, 11,  // push constant field 11: ivec2 debugTargetPixel
+                          pushConstantGatherer, MarchSdi::Push::debugTargetPixel::INDEX,  // push constant field 11: ivec2 debugTargetPixel
                           ExtractField(&InputState::lastClickPixel, SlotRole::Execute));
     // accumFrameCount (binding 12, Sampled Lighting Inc2 M2): consecutive-static-camera frame
     // counter from AccumulationConfigNode's own reset-on-motion tracking; drives the shader's
     // converging-1/N accumulate-seam alpha.
     batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
-                          pushConstantGatherer, 12,  // push constant field 12: uint accumFrameCount
+                          pushConstantGatherer, MarchSdi::Push::accumFrameCount::INDEX,  // push constant field 12: uint accumFrameCount
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
+    // Connect ray marching resources to the descriptor gatherer using the merged-SDI
+    // named constants (MarchSdi::Bind::*, generated/sdi/merged/BodyInstanceRayMarch-SDI.h).
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage — M4: now the offscreen render target's view, wired further down
     // (beside the rest of the M4 render-target connections) once renderTargetNode exists in scope.
-    // Note: outputImage is not in SDI (writeonly image) so we use literal binding index 0
 
     // M-wire Task 8: bindings 1/2/3/5 now come from BodyOctreeSceneNode (sparse shell octrees).
     // Slot names are identical to VoxelGridNode's octree outputs (by design in BodyOctreeSceneNodeConfig).
@@ -6760,28 +6794,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Binding 1: esvoNodes (SSBO) - concatenated shell octree node descriptors for <= 3 kinds
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          descriptorGatherer, MarchSdi::Bind::ESVOBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 2: brickData (SSBO) - concatenated brick voxel data
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::brickData::BINDING,
+                          descriptorGatherer, MarchSdi::Bind::BrickBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 3: materials (SSBO) - material palette
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::materials::BINDING,
+                          descriptorGatherer, MarchSdi::Bind::MaterialBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 4: RayTraceBuffer (debug capture) — still from voxelGridNode (it has the buffer;
     // BodyOctreeSceneNode has no debug capture). VoxelGridNode stays in graph for this purpose.
     batch.Connect(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
+                          descriptorGatherer, MarchSdi::Bind::RayTraceBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug));
 
     // Binding 5: OctreeConfigsSSBO (std430, N x 432 B) — runtime-sized per-octree config (I3.2).
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
-                          descriptorGatherer, 5,  // Binding 5 (hardcoded; no SDI regen yet)
+                          descriptorGatherer, MarchSdi::Bind::OctreeConfigsSSBO::BINDING,  // Binding 5: OctreeConfigsSSBO (named via merged SDI)
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Binding 9: idOutputImage (R32_UINT storage image) - AR#35 GPU picking P1. The compute shader
@@ -6789,7 +6823,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // PickIdTargetNode re-emits the current ring image's view each frame and the gatherer refreshes it.
     // The shader reflects binding 9 as a STORAGE_IMAGE; DescriptorSetNode writes it with layout GENERAL.
     batch.Connect(pickIdTargetNode, PickIdTargetNodeConfig::ID_IMAGE_VIEW,
-                          descriptorGatherer, 9,  // Binding 9: idOutputImage
+                          descriptorGatherer, MarchSdi::Bind::idOutputImage::BINDING,  // Binding 9: idOutputImage
                           SlotRoleModifier(SlotRole::Execute));
 
     // Binding 36: depthDistanceImage (R32F storage image) — Raster-proxy B1. The march
@@ -6799,8 +6833,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // error (the binding-8 lesson). Execute-only re-emit per frame, exactly like the
     // pickId image above: DepthTargetNode alternates the write slot by frame parity.
     if (b1OcclusionCullEnabled) {
+        // Semantic-wiring S1: the merged march SDI carries this member's feature
+        // predicate (FEATURES = {VIXEN_B1_OCCLUSION_CULL}) — the env gate above and
+        // this constant now assert the same fact from one generated source.
         batch.Connect(b1DepthTarget, DepthTargetNodeConfig::DEPTH_WRITE_VIEW,
-                              descriptorGatherer, 36,  // Binding 36: depthDistanceImage
+                              descriptorGatherer,
+                              ShaderInterface::BodyInstanceRayMarch::Bind::depthDistanceImage::BINDING,
                               SlotRoleModifier(SlotRole::Execute));
     }
 
@@ -6815,7 +6853,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Binding 10: BodyInstanceBuffer (SSBO) — per-body BodyInstanceGpu records (64 B each).
     // M-wire Task 8: this is the NEW binding not present in the dense path.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
-                          descriptorGatherer, 10,  // Binding 10: BodyInstanceBuffer
+                          descriptorGatherer, MarchSdi::Bind::BodyInstanceBuffer::BINDING,  // Binding 10: BodyInstanceBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6835,18 +6873,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (Placeholder 1-byte for binary/Procedural bodies — shader only reads these
     //  when OctreeConfig.formatId == FORMAT_STORED_SDF.)
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,
-                          descriptorGatherer, 11,  // Binding 11: compact shell pool
+                          descriptorGatherer, MarchSdi::Bind::ChannelPoolBuffer::BINDING,  // Binding 11: compact shell pool
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,
-                          descriptorGatherer, 12,  // Binding 12: grid->shellSlot remap
+                          descriptorGatherer, MarchSdi::Bind::BrickLookupBuffer::BINDING,  // Binding 12: grid->shellSlot remap
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Sparse-Mip ESVO LOD Inc1 M3: Binding 13: mip pool SSBO (packed {value,coverage}
     // floats, one per node/channel). Placeholder for a tree that was never mip-baked;
     // read by the shader's leaf-existence (Task 7) and LOD-cutoff (Task 8) fallbacks.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER,
-                          descriptorGatherer, 13,  // Binding 13: MipPoolBuffer
+                          descriptorGatherer, MarchSdi::Bind::MipPoolBuffer::BINDING,  // Binding 13: MipPoolBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6858,7 +6896,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // tier-crossing leaves; read by the shader's traversal-restart (Task 6/7)
     // when a farBit==1 leaf is hit. (Binding 14 is InstanceIterDebugBuffer.)
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER,
-                          descriptorGatherer, 15,  // Binding 15: TierRefTableBuffer
+                          descriptorGatherer, MarchSdi::Bind::TierRefTableBuffer::BINDING,  // Binding 15: TierRefTableBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6871,7 +6909,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // recipe has a derivable grid; read by the shader only when getRecipeOccupancyGrid
     // reports gridDim>0 for the current recipeId (see SdfRecipes.glsl).
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_OCCUPANCYGRID_BUFFER,
-                          descriptorGatherer, 16,  // Binding 16: OccupancyGridBuffer
+                          descriptorGatherer, MarchSdi::Bind::OccupancyGridBuffer::BINDING,  // Binding 16: OccupancyGridBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6887,7 +6925,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the 256-byte zeroed placeholder makes isInstanceSkipped() a true no-op (see that
     // function's own bounds-check comment in SceneBindings.glsl).
     batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          descriptorGatherer, 35,  // Binding 35: InstanceSkipMaskBuffer
+                          descriptorGatherer, MarchSdi::Bind::InstanceSkipMaskBuffer::BINDING,  // Binding 35: InstanceSkipMaskBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6898,7 +6936,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // per-frame from LightingConfigNode's ring). Default content = one directional light
     // matching Lighting.glsl's previous hardcoded default (zero-visual-delta gate).
     batch.Connect(lightingConfigNode, LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER,
-                          descriptorGatherer, 17,  // Binding 17: LightingConfigSSBO
+                          descriptorGatherer, MarchSdi::Bind::LightingConfigSSBO::BINDING,  // Binding 17: LightingConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6916,7 +6954,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   hitRecordBufferNode, StorageBufferNodeConfig::SWAPCHAIN_INFO);
 
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                          descriptorGatherer, 18,  // Binding 18: HitRecordBuffer
+                          descriptorGatherer, MarchSdi::Bind::HitRecordBuffer::BINDING,  // Binding 18: HitRecordBuffer
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6927,7 +6965,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // per-frame from ShadowConfigNode's ring). Default content = enabled hard shadows,
     // whole-scene reach, tuned bias (see ShadowConfigNode.cpp's MakeDefaultShadowConfig).
     batch.Connect(shadowConfigNode, ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER,
-                          descriptorGatherer, 19,  // Binding 19: ShadowConfigSSBO
+                          descriptorGatherer, MarchSdi::Bind::ShadowConfigSSBO::BINDING,  // Binding 19: ShadowConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6938,7 +6976,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // per-frame from AccumulationConfigNode's ring). Default content = enabled=0 (pure
     // passthrough — this milestone's byte-identity gate vs Inc1).
     batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::ACCUMULATION_CONFIG_BUFFER,
-                          descriptorGatherer, 20,  // Binding 20: AccumulationConfigSSBO
+                          descriptorGatherer, MarchSdi::Bind::AccumulationConfigSSBO::BINDING,  // Binding 20: AccumulationConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6951,7 +6989,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // pickIdTargetNode's own binding-9 storage-image wiring above (re-emitted each frame; no
     // compile-time dependency edge needed beyond the initial Compile-time publish).
     batch.Connect(accumulationHistoryNode, AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
-                          descriptorGatherer, 21,  // Binding 21: historyImage
+                          descriptorGatherer, MarchSdi::Bind::historyImage::BINDING,  // Binding 21: historyImage
                           SlotRoleModifier(SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -6963,7 +7001,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // this milestone (M4 consumes it for reprojection) — a pure plumbing wire, mirroring
     // binding 20/21's own M1 plumbing-only precedent.
     batch.Connect(prevCameraConfigNode, PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER,
-                          descriptorGatherer, 22,  // Binding 22: PrevCameraConfigSSBO
+                          descriptorGatherer, MarchSdi::Bind::PrevCameraConfigSSBO::BINDING,  // Binding 22: PrevCameraConfigSSBO
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     if (mainLogger && mainLogger->IsEnabled()) {
@@ -7006,7 +7044,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // imageStore'd post-split — see PARAM_WRITES_NO_IMAGE's doc comment). The real write happens
     // on DirectLighting's OWN gatherer binding 0, wired further below.
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::CURRENT_VIEW,
-                          descriptorGatherer, 0,  // outputImage at binding 0 (extent query only)
+                          descriptorGatherer, MarchSdi::Bind::outputImage::BINDING,  // outputImage at binding 0 (extent query only)
                           SlotRoleModifier(SlotRole::Execute));
 
     // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
@@ -7137,25 +7175,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   directLightingPushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          directLightingPushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::cameraPos::INDEX,
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          directLightingPushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::cameraDir::INDEX,
                           ExtractField(&CameraData::cameraDir, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          directLightingPushConstantGatherer, VoxelRayMarch::fov::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::fov::INDEX,
                           ExtractField(&CameraData::fov, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          directLightingPushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::cameraUp::INDEX,
                           ExtractField(&CameraData::cameraUp, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          directLightingPushConstantGatherer, VoxelRayMarch::aspect::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::aspect::INDEX,
                           ExtractField(&CameraData::aspect, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          directLightingPushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::cameraRight::INDEX,
                           ExtractField(&CameraData::cameraRight, SlotRole::Execute));
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
-                          directLightingPushConstantGatherer, VoxelRayMarch::debugMode::BINDING,
+                          directLightingPushConstantGatherer, DirectSdi::Push::debugMode::INDEX,
                           ExtractField(&InputState::debugMode, SlotRole::Execute));
     // Baked-Perf M4b Task 4b.2: DirectLighting.comp issues shadow rays (TraceWorldShadow, M4's
     // any-hit chain) -- feed the secondary-ray coefficient instead of mirroring the primary
@@ -7194,13 +7232,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // IMAGE_WRITE, not here (it needs the render target's CURRENT view, same as the march's own
     // binding-0 wiring further up).
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          directLightingGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          directLightingGatherer, DirectSdi::Bind::ESVOBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          directLightingGatherer, VoxelRayMarch::brickData::BINDING,
+                          directLightingGatherer, DirectSdi::Bind::BrickBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          directLightingGatherer, VoxelRayMarch::materials::BINDING,
+                          directLightingGatherer, DirectSdi::Bind::MaterialBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                           directLightingGatherer, 5,
@@ -7350,25 +7388,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::cameraPos::INDEX,
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::cameraDir::INDEX,
                           ExtractField(&CameraData::cameraDir, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::fov::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::fov::INDEX,
                           ExtractField(&CameraData::fov, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::cameraUp::INDEX,
                           ExtractField(&CameraData::cameraUp, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::aspect::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::aspect::INDEX,
                           ExtractField(&CameraData::aspect, SlotRole::Execute));
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::cameraRight::INDEX,
                           ExtractField(&CameraData::cameraRight, SlotRole::Execute));
     batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
-                          spatialReusePushConstantGatherer, VoxelRayMarch::debugMode::BINDING,
+                          spatialReusePushConstantGatherer, ReuseSdi::Push::debugMode::INDEX,
                           ExtractField(&InputState::debugMode, SlotRole::Execute));
     // Baked-Perf M4b Task 4b.2: SpatialReuseShade.comp also issues shadow rays (TraceWorldShadow,
     // ReSTIR spatial-reuse shade pass) -- same secondary-ray coefficient as DirectLighting above,
@@ -7398,13 +7436,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // SpatialReuse's descriptor bindings: same scene SSBOs (read-only, no hazard) as
     // DirectLighting's own gatherer above.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          spatialReuseGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          spatialReuseGatherer, ReuseSdi::Bind::ESVOBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          spatialReuseGatherer, VoxelRayMarch::brickData::BINDING,
+                          spatialReuseGatherer, ReuseSdi::Bind::BrickBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          spatialReuseGatherer, VoxelRayMarch::materials::BINDING,
+                          spatialReuseGatherer, ReuseSdi::Bind::MaterialBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                           spatialReuseGatherer, 5,
@@ -7739,13 +7777,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // samples for RIS). NO HitRecord/reservoir/outputImage bindings — this pass never touches
     // those resources, the structural basis for its disjointness from the direct/ReSTIR pass.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,
-                          probeUpdateGatherer, VoxelRayMarch::esvoNodes::BINDING,
+                          probeUpdateGatherer, ProbeSdi::Bind::ESVOBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,
-                          probeUpdateGatherer, VoxelRayMarch::brickData::BINDING,
+                          probeUpdateGatherer, ProbeSdi::Bind::BrickBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          probeUpdateGatherer, VoxelRayMarch::materials::BINDING,
+                          probeUpdateGatherer, ProbeSdi::Bind::MaterialBuffer::BINDING,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                           probeUpdateGatherer, 5,

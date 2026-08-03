@@ -57,10 +57,11 @@ vixen_generate_node_manifest(
 # Application include dir is PUBLIC so consumers get VulkanGraphApplication.h, Headers.h, etc.
 target_include_directories(VixenApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # SDI / generated-header search paths used while compiling the driver (first found wins).
+# Semantic-wiring S1: BuiltAssets/GeneratedIncludes (the frozen 2025 artifact set)
+# retired — committed SDI now lives ONLY in generated/sdi/merged (drift-gated).
 target_include_directories(VixenApp PRIVATE
     ${VIXEN_ROOT}/generated/sdi
     ${CMAKE_BINARY_DIR}/application/main/generated/sdi
-    ${VIXEN_ROOT}/BuiltAssets/GeneratedIncludes
     ${APP_SDI_OUTPUT_DIR}
 )
 

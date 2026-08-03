@@ -278,3 +278,58 @@ TEST(SdiVariantMerge, MergedEmissionCarriesFeatureTags) {
     EXPECT_NE(code.find("depthDistanceImage"), std::string::npos);
     EXPECT_NE(code.find("esvoNodes"), std::string::npos);
 }
+
+TEST(SdiVariantMerge, MergedEmissionNamesAndIndices) {
+    // S1 face: name-keyed aliases for descriptor bindings and INDEX ordinals
+    // for push members, so Connect sites write names instead of numbers.
+    auto data = MakeData(
+        {
+            MakeBinding(0, 0, "BodyInstanceBuffer", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            MakeBinding(0, 3, "InstanceSkipMaskBuffer", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        },
+        {
+            MakePushMember("prevViewProj", 0, 64),
+            MakePushMember("prevCamPos", 64, 16),
+            MakePushMember("dims", 80, 16),
+        });
+
+    auto result = MergeSdiVariants("InstanceOcclusionCull",
+                                   {MakeVariant({}, data)});
+    ASSERT_TRUE(result.success) << result.errorMessage;
+
+    SpirvInterfaceGenerator generator;
+    std::string code = generator.GenerateMergedToString(result.merged);
+
+    // Descriptor aliases: name -> Binding struct, nested in Bind so a
+    // fallback-named binding never collides with its layout struct.
+    EXPECT_NE(code.find("namespace Bind {"), std::string::npos);
+    EXPECT_NE(code.find("using BodyInstanceBuffer = Set0::Binding0;"),
+              std::string::npos);
+    EXPECT_NE(code.find("using InstanceSkipMaskBuffer = Set0::Binding3;"),
+              std::string::npos);
+    // Push members carry their field ordinal (offset order) for the
+    // PushConstantGathererNode slot index.
+    EXPECT_NE(code.find("INDEX = 0"), std::string::npos);
+    EXPECT_NE(code.find("INDEX = 1"), std::string::npos);
+    EXPECT_NE(code.find("INDEX = 2"), std::string::npos);
+}
+
+TEST(SdiVariantMerge, DuplicateMemberNamesSkipAliases) {
+    // Two bindings sharing a (fallback) name: Binding structs always emit,
+    // but the name-keyed alias would be a redefinition — it must be skipped
+    // for BOTH, never emitted twice.
+    auto data = MakeData({
+        MakeBinding(0, 0, "SharedBlock", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        MakeBinding(0, 1, "SharedBlock", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+    });
+
+    auto result = MergeSdiVariants("Dup", {MakeVariant({}, data)});
+    ASSERT_TRUE(result.success) << result.errorMessage;
+
+    SpirvInterfaceGenerator generator;
+    std::string code = generator.GenerateMergedToString(result.merged);
+
+    EXPECT_EQ(code.find("using SharedBlock"), std::string::npos);
+    EXPECT_NE(code.find("struct Binding0"), std::string::npos);
+    EXPECT_NE(code.find("struct Binding1"), std::string::npos);
+}

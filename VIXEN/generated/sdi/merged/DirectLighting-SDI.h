@@ -786,12 +786,40 @@ namespace Set0 {
 
 } // namespace Set0
 
+// Name-keyed binding aliases (duplicate names skipped)
+namespace Bind {
+using outputImage = Set0::Binding0;
+using ESVOBuffer = Set0::Binding1;
+using BrickBuffer = Set0::Binding2;
+using MaterialBuffer = Set0::Binding3;
+using RayTraceBuffer = Set0::Binding4;
+using OctreeConfigsSSBO = Set0::Binding5;
+using BodyInstanceBuffer = Set0::Binding10;
+using ChannelPoolBuffer = Set0::Binding11;
+using BrickLookupBuffer = Set0::Binding12;
+using MipPoolBuffer = Set0::Binding13;
+using InstanceIterDebugBuffer = Set0::Binding14;
+using TierRefTableBuffer = Set0::Binding15;
+using LightingConfigSSBO = Set0::Binding16;
+using HitRecordBuffer = Set0::Binding17;
+using ShadowConfigSSBO = Set0::Binding18;
+using AccumulationConfigSSBO = Set0::Binding19;
+using PrevCameraConfigSSBO = Set0::Binding21;
+using worldPosHistoryImage = Set0::Binding22;
+using ReservoirConfigSSBO = Set0::Binding23;
+using LightTreeBufferSSBO = Set0::Binding24;
+using ReservoirBufferA = Set0::Binding25;
+using ReservoirBufferB = Set0::Binding26;
+using InstanceSkipMaskBuffer = Set0::Binding35;
+} // namespace Bind
+
 namespace Push {
 
     static constexpr uint32_t SIZE = 96;
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
+        static constexpr uint32_t INDEX = 0;
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -799,6 +827,7 @@ namespace Push {
 
     struct time {
         static constexpr const char* NAME = "time";
+        static constexpr uint32_t INDEX = 1;
         static constexpr uint32_t OFFSET = 12;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -806,6 +835,7 @@ namespace Push {
 
     struct cameraDir {
         static constexpr const char* NAME = "cameraDir";
+        static constexpr uint32_t INDEX = 2;
         static constexpr uint32_t OFFSET = 16;
         static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -813,6 +843,7 @@ namespace Push {
 
     struct fov {
         static constexpr const char* NAME = "fov";
+        static constexpr uint32_t INDEX = 3;
         static constexpr uint32_t OFFSET = 28;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -820,6 +851,7 @@ namespace Push {
 
     struct cameraUp {
         static constexpr const char* NAME = "cameraUp";
+        static constexpr uint32_t INDEX = 4;
         static constexpr uint32_t OFFSET = 32;
         static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -827,6 +859,7 @@ namespace Push {
 
     struct aspect {
         static constexpr const char* NAME = "aspect";
+        static constexpr uint32_t INDEX = 5;
         static constexpr uint32_t OFFSET = 44;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -834,6 +867,7 @@ namespace Push {
 
     struct cameraRight {
         static constexpr const char* NAME = "cameraRight";
+        static constexpr uint32_t INDEX = 6;
         static constexpr uint32_t OFFSET = 48;
         static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -841,6 +875,7 @@ namespace Push {
 
     struct debugMode {
         static constexpr const char* NAME = "debugMode";
+        static constexpr uint32_t INDEX = 7;
         static constexpr uint32_t OFFSET = 60;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -848,6 +883,7 @@ namespace Push {
 
     struct raySizeCoef {
         static constexpr const char* NAME = "raySizeCoef";
+        static constexpr uint32_t INDEX = 8;
         static constexpr uint32_t OFFSET = 64;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -855,6 +891,7 @@ namespace Push {
 
     struct raySizeBias {
         static constexpr const char* NAME = "raySizeBias";
+        static constexpr uint32_t INDEX = 9;
         static constexpr uint32_t OFFSET = 68;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -862,6 +899,7 @@ namespace Push {
 
     struct instanceCount {
         static constexpr const char* NAME = "instanceCount";
+        static constexpr uint32_t INDEX = 10;
         static constexpr uint32_t OFFSET = 72;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -869,6 +907,7 @@ namespace Push {
 
     struct debugTargetPixel {
         static constexpr const char* NAME = "debugTargetPixel";
+        static constexpr uint32_t INDEX = 11;
         static constexpr uint32_t OFFSET = 80;
         static constexpr uint32_t SIZE = 8;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -876,6 +915,7 @@ namespace Push {
 
     struct accumFrameCount {
         static constexpr const char* NAME = "accumFrameCount";
+        static constexpr uint32_t INDEX = 12;
         static constexpr uint32_t OFFSET = 88;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;

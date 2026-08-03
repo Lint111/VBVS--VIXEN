@@ -402,12 +402,28 @@ namespace Set0 {
 
 } // namespace Set0
 
+// Name-keyed binding aliases (duplicate names skipped)
+namespace Bind {
+using BodyInstanceBuffer = Set0::Binding0;
+using RecipeBoundSphereBuffer = Set0::Binding1;
+using BucketCountBuffer = Set0::Binding2;
+using BucketIndicesBuffer = Set0::Binding3;
+using BucketCoverageMinXBuffer = Set0::Binding4;
+using BucketCoverageMinYBuffer = Set0::Binding5;
+using BucketCoverageMaxXBuffer = Set0::Binding6;
+using BucketCoverageMaxYBuffer = Set0::Binding7;
+using BucketIndirectCommandBuffer = Set0::Binding8;
+using PrecisionBucketCountBuffer = Set0::Binding9;
+using PrecisionBucketIndicesBuffer = Set0::Binding10;
+} // namespace Bind
+
 namespace Push {
 
     static constexpr uint32_t SIZE = 112;
 
     struct viewProj {
         static constexpr const char* NAME = "viewProj";
+        static constexpr uint32_t INDEX = 0;
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 64;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -415,6 +431,7 @@ namespace Push {
 
     struct instanceCount {
         static constexpr const char* NAME = "instanceCount";
+        static constexpr uint32_t INDEX = 1;
         static constexpr uint32_t OFFSET = 64;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -422,6 +439,7 @@ namespace Push {
 
     struct maxBuckets {
         static constexpr const char* NAME = "maxBuckets";
+        static constexpr uint32_t INDEX = 2;
         static constexpr uint32_t OFFSET = 68;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -429,6 +447,7 @@ namespace Push {
 
     struct maxMembersPerBucket {
         static constexpr const char* NAME = "maxMembersPerBucket";
+        static constexpr uint32_t INDEX = 3;
         static constexpr uint32_t OFFSET = 72;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -436,6 +455,7 @@ namespace Push {
 
     struct screenWidth {
         static constexpr const char* NAME = "screenWidth";
+        static constexpr uint32_t INDEX = 4;
         static constexpr uint32_t OFFSET = 76;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -443,6 +463,7 @@ namespace Push {
 
     struct screenHeight {
         static constexpr const char* NAME = "screenHeight";
+        static constexpr uint32_t INDEX = 5;
         static constexpr uint32_t OFFSET = 80;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -450,6 +471,7 @@ namespace Push {
 
     struct mode {
         static constexpr const char* NAME = "mode";
+        static constexpr uint32_t INDEX = 6;
         static constexpr uint32_t OFFSET = 84;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -457,6 +479,7 @@ namespace Push {
 
     struct raySizeCoef {
         static constexpr const char* NAME = "raySizeCoef";
+        static constexpr uint32_t INDEX = 7;
         static constexpr uint32_t OFFSET = 88;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -464,6 +487,7 @@ namespace Push {
 
     struct raySizeBias {
         static constexpr const char* NAME = "raySizeBias";
+        static constexpr uint32_t INDEX = 8;
         static constexpr uint32_t OFFSET = 92;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -471,6 +495,7 @@ namespace Push {
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
+        static constexpr uint32_t INDEX = 9;
         static constexpr uint32_t OFFSET = 96;
         static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;

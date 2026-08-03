@@ -143,12 +143,21 @@ namespace Set0 {
 
 } // namespace Set0
 
+// Name-keyed binding aliases (duplicate names skipped)
+namespace Bind {
+using BodyInstanceBuffer = Set0::Binding0;
+using OctreeConfigsSSBO = Set0::Binding1;
+using tileMaxImage = Set0::Binding2;
+using InstanceSkipMaskBuffer = Set0::Binding3;
+} // namespace Bind
+
 namespace Push {
 
     static constexpr uint32_t SIZE = 96;
 
     struct prevViewProj {
         static constexpr const char* NAME = "prevViewProj";
+        static constexpr uint32_t INDEX = 0;
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 64;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -156,6 +165,7 @@ namespace Push {
 
     struct prevCamPos {
         static constexpr const char* NAME = "prevCamPos";
+        static constexpr uint32_t INDEX = 1;
         static constexpr uint32_t OFFSET = 64;
         static constexpr uint32_t SIZE = 16;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -163,6 +173,7 @@ namespace Push {
 
     struct dims {
         static constexpr const char* NAME = "dims";
+        static constexpr uint32_t INDEX = 2;
         static constexpr uint32_t OFFSET = 80;
         static constexpr uint32_t SIZE = 16;
         static constexpr uint32_t FEATURE_COUNT = 0;

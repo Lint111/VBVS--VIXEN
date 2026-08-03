@@ -54,12 +54,19 @@ namespace Set0 {
 
 } // namespace Set0
 
+// Name-keyed binding aliases (duplicate names skipped)
+namespace Bind {
+using srcDepthImage = Set0::Binding0;
+using tileMaxImage = Set0::Binding1;
+} // namespace Bind
+
 namespace Push {
 
     static constexpr uint32_t SIZE = 16;
 
     struct srcWidth {
         static constexpr const char* NAME = "srcWidth";
+        static constexpr uint32_t INDEX = 0;
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
@@ -67,6 +74,7 @@ namespace Push {
 
     struct srcHeight {
         static constexpr const char* NAME = "srcHeight";
+        static constexpr uint32_t INDEX = 1;
         static constexpr uint32_t OFFSET = 4;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
