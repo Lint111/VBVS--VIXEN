@@ -87,6 +87,20 @@ public:
         const std::unordered_map<std::string, std::string>& defines = {}
     );
 
+    /**
+     * @brief Splice `#define <feature> 1` lines directly after the #version line
+     *
+     * The canonical feature-variant injection: identical to the runtime graph
+     * builders' env-gated splices (VIXEN_GPU_TRACE_HOOKS, VIXEN_B1_OCCLUSION_CULL).
+     * Textual `#define`s — NOT the substitution-style defines map above — so
+     * `#ifdef FEATURE` gates in the source behave exactly as at runtime.
+     * With no #version line the defines are prepended.
+     */
+    static std::string InjectFeatureDefines(
+        const std::string& source,
+        const std::vector<std::string>& features
+    );
+
     // ===== Configuration =====
 
     /**

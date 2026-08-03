@@ -66,6 +66,37 @@ target_compile_definitions(test_probe_update_smoke PRIVATE
 include(GoogleTest)
 gtest_discover_tests(test_probe_update_smoke WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+# Feature-tagged SDI variant merge (Semantic Shader Wiring S0) — separate
+# executable, pure data-level, no Vulkan device / no glslang compile.
+add_executable(test_sdi_variant_merge
+    test_sdi_variant_merge.cpp
+)
+target_link_libraries(test_sdi_variant_merge
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_sdi_variant_merge PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+include(GoogleTest)
+gtest_discover_tests(test_sdi_variant_merge WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
+# Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
+# feature-variant interface from the committed manifest and fails (exit 6)
+# when a committed generated/sdi/merged/*-SDI.h no longer matches. This is
+# the WIRED currency gate for those committed artifacts: without it they rot
+# silently (VoxelRayMarchNames.h sat stale from 2025-12 as proof).
+if(TARGET sdi_tool)
+    # PROJECT_SOURCE_DIR here is the ShaderManagement library, so anchor the
+    # engine root off this file's own location instead.
+    get_filename_component(_vixen_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    add_test(NAME sdi_merged_drift_check
+        COMMAND $<TARGET_FILE:sdi_tool> merge-variants
+                ${_vixen_root}/shaders/sdi-variants.json --check
+        WORKING_DIRECTORY ${_vixen_root}
+    )
+endif()
+
 # Link against library target - includes propagate automatically
 target_link_libraries(ShaderManagementTests
     PRIVATE

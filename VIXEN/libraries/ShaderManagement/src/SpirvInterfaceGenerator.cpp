@@ -243,6 +243,238 @@ std::string SpirvInterfaceGenerator::GenerateToString(
     return code.str();
 }
 
+std::string SpirvInterfaceGenerator::GenerateMergedToString(
+    const SdiMergedInterface& merged
+) {
+    if (merged.programName.empty()) {
+        return "";
+    }
+
+    std::ostringstream code;
+    const std::string ns = SanitizeName(merged.programName);
+
+    code << "// ============================================================================\n";
+    code << "// Feature-Tagged Merged SDI (Semantic Shader Wiring S0)\n";
+    code << "// ============================================================================\n";
+    code << "//\n";
+    code << "// Program: " << merged.programName << "\n";
+    code << "// Feature axis:";
+    if (merged.featureAxis.empty()) {
+        code << " (none — single-variant interface)";
+    } else {
+        for (const auto& f : merged.featureAxis) code << " " << f;
+    }
+    code << "\n";
+    code << "//\n";
+    code << "// Merged across compiled feature variants: every member carries the\n";
+    code << "// feature conjunction under which it exists (empty = unconditional).\n";
+    code << "//\n";
+    code << "// DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.\n";
+    code << "//\n";
+    code << "// ============================================================================\n";
+    code << "\n";
+    code << "#pragma once\n";
+    code << "\n";
+    code << "#include <cstdint>\n";
+    code << "#include <string>\n";
+    code << "#include <unordered_set>\n";
+    code << "#include <vector>\n";
+    code << "#include <vulkan/vulkan.h>\n";
+    code << "#include <glm/glm.hpp>\n";
+    code << "\n";
+    code << "namespace " << config_.namespacePrefix << " {\n";
+    code << "namespace " << ns << " {\n";
+    code << "\n";
+
+    // Struct definitions referenced by merged bindings.
+    for (const auto& structDef : merged.structDefinitions) {
+        code << GenerateStructDefinition(structDef);
+        code << "\n";
+    }
+
+    auto emitFeatureTag = [&](const std::vector<std::string>& features,
+                              uint32_t indentLevel) {
+        code << Indent(indentLevel) << "static constexpr uint32_t FEATURE_COUNT = "
+             << features.size() << ";\n";
+        if (!features.empty()) {
+            code << Indent(indentLevel) << "static constexpr const char* FEATURES["
+                 << features.size() << "] = {";
+            for (size_t i = 0; i < features.size(); ++i) {
+                if (i) code << ", ";
+                code << "\"" << features[i] << "\"";
+            }
+            code << "};\n";
+        }
+    };
+
+    // Descriptor bindings, grouped into per-set namespaces (existing style).
+    uint32_t currentSet = 0;
+    bool setOpen = false;
+    for (const auto& b : merged.bindings) {
+        if (!setOpen || b.binding.set != currentSet) {
+            if (setOpen) code << "} // namespace Set" << currentSet << "\n\n";
+            currentSet = b.binding.set;
+            setOpen = true;
+            code << "namespace Set" << currentSet << " {\n\n";
+        }
+
+        if (config_.generateComments) {
+            code << Indent(1) << "/**\n";
+            code << Indent(1) << " * @brief " << b.binding.name << "\n";
+            code << Indent(1) << " * Type: "
+                 << DescriptorTypeConstName(b.binding.descriptorType) << "\n";
+            if (!b.requiredFeatures.empty()) {
+                code << Indent(1) << " * Requires:";
+                for (const auto& f : b.requiredFeatures) code << " " << f;
+                code << "\n";
+            }
+            code << Indent(1) << " */\n";
+        }
+
+        code << Indent(1) << "struct Binding" << b.binding.binding << " {\n";
+        code << Indent(2) << "static constexpr const char* NAME = \""
+             << b.binding.name << "\";\n";
+        code << Indent(2) << "static constexpr uint32_t SET = "
+             << b.binding.set << ";\n";
+        code << Indent(2) << "static constexpr uint32_t BINDING = "
+             << b.binding.binding << ";\n";
+        code << Indent(2) << "static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_"
+             << DescriptorTypeConstName(b.binding.descriptorType) << ";\n";
+        code << Indent(2) << "static constexpr uint32_t COUNT = "
+             << b.binding.descriptorCount << ";\n";
+        emitFeatureTag(b.requiredFeatures, 2);
+        if (b.binding.structDefIndex >= 0 &&
+            b.binding.structDefIndex <
+                static_cast<int>(merged.structDefinitions.size())) {
+            code << Indent(2) << "using DataType = "
+                 << merged.structDefinitions[b.binding.structDefIndex].name
+                 << ";\n";
+        }
+        code << Indent(1) << "};\n";
+        code << "\n";
+    }
+    if (setOpen) code << "} // namespace Set" << currentSet << "\n\n";
+
+    // Push-constant members with feature tags.
+    if (!merged.pushMembers.empty()) {
+        code << "namespace Push {\n\n";
+        code << Indent(1) << "static constexpr uint32_t SIZE = "
+             << merged.pushSize << ";\n\n";
+        for (const auto& m : merged.pushMembers) {
+            code << Indent(1) << "struct " << SanitizeName(m.member.name) << " {\n";
+            code << Indent(2) << "static constexpr const char* NAME = \""
+                 << m.member.name << "\";\n";
+            code << Indent(2) << "static constexpr uint32_t OFFSET = "
+                 << m.member.offset << ";\n";
+            code << Indent(2) << "static constexpr uint32_t SIZE = "
+                 << m.member.type.sizeInBytes << ";\n";
+            emitFeatureTag(m.requiredFeatures, 2);
+            code << Indent(1) << "};\n\n";
+        }
+        code << "} // namespace Push\n\n";
+    }
+
+    // Flat member table + runtime presence filter — the face the semantic
+    // auto-connect walk (S2) consumes.
+    code << "// ============================================================================\n";
+    code << "// Member table (bindings + push members) for the semantic connect walk\n";
+    code << "// ============================================================================\n";
+    code << "\n";
+    code << "struct MemberInfo {\n";
+    code << Indent(1) << "const char* name;\n";
+    code << Indent(1) << "bool isPushMember;\n";
+    code << Indent(1) << "uint32_t set;      // descriptor members only\n";
+    code << Indent(1) << "uint32_t binding;  // descriptor members only\n";
+    code << Indent(1) << "uint32_t offset;   // push members only\n";
+    code << Indent(1) << "uint32_t featureCount;\n";
+    code << Indent(1) << "const char* const* features;\n";
+    code << "};\n";
+    code << "\n";
+
+    for (const auto& b : merged.bindings) {
+        if (!b.requiredFeatures.empty()) {
+            code << "inline constexpr const char* const kFeatures_Set"
+                 << b.binding.set << "_Binding" << b.binding.binding << "[] = {";
+            for (size_t i = 0; i < b.requiredFeatures.size(); ++i) {
+                if (i) code << ", ";
+                code << "\"" << b.requiredFeatures[i] << "\"";
+            }
+            code << "};\n";
+        }
+    }
+    for (const auto& m : merged.pushMembers) {
+        if (!m.requiredFeatures.empty()) {
+            code << "inline constexpr const char* const kFeatures_Push_"
+                 << SanitizeName(m.member.name) << "[] = {";
+            for (size_t i = 0; i < m.requiredFeatures.size(); ++i) {
+                if (i) code << ", ";
+                code << "\"" << m.requiredFeatures[i] << "\"";
+            }
+            code << "};\n";
+        }
+    }
+    code << "\n";
+
+    code << "inline constexpr MemberInfo MEMBERS[] = {\n";
+    for (const auto& b : merged.bindings) {
+        code << Indent(1) << "{\"" << b.binding.name << "\", false, "
+             << b.binding.set << ", " << b.binding.binding << ", 0, "
+             << b.requiredFeatures.size() << ", ";
+        if (b.requiredFeatures.empty()) {
+            code << "nullptr";
+        } else {
+            code << "kFeatures_Set" << b.binding.set << "_Binding"
+                 << b.binding.binding;
+        }
+        code << "},\n";
+    }
+    for (const auto& m : merged.pushMembers) {
+        code << Indent(1) << "{\"" << m.member.name << "\", true, 0, 0, "
+             << m.member.offset << ", " << m.requiredFeatures.size() << ", ";
+        if (m.requiredFeatures.empty()) {
+            code << "nullptr";
+        } else {
+            code << "kFeatures_Push_" << SanitizeName(m.member.name);
+        }
+        code << "},\n";
+    }
+    code << "};\n";
+    code << "\n";
+
+    code << "/**\n";
+    code << " * @brief Members present under the given active feature set\n";
+    code << " */\n";
+    code << "inline std::vector<MemberInfo> Members(\n";
+    code << Indent(1) << "const std::unordered_set<std::string>& activeFeatures\n";
+    code << ") {\n";
+    code << Indent(1) << "std::vector<MemberInfo> out;\n";
+    code << Indent(1) << "for (const auto& m : MEMBERS) {\n";
+    code << Indent(2) << "bool present = true;\n";
+    code << Indent(2) << "for (uint32_t i = 0; i < m.featureCount; ++i) {\n";
+    code << Indent(3) << "if (activeFeatures.count(m.features[i]) == 0) { present = false; break; }\n";
+    code << Indent(2) << "}\n";
+    code << Indent(2) << "if (present) out.push_back(m);\n";
+    code << Indent(1) << "}\n";
+    code << Indent(1) << "return out;\n";
+    code << "}\n";
+    code << "\n";
+
+    code << "struct Metadata {\n";
+    code << Indent(1) << "static constexpr const char* PROGRAM_NAME = \""
+         << merged.programName << "\";\n";
+    code << Indent(1) << "static constexpr uint32_t NUM_MEMBERS = "
+         << (merged.bindings.size() + merged.pushMembers.size()) << ";\n";
+    code << Indent(1) << "static constexpr uint32_t NUM_FEATURES = "
+         << merged.featureAxis.size() << ";\n";
+    code << "};\n";
+    code << "\n";
+
+    code << "} // namespace " << ns << "\n";
+    code << "} // namespace " << config_.namespacePrefix << "\n";
+
+    return code.str();
+}
+
 bool SpirvInterfaceGenerator::DeleteSdi(const std::string& uuid) {
     std::filesystem::path filePath = GetSdiPath(uuid);
     if (std::filesystem::exists(filePath)) {

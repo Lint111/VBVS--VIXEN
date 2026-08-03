@@ -502,7 +502,13 @@ void SpirvReflector::ReflectDescriptors(
         SpirvDescriptorBinding desc;
         desc.set = binding->set;
         desc.binding = binding->binding;
-        desc.name = binding->name ? binding->name : "";
+        // Instance name when present, else the block TYPE name — house GLSL
+        // declares many blocks instance-nameless, and the semantic connect
+        // walk needs a name for every member.
+        desc.name = (binding->name && binding->name[0]) ? binding->name
+            : (binding->type_description && binding->type_description->type_name
+                   ? binding->type_description->type_name
+                   : "");
         desc.descriptorType = ConvertDescriptorType(binding->descriptor_type);
         desc.descriptorCount = binding->count;
         desc.stageFlags = stageFlag;

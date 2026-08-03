@@ -26,6 +26,7 @@
 #include "ShaderCompiler.h"
 #include "SPIRVReflection.h"
 #include "SpirvInterfaceGenerator.h"
+#include "ShaderPreprocessor.h"
 #include "ShaderPipelineUtils.h"
 #include <iostream>
 #include <fstream>
@@ -60,6 +61,7 @@ namespace ExitCode {
     constexpr int InputError = 3;    // File not found, invalid path, missing input
     constexpr int CompileError = 4;  // Shader compilation or reflection failed
     constexpr int IOError = 5;       // Can't write output, disk full, permission denied
+    constexpr int DriftDetected = 6; // --check: committed artifact differs from regenerated
 }
 
 // ===== Stdin Reading Helper =====
@@ -181,6 +183,7 @@ struct ToolOptions {
     bool quiet = false;       // CI mode: only output errors
     bool dryRun = false;      // Preview operations without executing
     bool embedSpirv = false;  // Embed SPIRV in JSON (base64) instead of separate files
+    bool checkMode = false;   // merge-variants: verify committed headers instead of writing
 
     // Include paths for #include directive resolution
     // Default paths are automatically added based on input file locations
@@ -231,6 +234,8 @@ Sibling Auto-Discovery:
 Commands:
   compile           Compile shader stages into bundle (auto-detect pipeline)
   batch             Process multiple shaders from config file
+  merge-variants    Feature-tagged merged SDI from a variants manifest
+                    (sdi_tool merge-variants <manifest.json> [--check])
   build-registry    Build central SDI registry from bundles
   cleanup           Remove orphaned SPIRV files from output directory
   cleanup-sdi       Remove orphaned SDI headers not referenced by any Names.h
@@ -374,6 +379,10 @@ int ParseOption(const std::string& arg, const std::string& nextArg, bool hasNext
     }
     if (arg == "--dry-run") {
         options.dryRun = true;
+        return 0;
+    }
+    if (arg == "--check") {
+        options.checkMode = true;
         return 0;
     }
 
@@ -1438,6 +1447,209 @@ Register-ArgumentCompleter -CommandName sdi_tool -Native -ScriptBlock {
 
 // ===== Main Entry Point =====
 
+// ===== Merge-Variants Command (Semantic Shader Wiring S0) =====
+
+/**
+ * @brief Generate (or --check) feature-tagged merged SDI headers
+ *
+ * Compiles every enumerated feature variant of each program, reflects each,
+ * merges them into ONE interface where every member carries its feature
+ * predicate, and emits <sdiDir>/<Program>-SDI.h.
+ *
+ * Manifest JSON (all paths relative to the manifest file; sdiDir REQUIRED so
+ * the gate never depends on the caller's cwd):
+ * {
+ *   "sdiDir": "generated/sdi",
+ *   "programs": [
+ *     { "name": "BodyInstanceRayMarch",
+ *       "source": "shaders/BodyInstanceRayMarch.comp",
+ *       "variants": [[], ["VIXEN_B1_OCCLUSION_CULL"]] }
+ *   ]
+ * }
+ *
+ * --check: writes nothing; exits DriftDetected(6) listing every header whose
+ * committed bytes differ from the regenerated ones (or which is missing).
+ */
+int CommandMergeVariants(const ToolOptions& options) {
+    if (options.inputFiles.empty()) {
+        std::cerr << "Error: merge-variants requires a manifest JSON file\n";
+        return ExitCode::UsageError;
+    }
+
+    fs::path manifestPath = ValidateAndSanitizePath(options.inputFiles[0], false);
+    if (manifestPath.empty()) {
+        return ExitCode::InputError;
+    }
+
+    std::ifstream manifestIn(manifestPath);
+    nlohmann::json manifest = nlohmann::json::parse(manifestIn, nullptr, false);
+    if (manifest.is_discarded()) {
+        std::cerr << "Error: Invalid JSON in manifest: " << manifestPath << "\n";
+        return ExitCode::InputError;
+    }
+
+    const fs::path baseDir = manifestPath.parent_path();
+    if (!manifest.contains("sdiDir") || !manifest["sdiDir"].is_string()) {
+        std::cerr << "Error: manifest must set \"sdiDir\" (relative to the manifest)\n";
+        return ExitCode::InputError;
+    }
+    const fs::path sdiDir = baseDir / manifest["sdiDir"].get<std::string>();
+
+    if (!manifest.contains("programs") || !manifest["programs"].is_array()) {
+        std::cerr << "Error: manifest must contain a \"programs\" array\n";
+        return ExitCode::InputError;
+    }
+
+    // Optional manifest-global include paths (relative to the manifest), e.g.
+    // "../libraries/SVO/shaders" for the recipe kernel includes.
+    std::vector<fs::path> manifestIncludePaths;
+    if (manifest.contains("includePaths") && manifest["includePaths"].is_array()) {
+        for (const auto& p : manifest["includePaths"]) {
+            manifestIncludePaths.push_back(baseDir / p.get<std::string>());
+        }
+    }
+
+    std::vector<std::string> drifted;
+    uint32_t written = 0;
+
+    for (const auto& prog : manifest["programs"]) {
+        const std::string name = prog.value("name", "");
+        const std::string source = prog.value("source", "");
+        if (name.empty() || source.empty() || !prog.contains("variants")) {
+            std::cerr << "Error: each program needs \"name\", \"source\", \"variants\"\n";
+            return ExitCode::InputError;
+        }
+
+        const fs::path srcPath = baseDir / source;
+        if (!fs::exists(srcPath)) {
+            std::cerr << "Error: shader source not found: " << srcPath
+                      << " (program " << name << ")\n";
+            return ExitCode::InputError;
+        }
+
+        std::ifstream srcIn(srcPath);
+        std::stringstream srcBuf;
+        srcBuf << srcIn.rdbuf();
+        const std::string shaderSource = srcBuf.str();
+
+        auto stageOpt = ShaderPipelineUtils::DetectStageFromPath(srcPath);
+        if (!stageOpt) {
+            std::cerr << "Error: cannot detect shader stage for " << srcPath << "\n";
+            return ExitCode::InputError;
+        }
+        auto detection =
+            ShaderPipelineUtils::DetectPipelineFromFiles({srcPath.string()});
+
+        std::vector<SdiVariant> variants;
+        for (const auto& variantJson : prog["variants"]) {
+            std::vector<std::string> features;
+            for (const auto& f : variantJson) {
+                features.push_back(f.get<std::string>());
+            }
+
+            const std::string spliced =
+                ShaderPreprocessor::InjectFeatureDefines(shaderSource, features);
+
+            ShaderBundleBuilder builder;
+            builder.SetProgramName(name)
+                   .SetPipelineType(detection.type)
+                   .EnableSdiGeneration(false);
+            builder.AddIncludePath(srcPath.parent_path());
+            for (const auto& inc : manifestIncludePaths) {
+                builder.AddIncludePath(inc);
+            }
+            builder.AddStage(*stageOpt, spliced);
+
+            auto result = builder.Build();
+            if (!result.success || !result.bundle ||
+                !result.bundle->reflectionData) {
+                std::string variantLabel;
+                for (const auto& f : features) variantLabel += f + " ";
+                std::cerr << "Error: variant compile failed for " << name
+                          << " [" << variantLabel << "]: "
+                          << result.errorMessage << "\n";
+                return ExitCode::CompileError;
+            }
+
+            SdiVariant variant;
+            variant.features = std::move(features);
+            variant.data = *result.bundle->reflectionData;
+            variants.push_back(std::move(variant));
+        }
+
+        auto mergeResult = MergeSdiVariants(name, variants);
+        if (!mergeResult.success) {
+            std::cerr << "Error: " << mergeResult.errorMessage << "\n";
+            return ExitCode::CompileError;
+        }
+
+        SpirvInterfaceGenerator generator(options.sdiConfig);
+        const std::string code =
+            generator.GenerateMergedToString(mergeResult.merged);
+        if (code.empty()) {
+            std::cerr << "Error: merged emission failed for " << name << "\n";
+            return ExitCode::IOError;
+        }
+
+        const fs::path outPath = sdiDir / (name + "-SDI.h");
+        if (options.checkMode) {
+            std::string committed;
+            if (fs::exists(outPath)) {
+                std::ifstream in(outPath);
+                std::stringstream buf;
+                buf << in.rdbuf();
+                committed = buf.str();
+            }
+            if (committed != code) {
+                drifted.push_back(outPath.string());
+                if (options.shouldPrint()) {
+                    std::cerr << "DRIFT: " << outPath
+                              << (committed.empty() ? " (missing)" : " (stale)")
+                              << "\n";
+                }
+            } else if (options.shouldPrintVerbose()) {
+                std::cout << "OK: " << outPath << "\n";
+            }
+        } else {
+            fs::create_directories(sdiDir);
+            std::ofstream out(outPath, std::ios::binary);
+            if (!out) {
+                std::cerr << "Error: cannot write " << outPath << "\n";
+                return ExitCode::IOError;
+            }
+            out << code;
+            ++written;
+            if (options.shouldPrint()) {
+                size_t gated = 0;
+                for (const auto& b : mergeResult.merged.bindings)
+                    if (!b.requiredFeatures.empty()) ++gated;
+                for (const auto& m : mergeResult.merged.pushMembers)
+                    if (!m.requiredFeatures.empty()) ++gated;
+                std::cout << "Generated " << outPath << " (axis="
+                          << mergeResult.merged.featureAxis.size()
+                          << ", bindings=" << mergeResult.merged.bindings.size()
+                          << ", gated=" << gated << ")\n";
+            }
+        }
+    }
+
+    if (options.checkMode) {
+        if (!drifted.empty()) {
+            std::cerr << drifted.size() << " merged SDI header(s) out of date — "
+                      << "run: sdi_tool merge-variants " << manifestPath << "\n";
+            return ExitCode::DriftDetected;
+        }
+        if (options.shouldPrint()) {
+            std::cout << "All merged SDI headers up to date.\n";
+        }
+    } else if (options.shouldPrint()) {
+        std::cout << "Wrote " << written << " merged SDI header(s) to "
+                  << sdiDir << "\n";
+    }
+
+    return ExitCode::Success;
+}
+
 int main(int argc, char** argv) {
     ToolOptions options;
 
@@ -1463,6 +1675,8 @@ int main(int argc, char** argv) {
             return CommandBatch(options);
         } else if (options.command == "cleanup") {
             return CommandCleanup(options);
+        } else if (options.command == "merge-variants") {
+            return CommandMergeVariants(options);
         } else if (options.command == "cleanup-sdi") {
             return CommandCleanupSdi(options);
         } else if (options.command == "completion") {

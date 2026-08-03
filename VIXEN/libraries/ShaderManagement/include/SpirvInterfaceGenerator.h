@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SpirvReflectionData.h"
+#include "SdiVariantMerge.h"
 #include "ILoggable.h"
 #include <filesystem>
 #include <string>
@@ -108,6 +109,20 @@ public:
      * @return Absolute path to SDI file (may not exist)
      */
     std::filesystem::path GetSdiPath(const std::string& uuid) const;
+
+    /**
+     * @brief Generate a feature-tagged merged SDI header to string
+     *
+     * Semantic Shader Wiring S0: emits ONE program-keyed header for a merged
+     * multi-variant interface (see SdiVariantMerge.h). Each binding struct
+     * carries NAME + FEATURE_COUNT (+ FEATURES[] when gated), and a flat
+     * MEMBERS table + Members(activeFeatures) filter serves the semantic
+     * auto-connect walk.
+     *
+     * @param merged Merged interface from MergeSdiVariants
+     * @return Generated C++ code as string (empty on invalid input)
+     */
+    std::string GenerateMergedToString(const SdiMergedInterface& merged);
 
     /**
      * @brief Generate shader-specific Names.h file

@@ -154,6 +154,33 @@ PreprocessedSource ShaderPreprocessor::ProcessRecursive(
     return result;
 }
 
+std::string ShaderPreprocessor::InjectFeatureDefines(
+    const std::string& source,
+    const std::vector<std::string>& features)
+{
+    if (features.empty()) {
+        return source;
+    }
+
+    std::string defineBlock;
+    for (const auto& f : features) {
+        defineBlock += "#define " + f + " 1\n";
+    }
+
+    // Splice after the #version line — same mechanics as the runtime builders.
+    const size_t versionPos = source.find("#version");
+    if (versionPos != std::string::npos) {
+        const size_t newlinePos = source.find('\n', versionPos);
+        if (newlinePos != std::string::npos) {
+            std::string out = source;
+            out.insert(newlinePos + 1, defineBlock);
+            return out;
+        }
+        return source + "\n" + defineBlock;
+    }
+    return defineBlock + source;
+}
+
 std::string ShaderPreprocessor::InjectDefines(
     const std::string& line,
     const std::unordered_map<std::string, std::string>& defines)
