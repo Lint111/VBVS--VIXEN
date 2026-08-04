@@ -1894,7 +1894,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumModeAccumConstant))->SetValue<uint32_t>(1u);
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumWidthConstant))->SetValue<uint32_t>(wavePixelsX);
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumHeightConstant))->SetValue<uint32_t>(wavePixelsY);
-            static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumDetailConstant))->SetValue<float>(kHitAccumDetailSize0);
+            // Engagement threshold: env-overridable (the primary cone coef is
+            // tan-based ~0.0016 at 500 px, so default scenes need a SMALL
+            // detail to engage — the Dozen readout's finding #1; the diag boot
+            // sets e.g. 0.02 to make its numeric gate non-vacuous).
+            float hitAccumDetail = kHitAccumDetailSize0;
+            if (const char* detailEnv = std::getenv("VIXEN_HIT_ACCUM_DETAIL")) {
+                const float parsed = static_cast<float>(std::atof(detailEnv));
+                if (parsed > 0.0f) hitAccumDetail = parsed;
+            }
+            hitAccumDetailSize0_ = hitAccumDetail;
+            static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumDetailConstant))->SetValue<float>(hitAccumDetail);
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumCamPosConstant))->SetValue<glm::vec3>(glm::vec3(0.0f));
             auto* tableInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer));
             // uint32_t, matching the ValueTag the node reads (the ddgiLeakGateDebug

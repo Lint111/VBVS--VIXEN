@@ -57,6 +57,7 @@
 #include "Nodes/ShaderLibraryNode.h"           // Inc4 M3: GetDeviceVulkanVersion/GetDeviceSpirvVersion for the specialized-shader compile
 #include "Nodes/CommandPoolNode.h"             // Inc4 M3: not directly needed here, but device/pool pairing convention
 #include "Recipe/SpecializedRecipeShaderGlsl.h"  // Inc4 M3: EmitSpecializedRecipeComputeShader
+#include "HitAccumulation.h"                     // W3b: the CPU mirror, cross-validated by the diag readback
 #include "ShaderCompiler.h"                    // Inc4 M3: runtime GLSL->SPIR-V compile for a hot recipe's specialized shader
 #include "ShaderBundleBuilder.h"               // Inc4 M3: AddStageFromSpirv -> reflection-only ShaderDataBundle
 #include "ComputePipelineCacher.h"             // Inc4 M3: GetOrCreate for the specialized VkPipeline
@@ -2076,6 +2077,101 @@ void VulkanGraphApplication::Update() {
         // VIXEN_DDGI_CORNELL_MIXED_DEMO (mixed-provider variants) -- same hit_record_buffer
         // readback mechanism applies unchanged regardless of which bodies are STORED vs
         // PROCEDURAL, so these variants get the same instIdx-map/OOB gate evidence for free.
+        // W3b diag readback (VIXEN_HIT_ACCUM_PROBE_LOG, one-shot at tick 60 —
+        // the Cornell-diag pattern below): map the accumulation table AND the
+        // hit records, run the CPU mirror (HitAccumulation.h — the
+        // specification the GLSL twins) over the SAME records with the SAME
+        // inputs, and log both sides. Counts are rounding-immune (they don't
+        // depend on the fixed-point quantum edge), so equality of
+        // occupied/total/per-mip is the pass's numeric gate.
+        if (renderGraph && hitAccumEnabled_ && std::getenv("VIXEN_HIT_ACCUM_PROBE_LOG")) {
+            static long hitAccumDiagTick = 0;
+            if (++hitAccumDiagTick == 60) {
+                auto* tableNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer_));
+                auto* hrBufDiag = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
+                auto* bodySceneDiag = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstanceByName("body_octree_scene"));
+                auto* devInstDiag = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+                auto* camInstDiag = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_));
+                if (tableNode && hrBufDiag && bodySceneDiag && devInstDiag && devInstDiag->GetVulkanDevice() && camInstDiag) {
+                    auto* devDiag = devInstDiag->GetVulkanDevice();
+                    vkDeviceWaitIdle(devDiag->device);
+
+                    // --- GPU side: scan the table ---
+                    uint32_t gpuOccupied = 0, gpuTotal = 0;
+                    uint32_t gpuMipHist[16] = {};
+                    if (void* tmapped = tableNode->MapForReadback(devDiag)) {
+                        const auto* words = reinterpret_cast<const uint32_t*>(tmapped);
+                        constexpr uint32_t kStrideWords = 12;  // HitAccumEntryGpu, 48 B
+                        for (uint32_t s = 0; s < kHitAccumTableCapacity; ++s) {
+                            const uint32_t key = words[s * kStrideWords + 0];
+                            if ((key & 0x80000000u) == 0u) continue;
+                            const uint32_t cnt = words[s * kStrideWords + 1];
+                            ++gpuOccupied;
+                            gpuTotal += cnt;
+                            gpuMipHist[(key >> 19) & 0xFu] += cnt;
+                        }
+                        tableNode->UnmapReadback(devDiag);
+                    }
+
+                    // --- CPU side: the mirror over the same records ---
+                    // coef replicated from RaySizeCoefNode.cpp:31 (2·tan((fovYRad/height)·0.5);
+                    // lastComputed_ is private — SYNC with that line). bias = 0.0 (pinhole,
+                    // ray_size_bias's own SetValue). detail = the resolved member.
+                    const float fovYRad = glm::radians(45.0f);
+                    const float coef = 2.0f * std::tan((fovYRad / static_cast<float>(height)) * 0.5f);
+                    const float bias = 0.0f;
+                    const glm::vec3 camPos = camInstDiag->GetCurrentCameraData().cameraPos;
+                    const auto& instancesDiag = bodySceneDiag->GetInstances();
+                    uint32_t cpuEngaged = 0;
+                    uint32_t cpuMipHist[16] = {};
+                    std::unordered_map<uint32_t, uint32_t> cpuKeys;  // packed key -> count
+                    if (void* rmapped = hrBufDiag->MapForReadback(devDiag)) {
+                        const auto* bytes = reinterpret_cast<const uint8_t*>(rmapped);
+                        const size_t recCount = static_cast<size_t>(hrBufDiag->GetSizeBytes()) / 64u;
+                        for (size_t i = 0; i < recCount; ++i) {
+                            const uint8_t* rec = bytes + i * 64u;
+                            const uint32_t flags = *reinterpret_cast<const uint32_t*>(rec + 44);
+                            if ((flags & 0x1u) == 0u) continue;
+                            const float hitT = *reinterpret_cast<const float*>(rec + 28);
+                            const glm::vec3 worldPos = *reinterpret_cast<const glm::vec3*>(rec + 32);
+                            const uint32_t instIdx = *reinterpret_cast<const uint32_t*>(rec + 48);
+                            if (instIdx >= instancesDiag.size()) continue;
+                            const float footprint = hitT * coef + bias;
+                            using namespace Vixen::SVO::HitAccum;
+                            const uint32_t mip = SelectMip(footprint, hitAccumDetailSize0_);
+                            if (mip == 0u) continue;
+                            const uint32_t recipeId = instancesDiag[instIdx].recipeId;
+                            const float cellSize = CellSize(mip, hitAccumDetailSize0_);
+                            CellKey ck;
+                            ck.recipeId = recipeId;
+                            ck.mip = mip;
+                            ck.cell = glm::ivec3(glm::floor(worldPos / cellSize));
+                            const glm::ivec3 anchor = glm::ivec3(glm::floor(camPos / cellSize));
+                            const uint32_t packed = PackCellKey(ck, anchor);
+                            if (packed == 0u) continue;  // fail-soft, same as the GPU
+                            ++cpuEngaged;
+                            cpuMipHist[mip] += 1u;
+                            cpuKeys[packed] += 1u;
+                        }
+                        hrBufDiag->UnmapReadback(devDiag);
+                    }
+
+                    auto histStr = [](const uint32_t* h) {
+                        std::string s;
+                        for (int m = 1; m < 16; ++m) if (h[m]) s += " m" + std::to_string(m) + "=" + std::to_string(h[m]);
+                        return s.empty() ? std::string(" (none)") : s;
+                    };
+                    if (mainLogger) {
+                        mainLogger->Info("[HitAccumDiag] GPU: occupied=" + std::to_string(gpuOccupied) +
+                                         " total=" + std::to_string(gpuTotal) + " mips:" + histStr(gpuMipHist));
+                        mainLogger->Info("[HitAccumDiag] CPU-predict: distinctKeys=" + std::to_string(cpuKeys.size()) +
+                                         " engaged=" + std::to_string(cpuEngaged) + " mips:" + histStr(cpuMipHist) +
+                                         " (detail=" + std::to_string(hitAccumDetailSize0_) + " coef=" + std::to_string(coef) + ")");
+                    }
+                }
+            }
+        }
+
         if (renderGraph && (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") ||
                             std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
                             std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO") ||

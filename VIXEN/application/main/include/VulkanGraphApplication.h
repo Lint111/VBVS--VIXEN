@@ -414,6 +414,7 @@ private:
     static constexpr uint32_t kHitAccumEntryBytes      = 48u;
     static constexpr float    kHitAccumDetailSize0     = 0.5f;  // engagement threshold (world units at mip 0)
     bool hitAccumEnabled_ = false;
+    float hitAccumDetailSize0_ = kHitAccumDetailSize0;  // resolved (env-overridable) engagement threshold
     NodeHandle hitAccumCamPosConstant_{};  // set every frame from PreTick (camera cell anchor)
     NodeHandle hitAccumTableBuffer_{};     // mapped by the VIXEN_HIT_ACCUM_PROBE_LOG diag readback
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
