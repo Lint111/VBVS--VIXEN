@@ -42,9 +42,10 @@ inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
 // reservoir). Same program, own compiled variant; no device requirement.
 inline constexpr ShaderFeature kFeatureWaveReservoirPhase{"VIXEN_WAVE_RESERVOIR_PHASE"};
-// Wavefront W3c-1: the (recipeId, cell@mip) accumulate tail fused into the
-// wave's analytic phase (the standalone pass paid ~2 ms re-reading records).
-inline constexpr ShaderFeature kFeatureHitAccumFused{"VIXEN_HIT_ACCUM_FUSED"};
+// kFeatureHitAccumFused (VIXEN_HIT_ACCUM_FUSED) RETIRED at W-SPLIT: the
+// accumulate tail moved back to its own HitAccumulate.comp dispatch — the
+// fusion cost more (+7-8 ms structural) than the re-read it was meant to
+// avoid (~2 ms). The wave is unconditionally plain again.
 
 /** @brief W-LEAN L3: SpatialReuseShade's cell-resolve fold (the retired
  *  standalone HitAccumResolve stage as a tail of the shade — bindings 36/37/38

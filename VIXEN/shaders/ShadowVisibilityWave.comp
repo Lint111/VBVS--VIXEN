@@ -72,123 +72,6 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
-#ifdef VIXEN_HIT_ACCUM_FUSED
-// ============================================================================
-// FUSED HIT ACCUMULATION (wavefront W3c-1) — the (recipeId, cell@mip) tail
-// rides THIS pass because it already reads every hit record: the standalone
-// accumulate stage paid ~2 ms (Dozen) just to re-read 16 MB of records (the
-// dispatch-pattern readout's fix #1). Same protocol as the retired
-// HitAccumulate.comp: epoch-stamped entries, transient-handshake reclaim,
-// double-hashed probing — totals verified EXACT by the shutdown diag.
-// bodyInstances rides SceneBindings (binding 10, already included). Per-frame
-// params ride ONE host-written SSBO (NEVER push constants — they bake at
-// command-record time per ring slot; the W3b finding).
-// ============================================================================
-#include "HitAccumulationCommon.glsl"
-
-layout(std430, binding = 21) buffer HitAccumTable {
-    HitAccumEntryGpu accumEntries[];
-};
-
-// HitAccumParams struct: HitAccumulationCommon.glsl (W3c-2 — three consumers).
-layout(std430, binding = 22) readonly buffer HitAccumParamsSSBO {
-    HitAccumParams hitAccumParams;
-};
-
-void FusedHitAccumulate(uint slot, HitRecord rec) {
-    if (hitAccumParams.primaryCoef <= 0.0) return;
-    float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
-    uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
-    if (mip == 0u) return;  // per-ray exact — the fail-soft path
-
-    uint instIdx = rec._pad0[0];
-    if (instIdx >= bodyInstances.length()) return;
-    uint recipeId = bodyInstances[instIdx].recipeId;
-
-    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
-    ivec3 cell   = HitAccumCellCoord(rec.worldPos, cellSize);
-    ivec3 anchor = HitAccumAnchorCell(hitAccumParams.camPos.xyz, hitAccumParams.camForward.xyz,
-                                      hitAccumParams.primaryCoef, hitAccumParams.detailSize0, mip);
-    uint keyLo = HitAccumPackCellKeyLo(cell, anchor);
-    if (keyLo == 0u) return;
-    uint keyHiBase = HitAccumPackCellKeyHi(recipeId, mip);
-    if (keyHiBase == 0u) return;
-
-    uint myEpoch = hitAccumParams.frameEpoch & 0xFFFFFu;
-    if (myEpoch == 0xFFFFFu) myEpoch = 0u;
-    uint keyHi = keyHiBase | myEpoch;
-    uint kTransient = keyHiBase | 0xFFFFFu;
-
-    uint baseSlot = HitAccumSlotOf(keyLo, keyHiBase);
-    uint stride = HitAccumProbeStride(keyLo);
-    bool claimed = false;
-    uint tableSlot = 0u;
-    for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
-        uint s = (baseSlot + probe * stride) % kHitAccumTableCapacity;
-        uint oldLo = atomicCompSwap(accumEntries[s].keyLo, 0u, keyLo);
-        if (oldLo != 0u && oldLo != keyLo) continue;
-        if (oldLo == 0u) {
-            // W3c-2: the representative instance rides the claim — written
-            // BEFORE the keyHi publish, so a published keyHi implies a valid
-            // repInstIdx (the publish-last protocol's own ordering).
-            atomicExchange(accumEntries[s].repInstIdx, instIdx);
-            atomicExchange(accumEntries[s].keyHi, keyHi);
-            tableSlot = s; claimed = true; break;
-        }
-        uint hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
-        if ((hiRead & 0xFFF00000u) != keyHiBase) continue;
-        if ((hiRead & 0xFFFFFu) == myEpoch) { tableSlot = s; claimed = true; break; }
-        if (hiRead == kTransient) {
-            // W3c-3: BOUNDED wait on the reclaim winner's zeroing window
-            // (~13 atomic stores) instead of probing on immediately — the
-            // probe-on rule MINTED ~3 fresh duplicate slots per frame
-            // (measured occupancy creep 32,029→32,282 over 80 frames), and
-            // every mint can flip the resolve's duplicate selection (the
-            // frame-hash instability's root). Still fail-soft: a spin that
-            // never sees the publish probes on exactly as before.
-            bool joined = false;
-            for (uint spin = 0u; spin < 16u; ++spin) {
-                hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
-                if (hiRead == keyHi) { tableSlot = s; claimed = true; joined = true; break; }
-                if (hiRead != kTransient) break;  // published, but not our epoch
-            }
-            if (joined) break;
-            continue;
-        }
-        if (atomicCompSwap(accumEntries[s].keyHi, hiRead, kTransient) == hiRead) {
-            atomicExchange(accumEntries[s].count, 0u);
-            atomicExchange(accumEntries[s].sumPosQX, 0); atomicExchange(accumEntries[s].sumPosQY, 0); atomicExchange(accumEntries[s].sumPosQZ, 0);
-            atomicExchange(accumEntries[s].sumDirQX, 0); atomicExchange(accumEntries[s].sumDirQY, 0); atomicExchange(accumEntries[s].sumDirQZ, 0);
-            atomicExchange(accumEntries[s].sumDistQ, 0);
-            atomicExchange(accumEntries[s].sumTpQX, 0); atomicExchange(accumEntries[s].sumTpQY, 0); atomicExchange(accumEntries[s].sumTpQZ, 0);
-            atomicExchange(accumEntries[s].repInstIdx, instIdx);  // W3c-2: before the publish
-            atomicExchange(accumEntries[s].keyHi, keyHi);
-            tableSlot = s; claimed = true; break;
-        }
-    }
-    if (!claimed) return;
-
-    vec3 cellOrigin = vec3(cell) * cellSize;
-    vec3 local = (rec.worldPos - cellOrigin) / cellSize;
-    // W3c-2: the summed vector is the record's NORMAL (|avg| shortens as the
-    // cell's surface orientations disagree — the classic Toksvig factor; a
-    // cell's RAY directions are near-parallel by construction, so W3b's
-    // view-direction sum carried no widening signal). Throughput sums the
-    // record's actual albedo (W3b summed a placeholder white).
-    atomicAdd(accumEntries[tableSlot].sumPosQX, int(round(local.x * kHitAccumPosScale)));
-    atomicAdd(accumEntries[tableSlot].sumPosQY, int(round(local.y * kHitAccumPosScale)));
-    atomicAdd(accumEntries[tableSlot].sumPosQZ, int(round(local.z * kHitAccumPosScale)));
-    atomicAdd(accumEntries[tableSlot].sumDirQX, int(round(rec.worldNormal.x * kHitAccumDirScale)));
-    atomicAdd(accumEntries[tableSlot].sumDirQY, int(round(rec.worldNormal.y * kHitAccumDirScale)));
-    atomicAdd(accumEntries[tableSlot].sumDirQZ, int(round(rec.worldNormal.z * kHitAccumDirScale)));
-    atomicAdd(accumEntries[tableSlot].sumDistQ, int(round(rec.hitT * kHitAccumPosScale / cellSize)));
-    atomicAdd(accumEntries[tableSlot].sumTpQX, int(round(rec.albedo.x * kHitAccumThroughputScale)));
-    atomicAdd(accumEntries[tableSlot].sumTpQY, int(round(rec.albedo.y * kHitAccumThroughputScale)));
-    atomicAdd(accumEntries[tableSlot].sumTpQZ, int(round(rec.albedo.z * kHitAccumThroughputScale)));
-    atomicAdd(accumEntries[tableSlot].count, 1u);
-}
-#endif  // VIXEN_HIT_ACCUM_FUSED
-
 #ifdef VIXEN_WAVE_RESERVOIR_PHASE
 // ============================================================================
 // RESERVOIR PHASE (wavefront W2a) — a SECOND dispatch of this program, as its
@@ -276,28 +159,13 @@ void main() {
 
     uint flags = hitRecords[slot].flags;
 
-    // W-LEAN L1: classify engagement ONCE (the fused path's own footprint
-    // derivation, hoisted). A pixel whose blend weight saturates
-    // (footprint ≥ 2·detailSize0 ⇔ the resolve's w == 1) has its ENTIRE
-    // per-pixel color replaced by the composite — its analytic bits are
-    // computed-then-discarded, so their traces are skipped when the lean
-    // switch (params camForward.w) is on. Seam-band pixels (0 < w < 1) keep
-    // their traces: the blend still consumes their per-pixel term. The record
-    // is stamped (flags bit 1) so the reservoir phase below and the later
-    // lean slices share this ONE classification point.
-    bool leanSkip = false;
-#ifdef VIXEN_HIT_ACCUM_FUSED
-    if ((flags & HITRECORD_FLAG_HIT) != 0u &&
-        hitAccumParams.camForward.w > 0.0 && hitAccumParams.primaryCoef > 0.0) {
-        float leanFootprint = hitRecords[slot].hitT * hitAccumParams.primaryCoef
-                            + hitAccumParams.primaryBias;
-        if (leanFootprint >= 2.0 * hitAccumParams.detailSize0) {
-            leanSkip = true;
-            flags |= HITRECORD_FLAG_CELL_RESOLVED;
-            hitRecords[slot].flags = flags;
-        }
-    }
-#endif
+    // W-LEAN L1: the accumulate pass (HitAccumulate.comp), which now runs
+    // BEFORE this wave in the frame (topology, not hazard — see
+    // BuildRenderGraph.cpp's ordering connect), already classified engagement
+    // and stamped this bit for any pixel whose blend weight saturates
+    // (footprint >= 2*detailSize0, the resolve's w == 1). This phase just
+    // reads it — no footprint math, no params access, here anymore.
+    bool leanSkip = (flags & HITRECORD_FLAG_CELL_RESOLVED) != 0u;
 
     if (!leanSkip && (flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
         vec3 worldPos    = hitRecords[slot].worldPos;
@@ -328,14 +196,6 @@ void main() {
     // RMW) is correct: it re-baselines the word each frame; the reservoir
     // phase RMWs bit 4 in afterwards.
     hitRecords[slot]._pad0[2] = visBits & 0xFu;
-
-#ifdef VIXEN_HIT_ACCUM_FUSED
-    // W3c-1: the accumulate tail rides the record this pass already holds —
-    // zero extra record traffic (the retired standalone pass's whole cost).
-    if ((flags & HITRECORD_FLAG_HIT) != 0u) {
-        FusedHitAccumulate(slot, hitRecords[slot]);
-    }
-#endif
 }
 
 #endif  // VIXEN_WAVE_RESERVOIR_PHASE

@@ -604,10 +604,10 @@ void VulkanGraphApplication::PreTick() {
             RunRecipeBucketedDispatchPreTick();
         }
 
-        // W3c-1: the fused wave's per-frame params — ONE host-written 48-byte
-        // block (epoch, PRIMARY cone, detail, camera). NEVER push constants
-        // (record-time bake per ring slot — the W3b finding). primaryCoef
-        // replicates RaySizeCoefNode.cpp:31 (2·tan((fovYRad/height)·0.5);
+        // W-SPLIT: the accumulate pass's per-frame params — ONE host-written
+        // 48-byte block (epoch, PRIMARY cone, detail, camera). NEVER push
+        // constants (record-time bake per ring slot — the W3b finding).
+        // primaryCoef replicates RaySizeCoefNode.cpp:31 (2·tan((fovYRad/height)·0.5);
         // lastComputed_ is private — SYNC with that line), bias = 0 (pinhole).
         if (hitAccumEnabled_) {
             if (auto* cameraInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
@@ -1435,6 +1435,13 @@ void VulkanGraphApplication::PostTick() {
     // scheme is considered; see ProbeUpdateCommon.glsl's slot-addressing note).
     if (auto* probeGather = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_gather"))) {
         passes.push_back({"probe_gather", probeGather->GetGPUPerformanceLogger()});
+    }
+    // W-SPLIT: the re-split accumulate (exists only under VIXEN_HIT_ACCUM;
+    // absent on the default path) — its column is what the wave's own column
+    // (immediately below) is priced AGAINST: the fusion this pass undoes cost
+    // more (+7-8 ms) than the ~2 ms re-read it was meant to save.
+    if (auto* accumulate = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_accumulate"))) {
+        passes.push_back({"hit_accum_accumulate", accumulate->GetGPUPerformanceLogger()});
     }
     // W1b: the derived-request shadow wave — its column is what prices moving
     // the production shadow traces out of the shade megakernel.

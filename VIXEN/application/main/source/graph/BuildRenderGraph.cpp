@@ -41,6 +41,7 @@
 #include "merged/ShadowVisibilityWave-SDI.h"    // W1b: the derived-request shadow wave
 #include "merged/SpatialReuseGather-SDI.h"      // W2a: the ReSTIR spatial fold (gather)
 #include "merged/HitAccumCellShade-SDI.h"       // W3c-2: per-cell shade over the accumulation table
+#include "merged/HitAccumulate-SDI.h"           // W-SPLIT: the re-split accumulate, standalone bindings
 // W-LEAN L3: HitAccumResolve-SDI.h RETIRED — the resolve is SpatialReuseShade's
 // own VIXEN_SRS_CELL_RESOLVE axis now (gated bindings 36-39 in ReuseSdi).
 
@@ -59,6 +60,7 @@ namespace ShadowSdi = ShaderInterface::ShadowRayTrace;
 namespace WaveSdi = ShaderInterface::ShadowVisibilityWave;
 namespace SrgSdi = ShaderInterface::SpatialReuseGather;  // W2a: the ReSTIR spatial fold (GatherSdi = ProbeGather, taken)
 namespace CellShadeSdi = ShaderInterface::HitAccumCellShade;  // W3c-2
+namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -406,6 +408,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
     windowNode_ = windowNode;                        // store for GetWindowHandle() live lookup
     NodeHandle deviceNode = renderGraph->AddNode<DeviceNodeType>("main_device");
+    // Adapter-selection visibility: DeviceNode's NODE_LOG_INFO calls (incl. "[DeviceNode] Selected
+    // GPU N: ...") are dead by default -- nodeLogger is constructed enabled=false (NodeInstance.cpp)
+    // and nothing else opts this node in. Enable it so every session's GPU choice is on record.
+    if (Logger* deviceLogger = renderGraph->GetInstance(deviceNode)->GetLogger()) {
+        deviceLogger->SetEnabled(true);
+        deviceLogger->SetTerminalOutput(true);
+    }
     NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
 
@@ -733,15 +742,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
     hitAccumEnabled_ = hitAccumEnabled;
     NodeHandle hitAccumTableBuffer{};
     NodeHandle hitAccumParamsBuffer{};
+    NodeHandle hitAccumAccumulateShaderLib{}, hitAccumAccumulateNode{};
+    NodeHandle hitAccumAccumulateReadGatherer{}, hitAccumAccumulateWriteGatherer{};
     if (hitAccumEnabled) {
         hitAccumTableBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_table_buffer");
-        // W3c-1: NO standalone stage — the accumulate tail is a FUSED AXIS of
-        // the shadow wave (VIXEN_HIT_ACCUM_FUSED; the standalone pass paid
-        // ~2 ms re-reading every record). Per-frame params (epoch, primary
-        // cone, detail, camera) ride ONE host-written 48-byte buffer, written
-        // each PreTick — NEVER push constants (they bake at record time per
-        // ring slot; the W3b finding).
+        // W-SPLIT: the accumulate tail is back to its OWN dispatch — W3c-1's
+        // fusion into the shadow wave (VIXEN_HIT_ACCUM_FUSED) cost MORE than
+        // the ~2 ms record re-read it was meant to avoid (measured +7-8 ms
+        // structural, the wave's traversal+claim machinery sharing one
+        // kernel). HitAccumulate.comp is standalone-bindings (no
+        // SceneBindings, no traversal — the leanness is the point). Per-frame
+        // params (epoch, primary cone, detail, camera) ride ONE host-written
+        // 48-byte buffer, written each PreTick — NEVER push constants (they
+        // bake at record time per ring slot; the W3b finding).
         hitAccumParamsBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_params_buffer");
+        hitAccumAccumulateShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_accumulate_shader_lib");
+        hitAccumAccumulateNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_accumulate");
+        // Reads: hitRecordBuffer. Writes: {table, hitRecordBuffer} — it RMWs
+        // the record's flags word (the W-LEAN L1 stamp, moved here from the
+        // wave) AND writes the accumulation table.
+        hitAccumAccumulateReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_accumulate_read_gatherer");
+        hitAccumAccumulateWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_accumulate_write_gatherer");
     }
     hitAccumParamsBuffer_ = hitAccumParamsBuffer;
     hitAccumTableBuffer_ = hitAccumTableBuffer;
@@ -1691,28 +1712,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     registerLightingFamily(probeApplyShaderLib,
                            makeLightingFamily("ProbeApply.comp", "ProbeApply"));
     // W1b: the derived-request shadow wave (SceneBindings consumer — carries
-    // the trace-hooks variant axis like every traversal pass).
+    // the trace-hooks variant axis like every traversal pass). W-SPLIT: the
+    // wave is unconditionally plain again — VIXEN_HIT_ACCUM_FUSED retired,
+    // the accumulate tail moved to its own dispatch below.
+    registerLightingFamily(shadowVisibilityWaveShaderLib,
+                           makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave"));
+    // W-SPLIT: the re-split accumulate — standalone bindings (no
+    // SceneBindings, no trace-hooks axis; the shared lighting feature set is
+    // inert for it, same as ProbeApply/RecipeInstanceBucketing above).
     if (hitAccumEnabled) {
-        // W3c-1: the wave compiles its FUSED-accumulate variant.
-        auto waveFusedFamily = makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave");
-        auto waveFusedFeatures = lightingShaderFeatures;
-        waveFusedFeatures.push_back(kFeatureHitAccumFused.define);
-        auto* waveLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shadowVisibilityWaveShaderLib));
-        waveLibNode->RegisterShaderBuilder([this, waveFusedFamily, waveFusedFeatures](int vulkanVer, int spirvVer) {
-            auto builder = waveFusedFamily->MakeBuilder(waveFusedFeatures);
-            builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
-                   .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
-#endif
-                   .EnableCaching(&shaderCacheManager_);
-            return builder;
-        });
-    } else {
-        registerLightingFamily(shadowVisibilityWaveShaderLib,
-                               makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave"));
+        registerLightingFamily(hitAccumAccumulateShaderLib,
+                               makeLightingFamily("HitAccumulate.comp", "HitAccumulate"));
     }
     // W3c-2: the resolve pair. The cell shade is a SceneBindings consumer AND
     // an analytic-field consumer — its family source gets the SAME uber-recipe
@@ -1956,6 +1966,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
+        // W-SPLIT: the accumulate pass — SAME 1D dispatch shape as the wave
+        // (it walks the identical hit-record slot count, just earlier in the
+        // frame). Exists whenever hitAccumEnabled (not just resolve — the
+        // shutdown diag needs it regardless of whether the resolve composite
+        // is on).
+        if (hitAccumEnabled) {
+            auto* accumulateStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(hitAccumAccumulateNode));
+            accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+            accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
+            accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+            accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+        }
+
         // W2a (reservoir path opt-in): the gather is 2D over the same scaled
         // extent (8×8 workgroups, the shade's own shape — its fold logic is
         // pixel-2D); the reservoir-phase wave is 1D over the same slot count
@@ -2059,9 +2082,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeApplyReadGatherer))->PreRegisterBufferSlots(2);
     // W1b: the shadow wave reads {hitRecordBuffer} and writes {hitRecordBuffer}
     // (an RMW of one word — but the hazard model tracks whole resources).
+    // W-SPLIT: always 1-wide again — the table write moved to the accumulate
+    // pass's own write gatherer below.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(1);
-    // W3c-1: when fused, the wave ALSO writes the accumulation table.
-    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(hitAccumEnabled ? 2u : 1u);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(1);
+    // W-SPLIT: the accumulate pass reads {hitRecordBuffer}, writes {table,
+    // hitRecordBuffer} (it RMWs the record's flags word AND writes the table).
+    if (hitAccumEnabled) {
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumAccumulateReadGatherer))->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumAccumulateWriteGatherer))->PreRegisterBufferSlots(2);
+    }
     // W3c-2 / W-LEAN L3: cell shade reads {table}, writes {cellRadiance};
     // the shade's fold reads {cellRadiance, table} via SRS's first buffer
     // read gatherer (records were already its own).
@@ -7625,27 +7655,38 @@ void VulkanGraphApplication::BuildRenderGraph() {
     CensusStageFromSdi<ApplySdi::Metadata, ApplySdi::MEMBERS>(
         sdiHazardCensus_, probeApplyNode, sceneProviders, sdiNoFeatures,
         &sdiCensusExclusions);
+    // W-SPLIT: the re-split accumulate — standalone bindings, full wire (no
+    // SceneBindings push block to hand-wire; its SDI has zero push members,
+    // the ProbeApply/RecipeInstanceBucketing precedent). Every member
+    // (HitRecordBuffer, BodyInstanceBuffer, HitAccumTable, HitAccumParamsSSBO)
+    // already has a registry provider — HitRecordBuffer/BodyInstanceBuffer
+    // from the march's own scene providers above, HitAccumTable/
+    // HitAccumParamsSSBO from the SRS synthesis site (the providers-before-
+    // synthesis rule — this consumer runs after that site, same as the
+    // wave used to). Runs FIRST in the frame (topology below): it classifies
+    // W-LEAN L1 and writes the table before the wave ever reads the flag bit.
+    if (hitAccumEnabled) {
+        const auto accumSynth = SynthesizeComputeStage<AccumSdi::Metadata, AccumSdi::MEMBERS>(
+            renderGraph, batch, "hit_accum_accumulate", hitAccumAccumulateShaderLib,
+            hitAccumAccumulateNode, lightingCommon, sceneProviders, {});
+        (void)accumSynth;  // zero push members; nothing left to hand-wire
+        CensusStageFromSdi<AccumSdi::Metadata, AccumSdi::MEMBERS>(
+            sdiHazardCensus_, hitAccumAccumulateNode, sceneProviders, sdiNoFeatures,
+            &sdiCensusExclusions);
+    }
     // W1b: the shadow wave — every one of its members (the scene set via
     // SceneBindings, LightingConfigSSBO/HitRecordBuffer/ShadowConfigSSBO)
     // already has a registry provider; DescriptorsOnly because its
     // SceneBindings push block is hand-wired below like every tracing stage.
-    SdiFeatureSet waveSdiFeatures;
-    if (hitAccumEnabled) {
-        waveSdiFeatures.Enable(kFeatureHitAccumFused);  // W3c-1: bindings 21/22
-        // Providers registered at the SRS synthesis site above (W-LEAN L3 —
-        // the shade's fold is now the FIRST consumer in synthesis order).
-        // The fused wave WRITES the table alongside its hit-record RMW — slot 1
-        // of the wave's own write gatherer (declared 2-wide when fused).
-        batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      shadowVisibilityWaveWriteGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    }
+    // W-SPLIT: unconditionally plain now — VIXEN_HIT_ACCUM_FUSED retired, the
+    // table write moved to the accumulate pass's own gatherers above.
     const auto waveSynth = SynthesizeComputeStage<WaveSdi::Metadata, WaveSdi::MEMBERS>(
         renderGraph, batch, "shadow_visibility_wave", shadowVisibilityWaveShaderLib,
-        shadowVisibilityWaveNode, lightingCommon, sceneProviders, waveSdiFeatures,
+        shadowVisibilityWaveNode, lightingCommon, sceneProviders, sdiNoFeatures,
         SdiWireSet::DescriptorsOnly);
     shadowVisibilityWavePushConstantGatherer = waveSynth.pushGatherer;
     CensusStageFromSdi<WaveSdi::Metadata, WaveSdi::MEMBERS>(
-        sdiHazardCensus_, shadowVisibilityWaveNode, sceneProviders, waveSdiFeatures,
+        sdiHazardCensus_, shadowVisibilityWaveNode, sceneProviders, sdiNoFeatures,
         &sdiCensusExclusions);
 
     // Both TRACING stages consume SceneBindings.glsl's PushConstants block and
@@ -7857,6 +7898,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   probeApplyReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(probeApplyReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   probeApplyNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
+    // W-SPLIT: the accumulate pass's own hazards — reads {hitRecordBuffer},
+    // writes {hitAccumTable, hitRecordBuffer} (the RMW of the flags word AND
+    // the table). Runs BEFORE the wave (topology below): the wave's analytic
+    // phase only ever READS the flag bit this pass stamps.
+    if (hitAccumEnabled) {
+        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      hitAccumAccumulateReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(hitAccumAccumulateReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      hitAccumAccumulateNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      hitAccumAccumulateWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      hitAccumAccumulateWriteGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(hitAccumAccumulateWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      hitAccumAccumulateNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        // Ordering-only edge (the Blit ORDERING_WAIT_SEMAPHORE convention —
+        // shared-Resource* hazards do NOT order two stages, the W3c-2 finding
+        // reused here): pins accumulate → wave, so the frame runs accumulate
+        // → wave → cell_shade → SRS (cell_shade's own ordering source is the
+        // wave, which transitively follows the accumulate — no edge needed
+        // there). The wave's slot-21 ORDERING_WAIT_SEMAPHORE input was
+        // otherwise unused.
+        batch.Connect(hitAccumAccumulateNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      shadowVisibilityWaveNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
 
     // W1b cross-dispatch hazards: the shadow wave read-modify-writes the
     // hit-record buffer BETWEEN the march (writer) and DL/SpatialReuse

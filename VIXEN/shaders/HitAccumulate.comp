@@ -1,0 +1,194 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// HitAccumulate.comp - the RE-SPLIT (recipeId, cell@mip) hit-accumulation pass
+// ============================================================================
+// (undertow docs/plans/2026-08-04-wavefront-recipe-shading.md § W-SPLIT)
+//
+// W3c-1 fused the accumulate tail into ShadowVisibilityWave.comp on the
+// argument that the standalone pass paid ~2 ms just to re-read every hit
+// record the wave already held. Measured on real hardware, the fusion cost
+// MORE than it saved: the wave's own traversal+claim machinery in one kernel
+// added +7-8 ms structurally (occupancy/register pressure from carrying both
+// jobs), dwarfing the ~2 ms re-read the fusion was meant to avoid. This pass
+// undoes the fusion — the accumulate tail moves back to its OWN dispatch, but
+// LEAN this time: no SceneBindings, no traversal, nothing but the hit-record
+// walk and the table claim. STANDALONE bindings only, mirroring
+// SpatialReuseShade.comp's own gated standalone BodyInstance declaration
+// (binding 39) rather than pulling in the full scene set.
+//
+// Dispatch: 1D over hitRecords.length() (the wave's own dispatch shape —
+// waveDispatchX = (pixels+63)/64 — this pass runs over the SAME slot count).
+// Runs BEFORE the wave in the frame (topology, not hazard, orders it): this
+// pass RMWs each record's flags word (the W-LEAN L1 classification, moved
+// here from the wave) and writes the accumulation table; the wave's analytic
+// phase then only READS the flag bit to decide whether to skip its trace
+// loop — no more footprint math, no more params access, in the wave itself.
+// ============================================================================
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "HitRecord.glsl"
+
+// NON-readonly: this pass RMWs the record's flags word (the W-LEAN L1 stamp,
+// moved here from the wave — see main()'s classification block below) and
+// reads every other field to accumulate. Binding numbers are per-shader (no
+// SceneBindings namespace to collide with here).
+layout(std430, binding = 0) buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// Standalone instance declaration — SpatialReuseShade.comp's own gated
+// standalone-BodyInstance shape (binding 39 there), copied here since this
+// pass needs ONLY recipeId and traversal-agnostic leanness is the point.
+// std430, 64 B — byte-for-byte the SceneBindings.glsl BodyInstance layout.
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
+};
+layout(std430, binding = 1) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+
+#include "HitAccumulationCommon.glsl"
+
+layout(std430, binding = 2) buffer HitAccumTable {
+    HitAccumEntryGpu accumEntries[];
+};
+
+// HitAccumParams struct: HitAccumulationCommon.glsl (camPos.w = temporal EMA
+// alpha, camForward.w = W-LEAN switch — the same per-frame block the wave,
+// the cell shade, and the resolve already share).
+layout(std430, binding = 3) readonly buffer HitAccumParamsSSBO {
+    HitAccumParams hitAccumParams;
+};
+
+// ============================================================================
+// FusedHitAccumulate (moved verbatim from ShadowVisibilityWave.comp's
+// VIXEN_HIT_ACCUM_FUSED block) — the sync-contract comments below are the
+// original W3c-1/W3c-2/W3c-3 findings, unchanged: epoch-stamped entries,
+// transient-handshake reclaim, double-hashed probing. Totals still verified
+// EXACT by the shutdown diag (RunHitAccumDiagReadback).
+// ============================================================================
+void AccumulateHit(uint slot, HitRecord rec) {
+    if (hitAccumParams.primaryCoef <= 0.0) return;
+    float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
+    uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
+    if (mip == 0u) return;  // per-ray exact — the fail-soft path
+
+    uint instIdx = rec._pad0[0];
+    if (instIdx >= bodyInstances.length()) return;
+    uint recipeId = bodyInstances[instIdx].recipeId;
+
+    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
+    ivec3 cell   = HitAccumCellCoord(rec.worldPos, cellSize);
+    ivec3 anchor = HitAccumAnchorCell(hitAccumParams.camPos.xyz, hitAccumParams.camForward.xyz,
+                                      hitAccumParams.primaryCoef, hitAccumParams.detailSize0, mip);
+    uint keyLo = HitAccumPackCellKeyLo(cell, anchor);
+    if (keyLo == 0u) return;
+    uint keyHiBase = HitAccumPackCellKeyHi(recipeId, mip);
+    if (keyHiBase == 0u) return;
+
+    uint myEpoch = hitAccumParams.frameEpoch & 0xFFFFFu;
+    if (myEpoch == 0xFFFFFu) myEpoch = 0u;
+    uint keyHi = keyHiBase | myEpoch;
+    uint kTransient = keyHiBase | 0xFFFFFu;
+
+    uint baseSlot = HitAccumSlotOf(keyLo, keyHiBase);
+    uint stride = HitAccumProbeStride(keyLo);
+    bool claimed = false;
+    uint tableSlot = 0u;
+    for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
+        uint s = (baseSlot + probe * stride) % kHitAccumTableCapacity;
+        uint oldLo = atomicCompSwap(accumEntries[s].keyLo, 0u, keyLo);
+        if (oldLo != 0u && oldLo != keyLo) continue;
+        if (oldLo == 0u) {
+            // W3c-2: the representative instance rides the claim — written
+            // BEFORE the keyHi publish, so a published keyHi implies a valid
+            // repInstIdx (the publish-last protocol's own ordering).
+            atomicExchange(accumEntries[s].repInstIdx, instIdx);
+            atomicExchange(accumEntries[s].keyHi, keyHi);
+            tableSlot = s; claimed = true; break;
+        }
+        uint hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
+        if ((hiRead & 0xFFF00000u) != keyHiBase) continue;
+        if ((hiRead & 0xFFFFFu) == myEpoch) { tableSlot = s; claimed = true; break; }
+        if (hiRead == kTransient) {
+            // W3c-3: BOUNDED wait on the reclaim winner's zeroing window
+            // (~13 atomic stores) instead of probing on immediately — the
+            // probe-on rule MINTED ~3 fresh duplicate slots per frame
+            // (measured occupancy creep 32,029→32,282 over 80 frames), and
+            // every mint can flip the resolve's duplicate selection (the
+            // frame-hash instability's root). Still fail-soft: a spin that
+            // never sees the publish probes on exactly as before.
+            bool joined = false;
+            for (uint spin = 0u; spin < 16u; ++spin) {
+                hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
+                if (hiRead == keyHi) { tableSlot = s; claimed = true; joined = true; break; }
+                if (hiRead != kTransient) break;  // published, but not our epoch
+            }
+            if (joined) break;
+            continue;
+        }
+        if (atomicCompSwap(accumEntries[s].keyHi, hiRead, kTransient) == hiRead) {
+            atomicExchange(accumEntries[s].count, 0u);
+            atomicExchange(accumEntries[s].sumPosQX, 0); atomicExchange(accumEntries[s].sumPosQY, 0); atomicExchange(accumEntries[s].sumPosQZ, 0);
+            atomicExchange(accumEntries[s].sumDirQX, 0); atomicExchange(accumEntries[s].sumDirQY, 0); atomicExchange(accumEntries[s].sumDirQZ, 0);
+            atomicExchange(accumEntries[s].sumDistQ, 0);
+            atomicExchange(accumEntries[s].sumTpQX, 0); atomicExchange(accumEntries[s].sumTpQY, 0); atomicExchange(accumEntries[s].sumTpQZ, 0);
+            atomicExchange(accumEntries[s].repInstIdx, instIdx);  // W3c-2: before the publish
+            atomicExchange(accumEntries[s].keyHi, keyHi);
+            tableSlot = s; claimed = true; break;
+        }
+    }
+    if (!claimed) return;
+
+    vec3 cellOrigin = vec3(cell) * cellSize;
+    vec3 local = (rec.worldPos - cellOrigin) / cellSize;
+    // W3c-2: the summed vector is the record's NORMAL (|avg| shortens as the
+    // cell's surface orientations disagree — the classic Toksvig factor; a
+    // cell's RAY directions are near-parallel by construction, so W3b's
+    // view-direction sum carried no widening signal). Throughput sums the
+    // record's actual albedo (W3b summed a placeholder white).
+    atomicAdd(accumEntries[tableSlot].sumPosQX, int(round(local.x * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumPosQY, int(round(local.y * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumPosQZ, int(round(local.z * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQX, int(round(rec.worldNormal.x * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQY, int(round(rec.worldNormal.y * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQZ, int(round(rec.worldNormal.z * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDistQ, int(round(rec.hitT * kHitAccumPosScale / cellSize)));
+    atomicAdd(accumEntries[tableSlot].sumTpQX, int(round(rec.albedo.x * kHitAccumThroughputScale)));
+    atomicAdd(accumEntries[tableSlot].sumTpQY, int(round(rec.albedo.y * kHitAccumThroughputScale)));
+    atomicAdd(accumEntries[tableSlot].sumTpQZ, int(round(rec.albedo.z * kHitAccumThroughputScale)));
+    atomicAdd(accumEntries[tableSlot].count, 1u);
+}
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= hitRecords.length()) return;
+
+    uint flags = hitRecords[slot].flags;
+    if ((flags & HITRECORD_FLAG_HIT) == 0u) return;
+
+    // W-LEAN L1 classification (moved here from ShadowVisibilityWave.comp):
+    // a pixel whose blend weight saturates (footprint >= 2*detailSize0, the
+    // resolve's w == 1) has its ENTIRE per-pixel color replaced by the
+    // composite. This pass now OWNS the stamp — one thread per record, plain
+    // non-atomic write is fine (no other pass touches this record's flags
+    // this frame before the wave reads it back).
+    if (hitAccumParams.camForward.w > 0.0 && hitAccumParams.primaryCoef > 0.0) {
+        float footprint = hitRecords[slot].hitT * hitAccumParams.primaryCoef
+                         + hitAccumParams.primaryBias;
+        if (footprint >= 2.0 * hitAccumParams.detailSize0) {
+            hitRecords[slot].flags = flags | HITRECORD_FLAG_CELL_RESOLVED;
+        }
+    }
+
+    AccumulateHit(slot, hitRecords[slot]);
+}
