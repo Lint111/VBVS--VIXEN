@@ -806,7 +806,11 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             std::ostringstream coreBuf;
             coreBuf << coreFile.rdbuf();
 
-            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeComputeShader(*entry, recipeId, coreBuf.str());
+            // W2c: when the bucket-shade pass owns material, the march compiles LEAN —
+            // no gradient taps; the per-recipe shade kernel (queued after all march
+            // passes below) computes the identical normal on the final winner.
+            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeComputeShader(
+                *entry, recipeId, coreBuf.str(), /*emitGradientNormal=*/!bucketedShadeEnabled_);
 
             // AddStageFromSpirv is a stub in this codebase today (ShaderBundleBuilder.cpp's own
             // "TODO: Store SPIRV separately, for now this is a placeholder" -- it discards the
@@ -1018,43 +1022,52 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
         dispatchNode->QueueDispatch(std::move(pass));
     }
 
-    // --- W2b (wavefront epoch, VIXEN_BUCKETED_SHADE opt-in): the identity
-    // bucket-shade skeleton. ONE fixed recipe-INDEPENDENT shader
-    // (shaders/BucketShadeIdentity.comp) compiled once and cached; per hot
-    // recipeId, one MORE DispatchPass on the SAME dispatch node, queued AFTER
-    // every march pass above — MultiDispatchNode's autoBarriers_ serializes
-    // same-HitRecord passes, so march→shade ordering is inherited with zero
-    // graph changes. Binding set + push block are byte-identical to the
-    // specialized march's (SpecializedRecipeShaderGlsl.h), so the descriptor
-    // write below is the SAME proven 4-write block. ---
+    // --- W2c (wavefront epoch, VIXEN_BUCKETED_SHADE opt-in): per-recipe
+    // MATERIAL (bucket-shade) kernels — the W2b identity skeleton grown into
+    // the real traversal/shade split. The march kernels above compiled LEAN
+    // (no gradient taps); each hot recipeId gets a specialized shade kernel
+    // (EmitSpecializedRecipeShadeShader — field function + the march's
+    // gradient, token-identical, so lean-march + shade reproduces the full
+    // march's records BIT-EXACTLY), compiled once into its own cached
+    // pipeline and queued AFTER every march pass on the SAME dispatch node
+    // (autoBarriers_ serializes same-HitRecord passes — march→shade ordering
+    // inherited, zero graph changes). Interface/descriptors/push are the
+    // march kernels' own (kSpecializedRecipeInterfaceGlsl).
     if (bucketedShadeEnabled_ && !hotRecipeIds.empty()) {
-        if (bucketShadePipeline_.pipeline == VK_NULL_HANDLE && !bucketShadeCompileAttempted_) {
-            bucketShadeCompileAttempted_ = true;
-            std::vector<std::filesystem::path> shadePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                std::filesystem::path(VIXEN_SHADER_SOURCE_DIR) / "BucketShadeIdentity.comp",
+        for (uint32_t shadeRecipeId : hotRecipeIds) {
+            if (bucketShadePipelineCache_.count(shadeRecipeId)) continue;
+            const auto* entry = proceduralRecipes_.Get(shadeRecipeId);
+            if (!entry) continue;
+            std::vector<std::filesystem::path> corePaths = {
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) / "recipe" / "SdfCoreKernels.glsl",
 #endif
-                std::filesystem::path("shaders/BucketShadeIdentity.comp"),
-                std::filesystem::path("../shaders/BucketShadeIdentity.comp"),
+                std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
+                std::filesystem::path("../libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
             };
-            std::filesystem::path shadePath;
-            for (const auto& p : shadePaths) { if (std::filesystem::exists(p)) { shadePath = p; break; } }
-            if (shadePath.empty()) {
-                if (mainLogger) mainLogger->Error("[BucketShade] BucketShadeIdentity.comp not found — skeleton disabled");
-            } else {
-                std::ifstream shadeFile(shadePath);
-                std::ostringstream shadeBuf;
-                shadeBuf << shadeFile.rdbuf();
-                ShaderManagement::CompilationOptions opts;
-                opts.validateSpirv = false;
-                ShaderManagement::ShaderBundleBuilder bundleBuilder;
-                bundleBuilder.SetProgramName("BucketShadeIdentity")
-                             .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
-                             .AddStage(ShaderManagement::ShaderStage::Compute, shadeBuf.str(), "main", opts);
-                auto buildResult = bundleBuilder.Build();
-                if (!buildResult.success || !buildResult.bundle) {
-                    if (mainLogger) mainLogger->Error("[BucketShade] shader build/reflect failed: " + buildResult.errorMessage);
-                } else {
+            std::filesystem::path corePath;
+            for (const auto& p : corePaths) { if (std::filesystem::exists(p)) { corePath = p; break; } }
+            if (corePath.empty()) {
+                if (mainLogger) mainLogger->Error("[BucketShade] SdfCoreKernels.glsl not found, skipping shade for recipeId=" + std::to_string(shadeRecipeId));
+                continue;
+            }
+            std::ifstream coreFile(corePath);
+            std::ostringstream coreBuf;
+            coreBuf << coreFile.rdbuf();
+            const std::string source = Vixen::SVO::Recipe::EmitSpecializedRecipeShadeShader(*entry, shadeRecipeId, coreBuf.str());
+            ShaderManagement::CompilationOptions opts;
+            opts.validateSpirv = false;
+            ShaderManagement::ShaderBundleBuilder bundleBuilder;
+            bundleBuilder.SetProgramName("RecipeShade_" + std::to_string(shadeRecipeId))
+                         .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                         .AddStage(ShaderManagement::ShaderStage::Compute, source, "main", opts);
+            auto buildResult = bundleBuilder.Build();
+            if (!buildResult.success || !buildResult.bundle) {
+                if (mainLogger) mainLogger->Error("[BucketShade] shade build/reflect failed for recipeId=" +
+                                                   std::to_string(shadeRecipeId) + ": " + buildResult.errorMessage);
+                continue;
+            }
+            {
                     const std::vector<uint32_t>& spirv = buildResult.bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
                     VkShaderModuleCreateInfo moduleInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
                     moduleInfo.codeSize = spirv.size() * sizeof(uint32_t);
@@ -1082,9 +1095,9 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                 pipelineParams.entryPoint = "main";
                                 pipelineParams.descriptorSetLayout = setLayout;
                                 pipelineParams.pushConstantRanges = pcRanges;
-                                pipelineParams.shaderKey = "BucketShadeIdentity:" +
+                                pipelineParams.shaderKey = "RecipeShade_" + std::to_string(shadeRecipeId) + ":" +
                                     ShaderManagement::ComputeSHA256HexFromUint32Vec(spirv);
-                                pipelineParams.layoutKey = "BucketShadeIdentityLayout";
+                                pipelineParams.layoutKey = "RecipeShadeLayout_" + std::to_string(shadeRecipeId);
                                 pipelineParams.workgroupSizeX = 8;
                                 pipelineParams.workgroupSizeY = 8;
                                 pipelineParams.workgroupSizeZ = 1;
@@ -1112,16 +1125,19 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                         writes[b].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                                         writes[b].pBufferInfo = &bufInfos[b];
                                     }
-                                    vkDeviceWaitIdle(device->device);  // one-shot, same rationale as the per-recipe block
+                                    vkDeviceWaitIdle(device->device);  // one-shot per recipeId (first promotion), same rationale as the march block
                                     vkUpdateDescriptorSets(device->device, 4, writes, 0, nullptr);
-                                    bucketShadePipeline_.shaderModule = shaderModule;
-                                    bucketShadePipeline_.descriptorSetLayout = setLayout;
-                                    bucketShadePipeline_.descriptorPool = descPool;
-                                    bucketShadePipeline_.descriptorSet = descSet;
-                                    bucketShadePipeline_.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper
+                                    SpecializedRecipePipeline cachedShade;
+                                    cachedShade.shaderModule = shaderModule;
+                                    cachedShade.descriptorSetLayout = setLayout;
+                                    cachedShade.descriptorPool = descPool;
+                                    cachedShade.descriptorSet = descSet;
+                                    cachedShade.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper
                                         ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
-                                    bucketShadePipeline_.pipeline = pipelineWrapper->pipeline;
-                                    if (mainLogger) mainLogger->Info("[BucketShade] compiled the identity bucket-shade skeleton pipeline");
+                                    cachedShade.pipeline = pipelineWrapper->pipeline;
+                                    bucketShadePipelineCache_[shadeRecipeId] = cachedShade;
+                                    if (mainLogger) mainLogger->Info("[BucketShade] compiled specialized shade pipeline for recipeId=" +
+                                                                     std::to_string(shadeRecipeId));
                                 } else {
                                     if (mainLogger) mainLogger->Error("[BucketShade] pipeline creation failed");
                                     vkDestroyDescriptorPool(device->device, descPool, nullptr);
@@ -1139,51 +1155,53 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                     } else {
                         if (mainLogger) mainLogger->Error("[BucketShade] vkCreateShaderModule failed (or empty SPIR-V)");
                     }
-                }
             }
         }
-        if (bucketShadePipeline_.pipeline != VK_NULL_HANDLE) {
-            struct BucketShadePushCpu {  // identical 80-B layout to SpecializedPushCpu above
-                glm::vec3 cameraPos; float _p0;
-                glm::vec3 cameraDir; float fov;
-                glm::vec3 cameraUp;  float aspect;
-                glm::vec3 cameraRight; float _p1;
-                uint32_t screenWidth;
-                uint32_t screenHeight;
-                uint32_t maxMembersPerBucket;
-                uint32_t recipeIdField;
-            };
-            static_assert(sizeof(BucketShadePushCpu) == 80, "must match the shader's 80-byte Push block");
-            BucketShadePushCpu shadePush{};
-            if (auto* camInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
-                const CameraData& cam = camInst->GetCurrentCameraData();
-                shadePush.cameraPos = cam.cameraPos;
-                shadePush.cameraDir = cam.cameraDir;
-                shadePush.cameraUp = cam.cameraUp;
-                shadePush.cameraRight = cam.cameraRight;
-                shadePush.fov = cam.fov;
-                shadePush.aspect = cam.aspect;
-            }
-            shadePush.screenWidth = static_cast<uint32_t>(width);
-            shadePush.screenHeight = static_cast<uint32_t>(height);
-            shadePush.maxMembersPerBucket = kRecipeBucketingMaxMembersPerBucket;
-            for (uint32_t recipeId : hotRecipeIds) {
-                Vixen::RenderGraph::DispatchPass shadePass;
-                shadePass.pipeline = bucketShadePipeline_.pipeline;
-                shadePass.layout = bucketShadePipeline_.pipelineLayout;
-                shadePass.descriptorSets = { bucketShadePipeline_.descriptorSet };
-                shadePass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
-                shadePass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;
-                shadePass.debugName = "bucket_shade_identity_" + std::to_string(recipeId);
-                shadePush.recipeIdField = recipeId;
-                Vixen::RenderGraph::PushConstantData shadePcData;
-                shadePcData.data.resize(sizeof(BucketShadePushCpu));
-                std::memcpy(shadePcData.data.data(), &shadePush, sizeof(BucketShadePushCpu));
-                shadePcData.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-                shadePcData.offset = 0;
-                shadePass.pushConstants = std::move(shadePcData);
-                dispatchNode->QueueDispatch(std::move(shadePass));
-            }
+        // Queue the shade passes — one per hot recipeId, AFTER every march pass
+        // above (queue order + autoBarriers_ = the ordering guarantee).
+        struct BucketShadePushCpu {  // identical 80-B layout to SpecializedPushCpu above
+            glm::vec3 cameraPos; float _p0;
+            glm::vec3 cameraDir; float fov;
+            glm::vec3 cameraUp;  float aspect;
+            glm::vec3 cameraRight; float _p1;
+            uint32_t screenWidth;
+            uint32_t screenHeight;
+            uint32_t maxMembersPerBucket;
+            uint32_t recipeIdField;
+        };
+        static_assert(sizeof(BucketShadePushCpu) == 80, "must match the shader's 80-byte Push block");
+        BucketShadePushCpu shadePush{};
+        if (auto* camInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+            const CameraData& cam = camInst->GetCurrentCameraData();
+            shadePush.cameraPos = cam.cameraPos;
+            shadePush.cameraDir = cam.cameraDir;
+            shadePush.cameraUp = cam.cameraUp;
+            shadePush.cameraRight = cam.cameraRight;
+            shadePush.fov = cam.fov;
+            shadePush.aspect = cam.aspect;
+        }
+        shadePush.screenWidth = static_cast<uint32_t>(width);
+        shadePush.screenHeight = static_cast<uint32_t>(height);
+        shadePush.maxMembersPerBucket = kRecipeBucketingMaxMembersPerBucket;
+        for (uint32_t recipeId : hotRecipeIds) {
+            auto shadeIt = bucketShadePipelineCache_.find(recipeId);
+            if (shadeIt == bucketShadePipelineCache_.end()) continue;
+            const auto& shade = shadeIt->second;
+            Vixen::RenderGraph::DispatchPass shadePass;
+            shadePass.pipeline = shade.pipeline;
+            shadePass.layout = shade.pipelineLayout;
+            shadePass.descriptorSets = { shade.descriptorSet };
+            shadePass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
+            shadePass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;
+            shadePass.debugName = "recipe_shade_" + std::to_string(recipeId);
+            shadePush.recipeIdField = recipeId;
+            Vixen::RenderGraph::PushConstantData shadePcData;
+            shadePcData.data.resize(sizeof(BucketShadePushCpu));
+            std::memcpy(shadePcData.data.data(), &shadePush, sizeof(BucketShadePushCpu));
+            shadePcData.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            shadePcData.offset = 0;
+            shadePass.pushConstants = std::move(shadePcData);
+            dispatchNode->QueueDispatch(std::move(shadePass));
         }
     }
 }

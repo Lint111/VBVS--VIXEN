@@ -397,16 +397,15 @@ private:
         VkPipeline            pipeline = VK_NULL_HANDLE;
     };
     std::unordered_map<uint32_t, SpecializedRecipePipeline> recipeSpecializedPipelineCache_;
-    // W2b (wavefront epoch, VIXEN_BUCKETED_SHADE opt-in, requires the bucketed-dispatch
-    // flag): the identity bucket-shade skeleton — ONE fixed shader
-    // (shaders/BucketShadeIdentity.comp, recipe-INDEPENDENT), one cached pipeline
-    // (same handle-bundle shape as the per-recipe cache above), its DispatchPasses
-    // queued per hot recipeId on the SAME recipe_specialized_dispatch node AFTER the
-    // march passes (autoBarriers_ serializes same-HitRecord passes — ordering
-    // inherited, zero graph changes).
+    // W2c (wavefront epoch, VIXEN_BUCKETED_SHADE opt-in, requires the bucketed-dispatch
+    // flag): per-recipe MATERIAL (bucket-shade) kernels — the W2b identity skeleton
+    // grown into the real traversal/shade split. The march kernels compile LEAN (no
+    // gradient taps) and each hot recipeId gets a specialized shade pipeline
+    // (EmitSpecializedRecipeShadeShader), queued on the SAME
+    // recipe_specialized_dispatch node AFTER the march passes (autoBarriers_
+    // serializes same-HitRecord passes — ordering inherited, zero graph changes).
     bool bucketedShadeEnabled_ = false;
-    bool bucketShadeCompileAttempted_ = false;  // one-shot: a failed compile logs once, not per frame
-    SpecializedRecipePipeline bucketShadePipeline_{};
+    std::unordered_map<uint32_t, SpecializedRecipePipeline> bucketShadePipelineCache_;
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
