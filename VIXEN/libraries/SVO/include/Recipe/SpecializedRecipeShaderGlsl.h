@@ -2,10 +2,66 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <regex>
 #include <sstream>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 namespace Vixen::SVO::Recipe {
+
+// W-KGLSL D2 — kernel-emitted recipe GLSL bridge (task #33). Opt-in override for
+// EmitProceduralFieldFunctionGlsl's local field-function walk below: when
+// VIXEN_S1_RECIPE_GLSL=<json> names a D1-extension handoff (schema 1, "functions":
+// [{"name":"recipe_<id>", "text":"float sdfRecipe_0(vec3 p, float params[6]) {...}"}],
+// keyed by real VIXEN recipeId per team-lead's ruling), the two specialized emitters below
+// source a hot recipe's body from the kernel's Lower<T> -> GlslAstVisitor pipeline instead
+// of this file's own walk — same signature, same SdfCoreKernels.glsl deps, proven
+// byte-compileable in phases B/C. Loud fail-soft: a missing/unset env or an unmapped
+// recipeId returns empty (never throws), so both call sites fall back to the local emitter
+// and log which one won — never a silent divergence.
+inline const std::map<uint32_t, std::string>& KernelEmittedRecipeGlslMap() {
+    static const std::map<uint32_t, std::string> map = [] {
+        std::map<uint32_t, std::string> m;
+        const char* path = std::getenv("VIXEN_S1_RECIPE_GLSL");
+        if (!path || !path[0]) return m;
+
+        std::ifstream f(path);
+        if (!f.good()) return m;
+        nlohmann::json doc = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
+        if (doc.is_discarded() || !doc.contains("functions") || !doc["functions"].is_array())
+            return m;
+
+        // name is "recipe_<id>" (D1 extension's keying); the id is authoritative, the
+        // placeholder sdfRecipe_0 inside `text` gets rewritten to sdfRecipe_<id> below so the
+        // returned body is a drop-in for what the local emitter would have produced.
+        const std::regex nameRe(R"(recipe_(\d+))");
+        const std::regex fnDeclRe(R"(sdfRecipe_0\b)");
+        for (const auto& fn : doc["functions"]) {
+            std::string name = fn.value("name", "");
+            std::string text = fn.value("text", "");
+            std::smatch nm;
+            if (text.empty() || !std::regex_search(name, nm, nameRe)) continue;
+            uint32_t recipeId = static_cast<uint32_t>(std::stoul(nm[1].str()));
+            m[recipeId] = std::regex_replace(text, fnDeclRe, "sdfRecipe_" + std::to_string(recipeId));
+        }
+        return m;
+    }();
+    return map;
+}
+
+// Returns the kernel-emitted body for recipeId, or "" if unavailable (env unset / json
+// missing / recipeId not in the D1-extension export) — callers fall back to
+// EmitProceduralFieldFunctionGlsl on empty.
+inline std::string TryGetKernelEmittedRecipeGlsl(uint32_t recipeId) {
+    const auto& map = KernelEmittedRecipeGlslMap();
+    auto it = map.find(recipeId);
+    return it == map.end() ? std::string() : it->second;
+}
 
 // EmitSpecializedRecipeComputeShader — Recipe GPU Instance Bucketing Inc2 M2 (Task 5).
 //
@@ -146,8 +202,14 @@ inline std::string EmitSpecializedRecipeComputeShader(
     const std::string& sdfCoreKernelsGlsl,
     bool emitGradientNormal = true)
 {
-    std::string fieldFn = EmitProceduralFieldFunctionGlsl(
-        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
+    std::string fieldFn = TryGetKernelEmittedRecipeGlsl(recipeId);
+    const bool kernelEmitted = !fieldFn.empty();
+    if (!kernelEmitted) {
+        fieldFn = EmitProceduralFieldFunctionGlsl(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
+    }
+    std::cout << "[RecipeBucketedDispatch] recipeId=" << recipeId << " field function: "
+               << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
 
     // Matches EmitProceduralFieldFunctionGlsl's/UberShaderSplice.h's own float-literal guard --
     // every literal baked into GLSL source must carry a decimal point or GLSL parses it as an
@@ -300,8 +362,14 @@ inline std::string EmitSpecializedRecipeShadeShader(
     uint32_t recipeId,
     const std::string& sdfCoreKernelsGlsl)
 {
-    std::string fieldFn = EmitProceduralFieldFunctionGlsl(
-        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
+    std::string fieldFn = TryGetKernelEmittedRecipeGlsl(recipeId);
+    const bool kernelEmitted = !fieldFn.empty();
+    if (!kernelEmitted) {
+        fieldFn = EmitProceduralFieldFunctionGlsl(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()), recipeId);
+    }
+    std::cout << "[BucketShade] recipeId=" << recipeId << " field function: "
+               << (kernelEmitted ? "kernel-emitted" : "local") << std::endl;
 
     std::ostringstream out;
     out << "#version 460\n\n";

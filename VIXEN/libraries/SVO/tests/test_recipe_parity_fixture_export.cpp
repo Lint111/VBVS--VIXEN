@@ -157,3 +157,70 @@ TEST(RecipeParityFixtureExport, ExportsJsonWhenRequested) {
     RecordProperty("programs", static_cast<int>(corpus.size()));
     RecordProperty("points", static_cast<int>(points.size()));
 }
+
+// D1 extension (task #33, W-KGLSL): the hot-cold demo's recipes are NOT ParityCorpus
+// programs — confirmed by inspection (BuildRenderGraph.cpp's VIXEN_RECIPE_HOT_COLD_DEMO
+// branch builds each recipe's bytecode inline, one Sphere opcode, never touching
+// ParityCorpus). This dumps that SAME bytecode construction directly (no app boot, no
+// RecipeRegistry needed — a standalone SdfInstruction is sufficient, exactly what the
+// registry would have stored), keyed by real recipeId (the D1/D2 ruling: demo recipes have
+// no meaningful name, so "programs" here are named "recipe_<id>"), covering the full
+// HOT_RECIPES+COLD_RECIPES default range (recipeId 2..7) plus the same env-var overrides
+// BuildRenderGraph.cpp honors, so this stays correct if the demo's mix is overridden.
+// [Explicit]: never runs in a normal suite pass, matches ExportsJsonWhenRequested's own
+// env-gate discipline (VIXEN_EXPORT_HOTCOLD_RECIPE_FIXTURES=<path>).
+TEST(RecipeParityFixtureExport, ExportsHotColdDemoRecipesWhenRequested) {
+    const char* outPath = std::getenv("VIXEN_EXPORT_HOTCOLD_RECIPE_FIXTURES");
+    if (!outPath || !outPath[0]) {
+        GTEST_SKIP() << "set VIXEN_EXPORT_HOTCOLD_RECIPE_FIXTURES=<output.json> to export";
+    }
+
+    auto envOr = [](const char* name, int fallback) -> int {
+        const char* v = std::getenv(name);
+        if (!v) return fallback;
+        int parsed = std::atoi(v);
+        return parsed > 0 ? parsed : fallback;
+    };
+    const int hotRecipes  = envOr("VIXEN_RECIPE_HOT_COLD_DEMO_HOT_RECIPES", 3);
+    const int coldRecipes = envOr("VIXEN_RECIPE_HOT_COLD_DEMO_COLD_RECIPES", 3);
+    constexpr float kSpacingX = 30.0f;
+    constexpr float kBaseZ    = 30.0f;
+
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+
+    std::ostringstream j;
+    j << "{\n  \"schema\": 1,\n"
+      << "  \"source\": \"VIXEN hot-cold demo bytecode (test_recipe_parity_fixture_export, "
+      << "mirrors BuildRenderGraph.cpp's registerAndSeed)\",\n  \"recipes\": [\n";
+
+    const int total = hotRecipes + coldRecipes;
+    uint32_t recipeId = 2;  // matches BuildRenderGraph.cpp's nextRecipeId start
+    for (int idx = 0; idx < total; ++idx, ++recipeId) {
+        const float centerX = 40.0f + static_cast<float>(idx) * kSpacingX;
+        SdfInstruction sphere{};
+        sphere.opCode = static_cast<uint8_t>(SdfOpCode::Sphere);
+        sphere.data[0] = centerX; sphere.data[1] = 64.0f; sphere.data[2] = kBaseZ;
+        sphere.data[3] = 6.0f;
+
+        j << "    {\"recipeId\": " << recipeId << ", \"instructions\": [{"
+          << "\"opCode\": " << static_cast<uint32_t>(sphere.opCode)
+          << ", \"inputMask\": " << static_cast<uint32_t>(sphere.inputMask)
+          << ", \"paramMask\": " << static_cast<uint32_t>(sphere.paramMask)
+          << ", \"data\": [";
+        for (int d = 0; d < 32; ++d) {
+            if (d) j << ",";
+            AppendFloat(j, sphere.data[d]);
+        }
+        j << "]}]}" << (idx + 1 < total ? "," : "") << "\n";
+    }
+    j << "  ]\n}\n";
+
+    std::ofstream f(outPath);
+    ASSERT_TRUE(f.good()) << "cannot open " << outPath;
+    f << j.str();
+    f.close();
+    ASSERT_TRUE(f.good()) << "write failed for " << outPath;
+
+    RecordProperty("recipes", total);
+}
