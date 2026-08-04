@@ -11,10 +11,16 @@
 // Env-gated like the repo's recapture tests: without
 // VIXEN_EXPORT_RECIPE_PARITY_FIXTURES=<output.json> it SKIPS loudly (never a
 // silent pass); with it, it writes the fixture and asserts the write.
-// Params are ZERO-FILLED, matching the existing harness convention
-// (test_recipe_glsl_numerical_parity's own zero-filled params[6] note);
-// the schema carries an explicit paramsConvention field so a future
-// param-exercising tier extends rather than breaks it.
+//
+// SCHEMA 2 (task #26 S1): two tiers. Tier 1 ("programs") keeps schema 1's
+// shape verbatim — ZERO-FILLED params, matching the GLSL/GPU parity harness
+// convention. Tier 2 ("paramsTier") re-evaluates EVERY program under ONE
+// shared, documented, nonzero all-distinct params array — the non-vacuous
+// gate for ReadParam/ReadParamFloat3 (a hardcoded-zero lowering matches
+// tier 1 but diverges here) and the compile-once/re-dispatch-different-
+// params property proof. Emitting ALL programs (not just ReadParam users)
+// is deliberate: programs that never read params must match tier 1
+// EXACTLY, a built-in consistency invariant consumers should assert.
 
 #include <gtest/gtest.h>
 #include "Recipe/RecipeParityCorpus.h"
@@ -23,6 +29,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <span>
 #include <sstream>
 #include <vector>
 
@@ -69,12 +76,18 @@ TEST(RecipeParityFixtureExport, ExportsJsonWhenRequested) {
     ASSERT_FALSE(corpus.empty());
     const auto points = BuildFixtureSamplePoints();
 
+    // Tier-2 params: nonzero, all-distinct, sign-varied — six floats matching
+    // the reference walker's params[6] signature (float3 reads at idx 0/1,
+    // scalar reads at idx 0..5 all resolve to distinct values, so wrong-index
+    // reads diverge as loudly as hardcoded zeros).
+    const float kTierParams[6] = {1.5f, -2.25f, 7.5f, 0.75f, 42.0f, -0.5f};
+
     std::ostringstream j;
     j << "{\n"
-      << "  \"schema\": 1,\n"
+      << "  \"schema\": 2,\n"
       << "  \"source\": \"VIXEN SdfRecipeEval (test_recipe_parity_fixture_export)\",\n"
       << "  \"opcodeEnum\": \"SDFOpCode (Yeroket SDFInstruction.cs, mirrored in SdfOpCodes.g.h)\",\n"
-      << "  \"paramsConvention\": \"zero-filled (matches the GLSL/GPU parity harness)\",\n"
+      << "  \"paramsConvention\": \"tier 1 (programs): zero-filled; tier 2 (paramsTier): the shared nonzero array below\",\n"
       << "  \"points\": [";
     for (size_t i = 0; i < points.size(); ++i) {
         if (i) j << ",";
@@ -111,7 +124,29 @@ TEST(RecipeParityFixtureExport, ExportsJsonWhenRequested) {
         }
         j << "]}" << (pi + 1 < corpus.size() ? "," : "") << "\n";
     }
-    j << "  ]\n}\n";
+    j << "  ],\n";
+
+    // Tier 2: every program re-evaluated under the shared nonzero params array
+    // (instruction streams already emitted above — consumers key by name).
+    j << "  \"paramsTier\": {\n    \"params\": [";
+    for (int pi2 = 0; pi2 < 6; ++pi2) {
+        if (pi2) j << ",";
+        AppendFloat(j, kTierParams[pi2]);
+    }
+    j << "],\n    \"programs\": [\n";
+    for (size_t pi = 0; pi < corpus.size(); ++pi) {
+        const auto& prog = corpus[pi];
+        j << "      {\"name\": \"" << prog.name << "\", \"values\": [";
+        for (size_t vi = 0; vi < points.size(); ++vi) {
+            if (vi) j << ",";
+            const float v = Vixen::SVO::Recipe::evalRecipe(
+                prog.program.data(), static_cast<uint32_t>(prog.program.size()),
+                points[vi], std::span<const float>(kTierParams, 6));
+            AppendFloat(j, v);
+        }
+        j << "]}" << (pi + 1 < corpus.size() ? "," : "") << "\n";
+    }
+    j << "    ]\n  }\n}\n";
 
     std::ofstream f(outPath);
     ASSERT_TRUE(f.good()) << "cannot open " << outPath;

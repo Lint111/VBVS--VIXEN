@@ -91,13 +91,18 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
+#include <regex>
 #include <set>
 #include <span>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <nlohmann/json.hpp>  // S1 step 5: the kernel-emitted-GLSL handoff JSON
 
 #ifndef SDF_CORE_KERNELS_GLSL_PATH
 #  error "SDF_CORE_KERNELS_GLSL_PATH must be defined via CMake compile_definitions"
@@ -1166,4 +1171,114 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
     }
 
     EXPECT_TRUE(missingFromCorpus.empty() && extraInCorpus.empty()) << diag.str();
+}
+
+// ---------------------------------------------------------------------------
+// Recipe-compiler uplift S1 step 5 (task #26, 2026-08-04): GPU numeric parity
+// for the KERNEL-FRAMEWORK-emitted GLSL face (GlslAstVisitor) — the sibling of
+// test_recipe_kernel_glsl_roundtrip's CPU compile gate, running the SAME
+// handoff JSON's functions on real hardware against the SAME evalRecipe oracle
+// every other gate in this file trusts.
+//
+// Doubly gated: the fixture's SetUp() GTEST_SKIPs on non-real GPUs (this WSL
+// box's Dozen included — Windows-native is where this seals, same hand-off as
+// the header documents), and without VIXEN_S1_EMITTED_GLSL=<handoff.json> it
+// SKIPs loudly too.
+//
+// BOTH param tiers per compiled program, same SPIR-V module (the compile-once
+// property inherited from the Task 7 sweep's own precedent): zero params vs
+// evalRecipe(p) — the tier-1 equivalence — then the schema-2 fixture's shared
+// nonzero array vs evalRecipe(p, params) — the tier-2/dynamic-read seal. The
+// array MUST stay identical to the fixture exporter's kTierParams so the C#
+// gate (kernel repo) and this GPU gate remain value-comparable.
+// ---------------------------------------------------------------------------
+TEST_F(RecipeGlslNumericalParityTest, KernelEmittedGlslMatchesCpuEval_BothParamTiers) {
+    const char* jsonPath = std::getenv("VIXEN_S1_EMITTED_GLSL");
+    if (!jsonPath || !jsonPath[0]) {
+        GTEST_SKIP() << "set VIXEN_S1_EMITTED_GLSL=<s1-emitted-glsl.json> to run the kernel-face GPU parity";
+    }
+
+    std::ifstream jf(jsonPath);
+    ASSERT_TRUE(jf.good()) << "cannot open " << jsonPath;
+    nlohmann::json doc = nlohmann::json::parse(jf, nullptr, /*allow_exceptions=*/false);
+    ASSERT_FALSE(doc.is_discarded()) << "JSON parse failed for " << jsonPath;
+    ASSERT_TRUE(doc.contains("functions") && doc["functions"].is_array());
+    std::map<std::string, std::string> emitted;
+    for (const auto& fn : doc["functions"])
+        emitted[fn.value("name", "")] = fn.value("text", "");
+
+    const std::vector<glm::vec3> samplePoints = BuildSamplePoints();
+    const auto corpus = Vixen::SVO::Recipe::ParityCorpus::GetAll();
+    ASSERT_FALSE(corpus.empty());
+
+    // Mirrors the schema-2 fixture exporter's kTierParams EXACTLY (see the
+    // coupling note in the header comment above).
+    const std::array<float, 6> kTierParams = {1.5f, -2.25f, 7.5f, 0.75f, 42.0f, -0.5f};
+    const std::array<float, 6> kZeroParams = {};
+
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good());
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+
+    const std::regex fnNameRe(R"(float\s+(sdfRecipe_\w+)\s*\()");
+
+    for (const auto& entry : corpus) {
+        SCOPED_TRACE("kernel-emitted program: " + entry.name);
+        auto it = emitted.find(entry.name);
+        if (it == emitted.end() || it->second.empty()) {
+            ADD_FAILURE() << "'" << entry.name << "' missing from the handoff JSON — export incomplete";
+            continue;
+        }
+
+        std::smatch m;
+        ASSERT_TRUE(std::regex_search(it->second, m, fnNameRe))
+            << "'" << entry.name << "': no sdfRecipe declaration in emitted text";
+
+        // Compose with the emitted function's OWN declared name (the kernel
+        // side owns the <id> choice — same tolerance as the CPU round-trip).
+        std::ostringstream ss;
+        ss << "#version 450\n" << sdfCoreGlsl << "\n" << it->second << "\n"
+           << "layout(local_size_x = 64) in;\n"
+           << "layout(set = 0, binding = 0, std430) readonly buffer InPoints { vec4 points[]; };\n"
+           << "layout(set = 0, binding = 1, std430) writeonly buffer OutValues { float values[]; };\n"
+           << "layout(set = 0, binding = 2, std430) readonly buffer InParams { float params[6]; };\n"
+           << "void main() {\n"
+           << "    if (gl_GlobalInvocationID.x >= points.length()) return;\n"
+           << "    float p[6] = float[6](params[0], params[1], params[2], params[3], params[4], params[5]);\n"
+           << "    values[gl_GlobalInvocationID.x] = " << m[1].str()
+           << "(points[gl_GlobalInvocationID.x].xyz, p);\n"
+           << "}\n";
+
+        auto compOut = compiler.Compile(ShaderManagement::ShaderStage::Compute, ss.str(), "main", opts);
+        ASSERT_TRUE(compOut.success)
+            << "'" << entry.name << "' compile failed:\n" << compOut.GetFullLog();
+        ASSERT_FALSE(compOut.spirv.empty());
+
+        // ONE compiled module, TWO dispatches — tier 1 (zero) then tier 2.
+        for (const auto* tier : {&kZeroParams, &kTierParams}) {
+            SCOPED_TRACE(tier == &kZeroParams ? "tier 1 (zero params)" : "tier 2 (nonzero params)");
+            std::vector<float> cpuRef(samplePoints.size());
+            for (size_t i = 0; i < samplePoints.size(); ++i) {
+                cpuRef[i] = Vixen::SVO::Recipe::evalRecipe(
+                    entry.program.data(), static_cast<uint32_t>(entry.program.size()),
+                    samplePoints[i], std::span<const float>(tier->data(), tier->size()));
+            }
+            std::vector<float> gpuValues;
+            ASSERT_NO_FATAL_FAILURE(
+                DispatchAndReadback(compOut.spirv, samplePoints, gpuValues, *tier));
+            ASSERT_EQ(gpuValues.size(), cpuRef.size());
+            for (size_t i = 0; i < samplePoints.size(); ++i) {
+                EXPECT_TRUE(NearlyEqual(gpuValues[i], cpuRef[i]))
+                    << "Mismatch at point (" << samplePoints[i].x << ", " << samplePoints[i].y
+                    << ", " << samplePoints[i].z << "): gpu=" << gpuValues[i]
+                    << " cpu=" << cpuRef[i] << " |diff|=" << std::fabs(gpuValues[i] - cpuRef[i]);
+            }
+        }
+    }
 }

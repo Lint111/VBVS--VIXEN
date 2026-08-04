@@ -663,6 +663,26 @@ endif()
 gtest_discover_tests(test_recipe_glsl_numerical_parity)
 
 # ===========================================================================
+# Recipe-compiler uplift S1 step 4 (task #26, 2026-08-04): CPU-side compile-
+# round-trip gate for KERNEL-FRAMEWORK-emitted GLSL. Env-gated on
+# VIXEN_S1_EMITTED_GLSL=<handoff.json> (loud GTEST_SKIP otherwise); composes
+# each kernel-emitted sdfRecipe function exactly as production does and runs
+# it through the real glslang-backed ShaderCompiler. Host-side only, no GPU.
+# ===========================================================================
+add_executable(test_recipe_kernel_glsl_roundtrip test_recipe_kernel_glsl_roundtrip.cpp)
+if(TARGET ShaderManagement)
+    target_link_libraries(test_recipe_kernel_glsl_roundtrip PRIVATE
+        GTest::gtest_main ShaderManagement)
+else()
+    target_link_libraries(test_recipe_kernel_glsl_roundtrip PRIVATE GTest::gtest_main)
+endif()
+target_compile_definitions(test_recipe_kernel_glsl_roundtrip PRIVATE
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+)
+set_target_properties(test_recipe_kernel_glsl_roundtrip PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_kernel_glsl_roundtrip)
+
+# ===========================================================================
 # Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07 M1 — InvokeRecipe opcode
 # correctness gate: CPU interpreter parity + GLSL recursive-inlining emit/compile run on
 # every machine; GPU dispatch+compare only runs on a REAL (non-lavapipe, non-Dozen) GPU —
