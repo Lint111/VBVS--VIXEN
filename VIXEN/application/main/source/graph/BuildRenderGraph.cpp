@@ -669,7 +669,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle probeApplyReadGatherer      = renderGraph->AddNode<BufferSyncGathererNodeType>("probe_apply_read_gatherer");
 
     // W1b (wavefront epoch): the DERIVED-REQUEST shadow wave — answers the
-    // production per-pixel-per-light shadow question into HitRecord._pad0[0]
+    // production per-pixel-per-light shadow question into HitRecord._pad0[2]
     // between the march (record producer) and the shade pass (record
     // consumer), so SpatialReuseShade's default variant never traces. NO
     // request/result buffers exist (the user bandwidth ruling: derivable rays

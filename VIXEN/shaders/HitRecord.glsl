@@ -37,12 +37,18 @@
 //
 // flags: bit0 (0x1) = hit/miss (1 = TraceWorld found a hit; 0 = sky/miss).
 //
-// _pad0 usage: [0] = winning instance index (M3 round 3). [1] = M11.2:
-// floatBitsToUint(WorldHit.emission) -- the winning instance's emission
-// intensity, so SpatialReuseShade.comp can add a self-lit term at the primary
-// hit without re-deriving it from bodyInstances[] a second time. [2] is still
-// spare (VIXEN_SHADOW_DBG's debug packing reuses all three under #ifdef, but
-// that path never coexists with a real frame's [0]/[1] content).
+// _pad0 usage (MASTER ledger — ShadowVisibilityWave.comp carries a mirror):
+// [0] = winning instance index (M3 round 3; the Cornell diagnostics read it
+// back, and W2's recipe-bucketed shade resolves pixel->instance->recipe
+// through it). [1] = M11.2: floatBitsToUint(WorldHit.emission) -- the winning
+// instance's emission intensity, so SpatialReuseShade.comp can add a self-lit
+// term at the primary hit without re-deriving it from bodyInstances[] a
+// second time. [2] = ShadowVisibilityWave's visibility answers (wavefront
+// W1b): bits 0..3 = analytic-light bitmask (bit i = light i unoccluded),
+// bit 4 = reserved ReSTIR reservoir-ray answer (unwritten until W2's seam);
+// the march zero-inits it, the wave is its only writer. (VIXEN_SHADOW_DBG's
+// debug packing reuses all three under #ifdef, but that path never coexists
+// with a real frame's [0]/[1]/[2] content.)
 // ============================================================================
 
 #ifndef HITRECORD_GLSL

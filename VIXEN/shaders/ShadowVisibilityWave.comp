@@ -16,18 +16,22 @@
 // own spare word, riding the 64-B record the shade pass already fetches —
 // zero new buffers, zero extra read streams.
 //
-// HitRecord._pad0 ledger (the shared-slot contract):
-//   [0] = THIS WAVE's light-visibility bitmask (bit i = light i unoccluded;
-//         all-ones for miss pixels / disabled shadows / lights past
-//         lightCount — exact-math-safe: the shade pass only consumes a bit
-//         when NdotL>0 for that light, mirroring the merged shader's own
-//         NdotL-before-trace gate).
-//   [1] = WorldHit.emission (written by the march — NEVER touched here; this
-//         wave read-modify-writes ONLY [0]).
-//   [2] = reserved for the ReSTIR reservoir-ray answer (opt-in path).
+// HitRecord._pad0 ledger (the shared-slot contract — HitRecord.glsl is the
+// master copy of this ledger):
+//   [0] = WorldHit.instIdx (written by the march, M3 round 3 — NEVER touched
+//         here; the Cornell diagnostics read it back, and W2's recipe-bucketed
+//         shade resolves pixel→instance→recipe through it).
+//   [1] = WorldHit.emission (written by the march — NEVER touched here).
+//   [2] = THIS WAVE's visibility answers; the wave read-modify-writes ONLY
+//         this word. Bits 0..3 = analytic-light visibility (bit i = light i
+//         unoccluded; all-ones for miss pixels / disabled shadows / lights
+//         past lightCount — exact-math-safe: the shade pass only consumes a
+//         bit when NdotL>0 for that light, mirroring the merged shader's own
+//         NdotL-before-trace gate). Bit 4 = reserved for the ReSTIR
+//         reservoir-ray answer (opt-in path; unwritten until W2's seam).
 //   Under VIXEN_SHADOW_DBG the M10 diagnostic stashes over all three for its
 //   ONE diagnosed pixel — ordering-safe: that stash happens in the shade pass
-//   AFTER the light loop consumed [0], and the march + this wave rewrite the
+//   AFTER the light loop consumed [2], and the march + this wave rewrite the
 //   record next frame.
 //
 // Dispatch: 1D over hitRecords.length() (slot = linear pixel index — no
@@ -56,7 +60,7 @@ layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
 
 #include "HitRecord.glsl"
 
-// NON-readonly by design: this wave is the bitmask writer (RMW of _pad0[0]
+// NON-readonly by design: this wave is the bitmask writer (RMW of _pad0[2]
 // only — every other field is the march's, preserved untouched).
 layout(std430, binding = 17) buffer HitRecordBuffer {
     HitRecord hitRecords[];
@@ -102,5 +106,9 @@ void main() {
         }
     }
 
-    hitRecords[slot]._pad0[0] = visBits;
+    // Mask to the analytic bits this wave owns today — bit 4 (ReSTIR answer)
+    // stays 0 until W2's reservoir section actually answers it (an unmasked
+    // all-ones init would silently flip the opt-in caveat from zero-contribution
+    // to UNSHADOWED-contribution).
+    hitRecords[slot]._pad0[2] = visBits & 0xFu;
 }

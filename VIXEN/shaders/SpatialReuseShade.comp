@@ -341,8 +341,9 @@ ivec2 spatialNeighborOffset(inout uint rngState, float radius) {
 // DIRECT LIGHTING WITH SHADOW RAYS (moved verbatim from BodyInstanceRayMarch.comp,
 // Sampled Lighting Inc1 M4 -> DirectLighting.comp M1 -> here M5)
 // ============================================================================
-// W1b: takes the pixel's wave-computed visibility bitmask (HitRecord._pad0[0],
-// bit i = light i unoccluded) instead of tracing inline — the derivation, the
+// W1b: takes the pixel's wave-computed visibility bitmask (HitRecord._pad0[2]
+// bits 0..3, bit i = light i unoccluded — [0] stays the march's instIdx)
+// instead of tracing inline — the derivation, the
 // NdotL-before-trace gate, and shadowConfig semantics all live in
 // ShadowVisibilityWave.comp now, mirroring this function's own original order
 // exactly. Arithmetic below is UNTOUCHED from the merged shader (bit-exact:
@@ -409,7 +410,7 @@ void main() {
     if (anyHitRT) {
         outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
                                                bestRoughness, lightingConfig,
-                                               recReadback._pad0[0]);
+                                               recReadback._pad0[2]);
 
         // M11.2: self-lit emissive term at the PRIMARY (camera) hit. Without this the
         // ceiling light panel only ever acts as a light SOURCE (via the light-tree/DDGI
@@ -563,15 +564,16 @@ void main() {
             if (NdotL > 0.0 && W > 0.0) {
                 float shadowFactor = 1.0;
                 if (shadowConfig.enabled != 0u) {
-                    // W1b: the reservoir ray's answer arrives via the wave in
-                    // HitRecord._pad0[2] (nonzero = visible) — the ray itself
-                    // is derivable from the combined reservoir + this record,
-                    // so no inline trace and no request buffer. ⚠ Until the
-                    // wave's reservoir section lands (the ReSTIR half of W1b),
-                    // [2] is unwritten (0 = occluded) and an enabled-ReSTIR
-                    // build gets zero direct-reservoir contribution — ReSTIR
-                    // is opt-in-OFF everywhere today; tracked in the slice.
-                    shadowFactor = (recReadback._pad0[2] != 0u) ? 1.0 : 0.0;
+                    // W1b/W2 seam: the reservoir ray's answer arrives via the
+                    // wave in HitRecord._pad0[2] BIT 4 (bits 0..3 are the
+                    // analytic-light bitmask; see HitRecord.glsl's ledger) —
+                    // the ray itself is derivable from the combined reservoir
+                    // + this record, so no inline trace and no request buffer.
+                    // ⚠ Until the wave's reservoir section lands (W2's seam
+                    // design), bit 4 is unwritten (0 = occluded) and an
+                    // enabled-ReSTIR build gets zero direct-reservoir
+                    // contribution — ReSTIR is opt-in-OFF everywhere today.
+                    shadowFactor = ((recReadback._pad0[2] >> 4) & 1u) != 0u ? 1.0 : 0.0;
                 }
 
                 float emittedPower = chosen.intensity * chosen.coverage *
