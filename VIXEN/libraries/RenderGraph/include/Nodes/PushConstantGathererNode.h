@@ -105,7 +105,6 @@ private:
     // Helpers
     void DiscoverPushConstants(VariadicCompileContext& ctx);
     void PackPushConstantData(VariadicExecuteContext& ctx);
-    bool ValidateFieldType(Resource* res, const PushConstantFieldSlotInfo& field);
 
     // Type conversion helpers
     void PackScalar(const Resource* res, uint8_t* dest, size_t size);

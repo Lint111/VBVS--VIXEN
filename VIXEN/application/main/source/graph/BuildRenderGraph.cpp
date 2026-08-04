@@ -6816,9 +6816,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // S3 observer: census the lighting stages (same empty feature set their
     // wire calls use — the binding-14 member is feature-gated OUT of the walk).
+    // RayTraceBuffer is a measured false-positive class: deliberately
+    // unconditional plain-`buffer` (variant-independent wiring) whose writes
+    // exist only under VIXEN_GPU_TRACE_HOOKS — qualifier reflection reads RW
+    // in every variant, so the census would derive spurious all-pairs edges.
+    // Excluded by annotation; surfaced in the report's OPAQUE lines.
     const SdiFeatureSet sdiNoFeatures;
+    const std::map<std::string, std::string> sdiCensusExclusions = {
+        {"RayTraceBuffer", "trace-plumbing: define-gated writes"},
+    };
     CensusStageFromSdi<DirectSdi::Metadata, DirectSdi::MEMBERS>(
-        sdiHazardCensus_, directLightingNode, sceneProviders, sdiNoFeatures);
+        sdiHazardCensus_, directLightingNode, sceneProviders, sdiNoFeatures,
+        &sdiCensusExclusions);
 
     // DirectLighting's own push-constant gatherer (synthesized above): SAME field sources as the
     // march's own gatherer (cameraPos/time/cameraDir/fov/cameraUp/aspect/cameraRight/debugMode/
@@ -6922,7 +6931,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         SdiWireSet::DescriptorsOnly);
     spatialReusePushConstantGatherer = reuseSynth.pushGatherer;
     CensusStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
-        sdiHazardCensus_, spatialReuseNode, sceneProviders, sdiNoFeatures);
+        sdiHazardCensus_, spatialReuseNode, sceneProviders, sdiNoFeatures,
+        &sdiCensusExclusions);
 
     // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
     // DirectLighting's own gatherer (a third compiled program still needs its own reflected
@@ -7091,7 +7101,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         SdiWireSet::DescriptorsOnly);
     probeUpdatePushConstantGatherer = probeSynth.pushGatherer;
     CensusStageFromSdi<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
-        sdiHazardCensus_, probeUpdateNode, sceneProviders, sdiNoFeatures);
+        sdiHazardCensus_, probeUpdateNode, sceneProviders, sdiNoFeatures,
+        &sdiCensusExclusions);
 
     // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
     // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no

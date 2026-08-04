@@ -227,6 +227,15 @@ bool anyInstanceSkipped() {
 #define FORMAT_BINARY     0u
 #define FORMAT_STORED_SDF 1u
 
+// TRACE-PLUMBING NOTE (S3 hazard observer, 2026-08-04): this declaration is
+// deliberately UNCONDITIONAL and plain-`buffer` even though its only writers
+// live in TraceRecording.glsl's VIXEN_GPU_TRACE_HOOKS blocks — the graph
+// wiring must be variant-independent (the same bound buffer serves plain and
+// trace-compiled shaders; the define decides whether writes exist). Qualifier-
+// based access reflection therefore reads RW here in every variant, which the
+// S3 hazard census would misread as an all-pairs cross-stage writer; the
+// census excludes it by explicit annotation instead (see the lighting census
+// sites in BuildRenderGraph.cpp).
 layout(std430, binding = 4) buffer RayTraceBuffer {
     uint traceWriteIndex;
     uint traceCapacity;

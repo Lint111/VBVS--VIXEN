@@ -391,15 +391,21 @@ bool PushConstantGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext
     NODE_LOG_INFO("[PushConstantGathererNode::Validate] Connected " + std::to_string(variadicCount) +
                  " of " + std::to_string(pushConstantFields_.size()) + " push constant fields");
 
-    // Validate each connected input
+    // Fields are OPTIONAL by design (PreRegisterPushConstantFields: missing
+    // fields use zero defaults; Pack zero-fills and skips null slots) — an
+    // unconnected slot is expected state, logged at DEBUG. The old per-field
+    // "Type mismatch" ERROR here was a descriptor-shaped check (non-null +
+    // Buffer/Image) that NO push-constant source ever passed — it fired for
+    // every in-range field, wired or not, ~50 lines per boot, and gated
+    // nothing (task #18, boot-log-verified). Pack extracts by typed handle
+    // and warns itself on a genuine extraction failure.
     for (size_t i = 0; i < variadicCount; ++i) {
         auto* resource = ctx.InVariadicResource(i);
 
-        // Check if corresponding field exists
         if (i < pushConstantFields_.size()) {
-            if (!ValidateFieldType(resource, pushConstantFields_[i])) {
-                NODE_LOG_ERROR("[PushConstantGathererNode::Validate] Type mismatch for field " +
-                             pushConstantFields_[i].fieldName);
+            if (!resource) {
+                NODE_LOG_DEBUG("[PushConstantGathererNode::Validate] optional push field '" +
+                             pushConstantFields_[i].fieldName + "' unconnected — zero default");
             }
         } else {
             NODE_LOG_ERROR("[PushConstantGathererNode::Validate] Variadic input " + std::to_string(i) +
@@ -510,13 +516,6 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
     NODE_LOG_INFO("[PushConstantGathererNode::Pack] Packed " + std::to_string(pushConstantData_.size()) +
                  " bytes with " + std::to_string(variadicCount) + "/" + std::to_string(pushConstantFields_.size()) +
                  " fields connected");
-}
-
-bool PushConstantGathererNode::ValidateFieldType(Resource* res, const PushConstantFieldSlotInfo& field) {
-    if (!res) return false;
-
-    // Resource type should be Buffer for push constant values
-    return res->GetType() == ResourceType::Buffer || res->GetType() == ResourceType::Image;
 }
 
 void PushConstantGathererNode::PackScalar(const Resource* res, uint8_t* dest, size_t size) {

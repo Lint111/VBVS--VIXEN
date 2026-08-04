@@ -129,10 +129,18 @@ inline std::vector<SdiDerivedEdge> DeriveHazardEdges(const SdiHazardCensus& cens
  *
  * @tparam Registry duck-typed: needs Has(name) + SourceOf(name) returning a
  *         type with {node, slot, known} (SdiProviderRegistry's shape).
+ *
+ * @param annotatedExclusions member names excluded from derivation by explicit
+ *        app-side annotation — the measured false-positive classes, e.g.
+ *        trace-plumbing buffers whose writes are define-gated and therefore
+ *        invisible to qualifier-based access reflection. Excluded members are
+ *        surfaced through the opaque channel with their annotation, never
+ *        silently dropped.
  */
 template<typename Meta, const auto& Members, typename Registry, typename Features>
 void CensusStageFromSdi(SdiHazardCensus& census, NodeHandle stage,
-                        const Registry& registry, const Features& activeFeatures) {
+                        const Registry& registry, const Features& activeFeatures,
+                        const std::map<std::string, std::string>* annotatedExclusions = nullptr) {
     for (const auto& m : Members) {
         if (m.isPushMember) continue;
         bool present = true;
@@ -141,6 +149,14 @@ void CensusStageFromSdi(SdiHazardCensus& census, NodeHandle stage,
         }
         if (!present) continue;
         if (!registry.Has(m.name)) continue;  // wire plan already hard-errors
+        if (annotatedExclusions) {
+            auto it = annotatedExclusions->find(m.name);
+            if (it != annotatedExclusions->end()) {
+                census.RecordOpaque(stage,
+                                    std::string(m.name) + " [" + it->second + "]");
+                continue;
+            }
+        }
         const auto src = registry.SourceOf(m.name);
         if (!src.known) {
             census.RecordOpaque(stage, m.name);

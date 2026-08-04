@@ -3111,8 +3111,29 @@ void VulkanGraphApplication::CompileRenderGraph() {
                         : ("handle" + std::to_string(h.index));
         };
 
-        std::set<std::pair<uint32_t, uint32_t>> bakedPairs;
-        for (const auto& e : sched.edges) bakedPairs.insert({e.fromGroup, e.toGroup});
+        // Pair -> smallest timelineOffset baked for it. Offset 0 = same-frame
+        // edge; >0 = cross-frame (e.g. the WAR "next frame's writer waits this
+        // frame's readers" that several hand designs bake as the REVERSE
+        // direction of the naive same-frame RAW — sub-slice 2 finding (1).
+        std::map<std::pair<uint32_t, uint32_t>, uint64_t> bakedPairs;
+        for (const auto& e : sched.edges) {
+            const auto key = std::make_pair(e.fromGroup, e.toGroup);
+            auto it = bakedPairs.find(key);
+            if (it == bakedPairs.end() || e.timelineOffset < it->second) {
+                bakedPairs[key] = e.timelineOffset;
+            }
+        }
+        // Canonical full baked-edge dump — the identity-gate surface: a
+        // pre/post log diff of these lines IS the "baked SyncEdges identical"
+        // check any derived-sync switch must pass.
+        for (const auto& e : sched.edges) {
+            const std::string fromName = groupName.count(e.fromGroup)
+                ? groupName[e.fromGroup] : ("group" + std::to_string(e.fromGroup));
+            const std::string toName = groupName.count(e.toGroup)
+                ? groupName[e.toGroup] : ("group" + std::to_string(e.toGroup));
+            mainLogger->Info("[SdiHazard] SCHED " + fromName + " -> " + toName +
+                             " @offset " + std::to_string(e.timelineOffset));
+        }
 
         std::set<uint32_t> censusGroups;
         for (const NodeHandle stage : sdiHazardCensus_.Stages()) {
@@ -3130,14 +3151,26 @@ void VulkanGraphApplication::CompileRenderGraph() {
         for (const auto& e : derived) {
             auto* fromInst = renderGraph->GetInstance(e.from);
             auto* toInst = renderGraph->GetInstance(e.to);
-            bool baked = false;
+            // Timeline-aware classification (sub-slice 3): a naive same-frame
+            // RAW candidate counts as covered when the scheduler baked either
+            // the direct pair (any offset) or the REVERSE pair as a
+            // cross-frame WAR (offset > 0).
+            std::string verdict = "[NOT-baked]     ";
             if (fromInst && toInst && groupOf.count(fromInst) && groupOf.count(toInst)) {
                 const auto pair = std::make_pair(groupOf[fromInst], groupOf[toInst]);
                 derivedPairs.insert(pair);
-                baked = bakedPairs.count(pair) > 0;
+                auto direct = bakedPairs.find(pair);
+                if (direct != bakedPairs.end()) {
+                    verdict = direct->second == 0 ? "[baked]         "
+                                                  : "[baked+offset]  ";
+                } else {
+                    auto rev = bakedPairs.find({pair.second, pair.first});
+                    if (rev != bakedPairs.end() && rev->second > 0) {
+                        verdict = "[reverse-WAR]   ";
+                    }
+                }
             }
-            mainLogger->Info(std::string("[SdiHazard] DERIVED ") +
-                             (baked ? "[baked]     " : "[NOT-baked] ") +
+            mainLogger->Info("[SdiHazard] DERIVED " + verdict +
                              nameOf(e.from) + " -> " + nameOf(e.to) + " via " +
                              nameOf(e.resource.node) + ":" + std::to_string(e.resource.slot));
         }
