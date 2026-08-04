@@ -94,29 +94,39 @@ void main() {
     if (epoch == 0xFFFFFu) epoch = 0u;
     uint keyHi = keyHiBase | epoch;
 
+    // W3c-3: SELECTION-INDEPENDENT resolve — walk the WHOLE probe chain and
+    // count-weighted-average every live duplicate of this key, instead of
+    // taking the first match. Which duplicate holds which ray partition (and
+    // whether a given duplicate got rays at all this frame) races per frame;
+    // first-match selection turned that into discrete per-pixel color flips
+    // (the measured frame-hash instability). The count-weighted mean over all
+    // duplicates is the OVERALL cell mean — partition-invariant.
     uint baseSlot = HitAccumSlotOf(keyLo, keyHiBase);
     uint stride = HitAccumProbeStride(keyLo);
+    vec3 acc = vec3(0.0);
+    float accCount = 0.0;
     for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
         uint s = (baseSlot + probe * stride) % kHitAccumTableCapacity;
         uint lo = accumEntries[s].keyLo;
-        // Empty slot ⇒ the key is not in the table (an insert would have
-        // claimed this slot before any later one) — fail-soft.
-        if (lo == 0u) return;
+        // Empty slot ⇒ no further entries for this key can exist (an insert
+        // would have claimed it before any later slot).
+        if (lo == 0u) break;
         if (lo != keyLo) continue;
-        if (accumEntries[s].keyHi != keyHi) continue;  // stale/transient/other recipe|mip — probe on
+        if (accumEntries[s].keyHi != keyHi) continue;  // stale/transient/other recipe|mip
         uint count = accumEntries[s].count;
-        if (count == 0u) return;
-
-        // Engagement-boundary ramp: pixels just past the mip-0 threshold keep
-        // mostly their per-pixel color; deep engagement takes the cell fully.
-        // NO count factor — cells at shallow engagement average ~1.2 rays as
-        // the NORM (found live: a count/4 confidence term was a permanent
-        // global damp to w≈0.3, not a boundary smoother; the ramp already
-        // owns the seam).
-        float w = clamp(footprint / hitAccumParams.detailSize0 - 1.0, 0.0, 1.0);
-        vec4 cur = imageLoad(outputImage, px);
-        imageStore(outputImage, px, vec4(mix(cur.rgb, cellRadiance[s].rgb, w), cur.a));
-        return;
+        if (count == 0u) continue;
+        acc += cellRadiance[s].rgb * float(count);
+        accCount += float(count);
     }
-    // Probe limit exhausted without a match — fail-soft.
+    if (accCount <= 0.0) return;  // fail-soft: the per-pixel result stands
+
+    // Engagement-boundary ramp: pixels just past the mip-0 threshold keep
+    // mostly their per-pixel color; deep engagement takes the cell fully.
+    // NO count factor — cells at shallow engagement average ~1.2 rays as
+    // the NORM (found live: a count/4 confidence term was a permanent
+    // global damp to w≈0.3, not a boundary smoother; the ramp already
+    // owns the seam).
+    float w = clamp(footprint / hitAccumParams.detailSize0 - 1.0, 0.0, 1.0);
+    vec4 cur = imageLoad(outputImage, px);
+    imageStore(outputImage, px, vec4(mix(cur.rgb, acc / accCount, w), cur.a));
 }

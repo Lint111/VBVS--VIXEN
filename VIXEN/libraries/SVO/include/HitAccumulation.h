@@ -153,8 +153,15 @@ inline ResolvedCell Resolve(const AccumEntry& entry, const CellKey& key, float d
 //           WINNER (atomicExchange); readers compare BOTH words, and a
 //           mismatch (an in-flight claim or a delta collision across
 //           recipe/mip) probes the NEXT slot — producing benign DUPLICATE-key
-//           entries that resolve identically. No spin, no mis-merge; the diag
-//           gate compares totals/histograms exactly and occupancy as ≥.
+//           entries that resolve identically. No mis-merge; the diag gate
+//           compares totals/histograms exactly and occupancy as ≥.
+//           W3c-3 amendment: a racer seeing OUR key's TRANSIENT marker takes a
+//           BOUNDED re-read (16 spins) on that slot before probing on — the
+//           original probe-on rule MINTED ~3 fresh duplicate slots per frame
+//           (measured occupancy creep), and each mint could flip which
+//           duplicate a reader's probe selects. Read-side counterpart: the
+//           resolve count-weighted-averages ALL live duplicates of a key
+//           (selection-independent) instead of taking the first match.
 // Anchoring: the FRUSTUM CENTER of the mip's engagement band (camera +
 // forward·0.75·detail·2^mip/coef — band [t/2, t] centered), which halves the
 // span: half-width ≈ tan(fov/2)/coef ≈ 264, band depth ≈ ±159, corner ≈ 308 —

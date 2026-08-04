@@ -416,6 +416,7 @@ private:
     bool hitAccumEnabled_ = false;
     bool hitAccumResolveEnabled_ = false;      // W3c-2: VIXEN_HIT_ACCUM_RESOLVE (requires VIXEN_HIT_ACCUM)
     float hitAccumDetailSize0_ = kHitAccumDetailSize0;  // resolved (env-overridable) engagement threshold
+    float hitAccumTemporalAlpha_ = 0.25f;      // W3c-3: cell-radiance EMA alpha (VIXEN_HIT_ACCUM_TEMPORAL; 1 = off)
     NodeHandle hitAccumParamsBuffer_{};        // 48-byte host-written per-frame params (epoch/cone/detail/camera; W3c-1)
     NodeHandle hitAccumCellRadianceBuffer_{};  // W3c-2: vec4 per table slot (the cell shade's output)
     uint32_t hitAccumFrameEpoch_ = 0;

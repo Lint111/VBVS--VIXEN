@@ -627,7 +627,10 @@ void VulkanGraphApplication::PreTick() {
                                 p->primaryCoef = 2.0f * std::tan((glm::radians(45.0f) / static_cast<float>(height)) * 0.5f);
                                 p->primaryBias = 0.0f;
                                 p->detailSize0 = hitAccumDetailSize0_;
-                                p->camPos = glm::vec4(haCam.cameraPos, 0.0f);
+                                // W3c-3: camPos.w carries the temporal-absorption EMA
+                                // alpha (spare pad reused — the bandwidth ruling);
+                                // 1.0 = no history.
+                                p->camPos = glm::vec4(haCam.cameraPos, hitAccumTemporalAlpha_);
                                 p->camForward = glm::vec4(haCam.cameraDir, 0.0f);
                                 paramsNode->UnmapReadback(devHa);
                             }
@@ -1262,12 +1265,12 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
             // --- GPU side: scan the table (two-word key, 14-word stride) ---
             uint32_t gpuOccupied = 0, gpuTotal = 0;
             uint32_t gpuMipHist[16] = {};
+            uint32_t maxEpoch = 0;  // hoisted: the radiance readback below re-scans at this epoch
+            constexpr uint32_t kStrideWords = 14;  // HitAccumEntryGpu, 56 B (W3c-2 repInstIdx)
             if (void* tmapped = tableNode->MapForReadback(devDiag)) {
                 const auto* words = reinterpret_cast<const uint32_t*>(tmapped);
-                constexpr uint32_t kStrideWords = 14;  // HitAccumEntryGpu, 56 B (W3c-2 repInstIdx)
                 // Entries persist across frames (epoch-stamped, no clear):
                 // the FINAL frame's entries carry the max epoch — count those.
-                uint32_t maxEpoch = 0;
                 for (uint32_t s = 0; s < kHitAccumTableCapacity; ++s) {
                     const uint32_t keyLo = words[s * kStrideWords + 0];
                     if ((keyLo & 0x80000000u) == 0u) continue;
@@ -1343,27 +1346,40 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
                                  " (detail=" + std::to_string(hitAccumDetailSize0_) + " coef=" + std::to_string(coef) + ")");
             }
 
-            // W3c-2: the cell shade's output — shaded (a=1) cells at the final
-            // frame. The gate: shaded ≈ the table's live occupancy (every
-            // current-epoch cell got a radiance), nonzero when engaged.
+            // W3c-2/3: the cell shade's output. Since W3c-3 the radiance is
+            // STICKY (dead slots keep their last value+key for the EMA), so
+            // "shaded" is gated on TABLE liveness + a bit-exact key match
+            // between the radiance alpha and the slot's keyLo — the same
+            // reachability rule the resolve enforces. Gate: shaded == the
+            // table's live occupancy.
             if (hitAccumResolveEnabled_) {
-                if (auto* radNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumCellRadianceBuffer_))) {
-                    if (void* rmapped2 = radNode->MapForReadback(devDiag)) {
+                auto* radNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumCellRadianceBuffer_));
+                if (radNode) {
+                    void* rmapped2 = radNode->MapForReadback(devDiag);
+                    void* tmapped2 = tableNode->MapForReadback(devDiag);
+                    if (rmapped2 && tmapped2) {
                         const auto* cells = reinterpret_cast<const float*>(rmapped2);
+                        const auto* words = reinterpret_cast<const uint32_t*>(tmapped2);
                         uint32_t shaded = 0, lit = 0;
                         for (uint32_t s = 0; s < kHitAccumTableCapacity; ++s) {
-                            if (cells[s * 4u + 3u] != 0.0f) {
-                                ++shaded;
-                                if (cells[s * 4u + 0u] + cells[s * 4u + 1u] + cells[s * 4u + 2u] > 0.0f) ++lit;
-                            }
+                            const uint32_t keyLo = words[s * kStrideWords + 0];
+                            if ((keyLo & 0x80000000u) == 0u) continue;
+                            const uint32_t keyHi = words[s * kStrideWords + 1];
+                            if ((keyHi & 0xFFFFFu) != maxEpoch) continue;
+                            uint32_t radKey;
+                            std::memcpy(&radKey, &cells[s * 4u + 3u], 4);
+                            if (radKey != keyLo) continue;
+                            ++shaded;
+                            if (cells[s * 4u + 0u] + cells[s * 4u + 1u] + cells[s * 4u + 2u] > 0.0f) ++lit;
                         }
-                        radNode->UnmapReadback(devDiag);
                         if (mainLogger) {
                             mainLogger->Info("[HitAccumDiag] CellShade: shaded=" + std::to_string(shaded) +
                                              " lit=" + std::to_string(lit) +
                                              " (tableLiveOccupied=" + std::to_string(gpuOccupied) + ")");
                         }
                     }
+                    if (rmapped2) radNode->UnmapReadback(devDiag);
+                    if (tmapped2) tableNode->UnmapReadback(devDiag);
                 }
             }
         }

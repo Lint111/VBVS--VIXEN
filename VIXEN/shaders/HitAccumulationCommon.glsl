@@ -119,7 +119,7 @@ struct HitAccumParams {
     float primaryCoef;   // the PRIMARY cone coefficient (RaySizeCoefNode's value — NOT pc.raySizeCoef, which carries the SECONDARY constant on the tracing stages)
     float primaryBias;
     float detailSize0;
-    vec4  camPos;        // xyz used
+    vec4  camPos;        // xyz camera; w = W3c-3 temporal EMA alpha (spare pad reused; 1.0 = off)
     vec4  camForward;    // xyz used
 };
 

@@ -1980,6 +1980,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 if (parsed > 0.0f) hitAccumDetail = parsed;
             }
             hitAccumDetailSize0_ = hitAccumDetail;
+            // W3c-3: temporal-absorption EMA alpha (rides camPos.w — see the
+            // PreTick write). Default 0.25 absorbs the duplicate-partition
+            // scatter over ~4 frames; 1.0 disables (bit-old behavior).
+            if (const char* temporalEnv = std::getenv("VIXEN_HIT_ACCUM_TEMPORAL")) {
+                const float parsed = static_cast<float>(std::atof(temporalEnv));
+                if (parsed > 0.0f && parsed <= 1.0f) hitAccumTemporalAlpha_ = parsed;
+            }
             auto* tableInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer));
             // uint32_t, matching the ValueTag the node reads (the ddgiLeakGateDebug
             // precedent's own `60u` — a uint64_t here stores a mismatched tag and

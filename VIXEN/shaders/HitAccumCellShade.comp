@@ -90,7 +90,12 @@ void main() {
     bool live = (keyLo & kHitAccumKeyTagBit) != 0u
              && (keyHi & 0xFFFFFu) == epoch
              && accumEntries[slot].count > 0u;
-    if (!live) { cellRadiance[slot] = vec4(0.0); return; }
+    // W3c-3: a dead slot keeps its LAST radiance+key rather than zeroing —
+    // keyLo is sticky (epoch reclaim re-stamps the same slot), so a key that
+    // skips a frame (ray-partition scatter) resumes its own history instead
+    // of restarting; the resolve never reads a slot it didn't key-match, so
+    // stale radiance is unreachable garbage, not a leak.
+    if (!live) return;
 
     uint recipeId = (keyHi >> 24) & 0xFFu;
     uint mip      = (keyHi >> 20) & 0xFu;
@@ -167,5 +172,18 @@ void main() {
         }
     }
 
-    cellRadiance[slot] = vec4(Lo, 1.0);
+    // W3c-3 temporal absorption: the table's key→slot map is STICKY (keyLo is
+    // never cleared; epoch reclaim re-stamps in place), so the per-frame noise
+    // on a slot is the RAY PARTITION across duplicate entries — same surface,
+    // jittering averages (the measured frame-50≠frame-100 instability). A
+    // per-slot EMA keyed on the slot's own keyLo (carried bit-exact in the
+    // radiance alpha) absorbs it; a key mismatch (slot re-purposed) restarts
+    // fresh. alpha rides the params block's spare camPos.w (1.0 = off).
+    float temporalAlpha = hitAccumParams.camPos.w;
+    vec4 prev = cellRadiance[slot];
+    vec3 outRgb = Lo;
+    if (temporalAlpha < 1.0 && floatBitsToUint(prev.a) == keyLo) {
+        outRgb = mix(prev.rgb, Lo, temporalAlpha);
+    }
+    cellRadiance[slot] = vec4(outRgb, uintBitsToFloat(keyLo));
 }

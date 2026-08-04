@@ -138,7 +138,23 @@ void FusedHitAccumulate(uint slot, HitRecord rec) {
         uint hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
         if ((hiRead & 0xFFF00000u) != keyHiBase) continue;
         if ((hiRead & 0xFFFFFu) == myEpoch) { tableSlot = s; claimed = true; break; }
-        if (hiRead == kTransient) continue;
+        if (hiRead == kTransient) {
+            // W3c-3: BOUNDED wait on the reclaim winner's zeroing window
+            // (~13 atomic stores) instead of probing on immediately — the
+            // probe-on rule MINTED ~3 fresh duplicate slots per frame
+            // (measured occupancy creep 32,029→32,282 over 80 frames), and
+            // every mint can flip the resolve's duplicate selection (the
+            // frame-hash instability's root). Still fail-soft: a spin that
+            // never sees the publish probes on exactly as before.
+            bool joined = false;
+            for (uint spin = 0u; spin < 16u; ++spin) {
+                hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
+                if (hiRead == keyHi) { tableSlot = s; claimed = true; joined = true; break; }
+                if (hiRead != kTransient) break;  // published, but not our epoch
+            }
+            if (joined) break;
+            continue;
+        }
         if (atomicCompSwap(accumEntries[s].keyHi, hiRead, kTransient) == hiRead) {
             atomicExchange(accumEntries[s].count, 0u);
             atomicExchange(accumEntries[s].sumPosQX, 0); atomicExchange(accumEntries[s].sumPosQY, 0); atomicExchange(accumEntries[s].sumPosQZ, 0);
