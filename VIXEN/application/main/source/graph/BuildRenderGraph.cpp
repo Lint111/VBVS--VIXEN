@@ -460,10 +460,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // shader (different push-constant field usage after dead-code elimination) needs its own
     // instances, mirroring BuildFanInDemoGraph's per-stage wirePipeline/wireStageCommon shape.
     NodeHandle directLightingShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("direct_lighting_shader_lib");
-    NodeHandle directLightingGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("direct_lighting_desc_gatherer");
-    NodeHandle directLightingPushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("direct_lighting_push_constant_gatherer");
-    NodeHandle directLightingDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("direct_lighting_descriptors");
-    NodeHandle directLightingPipeline = renderGraph->AddNode<ComputePipelineNodeType>("direct_lighting_pipeline");
+    // Slice C: desc-gatherer/descriptor-set/pipeline are synthesized at the
+    // wire site (SynthesizeComputeStage, names direct_lighting_*); only the
+    // push-gatherer handle is kept — the hand push-field connects target it.
+    NodeHandle directLightingPushConstantGatherer{};
     NodeHandle directLightingNode = renderGraph->AddNode<ComputeStageNodeType>("direct_lighting");
 
     // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherer for DirectLightingNode's
@@ -481,10 +481,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // its own instances" rationale as directLighting*'s own quintet (see that block's
     // comment above).
     NodeHandle spatialReuseShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("spatial_reuse_shader_lib");
-    NodeHandle spatialReuseGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("spatial_reuse_desc_gatherer");
-    NodeHandle spatialReusePushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("spatial_reuse_push_constant_gatherer");
-    NodeHandle spatialReuseDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("spatial_reuse_descriptors");
-    NodeHandle spatialReusePipeline = renderGraph->AddNode<ComputePipelineNodeType>("spatial_reuse_pipeline");
+    // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
+    NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
 
     // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherers for the reservoir
@@ -618,10 +616,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // like DirectLightingNode) — this pass writes only the probe atlases via
     // IMAGE_WRITE_ARRAY (Inc4 M1), never the swapchain-derived render target.
     NodeHandle probeUpdateShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("probe_update_shader_lib");
-    NodeHandle probeUpdateGatherer  = renderGraph->AddNode<DescriptorResourceGathererNodeType>("probe_update_desc_gatherer");
-    NodeHandle probeUpdatePushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("probe_update_push_constant_gatherer");
-    NodeHandle probeUpdateDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("probe_update_descriptors");
-    NodeHandle probeUpdatePipeline = renderGraph->AddNode<ComputePipelineNodeType>("probe_update_pipeline");
+    // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
+    NodeHandle probeUpdatePushConstantGatherer{};
     NodeHandle probeUpdateNode = renderGraph->AddNode<ComputeStageNodeType>("probe_update");
 
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
@@ -651,8 +647,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // descriptor in all four compiled shaders' reflected sets regardless of whether that shader's
     // own code ever calls isInstanceSkipped(), exactly like ddgiLeakGateDebugBuffer above already
     // gets wired into three separate gatherers (directLighting/probeUpdate/spatialReuse) for the
-    // same reason. One shared placeholder buffer, wired to all four gatherers below (descriptorGatherer,
-    // directLightingGatherer, probeUpdateGatherer, spatialReuseGatherer) -- never populated with real
+    // same reason. One shared placeholder buffer, wired to all four gatherers below (the march's
+    // descriptorGatherer + the three synthesized lighting desc-gatherers) -- never populated with real
     // skip data this milestone (M3's job), same 256-byte zeroed convention as this feature's own 11
     // GTest harnesses (test_body_instance_raymarch_render.cpp et al.) use for their own default-case
     // placeholder, so production and tests share one no-op convention instead of two.
@@ -678,9 +674,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle recipePrecisionBucketIndicesBuffer{}; // Load-Tier Contract M2 (precision tier)
     NodeHandle recipeBoundSphereBuffer{};
     NodeHandle recipeBucketingShaderLib{};
-    NodeHandle recipeBucketingDescGatherer{};
-    NodeHandle recipeBucketingDescriptorSet{};
-    NodeHandle recipeBucketingPipeline{};
     NodeHandle recipeBucketingModeInit{};   // mode==1: reset extrema/counts
     NodeHandle recipeBucketingModeBucket{}; // mode==0: bucket + coverage (one thread per instance)
     NodeHandle recipeBucketingModeFinal{};  // mode==2: emit per-bucket indirect command
@@ -688,9 +681,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle recipeBucketingBufSyncR{};   // BufferSyncGathererNode: mode2's read set (coverage)
     NodeHandle recipeBucketMetaBuffer{};     // shared per-recipeId BucketMeta SSBO (specialized shader binding 3)
     NodeHandle recipeSpecializedDispatch{}; // MultiDispatchNode (Inc4 M3-extended, indirect dispatch)
-    NodeHandle recipeBucketingModeInitPushGatherer{};
-    NodeHandle recipeBucketingModeBucketPushGatherer{};
-    NodeHandle recipeBucketingModeFinalPushGatherer{};
     NodeHandle recipeBucketingModeInitConstant{};
     NodeHandle recipeBucketingModeBucketConstant{};
     NodeHandle recipeBucketingModeFinalConstant{};
@@ -720,12 +710,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         recipePrecisionBucketCountBuffer   = renderGraph->AddNode<StorageBufferNodeType>("recipe_precision_bucket_count_buffer");
         recipePrecisionBucketIndicesBuffer = renderGraph->AddNode<StorageBufferNodeType>("recipe_precision_bucket_indices_buffer");
 
-        // --- Bucketing shader quintet (self-contained binding namespace 0-8, own descriptor set,
-        // independent from the march's shader/pipeline/descriptor chain) ---
+        // --- Bucketing shader lib (self-contained binding namespace 0-8, independent from the
+        // march's chain). Only shader identity is authored; the desc-gatherer/descriptor-set/
+        // pipeline chain is SYNTHESIZED from the shader's merged SDI at the wire site below. ---
         recipeBucketingShaderLib    = renderGraph->AddNode<ShaderLibraryNodeType>("recipe_bucketing_shader_lib");
-        recipeBucketingDescGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("recipe_bucketing_desc_gatherer");
-        recipeBucketingDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("recipe_bucketing_descriptors");
-        recipeBucketingPipeline    = renderGraph->AddNode<ComputePipelineNodeType>("recipe_bucketing_pipeline");
         // Three ComputeStageNode instances (mode 1 -> mode 0 -> mode 2), same shader/pipeline/
         // descriptor set, distinguished only by their own PUSH_CONSTANT_DATA (mode field) and
         // dispatch dims -- each is self-submitting (proven ComputeStageNode pattern, matches
@@ -738,12 +726,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
         recipeBucketingBufSyncW = renderGraph->AddNode<BufferSyncGathererNodeType>("recipe_bucketing_bufsync_write");
         recipeBucketingBufSyncR = renderGraph->AddNode<BufferSyncGathererNodeType>("recipe_bucketing_bufsync_read");
 
-        // Each mode stage needs its OWN PushConstantGathererNode (the `mode` field differs) and
-        // its own ConstantNode supplying that literal -- mirrors raySizeBiasConstant's own
-        // "ConstantNode feeds a fixed literal into a reflected push-constant field" convention.
-        recipeBucketingModeInitPushGatherer   = renderGraph->AddNode<PushConstantGathererNodeType>("recipe_bucketing_mode_init_pc_gatherer");
-        recipeBucketingModeBucketPushGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("recipe_bucketing_mode_bucket_pc_gatherer");
-        recipeBucketingModeFinalPushGatherer  = renderGraph->AddNode<PushConstantGathererNodeType>("recipe_bucketing_mode_final_pc_gatherer");
+        // Each mode stage gets its own ConstantNode supplying the `mode` literal -- mirrors
+        // raySizeBiasConstant's "ConstantNode feeds a fixed literal into a reflected
+        // push-constant field" convention. (Each stage's own PushConstantGathererNode -- the
+        // `mode` field differs per stage -- is synthesized by SynthesizeComputeStageGroup at
+        // the wire site, under the stages' historical *_pc_gatherer names.)
         recipeBucketingModeInitConstant   = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_mode_init_constant");
         recipeBucketingModeBucketConstant = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_mode_bucket_constant");
         recipeBucketingModeFinalConstant  = renderGraph->AddNode<ConstantNodeType>("recipe_bucketing_mode_final_constant");
@@ -1412,211 +1399,105 @@ void VulkanGraphApplication::BuildRenderGraph() {
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
 
-    // Sampled Lighting Inc3 M1 (KI-018): DirectLighting.comp shader registration. Same shader-source
-    // search-path pattern as BodyInstanceRayMarch.comp above; includes shaders/SceneBindings.glsl
-    // (shared scene/traversal declarations) so both compiled programs stay byte-identical on the
-    // shared portion.
-    auto* directLightingShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(directLightingShaderLib));
-    directLightingShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
-        ShaderManagement::ShaderBundleBuilder builder;
-        constexpr const char* shaderName = "DirectLighting.comp";
-        constexpr const char* programName = "DirectLighting";
-        std::vector<std::filesystem::path> possiblePaths = {
+    // Sampled Lighting Inc3 M1 (KI-018) → semantic-wiring slice C: the three lighting
+    // shaders are ShaderFamilies — the SOURCE recipe (search-path resolve + raw read +
+    // the two M10 shadow-debug env splices) declared once, the trace axis TYPED at the
+    // registration site with the same vocabulary the wiring layer uses. All three
+    // #include shaders/SceneBindings.glsl so the compiled programs stay byte-identical
+    // on the shared portion. Cache keys are byte-identical to the old hand builders in
+    // every mode except capture+shadow-debug COMBINED: the canonical feature splice
+    // lands directly after #version, before the provider's M10 inserts, where the old
+    // LIFO hand order put TRACE last — same defines, different byte order, so that one
+    // debug-debug combo mints a distinct cache entry (functionally identical GLSL).
+    const auto makeLightingFamily = [](const char* shaderName, const char* programName) {
+        ShaderManagement::ShaderFamily::Config cfg;
+        cfg.name = programName;
+        cfg.stage = ShaderManagement::ShaderStage::Compute;
+        return std::make_shared<ShaderManagement::ShaderFamily>(cfg,
+            [shaderName]() {
+                std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+                    std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-            std::string("shaders/") + shaderName,
-            std::string("../shaders/") + shaderName,
-            shaderName
-        };
-        std::filesystem::path compPath;
-        for (const auto& path : possiblePaths) {
-            if (std::filesystem::exists(path)) { compPath = path; break; }
-        }
-        if (compPath.empty()) {
-            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
-        }
-        std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
-        // M10 shadow diagnostic (env-gated, off by default): when VIXEN_SHADOW_DBG_PX/_PY
-        // are set, inject `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
-        // #version. Only SpatialReuseShade.comp has the arming block that acts on it (the
-        // other shaders that share this builder pattern get a harmless unused define). Same
-        // after-#version textual-injection rule ReadShaderSourceWithTraceHooksGate documents.
-        if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
-            if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
-                const std::string dbgDefines =
-                    "#define VIXEN_SHADOW_DBG 1\n"
-                    "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
-                    "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
-                const size_t fnl = source.find('\n');
-                if (fnl == std::string::npos) source += "\n" + dbgDefines;
-                else source.insert(fnl + 1, dbgDefines);
-            }
-        }
-        // M10 causation A/B (env-gated, off by default): when VIXEN_SHADOW_NO_MIP_ANYHIT is
-        // set, inject the define that disables the coarse mip-coverage any-hit occlusion paths
-        // (SceneBindings.glsl), so a shadow ray only reports occlusion on a real SDF/DDA leaf
-        // crossing. Directly proves whether the baked-vs-virtual false shadow is mip-driven.
-        if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
-            const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
-            const size_t fnl2 = source.find('\n');
-            if (fnl2 == std::string::npos) source += "\n" + noMipDef;
-            else source.insert(fnl2 + 1, noMipDef);
-        }
-        builder.SetProgramName(programName)
-               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
-               .SetTargetVulkanVersion(vulkanVer)
-               .SetTargetSpirvVersion(spirvVer)
-               .AddIncludePath("shaders")
-               .AddIncludePath("../shaders")
+                    std::string("shaders/") + shaderName,
+                    std::string("../shaders/") + shaderName,
+                    shaderName
+                };
+                std::filesystem::path compPath;
+                for (const auto& path : possiblePaths) {
+                    if (std::filesystem::exists(path)) { compPath = path; break; }
+                }
+                if (compPath.empty()) {
+                    throw std::runtime_error(std::string(shaderName) +
+                                             " not found - check shader search paths");
+                }
+                std::ifstream in(compPath);
+                std::stringstream buf;
+                buf << in.rdbuf();
+                std::string source = buf.str();
+                // M10 shadow diagnostic (env-gated, off by default): inject
+                // `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
+                // #version. Only SpatialReuseShade.comp has the arming block that
+                // acts on it (the other lighting shaders get a harmless unused
+                // define). This is a CONTENT-level env splice, so it lives in the
+                // SourceProvider (march precedent) and NOT on the typed feature
+                // axis — the PX/PY defines carry VALUES; features are bare defines.
+                if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
+                    if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
+                        const std::string dbgDefines =
+                            "#define VIXEN_SHADOW_DBG 1\n"
+                            "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
+                            "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
+                        const size_t fnl = source.find('\n');
+                        if (fnl == std::string::npos) source += "\n" + dbgDefines;
+                        else source.insert(fnl + 1, dbgDefines);
+                    }
+                }
+                // M10 causation A/B (env-gated, off by default): disables the coarse
+                // mip-coverage any-hit occlusion paths (SceneBindings.glsl) so a shadow
+                // ray only reports occlusion on a real SDF/DDA leaf crossing.
+                if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
+                    const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
+                    const size_t fnl2 = source.find('\n');
+                    if (fnl2 == std::string::npos) source += "\n" + noMipDef;
+                    else source.insert(fnl2 + 1, noMipDef);
+                }
+                return source;
+            });
+    };
+    std::vector<std::string> lightingShaderFeatures;
+    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+        lightingShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
+    }
+    const auto registerLightingFamily = [this, lightingShaderFeatures](
+                                            NodeHandle libHandle,
+                                            std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
+        libNode->RegisterShaderBuilder([this, family, lightingShaderFeatures](int vulkanVer, int spirvVer) {
+            auto builder = family->MakeBuilder(lightingShaderFeatures);
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
-               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
-               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
-               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
-               // stage/entry/options) for the cache key, so toggling that env var naturally
-               // produces a distinct cache entry.
-               .EnableCaching(&shaderCacheManager_)
-               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
-        return builder;
-    });
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
+    };
+    registerLightingFamily(directLightingShaderLib,
+                           makeLightingFamily("DirectLighting.comp", "DirectLighting"));
 
-    // Sampled Lighting Inc3 M5: SpatialReuseShade.comp shader registration. Same search-path
-    // pattern as DirectLighting.comp above.
-    auto* spatialReuseShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(spatialReuseShaderLib));
-    spatialReuseShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
-        ShaderManagement::ShaderBundleBuilder builder;
-        constexpr const char* shaderName = "SpatialReuseShade.comp";
-        constexpr const char* programName = "SpatialReuseShade";
-        std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
-#endif
-            std::string("shaders/") + shaderName,
-            std::string("../shaders/") + shaderName,
-            shaderName
-        };
-        std::filesystem::path compPath;
-        for (const auto& path : possiblePaths) {
-            if (std::filesystem::exists(path)) { compPath = path; break; }
-        }
-        if (compPath.empty()) {
-            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
-        }
-        std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
-        // M10 shadow diagnostic (env-gated, off by default): when VIXEN_SHADOW_DBG_PX/_PY
-        // are set, inject `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
-        // #version. Only SpatialReuseShade.comp has the arming block that acts on it (the
-        // other shaders that share this builder pattern get a harmless unused define). Same
-        // after-#version textual-injection rule ReadShaderSourceWithTraceHooksGate documents.
-        if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
-            if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
-                const std::string dbgDefines =
-                    "#define VIXEN_SHADOW_DBG 1\n"
-                    "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
-                    "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
-                const size_t fnl = source.find('\n');
-                if (fnl == std::string::npos) source += "\n" + dbgDefines;
-                else source.insert(fnl + 1, dbgDefines);
-            }
-        }
-        // M10 causation A/B (env-gated, off by default): when VIXEN_SHADOW_NO_MIP_ANYHIT is
-        // set, inject the define that disables the coarse mip-coverage any-hit occlusion paths
-        // (SceneBindings.glsl), so a shadow ray only reports occlusion on a real SDF/DDA leaf
-        // crossing. Directly proves whether the baked-vs-virtual false shadow is mip-driven.
-        if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
-            const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
-            const size_t fnl2 = source.find('\n');
-            if (fnl2 == std::string::npos) source += "\n" + noMipDef;
-            else source.insert(fnl2 + 1, noMipDef);
-        }
-        builder.SetProgramName(programName)
-               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
-               .SetTargetVulkanVersion(vulkanVer)
-               .SetTargetSpirvVersion(spirvVer)
-               .AddIncludePath("shaders")
-               .AddIncludePath("../shaders")
-#ifdef VIXEN_SHADER_SOURCE_DIR
-               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
-#endif
-               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
-               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
-               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
-               // stage/entry/options) for the cache key, so toggling that env var naturally
-               // produces a distinct cache entry.
-               .EnableCaching(&shaderCacheManager_)
-               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
-        return builder;
-    });
+    // Sampled Lighting Inc3 M5: SpatialReuseShade.comp — family-registered (see the
+    // lighting-family block above; this shader owns the M10 VIXEN_SHADOW_DBG arming block).
+    registerLightingFamily(spatialReuseShaderLib,
+                           makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"));
 
-    // Sampled Lighting Inc4 M3: ProbeUpdate.comp shader registration. Same search-path
-    // pattern as DirectLighting.comp/SpatialReuseShade.comp above.
-    auto* probeUpdateShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(probeUpdateShaderLib));
-    probeUpdateShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
-        ShaderManagement::ShaderBundleBuilder builder;
-        constexpr const char* shaderName = "ProbeUpdate.comp";
-        constexpr const char* programName = "ProbeUpdate";
-        std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
-#endif
-            std::string("shaders/") + shaderName,
-            std::string("../shaders/") + shaderName,
-            shaderName
-        };
-        std::filesystem::path compPath;
-        for (const auto& path : possiblePaths) {
-            if (std::filesystem::exists(path)) { compPath = path; break; }
-        }
-        if (compPath.empty()) {
-            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
-        }
-        std::string source = ReadShaderSourceWithTraceHooksGate(compPath, shaderName);
-        // M10 shadow diagnostic (env-gated, off by default): when VIXEN_SHADOW_DBG_PX/_PY
-        // are set, inject `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
-        // #version. Only SpatialReuseShade.comp has the arming block that acts on it (the
-        // other shaders that share this builder pattern get a harmless unused define). Same
-        // after-#version textual-injection rule ReadShaderSourceWithTraceHooksGate documents.
-        if (const char* pxEnv = std::getenv("VIXEN_SHADOW_DBG_PX")) {
-            if (const char* pyEnv = std::getenv("VIXEN_SHADOW_DBG_PY")) {
-                const std::string dbgDefines =
-                    "#define VIXEN_SHADOW_DBG 1\n"
-                    "#define VIXEN_SHADOW_DBG_PX " + std::string(pxEnv) + "\n"
-                    "#define VIXEN_SHADOW_DBG_PY " + std::string(pyEnv) + "\n";
-                const size_t fnl = source.find('\n');
-                if (fnl == std::string::npos) source += "\n" + dbgDefines;
-                else source.insert(fnl + 1, dbgDefines);
-            }
-        }
-        // M10 causation A/B (env-gated, off by default): when VIXEN_SHADOW_NO_MIP_ANYHIT is
-        // set, inject the define that disables the coarse mip-coverage any-hit occlusion paths
-        // (SceneBindings.glsl), so a shadow ray only reports occlusion on a real SDF/DDA leaf
-        // crossing. Directly proves whether the baked-vs-virtual false shadow is mip-driven.
-        if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
-            const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
-            const size_t fnl2 = source.find('\n');
-            if (fnl2 == std::string::npos) source += "\n" + noMipDef;
-            else source.insert(fnl2 + 1, noMipDef);
-        }
-        builder.SetProgramName(programName)
-               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
-               .SetTargetVulkanVersion(vulkanVer)
-               .SetTargetSpirvVersion(spirvVer)
-               .AddIncludePath("shaders")
-               .AddIncludePath("../shaders")
-#ifdef VIXEN_SHADER_SOURCE_DIR
-               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
-#endif
-               // Baked-perf-pipeline M2b (Task 2b.1): `source` here already includes the
-               // ReadShaderSourceWithTraceHooksGate VIXEN_GPU_TRACE_HOOKS #define injection
-               // (when VIXEN_DEBUG_CAPTURE is set) -- Build() hashes this exact text (plus
-               // stage/entry/options) for the cache key, so toggling that env var naturally
-               // produces a distinct cache entry.
-               .EnableCaching(&shaderCacheManager_)
-               .AddStage(ShaderManagement::ShaderStage::Compute, source, "main");
-        return builder;
-    });
+    // Sampled Lighting Inc4 M3: ProbeUpdate.comp — family-registered (see the
+    // lighting-family block above).
+    registerLightingFamily(probeUpdateShaderLib,
+                           makeLightingFamily("ProbeUpdate.comp", "ProbeUpdate"));
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: RecipeInstanceBucketing.comp registration.
     // Same search-path pattern as DirectLighting.comp/ProbeUpdate.comp above -- a plain static
@@ -5980,38 +5861,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing pre-pass + specialized dispatch ---
     if (recipeBucketedDispatchEnabled) {
-        // Descriptor/pipeline plumbing for the bucketing shader (bindings 0-8, own namespace).
-        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                      recipeBucketingShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
-             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                      recipeBucketingPipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
-             .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                      recipeBucketingDescGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
-             .Connect(recipeBucketingDescGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
-             .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-             .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                      recipeBucketingPipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
-             .Connect(recipeBucketingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                      recipeBucketingPipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
-             // DescriptorSetNode requires SWAPCHAIN_INFO/IMAGE_INDEX (it reads swapChainImageCount
-             // during Compile to size its descriptor-set ring, same shape computeDescriptorSet's
-             // own wiring above uses).
-             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
-             // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
-             // This node's OWN consumers (recipeBucketingModeInit/Bucket/Final ComputeStageNodes,
-             // wired below) already select CURRENT_FRAME_INDEX -- without this wire the producer
-             // fell back to IMAGE_INDEX (0-2) while the consumer selected by frame index (0-3),
-             // so producer and consumer disagreed on which ring slot is "current" (Inc5 M1).
-             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                      recipeBucketingDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
-
         // Semantic-wiring S2: providers once — every descriptor member resolved
         // from the shader's own merged-SDI member table. All eleven bindings are
         // persistent storage buffers (Dependency|Execute); the instance buffer
@@ -6074,88 +5923,35 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));
             });
 
-        // Descriptors wire ONCE (the three mode stages share this gatherer).
-        WireStageFromSdi<BucketSdi::Metadata, BucketSdi::MEMBERS>(
-            batch, bucketingProviders, recipeBucketingDescGatherer,
-            /*pushGatherer (unused in this scope)*/ recipeBucketingDescGatherer,
-            {}, SdiWireSet::DescriptorsOnly);
-
-        // Three ComputeStageNode instances share the SAME pipeline/descriptor set (the shader's
-        // push-constant `mode` field, not a different pipeline, selects behavior) -- each is its
-        // own self-submitting node (producer role, PARAM_IS_CONSUMER=false: none of these touch
-        // the swapchain). Dispatch dims are fixed (not swapchain-derived): mode 1/2 dispatch one
-        // thread per BUCKET (kRecipeBucketingMaxBuckets), mode 0 dispatches one thread per
-        // INSTANCE (bodyOctreeSceneNode's own live instance count -- but ComputeStageNode's
-        // PARAM_DISPATCH_X/Y/Z are fixed at graph-build time, not re-derived from a live
-        // instance count each frame; the shader's own `if (gid >= pc.instanceCount) return;`
-        // guard, same convention the main march already relies on for its own instanceCount vs.
-        // dispatch-size slack, makes an over-sized fixed dispatch safe -- oversized threads
-        // early-return, never touch out-of-range indices).
-        for (NodeHandle stageNode : {recipeBucketingModeInit, recipeBucketingModeBucket, recipeBucketingModeFinal}) {
-            batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                          stageNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
-                 .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                          stageNode, ComputeStageNodeConfig::COMMAND_POOL)
-                 .Connect(recipeBucketingPipeline, ComputePipelineNodeConfig::PIPELINE,
-                          stageNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
-                 .Connect(recipeBucketingPipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
-                          stageNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
-                 .Connect(recipeBucketingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                          stageNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
-                 .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                          stageNode, ComputeStageNodeConfig::IMAGE_INDEX)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                          stageNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                          stageNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                          stageNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-                 .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                          stageNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-                 .Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          stageNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
-                          stageNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
-                 .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                          stageNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
-        }
-
-        // Push-constant wiring: each mode stage's own PushConstantGathererNode reflects
-        // RecipeInstanceBucketing.comp's Push block (viewProj, instanceCount, maxBuckets,
-        // maxMembersPerBucket, screenWidth, screenHeight, mode, raySizeCoef, raySizeBias,
-        // cameraPos -- the last 3 added by Load-Tier Contract M1) via the shared shader bundle,
-        // and each field is wired from the same live source the main march already uses for the
-        // equivalent value (camera view-proj, live instance count, render-target extent), so a
-        // camera move or a live-resize is reflected correctly without any extra plumbing --
-        // ONLY the `mode` field differs per stage (via each stage's own ConstantNode above).
-        struct BucketingPcStage { NodeHandle stage; NodeHandle pcGatherer; NodeHandle modeConstant; };
-        const BucketingPcStage bucketingPcStages[] = {
-            { recipeBucketingModeInit,   recipeBucketingModeInitPushGatherer,   recipeBucketingModeInitConstant },
-            { recipeBucketingModeBucket, recipeBucketingModeBucketPushGatherer, recipeBucketingModeBucketConstant },
-            { recipeBucketingModeFinal,  recipeBucketingModeFinalPushGatherer,  recipeBucketingModeFinalConstant },
+        // GROUP synthesis (semantic-wiring slice C): ONE shared desc-gatherer/
+        // descriptor-set/pipeline chain off the shader lib serving all three
+        // mode stages -- the shader's push-constant `mode` field, not a
+        // different pipeline, selects behavior; the stages are producers
+        // (PARAM_IS_CONSUMER=false at their dispatch-dims site: none touch the
+        // swapchain). Descriptors wire ONCE from the shared registry; each
+        // stage's push gatherer (created under its historical *_pc_gatherer
+        // name) wires with that stage's own `mode` constant overlaid. The
+        // chain/commons/push plumbing the hand blocks wrote here is emitted
+        // by the helper; the sync-hazard gatherers below stay authored (S3).
+        const SdiStageCommon bucketingCommon{deviceNode, commandPoolNode,
+                                             swapChainNode, frameSyncNode};
+        const auto provideMode = [](NodeHandle modeConstant) {
+            return [modeConstant](SdiProviderRegistry& r) {
+                r.Provide("mode", modeConstant,
+                          ConstantNodeConfig::OUTPUT, SlotRole::Execute);
+            };
         };
-        for (const auto& s : bucketingPcStages) {
-            // Stage plumbing (bundle/data/ranges) stays hand-wired — S4's
-            // AttachStage territory. NOTE viewProj rides a ConstantNode, never
-            // CameraNodeConfig::CURRENT_VIEW_PROJ directly (const glm::mat4&
-            // reference slot throws bad_any_cast in the gatherer's by-VALUE
-            // extraction — found live; see the ConstantNode creation site).
-            batch.Connect(recipeBucketingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                          s.pcGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE)
-                 .Connect(s.pcGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
-                          s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
-                 .Connect(s.pcGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
-                          s.stage, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES);
-            // Per-stage overlay: copy the shared providers, add THIS stage's own
-            // `mode` constant (1/0/2 for init/bucket/final), wire the push half.
-            SdiProviderRegistry stageProviders = bucketingProviders;
-            stageProviders.Provide("mode", s.modeConstant,
-                                   ConstantNodeConfig::OUTPUT, SlotRole::Execute);
-            WireStageFromSdi<BucketSdi::Metadata, BucketSdi::MEMBERS>(
-                batch, stageProviders,
-                /*descGatherer (unused in this scope)*/ recipeBucketingDescGatherer,
-                s.pcGatherer, {}, SdiWireSet::PushOnly);
-        }
+        SynthesizeComputeStageGroup<BucketSdi::Metadata, BucketSdi::MEMBERS>(
+            renderGraph, batch, "recipe_bucketing", recipeBucketingShaderLib,
+            {
+                {recipeBucketingModeInit, "recipe_bucketing_mode_init_pc_gatherer",
+                 provideMode(recipeBucketingModeInitConstant)},
+                {recipeBucketingModeBucket, "recipe_bucketing_mode_bucket_pc_gatherer",
+                 provideMode(recipeBucketingModeBucketConstant)},
+                {recipeBucketingModeFinal, "recipe_bucketing_mode_final_pc_gatherer",
+                 provideMode(recipeBucketingModeFinalConstant)},
+            },
+            bucketingCommon, bucketingProviders, {});
 
         // Auto-sync hazard declarations: mode-init/mode-bucket WRITE the counters/indices/
         // coverage buffers; mode-final READS the (by-then-final) coverage extrema and WRITES
@@ -6600,7 +6396,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing-pass SSBOs — device only, same
     // fixed-size (NO SWAPCHAIN_INFO) shape as instanceSkipMaskBuffer/ddgiLeakGateDebugBuffer
-    // above (all 8 buffers are sized by kRecipeBucketingMaxBuckets, not by swapchain extent).
+    // above (all sized by kRecipeBucketingMaxBuckets, not by swapchain extent). Includes the
+    // Load-Tier M2 precision pair — MISSED here when M2 landed (creations/providers/hazards
+    // had it, this block didn't), which made every flag-on boot abort at graph validation
+    // ("recipe_precision_bucket_count_buffer missing vulkan_device"); found + fixed slice C.
     if (recipeBucketedDispatchEnabled) {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipeBoundSphereBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
@@ -6618,6 +6417,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       recipeBucketCoverageMaxYBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipeBucketIndirectCommandBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipePrecisionBucketCountBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      recipePrecisionBucketIndicesBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipeBucketMetaBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
     }
@@ -6923,40 +6726,73 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // BlitNode (blits render target -> swapchain) -> sky-projection -> UI -> present.
     // ===================================================================
 
-    // DirectLighting's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline), mirroring
-    // the march's own wiring above and BuildFanInDemoGraph's wirePipeline helper.
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  directLightingShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  directLightingDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  directLightingPipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  directLightingGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(directLightingGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
-                  directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
-         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  directLightingDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  directLightingDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  directLightingDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
-         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  directLightingDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  directLightingPipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                  directLightingPipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    // DirectLighting's descriptor bindings: the scene SSBOs (octree/brick/instance/shell/mip/
+    // tier-ref) are READ-ONLY in both the march and DirectLighting — read-read is not a hazard, so
+    // they're wired the same way as the march's own gatherer (plain DescriptorResourceGathererNode
+    // bindings, no sync slot needed), mirroring bindings 1/2/3/5/10/11/12/13/15/16/18/19/20/21
+    // above. Binding 17 (HitRecord) is the genuine cross-submit hazard — wired below via the sync
+    // slots, not here. Binding 0 (outputImage) is the genuine write hazard — also wired below via
+    // IMAGE_WRITE, not here (it needs the render target's CURRENT view, same as the march's own
+    // binding-0 wiring further up).
+    // Semantic-wiring S2: the SHARED scene-provider registry — every member of
+    // DirectLighting's interface resolved by its shader-declared name from the
+    // merged SDI (binding-number divergence vs the march — LightingConfig 16
+    // vs 17, HitRecord 17 vs 18 — is absorbed by the names).
+    //
+    // Provenance preserved from the hand block: InstanceSkipMask is REQUIRED
+    // here because DirectLighting.comp #includes SceneBindings.glsl (KI-018)
+    // even though this shader never calls isInstanceSkipped(). worldPosImage
+    // (KI-023) is the accumulate seam's self-contained read-then-write-back —
+    // Execute-only, no sync slot. Reservoir A/B are BOTH always bound; the
+    // shader picks current-vs-previous via reservoirConfig.frameParity&1 (the
+    // M5 cross-dispatch hazard is declared separately via the sync gatherers,
+    // per the descriptor-vs-sync-slot split). outputImage is read-only here
+    // since M5 (imageSize() only — SpatialReuse owns the write). HitRecord's
+    // cross-submit hazard is likewise declared via the sync-slot pair below.
+    // The old binding-20 historyImage wire is GONE — the M5 pass split moved
+    // historyImage to SpatialReuseShade (DirectLighting.comp:84) and DL's
+    // compiled interface has no binding 20; the member table simply has no
+    // such member (the dead wire the strict contract flagged).
+    sceneProviders.Provide("ESVOBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER, kSceneRoles);
+    sceneProviders.Provide("worldPosHistoryImage", worldPosHistoryNode,
+                           WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
+                           SlotRole::Execute);
+    sceneProviders.Provide("ReservoirConfigSSBO", reservoirConfigNode,
+                           ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("LightTreeBufferSSBO", lightTreeBufferNode,
+                           LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ReservoirBufferA", reservoirBufferA,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ReservoirBufferB", reservoirBufferB,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
 
-    // DirectLighting's own push-constant gatherer: SAME field sources as the march's own gatherer
-    // above (cameraPos/time/cameraDir/fov/cameraUp/aspect/cameraRight/debugMode/raySizeCoef/
-    // raySizeBias/instanceCount/debugTargetPixel/accumFrameCount) — DirectLighting.comp declares
-    // the identical PushConstants block (shared via SceneBindings.glsl), but glslang reflects
-    // push-constant RANGES per-COMPILED-shader (dead-code-eliminated fields differ), so a second
-    // compiled program needs its own PushConstantGathererNode instance, not the march's.
-    batch.Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  directLightingPushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    // Slice C: the whole quintet chain + stage commons + push plumbing is
+    // synthesized (the hand blocks this section wrote are gone); descriptors
+    // wire from the registry, PUSH stays hand-wired below pending the #18
+    // `time` ruling. Feature set deliberately EMPTY: the one trace-gated
+    // member (InstanceIterDebugBuffer, binding 14) has no app-side owner —
+    // under VIXEN_DEBUG_CAPTURE it falls through to the DescriptorSetNode's
+    // placeholder fallback exactly as before (byte-identical both modes);
+    // providing a real buffer is the capture path's own future slice.
+    const SdiStageCommon lightingCommon{deviceNode, commandPoolNode,
+                                        swapChainNode, frameSyncNode};
+    const auto dlSynth = SynthesizeComputeStage<DirectSdi::Metadata, DirectSdi::MEMBERS>(
+        renderGraph, batch, "direct_lighting", directLightingShaderLib,
+        directLightingNode, lightingCommon, sceneProviders, {},
+        SdiWireSet::DescriptorsOnly);
+    directLightingPushConstantGatherer = dlSynth.pushGatherer;
+
+    // DirectLighting's own push-constant gatherer (synthesized above): SAME field sources as the
+    // march's own gatherer (cameraPos/time/cameraDir/fov/cameraUp/aspect/cameraRight/debugMode/
+    // raySizeCoef/raySizeBias/instanceCount/debugTargetPixel/accumFrameCount) — DirectLighting.comp
+    // declares the identical PushConstants block (shared via SceneBindings.glsl), but glslang
+    // reflects push-constant RANGES per-COMPILED-shader (dead-code-eliminated fields differ), so a
+    // second compiled program needs its own PushConstantGathererNode instance, not the march's.
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           directLightingPushConstantGatherer, DirectSdi::Push::cameraPos::INDEX,
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));
@@ -7006,62 +6842,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           directLightingPushConstantGatherer, 12,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // DirectLighting's descriptor bindings: the scene SSBOs (octree/brick/instance/shell/mip/
-    // tier-ref) are READ-ONLY in both the march and DirectLighting — read-read is not a hazard, so
-    // they're wired the same way as the march's own gatherer (plain DescriptorResourceGathererNode
-    // bindings, no sync slot needed), mirroring bindings 1/2/3/5/10/11/12/13/15/16/18/19/20/21
-    // above. Binding 17 (HitRecord) is the genuine cross-submit hazard — wired below via the sync
-    // slots, not here. Binding 0 (outputImage) is the genuine write hazard — also wired below via
-    // IMAGE_WRITE, not here (it needs the render target's CURRENT view, same as the march's own
-    // binding-0 wiring further up).
-    // Semantic-wiring S2: the SHARED scene-provider registry — every member of
-    // DirectLighting's interface resolved by its shader-declared name from the
-    // merged SDI (binding-number divergence vs the march — LightingConfig 16
-    // vs 17, HitRecord 17 vs 18 — is absorbed by the names). SpatialReuse/
-    // ProbeUpdate/the march migrate onto this same registry next.
-    //
-    // Provenance preserved from the hand block: InstanceSkipMask is REQUIRED
-    // here because DirectLighting.comp #includes SceneBindings.glsl (KI-018)
-    // even though this shader never calls isInstanceSkipped(). worldPosImage
-    // (KI-023) is the accumulate seam's self-contained read-then-write-back —
-    // Execute-only, no sync slot. Reservoir A/B are BOTH always bound; the
-    // shader picks current-vs-previous via reservoirConfig.frameParity&1 (the
-    // M5 cross-dispatch hazard is declared separately via the sync gatherers,
-    // per the descriptor-vs-sync-slot split). outputImage is read-only here
-    // since M5 (imageSize() only — SpatialReuse owns the write). HitRecord's
-    // cross-submit hazard is likewise declared via the sync-slot pair below.
-    // The old binding-20 historyImage wire is GONE — the M5 pass split moved
-    // historyImage to SpatialReuseShade (DirectLighting.comp:84) and DL's
-    // compiled interface has no binding 20; the member table simply has no
-    // such member (the dead wire the strict contract flagged).
-    sceneProviders.Provide("ESVOBuffer", bodyOctreeSceneNode,
-                           BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER, kSceneRoles);
-    sceneProviders.Provide("worldPosHistoryImage", worldPosHistoryNode,
-                           WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW,
-                           SlotRole::Execute);
-    sceneProviders.Provide("ReservoirConfigSSBO", reservoirConfigNode,
-                           ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("LightTreeBufferSSBO", lightTreeBufferNode,
-                           LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("ReservoirBufferA", reservoirBufferA,
-                           StorageBufferNodeConfig::STORAGE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("ReservoirBufferB", reservoirBufferB,
-                           StorageBufferNodeConfig::STORAGE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-
-    // Feature set deliberately EMPTY here: the one trace-gated member
-    // (InstanceIterDebugBuffer, binding 14) has no app-side owner — under
-    // VIXEN_DEBUG_CAPTURE it falls through to the DescriptorSetNode's
-    // placeholder fallback exactly as before (byte-identical both modes);
-    // providing a real buffer is the capture path's own future slice.
-    WireStageFromSdi<DirectSdi::Metadata, DirectSdi::MEMBERS>(
-        batch, sceneProviders, directLightingGatherer,
-        /*pushGatherer (unused in this scope)*/ directLightingGatherer,
-        {}, SdiWireSet::DescriptorsOnly);
-
     // ===================================================================
     // Sampled Lighting Inc3 M5: SpatialReuseNode wiring — the second half of the pass
     // split (spatial reservoir reuse + shade, owns outputImage/historyImage/
@@ -7071,35 +6851,47 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // image-write ownership differ.
     // ===================================================================
 
-    // SpatialReuse's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline).
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  spatialReuseShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  spatialReusePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  spatialReuseGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(spatialReuseGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
-                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
-         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
-         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  spatialReuseDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  spatialReusePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                  spatialReusePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    // Semantic-wiring S2: SpatialReuseShade wires from the SAME sceneProviders
+    // registry DirectLighting uses — its six pass-specific members extend the
+    // registry here; everything shared resolves to the identical providers.
+    //
+    // Provenance preserved: historyImage + worldPosHistoryImage are owned
+    // (read AND write) by this pass since the M5 split — Execute-only,
+    // self-contained read/write-in-one-dispatch. Reservoir A/B are READ here
+    // (DirectLighting is the sole writer; the cross-dispatch hazard is
+    // declared via the array-hazard gatherer pair, not the descriptor). The
+    // probe atlases/grid config are READ (probeUpdate writes; hazard via
+    // IMAGE_READ_ARRAY; CURRENT_VIEW per KI-028 — an IRenderTarget* can never
+    // populate a descriptor slot). SpatialReservoirDebugBuffer is the M6
+    // gate's host-readback-only instrument; DDGILeakGateDebugShadeSSBO is the
+    // shared M5 live-gate buffer ProbeUpdate also binds at 31. HitRecord is a
+    // SECOND reader of the already-synced march write (read-after-read).
+    sceneProviders.Provide("SpatialReservoirDebugBuffer", spatialReservoirDebugBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("probeIrradianceAtlasRead", probeIrradianceAtlasNode,
+                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("probeVisibilityAtlasRead", probeVisibilityAtlasNode,
+                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("ProbeGridConfigReadSSBO", probeGridConfigNode,
+                           ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("DDGILeakGateDebugShadeSSBO", ddgiLeakGateDebugBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
 
-    // SpatialReuse's own push-constant gatherer: SAME field sources as DirectLighting's own
-    // gatherer (a third compiled program still needs its own reflected push-constant ranges).
-    batch.Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    // Slice C: quintet chain + stage commons + push plumbing synthesized;
+    // descriptors from the registry (same empty feature set as DL — the
+    // binding-14 placeholder tolerance is deliberate); PUSH hand-wired below.
+    const auto reuseSynth = SynthesizeComputeStage<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
+        renderGraph, batch, "spatial_reuse", spatialReuseShaderLib,
+        spatialReuseNode, lightingCommon, sceneProviders, {},
+        SdiWireSet::DescriptorsOnly);
+    spatialReusePushConstantGatherer = reuseSynth.pushGatherer;
+
+    // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
+    // DirectLighting's own gatherer (a third compiled program still needs its own reflected
+    // push-constant ranges).
     batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           spatialReusePushConstantGatherer, ReuseSdi::Push::cameraPos::INDEX,
                           ExtractField(&CameraData::cameraPos, SlotRole::Execute));
@@ -7146,108 +6938,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           spatialReusePushConstantGatherer, 12,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
-    // Semantic-wiring S2: SpatialReuseShade wires from the SAME sceneProviders
-    // registry DirectLighting uses — its six pass-specific members extend the
-    // registry here; everything shared resolves to the identical providers.
-    //
-    // Provenance preserved: historyImage + worldPosHistoryImage are owned
-    // (read AND write) by this pass since the M5 split — Execute-only,
-    // self-contained read/write-in-one-dispatch. Reservoir A/B are READ here
-    // (DirectLighting is the sole writer; the cross-dispatch hazard is
-    // declared via the array-hazard gatherer pair, not the descriptor). The
-    // probe atlases/grid config are READ (probeUpdate writes; hazard via
-    // IMAGE_READ_ARRAY; CURRENT_VIEW per KI-028 — an IRenderTarget* can never
-    // populate a descriptor slot). SpatialReservoirDebugBuffer is the M6
-    // gate's host-readback-only instrument; DDGILeakGateDebugShadeSSBO is the
-    // shared M5 live-gate buffer ProbeUpdate also binds at 31. HitRecord is a
-    // SECOND reader of the already-synced march write (read-after-read).
-
-    sceneProviders.Provide("SpatialReservoirDebugBuffer", spatialReservoirDebugBuffer,
-                           StorageBufferNodeConfig::STORAGE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("probeIrradianceAtlasRead", probeIrradianceAtlasNode,
-                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-    sceneProviders.Provide("probeVisibilityAtlasRead", probeVisibilityAtlasNode,
-                           ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
-    sceneProviders.Provide("ProbeGridConfigReadSSBO", probeGridConfigNode,
-                           ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-    sceneProviders.Provide("DDGILeakGateDebugShadeSSBO", ddgiLeakGateDebugBuffer,
-                           StorageBufferNodeConfig::STORAGE_BUFFER,
-                           SlotRole::Dependency | SlotRole::Execute);
-
-    WireStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
-        batch, sceneProviders, spatialReuseGatherer,
-        /*pushGatherer (unused in this scope)*/ spatialReuseGatherer,
-        {}, SdiWireSet::DescriptorsOnly);
-
-    // --- SpatialReuseNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
-    // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
-    // IMAGE_WRITE carries the render-target write (below). ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  spatialReuseNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  spatialReuseNode, ComputeStageNodeConfig::COMMAND_POOL)
-         .Connect(spatialReusePipeline, ComputePipelineNodeConfig::PIPELINE,
-                  spatialReuseNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
-         .Connect(spatialReusePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
-                  spatialReuseNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
-         .Connect(spatialReuseDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                  spatialReuseNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  spatialReuseNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  spatialReuseNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  spatialReuseNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(spatialReuseShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  spatialReuseNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
-                  spatialReuseNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
-         .Connect(spatialReusePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
-                  spatialReuseNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
-                  spatialReuseNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                  spatialReuseNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
-
-    // --- DirectLightingNode (ComputeStageNode) common inputs — mirrors BuildFanInDemoGraph's
-    // wireStageCommon shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false
-    // was already set above), IMAGE_WRITE carries the render-target write instead (below). ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  directLightingNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  directLightingNode, ComputeStageNodeConfig::COMMAND_POOL)
-         .Connect(directLightingPipeline, ComputePipelineNodeConfig::PIPELINE,
-                  directLightingNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
-         .Connect(directLightingPipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
-                  directLightingNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
-         .Connect(directLightingDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                  directLightingNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  directLightingNode, ComputeStageNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  directLightingNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  directLightingNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  directLightingNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  directLightingNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(directLightingShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  directLightingNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(directLightingPushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
-                  directLightingNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
-         .Connect(directLightingPushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
-                  directLightingNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
-                  directLightingNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                  directLightingNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
 
     // --- Sync slots: the hazard-correlation identity. ---
     // HitRecord: march's ComputeDispatchNodeConfig::BUFFER_WRITE slot (unaffected by
@@ -7332,63 +7022,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the plan's own "don't just trust it looks disjoint" instruction).
     // ===================================================================
 
-    // ProbeUpdate's own descriptor path (shaderLib -> gatherer -> descSet -> pipeline).
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  probeUpdateShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  probeUpdatePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  probeUpdateGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(probeUpdateGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
-                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
-         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
-         // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring.
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  probeUpdateDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  probeUpdatePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                  probeUpdatePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-
-    // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
-    // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no
-    // camera ray, no per-pixel debug target — this pass is probe-indexed, not
-    // screen-indexed) -- BUT it DOES need instanceCount (binding 10): TraceWorld/
-    // TraceWorldShadow (TraceWorld.glsl) both bound their scene-instance iteration loop by
-    // `pc.instanceCount` (`numInstances = clamp(pc.instanceCount, 0, 3*64)`), so an
-    // unconnected/zero instanceCount makes EVERY probe ray a guaranteed miss regardless of
-    // scene content -- an M4 live-gate finding (VIXEN_DDGI_LEAK_GATE_DEMO's own leak-test
-    // gate initially read diagNearProbeHitCount=0 for a scene the march visibly renders,
-    // isolating this exact gap) that the file header's PRIOR claim ("reads NONE of its
-    // fields") missed; not previously caught because M3's own gate only checked "probes
-    // visibly light a scene" qualitatively (a render happened), never a numeric hit count.
-    batch.Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
-    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
-                          probeUpdatePushConstantGatherer, 10,
-                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Baked-Perf M4b Task 4b.2: raySizeCoef/raySizeBias (fields 8/9) were previously left
-    // UNCONNECTED here (zero-filled by PushConstantGathererNode::PackPushConstantData, per the
-    // M4b dormancy audit) -- ProbeUpdate.comp's own TraceWorldShadow call (line 241) reads
-    // pc.raySizeCoef through SceneBindings.glsl's any-hit LOD gate, so a live, nonzero
-    // coefficient is required for probe rays to ever reach the mip-fallback path; raySizeCoef=0
-    // is not dead code here (glslang keeps the field reflected -- TraceWorldShadow is a real
-    // call, not eliminated), it was simply never wired. Same secondary-ray coefficient as
-    // DirectLighting/SpatialReuse (not the primary gatherer's raySizeCoefNode).
-    batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
-                          probeUpdatePushConstantGatherer, 8,
-                          SlotRoleModifier(SlotRole::Execute));
-    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
-                          probeUpdatePushConstantGatherer, 9,
-                          SlotRoleModifier(SlotRole::Execute));
-
     // Semantic-wiring S2: ProbeUpdate wires from the SAME sceneProviders
     // registry — the leanest of the four consumers (NO HitRecord/reservoir/
     // outputImage members: the pass's disjointness from the direct/ReSTIR
@@ -7414,45 +7047,45 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            StorageBufferNodeConfig::STORAGE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
 
-    WireStageFromSdi<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
-        batch, sceneProviders, probeUpdateGatherer,
-        /*pushGatherer (unused in this scope)*/ probeUpdateGatherer,
-        {}, SdiWireSet::DescriptorsOnly);
+    // Slice C: quintet chain + stage commons + push plumbing synthesized;
+    // descriptors from the registry (empty feature set, same rationale as
+    // DL/SpatialReuse); PUSH hand-wired below.
+    const auto probeSynth = SynthesizeComputeStage<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
+        renderGraph, batch, "probe_update", probeUpdateShaderLib,
+        probeUpdateNode, lightingCommon, sceneProviders, {},
+        SdiWireSet::DescriptorsOnly);
+    probeUpdatePushConstantGatherer = probeSynth.pushGatherer;
 
-    // --- ProbeUpdateNode (ComputeStageNode) common inputs — mirrors DirectLightingNode's own
-    // shape. NOT swapchain-adjacent: no SWAPCHAIN_INFO connection (isConsumer=false set above),
-    // IMAGE_WRITE_ARRAY carries the atlas writes instead (below), not the single-slot
-    // IMAGE_WRITE DirectLighting/SpatialReuse use. ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  probeUpdateNode, ComputeStageNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  probeUpdateNode, ComputeStageNodeConfig::COMMAND_POOL)
-         .Connect(probeUpdatePipeline, ComputePipelineNodeConfig::PIPELINE,
-                  probeUpdateNode, ComputeStageNodeConfig::COMPUTE_PIPELINE)
-         .Connect(probeUpdatePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
-                  probeUpdateNode, ComputeStageNodeConfig::PIPELINE_LAYOUT)
-         .Connect(probeUpdateDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
-                  probeUpdateNode, ComputeStageNodeConfig::DESCRIPTOR_SETS)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  probeUpdateNode, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  probeUpdateNode, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  probeUpdateNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
-         .Connect(probeUpdateShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  probeUpdateNode, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
-         .Connect(probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
-                  probeUpdateNode, ComputeStageNodeConfig::PUSH_CONSTANT_DATA)
-         .Connect(probeUpdatePushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
-                  probeUpdateNode, ComputeStageNodeConfig::PUSH_CONSTANT_RANGES)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
-                  probeUpdateNode, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                  probeUpdateNode, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+    // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
+    // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no
+    // camera ray, no per-pixel debug target — this pass is probe-indexed, not
+    // screen-indexed) -- BUT it DOES need instanceCount (binding 10): TraceWorld/
+    // TraceWorldShadow (TraceWorld.glsl) both bound their scene-instance iteration loop by
+    // `pc.instanceCount` (`numInstances = clamp(pc.instanceCount, 0, 3*64)`), so an
+    // unconnected/zero instanceCount makes EVERY probe ray a guaranteed miss regardless of
+    // scene content -- an M4 live-gate finding (VIXEN_DDGI_LEAK_GATE_DEMO's own leak-test
+    // gate initially read diagNearProbeHitCount=0 for a scene the march visibly renders,
+    // isolating this exact gap) that the file header's PRIOR claim ("reads NONE of its
+    // fields") missed; not previously caught because M3's own gate only checked "probes
+    // visibly light a scene" qualitatively (a render happened), never a numeric hit count.
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          probeUpdatePushConstantGatherer, 10,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // Baked-Perf M4b Task 4b.2: raySizeCoef/raySizeBias (fields 8/9) were previously left
+    // UNCONNECTED here (zero-filled by PushConstantGathererNode::PackPushConstantData, per the
+    // M4b dormancy audit) -- ProbeUpdate.comp's own TraceWorldShadow call (line 241) reads
+    // pc.raySizeCoef through SceneBindings.glsl's any-hit LOD gate, so a live, nonzero
+    // coefficient is required for probe rays to ever reach the mip-fallback path; raySizeCoef=0
+    // is not dead code here (glslang keeps the field reflected -- TraceWorldShadow is a real
+    // call, not eliminated), it was simply never wired. Same secondary-ray coefficient as
+    // DirectLighting/SpatialReuse (not the primary gatherer's raySizeCoefNode).
+    batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+                          probeUpdatePushConstantGatherer, 8,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          probeUpdatePushConstantGatherer, 9,
+                          SlotRoleModifier(SlotRole::Execute));
+
 
     // Sync slot: IMAGE_WRITE_ARRAY — the genuine write hazard on the persistent probe
     // atlases (this frame's ProbeUpdateNode write must be visible before any future
