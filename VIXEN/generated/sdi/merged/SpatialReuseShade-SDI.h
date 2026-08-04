@@ -170,54 +170,14 @@ struct LightTreeBufferSSBO {
 };
 
 /**
- * @brief ReservoirBufferA
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x34c38814902f6faf (for runtime discovery)
- */
-struct ReservoirBufferA {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x34c38814902f6fafULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "ReservoirRecord";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 16;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
- * @brief ReservoirBufferB
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0xbbee7ca5b932c9a9 (for runtime discovery)
- */
-struct ReservoirBufferB {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xbbee7ca5b932c9a9ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "ReservoirRecord";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 16;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
  * @brief SpatialReservoirDebugBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x562917fd7628c559 (for runtime discovery)
+ * Layout VixenHash: 0xb74da2ed75726bb4 (for runtime discovery)
  */
 struct SpatialReservoirDebugBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x562917fd7628c559ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xb74da2ed75726bb4ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -419,36 +379,6 @@ namespace Set0 {
     };
 
     /**
-     * @brief ReservoirBufferA
-     * Type: STORAGE_BUFFER
-     */
-    struct Binding25 {
-        static constexpr const char* NAME = "ReservoirBufferA";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 25;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = ReservoirBufferA;
-    };
-
-    /**
-     * @brief ReservoirBufferB
-     * Type: STORAGE_BUFFER
-     */
-    struct Binding26 {
-        static constexpr const char* NAME = "ReservoirBufferB";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 26;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadOnly;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = ReservoirBufferB;
-    };
-
-    /**
      * @brief SpatialReservoirDebugBuffer
      * Type: STORAGE_BUFFER
      */
@@ -458,7 +388,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 27;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = SpatialReservoirDebugBuffer;
     };
@@ -535,8 +465,6 @@ using PrevCameraConfigSSBO = Set0::Binding21;
 using worldPosHistoryImage = Set0::Binding22;
 using ReservoirConfigSSBO = Set0::Binding23;
 using LightTreeBufferSSBO = Set0::Binding24;
-using ReservoirBufferA = Set0::Binding25;
-using ReservoirBufferB = Set0::Binding26;
 using SpatialReservoirDebugBuffer = Set0::Binding27;
 using DDGILeakGateDebugShadeSSBO = Set0::Binding31;
 using probeIrradianceAtlasRead = Set0::Binding32;
@@ -681,9 +609,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"worldPosHistoryImage", false, 0, 22, 0, Access::ReadWrite, 0, nullptr},
     {"ReservoirConfigSSBO", false, 0, 23, 0, Access::ReadOnly, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 24, 0, Access::ReadOnly, 0, nullptr},
-    {"ReservoirBufferA", false, 0, 25, 0, Access::ReadOnly, 0, nullptr},
-    {"ReservoirBufferB", false, 0, 26, 0, Access::ReadOnly, 0, nullptr},
-    {"SpatialReservoirDebugBuffer", false, 0, 27, 0, Access::WriteOnly, 0, nullptr},
+    {"SpatialReservoirDebugBuffer", false, 0, 27, 0, Access::ReadOnly, 0, nullptr},
     {"DDGILeakGateDebugShadeSSBO", false, 0, 31, 0, Access::ReadWrite, 0, nullptr},
     {"probeIrradianceAtlasRead", false, 0, 32, 0, Access::ReadOnly, 0, nullptr},
     {"probeVisibilityAtlasRead", false, 0, 33, 0, Access::ReadOnly, 0, nullptr},
@@ -722,7 +648,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 30;
+    static constexpr uint32_t NUM_MEMBERS = 28;
     static constexpr uint32_t NUM_FEATURES = 1;
 };
 

@@ -49,7 +49,21 @@
         [],
         [
           "VIXEN_GPU_TRACE_HOOKS"
+        ],
+        [
+          "VIXEN_WAVE_RESERVOIR_PHASE"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_WAVE_RESERVOIR_PHASE"
         ]
+      ]
+    },
+    {
+      "name": "SpatialReuseGather",
+      "source": "SpatialReuseGather.comp",
+      "variants": [
+        []
       ]
     },
     {

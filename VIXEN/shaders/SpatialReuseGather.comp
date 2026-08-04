@@ -1,0 +1,177 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// SpatialReuseGather.comp - the ReSTIR SPATIAL fold, split out of the shade
+// (wavefront W2a — undertow docs/plans/2026-08-04-wavefront-recipe-shading.md
+// § "W2 design", authoritative)
+// ============================================================================
+// Dispatched ONLY when the reservoir path is enabled (the CPU gates the
+// dispatch on the same knob that fills ReservoirConfig.reservoirEnabled) —
+// the default path never runs this shader, preserving the byte-identity
+// escape hatch every Sampled Lighting milestone has kept since Inc0.
+//
+// WHAT MOVED (verbatim — same RNG salt, same draw order, same rejects):
+// SpatialReuseShade.comp's Inc3 M5 spatial-reuse fold. This pass reads
+// DirectLighting.comp's post-temporal reservoir ping-pong (self + neighbors),
+// folds neighbors into the pixel's own reservoir via the shared
+// reservoirCombine primitive, and PUBLISHES the spatially-combined reservoir.
+// The publish target is Inc3 M6's binding-27 buffer, PROMOTED from
+// debug-readback to the production combined-reservoir contract (the W2 design:
+// the 16 B/px reservoir is the one genuine algorithmic artifact — it used to
+// die in registers; no new buffer exists, a debug artifact grew up).
+//
+// Downstream: ShadowVisibilityWave's reservoir phase derives the chosen
+// sample's shadow ray from (this pass's combined reservoir + the HitRecord)
+// and answers HitRecord._pad0[2] bit 4; SpatialReuseShade's apply recomputes
+// the contribution deterministically. ALL ReSTIR randomness lives in
+// DirectLighting (RIS + temporal draws) and HERE (spatial draws) — every pass
+// after this one is deterministic (the RNG-confinement seam W1a established).
+//
+// Standalone binding namespace from 0 (the RecipeInstanceBucketing.comp
+// precedent) — this pass needs NO scene traversal, NO images: six SSBOs and a
+// two-field push block. Extents arrive via push (ReservoirConfig carries no
+// width/height, and this pass binds no image to imageSize()-derive from).
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(push_constant) uniform GatherPush {
+    uint imgWidth;
+    uint imgHeight;
+} pc;
+
+#include "Generated/ReservoirConfig.glsl"
+
+layout(std430, binding = 0) readonly buffer ReservoirConfigSSBO {
+    ReservoirConfig reservoirConfig;
+};
+
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 1) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+#include "Generated/ReservoirRecord.glsl"
+
+layout(std430, binding = 2) readonly buffer ReservoirBufferA {
+    ReservoirRecord reservoirRecordsA[];
+};
+layout(std430, binding = 3) readonly buffer ReservoirBufferB {
+    ReservoirRecord reservoirRecordsB[];
+};
+
+// The promoted combined-reservoir publish (see header). Keeps the provider
+// name SpatialReservoirDebugBuffer CPU-side so Inc3 M6's unbiasedness
+// readback gate keeps reading the same data it always verified — the buffer
+// is production now, the M6 gate rides along unchanged.
+layout(std430, binding = 4) writeonly buffer SpatialReservoirDebugBuffer {
+    ReservoirRecord combinedReservoirs[];
+};
+
+#include "HitRecord.glsl"
+
+layout(std430, binding = 5) readonly buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+#include "ReservoirCombine.glsl"
+
+// Target-function value p_hat(i) for light-tree cut node i (same definition as
+// DirectLighting.comp's own copy — moved here with the fold; the shade pass no
+// longer evaluates p_hat at all).
+float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
+    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
+    vec3 toLight = node.worldPos - shadingPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
+    return nodePower / dist2;
+}
+
+// Fixed-radius random-angle kernel (Bitterli et al. section 5.2) — moved here
+// with the fold, verbatim (see the original Inc3 M5 rationale in git history:
+// per-invocation seed, distinct salt from DirectLighting's own draws,
+// frameParity-salted per-frame re-draw).
+ivec2 spatialNeighborOffset(inout uint rngState, float radius) {
+    float angle = rngNextFloat(rngState) * 6.28318530718; // 2*pi
+    float r = sqrt(rngNextFloat(rngState)) * radius;      // sqrt(u) -> uniform-AREA disk sample
+    return ivec2(round(cos(angle) * r), round(sin(angle) * r));
+}
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize     = ivec2(int(pc.imgWidth), int(pc.imgHeight));
+    if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
+
+    uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
+    HitRecord rec = hitRecords[hitRecordIdx];
+    // Same hit gate the merged shader's ReSTIR block sat behind (anyHitRT):
+    // no surface -> no reservoir to fold or publish; the apply gates
+    // identically and never reads this pixel's combined slot.
+    if ((rec.flags & HITRECORD_FLAG_HIT) == 0u) return;
+    if (reservoirConfig.reservoirEnabled == 0u) return;  // belt+suspenders; CPU already gates the dispatch
+
+    uint reservoirIdx = hitRecordIdx;
+
+    // Same CURRENT/PREVIOUS selector as DirectLighting.comp: THIS frame's writes
+    // landed in whichever buffer frameParity says is current.
+    bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
+
+    ReservoirRecord current = parityEven
+        ? reservoirRecordsA[reservoirIdx]
+        : reservoirRecordsB[reservoirIdx];
+
+    // RNG seed distinct from DirectLighting.comp's own (different salt constant)
+    // so the neighbor-offset draws are independent of that pass's RIS/temporal
+    // draws despite sharing the same pixel/frameParity inputs. VERBATIM from the
+    // pre-split shade — same salt, same order, bit-exact draws.
+    uint rngState = pcgHash((reservoirIdx ^ 0x9E3779B9u) ^ (reservoirConfig.frameParity * 2246822519u));
+
+    if (current.y != 0xFFFFFFFFu && current.sampleCount > 0u) {
+        uint spatialCount = reservoirConfig.spatialCount;
+        float radius = max(reservoirConfig.spatialRadius, 0.0);
+        for (uint n = 0u; n < spatialCount; ++n) {
+            ivec2 offset = spatialNeighborOffset(rngState, radius);
+            ivec2 neighborCoords = pixelCoords + offset;
+            if (neighborCoords.x < 0 || neighborCoords.y < 0 ||
+                neighborCoords.x >= imgSize.x || neighborCoords.y >= imgSize.y) {
+                continue;  // off-screen neighbor: skip, no wraparound
+            }
+            if (neighborCoords == pixelCoords) continue;  // degenerate zero-offset draw
+
+            uint neighborHitIdx = uint(neighborCoords.y) * uint(imgSize.x) + uint(neighborCoords.x);
+            HitRecord neighborHit = hitRecords[neighborHitIdx];
+            bool neighborHasHit = (neighborHit.flags & HITRECORD_FLAG_HIT) != 0u;
+            if (!neighborHasHit) continue;  // no valid surface at the neighbor -> no reservoir to reuse
+
+            // Geometric similarity reject (KI-023 epsilon class) — a far
+            // neighbor surface is a DIFFERENT surface; reusing its reservoir
+            // leaks light across a silhouette/depth discontinuity.
+            const float kMaxSpatialWorldPosDelta = 0.1; // world-space units, mirrors KI-023's own epsilon
+            if (distance(neighborHit.worldPos, rec.worldPos) > kMaxSpatialWorldPosDelta) continue;
+
+            // Normal similarity reject: spatial-reuse ghosting across a sharp
+            // corner, bounded by a generous angle (dot > 0.5 ~= 60 degrees).
+            if (dot(neighborHit.worldNormal, rec.worldNormal) < 0.5) continue;
+
+            uint neighborReservoirIdx = neighborHitIdx;
+            ReservoirRecord neighborReservoir = parityEven
+                ? reservoirRecordsA[neighborReservoirIdx]
+                : reservoirRecordsB[neighborReservoirIdx];
+
+            if (neighborReservoir.y == 0xFFFFFFFFu || neighborReservoir.sampleCount == 0u) continue;
+            if (neighborReservoir.y >= lightTreeBuffer.nodeCount) continue;
+
+            // Re-evaluate p_hat at THIS pixel's shading point (keeps the
+            // combine unbiased — ReservoirCombine.glsl's header) via the SAME
+            // primitive DirectLighting.comp's temporal reuse used.
+            float pHatAtNeighborY = lightTreeNodePHat(neighborReservoir.y, rec.worldPos);
+            reservoirCombine(current, neighborReservoir, pHatAtNeighborY, rngNextFloat(rngState));
+        }
+    }
+
+    // Publish the spatially-combined reservoir (post-neighbor-fold, pre-shade):
+    // production input for the wave's reservoir phase + the apply, AND still
+    // Inc3 M6's unbiasedness-gate readback (same buffer, same data, same gate).
+    combinedReservoirs[reservoirIdx] = current;
+}

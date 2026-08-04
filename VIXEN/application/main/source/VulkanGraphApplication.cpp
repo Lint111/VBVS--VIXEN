@@ -1054,6 +1054,14 @@ void VulkanGraphApplication::PostTick() {
     if (auto* shadowVisWave = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_visibility_wave"))) {
         passes.push_back({"shadow_visibility_wave", shadowVisWave->GetGPUPerformanceLogger()});
     }
+    // W2a (reservoir path opt-in; absent on the default path): the fold pass +
+    // the wave's reservoir-phase dispatch.
+    if (auto* srGather = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse_gather"))) {
+        passes.push_back({"spatial_reuse_gather", srGather->GetGPUPerformanceLogger()});
+    }
+    if (auto* waveRes = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_visibility_wave_reservoir"))) {
+        passes.push_back({"shadow_visibility_wave_reservoir", waveRes->GetGPUPerformanceLogger()});
+    }
     if (auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_ray_trace"))) {
         passes.push_back({"shadow_ray_trace", shadowRayTrace->GetGPUPerformanceLogger()});
     }

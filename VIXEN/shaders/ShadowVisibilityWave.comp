@@ -72,6 +72,75 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
+#ifdef VIXEN_WAVE_RESERVOIR_PHASE
+// ============================================================================
+// RESERVOIR PHASE (wavefront W2a) — a SECOND dispatch of this program, as its
+// own compiled variant, running post-SpatialReuseGather: derives the combined
+// reservoir's chosen-sample shadow ray from (combined reservoir + HitRecord),
+// traces it, and answers _pad0[2] BIT 4 — the analytic phase (the default
+// variant, bits 0..3) already ran earlier in the frame and is preserved by
+// RMW here. Dispatched ONLY when the reservoir path is enabled (same CPU gate
+// as the gather). Trace formula is VERBATIM the pre-split inline shade's
+// (origin + biasEpsilon along the normal, tmax = the actual light distance —
+// NOT maxShadowDistance) so the answer is bit-equal to what the merged shader
+// computed.
+// ============================================================================
+#include "Generated/ReservoirRecord.glsl"
+
+layout(std430, binding = 19) readonly buffer SpatialReservoirDebugBuffer {
+    ReservoirRecord combinedReservoirs[];
+};
+
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 20) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+// reservoirUnbiasedWeight for the W>0 gate (mirrors the apply's own gate so a
+// zero-weight reservoir skips the trace exactly as the merged shader did).
+#include "ReservoirCombine.glsl"
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= hitRecords.length()) return;
+
+    uint flags = hitRecords[slot].flags;
+    if ((flags & HITRECORD_FLAG_HIT) == 0u) return;
+
+    ReservoirRecord current = combinedReservoirs[slot];
+    if (current.y == 0xFFFFFFFFu || current.y >= lightTreeBuffer.nodeCount) return;
+
+    vec3 worldPos    = hitRecords[slot].worldPos;
+    vec3 worldNormal = hitRecords[slot].worldNormal;
+
+    LightTreeGpuNode chosen = lightTreeBuffer.nodes[current.y];
+    vec3 toLight = chosen.worldPos - worldPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    vec3 lightDir = toLight * inversesqrt(dist2);
+
+    // NdotL/W gate BEFORE the trace (audit C3, verbatim from the merged
+    // shader): either factor zero makes the term provably zero — bit 4 stays 0
+    // and the apply's own identical gates never consume it.
+    float NdotL = max(dot(worldNormal, lightDir), 0.0);
+    float W = reservoirUnbiasedWeight(current);
+    if (NdotL <= 0.0 || W <= 0.0) return;
+
+    bool visible = true;
+    if (shadowConfig.enabled != 0u) {
+        vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
+        float lightDist = sqrt(dist2);
+        visible = !TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
+    }
+
+    if (visible) {
+        // RMW: preserve the analytic phase's bits 0..3, set only bit 4.
+        hitRecords[slot]._pad0[2] = (hitRecords[slot]._pad0[2] & 0xFu) | 0x10u;
+    }
+}
+
+#else  // the ANALYTIC phase (default variant) — bits 0..3
+
 void main() {
     uint slot = gl_GlobalInvocationID.x;
     if (slot >= hitRecords.length()) return;
@@ -106,9 +175,13 @@ void main() {
         }
     }
 
-    // Mask to the analytic bits this wave owns today — bit 4 (ReSTIR answer)
-    // stays 0 until W2's reservoir section actually answers it (an unmasked
-    // all-ones init would silently flip the opt-in caveat from zero-contribution
-    // to UNSHADOWED-contribution).
+    // Mask to the analytic bits this phase owns — bit 4 (the ReSTIR answer)
+    // belongs to the reservoir phase's post-gather dispatch (an unmasked
+    // all-ones init would silently flip the opt-in from zero-contribution to
+    // UNSHADOWED-contribution). This phase runs FIRST, so a plain store (not
+    // RMW) is correct: it re-baselines the word each frame; the reservoir
+    // phase RMWs bit 4 in afterwards.
     hitRecords[slot]._pad0[2] = visBits & 0xFu;
 }
+
+#endif  // VIXEN_WAVE_RESERVOIR_PHASE

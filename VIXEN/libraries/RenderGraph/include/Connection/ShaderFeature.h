@@ -38,6 +38,10 @@ struct ShaderFeature {
 
 inline constexpr ShaderFeature kFeatureGpuTraceHooks{"VIXEN_GPU_TRACE_HOOKS"};
 inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"};
+// Wavefront W2a: ShadowVisibilityWave's SECOND dispatch — the post-gather
+// reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
+// reservoir). Same program, own compiled variant; no device requirement.
+inline constexpr ShaderFeature kFeatureWaveReservoirPhase{"VIXEN_WAVE_RESERVOIR_PHASE"};
 
 /**
  * @brief The set of active shader features for a stage/frame.

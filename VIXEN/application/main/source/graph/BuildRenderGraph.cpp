@@ -39,6 +39,7 @@
 #include "merged/ProbeApply-SDI.h"
 #include "merged/ShadowRayTrace-SDI.h"
 #include "merged/ShadowVisibilityWave-SDI.h"    // W1b: the derived-request shadow wave
+#include "merged/SpatialReuseGather-SDI.h"      // W2a: the ReSTIR spatial fold (gather)
 
 // Semantic-wiring S1: short aliases for the merged-SDI namespaces used at many
 // Connect sites below (drift-gated by ctest sdi_merged_drift_check). The three
@@ -53,6 +54,7 @@ namespace GatherSdi = ShaderInterface::ProbeGather;
 namespace ApplySdi = ShaderInterface::ProbeApply;
 namespace ShadowSdi = ShaderInterface::ShadowRayTrace;
 namespace WaveSdi = ShaderInterface::ShadowVisibilityWave;
+namespace SrgSdi = ShaderInterface::SpatialReuseGather;  // W2a: the ReSTIR spatial fold (GatherSdi = ProbeGather, taken)
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -501,7 +503,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // fed from the SAME two StorageBufferNode outputs — mirrors BuildFanInDemoGraph.cpp's
     // own "each connecting side gets its own gatherer instance" precedent.
     NodeHandle directLightingReservoirWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("direct_lighting_reservoir_write_gatherer");
-    NodeHandle spatialReuseReservoirReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_reservoir_read_gatherer");
+    // W2a: the read-side gatherer moved with the fold — SpatialReuseGather owns
+    // the A/B neighbor-array read hazard now (created only when the reservoir
+    // path is enabled; see the W2a node block below).
 
     // Sampled Lighting Inc3 M1: presentation-only blit of the offscreen render target to the
     // swapchain (extracted from ComputeDispatchNode's M4 render-target blit — same
@@ -681,6 +685,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle shadowVisibilityWaveNode = renderGraph->AddNode<ComputeStageNodeType>("shadow_visibility_wave");
     NodeHandle shadowVisibilityWaveReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_visibility_wave_read_gatherer");
     NodeHandle shadowVisibilityWaveWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_visibility_wave_write_gatherer");
+
+    // W2a (wavefront epoch): the ReSTIR seam — SpatialReuseGather (the spatial
+    // fold, split out of the shade; ALL spatial RNG) + the wave's RESERVOIR
+    // PHASE (a second dispatch of the same program as its own compiled
+    // variant, answering _pad0[2] bit 4 post-gather). B1's conditional-creation
+    // shape: the reservoir path opt-in (ResolveReservoirEnabled — the SAME
+    // accessor that fills ReservoirConfig.reservoirEnabled) creates the whole
+    // node set or none of it, so the default path's graph is UNCHANGED, not
+    // merely idle.
+    const bool reservoirPathEnabled = ResolveReservoirEnabled();
+    NodeHandle spatialReuseGatherShaderLib{}, spatialReuseGatherNode{}, spatialReuseGatherPushGatherer{};
+    NodeHandle spatialReuseGatherReadGatherer{}, spatialReuseGatherWriteGatherer{};
+    NodeHandle waveReservoirShaderLib{}, waveReservoirNode{};
+    NodeHandle waveReservoirReadGatherer{}, waveReservoirWriteGatherer{};
+    NodeHandle gatherWidthConstant{}, gatherHeightConstant{};
+    if (reservoirPathEnabled) {
+        spatialReuseGatherShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("spatial_reuse_gather_shader_lib");
+        spatialReuseGatherNode      = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse_gather");
+        // Reads: reservoirBufferA/B (the neighbor-array hazard that used to be
+        // the shade's — it moved here with the fold) + hitRecordBuffer
+        // (similarity rejects). Writes: the combined-reservoir publish.
+        spatialReuseGatherReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_gather_read_gatherer");
+        spatialReuseGatherWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_gather_write_gatherer");
+        waveReservoirShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("shadow_visibility_wave_reservoir_shader_lib");
+        waveReservoirNode      = renderGraph->AddNode<ComputeStageNodeType>("shadow_visibility_wave_reservoir");
+        // Reads: combined reservoir (+ the hit-record RMW's read half).
+        // Writes: the hit-record RMW's write half (bit 4).
+        waveReservoirReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_visibility_wave_reservoir_read_gatherer");
+        waveReservoirWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_visibility_wave_reservoir_write_gatherer");
+    }
 
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
     // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
@@ -1576,6 +1610,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the trace-hooks variant axis like every traversal pass).
     registerLightingFamily(shadowVisibilityWaveShaderLib,
                            makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave"));
+    // W2a (reservoir path opt-in): the fold pass + the wave's reservoir-phase
+    // variant. The gather is a standalone-binding shader but rides the SAME
+    // lighting family maker (plain file, same search paths; the shared feature
+    // set is inert for it — it has no trace-hooks axis). The reservoir-phase
+    // lib registers the SAME ShadowVisibilityWave family with the phase define
+    // appended — one program, two compiled variants, two pipelines.
+    if (reservoirPathEnabled) {
+        registerLightingFamily(spatialReuseGatherShaderLib,
+                               makeLightingFamily("SpatialReuseGather.comp", "SpatialReuseGather"));
+        auto waveReservoirFamily = makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave");
+        auto waveReservoirFeatures = lightingShaderFeatures;
+        waveReservoirFeatures.push_back(kFeatureWaveReservoirPhase.define);
+        auto* waveResLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(waveReservoirShaderLib));
+        waveResLibNode->RegisterShaderBuilder([this, waveReservoirFamily, waveReservoirFeatures](int vulkanVer, int spirvVer) {
+            auto builder = waveReservoirFamily->MakeBuilder(waveReservoirFeatures);
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
+    }
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: RecipeInstanceBucketing.comp registration.
     // Same search-path pattern as DirectLighting.comp/ProbeUpdate.comp above -- a plain static
@@ -1735,6 +1795,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+        // W2a (reservoir path opt-in): the gather is 2D over the same scaled
+        // extent (8×8 workgroups, the shade's own shape — its fold logic is
+        // pixel-2D); the reservoir-phase wave is 1D over the same slot count
+        // as the analytic phase. Both dispatch only when the path is enabled —
+        // when disabled these nodes don't exist at all (B1 shape).
+        if (reservoirPathEnabled) {
+            auto* gatherStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(spatialReuseGatherNode));
+            gatherStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+            gatherStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, (wavePixelsX + 7u) / 8u);
+            gatherStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, (wavePixelsY + 7u) / 8u);
+            gatherStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+            auto* waveReservoir = static_cast<ComputeStageNode*>(renderGraph->GetInstance(waveReservoirNode));
+            waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+            waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
+            waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+            waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+            // The gather's own push block (imgWidth/imgHeight — ReservoirConfig
+            // carries no extent and the pass binds no image to derive from).
+            gatherWidthConstant  = renderGraph->AddNode<ConstantNodeType>("spatial_reuse_gather_width_constant");
+            gatherHeightConstant = renderGraph->AddNode<ConstantNodeType>("spatial_reuse_gather_height_constant");
+            static_cast<ConstantNode*>(renderGraph->GetInstance(gatherWidthConstant))->SetValue<uint32_t>(wavePixelsX);
+            static_cast<ConstantNode*>(renderGraph->GetInstance(gatherHeightConstant))->SetValue<uint32_t>(wavePixelsY);
+        }
     }
 
     // SpatialReuseNode (Sampled Lighting Inc3 M5): the second half of the pass split — NOW owns
@@ -1754,7 +1838,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // declaration comment for why BOTH are declared regardless of which is "current").
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
-    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReservoirReadGatherer))->PreRegisterBufferSlots(2);
     // W1a: gather writes {requests, payloads}; wave reads {requests} writes {results};
     // apply reads {results, payloads}.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeGatherWriteGatherer))->PreRegisterBufferSlots(2);
@@ -1765,6 +1848,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (an RMW of one word — but the hazard model tracks whole resources).
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(1);
+    // W2a (reservoir path opt-in): gather reads {reservoirA, reservoirB,
+    // hitRecords} (the A/B neighbor-array hazard moved here from the shade)
+    // and writes {combinedReservoir}; the reservoir-phase wave reads
+    // {combinedReservoir, hitRecords} and writes {hitRecords} (bit-4 RMW).
+    if (reservoirPathEnabled) {
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseGatherReadGatherer))->PreRegisterBufferSlots(3);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseGatherWriteGatherer))->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(waveReservoirReadGatherer))->PreRegisterBufferSlots(2);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(waveReservoirWriteGatherer))->PreRegisterBufferSlots(1);
+    }
 
     // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
@@ -7169,12 +7262,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(directLightingReservoirWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   directLightingNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
-    batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
-                  spatialReuseReservoirReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
-                  spatialReuseReservoirReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    batch.Connect(spatialReuseReservoirReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
-                  spatialReuseNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    // W2a: the A/B read side moved to SpatialReuseGather with the fold — the
+    // shade no longer declares those bindings at all (SDI 17→15). The gather's
+    // own read gatherer (wired in the reservoir-path block below) carries the
+    // neighbor-array hazard now; when the path is off, NOTHING reads A/B and
+    // no read edge exists (DL's writes keep their gatherer — the buffers
+    // persist either way).
 
     // Render target: SpatialReuseNode's IMAGE_WRITE <-> BlitNode's IMAGE_READ (wired below), same
     // renderTargetNode::RENDER_TARGET Resource* on both — bakes the SpatialReuse->BlitNode edge
@@ -7331,6 +7424,82 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::raySizeBias::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
+
+    // ------------------------------------------------------------------
+    // W2a (reservoir path opt-in): SpatialReuseGather + the wave's
+    // reservoir-phase dispatch — synthesis, census, push, hazards. Every
+    // provider these stages need already exists (the shade used them all);
+    // the fold's A/B neighbor-array hazard arrives HERE with its new owner.
+    // Ordering is carried by DECLARED edges end-to-end on the opt-in chain:
+    // DL(writes A/B) → gather(reads A/B, writes combined) → wave-reservoir
+    // (reads combined, RMWs hit records) → shade (reads records, submission-
+    // serialized — the standing march-chain NOT-baked class).
+    // ------------------------------------------------------------------
+    if (reservoirPathEnabled) {
+        const auto gatherSynth = SynthesizeComputeStage<SrgSdi::Metadata, SrgSdi::MEMBERS>(
+            renderGraph, batch, "spatial_reuse_gather", spatialReuseGatherShaderLib,
+            spatialReuseGatherNode, lightingCommon, sceneProviders, {},
+            SdiWireSet::DescriptorsOnly);
+        spatialReuseGatherPushGatherer = gatherSynth.pushGatherer;
+        CensusStageFromSdi<SrgSdi::Metadata, SrgSdi::MEMBERS>(
+            sdiHazardCensus_, spatialReuseGatherNode, sceneProviders, sdiNoFeatures,
+            &sdiCensusExclusions);
+
+        SdiFeatureSet waveReservoirSdiFeatures;
+        waveReservoirSdiFeatures.Enable(kFeatureWaveReservoirPhase);
+        const auto waveResSynth = SynthesizeComputeStage<WaveSdi::Metadata, WaveSdi::MEMBERS>(
+            renderGraph, batch, "shadow_visibility_wave_reservoir", waveReservoirShaderLib,
+            waveReservoirNode, lightingCommon, sceneProviders, waveReservoirSdiFeatures,
+            SdiWireSet::DescriptorsOnly);
+        CensusStageFromSdi<WaveSdi::Metadata, WaveSdi::MEMBERS>(
+            sdiHazardCensus_, waveReservoirNode, sceneProviders, waveReservoirSdiFeatures,
+            &sdiCensusExclusions);
+
+        // The gather's OWN push block: imgWidth/imgHeight from the build-time
+        // scaled extent (same values its dispatch dims derive from above).
+        batch.Connect(gatherWidthConstant, ConstantNodeConfig::OUTPUT,
+                      spatialReuseGatherPushGatherer, SrgSdi::Push::imgWidth::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(gatherHeightConstant, ConstantNodeConfig::OUTPUT,
+                      spatialReuseGatherPushGatherer, SrgSdi::Push::imgHeight::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
+        // The reservoir-phase wave traces — same three live SceneBindings pc
+        // fields as every tracing stage (the M4/M4b findings, a fourth time).
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                      waveResSynth.pushGatherer, WaveSdi::Push::instanceCount::INDEX,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+                      waveResSynth.pushGatherer, WaveSdi::Push::raySizeCoef::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                      waveResSynth.pushGatherer, WaveSdi::Push::raySizeBias::INDEX,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        // Hazards. Gather: reads {A, B, hitRecords}, writes {combined}.
+        batch.Connect(reservoirBufferA, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      spatialReuseGatherReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(reservoirBufferB, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      spatialReuseGatherReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      spatialReuseGatherReadGatherer, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(spatialReuseGatherReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      spatialReuseGatherNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(spatialReservoirDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      spatialReuseGatherWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(spatialReuseGatherWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      spatialReuseGatherNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        // Wave reservoir phase: reads {combined, hitRecords}, writes {hitRecords}.
+        batch.Connect(spatialReservoirDebugBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      waveReservoirReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      waveReservoirReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(waveReservoirReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      waveReservoirNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      waveReservoirWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(waveReservoirWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      waveReservoirNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    }
 
     // W1a cross-dispatch buffer hazards: writer-side and reader-side gatherers
     // over the SAME StorageBufferNode outputs (shared Resource* identity via

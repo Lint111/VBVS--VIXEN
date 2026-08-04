@@ -137,41 +137,24 @@ layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
     LightTreeBuffer lightTreeBuffer;
 };
 
-// ============================================================================
-// RESERVOIR CURRENT/PREVIOUS PING-PONG (bindings 25/26) — this pass READS ONLY
-// ============================================================================
-// Sampled Lighting Inc3 M5: THIS pass reads DirectLighting.comp's POST-TEMPORAL
-// reservoir writes — both this pixel's own AND its spatial neighbors' (the genuine
-// cross-dispatch hazard this whole pass split exists to correctly bake — see
-// BuildRenderGraph.cpp's array-hazard BUFFER_READ_ARRAY wiring). frameParity&1 picks
-// which buffer is CURRENT (the one DirectLighting.comp just wrote THIS frame) exactly
-// as DirectLighting.comp's own selector does.
+// W2a: the reservoir A/B ping-pong (old bindings 25/26) left this pass with the
+// spatial fold — SpatialReuseGather.comp owns both now (the neighbor-array
+// hazard moved with it). This pass reads ONLY the combined reservoir below.
 #include "Generated/ReservoirRecord.glsl"
 
-layout(std430, binding = 25) readonly buffer ReservoirBufferA {
-    ReservoirRecord reservoirRecordsA[];
-};
-layout(std430, binding = 26) readonly buffer ReservoirBufferB {
-    ReservoirRecord reservoirRecordsB[];
-};
-
 // ============================================================================
-// SPATIAL-COMBINE DEBUG READBACK (binding 27) — Sampled Lighting Inc3 M6
+// COMBINED RESERVOIR (binding 27) — Inc3 M6's debug readback, PROMOTED (W2a)
 // ============================================================================
-// The spatially-combined `current` reservoir (post-neighbor-fold, pre-shade) lives
-// only in registers -- reservoirRecordsA/B above are readonly this pass, so the
-// M4/M5 gate's own reservoir-buffer readback mechanism (VulkanGraphApplication.cpp's
-// VIXEN_RESTIR_GATE_DEMO tick-60 mapping) has no GPU-visible post-spatial-combine
-// state to observe (M5's own Progress Log flagged exactly this gap: its equal-error
-// gate re-ran M4's PRE-spatial estimator unchanged, "M6's full-stack gate should
-// cover the rest"). This debug-only buffer closes that gap with the SAME
-// ReservoirRecord layout (16B, matches reservoirBufferA/B exactly) so the existing
-// CPU readback path needs no new struct -- write the post-combine `current` here,
-// once per pixel, unconditionally (write cost is the same O(1)/pixel as the existing
-// ping-pong write; no new hazard since this pass is the sole writer and the gate's
-// own readback already vkDeviceWaitIdle()s before mapping, same as reservoirBufferA/B).
-layout(std430, binding = 27) writeonly buffer SpatialReservoirDebugBuffer {
-    ReservoirRecord spatialReservoirDebug[];
+// Born as M6's debug-only publish of the post-spatial-combine reservoir (the
+// register-resident state the M5 gate couldn't observe). W2a promoted it to the
+// PRODUCTION contract: SpatialReuseGather.comp (which owns the fold now) writes
+// it, the wave's reservoir phase derives the chosen sample's shadow ray from
+// it, and THIS pass reads it to recompute the contribution deterministically.
+// Same block name, same 16-B ReservoirRecord layout — Inc3 M6's unbiasedness
+// readback gate keeps reading the data it always verified; the buffer just
+// grew a production job. READONLY here now: the sole writer is the gather.
+layout(std430, binding = 27) readonly buffer SpatialReservoirDebugBuffer {
+    ReservoirRecord combinedReservoirs[];
 };
 
 // ============================================================================
@@ -306,34 +289,8 @@ vec3 gatherIndirectDiffuse(vec3 shadingPos) {
     return result;
 }
 
-// Target-function value p_hat(i) for light-tree cut node i (same definition as
-// DirectLighting.comp's own copy — see that shader's comment for the derivation).
-float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
-    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
-    vec3 toLight = node.worldPos - shadingPos;
-    float dist2 = max(dot(toLight, toLight), 1e-4);
-    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
-    return nodePower / dist2;
-}
-
-// ============================================================================
-// SPATIAL NEIGHBOR SAMPLING (Sampled Lighting Inc3 M5)
-// ============================================================================
-// Fixed-radius random-angle kernel (no existing neighbor-sampling utility elsewhere
-// in this codebase to reuse — a simple bounded per-invocation-seeded ring sample is
-// the standard ReSTIR spatial-reuse kernel shape, Bitterli et al. section 5.2): for
-// each of reservoirConfig.spatialCount neighbors, draw a uniformly random angle and
-// a radius in [0, reservoirConfig.spatialRadius] pixels, clamp the result on-screen.
-// A per-invocation RNG state (seeded independently of DirectLighting.comp's own,
-// XOR'd with a distinct salt) keeps each pixel's neighbor SET independent, and
-// re-drawing every frame (frameParity-salted) keeps the search exploring rather than
-// resampling the identical ring every frame (same rationale as RIS's own per-frame
-// reseed).
-ivec2 spatialNeighborOffset(inout uint rngState, float radius) {
-    float angle = rngNextFloat(rngState) * 6.28318530718; // 2*pi
-    float r = sqrt(rngNextFloat(rngState)) * radius;      // sqrt(u) -> uniform-AREA disk sample
-    return ivec2(round(cos(angle) * r), round(sin(angle) * r));
-}
+// W2a: lightTreeNodePHat + spatialNeighborOffset moved to SpatialReuseGather.comp
+// with the fold — the shade never evaluates p_hat or draws neighbors anymore.
 
 // ============================================================================
 // PUSH CONSTANTS: the `pc` block is declared once in SceneBindings.glsl.
@@ -468,83 +425,18 @@ void main() {
 #endif
 
     // -----------------------------------------------------------------------
-    // ReSTIR DI: SPATIAL reservoir reuse (Sampled Lighting Inc3 M5) + shade.
-    // reservoirEnabled==0 (the default) skips this block entirely -- outColor stays
-    // EXACTLY the pre-ReSTIR result (the byte-identity escape hatch every milestone
-    // in this program has preserved since Inc0).
+    // ReSTIR DI: shade with the SPATIALLY-COMBINED reservoir (W2a: the fold
+    // itself moved to SpatialReuseGather.comp — this pass is the deterministic
+    // APPLY: no RNG, no neighbor taps, no publish; it reads the gather's
+    // combined reservoir and recomputes the contribution).
+    // reservoirEnabled==0 (the default) skips this block entirely -- outColor
+    // stays EXACTLY the pre-ReSTIR result (the byte-identity escape hatch
+    // every milestone in this program has preserved since Inc0).
     // -----------------------------------------------------------------------
     if (reservoirConfig.reservoirEnabled != 0u && anyHitRT) {
         uint reservoirIdx = hitRecordIdx;
 
-        // Same CURRENT/PREVIOUS selector as DirectLighting.comp: THIS frame's writes
-        // (the ones this pass reads, for both self and neighbors) landed in whichever
-        // buffer frameParity says is current.
-        bool parityEven = (reservoirConfig.frameParity & 1u) == 0u;
-
-        ReservoirRecord current = parityEven
-            ? reservoirRecordsA[reservoirIdx]
-            : reservoirRecordsB[reservoirIdx];
-
-        // RNG seed distinct from DirectLighting.comp's own (different salt constant)
-        // so the neighbor-offset draws are independent of that pass's RIS/temporal
-        // draws despite sharing the same pixel/frameParity inputs.
-        uint rngState = pcgHash((reservoirIdx ^ 0x9E3779B9u) ^ (reservoirConfig.frameParity * 2246822519u));
-
-        if (current.y != 0xFFFFFFFFu && current.sampleCount > 0u) {
-            uint spatialCount = reservoirConfig.spatialCount;
-            float radius = max(reservoirConfig.spatialRadius, 0.0);
-            for (uint n = 0u; n < spatialCount; ++n) {
-                ivec2 offset = spatialNeighborOffset(rngState, radius);
-                ivec2 neighborCoords = pixelCoords + offset;
-                if (neighborCoords.x < 0 || neighborCoords.y < 0 ||
-                    neighborCoords.x >= imgSize.x || neighborCoords.y >= imgSize.y) {
-                    continue;  // off-screen neighbor: skip, no wraparound
-                }
-                if (neighborCoords == pixelCoords) continue;  // degenerate zero-offset draw
-
-                uint neighborHitIdx = uint(neighborCoords.y) * uint(imgSize.x) + uint(neighborCoords.x);
-                HitRecord neighborHit = hitRecords[neighborHitIdx];
-                bool neighborHasHit = (neighborHit.flags & HITRECORD_FLAG_HIT) != 0u;
-                if (!neighborHasHit) continue;  // no valid surface at the neighbor -> no reservoir to reuse
-
-                // Geometric similarity reject (KI-023's own worldPos buffer earns its keep
-                // here too, per the plan's Task 5 note): a neighbor whose surface point is
-                // far from this pixel's own is a DIFFERENT surface (a silhouette/depth
-                // discontinuity) -- reusing its reservoir would leak light across a surface
-                // boundary. Same epsilon class as the accumulation seam's own reproject
-                // reject, applied here on the CURRENT frame's two HitRecord positions
-                // (not the worldPosHistoryImage -- that buffer is prev-frame-only; this is
-                // an intra-frame same-frame comparison of two live HitRecords).
-                const float kMaxSpatialWorldPosDelta = 0.1; // world-space units, mirrors KI-023's own epsilon
-                if (distance(neighborHit.worldPos, bestWorldPos) > kMaxSpatialWorldPosDelta) continue;
-
-                // Normal similarity reject: reusing a neighbor's reservoir across a sharp
-                // normal discontinuity (e.g. a corner) is the spatial-reuse analogue of
-                // ghosting -- bounded by a generous angle (dot > 0.5 ~= 60 degrees).
-                if (dot(neighborHit.worldNormal, bestNormal) < 0.5) continue;
-
-                uint neighborReservoirIdx = neighborHitIdx;
-                ReservoirRecord neighborReservoir = parityEven
-                    ? reservoirRecordsA[neighborReservoirIdx]
-                    : reservoirRecordsB[neighborReservoirIdx];
-
-                if (neighborReservoir.y == 0xFFFFFFFFu || neighborReservoir.sampleCount == 0u) continue;
-                if (neighborReservoir.y >= lightTreeBuffer.nodeCount) continue;
-
-                // Re-evaluate p_hat at THIS pixel's shading point (the re-evaluation that
-                // keeps the combine unbiased -- see ReservoirCombine.glsl's header), via
-                // the SAME reservoirCombine primitive DirectLighting.comp's temporal reuse
-                // used (no second hand-rolled MIS implementation).
-                float pHatAtNeighborY = lightTreeNodePHat(neighborReservoir.y, bestWorldPos);
-                reservoirCombine(current, neighborReservoir, pHatAtNeighborY, rngNextFloat(rngState));
-            }
-        }
-
-        // Sampled Lighting Inc3 M6: publish the spatially-combined reservoir (post-neighbor-
-        // fold, pre-shade) to the debug readback buffer -- the M6 full-stack gate reads this
-        // back to verify unbiasedness SURVIVES spatial reuse, not just DirectLighting.comp's
-        // own pre-spatial estimator (M5's own flagged gap, see binding-27's header comment).
-        spatialReservoirDebug[reservoirIdx] = current;
+        ReservoirRecord current = combinedReservoirs[reservoirIdx];
 
         // Shade with the SPATIALLY-COMBINED reservoir's ONE chosen sample: one shadow
         // ray (visibility applied here, ONCE), weighted by the unbiased contribution
