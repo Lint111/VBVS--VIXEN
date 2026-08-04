@@ -46,13 +46,17 @@ const uint kHitAccumProbeLimit    = 32u;   // double-hashed probes before fail-s
 
 struct HitAccumEntryGpu {
     uint keyLo;       // 0 = empty (the CAS sentinel)
-    uint keyHi;       // winner-written recipe|mip
+    uint keyHi;       // winner-written recipe|mip|epoch — published LAST
     uint count;
     int  sumPosQX; int sumPosQY; int sumPosQZ;
-    int  sumDirQX; int sumDirQY; int sumDirQZ;
+    int  sumDirQX; int sumDirQY; int sumDirQZ;   // the record's worldNormal (W3c-2) — |avg| IS the Toksvig factor
     int  sumDistQ;
-    int  sumTpQX; int sumTpQY; int sumTpQZ;
-};  // 13 words = 52 B
+    int  sumTpQX; int sumTpQY; int sumTpQZ;      // the record's albedo (W3c-2)
+    uint repInstIdx;  // W3c-2: representative instance — winner-written BEFORE the
+                      // keyHi publish (both claim paths), so any reader that sees a
+                      // published keyHi sees a valid instance. recipeId is categorical
+                      // in the key; this carries the cell's field params/emission.
+};  // 14 words = 56 B
 
 // --- Twins of HitAccumulation.h -------------------------------------------
 
@@ -104,6 +108,67 @@ uint HitAccumSlotOf(uint keyLo, uint keyHi) {
 // (~9K/frame probe-race losses on structured sequential cell keys).
 uint HitAccumProbeStride(uint keyLo) {
     return ((keyLo >> 16) | 1u);
+}
+
+// The per-frame parameter block — ONE host-written SSBO (NEVER push constants:
+// they bake at command-record time per flight-ring slot, the W3b finding).
+// Declared here since W3c-2: three passes consume it (the fused wave, the cell
+// shade, the resolve). C++ twin: VulkanGraphApplication.cpp's HitAccumParamsCpu.
+struct HitAccumParams {
+    uint  frameEpoch;
+    float primaryCoef;   // the PRIMARY cone coefficient (RaySizeCoefNode's value — NOT pc.raySizeCoef, which carries the SECONDARY constant on the tracing stages)
+    float primaryBias;
+    float detailSize0;
+    vec4  camPos;        // xyz used
+    vec4  camForward;    // xyz used
+};
+
+// --- W3c-2 read-side twins (UnpackCellKey / Resolve / ToksvigWiden) ---------
+
+// UnpackCellKey's twin: keyLo deltas + the SAME per-mip anchor the packer used
+// (derivable — mip is in keyHi). Caller has already checked the tag bit.
+ivec3 HitAccumUnpackCell(uint keyLo, ivec3 anchorCell) {
+    int dx = int((keyLo >> 21) & 0x3FFu) - kHitAccumKeyDeltaMax;
+    int dy = int((keyLo >> 11) & 0x3FFu) - kHitAccumKeyDeltaMax;
+    int dz = int((keyLo >>  1) & 0x3FFu) - kHitAccumKeyDeltaMax;
+    return anchorCell + ivec3(dx, dy, dz);
+}
+
+// Resolve's twin (HitAccumulation.h::Resolve — float divide vs the CPU's
+// double, same ±1-quantum tolerance note as the accumulate side). Reads are
+// NON-atomic: the read passes run after the wave's accumulation completes
+// (declared buffer hazards), so the sums are quiescent.
+struct HitAccumResolved {
+    vec3  avgPos;         // world-space
+    vec3  avgDir;         // UNNORMALIZED average — |avgDir| IS the Toksvig factor
+    float avgDistance;
+    vec3  avgThroughput;
+    float toksvigFactor;  // |avgDir| clamped to (0, 1]
+};
+
+HitAccumResolved HitAccumResolveEntry(HitAccumEntryGpu e, ivec3 cell, float cellSize) {
+    HitAccumResolved r;
+    float invCount = 1.0 / float(e.count);
+    vec3 cellOrigin = vec3(cell) * cellSize;
+    r.avgPos = cellOrigin + vec3(float(e.sumPosQX), float(e.sumPosQY), float(e.sumPosQZ))
+                            * invCount / kHitAccumPosScale * cellSize;
+    r.avgDir = vec3(float(e.sumDirQX), float(e.sumDirQY), float(e.sumDirQZ))
+               * invCount / kHitAccumDirScale;
+    r.avgThroughput = vec3(float(e.sumTpQX), float(e.sumTpQY), float(e.sumTpQZ))
+                      * invCount / kHitAccumThroughputScale;
+    r.avgDistance = float(e.sumDistQ) * invCount / kHitAccumPosScale * cellSize;
+    r.toksvigFactor = clamp(length(r.avgDir), 1e-4, 1.0);
+    return r;
+}
+
+// ToksvigWiden's twin: alpha'^2 = alpha^2 + (1-ft)/ft, clamped to
+// [baseRoughness, 1]; ft==1 returns baseRoughness EXACTLY.
+float HitAccumToksvigWiden(float baseRoughness, float toksvigFactor) {
+    if (toksvigFactor >= 1.0) return baseRoughness;
+    float ft = clamp(toksvigFactor, 1e-4, 1.0);
+    float variance = (1.0 - ft) / ft;
+    float widened = sqrt(baseRoughness * baseRoughness + variance);
+    return clamp(widened, baseRoughness, 1.0);
 }
 
 #endif // HIT_ACCUMULATION_COMMON_GLSL

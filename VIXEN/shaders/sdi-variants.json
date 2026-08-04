@@ -129,6 +129,23 @@
           "VIXEN_GPU_TRACE_HOOKS"
         ]
       ]
+    },
+    {
+      "name": "HitAccumCellShade",
+      "source": "HitAccumCellShade.comp",
+      "variants": [
+        [],
+        [
+          "VIXEN_GPU_TRACE_HOOKS"
+        ]
+      ]
+    },
+    {
+      "name": "HitAccumResolve",
+      "source": "HitAccumResolve.comp",
+      "variants": [
+        []
+      ]
     }
   ]
 }

@@ -1259,12 +1259,12 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
             auto* devDiag = devInstDiag->GetVulkanDevice();
             vkDeviceWaitIdle(devDiag->device);
 
-            // --- GPU side: scan the table (two-word key, 13-word stride) ---
+            // --- GPU side: scan the table (two-word key, 14-word stride) ---
             uint32_t gpuOccupied = 0, gpuTotal = 0;
             uint32_t gpuMipHist[16] = {};
             if (void* tmapped = tableNode->MapForReadback(devDiag)) {
                 const auto* words = reinterpret_cast<const uint32_t*>(tmapped);
-                constexpr uint32_t kStrideWords = 13;  // HitAccumEntryGpu, 52 B
+                constexpr uint32_t kStrideWords = 14;  // HitAccumEntryGpu, 56 B (W3c-2 repInstIdx)
                 // Entries persist across frames (epoch-stamped, no clear):
                 // the FINAL frame's entries carry the max epoch — count those.
                 uint32_t maxEpoch = 0;
@@ -1342,6 +1342,30 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
                                  " engaged=" + std::to_string(cpuEngaged) + " mips:" + histStr(cpuMipHist) +
                                  " (detail=" + std::to_string(hitAccumDetailSize0_) + " coef=" + std::to_string(coef) + ")");
             }
+
+            // W3c-2: the cell shade's output — shaded (a=1) cells at the final
+            // frame. The gate: shaded ≈ the table's live occupancy (every
+            // current-epoch cell got a radiance), nonzero when engaged.
+            if (hitAccumResolveEnabled_) {
+                if (auto* radNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumCellRadianceBuffer_))) {
+                    if (void* rmapped2 = radNode->MapForReadback(devDiag)) {
+                        const auto* cells = reinterpret_cast<const float*>(rmapped2);
+                        uint32_t shaded = 0, lit = 0;
+                        for (uint32_t s = 0; s < kHitAccumTableCapacity; ++s) {
+                            if (cells[s * 4u + 3u] != 0.0f) {
+                                ++shaded;
+                                if (cells[s * 4u + 0u] + cells[s * 4u + 1u] + cells[s * 4u + 2u] > 0.0f) ++lit;
+                            }
+                        }
+                        radNode->UnmapReadback(devDiag);
+                        if (mainLogger) {
+                            mainLogger->Info("[HitAccumDiag] CellShade: shaded=" + std::to_string(shaded) +
+                                             " lit=" + std::to_string(lit) +
+                                             " (tableLiveOccupied=" + std::to_string(gpuOccupied) + ")");
+                        }
+                    }
+                }
+            }
         }
 }
 
@@ -1367,6 +1391,13 @@ void VulkanGraphApplication::PostTick() {
     }
     if (auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse"))) {
         passes.push_back({"spatial_reuse", spatialReuse->GetGPUPerformanceLogger()});
+    }
+    // W3c-2: the resolve pair (exist only under VIXEN_HIT_ACCUM_RESOLVE).
+    if (auto* cellShade = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_cell_shade"))) {
+        passes.push_back({"hit_accum_cell_shade", cellShade->GetGPUPerformanceLogger()});
+    }
+    if (auto* accumResolve = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_resolve"))) {
+        passes.push_back({"hit_accum_resolve", accumResolve->GetGPUPerformanceLogger()});
     }
     // W1a: the probe_update megakernel's three split stages, each timed as its
     // own column — the wave's column is what prices the stale-slot re-trace
@@ -3459,6 +3490,23 @@ void VulkanGraphApplication::CompileRenderGraph() {
             if (!g.node) continue;
             groupOf[g.node] = g.groupId;
             groupName[g.groupId] = g.node->GetInstanceName();
+        }
+        // W3c-2 diag: the schedule's group order IS the frame's execution order
+        // (FrameSyncScheduler::Build copies executionOrder in). Dumping the
+        // dispatch-bearing groups settles same-frame stage order questions with
+        // evidence instead of topo-sort inference.
+        {
+            std::string orderLine = "[SdiHazard] EXEC-ORDER:";
+            for (const auto& g : sched.groups) {
+                if (!g.node) continue;
+                const auto* type = g.node->GetNodeType();
+                const std::string tn = type ? type->GetTypeName() : "";
+                if (tn == "ComputeStage" || tn == "ComputeDispatch" || tn == "Blit" ||
+                    tn == "MultiDispatch" || tn == "SkyProjection" || tn == "UiComposite") {
+                    orderLine += " " + std::to_string(g.groupId) + ":" + g.node->GetInstanceName();
+                }
+            }
+            mainLogger->Info(orderLine);
         }
         auto nameOf = [&](NodeHandle h) -> std::string {
             auto* inst = renderGraph->GetInstance(h);

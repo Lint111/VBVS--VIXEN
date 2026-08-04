@@ -90,14 +90,7 @@ layout(std430, binding = 21) buffer HitAccumTable {
     HitAccumEntryGpu accumEntries[];
 };
 
-struct HitAccumParams {
-    uint  frameEpoch;
-    float primaryCoef;   // the PRIMARY cone coefficient (RaySizeCoefNode's value — NOT pc.raySizeCoef, which carries the SECONDARY constant on this stage)
-    float primaryBias;
-    float detailSize0;
-    vec4  camPos;        // xyz used
-    vec4  camForward;    // xyz used
-};
+// HitAccumParams struct: HitAccumulationCommon.glsl (W3c-2 — three consumers).
 layout(std430, binding = 22) readonly buffer HitAccumParamsSSBO {
     HitAccumParams hitAccumParams;
 };
@@ -135,6 +128,10 @@ void FusedHitAccumulate(uint slot, HitRecord rec) {
         uint oldLo = atomicCompSwap(accumEntries[s].keyLo, 0u, keyLo);
         if (oldLo != 0u && oldLo != keyLo) continue;
         if (oldLo == 0u) {
+            // W3c-2: the representative instance rides the claim — written
+            // BEFORE the keyHi publish, so a published keyHi implies a valid
+            // repInstIdx (the publish-last protocol's own ordering).
+            atomicExchange(accumEntries[s].repInstIdx, instIdx);
             atomicExchange(accumEntries[s].keyHi, keyHi);
             tableSlot = s; claimed = true; break;
         }
@@ -148,6 +145,7 @@ void FusedHitAccumulate(uint slot, HitRecord rec) {
             atomicExchange(accumEntries[s].sumDirQX, 0); atomicExchange(accumEntries[s].sumDirQY, 0); atomicExchange(accumEntries[s].sumDirQZ, 0);
             atomicExchange(accumEntries[s].sumDistQ, 0);
             atomicExchange(accumEntries[s].sumTpQX, 0); atomicExchange(accumEntries[s].sumTpQY, 0); atomicExchange(accumEntries[s].sumTpQZ, 0);
+            atomicExchange(accumEntries[s].repInstIdx, instIdx);  // W3c-2: before the publish
             atomicExchange(accumEntries[s].keyHi, keyHi);
             tableSlot = s; claimed = true; break;
         }
@@ -156,17 +154,21 @@ void FusedHitAccumulate(uint slot, HitRecord rec) {
 
     vec3 cellOrigin = vec3(cell) * cellSize;
     vec3 local = (rec.worldPos - cellOrigin) / cellSize;
-    vec3 dir = normalize(rec.worldPos - hitAccumParams.camPos.xyz);
+    // W3c-2: the summed vector is the record's NORMAL (|avg| shortens as the
+    // cell's surface orientations disagree — the classic Toksvig factor; a
+    // cell's RAY directions are near-parallel by construction, so W3b's
+    // view-direction sum carried no widening signal). Throughput sums the
+    // record's actual albedo (W3b summed a placeholder white).
     atomicAdd(accumEntries[tableSlot].sumPosQX, int(round(local.x * kHitAccumPosScale)));
     atomicAdd(accumEntries[tableSlot].sumPosQY, int(round(local.y * kHitAccumPosScale)));
     atomicAdd(accumEntries[tableSlot].sumPosQZ, int(round(local.z * kHitAccumPosScale)));
-    atomicAdd(accumEntries[tableSlot].sumDirQX, int(round(dir.x * kHitAccumDirScale)));
-    atomicAdd(accumEntries[tableSlot].sumDirQY, int(round(dir.y * kHitAccumDirScale)));
-    atomicAdd(accumEntries[tableSlot].sumDirQZ, int(round(dir.z * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQX, int(round(rec.worldNormal.x * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQY, int(round(rec.worldNormal.y * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQZ, int(round(rec.worldNormal.z * kHitAccumDirScale)));
     atomicAdd(accumEntries[tableSlot].sumDistQ, int(round(rec.hitT * kHitAccumPosScale / cellSize)));
-    atomicAdd(accumEntries[tableSlot].sumTpQX, int(kHitAccumThroughputScale));
-    atomicAdd(accumEntries[tableSlot].sumTpQY, int(kHitAccumThroughputScale));
-    atomicAdd(accumEntries[tableSlot].sumTpQZ, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].sumTpQX, int(round(rec.albedo.x * kHitAccumThroughputScale)));
+    atomicAdd(accumEntries[tableSlot].sumTpQY, int(round(rec.albedo.y * kHitAccumThroughputScale)));
+    atomicAdd(accumEntries[tableSlot].sumTpQZ, int(round(rec.albedo.z * kHitAccumThroughputScale)));
     atomicAdd(accumEntries[tableSlot].count, 1u);
 }
 #endif  // VIXEN_HIT_ACCUM_FUSED

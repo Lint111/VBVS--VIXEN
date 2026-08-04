@@ -59,9 +59,12 @@ struct AccumEntry {
 
 struct HitSample {
     glm::vec3 worldPos{0.0f};
-    glm::vec3 direction{0.0f};   // unit hit direction
+    glm::vec3 direction{0.0f};   // ANY unit vector; the GPU feeds the record's surface
+                                 // NORMAL (W3c-2) — |avg| is then the classic Toksvig
+                                 // normal-agreement factor (W3b summed view direction,
+                                 // which is near-parallel within a cell: no signal)
     float     distance = 0.0f;   // path distance (the record's own LOD key)
-    glm::vec3 throughput{0.0f};
+    glm::vec3 throughput{0.0f};  // the GPU feeds the record's albedo (W3c-2)
 };
 
 struct ResolvedCell {

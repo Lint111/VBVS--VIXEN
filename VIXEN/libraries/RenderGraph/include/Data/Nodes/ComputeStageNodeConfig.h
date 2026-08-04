@@ -19,7 +19,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeStageNodeCounts {
-    static constexpr size_t INPUTS  = 21;
+    static constexpr size_t INPUTS  = 22;  // W3c-2: + ORDERING_WAIT_SEMAPHORE (21)
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -414,6 +414,21 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         SlotScope::NodeLevel,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
 
+    /**
+     * @brief Ordering-only edge INTO this stage (BlitNodeConfig's own
+     * ORDERING_WAIT_SEMAPHORE convention, verbatim): wiring an upstream pass's
+     * RENDER_COMPLETE_SEMAPHORE here establishes the TOPOLOGICAL execution
+     * order the FrameSyncScheduler needs — same-frame stage order comes from
+     * the topo sort (W3c-2 finding: a shared-Resource* hazard alone does NOT
+     * order two stages; the scheduler serializes whatever order topology
+     * produced). The semaphore VALUE is inert — this node never waits it.
+     */
+    INPUT_SLOT(ORDERING_WAIT_SEMAPHORE, VkSemaphore, 21,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (3) =====
 
     /** @brief renderComplete semaphore for Present to wait on (consumer role). */
@@ -519,6 +534,9 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
         // Image-read ARRAY sync slot (Sampled Lighting Inc4 M5) — same Transient
         // rationale as IMAGE_WRITE_ARRAY (a value type re-gathered fresh every frame).
         INIT_INPUT_DESC(IMAGE_READ_ARRAY, "image_read_array", ResourceLifetime::Transient, imageArrayDesc);
+
+        HandleDescriptor orderingSemDesc{"VkSemaphore"};
+        INIT_INPUT_DESC(ORDERING_WAIT_SEMAPHORE, "ordering_wait_semaphore", ResourceLifetime::Transient, orderingSemDesc);
 
         // Outputs.
         HandleDescriptor semaphoreDesc{"VkSemaphore"};

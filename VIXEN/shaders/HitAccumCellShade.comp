@@ -1,0 +1,171 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// HitAccumCellShade.comp — wavefront W3c-2: per-CELL shading of the hit-
+// accumulation table (the bandwidth thesis's work side: one shade + one shadow
+// trace per (cell, light) instead of per (pixel, light) for every engaged cell).
+// ============================================================================
+// Dispatch: 1D over the FULL table (kHitAccumTableCapacity / 64) with an
+// early-out on non-current-epoch slots — at 64Ki slots a full scan is cheaper
+// than the compaction+indirect machinery the W3c design sketched (the Dozen
+// dispatch-pattern readout's own finding: per-pass CPU orchestration dominates
+// at this scale; per-recipe compacted lists become worthwhile only when cell
+// counts outgrow the scan, and can be added without changing this shader's
+// output). Runs AFTER the fused wave (declared table read hazard), BEFORE the
+// resolve composite (declared cell-radiance write hazard).
+//
+// Per live cell:
+//   Resolve()          — average position/normal/throughput (GLSL twins of
+//                        HitAccumulation.h, HitAccumulationCommon.glsl)
+//   shading normal     — per-recipe analytic field gradient at the averaged
+//                        position when the instance HAS an analytic field
+//                        (spliced uber recipes / legacy procedural ids);
+//                        the averaged record normal otherwise (stored/ESVO
+//                        bodies have no field to tap)
+//   Toksvig widen      — |avg normal| shortens as the cell's surface
+//                        orientations disagree; widen roughness by it (the
+//                        disagreement→filter carry)
+//   analytic lights    — the wave's own NdotL-gate + TraceWorldShadow loop,
+//                        ONE trace per (cell, light); evalBRDF is the
+//                        SpatialReuseShade apply's own term
+//   emission           — the representative instance's recipeParams[3]
+//                        (procedural only — stored-body emission is a doc'd
+//                        v1 narrowing)
+// Output: cellRadiance[slot] rgb (a=1 marks a shaded cell).
+//
+// The ReSTIR reservoir term stays per-pixel (the resolve blends cell radiance
+// over the full per-pixel result — the doc'd v1 loss the SSIM sweeps measure).
+// ============================================================================
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "HitRecord.glsl"
+
+// Occupancy grid + SdfCore kernels + the splice marker MUST precede
+// SceneBindings.glsl (its SdfRecipes/TraceWorld includes reference the spliced
+// symbols under VIXEN_UBER_RECIPE_SPLICED — BodyInstanceRayMarch.comp's own
+// ordering rule, preserved verbatim).
+layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+
+#include "recipe/SdfCoreKernels.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
+
+#include "SceneBindings.glsl"   // scene SSBOs + TraceWorldShadow (the wave's own set)
+
+#include "Generated/LightingConfig.glsl"
+layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+#include "Generated/ShadowConfig.glsl"
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+// evalBRDF arrives via SceneBindings.glsl -> Lighting.glsl -> Brdf.glsl
+// (Brdf.glsl carries no include guard — a second include would redefine it).
+#include "HitAccumulationCommon.glsl"
+
+layout(std430, binding = 21) buffer HitAccumTable {
+    HitAccumEntryGpu accumEntries[];
+};
+
+layout(std430, binding = 22) readonly buffer HitAccumParamsSSBO {
+    HitAccumParams hitAccumParams;
+};
+
+layout(std430, binding = 23) buffer HitAccumCellRadiance {
+    vec4 cellRadiance[];
+};
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= kHitAccumTableCapacity) return;
+
+    uint keyLo = accumEntries[slot].keyLo;
+    uint keyHi = accumEntries[slot].keyHi;
+    uint epoch = hitAccumParams.frameEpoch & 0xFFFFFu;
+    if (epoch == 0xFFFFFu) epoch = 0u;
+    bool live = (keyLo & kHitAccumKeyTagBit) != 0u
+             && (keyHi & 0xFFFFFu) == epoch
+             && accumEntries[slot].count > 0u;
+    if (!live) { cellRadiance[slot] = vec4(0.0); return; }
+
+    uint recipeId = (keyHi >> 24) & 0xFFu;
+    uint mip      = (keyHi >> 20) & 0xFu;
+    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
+    ivec3 anchor = HitAccumAnchorCell(hitAccumParams.camPos.xyz, hitAccumParams.camForward.xyz,
+                                      hitAccumParams.primaryCoef, hitAccumParams.detailSize0, mip);
+    ivec3 cell = HitAccumUnpackCell(keyLo, anchor);
+    HitAccumResolved rc = HitAccumResolveEntry(accumEntries[slot], cell, cellSize);
+
+    // Averaged-normal default (always defined: toksvigFactor is clamped ≥1e-4,
+    // but a genuinely zero avgDir means fully-cancelling normals — keep an
+    // arbitrary up vector rather than NaN).
+    vec3 normal = dot(rc.avgDir, rc.avgDir) > 1e-12 ? normalize(rc.avgDir) : vec3(0.0, 1.0, 0.0);
+
+    float emission = 0.0;
+    uint rep = accumEntries[slot].repInstIdx;
+    if (rep < bodyInstances.length()) {
+        BodyInstance inst = bodyInstances[rep];
+        if (inst.providerKind == 1u) {
+            emission = inst.recipeParams[3];
+            // Analytic-field gradient at the averaged position — the shade
+            // kernels' own 6-tap (h=1e-3), dispatched generically: the cell
+            // count is orders below pixel count, so the switch's cost is noise.
+            vec3 p = rc.avgPos;
+            const float h = 1e-3;
+            vec2 e = vec2(h, 0.0);
+            vec3 g = vec3(0.0);
+            bool haveField = false;
+#ifdef VIXEN_UBER_RECIPE_SPLICED
+            if (inst.recipeId >= 2u) {
+                g = vec3(
+                    evalRecipeField(inst.recipeId, p + e.xyy, inst.recipeParams) - evalRecipeField(inst.recipeId, p - e.xyy, inst.recipeParams),
+                    evalRecipeField(inst.recipeId, p + e.yxy, inst.recipeParams) - evalRecipeField(inst.recipeId, p - e.yxy, inst.recipeParams),
+                    evalRecipeField(inst.recipeId, p + e.yyx, inst.recipeParams) - evalRecipeField(inst.recipeId, p - e.yyx, inst.recipeParams));
+                haveField = true;
+            }
+#endif
+            if (!haveField && inst.recipeId < 2u) {
+                vec3 lp = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+                g = sdfGradient(inst.recipeId, p, inst.worldPos, lp);
+                haveField = true;
+            }
+            if (haveField && dot(g, g) > 1e-12) normal = normalize(g);
+        }
+    }
+
+    float roughness = HitAccumToksvigWiden(0.5, rc.toksvigFactor);
+    vec3 albedo = rc.avgThroughput;
+    vec3 V = normalize(hitAccumParams.camPos.xyz - rc.avgPos);
+    // Ambient base — the per-pixel path's own term (Lighting.glsl's
+    // data-driven overload: ambientIntensity * color), missing at first light
+    // (found live: cells rendered near-black wherever direct light failed).
+    vec3 Lo = albedo * emission + lightingConfig.ambientIntensity * albedo;
+
+    // The wave's analytic loop at cell scale: NdotL gate BEFORE the trace, one
+    // TraceWorldShadow per (cell, light). Self-shadow handling is CELL-scale:
+    // the averaged position sits inside its own cell's surface spread
+    // (±cellSize/2 on curved surfaces), so a pixel-scale epsilon re-hits the
+    // cell's own surface — found live: 86% of cells traced fully dark. The
+    // trace therefore SKIPS the cell's own footprint via tMin = cellSize (the
+    // cone-tracing offset shape) on top of the normal-offset origin.
+    vec3 shadowOrigin = rc.avgPos + normal * max(shadowConfig.biasEpsilon, 0.5 * cellSize);
+    for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
+        Light light = lightingConfig.lights[i];
+        vec3 lightDir = normalize(light.direction_or_position);
+        float NdotL = max(dot(normal, lightDir), 0.0);
+        if (NdotL <= 0.0) continue;
+        float vis = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            vis = TraceWorldShadow(shadowOrigin, lightDir, cellSize, shadowConfig.maxShadowDistance) ? 0.0 : 1.0;
+        }
+        if (vis > 0.0) {
+            Lo += evalBRDF(albedo, roughness, normal, V, lightDir) * light.radiance;
+        }
+    }
+
+    cellRadiance[slot] = vec4(Lo, 1.0);
+}

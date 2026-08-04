@@ -411,11 +411,13 @@ private:
     // kHitAccumTableCapacity (sync comment there; the diag readback's occupancy
     // scan catches a mismatch loudly, not silently). Entry stride = 12 words.
     static constexpr uint32_t kHitAccumTableCapacity   = 65536u;
-    static constexpr uint32_t kHitAccumEntryBytes      = 52u;  // 13 words (two-word key, rev 2)
+    static constexpr uint32_t kHitAccumEntryBytes      = 56u;  // 14 words (two-word key rev 2 + W3c-2 repInstIdx)
     static constexpr float    kHitAccumDetailSize0     = 0.5f;  // engagement threshold (world units at mip 0)
     bool hitAccumEnabled_ = false;
+    bool hitAccumResolveEnabled_ = false;      // W3c-2: VIXEN_HIT_ACCUM_RESOLVE (requires VIXEN_HIT_ACCUM)
     float hitAccumDetailSize0_ = kHitAccumDetailSize0;  // resolved (env-overridable) engagement threshold
     NodeHandle hitAccumParamsBuffer_{};        // 48-byte host-written per-frame params (epoch/cone/detail/camera; W3c-1)
+    NodeHandle hitAccumCellRadianceBuffer_{};  // W3c-2: vec4 per table slot (the cell shade's output)
     uint32_t hitAccumFrameEpoch_ = 0;
     // W3b diag (VIXEN_HIT_ACCUM_PROBE_LOG): runs at SHUTDOWN, after the last
     // frame — an in-loop readback races the flight ring (waitIdle also waits
