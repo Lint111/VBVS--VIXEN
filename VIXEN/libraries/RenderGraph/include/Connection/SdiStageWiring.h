@@ -114,6 +114,18 @@ SdiWirePlan BuildSdiWirePlan(const SdiFeatureSet& activeFeatures,
  * Provide() captures it in a closure at registration time; application later
  * only needs the target gatherer + slot index.
  */
+/**
+ * @brief A provider's world-side identity, recorded for the hazard census
+ *        (S3): the same RESOURCE provided under different per-shader member
+ *        names correlates by (node, slot), never by name. ProvideCustom
+ *        closures are opaque — known=false, excluded from derivation.
+ */
+struct SdiProviderSource {
+    NodeHandle node{};
+    uint32_t slot = 0;
+    bool known = false;
+};
+
 class SdiProviderRegistry {
 public:
     using ConnectFn = std::function<void(ConnectionBatch&, NodeHandle, uint32_t)>;
@@ -127,6 +139,7 @@ public:
      */
     void ProvideCustom(const std::string& name, ConnectFn fn) {
         providers_[name] = std::move(fn);
+        sources_.erase(name);  // opaque — no census identity
     }
 
     /**
@@ -145,6 +158,14 @@ public:
             batch.Connect(source, sourceSlot, target, targetSlot,
                           SlotRoleModifier(roles));
         };
+        sources_[name] = SdiProviderSource{source, SourceSlot::index, true};
+    }
+
+    /// The provider's (node, slot) identity for the hazard census; known=false
+    /// for ProvideCustom entries and unknown names.
+    SdiProviderSource SourceOf(const std::string& name) const {
+        auto it = sources_.find(name);
+        return it != sources_.end() ? it->second : SdiProviderSource{};
     }
 
     bool Has(const std::string& name) const { return providers_.count(name) > 0; }
@@ -165,6 +186,7 @@ private:
     // Copyable by design — the per-stage overlay pattern copies the shared
     // registry and adds stage-local providers (e.g. bucketing's `mode`).
     std::map<std::string, ConnectFn> providers_;
+    std::map<std::string, SdiProviderSource> sources_;
 };
 
 /**

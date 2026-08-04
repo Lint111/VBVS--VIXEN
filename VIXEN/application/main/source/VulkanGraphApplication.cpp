@@ -3082,6 +3082,76 @@ void VulkanGraphApplication::CompileRenderGraph() {
         }
         mainLogger->Info(std::string("[SyncEdgeDump] direct edge between watched nodes: ") + (foundAny ? "YES" : "NO"));
     }
+
+    // Semantic-wiring S3 sub-slice 2 (VIXEN_SDI_HAZARD_REPORT=1): derived-vs-
+    // baked hazard report — OBSERVER only, never feeds the graph. Derives
+    // candidate sync edges from the synthesized stages' census (member ACCESS
+    // × provider source, filled at their synthesis sites in BuildRenderGraph)
+    // and classifies each against the baked FrameSyncSchedule; then the
+    // reverse: baked edges between census'd stages the derivation missed.
+    // This is the measured answer to "which hand sync sets are derivable"
+    // (epoch doc, S3) — switching any stage to derived sync is a later
+    // sub-slice gated on baked-SyncEdges identity.
+    if (std::getenv("VIXEN_SDI_HAZARD_REPORT")) {
+        using Vixen::RenderGraph::FrameSyncSchedule;
+        using Vixen::RenderGraph::NodeHandle;
+        const FrameSyncSchedule& sched = renderGraph->GetFrameSyncSchedule();
+        const auto derived = Vixen::RenderGraph::DeriveHazardEdges(sdiHazardCensus_);
+
+        std::unordered_map<const Vixen::RenderGraph::NodeInstance*, uint32_t> groupOf;
+        std::unordered_map<uint32_t, std::string> groupName;
+        for (const auto& g : sched.groups) {
+            if (!g.node) continue;
+            groupOf[g.node] = g.groupId;
+            groupName[g.groupId] = g.node->GetInstanceName();
+        }
+        auto nameOf = [&](NodeHandle h) -> std::string {
+            auto* inst = renderGraph->GetInstance(h);
+            return inst ? inst->GetInstanceName()
+                        : ("handle" + std::to_string(h.index));
+        };
+
+        std::set<std::pair<uint32_t, uint32_t>> bakedPairs;
+        for (const auto& e : sched.edges) bakedPairs.insert({e.fromGroup, e.toGroup});
+
+        std::set<uint32_t> censusGroups;
+        for (const NodeHandle stage : sdiHazardCensus_.Stages()) {
+            auto* inst = renderGraph->GetInstance(stage);
+            if (inst && groupOf.count(inst)) censusGroups.insert(groupOf[inst]);
+        }
+
+        mainLogger->Info("[SdiHazard] derived=" + std::to_string(derived.size()) +
+                         " candidate edges; baked total=" + std::to_string(sched.edges.size()) +
+                         "; census stages=" + std::to_string(sdiHazardCensus_.Stages().size()) +
+                         " (" + std::to_string(censusGroups.size()) + " scheduled); opaque members=" +
+                         std::to_string(sdiHazardCensus_.OpaqueMembers().size()));
+
+        std::set<std::pair<uint32_t, uint32_t>> derivedPairs;
+        for (const auto& e : derived) {
+            auto* fromInst = renderGraph->GetInstance(e.from);
+            auto* toInst = renderGraph->GetInstance(e.to);
+            bool baked = false;
+            if (fromInst && toInst && groupOf.count(fromInst) && groupOf.count(toInst)) {
+                const auto pair = std::make_pair(groupOf[fromInst], groupOf[toInst]);
+                derivedPairs.insert(pair);
+                baked = bakedPairs.count(pair) > 0;
+            }
+            mainLogger->Info(std::string("[SdiHazard] DERIVED ") +
+                             (baked ? "[baked]     " : "[NOT-baked] ") +
+                             nameOf(e.from) + " -> " + nameOf(e.to) + " via " +
+                             nameOf(e.resource.node) + ":" + std::to_string(e.resource.slot));
+        }
+        for (const auto& e : sched.edges) {
+            if (!censusGroups.count(e.fromGroup) || !censusGroups.count(e.toGroup)) continue;
+            if (derivedPairs.count({e.fromGroup, e.toGroup})) continue;
+            mainLogger->Info("[SdiHazard] BAKED-not-derived " + groupName[e.fromGroup] +
+                             " -> " + groupName[e.toGroup]);
+        }
+        for (const auto& om : sdiHazardCensus_.OpaqueMembers()) {
+            mainLogger->Info("[SdiHazard] OPAQUE " + nameOf(om.stage) +
+                             " member '" + om.memberName + "'");
+        }
+    }
 }
 
 void VulkanGraphApplication::HandleShutdownRequest() {

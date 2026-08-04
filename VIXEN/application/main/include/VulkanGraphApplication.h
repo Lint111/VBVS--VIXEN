@@ -12,6 +12,7 @@
 #include "graph/HudViewBridge.h"  // HudFactionIn/HudEventIn (gaia-free) + Make/Wire/PushHudView seam
 #include "graph/BuildingInspectorBridge.h"  // step-6 M-ui: Make/Mount/PushBuildingInspector seam (gaia-free)
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
+#include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "ShaderCacheManager.h"  // Baked-perf-pipeline M2b: persistent disk cache for the 4 live shader builders (BuildRenderGraph.cpp)
 #include <chrono>
 #include <memory>
@@ -366,6 +367,12 @@ private:
     // depth, so it needs last frame's camera) plus the live instance count; complete no-op when
     // the flag is unset (handles stay invalid, guarded like the bucketing path above).
     bool b1OcclusionCullEnabled_ = false;
+
+    // Semantic-wiring S3 sub-slice 2: hazard census over the synthesized
+    // stages (filled at their synthesis sites in BuildRenderGraph). OBSERVER
+    // only — VIXEN_SDI_HAZARD_REPORT=1 diffs derived edges against the baked
+    // FrameSyncSchedule after compile; never feeds the graph.
+    Vixen::RenderGraph::SdiHazardCensus sdiHazardCensus_;
     NodeHandle b1CullPrevViewProjConstant_{};
     NodeHandle b1CullPrevCamPosConstant_{};
     NodeHandle b1CullDimsConstant_{};

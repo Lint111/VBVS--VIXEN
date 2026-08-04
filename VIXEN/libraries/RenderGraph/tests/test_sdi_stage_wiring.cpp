@@ -232,3 +232,69 @@ TEST(SdiStageWiring, RegistryCopyIsIndependent) {
     EXPECT_TRUE(stage.Has("mode"));
     EXPECT_FALSE(shared.Has("mode"));
 }
+
+// --- S3 sub-slice 2: hazard census + derived edges (observer) ---------------
+// Derivation rule under test: for each (node, slot) resource recorded by 2+
+// stages, every writer (access != ReadOnly) gets an edge to every reader
+// (access != WriteOnly) on a DIFFERENT stage. Opaque providers (ProvideCustom
+// — no recorded source) are excluded from derivation but surfaced for the
+// coverage report. This is the OBSERVER half: derived edges are compared
+// against the scheduler's baked SyncEdges, never fed into the graph.
+
+#include "Connection/SdiHazardCensus.h"
+
+TEST(SdiHazardCensus, WriterToReaderDerivesOneEdge) {
+    SdiHazardCensus census;
+    const NodeHandle hiz{10}, cull{11}, tile{20};
+    census.Record(hiz,  {tile, 0}, SdiAccess::WriteOnly);
+    census.Record(cull, {tile, 0}, SdiAccess::ReadOnly);
+
+    const auto edges = DeriveHazardEdges(census);
+    ASSERT_EQ(edges.size(), 1u);
+    EXPECT_EQ(edges[0].from, hiz);
+    EXPECT_EQ(edges[0].to, cull);
+    EXPECT_EQ(edges[0].resource.node, tile);
+}
+
+TEST(SdiHazardCensus, ReadWritePairDerivesBothDirections) {
+    SdiHazardCensus census;
+    const NodeHandle a{1}, b{2}, buf{5};
+    census.Record(a, {buf, 0}, SdiAccess::ReadWrite);
+    census.Record(b, {buf, 0}, SdiAccess::ReadWrite);
+
+    const auto edges = DeriveHazardEdges(census);
+    ASSERT_EQ(edges.size(), 2u);
+    EXPECT_TRUE((edges[0].from == a && edges[0].to == b) ||
+                (edges[0].from == b && edges[0].to == a));
+    EXPECT_TRUE(edges[0].from != edges[1].from);
+}
+
+TEST(SdiHazardCensus, ReadOnlySharersDeriveNothing) {
+    SdiHazardCensus census;
+    const NodeHandle a{1}, b{2}, buf{5};
+    census.Record(a, {buf, 0}, SdiAccess::ReadOnly);
+    census.Record(b, {buf, 0}, SdiAccess::ReadOnly);
+    EXPECT_TRUE(DeriveHazardEdges(census).empty());
+}
+
+TEST(SdiHazardCensus, SingleStageDerivesNothing) {
+    SdiHazardCensus census;
+    census.Record(NodeHandle{1}, {NodeHandle{5}, 0}, SdiAccess::ReadWrite);
+    EXPECT_TRUE(DeriveHazardEdges(census).empty());
+}
+
+TEST(SdiHazardCensus, DistinctSlotsAreDistinctResources) {
+    SdiHazardCensus census;
+    const NodeHandle a{1}, b{2}, n{5};
+    census.Record(a, {n, 0}, SdiAccess::WriteOnly);
+    census.Record(b, {n, 1}, SdiAccess::ReadOnly);
+    EXPECT_TRUE(DeriveHazardEdges(census).empty());
+}
+
+TEST(SdiHazardCensus, OpaqueMembersAreReportedNotDerived) {
+    SdiHazardCensus census;
+    census.RecordOpaque(NodeHandle{1}, "cameraPos");
+    EXPECT_TRUE(DeriveHazardEdges(census).empty());
+    ASSERT_EQ(census.OpaqueMembers().size(), 1u);
+    EXPECT_EQ(census.OpaqueMembers()[0].memberName, "cameraPos");
+}

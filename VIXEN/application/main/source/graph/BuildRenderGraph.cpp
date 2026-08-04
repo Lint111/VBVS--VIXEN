@@ -5958,6 +5958,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
             },
             bucketingCommon, bucketingProviders, {});
 
+        // S3 observer: census the three mode stages. Known-underivable case —
+        // the shared interface's SSBOs are plain read-write, so the derivation
+        // will propose all-pairs edges where the hand W/R split encodes
+        // per-`mode` roles; the report exists to MEASURE exactly this.
+        {
+            const SdiFeatureSet bucketingNoFeatures;
+            for (NodeHandle censusStage : {recipeBucketingModeInit,
+                                           recipeBucketingModeBucket,
+                                           recipeBucketingModeFinal}) {
+                CensusStageFromSdi<BucketSdi::Metadata, BucketSdi::MEMBERS>(
+                    sdiHazardCensus_, censusStage, bucketingProviders,
+                    bucketingNoFeatures);
+            }
+        }
+
         // Auto-sync hazard declarations: mode-init/mode-bucket WRITE the counters/indices/
         // coverage buffers; mode-final READS the (by-then-final) coverage extrema and WRITES
         // the indirect-command buffer. Declaring these bakes the required
@@ -6140,6 +6155,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         b1CullPushGatherer  = cullSynth.pushGatherer;
         b1CullDescriptorSet = cullSynth.descriptorSet;
         b1CullPipeline      = cullSynth.pipeline;
+
+        // S3 observer: census both B1 stages' members (access x provider
+        // source) for the derived-hazard report (VIXEN_SDI_HAZARD_REPORT).
+        CensusStageFromSdi<HizSdi::Metadata, HizSdi::MEMBERS>(
+            sdiHazardCensus_, b1HizStage, b1Providers, b1Features);
+        CensusStageFromSdi<CullSdi::Metadata, CullSdi::MEMBERS>(
+            sdiHazardCensus_, b1CullStage, b1Providers, b1Features);
 
         // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
         // the cull writes the skip-mask buffer the march + lighting passes already read.
@@ -6792,6 +6814,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
         SdiWireSet::DescriptorsOnly);
     directLightingPushConstantGatherer = dlSynth.pushGatherer;
 
+    // S3 observer: census the lighting stages (same empty feature set their
+    // wire calls use — the binding-14 member is feature-gated OUT of the walk).
+    const SdiFeatureSet sdiNoFeatures;
+    CensusStageFromSdi<DirectSdi::Metadata, DirectSdi::MEMBERS>(
+        sdiHazardCensus_, directLightingNode, sceneProviders, sdiNoFeatures);
+
     // DirectLighting's own push-constant gatherer (synthesized above): SAME field sources as the
     // march's own gatherer (cameraPos/time/cameraDir/fov/cameraUp/aspect/cameraRight/debugMode/
     // raySizeCoef/raySizeBias/instanceCount/debugTargetPixel/accumFrameCount) — DirectLighting.comp
@@ -6893,6 +6921,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         spatialReuseNode, lightingCommon, sceneProviders, {},
         SdiWireSet::DescriptorsOnly);
     spatialReusePushConstantGatherer = reuseSynth.pushGatherer;
+    CensusStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
+        sdiHazardCensus_, spatialReuseNode, sceneProviders, sdiNoFeatures);
 
     // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
     // DirectLighting's own gatherer (a third compiled program still needs its own reflected
@@ -7060,6 +7090,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         probeUpdateNode, lightingCommon, sceneProviders, {},
         SdiWireSet::DescriptorsOnly);
     probeUpdatePushConstantGatherer = probeSynth.pushGatherer;
+    CensusStageFromSdi<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
+        sdiHazardCensus_, probeUpdateNode, sceneProviders, sdiNoFeatures);
 
     // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
     // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no
