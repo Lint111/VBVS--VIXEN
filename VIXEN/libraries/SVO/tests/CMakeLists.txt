@@ -324,6 +324,23 @@ set_target_properties(test_reservoir_mirror PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_reservoir_mirror)
 
 # ===========================================================================
+# Hit-Accumulation Mirror Tests  (Wavefront W3a — CPU mirror of the
+# (recipeId, cell@mip) hierarchical accumulation math: mip selection, cell
+# keying, fixed-point average-sums with EXACT associative merge, Toksvig
+# widen. Red-green BEFORE the W3b GPU pass exists — HitAccumulation.h is the
+# specification and the future GLSL's sync-contract source.)
+# ===========================================================================
+add_executable(test_hit_accumulation_mirror test_hit_accumulation_mirror.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_hit_accumulation_mirror PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_hit_accumulation_mirror PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_hit_accumulation_mirror PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_hit_accumulation_mirror)
+
+# ===========================================================================
 # Resolvable-Level Formula Tests  (Sparse-Mip ESVO LOD Inc1 M4a Task 10 part 1
 # — pure math, no octree/GPU needed: minResolvableLevel(distance, fovRadians,
 # screenHeightPx, leafSize_m, pxThreshold), both distance- and FOV-driven axes)
