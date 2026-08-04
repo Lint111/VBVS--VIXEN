@@ -2,7 +2,7 @@
 // Feature-Tagged Merged SDI (Semantic Shader Wiring S0)
 // ============================================================================
 //
-// Program: ProbeUpdate
+// Program: ProbeGather
 // Feature axis: VIXEN_GPU_TRACE_HOOKS
 //
 // Merged across compiled feature variants: every member carries the
@@ -22,7 +22,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace ProbeUpdate {
+namespace ProbeGather {
 
 // Per-binding access mode, from SPIR-V decorations (storage kinds)
 // or the descriptor kind's inherent read-only nature. Feeds the
@@ -308,26 +308,6 @@ struct ProbeGridConfigSSBO {
 };
 
 /**
- * @brief DDGILeakGateDebugSSBO
- * Size: 0 bytes
- * Alignment: 16 bytes
- * Layout VixenHash: 0x4eab1e81643c3983 (for runtime discovery)
- */
-struct DDGILeakGateDebugSSBO {
-    // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x4eab1e81643c3983ULL;
-
-    // Member metadata structs
-    struct pc_0 {
-        static constexpr const char* TYPE = "DDGILeakGateDebug";
-        static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 60;
-        static constexpr uint32_t BINDING = 0;
-    };
-
-};
-
-/**
  * @brief InstanceSkipMaskBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
@@ -342,6 +322,46 @@ struct InstanceSkipMaskBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief ShadowRayRequestBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x197250a41e40fb05 (for runtime discovery)
+ */
+struct ShadowRayRequestBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x197250a41e40fb05ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "ShadowRayRequest";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 32;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief ProbeRayPayloadBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x340b03932f75e9d8 (for runtime discovery)
+ */
+struct ProbeRayPayloadBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x340b03932f75e9d8ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "ProbeRayPayload";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 16;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -547,49 +567,6 @@ namespace Set0 {
     };
 
     /**
-     * @brief probeIrradianceAtlas
-     * Type: STORAGE_IMAGE
-     */
-    struct Binding29 {
-        static constexpr const char* NAME = "probeIrradianceAtlas";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 29;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
-    /**
-     * @brief probeVisibilityAtlas
-     * Type: STORAGE_IMAGE
-     */
-    struct Binding30 {
-        static constexpr const char* NAME = "probeVisibilityAtlas";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 30;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-    };
-
-    /**
-     * @brief DDGILeakGateDebugSSBO
-     * Type: STORAGE_BUFFER
-     */
-    struct Binding31 {
-        static constexpr const char* NAME = "DDGILeakGateDebugSSBO";
-        static constexpr uint32_t SET = 0;
-        static constexpr uint32_t BINDING = 31;
-        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        static constexpr uint32_t COUNT = 1;
-        static constexpr Access ACCESS = Access::ReadWrite;
-        static constexpr uint32_t FEATURE_COUNT = 0;
-        using DataType = DDGILeakGateDebugSSBO;
-    };
-
-    /**
      * @brief InstanceSkipMaskBuffer
      * Type: STORAGE_BUFFER
      */
@@ -602,6 +579,36 @@ namespace Set0 {
         static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = InstanceSkipMaskBuffer;
+    };
+
+    /**
+     * @brief ShadowRayRequestBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding37 {
+        static constexpr const char* NAME = "ShadowRayRequestBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 37;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = ShadowRayRequestBuffer;
+    };
+
+    /**
+     * @brief ProbeRayPayloadBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding39 {
+        static constexpr const char* NAME = "ProbeRayPayloadBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 39;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = ProbeRayPayloadBuffer;
     };
 
 } // namespace Set0
@@ -621,10 +628,9 @@ using InstanceIterDebugBuffer = Set0::Binding14;
 using TierRefTableBuffer = Set0::Binding15;
 using LightTreeBufferSSBO = Set0::Binding24;
 using ProbeGridConfigSSBO = Set0::Binding28;
-using probeIrradianceAtlas = Set0::Binding29;
-using probeVisibilityAtlas = Set0::Binding30;
-using DDGILeakGateDebugSSBO = Set0::Binding31;
 using InstanceSkipMaskBuffer = Set0::Binding35;
+using ShadowRayRequestBuffer = Set0::Binding37;
+using ProbeRayPayloadBuffer = Set0::Binding39;
 } // namespace Bind
 
 namespace Push {
@@ -768,10 +774,9 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"TierRefTableBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
     {"LightTreeBufferSSBO", false, 0, 24, 0, Access::ReadOnly, 0, nullptr},
     {"ProbeGridConfigSSBO", false, 0, 28, 0, Access::ReadOnly, 0, nullptr},
-    {"probeIrradianceAtlas", false, 0, 29, 0, Access::ReadWrite, 0, nullptr},
-    {"probeVisibilityAtlas", false, 0, 30, 0, Access::ReadWrite, 0, nullptr},
-    {"DDGILeakGateDebugSSBO", false, 0, 31, 0, Access::ReadWrite, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
+    {"ShadowRayRequestBuffer", false, 0, 37, 0, Access::WriteOnly, 0, nullptr},
+    {"ProbeRayPayloadBuffer", false, 0, 39, 0, Access::WriteOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -805,10 +810,10 @@ inline std::vector<MemberInfo> Members(
 }
 
 struct Metadata {
-    static constexpr const char* PROGRAM_NAME = "ProbeUpdate";
-    static constexpr uint32_t NUM_MEMBERS = 30;
+    static constexpr const char* PROGRAM_NAME = "ProbeGather";
+    static constexpr uint32_t NUM_MEMBERS = 29;
     static constexpr uint32_t NUM_FEATURES = 1;
 };
 
-} // namespace ProbeUpdate
+} // namespace ProbeGather
 } // namespace ShaderInterface

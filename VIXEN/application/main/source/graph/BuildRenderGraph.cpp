@@ -38,6 +38,7 @@
 #include "merged/ProbeGather-SDI.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.h"
 #include "merged/ShadowRayTrace-SDI.h"
+#include "merged/ShadowVisibilityWave-SDI.h"    // W1b: the derived-request shadow wave
 
 // Semantic-wiring S1: short aliases for the merged-SDI namespaces used at many
 // Connect sites below (drift-gated by ctest sdi_merged_drift_check). The three
@@ -51,6 +52,7 @@ namespace ReuseSdi = ShaderInterface::SpatialReuseShade;
 namespace GatherSdi = ShaderInterface::ProbeGather;
 namespace ApplySdi = ShaderInterface::ProbeApply;
 namespace ShadowSdi = ShaderInterface::ShadowRayTrace;
+namespace WaveSdi = ShaderInterface::ShadowVisibilityWave;
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -665,6 +667,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle shadowRayTraceReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_ray_trace_read_gatherer");
     NodeHandle shadowRayTraceWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_ray_trace_write_gatherer");
     NodeHandle probeApplyReadGatherer      = renderGraph->AddNode<BufferSyncGathererNodeType>("probe_apply_read_gatherer");
+
+    // W1b (wavefront epoch): the DERIVED-REQUEST shadow wave — answers the
+    // production per-pixel-per-light shadow question into HitRecord._pad0[0]
+    // between the march (record producer) and the shade pass (record
+    // consumer), so SpatialReuseShade's default variant never traces. NO
+    // request/result buffers exist (the user bandwidth ruling: derivable rays
+    // ship answers in resident records) — the wave's only data traffic is a
+    // read-modify-write of the hit-record buffer it shares with march/DL/SRS,
+    // declared via its own read+write gatherer pair on that ONE resource.
+    NodeHandle shadowVisibilityWaveShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("shadow_visibility_wave_shader_lib");
+    NodeHandle shadowVisibilityWavePushConstantGatherer{};  // synthesized at the wire site
+    NodeHandle shadowVisibilityWaveNode = renderGraph->AddNode<ComputeStageNodeType>("shadow_visibility_wave");
+    NodeHandle shadowVisibilityWaveReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_visibility_wave_read_gatherer");
+    NodeHandle shadowVisibilityWaveWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_visibility_wave_write_gatherer");
 
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
     // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
@@ -1556,6 +1572,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            makeLightingFamily("ShadowRayTrace.comp", "ShadowRayTrace"));
     registerLightingFamily(probeApplyShaderLib,
                            makeLightingFamily("ProbeApply.comp", "ProbeApply"));
+    // W1b: the derived-request shadow wave (SceneBindings consumer — carries
+    // the trace-hooks variant axis like every traversal pass).
+    registerLightingFamily(shadowVisibilityWaveShaderLib,
+                           makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave"));
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: RecipeInstanceBucketing.comp registration.
     // Same search-path pattern as DirectLighting.comp/ProbeUpdate.comp above -- a plain static
@@ -1699,6 +1719,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // force-enable landed too late, permanently disabling probe_update's dispatch on the demo
     // that most needs it).
 
+    // W1b: the derived-request shadow wave — 1D over the hit-record buffer's
+    // pixel count (slot = linear pixel index; the shader bounds itself on
+    // hitRecords.length(), so the ceil over-dispatch is a harmless tail).
+    // Same build-time-extent derivation as DirectLighting immediately above
+    // (VIXEN_RENDER_SCALE fixed at process start; dims never live-resize).
+    // Dispatches unconditionally — the march always produces records, the
+    // shade pass always consumes bits; there is no off-path.
+    {
+        const uint32_t wavePixelsX = static_cast<uint32_t>(width * renderScale);
+        const uint32_t wavePixelsY = static_cast<uint32_t>(height * renderScale);
+        const uint32_t waveDispatchX = (wavePixelsX * wavePixelsY + 63u) / 64u;
+        auto* shadowVisibilityWave = static_cast<ComputeStageNode*>(renderGraph->GetInstance(shadowVisibilityWaveNode));
+        shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+        shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
+        shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+        shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    }
+
     // SpatialReuseNode (Sampled Lighting Inc3 M5): the second half of the pass split — NOW owns
     // IMAGE_WRITE (moved from DirectLightingNode), so it keeps the ORIGINAL live-derivation
     // (dims left at 0/0, RecordComputeCommands derives them from IMAGE_WRITE's renderTargetNode
@@ -1723,6 +1761,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceWriteGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeApplyReadGatherer))->PreRegisterBufferSlots(2);
+    // W1b: the shadow wave reads {hitRecordBuffer} and writes {hitRecordBuffer}
+    // (an RMW of one word — but the hazard model tracks whole resources).
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(1);
 
     // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
@@ -7237,6 +7279,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     CensusStageFromSdi<ApplySdi::Metadata, ApplySdi::MEMBERS>(
         sdiHazardCensus_, probeApplyNode, sceneProviders, sdiNoFeatures,
         &sdiCensusExclusions);
+    // W1b: the shadow wave — every one of its members (the scene set via
+    // SceneBindings, LightingConfigSSBO/HitRecordBuffer/ShadowConfigSSBO)
+    // already has a registry provider; DescriptorsOnly because its
+    // SceneBindings push block is hand-wired below like every tracing stage.
+    const auto waveSynth = SynthesizeComputeStage<WaveSdi::Metadata, WaveSdi::MEMBERS>(
+        renderGraph, batch, "shadow_visibility_wave", shadowVisibilityWaveShaderLib,
+        shadowVisibilityWaveNode, lightingCommon, sceneProviders, {},
+        SdiWireSet::DescriptorsOnly);
+    shadowVisibilityWavePushConstantGatherer = waveSynth.pushGatherer;
+    CensusStageFromSdi<WaveSdi::Metadata, WaveSdi::MEMBERS>(
+        sdiHazardCensus_, shadowVisibilityWaveNode, sceneProviders, sdiNoFeatures,
+        &sdiCensusExclusions);
 
     // Both TRACING stages consume SceneBindings.glsl's PushConstants block and
     // need the same three live fields the merged ProbeUpdate needed — the M4/
@@ -7264,6 +7318,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           SlotRoleModifier(SlotRole::Execute));
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
                           shadowRayTracePushConstantGatherer, ShadowSdi::Push::raySizeBias::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
+    // W1b: the shadow-visibility wave traces too — same three live fields
+    // (instanceCount bounds the instance loop; raySizeCoef/raySizeBias feed
+    // the any-hit LOD gate — the M4/M4b findings preserved a third time).
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::instanceCount::INDEX,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+                          shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::raySizeCoef::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          shadowVisibilityWavePushConstantGatherer, WaveSdi::Push::raySizeBias::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
 
     // W1a cross-dispatch buffer hazards: writer-side and reader-side gatherers
@@ -7294,6 +7360,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   probeApplyReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(probeApplyReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   probeApplyNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
+    // W1b cross-dispatch hazards: the shadow wave read-modify-writes the
+    // hit-record buffer BETWEEN the march (writer) and DL/SpatialReuse
+    // (readers) — declared as its own read+write gatherer pair on that ONE
+    // shared resource (both-slots-on-one-stage: bucketing's modeFinal
+    // precedent). The scheduler orders march→wave→readers on the shared
+    // Resource* exactly as it orders the reservoir ping-pong today; verified
+    // by the SCHED identity dump + the frame-hash gate (an unordered wave
+    // reads-before-march or writes-after-shade would break the hash loudly).
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  shadowVisibilityWaveReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(shadowVisibilityWaveReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  shadowVisibilityWaveNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  shadowVisibilityWaveWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(shadowVisibilityWaveWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  shadowVisibilityWaveNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // Sync slot: IMAGE_WRITE_ARRAY — the genuine write hazard on the persistent probe
     // atlases, now owned by probe_apply (W1a: the frame's ONLY atlas writer — this

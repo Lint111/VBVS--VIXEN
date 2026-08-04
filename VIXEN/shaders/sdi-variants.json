@@ -43,8 +43,8 @@
       ]
     },
     {
-      "name": "ProbeUpdate",
-      "source": "ProbeUpdate.comp",
+      "name": "ShadowVisibilityWave",
+      "source": "ShadowVisibilityWave.comp",
       "variants": [
         [],
         [

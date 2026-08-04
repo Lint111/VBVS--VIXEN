@@ -32,7 +32,17 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform writeonly image2D outputImage;
 
-#include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018)
+// W1b (wavefront epoch): this pass NO LONGER TRACES on the default path — the
+// ShadowVisibilityWave answers every shadow question into HitRecord._pad0
+// before this pass runs (see that shader's header for the _pad0 ledger). The
+// default variant therefore takes only the non-traversal core (pc push block +
+// getRayDir via SceneCommon.glsl); the VIXEN_SHADOW_DBG variant keeps the full
+// traversal seam for its own dedicated diagnostic ray (:431 arm).
+#ifdef VIXEN_SHADOW_DBG
+#include "SceneBindings.glsl"   // scene SSBOs + traversal (KI-018) — debug arm traces inline
+#else
+#include "SceneCommon.glsl"     // pc + camera rays only — NO traversal machinery
+#endif
 
 // ============================================================================
 // LIGHTING CONFIG (binding 16)
@@ -42,6 +52,15 @@ layout(binding = 0) uniform writeonly image2D outputImage;
 layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
+
+// W1b: the shading math (evalBRDF/normalShading/computeLighting) used to
+// arrive through SceneBindings' shared-include chain; the default variant no
+// longer has that chain, so it takes Lighting.glsl (which pulls Brdf.glsl)
+// directly. Guarded because neither file carries an include guard and the
+// VIXEN_SHADOW_DBG variant still receives both via SceneBindings.
+#ifndef VIXEN_SHADOW_DBG
+#include "Lighting.glsl"
+#endif
 
 // ============================================================================
 // HIT RECORD BUFFER (binding 17) — this pass READS ONLY
@@ -322,8 +341,14 @@ ivec2 spatialNeighborOffset(inout uint rngState, float radius) {
 // DIRECT LIGHTING WITH SHADOW RAYS (moved verbatim from BodyInstanceRayMarch.comp,
 // Sampled Lighting Inc1 M4 -> DirectLighting.comp M1 -> here M5)
 // ============================================================================
+// W1b: takes the pixel's wave-computed visibility bitmask (HitRecord._pad0[0],
+// bit i = light i unoccluded) instead of tracing inline — the derivation, the
+// NdotL-before-trace gate, and shadowConfig semantics all live in
+// ShadowVisibilityWave.comp now, mirroring this function's own original order
+// exactly. Arithmetic below is UNTOUCHED from the merged shader (bit-exact:
+// shadowFactor is the same 0.0/1.0 the inline trace produced).
 vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
-                                float roughness, LightingConfig lighting) {
+                                float roughness, LightingConfig lighting, uint visBits) {
     vec3 viewDir = normalize(-rayDir);
 
     vec3 Lo = lighting.ambientIntensity * color;
@@ -331,21 +356,17 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
         Light light = lighting.lights[i];
         vec3 lightDir = normalize(light.direction_or_position);
 
-        // NdotL gate BEFORE the shadow trace (audit C3 / Top #3): evalBRDF's return is
-        // (diffuse + specular) * NdotL (Brdf.glsl:71), so NdotL <= 0 makes the light's
-        // entire contribution provably zero regardless of the trace result -- skip the
-        // scene march for a light this surface point faces away from. Mirrors the idiom
-        // already used by ProbeUpdate.comp's sampleDirectLitRadiance (:236-241).
+        // NdotL gate BEFORE consuming the shadow bit (audit C3 / Top #3): evalBRDF's
+        // return is (diffuse + specular) * NdotL (Brdf.glsl:71), so NdotL <= 0 makes
+        // the light's entire contribution provably zero regardless of visibility --
+        // and the wave skipped this light's trace under the SAME gate, leaving its
+        // bit at 1 (never consumed here). Mirrors ProbeUpdate's own idiom.
         float NdotL = max(dot(normal, lightDir), 0.0);
         if (NdotL <= 0.0) continue;
 
         float shadowFactor = 1.0;
         if (shadowConfig.enabled != 0u) {
-            vec3 shadowOrigin = worldPos + normal * shadowConfig.biasEpsilon;
-            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
-                                             0.0,
-                                             shadowConfig.maxShadowDistance);
-            shadowFactor = occluded ? 0.0 : 1.0;
+            shadowFactor = ((visBits >> i) & 1u) != 0u ? 1.0 : 0.0;
         }
 
         Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
@@ -387,7 +408,8 @@ void main() {
     vec3 outColor;
     if (anyHitRT) {
         outColor = computeLightingWithShadows(bestColor, bestNormal, bestWorldPos, rayDir,
-                                               bestRoughness, lightingConfig);
+                                               bestRoughness, lightingConfig,
+                                               recReadback._pad0[0]);
 
         // M11.2: self-lit emissive term at the PRIMARY (camera) hit. Without this the
         // ceiling light panel only ever acts as a light SOURCE (via the light-tree/DDGI
@@ -541,10 +563,15 @@ void main() {
             if (NdotL > 0.0 && W > 0.0) {
                 float shadowFactor = 1.0;
                 if (shadowConfig.enabled != 0u) {
-                    vec3 shadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
-                    float lightDist = sqrt(dist2);
-                    bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
-                    shadowFactor = occluded ? 0.0 : 1.0;
+                    // W1b: the reservoir ray's answer arrives via the wave in
+                    // HitRecord._pad0[2] (nonzero = visible) — the ray itself
+                    // is derivable from the combined reservoir + this record,
+                    // so no inline trace and no request buffer. ⚠ Until the
+                    // wave's reservoir section lands (the ReSTIR half of W1b),
+                    // [2] is unwritten (0 = occluded) and an enabled-ReSTIR
+                    // build gets zero direct-reservoir contribution — ReSTIR
+                    // is opt-in-OFF everywhere today; tracked in the slice.
+                    shadowFactor = (recReadback._pad0[2] != 0u) ? 1.0 : 0.0;
                 }
 
                 float emittedPower = chosen.intensity * chosen.coverage *

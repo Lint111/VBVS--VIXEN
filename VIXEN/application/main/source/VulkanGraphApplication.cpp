@@ -1049,6 +1049,11 @@ void VulkanGraphApplication::PostTick() {
     if (auto* probeGather = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_gather"))) {
         passes.push_back({"probe_gather", probeGather->GetGPUPerformanceLogger()});
     }
+    // W1b: the derived-request shadow wave — its column is what prices moving
+    // the production shadow traces out of the shade megakernel.
+    if (auto* shadowVisWave = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_visibility_wave"))) {
+        passes.push_back({"shadow_visibility_wave", shadowVisWave->GetGPUPerformanceLogger()});
+    }
     if (auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_ray_trace"))) {
         passes.push_back({"shadow_ray_trace", shadowRayTrace->GetGPUPerformanceLogger()});
     }
@@ -3059,16 +3064,18 @@ void VulkanGraphApplication::CompileRenderGraph() {
     }
 
     // Sampled Lighting Inc4 M5 live-gate instrumentation (VIXEN_DUMP_SYNC_EDGES=1): one-shot
-    // dump of the actual baked FrameSyncSchedule edges touching probe_update, direct_lighting,
-    // and spatial_reuse_shade — the plan's own instruction to inspect the scheduler's REAL
+    // dump of the actual baked FrameSyncSchedule edges touching the probe chain (W1a's
+    // gather/wave/apply split — probe_update's successors), direct_lighting, and
+    // spatial_reuse_shade — the plan's own instruction to inspect the scheduler's REAL
     // output (not infer it from "it renders correctly"), mirroring Inc3 M5's own fan-in-demo
     // edge-topology verification rigor. Reports, per named node, which OTHER named node (if
-    // any) it has a direct SyncEdge to/from, so a barrier between probe_update and either
+    // any) it has a direct SyncEdge to/from, so a barrier between the probe chain and either
     // direct_lighting or spatial_reuse_shade is a concrete, grep-able finding rather than an
     // assumption.
     if (std::getenv("VIXEN_DUMP_SYNC_EDGES")) {
         const Vixen::RenderGraph::FrameSyncSchedule& sched = renderGraph->GetFrameSyncSchedule();
-        std::vector<std::string> watchNames = {"probe_update", "direct_lighting", "spatial_reuse"};
+        std::vector<std::string> watchNames = {"probe_gather", "shadow_ray_trace", "probe_apply",
+                                               "direct_lighting", "spatial_reuse"};
         std::unordered_map<uint32_t, std::string> groupIdToName;
         for (const auto& group : sched.groups) {
             if (!group.node) continue;

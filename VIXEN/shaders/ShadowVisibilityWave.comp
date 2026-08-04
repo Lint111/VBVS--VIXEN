@@ -1,0 +1,106 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// ShadowVisibilityWave.comp - the DERIVED-REQUEST shadow wave (wavefront W1b)
+// ============================================================================
+// (undertow docs/plans/2026-08-04-wavefront-recipe-shading.md § W1b — authoritative)
+//
+// Answers the production direct-lighting shadow question for every pixel in
+// ONE traversal-only pass, so SpatialReuseShade's default variant never
+// traces. No request buffer exists — the analytic-light rays are FULLY
+// DERIVABLE from data this wave reads itself (the user bandwidth ruling:
+// derivable rays ship ANSWERS, not questions): origin/normal from the pixel's
+// HitRecord, direction from LightingConfig's lights[], tmax from ShadowConfig.
+// The answer is a per-pixel VISIBILITY BITMASK written into the HitRecord's
+// own spare word, riding the 64-B record the shade pass already fetches —
+// zero new buffers, zero extra read streams.
+//
+// HitRecord._pad0 ledger (the shared-slot contract):
+//   [0] = THIS WAVE's light-visibility bitmask (bit i = light i unoccluded;
+//         all-ones for miss pixels / disabled shadows / lights past
+//         lightCount — exact-math-safe: the shade pass only consumes a bit
+//         when NdotL>0 for that light, mirroring the merged shader's own
+//         NdotL-before-trace gate).
+//   [1] = WorldHit.emission (written by the march — NEVER touched here; this
+//         wave read-modify-writes ONLY [0]).
+//   [2] = reserved for the ReSTIR reservoir-ray answer (opt-in path).
+//   Under VIXEN_SHADOW_DBG the M10 diagnostic stashes over all three for its
+//   ONE diagnosed pixel — ordering-safe: that stash happens in the shade pass
+//   AFTER the light loop consumed [0], and the march + this wave rewrite the
+//   record next frame.
+//
+// Dispatch: 1D over hitRecords.length() (slot = linear pixel index — no
+// extent plumbing; the buffer is already sized width×height by the march's
+// own extent-driven node). Runs between the march (record producer) and
+// SpatialReuseShade (record consumer): march→wave RAW, wave→shade RAW on the
+// SAME buffer resource.
+//
+// Includes the FULL scene set: TraceWorldShadow walks the same resident scene
+// every traversal pass walks (SceneBindings.glsl is the single traversal
+// seam). The shared push block rides along — the ProbeUpdate-family
+// precedent: pc.instanceCount (field 10) bounds the instance loop (an
+// unconnected/zero value makes EVERY ray a guaranteed miss), and
+// pc.raySizeCoef/raySizeBias (fields 8/9) feed the any-hit LOD gate.
+// ============================================================================
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "SceneBindings.glsl"
+
+#include "Generated/LightingConfig.glsl"
+
+layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
+    LightingConfig lightingConfig;
+};
+
+#include "HitRecord.glsl"
+
+// NON-readonly by design: this wave is the bitmask writer (RMW of _pad0[0]
+// only — every other field is the march's, preserved untouched).
+layout(std430, binding = 17) buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+#include "Generated/ShadowConfig.glsl"
+
+layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
+    ShadowConfig shadowConfig;
+};
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= hitRecords.length()) return;
+
+    // Default answer: every light visible. Covers miss pixels (no surface to
+    // shadow), shadowConfig.enabled==0 (the merged shader's shadowFactor=1.0
+    // no-trace path), lights past lightCount, and NdotL<=0 lights (whose bit
+    // is never consumed — the shade pass gates on NdotL first, exactly as the
+    // merged shader gated before tracing).
+    uint visBits = 0xFFFFFFFFu;
+
+    uint flags = hitRecords[slot].flags;
+    if ((flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
+        vec3 worldPos    = hitRecords[slot].worldPos;
+        vec3 worldNormal = hitRecords[slot].worldNormal;
+        vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
+
+        for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
+            Light light = lightingConfig.lights[i];
+            vec3 lightDir = normalize(light.direction_or_position);
+
+            // Same NdotL-before-trace gate as the merged shader (audit C3):
+            // a light the surface faces away from contributes provably zero,
+            // so its trace is skipped and its bit stays 1 (never consumed).
+            float NdotL = max(dot(worldNormal, lightDir), 0.0);
+            if (NdotL <= 0.0) continue;
+
+            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
+                                             0.0,
+                                             shadowConfig.maxShadowDistance);
+            if (occluded) visBits &= ~(1u << i);
+        }
+    }
+
+    hitRecords[slot]._pad0[0] = visBits;
+}
