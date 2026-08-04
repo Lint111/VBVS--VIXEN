@@ -178,6 +178,54 @@ TEST(HitAccumMirror, Toksvig_MonotoneInDisagreement_NeverNarrows) {
     }
 }
 
+// --- Packed key (W3b's single-CAS GPU slot claim) ---------------------------
+
+TEST(HitAccumMirror, PackKey_RoundTripsInRange) {
+    // recipeId(8) | mip(4) | camera-anchored 6-bit signed cell deltas ×3 | tag.
+    const CellKey key{200u, 9u, glm::ivec3(-31, 0, 30)};
+    const glm::ivec3 anchor(0, 0, 0);
+    const uint32_t packed = PackCellKey(key, anchor);
+    ASSERT_NE(packed, 0u);  // 0 is the GPU empty sentinel — a valid key NEVER packs to 0
+    CellKey back;
+    ASSERT_TRUE(UnpackCellKey(packed, anchor, key.mip, back));
+    EXPECT_EQ(back, key);
+}
+
+TEST(HitAccumMirror, PackKey_AnchorRelative) {
+    // Same absolute cell, different anchors -> different deltas, same round-trip.
+    const CellKey key{5u, 3u, glm::ivec3(100, -50, 7)};
+    const glm::ivec3 anchor(98, -48, 6);  // deltas {2,-2,1}
+    const uint32_t packed = PackCellKey(key, anchor);
+    ASSERT_NE(packed, 0u);
+    CellKey back;
+    ASSERT_TRUE(UnpackCellKey(packed, anchor, key.mip, back));
+    EXPECT_EQ(back.cell, key.cell);
+}
+
+TEST(HitAccumMirror, PackKey_OutOfRangeFailsSoft) {
+    // Delta beyond ±(2^5-1) on any axis -> 0 (the fail-soft per-ray path), never
+    // a wrapped/aliased key.
+    const glm::ivec3 anchor(0, 0, 0);
+    EXPECT_EQ(PackCellKey(CellKey{1u, 2u, glm::ivec3(40, 0, 0)}, anchor), 0u);
+    EXPECT_EQ(PackCellKey(CellKey{1u, 2u, glm::ivec3(0, -40, 0)}, anchor), 0u);
+    // recipeId past 8 bits or mip past 4 bits also fail-soft:
+    EXPECT_EQ(PackCellKey(CellKey{300u, 2u, glm::ivec3(0)}, anchor), 0u);
+    EXPECT_EQ(PackCellKey(CellKey{1u, 17u, glm::ivec3(0)}, anchor), 0u);
+}
+
+TEST(HitAccumMirror, PackKey_DistinctKeysDistinctPackings) {
+    const glm::ivec3 anchor(0, 0, 0);
+    const uint32_t a = PackCellKey(CellKey{1u, 2u, glm::ivec3(1, 2, 3)}, anchor);
+    const uint32_t b = PackCellKey(CellKey{1u, 2u, glm::ivec3(1, 2, 4)}, anchor);
+    const uint32_t c = PackCellKey(CellKey{2u, 2u, glm::ivec3(1, 2, 3)}, anchor);
+    const uint32_t d = PackCellKey(CellKey{1u, 3u, glm::ivec3(1, 2, 3)}, anchor);
+    EXPECT_NE(a, 0u);
+    EXPECT_NE(a, b);
+    EXPECT_NE(a, c);
+    EXPECT_NE(a, d);
+    EXPECT_NE(b, c);
+}
+
 TEST(HitAccumMirror, Toksvig_DisagreementShortensAvgDir_EndToEnd) {
     // Two opposing-ish directions in one cell -> |avgDir| < 1 -> widened roughness.
     const float footprint = kDetail0 * 4.0f;

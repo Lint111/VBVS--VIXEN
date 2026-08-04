@@ -138,6 +138,57 @@ inline ResolvedCell Resolve(const AccumEntry& entry, const CellKey& key, float d
     return r;
 }
 
+// --- Packed key (W3b's single-CAS GPU slot claim) ----------------------------
+// The GPU hash table claims a slot with ONE 32-bit atomicCompSwap — portable
+// (no 64-bit-atomic extension) and EXACT (no fingerprint mis-merge) because the
+// FULL key fits one word: recipeId(8) | mip(4) | camera-anchored 6-bit signed
+// cell deltas ×3 | a nonzero tag bit (0 stays the empty-slot sentinel). The
+// 6-bit range is sufficient BY CONSTRUCTION: a mip only engages when
+// footprint = dist·raySizeCoef exceeds detailSize0, so cellSize ≥ dist·coef and
+// the frustum spans at most ~1/coef (~20 at the default 0.05) cells of that
+// mip around the camera's own cell (the per-mip anchor). Anything outside the
+// range packs to 0 — the fail-soft per-ray path, NEVER a wrapped/aliased key.
+
+inline constexpr uint32_t kKeyTagBit    = 1u << 31;
+inline constexpr int32_t  kKeyDeltaMax  = 31;   // 6-bit signed: [-31, 31] (−32 unused, keeps symmetry)
+inline constexpr uint32_t kKeyRecipeMax = 255;  // 8 bits
+inline constexpr uint32_t kKeyMipMax    = 15;   // 4 bits
+
+// 0 = out-of-range (fail-soft). anchor = the camera's own cell at key.mip.
+// Layout: [31]=tag, [30:23]=recipeId, [22:19]=mip, [18:13]/[12:7]/[6:1]=biased
+// deltas (bias +kKeyDeltaMax maps [-31,31] into [0,62]), [0]=spare 0.
+inline uint32_t PackCellKey(const CellKey& key, const glm::ivec3& anchorCell) {
+    if (key.recipeId > kKeyRecipeMax || key.mip > kKeyMipMax) return 0u;
+    const glm::ivec3 delta = key.cell - anchorCell;
+    for (int i = 0; i < 3; ++i) {
+        if (delta[i] < -kKeyDeltaMax || delta[i] > kKeyDeltaMax) return 0u;
+    }
+    const uint32_t dx = static_cast<uint32_t>(delta.x + kKeyDeltaMax);
+    const uint32_t dy = static_cast<uint32_t>(delta.y + kKeyDeltaMax);
+    const uint32_t dz = static_cast<uint32_t>(delta.z + kKeyDeltaMax);
+    return kKeyTagBit |
+           (key.recipeId << 23) |
+           (key.mip << 19) |
+           (dx << 13) | (dy << 7) | (dz << 1);
+}
+
+// Returns false on a 0/undecodable word. mip is supplied by the caller (the GPU
+// reader iterates per-mip anchors; mip is also IN the packed word — both must
+// agree or this returns false).
+inline bool UnpackCellKey(uint32_t packed, const glm::ivec3& anchorCell,
+                          uint32_t mip, CellKey& out) {
+    if ((packed & kKeyTagBit) == 0u) return false;
+    const uint32_t packedMip = (packed >> 19) & 0xFu;
+    if (packedMip != mip) return false;
+    out.recipeId = (packed >> 23) & 0xFFu;
+    out.mip = packedMip;
+    const int32_t dx = static_cast<int32_t>((packed >> 13) & 0x3Fu) - kKeyDeltaMax;
+    const int32_t dy = static_cast<int32_t>((packed >> 7) & 0x3Fu) - kKeyDeltaMax;
+    const int32_t dz = static_cast<int32_t>((packed >> 1) & 0x3Fu) - kKeyDeltaMax;
+    out.cell = anchorCell + glm::ivec3(dx, dy, dz);
+    return true;
+}
+
 // Toksvig roughness widen: ft = |avg dir| in (0,1]; alpha'^2 = alpha^2 + (1-ft)/ft
 // (clamped to [baseRoughness, 1]). ft==1 (perfect agreement) returns
 // baseRoughness EXACTLY; widening is monotone as agreement drops.
