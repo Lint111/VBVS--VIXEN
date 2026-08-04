@@ -1017,6 +1017,175 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
 
         dispatchNode->QueueDispatch(std::move(pass));
     }
+
+    // --- W2b (wavefront epoch, VIXEN_BUCKETED_SHADE opt-in): the identity
+    // bucket-shade skeleton. ONE fixed recipe-INDEPENDENT shader
+    // (shaders/BucketShadeIdentity.comp) compiled once and cached; per hot
+    // recipeId, one MORE DispatchPass on the SAME dispatch node, queued AFTER
+    // every march pass above — MultiDispatchNode's autoBarriers_ serializes
+    // same-HitRecord passes, so march→shade ordering is inherited with zero
+    // graph changes. Binding set + push block are byte-identical to the
+    // specialized march's (SpecializedRecipeShaderGlsl.h), so the descriptor
+    // write below is the SAME proven 4-write block. ---
+    if (bucketedShadeEnabled_ && !hotRecipeIds.empty()) {
+        if (bucketShadePipeline_.pipeline == VK_NULL_HANDLE && !bucketShadeCompileAttempted_) {
+            bucketShadeCompileAttempted_ = true;
+            std::vector<std::filesystem::path> shadePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                std::filesystem::path(VIXEN_SHADER_SOURCE_DIR) / "BucketShadeIdentity.comp",
+#endif
+                std::filesystem::path("shaders/BucketShadeIdentity.comp"),
+                std::filesystem::path("../shaders/BucketShadeIdentity.comp"),
+            };
+            std::filesystem::path shadePath;
+            for (const auto& p : shadePaths) { if (std::filesystem::exists(p)) { shadePath = p; break; } }
+            if (shadePath.empty()) {
+                if (mainLogger) mainLogger->Error("[BucketShade] BucketShadeIdentity.comp not found — skeleton disabled");
+            } else {
+                std::ifstream shadeFile(shadePath);
+                std::ostringstream shadeBuf;
+                shadeBuf << shadeFile.rdbuf();
+                ShaderManagement::CompilationOptions opts;
+                opts.validateSpirv = false;
+                ShaderManagement::ShaderBundleBuilder bundleBuilder;
+                bundleBuilder.SetProgramName("BucketShadeIdentity")
+                             .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                             .AddStage(ShaderManagement::ShaderStage::Compute, shadeBuf.str(), "main", opts);
+                auto buildResult = bundleBuilder.Build();
+                if (!buildResult.success || !buildResult.bundle) {
+                    if (mainLogger) mainLogger->Error("[BucketShade] shader build/reflect failed: " + buildResult.errorMessage);
+                } else {
+                    const std::vector<uint32_t>& spirv = buildResult.bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
+                    VkShaderModuleCreateInfo moduleInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+                    moduleInfo.codeSize = spirv.size() * sizeof(uint32_t);
+                    moduleInfo.pCode = spirv.data();
+                    VkShaderModule shaderModule = VK_NULL_HANDLE;
+                    if (!spirv.empty() &&
+                        vkCreateShaderModule(device->device, &moduleInfo, nullptr, &shaderModule) == VK_SUCCESS) {
+                        VkDescriptorSetLayout setLayout = CashSystem::BuildDescriptorSetLayoutFromReflection(device, *buildResult.bundle, 0);
+                        std::vector<VkPushConstantRange> pcRanges = CashSystem::ExtractPushConstantsFromReflection(*buildResult.bundle);
+                        std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(*buildResult.bundle, 0, 1);
+                        VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+                        poolInfo.maxSets = 1;
+                        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+                        poolInfo.pPoolSizes = poolSizes.data();
+                        VkDescriptorPool descPool = VK_NULL_HANDLE;
+                        VkDescriptorSet descSet = VK_NULL_HANDLE;
+                        if (vkCreateDescriptorPool(device->device, &poolInfo, nullptr, &descPool) == VK_SUCCESS) {
+                            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+                            allocInfo.descriptorPool = descPool;
+                            allocInfo.descriptorSetCount = 1;
+                            allocInfo.pSetLayouts = &setLayout;
+                            if (vkAllocateDescriptorSets(device->device, &allocInfo, &descSet) == VK_SUCCESS) {
+                                CashSystem::ComputePipelineCreateParams pipelineParams;
+                                pipelineParams.shaderModule = shaderModule;
+                                pipelineParams.entryPoint = "main";
+                                pipelineParams.descriptorSetLayout = setLayout;
+                                pipelineParams.pushConstantRanges = pcRanges;
+                                pipelineParams.shaderKey = "BucketShadeIdentity:" +
+                                    ShaderManagement::ComputeSHA256HexFromUint32Vec(spirv);
+                                pipelineParams.layoutKey = "BucketShadeIdentityLayout";
+                                pipelineParams.workgroupSizeX = 8;
+                                pipelineParams.workgroupSizeY = 8;
+                                pipelineParams.workgroupSizeZ = 1;
+                                auto& mainCacher = renderGraph->GetMainCacher();
+                                auto* computeCacher = mainCacher.GetCacher<CashSystem::ComputePipelineCacher,
+                                                                           CashSystem::ComputePipelineWrapper,
+                                                                           CashSystem::ComputePipelineCreateParams>(
+                                    typeid(CashSystem::ComputePipelineWrapper), device);
+                                auto pipelineWrapper = computeCacher ? computeCacher->GetOrCreate(pipelineParams) : nullptr;
+                                if (pipelineWrapper && pipelineWrapper->pipeline != VK_NULL_HANDLE) {
+                                    VkBuffer bufHandles[4] = {
+                                        bodyScene->GetInstanceBufferHandle(),
+                                        bucketIndicesNode->GetBufferHandle(),
+                                        hitRecordNode->GetBufferHandle(),
+                                        bucketMetaNode->GetBufferHandle(),
+                                    };
+                                    VkDescriptorBufferInfo bufInfos[4];
+                                    VkWriteDescriptorSet writes[4]{};
+                                    for (int b = 0; b < 4; ++b) {
+                                        bufInfos[b] = { bufHandles[b], 0, VK_WHOLE_SIZE };
+                                        writes[b].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                                        writes[b].dstSet = descSet;
+                                        writes[b].dstBinding = static_cast<uint32_t>(b);
+                                        writes[b].descriptorCount = 1;
+                                        writes[b].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                                        writes[b].pBufferInfo = &bufInfos[b];
+                                    }
+                                    vkDeviceWaitIdle(device->device);  // one-shot, same rationale as the per-recipe block
+                                    vkUpdateDescriptorSets(device->device, 4, writes, 0, nullptr);
+                                    bucketShadePipeline_.shaderModule = shaderModule;
+                                    bucketShadePipeline_.descriptorSetLayout = setLayout;
+                                    bucketShadePipeline_.descriptorPool = descPool;
+                                    bucketShadePipeline_.descriptorSet = descSet;
+                                    bucketShadePipeline_.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper
+                                        ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
+                                    bucketShadePipeline_.pipeline = pipelineWrapper->pipeline;
+                                    if (mainLogger) mainLogger->Info("[BucketShade] compiled the identity bucket-shade skeleton pipeline");
+                                } else {
+                                    if (mainLogger) mainLogger->Error("[BucketShade] pipeline creation failed");
+                                    vkDestroyDescriptorPool(device->device, descPool, nullptr);
+                                    vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                                }
+                            } else {
+                                if (mainLogger) mainLogger->Error("[BucketShade] vkAllocateDescriptorSets failed");
+                                vkDestroyDescriptorPool(device->device, descPool, nullptr);
+                                vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                            }
+                        } else {
+                            if (mainLogger) mainLogger->Error("[BucketShade] vkCreateDescriptorPool failed");
+                            vkDestroyShaderModule(device->device, shaderModule, nullptr);
+                        }
+                    } else {
+                        if (mainLogger) mainLogger->Error("[BucketShade] vkCreateShaderModule failed (or empty SPIR-V)");
+                    }
+                }
+            }
+        }
+        if (bucketShadePipeline_.pipeline != VK_NULL_HANDLE) {
+            struct BucketShadePushCpu {  // identical 80-B layout to SpecializedPushCpu above
+                glm::vec3 cameraPos; float _p0;
+                glm::vec3 cameraDir; float fov;
+                glm::vec3 cameraUp;  float aspect;
+                glm::vec3 cameraRight; float _p1;
+                uint32_t screenWidth;
+                uint32_t screenHeight;
+                uint32_t maxMembersPerBucket;
+                uint32_t recipeIdField;
+            };
+            static_assert(sizeof(BucketShadePushCpu) == 80, "must match the shader's 80-byte Push block");
+            BucketShadePushCpu shadePush{};
+            if (auto* camInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                const CameraData& cam = camInst->GetCurrentCameraData();
+                shadePush.cameraPos = cam.cameraPos;
+                shadePush.cameraDir = cam.cameraDir;
+                shadePush.cameraUp = cam.cameraUp;
+                shadePush.cameraRight = cam.cameraRight;
+                shadePush.fov = cam.fov;
+                shadePush.aspect = cam.aspect;
+            }
+            shadePush.screenWidth = static_cast<uint32_t>(width);
+            shadePush.screenHeight = static_cast<uint32_t>(height);
+            shadePush.maxMembersPerBucket = kRecipeBucketingMaxMembersPerBucket;
+            for (uint32_t recipeId : hotRecipeIds) {
+                Vixen::RenderGraph::DispatchPass shadePass;
+                shadePass.pipeline = bucketShadePipeline_.pipeline;
+                shadePass.layout = bucketShadePipeline_.pipelineLayout;
+                shadePass.descriptorSets = { bucketShadePipeline_.descriptorSet };
+                shadePass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
+                shadePass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;
+                shadePass.debugName = "bucket_shade_identity_" + std::to_string(recipeId);
+                shadePush.recipeIdField = recipeId;
+                Vixen::RenderGraph::PushConstantData shadePcData;
+                shadePcData.data.resize(sizeof(BucketShadePushCpu));
+                std::memcpy(shadePcData.data.data(), &shadePush, sizeof(BucketShadePushCpu));
+                shadePcData.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+                shadePcData.offset = 0;
+                shadePass.pushConstants = std::move(shadePcData);
+                dispatchNode->QueueDispatch(std::move(shadePass));
+            }
+        }
+    }
 }
 
 void VulkanGraphApplication::PostTick() {

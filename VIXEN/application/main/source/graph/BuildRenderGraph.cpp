@@ -758,6 +758,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // bar at the strongest level (no new node, not just an inert one).
     const bool recipeBucketedDispatchEnabled = (std::getenv("VIXEN_RECIPE_BUCKETED_DISPATCH") != nullptr);
     recipeBucketedDispatchEnabled_ = recipeBucketedDispatchEnabled;  // stored for PreTick's live orchestration
+    // W2b: the identity bucket-shade skeleton rides the bucketed-dispatch
+    // machinery (BucketMeta/indirect commands/MultiDispatchNode), so it
+    // REQUIRES that flag — shade-without-buckets has nothing to dispatch over.
+    bucketedShadeEnabled_ = recipeBucketedDispatchEnabled && (std::getenv("VIXEN_BUCKETED_SHADE") != nullptr);
 
     NodeHandle recipeBucketCountBuffer{};
     NodeHandle recipeBucketIndicesBuffer{};
