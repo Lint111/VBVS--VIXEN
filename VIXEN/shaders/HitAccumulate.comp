@@ -1,0 +1,130 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// HitAccumulate.comp — Wavefront W3b: the (recipeId, cell@mip) accumulate pass
+// (undertow docs/plans/2026-08-04-wavefront-recipe-shading.md § "W3 design")
+// ============================================================================
+// TWO MODES in one program (RecipeInstanceBucketing's own multi-mode precedent):
+//   mode 0 = CLEAR: 1D over the table, zero every entry (per-frame reset — the
+//            sums are per-frame transients; unbounded cross-frame growth would
+//            overflow the i32 headroom).
+//   mode 1 = ACCUMULATE: 1D over hit records. Per record: hit-gate, footprint
+//            = hitT·raySizeCoef + raySizeBias (TraceWorld.glsl:232's own primary
+//            cone formula, twinned), mip select; mip 0 or an out-of-range pack
+//            -> FAIL-SOFT (return — the record stays per-ray, today's path,
+//            by the design's load-bearing invariant); else claim/find the
+//            cell's slot (ONE atomicCompSwap on the packed key) and atomicAdd
+//            the fixed-point sums.
+//
+// W3b has NO CONSUMER: nothing reads this table yet (W3c's resolve will), so
+// frame output is IDENTICAL by construction — the gate that matters here is
+// the diag readback (VIXEN_HIT_ACCUM_PROBE_LOG) cross-validating table totals
+// against the CPU mirror's prediction over the same records.
+//
+// Direction: normalize(worldPos - camPos) IS the primary ray direction for a
+// primary hit (same ray, derived not re-plumbed). Throughput: 1 for primaries.
+//
+// Standalone binding namespace (the SpatialReuseGather precedent) — no scene
+// traversal, no images. Own push block (the gather's shape): extents + camera
+// position (per-frame constant) + the primary cone fields + detailSize0 + mode.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "HitAccumulationCommon.glsl"
+#include "HitRecord.glsl"
+
+layout(std430, binding = 0) readonly buffer HitRecordBuffer {
+    HitRecord hitRecords[];
+};
+
+// Byte-identical to the shared BodyInstanceGpu layout (SceneBindings binding 10),
+// declared standalone (the specialized-kernel precedent).
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
+};
+layout(std430, binding = 1) readonly buffer BodyInstanceBuffer { BodyInstance bodyInstances[]; };
+
+layout(std430, binding = 2) buffer HitAccumTable {
+    HitAccumEntryGpu accumEntries[];
+};
+
+layout(push_constant) uniform Push {
+    uint  mode;          // 0 = clear, 1 = accumulate
+    uint  imgWidth;
+    uint  imgHeight;
+    float raySizeCoef;   // the PRIMARY cone's coefficient (pc field 8's source)
+    float raySizeBias;
+    float detailSize0;   // engagement threshold (world units at mip 0)
+    vec3  camPos;        // current camera position (per-frame constant node)
+} pc;
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+
+    if (pc.mode == 0u) {
+        if (slot >= kHitAccumTableCapacity) return;
+        accumEntries[slot].packedKey = 0u;
+        accumEntries[slot].count = 0u;
+        accumEntries[slot].sumPosQX = 0; accumEntries[slot].sumPosQY = 0; accumEntries[slot].sumPosQZ = 0;
+        accumEntries[slot].sumDirQX = 0; accumEntries[slot].sumDirQY = 0; accumEntries[slot].sumDirQZ = 0;
+        accumEntries[slot].sumDistQ = 0;
+        accumEntries[slot].sumTpQX = 0; accumEntries[slot].sumTpQY = 0; accumEntries[slot].sumTpQZ = 0;
+        return;
+    }
+
+    // --- mode 1: accumulate ---
+    if (slot >= hitRecords.length()) return;
+    HitRecord rec = hitRecords[slot];
+    if ((rec.flags & HITRECORD_FLAG_HIT) == 0u) return;
+
+    // LOD-disabled builds (raySizeCoef == 0, TraceWorld's own gate) never engage.
+    if (pc.raySizeCoef <= 0.0) return;
+    float footprint = rec.hitT * pc.raySizeCoef + pc.raySizeBias;
+    uint mip = HitAccumSelectMip(footprint, pc.detailSize0);
+    if (mip == 0u) return;  // per-ray exact — the fail-soft path
+
+    uint instIdx = rec._pad0[0];
+    if (instIdx >= bodyInstances.length()) return;
+    uint recipeId = bodyInstances[instIdx].recipeId;
+
+    float cellSize = HitAccumCellSize(mip, pc.detailSize0);
+    ivec3 cell   = HitAccumCellCoord(rec.worldPos, cellSize);
+    ivec3 anchor = HitAccumCellCoord(pc.camPos, cellSize);
+    uint key = HitAccumPackCellKey(recipeId, mip, cell, anchor);
+    if (key == 0u) return;  // out of anchored range — fail-soft, never aliased
+
+    // Claim or find the slot: ONE CAS on the full packed key.
+    uint tableSlot = HitAccumSlotOf(key);
+    bool claimed = false;
+    for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
+        uint s = (tableSlot + probe) % kHitAccumTableCapacity;
+        uint old = atomicCompSwap(accumEntries[s].packedKey, 0u, key);
+        if (old == 0u || old == key) { tableSlot = s; claimed = true; break; }
+    }
+    if (!claimed) return;  // table pressure — fail-soft drop (per-ray path covers)
+
+    // Quantize ONCE (float round — the CPU spec's double llround twin; counts
+    // are rounding-immune), then pure int atomics.
+    vec3 cellOrigin = vec3(cell) * cellSize;
+    vec3 local = (rec.worldPos - cellOrigin) / cellSize;   // [0,1)
+    vec3 dir = normalize(rec.worldPos - pc.camPos);        // the primary ray, derived
+    atomicAdd(accumEntries[tableSlot].sumPosQX, int(round(local.x * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumPosQY, int(round(local.y * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumPosQZ, int(round(local.z * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQX, int(round(dir.x * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQY, int(round(dir.y * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQZ, int(round(dir.z * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDistQ, int(round(rec.hitT * kHitAccumPosScale / cellSize)));
+    // Primary throughput = 1 per channel.
+    atomicAdd(accumEntries[tableSlot].sumTpQX, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].sumTpQY, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].sumTpQZ, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].count, 1u);
+}

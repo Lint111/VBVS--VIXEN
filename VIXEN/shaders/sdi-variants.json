@@ -67,6 +67,13 @@
       ]
     },
     {
+      "name": "HitAccumulate",
+      "source": "HitAccumulate.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
       "name": "ProbeGather",
       "source": "ProbeGather.comp",
       "variants": [
