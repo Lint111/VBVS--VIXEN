@@ -41,7 +41,8 @@
 #include "merged/ShadowVisibilityWave-SDI.h"    // W1b: the derived-request shadow wave
 #include "merged/SpatialReuseGather-SDI.h"      // W2a: the ReSTIR spatial fold (gather)
 #include "merged/HitAccumCellShade-SDI.h"       // W3c-2: per-cell shade over the accumulation table
-#include "merged/HitAccumResolve-SDI.h"         // W3c-2: the per-pixel resolve composite
+// W-LEAN L3: HitAccumResolve-SDI.h RETIRED — the resolve is SpatialReuseShade's
+// own VIXEN_SRS_CELL_RESOLVE axis now (gated bindings 36-39 in ReuseSdi).
 
 // Semantic-wiring S1: short aliases for the merged-SDI namespaces used at many
 // Connect sites below (drift-gated by ctest sdi_merged_drift_check). The three
@@ -58,7 +59,6 @@ namespace ShadowSdi = ShaderInterface::ShadowRayTrace;
 namespace WaveSdi = ShaderInterface::ShadowVisibilityWave;
 namespace SrgSdi = ShaderInterface::SpatialReuseGather;  // W2a: the ReSTIR spatial fold (GatherSdi = ProbeGather, taken)
 namespace CellShadeSdi = ShaderInterface::HitAccumCellShade;  // W3c-2
-namespace ResolveSdi = ShaderInterface::HitAccumResolve;      // W3c-2
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -758,22 +758,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle hitAccumCellRadianceBuffer{};
     NodeHandle hitAccumCellShadeShaderLib{}, hitAccumCellShadeNode{};
     NodeHandle hitAccumCellShadeReadGatherer{}, hitAccumCellShadeWriteGatherer{};
-    NodeHandle hitAccumResolveShaderLib{}, hitAccumResolveNode{};
-    NodeHandle hitAccumResolveReadGatherer{};
+    NodeHandle spatialReuseCellReadGatherer{};
     if (hitAccumResolveEnabled) {
         hitAccumCellRadianceBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_cell_radiance_buffer");
         hitAccumCellShadeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_cell_shade_shader_lib");
         hitAccumCellShadeNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_cell_shade");
         // Reads: the table (orders wave→cell-shade on the shared resource).
-        // Writes: the cell-radiance buffer (orders cell-shade→resolve).
+        // Writes: the cell-radiance buffer.
         hitAccumCellShadeReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_cell_shade_read_gatherer");
         hitAccumCellShadeWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_cell_shade_write_gatherer");
-        hitAccumResolveShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_resolve_shader_lib");
-        hitAccumResolveNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_resolve");
-        // Reads: cell radiance + table + hit records. The image side rides
-        // IMAGE_WRITE on the shared render target (SRS-write → resolve-RMW →
-        // blit-read ordering on the one image resource).
-        hitAccumResolveReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_resolve_read_gatherer");
+        // W-LEAN L3: NO standalone resolve — the composite is SpatialReuseShade's
+        // own VIXEN_SRS_CELL_RESOLVE axis. SRS gains its first buffer READ
+        // gatherer for the fold's inputs {cellRadiance, table}.
+        spatialReuseCellReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_cell_read_gatherer");
     }
     hitAccumCellRadianceBuffer_ = hitAccumCellRadianceBuffer;
 
@@ -1657,8 +1654,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Sampled Lighting Inc3 M5: SpatialReuseShade.comp — family-registered (see the
     // lighting-family block above; this shader owns the M10 VIXEN_SHADOW_DBG arming block).
-    registerLightingFamily(spatialReuseShaderLib,
-                           makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"));
+    // W-LEAN L3: under the resolve opt-in the shade compiles its CELL-RESOLVE
+    // variant (the retired standalone HitAccumResolve stage as a tail — the
+    // wave's own dual-registration shape).
+    if (hitAccumResolveEnabled) {
+        auto srsFusedFamily = makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade");
+        auto srsFusedFeatures = lightingShaderFeatures;
+        srsFusedFeatures.push_back(kFeatureSrsCellResolve.define);
+        auto* srsLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(spatialReuseShaderLib));
+        srsLibNode->RegisterShaderBuilder([this, srsFusedFamily, srsFusedFeatures](int vulkanVer, int spirvVer) {
+            auto builder = srsFusedFamily->MakeBuilder(srsFusedFeatures);
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
+    } else {
+        registerLightingFamily(spatialReuseShaderLib,
+                               makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"));
+    }
 
     // W1a: the ProbeUpdate split's three compiled programs, each family-registered
     // (see the lighting-family block above). ProbeGather + ShadowRayTrace include
@@ -1750,8 +1769,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .EnableCaching(&shaderCacheManager_);
             return builder;
         });
-        registerLightingFamily(hitAccumResolveShaderLib,
-                               makeLightingFamily("HitAccumResolve.comp", "HitAccumResolve"));
     }
     // W2a (reservoir path opt-in): the fold pass + the wave's reservoir-phase
     // variant. The gather is a standalone-binding shader but rides the SAME
@@ -2000,11 +2017,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                     kHitAccumTableCapacity * kHitAccumEntryBytes);
         }
 
-        // W3c-2: cell radiance (vec4/slot) + the two resolve-path dispatches.
-        // Cell shade is 1D over the FULL table (capacity/64 exact — cheaper
-        // than compaction+indirect at 64Ki slots, per the Dozen readout's
-        // orchestration-cost finding); the resolve derives its 2D dims live
-        // from IMAGE_WRITE exactly like SpatialReuseShade (dims 0/0).
+        // W3c-2 / W-LEAN L3: cell radiance (vec4/slot) + the cell-shade
+        // dispatch — 1D over the FULL table (capacity/64 exact — cheaper than
+        // compaction+indirect at 64Ki slots, per the Dozen readout's
+        // orchestration-cost finding). The composite is SpatialReuseShade's
+        // own gated tail (no standalone stage, no extra dispatch).
         if (hitAccumResolveEnabled) {
             static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumCellRadianceBuffer))
                 ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
@@ -2014,11 +2031,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
             cellShadeStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kHitAccumTableCapacity / 64u);
             cellShadeStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
             cellShadeStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
-            auto* resolveStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(hitAccumResolveNode));
-            resolveStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-            resolveStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
-            resolveStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
-            resolveStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
         }
     }
 
@@ -2050,13 +2062,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(1);
     // W3c-1: when fused, the wave ALSO writes the accumulation table.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(hitAccumEnabled ? 2u : 1u);
-    // W3c-2: cell shade reads {table}, writes {cellRadiance}; the resolve
-    // reads {cellRadiance, table, hitRecords} (its image side rides
-    // IMAGE_WRITE, not a buffer slot).
+    // W3c-2 / W-LEAN L3: cell shade reads {table}, writes {cellRadiance};
+    // the shade's fold reads {cellRadiance, table} via SRS's first buffer
+    // read gatherer (records were already its own).
     if (hitAccumResolveEnabled) {
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeReadGatherer))->PreRegisterBufferSlots(1);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeWriteGatherer))->PreRegisterBufferSlots(1);
-        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumResolveReadGatherer))->PreRegisterBufferSlots(3);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseCellReadGatherer))->PreRegisterBufferSlots(2);
     }
     // W2a (reservoir path opt-in): gather reads {reservoirA, reservoirB,
     // hitRecords} (the A/B neighbor-array hazard moved here from the shade)
@@ -7386,13 +7398,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: quintet chain + stage commons + push plumbing synthesized;
     // descriptors from the registry (same empty feature set as DL — the
     // binding-14 placeholder tolerance is deliberate); PUSH hand-wired below.
+    // W-LEAN L3: the hit-accum providers land HERE — BEFORE the FIRST consumer
+    // synthesis (the shade's cell-resolve fold; the wave synthesizes later) —
+    // the providers-before-synthesis rule, third application.
+    SdiFeatureSet srsSdiFeatures;
+    if (hitAccumEnabled) {
+        sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+        sceneProviders.Provide("HitAccumParamsSSBO", hitAccumParamsBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+    }
+    if (hitAccumResolveEnabled) {
+        srsSdiFeatures.Enable(kFeatureSrsCellResolve);
+        sceneProviders.Provide("HitAccumCellRadiance", hitAccumCellRadianceBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+    }
     const auto reuseSynth = SynthesizeComputeStage<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
         renderGraph, batch, "spatial_reuse", spatialReuseShaderLib,
-        spatialReuseNode, lightingCommon, sceneProviders, {},
+        spatialReuseNode, lightingCommon, sceneProviders, srsSdiFeatures,
         SdiWireSet::DescriptorsOnly);
     spatialReusePushConstantGatherer = reuseSynth.pushGatherer;
     CensusStageFromSdi<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
-        sdiHazardCensus_, spatialReuseNode, sceneProviders, sdiNoFeatures,
+        sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);
 
     // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
@@ -7605,13 +7632,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     SdiFeatureSet waveSdiFeatures;
     if (hitAccumEnabled) {
         waveSdiFeatures.Enable(kFeatureHitAccumFused);  // W3c-1: bindings 21/22
-        // Providers MUST land BEFORE this synthesis consumes them (found live:
-        // "no provider for binding 'HitAccumTable'" when they sat at the old
-        // standalone block's position further down).
-        sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
-        sceneProviders.Provide("HitAccumParamsSSBO", hitAccumParamsBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+        // Providers registered at the SRS synthesis site above (W-LEAN L3 —
+        // the shade's fold is now the FIRST consumer in synthesis order).
         // The fused wave WRITES the table alongside its hit-record RMW — slot 1
         // of the wave's own write gatherer (declared 2-wide when fused).
         batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
@@ -7750,21 +7772,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // rule, found live at W3c-1).
     // ------------------------------------------------------------------
     if (hitAccumResolveEnabled) {
-        sceneProviders.Provide("HitAccumCellRadiance", hitAccumCellRadianceBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+        // (HitAccumCellRadiance provided at the SRS synthesis site above.)
         const auto cellShadeSynth = SynthesizeComputeStage<CellShadeSdi::Metadata, CellShadeSdi::MEMBERS>(
             renderGraph, batch, "hit_accum_cell_shade", hitAccumCellShadeShaderLib,
             hitAccumCellShadeNode, lightingCommon, sceneProviders, {},
             SdiWireSet::DescriptorsOnly);
         CensusStageFromSdi<CellShadeSdi::Metadata, CellShadeSdi::MEMBERS>(
             sdiHazardCensus_, hitAccumCellShadeNode, sceneProviders, sdiNoFeatures,
-            &sdiCensusExclusions);
-        const auto resolveSynth = SynthesizeComputeStage<ResolveSdi::Metadata, ResolveSdi::MEMBERS>(
-            renderGraph, batch, "hit_accum_resolve", hitAccumResolveShaderLib,
-            hitAccumResolveNode, lightingCommon, sceneProviders, {});
-        (void)resolveSynth;  // no push block at all — the ProbeApply shape
-        CensusStageFromSdi<ResolveSdi::Metadata, ResolveSdi::MEMBERS>(
-            sdiHazardCensus_, hitAccumResolveNode, sceneProviders, sdiNoFeatures,
             &sdiCensusExclusions);
 
         // The cell shade traces (TraceWorldShadow) — the same three live
@@ -7790,33 +7804,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       hitAccumCellShadeWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(hitAccumCellShadeWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                       hitAccumCellShadeNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
-        // Resolve: reads {cellRadiance, table, hitRecords}; its render-target
-        // RMW rides IMAGE_WRITE on the SAME renderTargetNode Resource* as
-        // SpatialReuse's write and the blit's read — the scheduler orders
-        // SRS → resolve → blit on that one image (verified by the SCHED dump
-        // at the gate).
+        // W-LEAN L3: the shade's fold reads {cellRadiance, table} — SRS's
+        // first buffer read gatherer (records were already its own class).
         batch.Connect(hitAccumCellRadianceBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      hitAccumResolveReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                      spatialReuseCellReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      hitAccumResolveReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      hitAccumResolveReadGatherer, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(hitAccumResolveReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
-                      hitAccumResolveNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                      hitAccumResolveNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+                      spatialReuseCellReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(spatialReuseCellReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      spatialReuseNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
         // Ordering-only edges (the Blit ORDERING_WAIT_SEMAPHORE convention —
-        // found live at this slice's first boot: shared-Resource* hazards do
-        // NOT order two stages; the topo sort placed both new stages at the
-        // frame FRONT, before the wave even stamped the epoch). The chain
-        // SRS → cell_shade → resolve (+ resolve → blit at the blit's own
-        // ordering edge below) pins: cell shade sees THIS frame's epoch-
-        // stamped table; the resolve blends AFTER the final per-pixel write
-        // and BEFORE the blit reads.
-        batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+        // found live at W3c-2's first boot: shared-Resource* hazards do NOT
+        // order two stages). The chain wave → cell_shade → SRS pins: the cell
+        // shade sees THIS frame's epoch-stamped table, and the shade's fold
+        // reads THIS frame's cell radiance.
+        batch.Connect(shadowVisibilityWaveNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       hitAccumCellShadeNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
         batch.Connect(hitAccumCellShadeNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                      hitAccumResolveNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+                      spatialReuseNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
     }
 
     // ------------------------------------------------------------------
@@ -7916,11 +7920,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // doc): establishes the SpatialReuse-before-Blit TOPOLOGY (Sampled Lighting Inc3 M5 — moved
     // from DirectLighting, which is no longer the render-target writer) so the scheduler's
     // groupId-order edge direction is correct (mirrors the sky-projection/UI ordering-edge
-    // convention below). W3c-2: when the resolve composite exists it is the LAST
-    // render-target writer — the blit's ordering source moves to it (SRS still
-    // precedes transitively via SRS → cell_shade → resolve).
-    batch.Connect(hitAccumResolveEnabled ? hitAccumResolveNode : spatialReuseNode,
-                  ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+    // convention below). W-LEAN L3: SRS is the sole render-target writer again
+    // (the composite is its own gated tail — no standalone resolve stage).
+    batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
 
     // P5b M3 (extended for Tiered ESVO Inc1 M3; Sampled Lighting Inc3 M1: chain now runs through

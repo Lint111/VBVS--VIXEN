@@ -39,6 +39,13 @@
         [],
         [
           "VIXEN_GPU_TRACE_HOOKS"
+        ],
+        [
+          "VIXEN_SRS_CELL_RESOLVE"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_SRS_CELL_RESOLVE"
         ]
       ]
     },
@@ -138,13 +145,6 @@
         [
           "VIXEN_GPU_TRACE_HOOKS"
         ]
-      ]
-    },
-    {
-      "name": "HitAccumResolve",
-      "source": "HitAccumResolve.comp",
-      "variants": [
-        []
       ]
     }
   ]

@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: SpatialReuseShade
-// Feature axis: VIXEN_GPU_TRACE_HOOKS
+// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_SRS_CELL_RESOLVE
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -224,6 +224,86 @@ struct ProbeGridConfigReadSSBO {
         static constexpr const char* TYPE = "ProbeGridConfig";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 56;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief HitAccumTable
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x745341172a420820 (for runtime discovery)
+ */
+struct HitAccumTable {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x745341172a420820ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "HitAccumEntryGpu";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 56;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief HitAccumParamsSSBO
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x4e1444a4056b6d4a (for runtime discovery)
+ */
+struct HitAccumParamsSSBO {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x4e1444a4056b6d4aULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "HitAccumParams";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 48;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief HitAccumCellRadiance
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xbae52bb2aaed7efb (for runtime discovery)
+ */
+struct HitAccumCellRadiance {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xbae52bb2aaed7efbULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief BodyInstanceBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ */
+struct BodyInstanceBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "BodyInstance";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 64;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -451,6 +531,74 @@ namespace Set0 {
         using DataType = ProbeGridConfigReadSSBO;
     };
 
+    /**
+     * @brief HitAccumTable
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_SRS_CELL_RESOLVE
+     */
+    struct Binding36 {
+        static constexpr const char* NAME = "HitAccumTable";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 36;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_SRS_CELL_RESOLVE"};
+        using DataType = HitAccumTable;
+    };
+
+    /**
+     * @brief HitAccumParamsSSBO
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_SRS_CELL_RESOLVE
+     */
+    struct Binding37 {
+        static constexpr const char* NAME = "HitAccumParamsSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 37;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_SRS_CELL_RESOLVE"};
+        using DataType = HitAccumParamsSSBO;
+    };
+
+    /**
+     * @brief HitAccumCellRadiance
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_SRS_CELL_RESOLVE
+     */
+    struct Binding38 {
+        static constexpr const char* NAME = "HitAccumCellRadiance";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 38;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_SRS_CELL_RESOLVE"};
+        using DataType = HitAccumCellRadiance;
+    };
+
+    /**
+     * @brief BodyInstanceBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_SRS_CELL_RESOLVE
+     */
+    struct Binding39 {
+        static constexpr const char* NAME = "BodyInstanceBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 39;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_SRS_CELL_RESOLVE"};
+        using DataType = BodyInstanceBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -470,6 +618,10 @@ using DDGILeakGateDebugShadeSSBO = Set0::Binding31;
 using probeIrradianceAtlasRead = Set0::Binding32;
 using probeVisibilityAtlasRead = Set0::Binding33;
 using ProbeGridConfigReadSSBO = Set0::Binding34;
+using HitAccumTable = Set0::Binding36;
+using HitAccumParamsSSBO = Set0::Binding37;
+using HitAccumCellRadiance = Set0::Binding38;
+using BodyInstanceBuffer = Set0::Binding39;
 } // namespace Bind
 
 namespace Push {
@@ -597,6 +749,10 @@ struct MemberInfo {
     const char* const* features;
 };
 
+inline constexpr const char* const kFeatures_Set0_Binding36[] = {"VIXEN_SRS_CELL_RESOLVE"};
+inline constexpr const char* const kFeatures_Set0_Binding37[] = {"VIXEN_SRS_CELL_RESOLVE"};
+inline constexpr const char* const kFeatures_Set0_Binding38[] = {"VIXEN_SRS_CELL_RESOLVE"};
+inline constexpr const char* const kFeatures_Set0_Binding39[] = {"VIXEN_SRS_CELL_RESOLVE"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
@@ -614,6 +770,10 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"probeIrradianceAtlasRead", false, 0, 32, 0, Access::ReadOnly, 0, nullptr},
     {"probeVisibilityAtlasRead", false, 0, 33, 0, Access::ReadOnly, 0, nullptr},
     {"ProbeGridConfigReadSSBO", false, 0, 34, 0, Access::ReadOnly, 0, nullptr},
+    {"HitAccumTable", false, 0, 36, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding36},
+    {"HitAccumParamsSSBO", false, 0, 37, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding37},
+    {"HitAccumCellRadiance", false, 0, 38, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding38},
+    {"BodyInstanceBuffer", false, 0, 39, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding39},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -648,8 +808,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 28;
-    static constexpr uint32_t NUM_FEATURES = 1;
+    static constexpr uint32_t NUM_MEMBERS = 32;
+    static constexpr uint32_t NUM_FEATURES = 2;
 };
 
 } // namespace SpatialReuseShade

@@ -1424,12 +1424,10 @@ void VulkanGraphApplication::PostTick() {
     if (auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse"))) {
         passes.push_back({"spatial_reuse", spatialReuse->GetGPUPerformanceLogger()});
     }
-    // W3c-2: the resolve pair (exist only under VIXEN_HIT_ACCUM_RESOLVE).
+    // W3c-2 / W-LEAN L3: the cell shade (exists only under
+    // VIXEN_HIT_ACCUM_RESOLVE); the composite rides spatial_reuse's own column.
     if (auto* cellShade = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_cell_shade"))) {
         passes.push_back({"hit_accum_cell_shade", cellShade->GetGPUPerformanceLogger()});
-    }
-    if (auto* accumResolve = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_resolve"))) {
-        passes.push_back({"hit_accum_resolve", accumResolve->GetGPUPerformanceLogger()});
     }
     // W1a: the probe_update megakernel's three split stages, each timed as its
     // own column — the wave's column is what prices the stale-slot re-trace

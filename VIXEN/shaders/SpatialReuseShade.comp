@@ -200,6 +200,92 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
 };
 
 // ============================================================================
+// CELL-RESOLVE FOLD (bindings 36/37/38, gated) — W-LEAN L3: the standalone
+// HitAccumResolve stage folded into this pass (the W3c-1 fusion argument: this
+// pass already reads every record and owns the outputImage write — the
+// standalone paid a full record re-scan + an image RMW + a stage of
+// orchestration to do what a tail here does in-register). Value parity with
+// the standalone: outputImage gets the composited color; historyImage keeps
+// the PRE-composite value (temporal accumulation stays per-pixel-pure — the
+// same policy the standalone enforced by running after the history write).
+// ============================================================================
+#ifdef VIXEN_SRS_CELL_RESOLVE
+#include "HitAccumulationCommon.glsl"
+#ifndef VIXEN_SHADOW_DBG
+// Standalone instance declaration (SceneBindings' binding-10 copy — this pass
+// includes SceneBindings only under the SHADOW_DBG arm; the fold needs ONLY
+// recipeId, so the full scene set stays out. std430, 64 B — byte-for-byte the
+// SceneBindings.glsl layout; guarded so the DBG+fold combo doesn't
+// double-declare).
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
+};
+layout(std430, binding = 39) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+#endif
+layout(std430, binding = 36) readonly buffer HitAccumTable {
+    HitAccumEntryGpu accumEntries[];
+};
+layout(std430, binding = 37) readonly buffer HitAccumParamsSSBO {
+    HitAccumParams hitAccumParams;
+};
+layout(std430, binding = 38) readonly buffer HitAccumCellRadiance {
+    vec4 cellRadiance[];
+};
+
+// The retired standalone's own math, verbatim: re-derive the key the fused
+// wave packed for this record, walk the WHOLE probe chain, count-weighted-
+// average every live duplicate (selection-independent — the W3c-3 finding).
+bool CellResolveLookup(HitRecord rec, out vec3 cellMean, out float cellW) {
+    cellMean = vec3(0.0); cellW = 0.0;
+    if (hitAccumParams.primaryCoef <= 0.0) return false;
+    float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
+    uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
+    if (mip == 0u) return false;  // un-engaged: the per-pixel result stands
+    uint instIdx = rec._pad0[0];
+    if (instIdx >= bodyInstances.length()) return false;
+    uint recipeId = bodyInstances[instIdx].recipeId;
+    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
+    ivec3 cell   = HitAccumCellCoord(rec.worldPos, cellSize);
+    ivec3 anchor = HitAccumAnchorCell(hitAccumParams.camPos.xyz, hitAccumParams.camForward.xyz,
+                                      hitAccumParams.primaryCoef, hitAccumParams.detailSize0, mip);
+    uint keyLo = HitAccumPackCellKeyLo(cell, anchor);
+    if (keyLo == 0u) return false;
+    uint keyHiBase = HitAccumPackCellKeyHi(recipeId, mip);
+    if (keyHiBase == 0u) return false;
+    uint epoch = hitAccumParams.frameEpoch & 0xFFFFFu;
+    if (epoch == 0xFFFFFu) epoch = 0u;
+    uint keyHi = keyHiBase | epoch;
+    uint baseSlot = HitAccumSlotOf(keyLo, keyHiBase);
+    uint stride = HitAccumProbeStride(keyLo);
+    vec3 acc = vec3(0.0);
+    float accCount = 0.0;
+    for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
+        uint s = (baseSlot + probe * stride) % kHitAccumTableCapacity;
+        uint lo = accumEntries[s].keyLo;
+        if (lo == 0u) break;
+        if (lo != keyLo) continue;
+        if (accumEntries[s].keyHi != keyHi) continue;
+        uint count = accumEntries[s].count;
+        if (count == 0u) continue;
+        acc += cellRadiance[s].rgb * float(count);
+        accCount += float(count);
+    }
+    if (accCount <= 0.0) return false;  // fail-soft
+    cellMean = acc / accCount;
+    cellW = clamp(footprint / hitAccumParams.detailSize0 - 1.0, 0.0, 1.0);
+    return true;
+}
+#endif // VIXEN_SRS_CELL_RESOLVE
+
+// ============================================================================
 // RESERVOIR MATH (shared primitive — see ReservoirCombine.glsl's own header)
 // ============================================================================
 #include "ReservoirCombine.glsl"
@@ -584,10 +670,31 @@ void main() {
             vec4 history = imageLoad(historyImage, pixelCoords);
             blended = mix(history, vec4(outColor, 1.0), alpha);
         }
+#ifdef VIXEN_SRS_CELL_RESOLVE
+        // W-LEAN L3: outputImage gets the composite; history stays pre-composite.
+        {
+            vec3 cellMean; float cellW;
+            vec4 outStore = blended;
+            if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
+                outStore.rgb = mix(outStore.rgb, cellMean, cellW);
+            }
+            imageStore(outputImage, pixelCoords, outStore);
+        }
+#else
         imageStore(outputImage, pixelCoords, blended);
+#endif
         imageStore(historyImage, pixelCoords, blended);
     } else {
+#ifdef VIXEN_SRS_CELL_RESOLVE
+        vec3 cellMean; float cellW;
+        vec4 outStore = vec4(outColor, 1.0);
+        if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
+            outStore.rgb = mix(outStore.rgb, cellMean, cellW);
+        }
+        imageStore(outputImage, pixelCoords, outStore);
+#else
         imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+#endif
     }
 
     // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the

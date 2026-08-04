@@ -46,6 +46,11 @@ inline constexpr ShaderFeature kFeatureWaveReservoirPhase{"VIXEN_WAVE_RESERVOIR_
 // wave's analytic phase (the standalone pass paid ~2 ms re-reading records).
 inline constexpr ShaderFeature kFeatureHitAccumFused{"VIXEN_HIT_ACCUM_FUSED"};
 
+/** @brief W-LEAN L3: SpatialReuseShade's cell-resolve fold (the retired
+ *  standalone HitAccumResolve stage as a tail of the shade — bindings 36/37/38
+ *  gated on this). */
+inline constexpr ShaderFeature kFeatureSrsCellResolve{"VIXEN_SRS_CELL_RESOLVE"};
+
 /**
  * @brief The set of active shader features for a stage/frame.
  *
