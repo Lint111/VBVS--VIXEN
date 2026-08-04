@@ -730,32 +730,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const bool hitAccumEnabled = (std::getenv("VIXEN_HIT_ACCUM") != nullptr);
     hitAccumEnabled_ = hitAccumEnabled;
     NodeHandle hitAccumTableBuffer{};
-    NodeHandle hitAccumClearShaderLib{}, hitAccumClearNode{};
     NodeHandle hitAccumShaderLib{}, hitAccumNode{};
-    NodeHandle hitAccumModeClearConstant{}, hitAccumModeAccumConstant{};
     NodeHandle hitAccumWidthConstant{}, hitAccumHeightConstant{};
-    NodeHandle hitAccumDetailConstant{}, hitAccumCamPosConstant{};
-    NodeHandle hitAccumClearWriteGatherer{}, hitAccumReadGatherer{}, hitAccumWriteGatherer{};
+    NodeHandle hitAccumDetailConstant{}, hitAccumCamPosConstant{}, hitAccumCamForwardConstant{};
+    NodeHandle hitAccumEpochBuffer{};
+    NodeHandle hitAccumReadGatherer{}, hitAccumWriteGatherer{};
     if (hitAccumEnabled) {
         hitAccumTableBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_table_buffer");
-        hitAccumClearShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_clear_shader_lib");
-        hitAccumClearNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_clear");
         hitAccumShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_shader_lib");
         hitAccumNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_accumulate");
-        hitAccumModeClearConstant = renderGraph->AddNode<ConstantNodeType>("hit_accum_mode_clear_constant");
-        hitAccumModeAccumConstant = renderGraph->AddNode<ConstantNodeType>("hit_accum_mode_accum_constant");
+        // Epoch-stamped entries — NO clear stage exists (see HitAccumulate.comp's
+        // own header). The epoch is a HOST-WRITTEN 4-byte buffer bumped every
+        // PreTick (push constants bake at record time per ring slot — found
+        // live: a pushed epoch froze at two alternating values).
+        hitAccumEpochBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_epoch_buffer");
         hitAccumWidthConstant  = renderGraph->AddNode<ConstantNodeType>("hit_accum_width_constant");
         hitAccumHeightConstant = renderGraph->AddNode<ConstantNodeType>("hit_accum_height_constant");
         hitAccumDetailConstant = renderGraph->AddNode<ConstantNodeType>("hit_accum_detail_constant");
         // Set EVERY FRAME from PreTick (the recipeBucketingViewProjConstant
         // precedent) — the accumulate pass anchors its per-mip cells on the
-        // CURRENT camera cell.
+        // frustum center (camPos + forward·bandCenter).
         hitAccumCamPosConstant = renderGraph->AddNode<ConstantNodeType>("hit_accum_campos_constant");
-        hitAccumClearWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_clear_write_gatherer");
+        hitAccumCamForwardConstant = renderGraph->AddNode<ConstantNodeType>("hit_accum_camforward_constant");
         hitAccumReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_read_gatherer");
         hitAccumWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_write_gatherer");
     }
     hitAccumCamPosConstant_ = hitAccumCamPosConstant;
+    hitAccumCamForwardConstant_ = hitAccumCamForwardConstant;
+    hitAccumEpochBuffer_ = hitAccumEpochBuffer;
     hitAccumTableBuffer_ = hitAccumTableBuffer;
 
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
@@ -1686,8 +1688,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // libs, two pipelines, mode push selector). The shared lighting feature
     // set is inert for it (no trace-hooks axis).
     if (hitAccumEnabled) {
-        registerLightingFamily(hitAccumClearShaderLib,
-                               makeLightingFamily("HitAccumulate.comp", "HitAccumulate"));
         registerLightingFamily(hitAccumShaderLib,
                                makeLightingFamily("HitAccumulate.comp", "HitAccumulate"));
     }
@@ -1880,18 +1880,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // own dispatch). Constants: mode selectors, extents, detailSize0; the
         // camera-position constant is (re)set every frame from PreTick.
         if (hitAccumEnabled) {
-            auto* clearStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(hitAccumClearNode));
-            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kHitAccumTableCapacity / 64u);
-            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
-            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
             auto* accumStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(hitAccumNode));
             accumStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
             accumStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
             accumStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
             accumStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
-            static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumModeClearConstant))->SetValue<uint32_t>(0u);
-            static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumModeAccumConstant))->SetValue<uint32_t>(1u);
+            static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumEpochBuffer))
+                ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 4u);
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumWidthConstant))->SetValue<uint32_t>(wavePixelsX);
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumHeightConstant))->SetValue<uint32_t>(wavePixelsY);
             // Engagement threshold: env-overridable (the primary cone coef is
@@ -1906,6 +1901,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             hitAccumDetailSize0_ = hitAccumDetail;
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumDetailConstant))->SetValue<float>(hitAccumDetail);
             static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumCamPosConstant))->SetValue<glm::vec3>(glm::vec3(0.0f));
+            static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumCamForwardConstant))->SetValue<glm::vec3>(glm::vec3(0.0f, 0.0f, 1.0f));
             auto* tableInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer));
             // uint32_t, matching the ValueTag the node reads (the ddgiLeakGateDebug
             // precedent's own `60u` — a uint64_t here stores a mismatched tag and
@@ -1955,7 +1951,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // W3b: clear writes {table}; accumulate reads {table, hitRecords} and
     // writes {table} (claim-CAS + atomicAdds are RMW on the whole resource).
     if (hitAccumEnabled) {
-        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumClearWriteGatherer))->PreRegisterBufferSlots(1);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumReadGatherer))->PreRegisterBufferSlots(2);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumWriteGatherer))->PreRegisterBufferSlots(1);
     }
@@ -6740,6 +6735,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hitAccumEnabled) {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       hitAccumTableBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      hitAccumEpochBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
     }
 
     // Sampled Lighting Inc4 M4: DDGI leak-test gate debug buffer — device only, NO
@@ -7622,14 +7619,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, SlotRole::Execute);
         sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+        sceneProviders.Provide("HitAccumEpochSSBO", hitAccumEpochBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
 
-        const auto clearSynth = SynthesizeComputeStage<HitAccumSdi::Metadata, HitAccumSdi::MEMBERS>(
-            renderGraph, batch, "hit_accum_clear", hitAccumClearShaderLib,
-            hitAccumClearNode, lightingCommon, sceneProviders, {},
-            SdiWireSet::DescriptorsOnly);
-        CensusStageFromSdi<HitAccumSdi::Metadata, HitAccumSdi::MEMBERS>(
-            sdiHazardCensus_, hitAccumClearNode, sceneProviders, sdiNoFeatures,
-            &sdiCensusExclusions);
         const auto accumSynth = SynthesizeComputeStage<HitAccumSdi::Metadata, HitAccumSdi::MEMBERS>(
             renderGraph, batch, "hit_accum_accumulate", hitAccumShaderLib,
             hitAccumNode, lightingCommon, sceneProviders, {},
@@ -7638,18 +7630,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
             sdiHazardCensus_, hitAccumNode, sceneProviders, sdiNoFeatures,
             &sdiCensusExclusions);
 
-        // Push: both stages share every field except mode. raySizeCoef comes
-        // from the PRIMARY cone's live node (the march's own field-8 source —
-        // NOT the secondary constant); bias from the primary bias constant.
-        struct StagePush { NodeHandle gatherer; NodeHandle mode; };
-        const StagePush stagePushes[2] = {
-            {clearSynth.pushGatherer, hitAccumModeClearConstant},
-            {accumSynth.pushGatherer, hitAccumModeAccumConstant},
+        // Push: raySizeCoef comes from the PRIMARY cone's live node (the
+        // march's own field-8 source — NOT the secondary constant); bias from
+        // the primary bias constant; the epoch constant bumps every PreTick.
+        struct StagePush { NodeHandle gatherer; };
+        const StagePush stagePushes[1] = {
+            {accumSynth.pushGatherer},
         };
         for (const auto& sp : stagePushes) {
-            batch.Connect(sp.mode, ConstantNodeConfig::OUTPUT,
-                          sp.gatherer, HitAccumSdi::Push::mode::INDEX,
-                          SlotRoleModifier(SlotRole::Execute));
             batch.Connect(hitAccumWidthConstant, ConstantNodeConfig::OUTPUT,
                           sp.gatherer, HitAccumSdi::Push::imgWidth::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
@@ -7668,16 +7656,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
             batch.Connect(hitAccumCamPosConstant, ConstantNodeConfig::OUTPUT,
                           sp.gatherer, HitAccumSdi::Push::camPos::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
+            batch.Connect(hitAccumCamForwardConstant, ConstantNodeConfig::OUTPUT,
+                          sp.gatherer, HitAccumSdi::Push::camForward::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
         }
 
-        // Hazards: clear WRITES the table; accumulate READS {table, hitRecords}
-        // and WRITES the table — the declared write→read chain orders
-        // clear→accumulate on the shared Resource*; the hit-record read rides
-        // the standing serialized-submission class relative to march/wave/SRS.
-        batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      hitAccumClearWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(hitAccumClearWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
-                      hitAccumClearNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        // Hazards: accumulate READS {table, hitRecords} and WRITES the table
+        // (epoch-stamped persistent entries — no clear stage exists); the
+        // hit-record read rides the standing serialized-submission class
+        // relative to march/wave/SRS.
         batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                       hitAccumReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,

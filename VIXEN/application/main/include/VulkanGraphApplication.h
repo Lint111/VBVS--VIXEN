@@ -411,11 +411,19 @@ private:
     // kHitAccumTableCapacity (sync comment there; the diag readback's occupancy
     // scan catches a mismatch loudly, not silently). Entry stride = 12 words.
     static constexpr uint32_t kHitAccumTableCapacity   = 65536u;
-    static constexpr uint32_t kHitAccumEntryBytes      = 48u;
+    static constexpr uint32_t kHitAccumEntryBytes      = 52u;  // 13 words (two-word key, rev 2)
     static constexpr float    kHitAccumDetailSize0     = 0.5f;  // engagement threshold (world units at mip 0)
     bool hitAccumEnabled_ = false;
     float hitAccumDetailSize0_ = kHitAccumDetailSize0;  // resolved (env-overridable) engagement threshold
     NodeHandle hitAccumCamPosConstant_{};  // set every frame from PreTick (camera cell anchor)
+    NodeHandle hitAccumCamForwardConstant_{};  // set every frame from PreTick (frustum-center anchoring)
+    NodeHandle hitAccumEpochBuffer_{};         // 4-byte host-written epoch (bumped every PreTick; no clear pass)
+    uint32_t hitAccumFrameEpoch_ = 0;
+    // W3b diag (VIXEN_HIT_ACCUM_PROBE_LOG): runs at SHUTDOWN, after the last
+    // frame — an in-loop readback races the flight ring (waitIdle also waits
+    // the NEXT frame's already-submitted CLEAR, so the map reads a zeroed
+    // table; found live at the rev-2 gate: CPU 36826 vs GPU 0).
+    void RunHitAccumDiagReadback();
     NodeHandle hitAccumTableBuffer_{};     // mapped by the VIXEN_HIT_ACCUM_PROBE_LOG diag readback
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)

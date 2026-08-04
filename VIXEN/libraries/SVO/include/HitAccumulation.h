@@ -138,53 +138,67 @@ inline ResolvedCell Resolve(const AccumEntry& entry, const CellKey& key, float d
     return r;
 }
 
-// --- Packed key (W3b's single-CAS GPU slot claim) ----------------------------
-// The GPU hash table claims a slot with ONE 32-bit atomicCompSwap — portable
-// (no 64-bit-atomic extension) and EXACT (no fingerprint mis-merge) because the
-// FULL key fits one word: recipeId(8) | mip(4) | camera-anchored 6-bit signed
-// cell deltas ×3 | a nonzero tag bit (0 stays the empty-slot sentinel). The
-// 6-bit range is sufficient BY CONSTRUCTION: a mip only engages when
-// footprint = dist·raySizeCoef exceeds detailSize0, so cellSize ≥ dist·coef and
-// the frustum spans at most ~1/coef (~20 at the default 0.05) cells of that
-// mip around the camera's own cell (the per-mip anchor). Anything outside the
-// range packs to 0 — the fail-soft per-ray path, NEVER a wrapped/aliased key.
+// --- Two-word packed key (W3b rev 2 — the diag's range finding) --------------
+// The FIRST design packed the full key into one word with 6-bit deltas — sized
+// against the SECONDARY cone coef (0.05). The PRIMARY coef is tan-based
+// (~0.0016 at 500 px), and a mip's cells at their engaging distance span
+// 2·tan(fov/2)/coef ≈ 520 cells — INDEPENDENT of detailSize0 (cellSize ≈
+// t·coef cancels t). Single-word keys cannot address that. Rev 2:
+//   keyLo = [31]=tag | [30:21]=dx | [20:11]=dy | [10:1]=dz | [0]=spare
+//           (10-bit biased deltas, range ±kKeyDeltaMax = ±511) — CAS-claimed.
+//   keyHi = [31:24]=recipeId | [23:20]=mip | rest spare — written by the claim
+//           WINNER (atomicExchange); readers compare BOTH words, and a
+//           mismatch (an in-flight claim or a delta collision across
+//           recipe/mip) probes the NEXT slot — producing benign DUPLICATE-key
+//           entries that resolve identically. No spin, no mis-merge; the diag
+//           gate compares totals/histograms exactly and occupancy as ≥.
+// Anchoring: the FRUSTUM CENTER of the mip's engagement band (camera +
+// forward·0.75·detail·2^mip/coef — band [t/2, t] centered), which halves the
+// span: half-width ≈ tan(fov/2)/coef ≈ 264, band depth ≈ ±159, corner ≈ 308 —
+// inside ±511 with ~1.65× margin at the 500-px reference.
 
 inline constexpr uint32_t kKeyTagBit    = 1u << 31;
-inline constexpr int32_t  kKeyDeltaMax  = 31;   // 6-bit signed: [-31, 31] (−32 unused, keeps symmetry)
-inline constexpr uint32_t kKeyRecipeMax = 255;  // 8 bits
-inline constexpr uint32_t kKeyMipMax    = 15;   // 4 bits
+inline constexpr int32_t  kKeyDeltaMax  = 511;  // 10-bit biased: [-511, 511]
+inline constexpr uint32_t kKeyRecipeMax = 255;  // 8 bits (keyHi)
+inline constexpr uint32_t kKeyMipMax    = 15;   // 4 bits (keyHi)
 
-// 0 = out-of-range (fail-soft). anchor = the camera's own cell at key.mip.
-// Layout: [31]=tag, [30:23]=recipeId, [22:19]=mip, [18:13]/[12:7]/[6:1]=biased
-// deltas (bias +kKeyDeltaMax maps [-31,31] into [0,62]), [0]=spare 0.
-inline uint32_t PackCellKey(const CellKey& key, const glm::ivec3& anchorCell) {
-    if (key.recipeId > kKeyRecipeMax || key.mip > kKeyMipMax) return 0u;
-    const glm::ivec3 delta = key.cell - anchorCell;
+// The per-mip anchor cell: frustum-center of mip's engagement band. coef must
+// be the PRIMARY cone coefficient (RaySizeCoefNode's own value).
+inline glm::ivec3 AnchorCell(const glm::vec3& camPos, const glm::vec3& camForward,
+                             float coef, float detailSize0, uint32_t mip) {
+    const float cellSize = CellSize(mip, detailSize0);
+    const float bandCenterT = coef > 0.0f ? (0.75f * cellSize / coef) : 0.0f;
+    const glm::vec3 center = camPos + camForward * bandCenterT;
+    return glm::ivec3(glm::floor(center / cellSize));
+}
+
+// 0 = out-of-range (fail-soft; 0 stays the empty-slot CAS sentinel).
+inline uint32_t PackCellKeyLo(const glm::ivec3& cell, const glm::ivec3& anchorCell) {
+    const glm::ivec3 delta = cell - anchorCell;
     for (int i = 0; i < 3; ++i) {
         if (delta[i] < -kKeyDeltaMax || delta[i] > kKeyDeltaMax) return 0u;
     }
     const uint32_t dx = static_cast<uint32_t>(delta.x + kKeyDeltaMax);
     const uint32_t dy = static_cast<uint32_t>(delta.y + kKeyDeltaMax);
     const uint32_t dz = static_cast<uint32_t>(delta.z + kKeyDeltaMax);
-    return kKeyTagBit |
-           (key.recipeId << 23) |
-           (key.mip << 19) |
-           (dx << 13) | (dy << 7) | (dz << 1);
+    return kKeyTagBit | (dx << 21) | (dy << 11) | (dz << 1);
 }
 
-// Returns false on a 0/undecodable word. mip is supplied by the caller (the GPU
-// reader iterates per-mip anchors; mip is also IN the packed word — both must
-// agree or this returns false).
-inline bool UnpackCellKey(uint32_t packed, const glm::ivec3& anchorCell,
-                          uint32_t mip, CellKey& out) {
-    if ((packed & kKeyTagBit) == 0u) return false;
-    const uint32_t packedMip = (packed >> 19) & 0xFu;
-    if (packedMip != mip) return false;
-    out.recipeId = (packed >> 23) & 0xFFu;
-    out.mip = packedMip;
-    const int32_t dx = static_cast<int32_t>((packed >> 13) & 0x3Fu) - kKeyDeltaMax;
-    const int32_t dy = static_cast<int32_t>((packed >> 7) & 0x3Fu) - kKeyDeltaMax;
-    const int32_t dz = static_cast<int32_t>((packed >> 1) & 0x3Fu) - kKeyDeltaMax;
+inline uint32_t PackCellKeyHi(uint32_t recipeId, uint32_t mip) {
+    if (recipeId > kKeyRecipeMax || mip > kKeyMipMax) return 0u;  // caller fail-softs
+    return (recipeId << 24) | (mip << 20);
+}
+
+// Returns false on an untagged lo word. The anchor must be the SAME AnchorCell
+// the packer used (derivable: mip is in hi).
+inline bool UnpackCellKey(uint32_t keyLo, uint32_t keyHi, const glm::ivec3& anchorCell,
+                          CellKey& out) {
+    if ((keyLo & kKeyTagBit) == 0u) return false;
+    out.recipeId = (keyHi >> 24) & 0xFFu;
+    out.mip = (keyHi >> 20) & 0xFu;
+    const int32_t dx = static_cast<int32_t>((keyLo >> 21) & 0x3FFu) - kKeyDeltaMax;
+    const int32_t dy = static_cast<int32_t>((keyLo >> 11) & 0x3FFu) - kKeyDeltaMax;
+    const int32_t dz = static_cast<int32_t>((keyLo >> 1) & 0x3FFu) - kKeyDeltaMax;
     out.cell = anchorCell + glm::ivec3(dx, dy, dz);
     return true;
 }

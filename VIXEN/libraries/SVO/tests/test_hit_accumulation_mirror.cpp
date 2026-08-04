@@ -178,52 +178,68 @@ TEST(HitAccumMirror, Toksvig_MonotoneInDisagreement_NeverNarrows) {
     }
 }
 
-// --- Packed key (W3b's single-CAS GPU slot claim) ---------------------------
+// --- Two-word packed key (W3b rev 2 — sized by the diag's range finding) ----
 
-TEST(HitAccumMirror, PackKey_RoundTripsInRange) {
-    // recipeId(8) | mip(4) | camera-anchored 6-bit signed cell deltas ×3 | tag.
-    const CellKey key{200u, 9u, glm::ivec3(-31, 0, 30)};
+TEST(HitAccumMirror, PackKey2_RoundTripsInRange) {
+    const CellKey key{200u, 9u, glm::ivec3(-500, 0, 480)};
     const glm::ivec3 anchor(0, 0, 0);
-    const uint32_t packed = PackCellKey(key, anchor);
-    ASSERT_NE(packed, 0u);  // 0 is the GPU empty sentinel — a valid key NEVER packs to 0
+    const uint32_t lo = PackCellKeyLo(key.cell, anchor);
+    const uint32_t hi = PackCellKeyHi(key.recipeId, key.mip);
+    ASSERT_NE(lo, 0u);  // 0 is the GPU empty sentinel — a valid cell NEVER packs to 0
     CellKey back;
-    ASSERT_TRUE(UnpackCellKey(packed, anchor, key.mip, back));
+    ASSERT_TRUE(UnpackCellKey(lo, hi, anchor, back));
     EXPECT_EQ(back, key);
 }
 
-TEST(HitAccumMirror, PackKey_AnchorRelative) {
-    // Same absolute cell, different anchors -> different deltas, same round-trip.
-    const CellKey key{5u, 3u, glm::ivec3(100, -50, 7)};
-    const glm::ivec3 anchor(98, -48, 6);  // deltas {2,-2,1}
-    const uint32_t packed = PackCellKey(key, anchor);
-    ASSERT_NE(packed, 0u);
+TEST(HitAccumMirror, PackKey2_EngagingDistanceSpan_MustPack) {
+    // THE regression test for the diag's finding: a hit at its mip's engaging
+    // distance, at the frustum EDGE, with the real PRIMARY cone coefficient
+    // (2·tan((fovYRad/height)·0.5) ≈ 0.001571 at 500 px / 45°). Span at
+    // engagement ≈ 2·tan(fov/2)/coef ≈ 527 cells across — the single-word
+    // design failed-soft on ALL of these; frustum-center anchoring + 10-bit
+    // deltas must hold them.
+    const float coef = 2.0f * std::tan((glm::radians(45.0f) / 500.0f) * 0.5f);
+    const float detail = 0.02f;
+    const glm::vec3 camPos(0.0f);
+    const glm::vec3 camForward(0.0f, 0.0f, 1.0f);
+    const float t = 40.0f;
+    const float footprint = t * coef;                       // ≈ 0.063
+    const uint32_t mip = SelectMip(footprint, detail);      // ≥ 1
+    ASSERT_GE(mip, 1u);
+    const float cellSize = CellSize(mip, detail);
+    // Frustum edge at distance t (45° vertical fov): offset ≈ t·tan(22.5°).
+    const float edge = t * std::tan(glm::radians(22.5f));
+    const glm::vec3 hitEdge = camPos + camForward * t + glm::vec3(edge, 0.0f, 0.0f);
+    const glm::ivec3 cell = glm::ivec3(glm::floor(hitEdge / cellSize));
+    const glm::ivec3 anchor = AnchorCell(camPos, camForward, coef, detail, mip);
+    const uint32_t lo = PackCellKeyLo(cell, anchor);
+    ASSERT_NE(lo, 0u) << "frustum-edge cell at engaging distance must pack (span finding)";
     CellKey back;
-    ASSERT_TRUE(UnpackCellKey(packed, anchor, key.mip, back));
-    EXPECT_EQ(back.cell, key.cell);
+    ASSERT_TRUE(UnpackCellKey(lo, PackCellKeyHi(3u, mip), anchor, back));
+    EXPECT_EQ(back.cell, cell);
 }
 
-TEST(HitAccumMirror, PackKey_OutOfRangeFailsSoft) {
-    // Delta beyond ±(2^5-1) on any axis -> 0 (the fail-soft per-ray path), never
-    // a wrapped/aliased key.
+TEST(HitAccumMirror, PackKey2_OutOfRangeFailsSoft) {
     const glm::ivec3 anchor(0, 0, 0);
-    EXPECT_EQ(PackCellKey(CellKey{1u, 2u, glm::ivec3(40, 0, 0)}, anchor), 0u);
-    EXPECT_EQ(PackCellKey(CellKey{1u, 2u, glm::ivec3(0, -40, 0)}, anchor), 0u);
-    // recipeId past 8 bits or mip past 4 bits also fail-soft:
-    EXPECT_EQ(PackCellKey(CellKey{300u, 2u, glm::ivec3(0)}, anchor), 0u);
-    EXPECT_EQ(PackCellKey(CellKey{1u, 17u, glm::ivec3(0)}, anchor), 0u);
+    EXPECT_EQ(PackCellKeyLo(glm::ivec3(512, 0, 0), anchor), 0u);
+    EXPECT_EQ(PackCellKeyLo(glm::ivec3(0, -512, 0), anchor), 0u);
+    EXPECT_NE(PackCellKeyLo(glm::ivec3(511, -511, 511), anchor), 0u);
+    // recipeId past 8 bits or mip past 4 bits fail in the HI word:
+    EXPECT_EQ(PackCellKeyHi(300u, 2u), 0u);
+    EXPECT_EQ(PackCellKeyHi(1u, 17u), 0u);
 }
 
-TEST(HitAccumMirror, PackKey_DistinctKeysDistinctPackings) {
+TEST(HitAccumMirror, PackKey2_DistinctKeysDistinctWords) {
     const glm::ivec3 anchor(0, 0, 0);
-    const uint32_t a = PackCellKey(CellKey{1u, 2u, glm::ivec3(1, 2, 3)}, anchor);
-    const uint32_t b = PackCellKey(CellKey{1u, 2u, glm::ivec3(1, 2, 4)}, anchor);
-    const uint32_t c = PackCellKey(CellKey{2u, 2u, glm::ivec3(1, 2, 3)}, anchor);
-    const uint32_t d = PackCellKey(CellKey{1u, 3u, glm::ivec3(1, 2, 3)}, anchor);
-    EXPECT_NE(a, 0u);
-    EXPECT_NE(a, b);
-    EXPECT_NE(a, c);
-    EXPECT_NE(a, d);
-    EXPECT_NE(b, c);
+    const uint32_t loA = PackCellKeyLo(glm::ivec3(1, 2, 3), anchor);
+    const uint32_t loB = PackCellKeyLo(glm::ivec3(1, 2, 4), anchor);
+    EXPECT_NE(loA, 0u);
+    EXPECT_NE(loA, loB);
+    const uint32_t hiA = PackCellKeyHi(1u, 2u);
+    const uint32_t hiB = PackCellKeyHi(2u, 2u);
+    const uint32_t hiC = PackCellKeyHi(1u, 3u);
+    EXPECT_NE(hiA, hiB);
+    EXPECT_NE(hiA, hiC);
 }
 
 TEST(HitAccumMirror, Toksvig_DisagreementShortensAvgDir_EndToEnd) {

@@ -73,17 +73,37 @@ struct BodyInstanceBuffer {
  * @brief HitAccumTable
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3edf992875562968 (for runtime discovery)
+ * Layout VixenHash: 0x4ac37bae8351f0ec (for runtime discovery)
  */
 struct HitAccumTable {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3edf992875562968ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x4ac37bae8351f0ecULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "HitAccumEntryGpu";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 48;
+        static constexpr uint32_t SIZE = 52;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief HitAccumEpochSSBO
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x31c6278e5284c9c0 (for runtime discovery)
+ */
+struct HitAccumEpochSSBO {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x31c6278e5284c9c0ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -136,6 +156,21 @@ namespace Set0 {
         using DataType = HitAccumTable;
     };
 
+    /**
+     * @brief HitAccumEpochSSBO
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding3 {
+        static constexpr const char* NAME = "HitAccumEpochSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 3;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = HitAccumEpochSSBO;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -143,64 +178,65 @@ namespace Bind {
 using HitRecordBuffer = Set0::Binding0;
 using BodyInstanceBuffer = Set0::Binding1;
 using HitAccumTable = Set0::Binding2;
+using HitAccumEpochSSBO = Set0::Binding3;
 } // namespace Bind
 
 namespace Push {
 
-    static constexpr uint32_t SIZE = 48;
+    static constexpr uint32_t SIZE = 64;
 
-    struct mode {
-        static constexpr const char* NAME = "mode";
+    struct imgWidth {
+        static constexpr const char* NAME = "imgWidth";
         static constexpr uint32_t INDEX = 0;
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct imgWidth {
-        static constexpr const char* NAME = "imgWidth";
+    struct imgHeight {
+        static constexpr const char* NAME = "imgHeight";
         static constexpr uint32_t INDEX = 1;
         static constexpr uint32_t OFFSET = 4;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct imgHeight {
-        static constexpr const char* NAME = "imgHeight";
+    struct raySizeCoef {
+        static constexpr const char* NAME = "raySizeCoef";
         static constexpr uint32_t INDEX = 2;
         static constexpr uint32_t OFFSET = 8;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct raySizeCoef {
-        static constexpr const char* NAME = "raySizeCoef";
+    struct raySizeBias {
+        static constexpr const char* NAME = "raySizeBias";
         static constexpr uint32_t INDEX = 3;
         static constexpr uint32_t OFFSET = 12;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct raySizeBias {
-        static constexpr const char* NAME = "raySizeBias";
+    struct detailSize0 {
+        static constexpr const char* NAME = "detailSize0";
         static constexpr uint32_t INDEX = 4;
         static constexpr uint32_t OFFSET = 16;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct detailSize0 {
-        static constexpr const char* NAME = "detailSize0";
+    struct camPos {
+        static constexpr const char* NAME = "camPos";
         static constexpr uint32_t INDEX = 5;
-        static constexpr uint32_t OFFSET = 20;
-        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t OFFSET = 32;
+        static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
-    struct camPos {
-        static constexpr const char* NAME = "camPos";
+    struct camForward {
+        static constexpr const char* NAME = "camForward";
         static constexpr uint32_t INDEX = 6;
-        static constexpr uint32_t OFFSET = 32;
+        static constexpr uint32_t OFFSET = 48;
         static constexpr uint32_t SIZE = 12;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
@@ -227,13 +263,14 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"HitRecordBuffer", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"BodyInstanceBuffer", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
     {"HitAccumTable", false, 0, 2, 0, Access::ReadWrite, 0, nullptr},
-    {"mode", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
-    {"imgWidth", true, 0, 0, 4, Access::ReadOnly, 0, nullptr},
-    {"imgHeight", true, 0, 0, 8, Access::ReadOnly, 0, nullptr},
-    {"raySizeCoef", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
-    {"raySizeBias", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
-    {"detailSize0", true, 0, 0, 20, Access::ReadOnly, 0, nullptr},
+    {"HitAccumEpochSSBO", false, 0, 3, 0, Access::ReadOnly, 0, nullptr},
+    {"imgWidth", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"imgHeight", true, 0, 0, 4, Access::ReadOnly, 0, nullptr},
+    {"raySizeCoef", true, 0, 0, 8, Access::ReadOnly, 0, nullptr},
+    {"raySizeBias", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
+    {"detailSize0", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
     {"camPos", true, 0, 0, 32, Access::ReadOnly, 0, nullptr},
+    {"camForward", true, 0, 0, 48, Access::ReadOnly, 0, nullptr},
 };
 
 /**
@@ -255,7 +292,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "HitAccumulate";
-    static constexpr uint32_t NUM_MEMBERS = 10;
+    static constexpr uint32_t NUM_MEMBERS = 11;
     static constexpr uint32_t NUM_FEATURES = 0;
 };
 
