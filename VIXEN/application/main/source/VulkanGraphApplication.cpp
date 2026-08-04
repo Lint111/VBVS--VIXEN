@@ -603,6 +603,18 @@ void VulkanGraphApplication::PreTick() {
             RunRecipeBucketedDispatchPreTick();
         }
 
+        // W3b: the hit-accumulation pass anchors its per-mip cells on the
+        // CURRENT camera cell — refresh the camPos push constant every frame
+        // (the bucketing ViewProj-constant idiom). Independent of the
+        // bucketed-dispatch flag.
+        if (hitAccumEnabled_) {
+            if (auto* cameraInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                if (auto* camPosConst = static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumCamPosConstant_))) {
+                    camPosConst->SetValue<glm::vec3>(cameraInst->GetCurrentCameraData().cameraPos);
+                }
+            }
+        }
+
         // Raster-proxy B1 M4: one-frame-delayed camera feed for the occlusion cull.
         // Ordering note: runs AFTER RunRecipeBucketedDispatchPreTick's skip-mask CPU fill —
         // the GPU cull pass OR-composes on top of whatever that fill wrote this frame.
@@ -1248,6 +1260,13 @@ void VulkanGraphApplication::PostTick() {
     }
     if (auto* waveRes = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_visibility_wave_reservoir"))) {
         passes.push_back({"shadow_visibility_wave_reservoir", waveRes->GetGPUPerformanceLogger()});
+    }
+    // W3b (hit-accumulation opt-in; absent on the default path).
+    if (auto* hitAccumClear = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_clear"))) {
+        passes.push_back({"hit_accum_clear", hitAccumClear->GetGPUPerformanceLogger()});
+    }
+    if (auto* hitAccum = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_accumulate"))) {
+        passes.push_back({"hit_accum_accumulate", hitAccum->GetGPUPerformanceLogger()});
     }
     if (auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_ray_trace"))) {
         passes.push_back({"shadow_ray_trace", shadowRayTrace->GetGPUPerformanceLogger()});

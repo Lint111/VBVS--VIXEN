@@ -406,6 +406,16 @@ private:
     // serializes same-HitRecord passes — ordering inherited, zero graph changes).
     bool bucketedShadeEnabled_ = false;
     std::unordered_map<uint32_t, SpecializedRecipePipeline> bucketShadePipelineCache_;
+    // W3b (wavefront epoch, VIXEN_HIT_ACCUM opt-in): the (recipeId, cell@mip)
+    // accumulation pass. Capacity MUST equal HitAccumulationCommon.glsl's
+    // kHitAccumTableCapacity (sync comment there; the diag readback's occupancy
+    // scan catches a mismatch loudly, not silently). Entry stride = 12 words.
+    static constexpr uint32_t kHitAccumTableCapacity   = 65536u;
+    static constexpr uint32_t kHitAccumEntryBytes      = 48u;
+    static constexpr float    kHitAccumDetailSize0     = 0.5f;  // engagement threshold (world units at mip 0)
+    bool hitAccumEnabled_ = false;
+    NodeHandle hitAccumCamPosConstant_{};  // set every frame from PreTick (camera cell anchor)
+    NodeHandle hitAccumTableBuffer_{};     // mapped by the VIXEN_HIT_ACCUM_PROBE_LOG diag readback
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
