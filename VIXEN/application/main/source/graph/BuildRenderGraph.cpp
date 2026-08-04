@@ -781,14 +781,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     recipeSpecializedDispatch_ = recipeSpecializedDispatch;
     instanceSkipMaskBuffer_ = instanceSkipMaskBuffer;
 
-    // --- Raster-proxy B1 M4: occlusion-probe chain (VIXEN_B1_OCCLUSION_CULL) ---
-    // ONE env-gated block creating everything M1-M3 built the pieces for: the depth
-    // ping-pong pair (march writes binding 36, HiZ reads last frame's slot — NO sync
-    // edges by construction, see DepthTargetNode.h), the HiZ tile image (a ProbeAtlasNode
-    // instance — generic persistent R32F storage image), and the reduce + cull quintets.
-    // Flag-unset ⇒ zero nodes created, the frame is byte-identical (decision 5 of the B1
-    // plan; the march shader only declares binding 36 under the same flag).
-    const bool b1OcclusionCullEnabled = (std::getenv("VIXEN_B1_OCCLUSION_CULL") != nullptr);
+    // --- Raster-proxy B1: occlusion-probe chain — DEFAULT ON (ruling 2026-08-04) ---
+    // Stable, plain-compute (no optional device capability), measured win (march
+    // −7.9% mean on occluded scenes, cpu median −50%; ~0 on occlusion-free ones) —
+    // so it is the default, not a feature flag. Feature flags are for heavy-drain /
+    // optional-capability / debug variants; VIXEN_B1_OCCLUSION_CULL=0 (or "off")
+    // remains as the OPT-OUT kill switch — the A/B harness's off leg, a debug use.
+    // Any other value (incl. the legacy "=1") keeps it on. Opted out ⇒ zero B1
+    // nodes created and the march shader drops binding 36 (same one-bool gate
+    // M1-M4 built: depth ping-pong pair, HiZ tile image, reduce + cull quintets).
+    const char* b1OcclusionCullEnv = std::getenv("VIXEN_B1_OCCLUSION_CULL");
+    const bool b1OcclusionCullEnabled =
+        !(b1OcclusionCullEnv && (std::string_view(b1OcclusionCullEnv) == "0" ||
+                                 std::string_view(b1OcclusionCullEnv) == "off"));
     b1OcclusionCullEnabled_ = b1OcclusionCullEnabled;
     NodeHandle b1DepthTarget{};
     NodeHandle b1HizTileImage{};
@@ -1359,7 +1364,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
         marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
-    if (std::getenv("VIXEN_B1_OCCLUSION_CULL") != nullptr) {
+    if (b1OcclusionCullEnabled) {  // one source of truth — the default-on gate above
         marchShaderFeatures.push_back(kFeatureB1OcclusionCull.define);
     }
 
