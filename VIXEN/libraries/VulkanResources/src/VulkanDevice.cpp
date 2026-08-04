@@ -70,6 +70,14 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
             sizeof(VkPhysicalDeviceRayTracingPipelineFeaturesKHR)
+        },
+        // VIXEN_PIPELINE_STATS opt-in (see DeviceNode::CreateLogicalDevice): only reaches
+        // `extensions` when the env var is set AND the device advertises the extension, so this
+        // row is a no-op in the default (unset) case -- HasExtension below never matches.
+        {
+            VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR,
+            sizeof(VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR)
         }
         // NOTE: buffer_device_address is intentionally NOT mapped here. It was promoted to
         // Vulkan 1.2 core, so it is enabled below via VkPhysicalDeviceVulkan12Features rather
@@ -102,6 +110,9 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR) {
             VkPhysicalDeviceRayTracingPipelineFeaturesKHR* rtFeatures = reinterpret_cast<VkPhysicalDeviceRayTracingPipelineFeaturesKHR*>(featureStruct.get());
             rtFeatures->rayTracingPipeline = VK_TRUE;
+        } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR) {
+            VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR* pipeStatsFeatures = reinterpret_cast<VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR*>(featureStruct.get());
+            pipeStatsFeatures->pipelineExecutableInfo = VK_TRUE;
         }
 
         // Append to pNext chain
@@ -266,6 +277,17 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
                   HasExtension(extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
     if (rtxEnabled_) {
         rtxCapabilities_ = CheckRTXSupport();
+    }
+
+    // VIXEN_PIPELINE_STATS: record whether the extension actually made it into the enabled set
+    // (DeviceNode only requests it when the env var is set AND the device supports it), and
+    // resolve its functions -- same per-device vkGetDeviceProcAddr rationale as fpCmdPipelineBarrier2.
+    pipelineStatsEnabled_ = HasExtension(extensions, VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME);
+    if (pipelineStatsEnabled_) {
+        fpGetPipelineExecutableProperties = reinterpret_cast<PFN_vkGetPipelineExecutablePropertiesKHR>(
+            vkGetDeviceProcAddr(device, "vkGetPipelineExecutablePropertiesKHR"));
+        fpGetPipelineExecutableStatistics = reinterpret_cast<PFN_vkGetPipelineExecutableStatisticsKHR>(
+            vkGetDeviceProcAddr(device, "vkGetPipelineExecutableStatisticsKHR"));
     }
 
     return {};

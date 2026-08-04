@@ -73,6 +73,11 @@ public:
     PFN_vkCmdPipelineBarrier2KHR fpCmdPipelineBarrier2 = nullptr;
     PFN_vkQueueSubmit2KHR fpQueueSubmit2 = nullptr;
 
+    // VIXEN_PIPELINE_STATS: resolved only when VK_KHR_pipeline_executable_properties was enabled
+    // (see IsPipelineStatsEnabled), same per-device resolution rationale as the pair above.
+    PFN_vkGetPipelineExecutablePropertiesKHR fpGetPipelineExecutableProperties = nullptr;
+    PFN_vkGetPipelineExecutableStatisticsKHR fpGetPipelineExecutableStatistics = nullptr;
+
     VulkanLayerAndExtension layerExtension;
 
     //this class exposes the below functions to the outer world
@@ -138,6 +143,12 @@ public:
      * @brief Check if RTX was enabled during device creation
      */
     bool IsRTXEnabled() const { return rtxEnabled_; }
+
+    /**
+     * @brief Check if VK_KHR_pipeline_executable_properties was enabled (VIXEN_PIPELINE_STATS=1
+     * and the device supports it -- see DeviceNode::CreateLogicalDevice)
+     */
+    bool IsPipelineStatsEnabled() const { return pipelineStatsEnabled_; }
 
     /**
      * @brief Get cached RTX capabilities (valid after CreateDevice)
@@ -397,6 +408,9 @@ private:
     // RTX state
     bool rtxEnabled_ = false;
     RTXCapabilities rtxCapabilities_;
+
+    // VIXEN_PIPELINE_STATS state (see IsPipelineStatsEnabled)
+    bool pipelineStatsEnabled_ = false;
 
     // Capability graph (initialized in CreateDevice)
     Vixen::CapabilityGraph capabilityGraph_;

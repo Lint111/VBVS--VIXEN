@@ -225,6 +225,7 @@ void ShellRevalidateNode::BuildPipeline() {
     cpci.stage.module = shaderModule_;
     cpci.stage.pName  = "main";
     cpci.layout       = pipelineLayout_;
+    // Hand-rolled creation site, bypasses ComputePipelineCacher -- not covered by VIXEN_PIPELINE_STATS.
     if (vkCreateComputePipelines(vulkanDevice_->device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline_) != VK_SUCCESS) {
         throw std::runtime_error("[ShellRevalidateNode] vkCreateComputePipelines failed");
     }

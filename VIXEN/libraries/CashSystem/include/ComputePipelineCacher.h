@@ -111,6 +111,8 @@ private:
     // Helper methods
     void CreateComputePipeline(const ComputePipelineCreateParams& ci, ComputePipelineWrapper& wrapper);
     void CreatePipelineLayout(const ComputePipelineCreateParams& ci, ComputePipelineWrapper& wrapper);
+    // VIXEN_PIPELINE_STATS: query + log register/spill/instruction stats for one created pipeline.
+    void LogPipelineExecutableStatistics(const std::string& shaderKey, VkPipeline pipeline);
 
     // Global pipeline cache (shared with graphics pipelines)
     VkPipelineCache m_globalCache = VK_NULL_HANDLE;
