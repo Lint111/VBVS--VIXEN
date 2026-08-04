@@ -1,0 +1,286 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// ProbeApply.comp - DDGI probe update, APPLY half (wavefront epoch W1a)
+// ============================================================================
+// The back half of ProbeUpdate.comp's megakernel split: one workgroup per
+// dispatched probe (the SAME probe set ProbeGather.comp resolved this tick —
+// see ProbeUpdateCommon.glsl's remap note), each lane pairs its
+// ProbeRayPayload with the ShadowRayTrace.comp wave's 0/1 visibility answer,
+// then the merged shader's workgroup reduction, hysteresis blend, and atlas
+// writes run UNCHANGED. This pass traces nothing and binds no scene — it is
+// the tiny kernel the split exists to create (the register/occupancy
+// re-measure vs W0's megakernel numbers is part of the W1 gate).
+//
+// Numeric identity with the merged shader: radiance = contributionIfVisible
+// * float(visible) where visible ∈ {0,1} — x*1.0 and x*0.0 are bit-exact —
+// and depth moments regenerate from the payload's fp32 hit depth exactly
+// (hit <=> depth > 0). Misses, idle lanes, and zero-pick rays all arrive as
+// zero payloads, the same zero entries they fed the merged reduction.
+//
+// M4 LEAK-GATE SELF-TEST (moved here from the merged shader's head): the
+// Chebyshev-tested gather must read atlas texels as they stood BEFORE this
+// frame's blend. This pass is now the frame's ONLY atlas writer, so the
+// previous frame's content is fully retired by the atlas hazard before this
+// dispatch begins, and the gather runs at the very START of main — before
+// this dispatch's own writes, which land only after the full payload
+// reduction. That start-of-main-vs-end-of-main window is the SAME accepted
+// cross-workgroup model the merged shader documented (reads at every
+// workgroup's head, writes only at each workgroup's tail); the window is
+// narrower here (no tracing between), which the demo gate tolerates: it
+// judges hysteresis-CONVERGED values, identical on either side of a blend.
+// ============================================================================
+
+#include "ProbeUpdateCommon.glsl"
+
+layout(local_size_x = PROBE_UPDATE_MAX_RAYS_PER_PROBE, local_size_y = 1, local_size_z = 1) in;
+
+// 1 = visible (unoccluded, or invalid slot), 0 = occluded — the wave's answer.
+layout(std430, binding = 38) readonly buffer ShadowRayResultBuffer {
+    uint shadowRayResults[];
+};
+
+layout(std430, binding = 39) readonly buffer ProbeRayPayloadBuffer {
+    ProbeRayPayload probeRayPayloads[];
+};
+
+// Persistent DDGI atlases (Sampled Lighting Inc4 M2, ProbeAtlasNode) — written via
+// IMAGE_WRITE_ARRAY (Inc4 M1), NOT the single-slot IMAGE_WRITE (DirectLighting/
+// SpatialReuseShade's slot, untouched by this pass).
+layout(rgba16f, binding = 29) uniform image2D probeIrradianceAtlas;
+layout(rg16f,   binding = 30) uniform image2D probeVisibilityAtlas;
+
+// M4: leak-test gate debug SSBO (binding 31) -- fixed-size (StorageBufferNode
+// PARAM_SIZE_BYTES, not extent-driven), single fixed-size record. Written ONLY
+// when ddgiLeakGateEnabled != 0 (VIXEN_DDGI_LEAK_GATE_DEMO's own CPU-side gate
+// lever) -- the default path never touches this buffer. Layout is SHARED with
+// SpatialReuseShade.comp (the M5 fields below are written by that shader, not
+// this one) -- keep the struct byte-identical across both.
+struct DDGILeakGateDebug {
+    uint  ddgiLeakGateEnabled;    // CPU-set: 1 = compute + write the fields below this dispatch
+    uint  chebyshevTestEnabled;  // CPU-set: 1 = real Chebyshev test; 0 = ablation negative control (force visibility=1)
+    uint  nearProbeIndex;        // CPU-set: flat probe index (px + py*countX + pz*countX*countY) of the LIT probe (irradiance source for the gather)
+    uint  farProbeIndex;         // CPU-set: flat probe index of the OCCLUDED probe (its workgroup performs the gather + write)
+    float farShadingPosX, farShadingPosY, farShadingPosZ;  // CPU-set: world-space point on the far/occluded side the gather shades
+    float gatheredLuma;          // OUTPUT: Chebyshev-tested (or ablated) luma gathered from nearProbeIndex's atlas entry at farShadingPos
+    // GATE INFRASTRUCTURE (M4, permanent -- read by the VIXEN_DDGI_LEAK_GATE_DEMO readback
+    // hook): raw per-tick stats from nearProbeIndex's OWN ray-cast update this dispatch,
+    // written unconditionally by that probe's own workgroup so the CPU can see whether
+    // TraceWorld is hitting anything at all. Load-bearing for the leak-test gate's own
+    // diagnostics; not scaffolding to remove.
+    uint  diagNearProbeHitCount;
+    float diagNearProbeAvgRadianceLuma;
+    float diagNearProbeAvgDepth;
+    float diagNearProbeAvgDepth2;
+    // M5 ADDITION: written by SpatialReuseShade.comp (NOT this shader), the SAME binding-31
+    // SSBO shared across both passes -- an atomicMax (bit-cast, see that shader's own
+    // comment) over the production 8-probe trilinear gather's luma across every pixel this
+    // dispatch, gated by ddgiLeakGateEnabled. CPU-zeroed each tick before
+    // SpatialReuseShade.comp's dispatch.
+    uint shadeM5IndirectLumaBits;
+    // GATE INFRASTRUCTURE (M5, permanent -- read by the M5 shade-pass numeric gate):
+    // SpatialReuseShade.comp's own atomicAdd count of anyHitRT pixels this dispatch.
+    // Load-bearing; not scaffolding to remove.
+    uint diagShadeAnyHitCount;
+    // M6 ADDITION (edit-loop responsiveness gate): the ACTUAL post-hysteresis-blend atlas
+    // luma for nearProbeIndex, read back right after this tick's imageStore (see the write
+    // site below) -- distinct from diagNearProbeAvgRadianceLuma above, which is the RAW
+    // pre-blend per-tick radiance and therefore cannot show the EWMA convergence curve.
+    float diagNearProbeBlendedAtlasLuma;
+};
+
+layout(std430, binding = 31) buffer DDGILeakGateDebugSSBO {
+    DDGILeakGateDebug ddgiLeakGateDebug;
+};
+
+// Workgroup-shared reduction buffers: one entry per ray invocation in this
+// probe's group, reduced to a single average by invocation 0 below.
+shared vec3  sharedRadiance[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
+shared float sharedDepth[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
+shared float sharedDepth2[PROBE_UPDATE_MAX_RAYS_PER_PROBE];
+shared uint  sharedHitCount[PROBE_UPDATE_MAX_RAYS_PER_PROBE];  // per-lane hit flag, reduced below (gate infrastructure, permanent)
+
+// Chebyshev's-inequality one-sided visibility test (standard DDGI leak
+// mitigation, Majercik et al. 2019 sec 3.3 / the classic variance-shadow-map
+// formula): given the visibility atlas's stored mean depth `mean` and
+// depth-squared moment `mean2` (variance = mean2 - mean*mean, clamped
+// non-negative against fp roundoff), and a test distance `d`, returns an
+// UPPER BOUND on P(visible >= d): 1.0 for d <= mean (no one-sided bound
+// applies), else variance / (variance + (d-mean)^2).
+float chebyshevVisibility(float mean, float mean2, float d) {
+    if (d <= mean) return 1.0;
+    float variance = max(mean2 - mean * mean, 1e-4);
+    float diff = d - mean;
+    return variance / (variance + diff * diff);
+}
+
+// Minimal standalone gather (M4's own scope note: NOT the full M5 trilinear
+// 8-probe shade-pass gather -- a single named-probe sample sufficient to
+// exercise Chebyshev-tested visibility live for the leak gate). Samples
+// `sourceProbeIndex`'s irradiance + visibility atlas texel blocks as they
+// stood at the START of this dispatch (see the file header's self-test note)
+// and returns its irradiance luma Chebyshev-weighted by the visibility test
+// between that probe's world position and `shadingPos`.
+// `forceVisibilityOne`=true implements the ablation negative control.
+float gatherProbeIrradianceLuma(uint sourceProbeIndex, vec3 shadingPos, bool forceVisibilityOne) {
+    uvec3 spc = ProbeUpdateProbeCoords(sourceProbeIndex);
+    vec3 sourceProbeWorldPos = ProbeUpdateProbeWorldPos(spc);
+
+    uint probesPerRow = max(probeGridConfig.countX * probeGridConfig.countY, 1u);
+    uint gridCol = spc.x * probeGridConfig.countY + spc.y;
+
+    ivec2 irradianceAtlasSize = imageSize(probeIrradianceAtlas);
+    uint irradianceTexelsPerProbe = max(uint(irradianceAtlasSize.x) / probesPerRow, 1u);
+    ivec2 irradianceBlockOrigin = ivec2(int(gridCol * irradianceTexelsPerProbe),
+                                         int(spc.z * irradianceTexelsPerProbe));
+    vec3 irradiance = imageLoad(probeIrradianceAtlas, irradianceBlockOrigin).rgb;
+
+    ivec2 visibilityAtlasSize = imageSize(probeVisibilityAtlas);
+    uint visibilityTexelsPerProbe = max(uint(visibilityAtlasSize.x) / probesPerRow, 1u);
+    ivec2 visibilityBlockOrigin = ivec2(int(gridCol * visibilityTexelsPerProbe),
+                                         int(spc.z * visibilityTexelsPerProbe));
+    vec2 moments = imageLoad(probeVisibilityAtlas, visibilityBlockOrigin).rg;
+
+    float d = length(shadingPos - sourceProbeWorldPos);
+    float visibility = forceVisibilityOne ? 1.0 : chebyshevVisibility(moments.x, moments.y, d);
+
+    vec3 gathered = irradiance * visibility;
+    return dot(gathered, vec3(0.2126, 0.7152, 0.0722));  // Rec.709 luma
+}
+
+void main() {
+    if (probeGridConfig.probeGridEnabled == 0u) return;  // byte-identity escape hatch
+
+    uint probeCount = ProbeUpdateProbeCount();
+    uint probeIndex = ProbeUpdateProbeIndex();
+    if (probeIndex >= probeCount) return;  // ceil-division over-dispatch discard
+
+    // M4 leak-test self-test gather: MUST run before any atlas write this
+    // dispatch (see the file header) -- only the far probe's own workgroup,
+    // invocation 0, performs the gather + debug-SSBO write.
+    if (ddgiLeakGateDebug.ddgiLeakGateEnabled != 0u &&
+        probeIndex == ddgiLeakGateDebug.farProbeIndex && gl_LocalInvocationID.x == 0u) {
+        vec3 farShadingPos = vec3(ddgiLeakGateDebug.farShadingPosX,
+                                   ddgiLeakGateDebug.farShadingPosY,
+                                   ddgiLeakGateDebug.farShadingPosZ);
+        bool forceVisibilityOne = ddgiLeakGateDebug.chebyshevTestEnabled == 0u;
+        ddgiLeakGateDebug.gatheredLuma = gatherProbeIrradianceLuma(
+            ddgiLeakGateDebug.nearProbeIndex, farShadingPos, forceVisibilityOne);
+    }
+
+    uint raysPerProbe = clamp(probeGridConfig.raysPerProbe, 1u, PROBE_UPDATE_MAX_RAYS_PER_PROBE);
+    uint rayIndex = gl_LocalInvocationID.x;
+    uint slot = ProbeUpdateShadowSlot(probeIndex, rayIndex);
+
+    vec3 sampleRadiance = vec3(0.0);
+    float sampleDepth = 0.0;
+    float sampleDepth2 = 0.0;
+    uint sampleHit = 0u;
+
+    if (rayIndex < raysPerProbe) {
+        ProbeRayPayload payload = probeRayPayloads[slot];
+        uint visible = shadowRayResults[slot];
+        sampleRadiance = payload.contributionIfVisible * float(visible);
+        // hit <=> depth > 0 (ProbeUpdateCommon.glsl's payload contract).
+        // Misses are EXCLUDED from the depth/depth^2 visibility moment (the
+        // M4 finding: miss sentinels inflate the moment until Chebyshev can
+        // reject nothing) but still divide the irradiance average below.
+        if (payload.depth > 0.0) {
+            sampleDepth = payload.depth;
+            sampleDepth2 = payload.depth * payload.depth;
+            sampleHit = 1u;
+        }
+    }
+
+    sharedRadiance[rayIndex] = sampleRadiance;
+    sharedDepth[rayIndex]    = sampleDepth;
+    sharedDepth2[rayIndex]   = sampleDepth2;
+    sharedHitCount[rayIndex] = sampleHit;
+    barrier();
+
+    // Tree reduction across the workgroup's PROBE_UPDATE_MAX_RAYS_PER_PROBE
+    // lanes (power-of-two stride halving) -- standard shared-memory sum
+    // reduction, O(log2(PROBE_UPDATE_MAX_RAYS_PER_PROBE)) barrier rounds.
+    for (uint stride = PROBE_UPDATE_MAX_RAYS_PER_PROBE / 2u; stride > 0u; stride >>= 1u) {
+        if (rayIndex < stride) {
+            sharedRadiance[rayIndex] += sharedRadiance[rayIndex + stride];
+            sharedDepth[rayIndex]    += sharedDepth[rayIndex + stride];
+            sharedDepth2[rayIndex]   += sharedDepth2[rayIndex + stride];
+            sharedHitCount[rayIndex] += sharedHitCount[rayIndex + stride];
+        }
+        barrier();
+    }
+
+    if (rayIndex != 0u) return;  // only invocation 0 performs the atlas write for this probe
+
+    float invRaysPerProbe = 1.0 / float(raysPerProbe);
+    vec3  avgRadiance = sharedRadiance[0] * invRaysPerProbe;
+
+    // Visibility moment: averaged over HIT rays only -- a probe with zero hits
+    // this tick has no occluder information; fall back to a moment of (0,0)
+    // (mean=0 -> chebyshevVisibility's d<=mean branch treats any test point as
+    // fully visible, the correct "no occlusion data" default for open sky).
+    uint hitCountThisTick = sharedHitCount[0];
+    float invHitCount = hitCountThisTick > 0u ? 1.0 / float(hitCountThisTick) : 0.0;
+    float avgDepth  = sharedDepth[0]  * invHitCount;
+    float avgDepth2 = sharedDepth2[0] * invHitCount;
+
+    // GATE INFRASTRUCTURE (M4, permanent): nearProbeIndex's own workgroup reports its raw
+    // per-tick hit count + radiance luma BEFORE hysteresis blending, so the CPU readback can
+    // see whether TraceWorld is hitting anything at all from this probe. Load-bearing for the
+    // leak-test gate's own diagnostics; not scaffolding to remove.
+    if (ddgiLeakGateDebug.ddgiLeakGateEnabled != 0u && probeIndex == ddgiLeakGateDebug.nearProbeIndex) {
+        ddgiLeakGateDebug.diagNearProbeHitCount = sharedHitCount[0];
+        ddgiLeakGateDebug.diagNearProbeAvgRadianceLuma = dot(avgRadiance, vec3(0.2126, 0.7152, 0.0722));
+        ddgiLeakGateDebug.diagNearProbeAvgDepth = avgDepth;
+        ddgiLeakGateDebug.diagNearProbeAvgDepth2 = avgDepth2;
+    }
+
+    float hysteresisRate = clamp(probeGridConfig.hysteresisRate, 0.0, 1.0);
+
+    // Atlas layout (BuildRenderGraph.cpp's own comment on probeIrradianceAtlasNode/
+    // probeVisibilityAtlasNode): columns sweep X then Y, rows tile Z, each probe
+    // occupying a texelsPerProbe x texelsPerProbe block -- atlasWidth =
+    // countX*countY*texelsPerProbe. texelsPerProbe is derived from imageSize()
+    // rather than duplicated as a shader constant, so a future atlas-dimension
+    // rebalance needs no shader change here.
+    uvec3 pc = ProbeUpdateProbeCoords(probeIndex);
+    uint probesPerRow = max(probeGridConfig.countX * probeGridConfig.countY, 1u);
+
+    ivec2 irradianceAtlasSize = imageSize(probeIrradianceAtlas);
+    uint irradianceTexelsPerProbe = uint(irradianceAtlasSize.x) / probesPerRow;
+    ivec2 irradianceBlockOrigin = ivec2(int((pc.x * probeGridConfig.countY + pc.y) * irradianceTexelsPerProbe),
+                                         int(pc.z * irradianceTexelsPerProbe));
+
+    vec4 oldIrradiance = imageLoad(probeIrradianceAtlas, irradianceBlockOrigin);
+    vec3 newIrradianceRgb = mix(oldIrradiance.rgb, avgRadiance, hysteresisRate);
+
+    // M6: report the ACTUAL post-blend atlas value for nearProbeIndex (see this field's own
+    // doc comment on the struct) -- same gate/probe-index condition as the pre-blend DIAG
+    // write above, computed after the blend so it reflects what the atlas will actually hold.
+    if (ddgiLeakGateDebug.ddgiLeakGateEnabled != 0u && probeIndex == ddgiLeakGateDebug.nearProbeIndex) {
+        ddgiLeakGateDebug.diagNearProbeBlendedAtlasLuma = dot(newIrradianceRgb, vec3(0.2126, 0.7152, 0.0722));
+    }
+
+    for (uint ty = 0u; ty < irradianceTexelsPerProbe; ++ty) {
+        for (uint tx = 0u; tx < irradianceTexelsPerProbe; ++tx) {
+            imageStore(probeIrradianceAtlas, irradianceBlockOrigin + ivec2(int(tx), int(ty)), vec4(newIrradianceRgb, 1.0));
+        }
+    }
+
+    // Visibility atlas write: depth, depth^2 moments -- these ARE the Chebyshev
+    // moments; chebyshevVisibility() above is their consumer.
+    ivec2 visibilityAtlasSize = imageSize(probeVisibilityAtlas);
+    uint visibilityTexelsPerProbe = uint(visibilityAtlasSize.x) / probesPerRow;
+    ivec2 visibilityBlockOrigin = ivec2(int((pc.x * probeGridConfig.countY + pc.y) * visibilityTexelsPerProbe),
+                                         int(pc.z * visibilityTexelsPerProbe));
+
+    vec2 oldVisibility = imageLoad(probeVisibilityAtlas, visibilityBlockOrigin).rg;
+    vec2 newVisibility = mix(oldVisibility, vec2(avgDepth, avgDepth2), hysteresisRate);
+    for (uint ty = 0u; ty < visibilityTexelsPerProbe; ++ty) {
+        for (uint tx = 0u; tx < visibilityTexelsPerProbe; ++tx) {
+            imageStore(probeVisibilityAtlas, visibilityBlockOrigin + ivec2(int(tx), int(ty)), vec4(newVisibility, 0.0, 0.0));
+        }
+    }
+}

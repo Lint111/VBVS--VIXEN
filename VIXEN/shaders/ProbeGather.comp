@@ -1,0 +1,209 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// ProbeGather.comp - DDGI probe update, GATHER half (wavefront epoch W1a)
+// ============================================================================
+// The front half of ProbeUpdate.comp's megakernel split (undertow
+// docs/plans/2026-08-04-wavefront-recipe-shading.md, slice W1): one workgroup
+// per dispatched probe, invocation i casts primary ray i via TraceWorld,
+// runs the single-candidate WRS light pick at the hit, and — instead of
+// tracing the shadow ray inline — EMITS a shadow-ray request into the fixed
+// -slot queue the ShadowRayTrace.comp wave answers, plus a ProbeRayPayload
+// carrying the ray's contribution-if-visible and hit depth for
+// ProbeApply.comp to reduce.
+//
+// BIT-IDENTITY SEAM (the reason this split can be numerically exact): every
+// RNG draw the merged shader makes happens INSIDE the WRS loop, which runs
+// entirely in this pass — TraceWorldShadow consumed no randomness. The
+// contribution math up to the occlusion decision is byte-for-byte the
+// merged shader's; apply multiplies it by the wave's 0/1 answer, and
+// x*1.0 / x*0.0 are bit-exact.
+//
+// EVERY dispatched lane writes its slot every tick — real request, or the
+// all-zero invalid record (tmax <= tmin) for idle lanes (rayIndex >=
+// raysPerProbe), primary misses, and hits whose light pick already resolved
+// to zero (no candidates, ndotl <= 0): the merged shader cast no shadow ray
+// in exactly those cases, and the wave answers invalid slots "visible", so
+// apply's multiply reconstructs the same zero. Slots of probes NOT
+// dispatched this tick stay stale — see ProbeUpdateCommon.glsl's slot-
+// addressing note for why that is accepted and measured.
+//
+// RAY SAMPLE PATTERN: spherical Fibonacci lattice (Keinert et al. 2015) —
+// cheap, deterministic (same raysPerProbe -> same directions every tick,
+// required for hysteresis to converge), near-uniform for moderate N.
+// ============================================================================
+
+#include "ProbeUpdateCommon.glsl"
+
+layout(local_size_x = PROBE_UPDATE_MAX_RAYS_PER_PROBE, local_size_y = 1, local_size_z = 1) in;
+
+#include "SceneBindings.glsl"          // scene SSBOs + TraceWorld (KI-018 precedent); shadow rays go to the wave instead
+
+#include "Generated/LightTreeBuffer.glsl"
+
+layout(std430, binding = 24) readonly buffer LightTreeBufferSSBO {
+    LightTreeBuffer lightTreeBuffer;
+};
+
+#include "ShadowRayQueue.glsl"
+
+layout(std430, binding = 37) writeonly buffer ShadowRayRequestBuffer {
+    ShadowRayRequest shadowRayRequests[];
+};
+
+layout(std430, binding = 39) writeonly buffer ProbeRayPayloadBuffer {
+    ProbeRayPayload probeRayPayloads[];
+};
+
+// Small self-contained PCG-style hash RNG — mirrors ReservoirCombine.glsl's own
+// pcgHash/rngNextFloat exactly (that file is DirectLighting/SpatialReuseShade's
+// RIS-specific include; this pass doesn't need the rest of ReservoirCombine.glsl's
+// reservoir-update/-combine machinery, only the RNG primitive, so it's re-declared
+// here rather than pulling in an unrelated file for two functions).
+uint pcgHash(uint v) {
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float rngNextFloat(inout uint state) {
+    state = pcgHash(state);
+    return float(state) * (1.0 / 4294967296.0);  // 2^32
+}
+
+// p_hat(i) for light-tree cut node i, mirrors DirectLighting.comp's own
+// lightTreeNodePHat exactly (same target-function definition; kept as a
+// separate copy per that file's own precedent comment on ReservoirCombine.glsl
+// -- multiple call sites each declare it locally since it depends on THIS
+// shader's own lightTreeBuffer binding).
+float lightTreeNodePHat(uint nodeIdx, vec3 shadingPos) {
+    LightTreeGpuNode node = lightTreeBuffer.nodes[nodeIdx];
+    vec3 toLight = node.worldPos - shadingPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float nodePower = node.intensity * node.coverage * (node.worldExtent * node.worldExtent * node.worldExtent);
+    return nodePower / dist2;
+}
+
+// Spherical Fibonacci lattice direction for sample i of N (Keinert et al. 2015,
+// "Spherical Fibonacci Mapping" -- closed-form, deterministic, near-uniform).
+vec3 sphericalFibonacci(uint i, uint n) {
+    const float PHI = 1.6180339887498948482045868343656;  // golden ratio
+    float ii = float(i) + 0.5;
+    float cosTheta = 1.0 - 2.0 * ii / float(n);
+    float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
+    float phi = 2.0 * 3.14159265358979323846 * fract(ii / PHI);
+    return vec3(cos(phi) * sinTheta, sinTheta * sin(phi), cosTheta);
+}
+
+// The merged shader's sampleDirectLitRadiance MINUS the shadow ray: pick ONE
+// light-tree candidate (single-candidate WRS draw over the cut -- the minimal
+// unbiased single-sample estimator, byte-identical math to the merged
+// shader's) and return the ray's full contribution ASSUMING the light is
+// visible, with the shadow-ray parameters handed back for request emission.
+// outNeedShadowRay=false reproduces every merged-shader path that returned
+// zero BEFORE casting a shadow ray (empty cut, degenerate pick, ndotl<=0) --
+// the caller emits an invalid request there, and the wave's "visible" answer
+// times the zero contribution gives the merged shader's zero exactly. ALL
+// RNG this pass ever consumes is drawn inside the WRS loop below, on the
+// same state sequence as the merged shader (the bit-identity seam).
+vec3 computeDirectContribution(vec3 hitPos, vec3 hitNormal, vec3 hitColor, inout uint rngState,
+                               out vec3 outLightDir, out float outLightDist, out bool outNeedShadowRay) {
+    outLightDir = vec3(0.0);
+    outLightDist = 0.0;
+    outNeedShadowRay = false;
+
+    uint cutCount = lightTreeBuffer.nodeCount;
+    if (cutCount == 0u) return vec3(0.0);
+
+    // Single-candidate WRS draw over the cut (Reservoir::Update's single-candidate
+    // degenerate case -- M=1 uniform draw weighted by pHat, mirrors
+    // reservoirBuildFromLightTree's inner loop body with M=1, avoiding a second
+    // ReservoirRecord-shaped state machine for a one-shot pick).
+    float sourcePdf = 1.0 / float(cutCount);
+    uint chosen = 0xFFFFFFFFu;
+    float chosenPHat = 0.0;
+    float weightSum = 0.0;
+    for (uint i = 0u; i < cutCount; ++i) {
+        float pHat = lightTreeNodePHat(i, hitPos);
+        float w = pHat / sourcePdf;
+        weightSum += w;
+        if (weightSum > 0.0 && rngNextFloat(rngState) < (w / weightSum)) {
+            chosen = i;
+            chosenPHat = pHat;
+        }
+    }
+    if (chosen == 0xFFFFFFFFu || chosenPHat <= 0.0) return vec3(0.0);
+
+    float unbiasedWeight = (1.0 / chosenPHat) * (weightSum / float(cutCount));
+
+    LightTreeGpuNode node = lightTreeBuffer.nodes[chosen];
+    vec3 toLight = node.worldPos - hitPos;
+    float dist2 = max(dot(toLight, toLight), 1e-4);
+    float dist = sqrt(dist2);
+    vec3 lightDir = toLight / dist;
+
+    float ndotl = max(dot(hitNormal, lightDir), 0.0);
+    if (ndotl <= 0.0) return vec3(0.0);
+
+    // Lambert-only direct term (probes store diffuse irradiance -- DDGI's own
+    // scope, no specular lobe in the probe volume). The occlusion factor the
+    // merged shader applied here now arrives via the wave's answer in apply.
+    vec3 radiance = vec3(node.intensity * node.coverage) / dist2;
+    vec3 brdf = hitColor / 3.14159265358979323846;  // Lambert diffuse, energy-normalized
+
+    outLightDir = lightDir;
+    outLightDist = dist;
+    outNeedShadowRay = true;
+    return brdf * radiance * ndotl * unbiasedWeight;
+}
+
+void main() {
+    if (probeGridConfig.probeGridEnabled == 0u) return;  // byte-identity escape hatch
+
+    uint probeCount = ProbeUpdateProbeCount();
+    uint probeIndex = ProbeUpdateProbeIndex();
+    if (probeIndex >= probeCount) return;  // ceil-division over-dispatch discard
+
+    uint raysPerProbe = clamp(probeGridConfig.raysPerProbe, 1u, PROBE_UPDATE_MAX_RAYS_PER_PROBE);
+    uint rayIndex = gl_LocalInvocationID.x;
+    uint slot = ProbeUpdateShadowSlot(probeIndex, rayIndex);
+
+    // Defaults double as the idle/miss/zero-pick record: an all-zero request
+    // is invalid (tmax <= tmin) and a zero payload contributes nothing to
+    // apply's reduction -- exactly the merged shader's zero entries.
+    ShadowRayRequest req;
+    req.origin = vec3(0.0); req.tmin = 0.0;
+    req.dir    = vec3(0.0); req.tmax = 0.0;
+    ProbeRayPayload payload;
+    payload.contributionIfVisible = vec3(0.0);
+    payload.depth = 0.0;
+
+    if (rayIndex < raysPerProbe) {
+        vec3 probeWorldPos = ProbeUpdateProbeWorldPos(ProbeUpdateProbeCoords(probeIndex));
+        vec3 rayDir = sphericalFibonacci(rayIndex, raysPerProbe);
+
+        WorldHit hit;
+        bool anyHit = TraceWorld(probeWorldPos, rayDir, 0.001, 1e30, hit);
+
+        if (anyHit) {
+            uint rngState = pcgHash((probeIndex * PROBE_UPDATE_MAX_RAYS_PER_PROBE + rayIndex) ^ 0x9E3779B9u);
+            vec3 hitPos = probeWorldPos + rayDir * hit.t;
+            vec3 lightDir; float lightDist; bool needShadowRay;
+            payload.contributionIfVisible = computeDirectContribution(
+                hitPos, hit.normal, hit.color, rngState, lightDir, lightDist, needShadowRay);
+            payload.depth = hit.t;  // hit <=> depth > 0 (tmin 0.001 floors real hits)
+            if (needShadowRay) {
+                // Same parameters the merged shader passed to TraceWorldShadow.
+                // A degenerate range (lightDist - 0.01 <= 0.001) reads as an
+                // invalid slot -> "visible", matching the merged shader's
+                // empty-interval trace returning unoccluded.
+                req.origin = hitPos;  req.tmin = 0.001;
+                req.dir    = lightDir; req.tmax = lightDist - 0.01;
+            }
+        }
+    }
+
+    shadowRayRequests[slot] = req;
+    probeRayPayloads[slot] = payload;
+}

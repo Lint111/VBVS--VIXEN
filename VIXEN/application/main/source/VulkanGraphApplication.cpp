@@ -1042,8 +1042,18 @@ void VulkanGraphApplication::PostTick() {
     if (auto* spatialReuse = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("spatial_reuse"))) {
         passes.push_back({"spatial_reuse", spatialReuse->GetGPUPerformanceLogger()});
     }
-    if (auto* probeUpdate = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_update"))) {
-        passes.push_back({"probe_update", probeUpdate->GetGPUPerformanceLogger()});
+    // W1a: the probe_update megakernel's three split stages, each timed as its
+    // own column — the wave's column is what prices the stale-slot re-trace
+    // waste the fixed-slot queue accepts (measured here before any compaction
+    // scheme is considered; see ProbeUpdateCommon.glsl's slot-addressing note).
+    if (auto* probeGather = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_gather"))) {
+        passes.push_back({"probe_gather", probeGather->GetGPUPerformanceLogger()});
+    }
+    if (auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_ray_trace"))) {
+        passes.push_back({"shadow_ray_trace", shadowRayTrace->GetGPUPerformanceLogger()});
+    }
+    if (auto* probeApply = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("probe_apply"))) {
+        passes.push_back({"probe_apply", probeApply->GetGPUPerformanceLogger()});
     }
     if (auto* blit = static_cast<BlitNode*>(renderGraph->GetNodeByName("render_target_blit"))) {
         passes.push_back({"render_target_blit", blit->GetGPUPerformanceLogger()});

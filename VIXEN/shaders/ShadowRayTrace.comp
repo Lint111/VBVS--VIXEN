@@ -1,0 +1,51 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+// ============================================================================
+// W1a (wavefront epoch): the shadow-ray traversal WAVE.
+// (undertow docs/plans/2026-08-04-wavefront-recipe-shading.md, slice W1)
+// ============================================================================
+// Answers queued any-hit visibility requests emitted by the gather half of a
+// split shading pass (first customer: ProbeUpdate's gather). One thread per
+// request SLOT — queues are fixed-slot (slot = emitter's own dispatch index),
+// no atomics; an invalid slot is flagged by tmax <= tmin and answers
+// "visible" so apply-side math needs no special case. Slots belonging to
+// probes not dispatched this frame may hold STALE valid requests — they
+// re-trace wastefully but their results are never read (the apply pass only
+// consumes slots it owns this frame); that waste is bounded by the
+// amortization fraction and measured by this pass's own CSV column before
+// any optimization is considered.
+//
+// Includes the FULL scene set: TraceWorldShadow walks the same resident
+// scene the march and lighting passes trace (SceneBindings.glsl is the
+// single traversal seam, and it #includes TraceWorld.glsl itself). The
+// shared SceneBindings push-constant block rides along: raySizeCoef(8)/
+// raySizeBias(9) feed TraceWorldShadow's any-hit LOD gate and
+// instanceCount(10) bounds the instance loop — the ProbeUpdate precedent:
+// an unconnected instanceCount makes every ray a guaranteed miss.
+// ============================================================================
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "SceneBindings.glsl"
+
+#include "ShadowRayQueue.glsl"   // the shared request layout (producer/consumer anti-drift)
+
+layout(std430, binding = 37) readonly buffer ShadowRayRequestBuffer {
+    ShadowRayRequest shadowRayRequests[];
+};
+// 1 = visible (unoccluded, or invalid slot), 0 = occluded.
+layout(std430, binding = 38) writeonly buffer ShadowRayResultBuffer {
+    uint shadowRayResults[];
+};
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= shadowRayRequests.length()) return;
+    ShadowRayRequest req = shadowRayRequests[slot];
+    if (req.tmax <= req.tmin) {
+        shadowRayResults[slot] = 1u;
+        return;
+    }
+    bool occluded = TraceWorldShadow(req.origin, req.dir, req.tmin, req.tmax);
+    shadowRayResults[slot] = occluded ? 0u : 1u;
+}

@@ -618,6 +618,21 @@ set_target_properties(test_recipe_codegen_glsl PROPERTIES FOLDER "Tests/SVO Test
 gtest_discover_tests(test_recipe_codegen_glsl)
 
 # ===========================================================================
+# Recipe parity fixture EXPORTER (task #26 cross-repo gate) — env-gated:
+# skips without VIXEN_EXPORT_RECIPE_PARITY_FIXTURES=<out.json>; with it,
+# dumps ParityCorpus programs + sample points + SdfRecipeEval ground truth
+# for the kernel-side RecipeInstructionLowering numeric-parity tests.
+# ===========================================================================
+add_executable(test_recipe_parity_fixture_export test_recipe_parity_fixture_export.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_parity_fixture_export PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_parity_fixture_export PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_parity_fixture_export PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_parity_fixture_export)
+
+# ===========================================================================
 # Recipe GLSL Numerical Parity Tests (Lazy-Procedural-Delta-Baseline Inc1 M4
 # Task 9 — GLSL field-function emitter vs CPU evalRecipe, across the full
 # ParityCorpus. CPU-eval + glslang-compile run on every machine; the actual

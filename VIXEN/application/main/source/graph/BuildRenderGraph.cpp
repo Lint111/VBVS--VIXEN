@@ -35,7 +35,9 @@
 #include "merged/RecipeInstanceBucketing-SDI.h" // Semantic-wiring S1: bucketing named binding/push constants
 #include "merged/DirectLighting-SDI.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
 #include "merged/SpatialReuseShade-SDI.h"
-#include "merged/ProbeUpdate-SDI.h"
+#include "merged/ProbeGather-SDI.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
+#include "merged/ProbeApply-SDI.h"
+#include "merged/ShadowRayTrace-SDI.h"
 
 // Semantic-wiring S1: short aliases for the merged-SDI namespaces used at many
 // Connect sites below (drift-gated by ctest sdi_merged_drift_check). The three
@@ -46,7 +48,9 @@ namespace MarchSdi = ShaderInterface::BodyInstanceRayMarch;
 namespace BucketSdi = ShaderInterface::RecipeInstanceBucketing;
 namespace DirectSdi = ShaderInterface::DirectLighting;
 namespace ReuseSdi = ShaderInterface::SpatialReuseShade;
-namespace ProbeSdi = ShaderInterface::ProbeUpdate;
+namespace GatherSdi = ShaderInterface::ProbeGather;
+namespace ApplySdi = ShaderInterface::ProbeApply;
+namespace ShadowSdi = ShaderInterface::ShadowRayTrace;
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -587,6 +591,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     constexpr uint32_t kProbeVisibilityAtlasWidth   = kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeVisibilityTexelsPerProbe;
     constexpr uint32_t kProbeVisibilityAtlasHeight  = kProbeGridDefaultCountZ * kProbeVisibilityTexelsPerProbe;
 
+    // W1a (wavefront epoch): the shadow-ray queue's slot geometry, mirroring
+    // ProbeUpdateCommon.glsl's PROBE_UPDATE_MAX_RAYS_PER_PROBE and
+    // ProbeUpdateShadowSlot — fixed-slot addressing over the FULL grid, so the
+    // buffers are amortization-factor-independent (see that include's own
+    // slot-addressing note on the accepted stale-slot re-trace waste).
+    constexpr uint32_t kProbeUpdateMaxRaysPerProbe = 256u;
+    constexpr uint32_t kShadowRaySlotCount =
+        kProbeGridDefaultCountX * kProbeGridDefaultCountY * kProbeGridDefaultCountZ * kProbeUpdateMaxRaysPerProbe;
+    constexpr uint32_t kShadowRayRequestStrideBytes = 32u;  // ShadowRayQueue.glsl's std430 ShadowRayRequest
+    constexpr uint32_t kShadowRayResultStrideBytes  = 4u;   // bare uint per slot
+    constexpr uint32_t kProbeRayPayloadStrideBytes  = 16u;  // ProbeUpdateCommon.glsl's std430 ProbeRayPayload
+
     NodeHandle probeIrradianceAtlasNode = renderGraph->AddNode<ProbeAtlasNodeType>("probe_irradiance_atlas");
     NodeHandle probeVisibilityAtlasNode = renderGraph->AddNode<ProbeAtlasNodeType>("probe_visibility_atlas");
 
@@ -615,10 +631,40 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // reflected descriptor/push-constant layout. NOT swapchain-adjacent (isConsumer=false,
     // like DirectLightingNode) — this pass writes only the probe atlases via
     // IMAGE_WRITE_ARRAY (Inc4 M1), never the swapchain-derived render target.
-    NodeHandle probeUpdateShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("probe_update_shader_lib");
-    // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
-    NodeHandle probeUpdatePushConstantGatherer{};
-    NodeHandle probeUpdateNode = renderGraph->AddNode<ComputeStageNodeType>("probe_update");
+    // W1a (wavefront epoch): ProbeUpdate's megakernel split into THREE stages —
+    // probe_gather (primary rays + WRS light pick + shadow-ray request emission),
+    // shadow_ray_trace (the traversal WAVE answering the fixed-slot queue), and
+    // probe_apply (visibility consumption + reduction + atlas writes). Each is a
+    // separately compiled program with its own shaderLib + synthesized plumbing
+    // (the "second compiled shader needs its own instances" rationale, now ×3).
+    // gather/wave trace the scene (SceneBindings.glsl consumers); apply binds no
+    // scene at all — it is the tiny kernel the split exists to create.
+    NodeHandle probeGatherShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("probe_gather_shader_lib");
+    NodeHandle probeGatherPushConstantGatherer{};  // synthesized at the wire site
+    NodeHandle probeGatherNode = renderGraph->AddNode<ComputeStageNodeType>("probe_gather");
+    NodeHandle shadowRayTraceShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("shadow_ray_trace_shader_lib");
+    NodeHandle shadowRayTracePushConstantGatherer{};  // synthesized at the wire site
+    NodeHandle shadowRayTraceNode = renderGraph->AddNode<ComputeStageNodeType>("shadow_ray_trace");
+    NodeHandle probeApplyShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("probe_apply_shader_lib");
+    NodeHandle probeApplyNode = renderGraph->AddNode<ComputeStageNodeType>("probe_apply");
+
+    // W1a queue/payload buffers (fixed-size, slot-addressed — see the
+    // kShadowRaySlotCount constants above): requests gather→wave, results
+    // wave→apply, payloads gather→apply. Sized CPU-side below (PARAM_SIZE_BYTES,
+    // the ddgiLeakGateDebugBuffer precedent — not extent-driven).
+    NodeHandle shadowRayRequestBuffer = renderGraph->AddNode<StorageBufferNodeType>("shadow_ray_request_buffer");
+    NodeHandle shadowRayResultBuffer  = renderGraph->AddNode<StorageBufferNodeType>("shadow_ray_result_buffer");
+    NodeHandle probeRayPayloadBuffer  = renderGraph->AddNode<StorageBufferNodeType>("probe_ray_payload_buffer");
+
+    // W1a cross-dispatch hazard gatherers (the BUFFER_WRITE_ARRAY/BUFFER_READ_ARRAY
+    // "two gatherer instances, same underlying source" shape — see
+    // spatialReuseReservoirReadGatherer's own precedent comment above): shared
+    // Resource* identity between a writer-side and reader-side gatherer is what
+    // lets the scheduler bake the gather→wave→apply SyncEdges.
+    NodeHandle probeGatherWriteGatherer   = renderGraph->AddNode<BufferSyncGathererNodeType>("probe_gather_write_gatherer");
+    NodeHandle shadowRayTraceReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_ray_trace_read_gatherer");
+    NodeHandle shadowRayTraceWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("shadow_ray_trace_write_gatherer");
+    NodeHandle probeApplyReadGatherer      = renderGraph->AddNode<BufferSyncGathererNodeType>("probe_apply_read_gatherer");
 
     // Sampled Lighting Inc3 M6: spatial-combine debug readback SSBO (binding 27) -- the
     // spatially-combined `current` reservoir SpatialReuseShade.comp computes exists only in
@@ -1499,10 +1545,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     registerLightingFamily(spatialReuseShaderLib,
                            makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"));
 
-    // Sampled Lighting Inc4 M3: ProbeUpdate.comp — family-registered (see the
-    // lighting-family block above).
-    registerLightingFamily(probeUpdateShaderLib,
-                           makeLightingFamily("ProbeUpdate.comp", "ProbeUpdate"));
+    // W1a: the ProbeUpdate split's three compiled programs, each family-registered
+    // (see the lighting-family block above). ProbeGather + ShadowRayTrace include
+    // SceneBindings.glsl and carry the trace-hooks variant axis exactly like the
+    // merged shader did; ProbeApply is single-variant (no scene includes) — the
+    // shared lighting feature set is simply inert for it.
+    registerLightingFamily(probeGatherShaderLib,
+                           makeLightingFamily("ProbeGather.comp", "ProbeGather"));
+    registerLightingFamily(shadowRayTraceShaderLib,
+                           makeLightingFamily("ShadowRayTrace.comp", "ShadowRayTrace"));
+    registerLightingFamily(probeApplyShaderLib,
+                           makeLightingFamily("ProbeApply.comp", "ProbeApply"));
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: RecipeInstanceBucketing.comp registration.
     // Same search-path pattern as DirectLighting.comp/ProbeUpdate.comp above -- a plain static
@@ -1664,6 +1717,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReservoirReadGatherer))->PreRegisterBufferSlots(2);
+    // W1a: gather writes {requests, payloads}; wave reads {requests} writes {results};
+    // apply reads {results, payloads}.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeGatherWriteGatherer))->PreRegisterBufferSlots(2);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceReadGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowRayTraceWriteGatherer))->PreRegisterBufferSlots(1);
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeApplyReadGatherer))->PreRegisterBufferSlots(2);
 
     // Sampled Lighting Inc4 M2: probe atlas image-array gatherer -- 2 entries (irradiance +
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
@@ -1715,15 +1774,42 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const uint32_t kDdgiAmortizationFactor = ResolveDdgiAmortizationFactor();
     const uint32_t kProbeUpdateDispatchX =
         (kProbeUpdateDefaultProbeCount + kDdgiAmortizationFactor - 1u) / kDdgiAmortizationFactor;
-    mainLogger->Info("[BuildRenderGraph] ProbeUpdate sparse dispatch (Inc6 M1): probeCount=" +
+    // W1a: the wave answers the FULL fixed-slot queue every tick (stale slots
+    // included — the measured-before-optimized waste ProbeUpdateCommon.glsl's
+    // slot-addressing note documents), so its dispatch is amortization-
+    // INDEPENDENT: slotCount / local_size_x(64), an exact division since the
+    // slot count is probeCount * 256.
+    const uint32_t kShadowRayTraceDispatchX = kShadowRaySlotCount / 64u;
+    mainLogger->Info("[BuildRenderGraph] ProbeGather/Apply sparse dispatch (Inc6 M1 shape): probeCount=" +
                       std::to_string(kProbeUpdateDefaultProbeCount) + " amortizationFactor=" +
                       std::to_string(kDdgiAmortizationFactor) + " -> dispatchX=" +
-                      std::to_string(kProbeUpdateDispatchX));
-    auto* probeUpdate = static_cast<ComputeStageNode*>(renderGraph->GetInstance(probeUpdateNode));
-    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDispatchX);
-    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
-    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+                      std::to_string(kProbeUpdateDispatchX) + "; ShadowRayTrace waveDispatchX=" +
+                      std::to_string(kShadowRayTraceDispatchX) + " (slots=" +
+                      std::to_string(kShadowRaySlotCount) + ")");
+    auto* probeGather = static_cast<ComputeStageNode*>(renderGraph->GetInstance(probeGatherNode));
+    probeGather->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    probeGather->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDispatchX);
+    probeGather->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    probeGather->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetInstance(shadowRayTraceNode));
+    shadowRayTrace->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    shadowRayTrace->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kShadowRayTraceDispatchX);
+    shadowRayTrace->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    shadowRayTrace->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    auto* probeApply = static_cast<ComputeStageNode*>(renderGraph->GetInstance(probeApplyNode));
+    probeApply->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    probeApply->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kProbeUpdateDispatchX);
+    probeApply->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    probeApply->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+
+    // W1a queue/payload buffer sizing — fixed slot geometry (see the constants'
+    // own comment beside the atlas dimensions above).
+    static_cast<StorageBufferNode*>(renderGraph->GetInstance(shadowRayRequestBuffer))
+        ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kShadowRaySlotCount * kShadowRayRequestStrideBytes);
+    static_cast<StorageBufferNode*>(renderGraph->GetInstance(shadowRayResultBuffer))
+        ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kShadowRaySlotCount * kShadowRayResultStrideBytes);
+    static_cast<StorageBufferNode*>(renderGraph->GetInstance(probeRayPayloadBuffer))
+        ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kShadowRaySlotCount * kProbeRayPayloadStrideBytes);
     // Baked-Perf M4 Task 4.3's PARAM_DISPATCH_ENABLED is set at the END of this function --
     // see directLighting's own identical note above for why (Cornell's force-enable of
     // VIXEN_PROBE_GRID_CONFIG_ENABLED runs later in this SAME function).
@@ -6383,7 +6469,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Sampled Lighting Inc4 M5: the SAME two ProbeAtlasNode outputs, gathered a SECOND time
     // into spatialReuseProbeAtlasReadGatherer (the read-side instance) -- same source
     // Resource*s as probeAtlasGatherer above, so the constituent expansion pairs correctly
-    // against probeUpdateNode's IMAGE_WRITE_ARRAY writer on those SAME atlas Resource*s.
+    // against probeApplyNode's IMAGE_WRITE_ARRAY writer (W1a: the split's atlas
+    // writer, formerly probeUpdateNode) on those SAME atlas Resource*s.
     batch.Connect(probeIrradianceAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
                   spatialReuseProbeAtlasReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
@@ -6420,6 +6507,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ddgiLeakGateDebugBuffer immediately above).
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   instanceSkipMaskBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+
+    // W1a: shadow-ray queue/payload buffers — device only, same fixed-size (NO
+    // SWAPCHAIN_INFO) shape as ddgiLeakGateDebugBuffer above (slot-geometry
+    // PARAM_SIZE_BYTES sizing set at the dispatch section). NOTE: this block is
+    // the historical miss-spot — the Load-Tier M2 pair landed creations/
+    // providers/hazards but skipped THIS device connect and aborted at graph
+    // validation exactly like these three did on W1a's first boot.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  shadowRayRequestBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  shadowRayResultBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  probeRayPayloadBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing-pass SSBOs — device only, same
     // fixed-size (NO SWAPCHAIN_INFO) shape as instanceSkipMaskBuffer/ddgiLeakGateDebugBuffer
@@ -6902,11 +7002,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // self-contained read/write-in-one-dispatch. Reservoir A/B are READ here
     // (DirectLighting is the sole writer; the cross-dispatch hazard is
     // declared via the array-hazard gatherer pair, not the descriptor). The
-    // probe atlases/grid config are READ (probeUpdate writes; hazard via
-    // IMAGE_READ_ARRAY; CURRENT_VIEW per KI-028 — an IRenderTarget* can never
+    // probe atlases/grid config are READ (probe_apply writes since W1a; hazard
+    // via IMAGE_READ_ARRAY; CURRENT_VIEW per KI-028 — an IRenderTarget* can never
     // populate a descriptor slot). SpatialReservoirDebugBuffer is the M6
     // gate's host-readback-only instrument; DDGILeakGateDebugShadeSSBO is the
-    // shared M5 live-gate buffer ProbeUpdate also binds at 31. HitRecord is a
+    // shared M5 live-gate buffer ProbeApply also binds at 31. HitRecord is a
     // SECOND reader of the already-synced march write (read-after-read).
     sceneProviders.Provide("SpatialReservoirDebugBuffer", spatialReservoirDebugBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER,
@@ -7040,10 +7140,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
 
-    // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeUpdateNode's
-    // IMAGE_WRITE_ARRAY (wired further below), same two ProbeAtlasNode Resource*s on both
-    // sides (via each side's own ImageSyncGathererNode instance) — bakes the genuine
-    // probeUpdateNode(write)->spatialReuseNode(read) cross-dispatch SyncEdge this milestone's
+    // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
+    // IMAGE_WRITE_ARRAY (wired further below; W1a moved the atlas writer from the retired
+    // probe_update megakernel to the split's apply half), same two ProbeAtlasNode Resource*s
+    // on both sides (via each side's own ImageSyncGathererNode instance) — bakes the genuine
+    // probe_apply(write)->spatialReuseNode(read) cross-dispatch SyncEdge this milestone's
     // gate must independently confirm. This is the FIRST real IMAGE_READ_ARRAY consumer.
     batch.Connect(spatialReuseProbeAtlasReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
@@ -7091,61 +7192,121 @@ void VulkanGraphApplication::BuildRenderGraph() {
     sceneProviders.Provide("DDGILeakGateDebugSSBO", ddgiLeakGateDebugBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
+    // W1a queue/payload buffers under their per-shader block names — each
+    // stage's SDI walk binds only the blocks it declares, with the per-stage
+    // access the merged SDI reflected (gather: requests/payloads writeonly;
+    // wave: requests readonly, results writeonly; apply: results/payloads
+    // readonly).
+    sceneProviders.Provide("ShadowRayRequestBuffer", shadowRayRequestBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ShadowRayResultBuffer", shadowRayResultBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("ProbeRayPayloadBuffer", probeRayPayloadBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Slice C: quintet chain + stage commons + push plumbing synthesized;
-    // descriptors from the registry (empty feature set, same rationale as
-    // DL/SpatialReuse); PUSH hand-wired below.
-    const auto probeSynth = SynthesizeComputeStage<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
-        renderGraph, batch, "probe_update", probeUpdateShaderLib,
-        probeUpdateNode, lightingCommon, sceneProviders, {},
+    // W1a: the split's three stages, each synthesized from its OWN merged SDI.
+    // gather/wave: DescriptorsOnly — their SceneBindings push block stays
+    // hand-wired below (the pending-#18 `time` rationale, same as DL/
+    // SpatialReuse). apply: full wire — its SDI has ZERO push members (no
+    // SceneBindings include), so the synthesized push gatherer reflects an
+    // empty block and the stage pushes nothing (SetPushConstants' empty-data
+    // early-out); the first zero-push synthesized stage, by design.
+    const auto gatherSynth = SynthesizeComputeStage<GatherSdi::Metadata, GatherSdi::MEMBERS>(
+        renderGraph, batch, "probe_gather", probeGatherShaderLib,
+        probeGatherNode, lightingCommon, sceneProviders, {},
         SdiWireSet::DescriptorsOnly);
-    probeUpdatePushConstantGatherer = probeSynth.pushGatherer;
-    CensusStageFromSdi<ProbeSdi::Metadata, ProbeSdi::MEMBERS>(
-        sdiHazardCensus_, probeUpdateNode, sceneProviders, sdiNoFeatures,
+    probeGatherPushConstantGatherer = gatherSynth.pushGatherer;
+    CensusStageFromSdi<GatherSdi::Metadata, GatherSdi::MEMBERS>(
+        sdiHazardCensus_, probeGatherNode, sceneProviders, sdiNoFeatures,
+        &sdiCensusExclusions);
+    const auto shadowSynth = SynthesizeComputeStage<ShadowSdi::Metadata, ShadowSdi::MEMBERS>(
+        renderGraph, batch, "shadow_ray_trace", shadowRayTraceShaderLib,
+        shadowRayTraceNode, lightingCommon, sceneProviders, {},
+        SdiWireSet::DescriptorsOnly);
+    shadowRayTracePushConstantGatherer = shadowSynth.pushGatherer;
+    CensusStageFromSdi<ShadowSdi::Metadata, ShadowSdi::MEMBERS>(
+        sdiHazardCensus_, shadowRayTraceNode, sceneProviders, sdiNoFeatures,
+        &sdiCensusExclusions);
+    const auto applySynth = SynthesizeComputeStage<ApplySdi::Metadata, ApplySdi::MEMBERS>(
+        renderGraph, batch, "probe_apply", probeApplyShaderLib,
+        probeApplyNode, lightingCommon, sceneProviders, {});
+    (void)applySynth;  // zero push members; nothing left to hand-wire
+    CensusStageFromSdi<ApplySdi::Metadata, ApplySdi::MEMBERS>(
+        sdiHazardCensus_, probeApplyNode, sceneProviders, sdiNoFeatures,
         &sdiCensusExclusions);
 
-    // ProbeUpdate.comp declares the SAME PushConstants block (via SceneBindings.glsl) as
-    // every other scene-binding consumer, and reads NO camera/per-pixel-debug fields (no
-    // camera ray, no per-pixel debug target — this pass is probe-indexed, not
-    // screen-indexed) -- BUT it DOES need instanceCount (binding 10): TraceWorld/
-    // TraceWorldShadow (TraceWorld.glsl) both bound their scene-instance iteration loop by
-    // `pc.instanceCount` (`numInstances = clamp(pc.instanceCount, 0, 3*64)`), so an
-    // unconnected/zero instanceCount makes EVERY probe ray a guaranteed miss regardless of
-    // scene content -- an M4 live-gate finding (VIXEN_DDGI_LEAK_GATE_DEMO's own leak-test
-    // gate initially read diagNearProbeHitCount=0 for a scene the march visibly renders,
-    // isolating this exact gap) that the file header's PRIOR claim ("reads NONE of its
-    // fields") missed; not previously caught because M3's own gate only checked "probes
-    // visibly light a scene" qualitatively (a render happened), never a numeric hit count.
+    // Both TRACING stages consume SceneBindings.glsl's PushConstants block and
+    // need the same three live fields the merged ProbeUpdate needed — the M4/
+    // M4b live-gate findings preserved verbatim: instanceCount (field 10)
+    // bounds TraceWorld/TraceWorldShadow's instance loop (`numInstances =
+    // clamp(pc.instanceCount, 0, 3*64)`), so an unconnected/zero value makes
+    // EVERY ray a guaranteed miss regardless of scene content; raySizeCoef/
+    // raySizeBias (fields 8/9) feed TraceWorldShadow's any-hit LOD gate (the
+    // secondary-ray coefficient, not the primary gatherer's raySizeCoefNode).
+    // ProbeApply traces nothing and has no push block at all.
     batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
-                          probeUpdatePushConstantGatherer, 10,
+                          probeGatherPushConstantGatherer, GatherSdi::Push::instanceCount::INDEX,
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-    // Baked-Perf M4b Task 4b.2: raySizeCoef/raySizeBias (fields 8/9) were previously left
-    // UNCONNECTED here (zero-filled by PushConstantGathererNode::PackPushConstantData, per the
-    // M4b dormancy audit) -- ProbeUpdate.comp's own TraceWorldShadow call (line 241) reads
-    // pc.raySizeCoef through SceneBindings.glsl's any-hit LOD gate, so a live, nonzero
-    // coefficient is required for probe rays to ever reach the mip-fallback path; raySizeCoef=0
-    // is not dead code here (glslang keeps the field reflected -- TraceWorldShadow is a real
-    // call, not eliminated), it was simply never wired. Same secondary-ray coefficient as
-    // DirectLighting/SpatialReuse (not the primary gatherer's raySizeCoefNode).
     batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
-                          probeUpdatePushConstantGatherer, 8,
+                          probeGatherPushConstantGatherer, GatherSdi::Push::raySizeCoef::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
     batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
-                          probeUpdatePushConstantGatherer, 9,
+                          probeGatherPushConstantGatherer, GatherSdi::Push::raySizeBias::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                          shadowRayTracePushConstantGatherer, ShadowSdi::Push::instanceCount::INDEX,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(secondaryRaySizeCoefConstant, ConstantNodeConfig::OUTPUT,
+                          shadowRayTracePushConstantGatherer, ShadowSdi::Push::raySizeCoef::INDEX,
+                          SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(raySizeBiasConstant, ConstantNodeConfig::OUTPUT,
+                          shadowRayTracePushConstantGatherer, ShadowSdi::Push::raySizeBias::INDEX,
                           SlotRoleModifier(SlotRole::Execute));
 
+    // W1a cross-dispatch buffer hazards: writer-side and reader-side gatherers
+    // over the SAME StorageBufferNode outputs (shared Resource* identity via
+    // Resource::hazardConstituents_ is what the scheduler bakes SyncEdges from —
+    // the reservoir ping-pong precedent above). The chain this declares:
+    //   probe_gather(write: requests+payloads) → shadow_ray_trace(read: requests)
+    //   shadow_ray_trace(write: results)       → probe_apply(read: results+payloads)
+    // which orders gather→wave→apply and carries the next-frame WAR back-edges
+    // on the same resources.
+    batch.Connect(shadowRayRequestBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  probeGatherWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeRayPayloadBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  probeGatherWriteGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeGatherWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  probeGatherNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(shadowRayRequestBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  shadowRayTraceReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(shadowRayTraceReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  shadowRayTraceNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(shadowRayResultBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  shadowRayTraceWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(shadowRayTraceWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  shadowRayTraceNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+    batch.Connect(shadowRayResultBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  probeApplyReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeRayPayloadBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  probeApplyReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(probeApplyReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  probeApplyNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // Sync slot: IMAGE_WRITE_ARRAY — the genuine write hazard on the persistent probe
-    // atlases (this frame's ProbeUpdateNode write must be visible before any future
-    // consumer, e.g. M5's shade-pass gather, reads it; also guards against overlapping
-    // this pass's own writes across frames on the SAME persistent image, the identical
-    // "hysteresis needs the prior write visible" shape AccumulationHistoryNode's own
-    // historyImage sync already relies on). Fed via probeAtlasGatherer (Inc4 M2's own
-    // gathering wiring above) rather than re-gathering here — one gatherer instance,
-    // reused for both PreRegisterImageSlots(2)'s hazard-array shape and this pass's
-    // actual consuming connection.
+    // atlases, now owned by probe_apply (W1a: the frame's ONLY atlas writer — this
+    // frame's write must be visible before any future consumer, e.g. the shade-pass
+    // gather, reads it; also guards this pass's own writes across frames on the SAME
+    // persistent image, the identical "hysteresis needs the prior write visible"
+    // shape AccumulationHistoryNode's historyImage sync already relies on). Fed via
+    // probeAtlasGatherer (Inc4 M2's own gathering wiring above) rather than
+    // re-gathering here — one gatherer instance, reused for both
+    // PreRegisterImageSlots(2)'s hazard-array shape and this pass's actual
+    // consuming connection.
     batch.Connect(probeAtlasGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
-                  probeUpdateNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+                  probeApplyNode, ComputeStageNodeConfig::IMAGE_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // --- BlitNode: presentation-only blit of the render target to the swapchain. ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -7228,15 +7389,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // never disagree with the GPU-side config it is skipping around.
     directLighting->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
                                   ResolveReservoirEnabled());
-    // probe_update: same reasoning, gated on probeGridEnabled instead (ProbeUpdate.comp's
-    // own shade-pass consumer, SpatialReuseShade.comp, documents the identical
-    // "probeGridEnabled==0 skips this block entirely" escape hatch). ResolveProbeGridEnabled()
-    // is the SAME accessor ProbeGridConfigNode's own per-frame GPU upload calls, so a demo's
-    // force-enable (Cornell, both baked and virtual variants -- see their own
-    // VIXEN_PROBE_GRID_CONFIG_ENABLED _putenv_s blocks above) keeps probe_update dispatching
-    // exactly as before; only the default-boot (probe grid off) path skips it.
-    probeUpdate->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
+    // probe_gather/shadow_ray_trace/probe_apply: same reasoning, gated on
+    // probeGridEnabled instead (the shade-pass consumer, SpatialReuseShade.comp,
+    // documents the identical "probeGridEnabled==0 skips this block entirely"
+    // escape hatch; gather/apply carry the same shader-side early-out).
+    // ResolveProbeGridEnabled() is the SAME accessor ProbeGridConfigNode's own
+    // per-frame GPU upload calls, so a demo's force-enable (Cornell, both baked
+    // and virtual variants -- see their own VIXEN_PROBE_GRID_CONFIG_ENABLED
+    // _putenv_s blocks above) keeps the split dispatching exactly as before;
+    // only the default-boot (probe grid off) path skips it. The WAVE is gated
+    // too: it has no config binding of its own (by design — no scene, no
+    // config), so this CPU-side skip is the only thing stopping it re-tracing
+    // stale queue slots on a disabled grid.
+    probeGather->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
                                ResolveProbeGridEnabled());
+    shadowRayTrace->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
+                                  ResolveProbeGridEnabled());
+    probeApply->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_ENABLED,
+                              ResolveProbeGridEnabled());
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
