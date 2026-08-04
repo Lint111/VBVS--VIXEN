@@ -333,3 +333,42 @@ TEST(SdiVariantMerge, DuplicateMemberNamesSkipAliases) {
     EXPECT_NE(code.find("struct Binding0"), std::string::npos);
     EXPECT_NE(code.find("struct Binding1"), std::string::npos);
 }
+
+// --- Access qualifiers (S3 sub-slice 1: derived-hazards prerequisite) -------
+// The merged SDI must carry each binding's SPIR-V access mode so sync sets can
+// later be DERIVED instead of hand-fed (epoch doc, S3 entry). Access is part
+// of the declaration: variants disagreeing on it is a hard error, same as a
+// name/type mismatch.
+
+TEST(SdiVariantMerge, MergedBindingCarriesAccess) {
+    auto ro = MakeBinding(0, 0, "SrcBuf", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    ro.access = SpirvResourceAccess::ReadOnly;
+    auto wo = MakeBinding(0, 1, "DstBuf", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    wo.access = SpirvResourceAccess::WriteOnly;
+    auto rw = MakeBinding(0, 2, "AccBuf", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+    auto result = MergeSdiVariants(
+        "AccessCarry", {MakeVariant({}, MakeData({ro, wo, rw}))});
+    ASSERT_TRUE(result.success) << result.errorMessage;
+
+    EXPECT_EQ(FindMerged(result.merged, 0, 0)->binding.access,
+              SpirvResourceAccess::ReadOnly);
+    EXPECT_EQ(FindMerged(result.merged, 0, 1)->binding.access,
+              SpirvResourceAccess::WriteOnly);
+    EXPECT_EQ(FindMerged(result.merged, 0, 2)->binding.access,
+              SpirvResourceAccess::ReadWrite);  // struct default
+}
+
+TEST(SdiVariantMerge, ConflictingAccessFailsMerge) {
+    auto a = MakeBinding(0, 3, "SharedBuf", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    a.access = SpirvResourceAccess::ReadOnly;
+    auto b = MakeBinding(0, 3, "SharedBuf", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    b.access = SpirvResourceAccess::WriteOnly;
+
+    auto result = MergeSdiVariants(
+        "AccessConflict",
+        {MakeVariant({}, MakeData({a})),
+         MakeVariant({"SOME_FEATURE"}, MakeData({b}))});
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.errorMessage.find("SharedBuf"), std::string::npos);
+}

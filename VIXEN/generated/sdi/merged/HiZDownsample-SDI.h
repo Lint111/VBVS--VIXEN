@@ -24,6 +24,11 @@
 namespace ShaderInterface {
 namespace HiZDownsample {
 
+// Per-binding access mode, from SPIR-V decorations (storage kinds)
+// or the descriptor kind's inherent read-only nature. Feeds the
+// derived hazard/sync sets (semantic-wiring S3).
+enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
+
 namespace Set0 {
 
     /**
@@ -36,6 +41,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 0;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -49,6 +55,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 1;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -92,16 +99,17 @@ struct MemberInfo {
     uint32_t set;      // descriptor members only
     uint32_t binding;  // descriptor members only
     uint32_t offset;   // push members only
+    Access access;     // push members: ReadOnly by nature
     uint32_t featureCount;
     const char* const* features;
 };
 
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"srcDepthImage", false, 0, 0, 0, 0, nullptr},
-    {"tileMaxImage", false, 0, 1, 0, 0, nullptr},
-    {"srcWidth", true, 0, 0, 0, 0, nullptr},
-    {"srcHeight", true, 0, 0, 4, 0, nullptr},
+    {"srcDepthImage", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"tileMaxImage", false, 0, 1, 0, Access::WriteOnly, 0, nullptr},
+    {"srcWidth", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"srcHeight", true, 0, 0, 4, Access::ReadOnly, 0, nullptr},
 };
 
 /**

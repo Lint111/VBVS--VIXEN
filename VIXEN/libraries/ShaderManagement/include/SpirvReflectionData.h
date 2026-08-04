@@ -92,6 +92,21 @@ struct SpirvStructDefinition {
  *
  * Extends DescriptorBindingSpec with detailed type data for code generation.
  */
+/**
+ * @brief A binding's access mode, derived at reflection time.
+ *
+ * Storage-kind descriptors (storage buffer/image/texel buffer) read their
+ * SPIR-V NonWritable/NonReadable decorations; inherently-read-only kinds
+ * (UBO, sampled image, sampler, input attachment...) normalize to ReadOnly.
+ * Part of the DECLARATION: SDI variant merge hard-errors when variants
+ * disagree on it. Feeds derived hazard/sync sets (semantic-wiring S3).
+ */
+enum class SpirvResourceAccess : uint8_t {
+    ReadWrite = 0,
+    ReadOnly  = 1,
+    WriteOnly = 2,
+};
+
 struct SpirvDescriptorBinding {
     uint32_t set = 0;
     uint32_t binding = 0;
@@ -99,6 +114,7 @@ struct SpirvDescriptorBinding {
     VkDescriptorType descriptorType;
     uint32_t descriptorCount = 1;
     VkShaderStageFlags stageFlags = 0;
+    SpirvResourceAccess access = SpirvResourceAccess::ReadWrite;
 
     // Type information
     SpirvTypeInfo typeInfo;

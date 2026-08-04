@@ -112,7 +112,11 @@ SdiMergeResult MergeSdiVariants(const std::string& programName,
                     occ.representativeVariant = v;
                 } else if (occ.representative->name != b.name ||
                            occ.representative->descriptorType != b.descriptorType ||
-                           occ.representative->descriptorCount != b.descriptorCount) {
+                           occ.representative->descriptorCount != b.descriptorCount ||
+                           // Access is part of the declaration (S3): a variant
+                           // flipping a binding readonly<->writeonly is a real
+                           // interface divergence, not a mergeable difference.
+                           occ.representative->access != b.access) {
                     std::ostringstream msg;
                     msg << "MergeSdiVariants(" << programName << "): conflicting"
                         << " declarations at set " << setIndex << " binding "

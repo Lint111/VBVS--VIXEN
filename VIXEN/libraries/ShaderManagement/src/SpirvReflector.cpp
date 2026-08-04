@@ -514,6 +514,41 @@ void SpirvReflector::ReflectDescriptors(
         desc.stageFlags = stageFlag;
         desc.typeInfo = ConvertType(binding->type_description);
 
+        // Access mode (semantic-wiring S3): storage kinds read their
+        // NonWritable/NonReadable decorations — glslang places a GLSL
+        // readonly/writeonly SSBO qualifier on the block VARIABLE or on every
+        // MEMBER depending on front-end version, so accept either (member
+        // level counts only when ALL members agree); non-storage kinds are
+        // read-only by nature.
+        switch (binding->descriptor_type) {
+            case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+            case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+            case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: {
+                uint32_t accessFlags = binding->decoration_flags;
+                if (!(accessFlags & (SPV_REFLECT_DECORATION_NON_WRITABLE |
+                                     SPV_REFLECT_DECORATION_NON_READABLE)) &&
+                    binding->block.member_count > 0) {
+                    uint32_t common = ~0u;
+                    for (uint32_t m = 0; m < binding->block.member_count; ++m) {
+                        common &= binding->block.members[m].decoration_flags;
+                    }
+                    accessFlags |= common & (SPV_REFLECT_DECORATION_NON_WRITABLE |
+                                             SPV_REFLECT_DECORATION_NON_READABLE);
+                }
+                if (accessFlags & SPV_REFLECT_DECORATION_NON_WRITABLE) {
+                    desc.access = SpirvResourceAccess::ReadOnly;
+                } else if (accessFlags & SPV_REFLECT_DECORATION_NON_READABLE) {
+                    desc.access = SpirvResourceAccess::WriteOnly;
+                } else {
+                    desc.access = SpirvResourceAccess::ReadWrite;
+                }
+                break;
+            }
+            default:
+                desc.access = SpirvResourceAccess::ReadOnly;
+                break;
+        }
+
         // Extract struct definition for UBO/SSBO from block variable
         if (binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
             binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER) {

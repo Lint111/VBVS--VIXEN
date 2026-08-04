@@ -24,6 +24,11 @@
 namespace ShaderInterface {
 namespace RecipeInstanceBucketing {
 
+// Per-binding access mode, from SPIR-V decorations (storage kinds)
+// or the descriptor kind's inherent read-only nature. Feeds the
+// derived hazard/sync sets (semantic-wiring S3).
+enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
+
 /**
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
@@ -256,6 +261,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 0;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BodyInstanceBuffer;
     };
@@ -270,6 +276,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 1;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = RecipeBoundSphereBuffer;
     };
@@ -284,6 +291,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketCountBuffer;
     };
@@ -298,6 +306,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 3;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketIndicesBuffer;
     };
@@ -312,6 +321,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 4;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketCoverageMinXBuffer;
     };
@@ -326,6 +336,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 5;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketCoverageMinYBuffer;
     };
@@ -340,6 +351,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 6;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketCoverageMaxXBuffer;
     };
@@ -354,6 +366,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 7;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketCoverageMaxYBuffer;
     };
@@ -368,6 +381,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 8;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BucketIndirectCommandBuffer;
     };
@@ -382,6 +396,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 9;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = PrecisionBucketCountBuffer;
     };
@@ -396,6 +411,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 10;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = PrecisionBucketIndicesBuffer;
     };
@@ -513,33 +529,34 @@ struct MemberInfo {
     uint32_t set;      // descriptor members only
     uint32_t binding;  // descriptor members only
     uint32_t offset;   // push members only
+    Access access;     // push members: ReadOnly by nature
     uint32_t featureCount;
     const char* const* features;
 };
 
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"BodyInstanceBuffer", false, 0, 0, 0, 0, nullptr},
-    {"RecipeBoundSphereBuffer", false, 0, 1, 0, 0, nullptr},
-    {"BucketCountBuffer", false, 0, 2, 0, 0, nullptr},
-    {"BucketIndicesBuffer", false, 0, 3, 0, 0, nullptr},
-    {"BucketCoverageMinXBuffer", false, 0, 4, 0, 0, nullptr},
-    {"BucketCoverageMinYBuffer", false, 0, 5, 0, 0, nullptr},
-    {"BucketCoverageMaxXBuffer", false, 0, 6, 0, 0, nullptr},
-    {"BucketCoverageMaxYBuffer", false, 0, 7, 0, 0, nullptr},
-    {"BucketIndirectCommandBuffer", false, 0, 8, 0, 0, nullptr},
-    {"PrecisionBucketCountBuffer", false, 0, 9, 0, 0, nullptr},
-    {"PrecisionBucketIndicesBuffer", false, 0, 10, 0, 0, nullptr},
-    {"viewProj", true, 0, 0, 0, 0, nullptr},
-    {"instanceCount", true, 0, 0, 64, 0, nullptr},
-    {"maxBuckets", true, 0, 0, 68, 0, nullptr},
-    {"maxMembersPerBucket", true, 0, 0, 72, 0, nullptr},
-    {"screenWidth", true, 0, 0, 76, 0, nullptr},
-    {"screenHeight", true, 0, 0, 80, 0, nullptr},
-    {"mode", true, 0, 0, 84, 0, nullptr},
-    {"raySizeCoef", true, 0, 0, 88, 0, nullptr},
-    {"raySizeBias", true, 0, 0, 92, 0, nullptr},
-    {"cameraPos", true, 0, 0, 96, 0, nullptr},
+    {"BodyInstanceBuffer", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"RecipeBoundSphereBuffer", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
+    {"BucketCountBuffer", false, 0, 2, 0, Access::ReadWrite, 0, nullptr},
+    {"BucketIndicesBuffer", false, 0, 3, 0, Access::ReadWrite, 0, nullptr},
+    {"BucketCoverageMinXBuffer", false, 0, 4, 0, Access::ReadWrite, 0, nullptr},
+    {"BucketCoverageMinYBuffer", false, 0, 5, 0, Access::ReadWrite, 0, nullptr},
+    {"BucketCoverageMaxXBuffer", false, 0, 6, 0, Access::ReadWrite, 0, nullptr},
+    {"BucketCoverageMaxYBuffer", false, 0, 7, 0, Access::ReadWrite, 0, nullptr},
+    {"BucketIndirectCommandBuffer", false, 0, 8, 0, Access::ReadWrite, 0, nullptr},
+    {"PrecisionBucketCountBuffer", false, 0, 9, 0, Access::ReadWrite, 0, nullptr},
+    {"PrecisionBucketIndicesBuffer", false, 0, 10, 0, Access::ReadWrite, 0, nullptr},
+    {"viewProj", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"instanceCount", true, 0, 0, 64, Access::ReadOnly, 0, nullptr},
+    {"maxBuckets", true, 0, 0, 68, Access::ReadOnly, 0, nullptr},
+    {"maxMembersPerBucket", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
+    {"screenWidth", true, 0, 0, 76, Access::ReadOnly, 0, nullptr},
+    {"screenHeight", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
+    {"mode", true, 0, 0, 84, Access::ReadOnly, 0, nullptr},
+    {"raySizeCoef", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
+    {"raySizeBias", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
+    {"cameraPos", true, 0, 0, 96, Access::ReadOnly, 0, nullptr},
 };
 
 /**

@@ -96,6 +96,22 @@ set_target_properties(test_sdi_variant_merge PROPERTIES FOLDER "Tests/ShaderMana
 include(GoogleTest)
 gtest_discover_tests(test_sdi_variant_merge WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+# Per-binding access from SPIR-V decorations (Semantic Shader Wiring S3
+# sub-slice 1) — real glslang compile + reflection, CPU-side, no Vulkan device
+# (same dependency shape as test_shader_family). NOT the disabled
+# test_spirv_reflection.cpp above — that file predates current APIs.
+add_executable(test_spirv_access
+    test_spirv_access.cpp
+)
+target_link_libraries(test_spirv_access
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_spirv_access PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+gtest_discover_tests(test_spirv_access WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
 # feature-variant interface from the committed manifest and fails (exit 6)
 # when a committed generated/sdi/merged/*-SDI.h no longer matches. This is

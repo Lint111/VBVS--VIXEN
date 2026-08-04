@@ -24,6 +24,11 @@
 namespace ShaderInterface {
 namespace BodyInstanceRayMarch {
 
+// Per-binding access mode, from SPIR-V decorations (storage kinds)
+// or the descriptor kind's inherent read-only nature. Feeds the
+// derived hazard/sync sets (semantic-wiring S3).
+enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
+
 /**
  * @brief ESVOBuffer
  * Size: 0 bytes
@@ -414,6 +419,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 0;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -427,6 +433,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 1;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ESVOBuffer;
     };
@@ -441,6 +448,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BrickBuffer;
     };
@@ -455,6 +463,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 3;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = MaterialBuffer;
     };
@@ -469,6 +478,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 4;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = RayTraceBuffer;
     };
@@ -483,6 +493,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 5;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = OctreeConfigsSSBO;
     };
@@ -497,6 +508,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 9;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -510,6 +522,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 10;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BodyInstanceBuffer;
     };
@@ -524,6 +537,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 11;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ChannelPoolBuffer;
     };
@@ -538,6 +552,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 12;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BrickLookupBuffer;
     };
@@ -552,6 +567,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 13;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = MipPoolBuffer;
     };
@@ -567,6 +583,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 14;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 1;
         static constexpr const char* FEATURES[1] = {"VIXEN_GPU_TRACE_HOOKS"};
         using DataType = InstanceIterDebugBuffer;
@@ -582,6 +599,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 15;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = TierRefTableBuffer;
     };
@@ -596,6 +614,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 16;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = OccupancyGridBuffer;
     };
@@ -610,6 +629,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 17;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = LightingConfigSSBO;
     };
@@ -624,6 +644,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 18;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = HitRecordBuffer;
     };
@@ -638,6 +659,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 19;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = ShadowConfigSSBO;
     };
@@ -652,6 +674,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 20;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = AccumulationConfigSSBO;
     };
@@ -666,6 +689,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 21;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -679,6 +703,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 22;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = PrevCameraConfigSSBO;
     };
@@ -693,6 +718,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 35;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = InstanceSkipMaskBuffer;
     };
@@ -708,6 +734,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 36;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 1;
         static constexpr const char* FEATURES[1] = {"VIXEN_B1_OCCLUSION_CULL"};
     };
@@ -860,6 +887,7 @@ struct MemberInfo {
     uint32_t set;      // descriptor members only
     uint32_t binding;  // descriptor members only
     uint32_t offset;   // push members only
+    Access access;     // push members: ReadOnly by nature
     uint32_t featureCount;
     const char* const* features;
 };
@@ -868,41 +896,41 @@ inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRAC
 inline constexpr const char* const kFeatures_Set0_Binding36[] = {"VIXEN_B1_OCCLUSION_CULL"};
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"outputImage", false, 0, 0, 0, 0, nullptr},
-    {"ESVOBuffer", false, 0, 1, 0, 0, nullptr},
-    {"BrickBuffer", false, 0, 2, 0, 0, nullptr},
-    {"MaterialBuffer", false, 0, 3, 0, 0, nullptr},
-    {"RayTraceBuffer", false, 0, 4, 0, 0, nullptr},
-    {"OctreeConfigsSSBO", false, 0, 5, 0, 0, nullptr},
-    {"idOutputImage", false, 0, 9, 0, 0, nullptr},
-    {"BodyInstanceBuffer", false, 0, 10, 0, 0, nullptr},
-    {"ChannelPoolBuffer", false, 0, 11, 0, 0, nullptr},
-    {"BrickLookupBuffer", false, 0, 12, 0, 0, nullptr},
-    {"MipPoolBuffer", false, 0, 13, 0, 0, nullptr},
-    {"InstanceIterDebugBuffer", false, 0, 14, 0, 1, kFeatures_Set0_Binding14},
-    {"TierRefTableBuffer", false, 0, 15, 0, 0, nullptr},
-    {"OccupancyGridBuffer", false, 0, 16, 0, 0, nullptr},
-    {"LightingConfigSSBO", false, 0, 17, 0, 0, nullptr},
-    {"HitRecordBuffer", false, 0, 18, 0, 0, nullptr},
-    {"ShadowConfigSSBO", false, 0, 19, 0, 0, nullptr},
-    {"AccumulationConfigSSBO", false, 0, 20, 0, 0, nullptr},
-    {"historyImage", false, 0, 21, 0, 0, nullptr},
-    {"PrevCameraConfigSSBO", false, 0, 22, 0, 0, nullptr},
-    {"InstanceSkipMaskBuffer", false, 0, 35, 0, 0, nullptr},
-    {"depthDistanceImage", false, 0, 36, 0, 1, kFeatures_Set0_Binding36},
-    {"cameraPos", true, 0, 0, 0, 0, nullptr},
-    {"time", true, 0, 0, 12, 0, nullptr},
-    {"cameraDir", true, 0, 0, 16, 0, nullptr},
-    {"fov", true, 0, 0, 28, 0, nullptr},
-    {"cameraUp", true, 0, 0, 32, 0, nullptr},
-    {"aspect", true, 0, 0, 44, 0, nullptr},
-    {"cameraRight", true, 0, 0, 48, 0, nullptr},
-    {"debugMode", true, 0, 0, 60, 0, nullptr},
-    {"raySizeCoef", true, 0, 0, 64, 0, nullptr},
-    {"raySizeBias", true, 0, 0, 68, 0, nullptr},
-    {"instanceCount", true, 0, 0, 72, 0, nullptr},
-    {"debugTargetPixel", true, 0, 0, 80, 0, nullptr},
-    {"accumFrameCount", true, 0, 0, 88, 0, nullptr},
+    {"outputImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
+    {"ESVOBuffer", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
+    {"BrickBuffer", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
+    {"MaterialBuffer", false, 0, 3, 0, Access::ReadOnly, 0, nullptr},
+    {"RayTraceBuffer", false, 0, 4, 0, Access::ReadWrite, 0, nullptr},
+    {"OctreeConfigsSSBO", false, 0, 5, 0, Access::ReadOnly, 0, nullptr},
+    {"idOutputImage", false, 0, 9, 0, Access::WriteOnly, 0, nullptr},
+    {"BodyInstanceBuffer", false, 0, 10, 0, Access::ReadOnly, 0, nullptr},
+    {"ChannelPoolBuffer", false, 0, 11, 0, Access::ReadOnly, 0, nullptr},
+    {"BrickLookupBuffer", false, 0, 12, 0, Access::ReadOnly, 0, nullptr},
+    {"MipPoolBuffer", false, 0, 13, 0, Access::ReadOnly, 0, nullptr},
+    {"InstanceIterDebugBuffer", false, 0, 14, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding14},
+    {"TierRefTableBuffer", false, 0, 15, 0, Access::ReadOnly, 0, nullptr},
+    {"OccupancyGridBuffer", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
+    {"LightingConfigSSBO", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
+    {"HitRecordBuffer", false, 0, 18, 0, Access::ReadWrite, 0, nullptr},
+    {"ShadowConfigSSBO", false, 0, 19, 0, Access::ReadOnly, 0, nullptr},
+    {"AccumulationConfigSSBO", false, 0, 20, 0, Access::ReadOnly, 0, nullptr},
+    {"historyImage", false, 0, 21, 0, Access::ReadWrite, 0, nullptr},
+    {"PrevCameraConfigSSBO", false, 0, 22, 0, Access::ReadOnly, 0, nullptr},
+    {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
+    {"depthDistanceImage", false, 0, 36, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding36},
+    {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
+    {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
+    {"fov", true, 0, 0, 28, Access::ReadOnly, 0, nullptr},
+    {"cameraUp", true, 0, 0, 32, Access::ReadOnly, 0, nullptr},
+    {"aspect", true, 0, 0, 44, Access::ReadOnly, 0, nullptr},
+    {"cameraRight", true, 0, 0, 48, Access::ReadOnly, 0, nullptr},
+    {"debugMode", true, 0, 0, 60, Access::ReadOnly, 0, nullptr},
+    {"raySizeCoef", true, 0, 0, 64, Access::ReadOnly, 0, nullptr},
+    {"raySizeBias", true, 0, 0, 68, Access::ReadOnly, 0, nullptr},
+    {"instanceCount", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
+    {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
+    {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
 };
 
 /**

@@ -24,6 +24,11 @@
 namespace ShaderInterface {
 namespace InstanceOcclusionCull {
 
+// Per-binding access mode, from SPIR-V decorations (storage kinds)
+// or the descriptor kind's inherent read-only nature. Feeds the
+// derived hazard/sync sets (semantic-wiring S3).
+enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
+
 /**
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
@@ -96,6 +101,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 0;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = BodyInstanceBuffer;
     };
@@ -110,6 +116,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 1;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = OctreeConfigsSSBO;
     };
@@ -124,6 +131,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 2;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
@@ -137,6 +145,7 @@ namespace Set0 {
         static constexpr uint32_t BINDING = 3;
         static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
         static constexpr uint32_t FEATURE_COUNT = 0;
         using DataType = InstanceSkipMaskBuffer;
     };
@@ -191,19 +200,20 @@ struct MemberInfo {
     uint32_t set;      // descriptor members only
     uint32_t binding;  // descriptor members only
     uint32_t offset;   // push members only
+    Access access;     // push members: ReadOnly by nature
     uint32_t featureCount;
     const char* const* features;
 };
 
 
 inline constexpr MemberInfo MEMBERS[] = {
-    {"BodyInstanceBuffer", false, 0, 0, 0, 0, nullptr},
-    {"OctreeConfigsSSBO", false, 0, 1, 0, 0, nullptr},
-    {"tileMaxImage", false, 0, 2, 0, 0, nullptr},
-    {"InstanceSkipMaskBuffer", false, 0, 3, 0, 0, nullptr},
-    {"prevViewProj", true, 0, 0, 0, 0, nullptr},
-    {"prevCamPos", true, 0, 0, 64, 0, nullptr},
-    {"dims", true, 0, 0, 80, 0, nullptr},
+    {"BodyInstanceBuffer", false, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"OctreeConfigsSSBO", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
+    {"tileMaxImage", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
+    {"InstanceSkipMaskBuffer", false, 0, 3, 0, Access::ReadWrite, 0, nullptr},
+    {"prevViewProj", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
+    {"prevCamPos", true, 0, 0, 64, Access::ReadOnly, 0, nullptr},
+    {"dims", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
 };
 
 /**

@@ -243,6 +243,16 @@ std::string SpirvInterfaceGenerator::GenerateToString(
     return code.str();
 }
 
+namespace {
+const char* AccessConstName(SpirvResourceAccess a) {
+    switch (a) {
+        case SpirvResourceAccess::ReadOnly:  return "ReadOnly";
+        case SpirvResourceAccess::WriteOnly: return "WriteOnly";
+        default:                             return "ReadWrite";
+    }
+}
+} // namespace
+
 std::string SpirvInterfaceGenerator::GenerateMergedToString(
     const SdiMergedInterface& merged
 ) {
@@ -284,6 +294,11 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
     code << "\n";
     code << "namespace " << config_.namespacePrefix << " {\n";
     code << "namespace " << ns << " {\n";
+    code << "\n";
+    code << "// Per-binding access mode, from SPIR-V decorations (storage kinds)\n";
+    code << "// or the descriptor kind's inherent read-only nature. Feeds the\n";
+    code << "// derived hazard/sync sets (semantic-wiring S3).\n";
+    code << "enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };\n";
     code << "\n";
 
     // Struct definitions referenced by merged bindings.
@@ -342,6 +357,8 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
              << DescriptorTypeConstName(b.binding.descriptorType) << ";\n";
         code << Indent(2) << "static constexpr uint32_t COUNT = "
              << b.binding.descriptorCount << ";\n";
+        code << Indent(2) << "static constexpr Access ACCESS = Access::"
+             << AccessConstName(b.binding.access) << ";\n";
         emitFeatureTag(b.requiredFeatures, 2);
         if (b.binding.structDefIndex >= 0 &&
             b.binding.structDefIndex <
@@ -414,6 +431,7 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
     code << Indent(1) << "uint32_t set;      // descriptor members only\n";
     code << Indent(1) << "uint32_t binding;  // descriptor members only\n";
     code << Indent(1) << "uint32_t offset;   // push members only\n";
+    code << Indent(1) << "Access access;     // push members: ReadOnly by nature\n";
     code << Indent(1) << "uint32_t featureCount;\n";
     code << Indent(1) << "const char* const* features;\n";
     code << "};\n";
@@ -447,6 +465,7 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
     for (const auto& b : merged.bindings) {
         code << Indent(1) << "{\"" << b.binding.name << "\", false, "
              << b.binding.set << ", " << b.binding.binding << ", 0, "
+             << "Access::" << AccessConstName(b.binding.access) << ", "
              << b.requiredFeatures.size() << ", ";
         if (b.requiredFeatures.empty()) {
             code << "nullptr";
@@ -458,7 +477,8 @@ std::string SpirvInterfaceGenerator::GenerateMergedToString(
     }
     for (const auto& m : merged.pushMembers) {
         code << Indent(1) << "{\"" << m.member.name << "\", true, 0, 0, "
-             << m.member.offset << ", " << m.requiredFeatures.size() << ", ";
+             << m.member.offset << ", Access::ReadOnly, "
+             << m.requiredFeatures.size() << ", ";
         if (m.requiredFeatures.empty()) {
             code << "nullptr";
         } else {
