@@ -1987,6 +1987,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 const float parsed = static_cast<float>(std::atof(temporalEnv));
                 if (parsed > 0.0f && parsed <= 1.0f) hitAccumTemporalAlpha_ = parsed;
             }
+            // W-LEAN L1 (requires the resolve — without a composite the
+            // per-pixel bits ARE the image): skip per-pixel shadow traces for
+            // pixels the composite fully replaces (w == 1).
+            hitAccumLeanEnabled_ = hitAccumResolveEnabled &&
+                                   (std::getenv("VIXEN_HIT_ACCUM_LEAN") != nullptr);
             auto* tableInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer));
             // uint32_t, matching the ValueTag the node reads (the ddgiLeakGateDebug
             // precedent's own `60u` — a uint64_t here stores a mismatched tag and

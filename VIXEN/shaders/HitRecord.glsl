@@ -36,6 +36,12 @@
 // Total: 64 bytes/element.
 //
 // flags: bit0 (0x1) = hit/miss (1 = TraceWorld found a hit; 0 = sky/miss).
+// bit1 (0x2) = CELL_RESOLVED (W-LEAN L1): the pixel's blend weight saturates
+// (footprint ≥ 2·detailSize0 ⇔ the resolve replaces its ENTIRE color) — the
+// shadow wave classifies + stamps it, then skips per-pixel work the composite
+// would discard; later lean slices (transport skip / resolve fold) read the
+// SAME bit so the classification has one owner. Only ever set when the lean
+// switch is on (params camForward.w > 0).
 //
 // _pad0 usage (MASTER ledger — ShadowVisibilityWave.comp carries a mirror):
 // [0] = winning instance index (M3 round 3; the Cornell diagnostics read it
@@ -55,6 +61,7 @@
 #define HITRECORD_GLSL
 
 #define HITRECORD_FLAG_HIT 0x1u
+#define HITRECORD_FLAG_CELL_RESOLVED 0x2u
 
 struct HitRecord {
     vec3  albedo;

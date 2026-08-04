@@ -631,7 +631,10 @@ void VulkanGraphApplication::PreTick() {
                                 // alpha (spare pad reused — the bandwidth ruling);
                                 // 1.0 = no history.
                                 p->camPos = glm::vec4(haCam.cameraPos, hitAccumTemporalAlpha_);
-                                p->camForward = glm::vec4(haCam.cameraDir, 0.0f);
+                                // W-LEAN L1: camForward.w carries the lean switch
+                                // (the last spare pad; > 0 = skip per-pixel traces
+                                // for fully cell-resolved pixels).
+                                p->camForward = glm::vec4(haCam.cameraDir, hitAccumLeanEnabled_ ? 1.0f : 0.0f);
                                 paramsNode->UnmapReadback(devHa);
                             }
                         }
@@ -1301,6 +1304,13 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
             const glm::vec3 camFwd = diagCam.cameraDir;
             const auto& instancesDiag = bodySceneDiag->GetInstances();
             uint32_t cpuEngaged = 0;
+            uint32_t cpuHit = 0;
+            uint32_t cpuLeanEligible = 0;  // W-LEAN L1: footprint ≥ 2·detail ⇔ w==1 (fully cell-resolved)
+            // NOTE: the wave's CELL_RESOLVED stamp is NOT readable here — the
+            // frame is pipelined (march@131 rewrites flags AFTER every
+            // consumer), so a shutdown readback always sees post-march
+            // records. In-window positive evidence = a temporary stamp
+            // visualization in the resolve (the W-LEAN L1 gate's own method).
             uint32_t cpuMipHist[16] = {};
             std::unordered_map<uint64_t, uint32_t> cpuKeys;  // (hi<<32|lo) -> count
             if (void* rmapped = hrBufDiag->MapForReadback(devDiag)) {
@@ -1315,6 +1325,8 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
                     const uint32_t instIdx = *reinterpret_cast<const uint32_t*>(rec + 48);
                     if (instIdx >= instancesDiag.size()) continue;
                     const float footprint = hitT * coef + bias;
+                    ++cpuHit;
+                    if (footprint >= 2.0f * hitAccumDetailSize0_) ++cpuLeanEligible;
                     using namespace Vixen::SVO::HitAccum;
                     const uint32_t mip = SelectMip(footprint, hitAccumDetailSize0_);
                     if (mip == 0u) continue;
@@ -1344,6 +1356,10 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
                 mainLogger->Info("[HitAccumDiag] CPU-predict: distinctKeys=" + std::to_string(cpuKeys.size()) +
                                  " engaged=" + std::to_string(cpuEngaged) + " mips:" + histStr(cpuMipHist) +
                                  " (detail=" + std::to_string(hitAccumDetailSize0_) + " coef=" + std::to_string(coef) + ")");
+                mainLogger->Info("[HitAccumDiag] Lean: eligible=" + std::to_string(cpuLeanEligible) +
+                                 " of hit=" + std::to_string(cpuHit) +
+                                 (hitAccumLeanEnabled_ ? " (LEAN ON — eligible pixels skip their per-pixel traces)"
+                                                       : " (lean off)"));
             }
 
             // W3c-2/3: the cell shade's output. Since W3c-3 the radiance is

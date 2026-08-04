@@ -224,6 +224,10 @@ void main() {
 
     uint flags = hitRecords[slot].flags;
     if ((flags & HITRECORD_FLAG_HIT) == 0u) return;
+    // W-LEAN L1: the analytic phase (which runs FIRST) stamped this pixel as
+    // fully cell-resolved — its bit-4 answer feeds only its own pixel's
+    // reservoir term, which the composite overwrites. Skip the trace.
+    if ((flags & HITRECORD_FLAG_CELL_RESOLVED) != 0u) return;
 
     ReservoirRecord current = combinedReservoirs[slot];
     if (current.y == 0xFFFFFFFFu || current.y >= lightTreeBuffer.nodeCount) return;
@@ -271,7 +275,31 @@ void main() {
     uint visBits = 0xFFFFFFFFu;
 
     uint flags = hitRecords[slot].flags;
-    if ((flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
+
+    // W-LEAN L1: classify engagement ONCE (the fused path's own footprint
+    // derivation, hoisted). A pixel whose blend weight saturates
+    // (footprint ≥ 2·detailSize0 ⇔ the resolve's w == 1) has its ENTIRE
+    // per-pixel color replaced by the composite — its analytic bits are
+    // computed-then-discarded, so their traces are skipped when the lean
+    // switch (params camForward.w) is on. Seam-band pixels (0 < w < 1) keep
+    // their traces: the blend still consumes their per-pixel term. The record
+    // is stamped (flags bit 1) so the reservoir phase below and the later
+    // lean slices share this ONE classification point.
+    bool leanSkip = false;
+#ifdef VIXEN_HIT_ACCUM_FUSED
+    if ((flags & HITRECORD_FLAG_HIT) != 0u &&
+        hitAccumParams.camForward.w > 0.0 && hitAccumParams.primaryCoef > 0.0) {
+        float leanFootprint = hitRecords[slot].hitT * hitAccumParams.primaryCoef
+                            + hitAccumParams.primaryBias;
+        if (leanFootprint >= 2.0 * hitAccumParams.detailSize0) {
+            leanSkip = true;
+            flags |= HITRECORD_FLAG_CELL_RESOLVED;
+            hitRecords[slot].flags = flags;
+        }
+    }
+#endif
+
+    if (!leanSkip && (flags & HITRECORD_FLAG_HIT) != 0u && shadowConfig.enabled != 0u) {
         vec3 worldPos    = hitRecords[slot].worldPos;
         vec3 worldNormal = hitRecords[slot].worldNormal;
         vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
