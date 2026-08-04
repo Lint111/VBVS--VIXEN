@@ -415,9 +415,7 @@ private:
     static constexpr float    kHitAccumDetailSize0     = 0.5f;  // engagement threshold (world units at mip 0)
     bool hitAccumEnabled_ = false;
     float hitAccumDetailSize0_ = kHitAccumDetailSize0;  // resolved (env-overridable) engagement threshold
-    NodeHandle hitAccumCamPosConstant_{};  // set every frame from PreTick (camera cell anchor)
-    NodeHandle hitAccumCamForwardConstant_{};  // set every frame from PreTick (frustum-center anchoring)
-    NodeHandle hitAccumEpochBuffer_{};         // 4-byte host-written epoch (bumped every PreTick; no clear pass)
+    NodeHandle hitAccumParamsBuffer_{};        // 48-byte host-written per-frame params (epoch/cone/detail/camera; W3c-1)
     uint32_t hitAccumFrameEpoch_ = 0;
     // W3b diag (VIXEN_HIT_ACCUM_PROBE_LOG): runs at SHUTDOWN, after the last
     // frame — an in-loop readback races the flight ring (waitIdle also waits

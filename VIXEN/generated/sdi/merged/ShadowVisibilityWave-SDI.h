@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: ShadowVisibilityWave
-// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_WAVE_RESERVOIR_PHASE
+// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_HIT_ACCUM_FUSED VIXEN_WAVE_RESERVOIR_PHASE
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -368,6 +368,46 @@ struct LightTreeBufferSSBO {
 };
 
 /**
+ * @brief HitAccumTable
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x4ac37bae8351f0ec (for runtime discovery)
+ */
+struct HitAccumTable {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x4ac37bae8351f0ecULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "HitAccumEntryGpu";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 52;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief HitAccumParamsSSBO
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x4e1444a4056b6d4a (for runtime discovery)
+ */
+struct HitAccumParamsSSBO {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x4e1444a4056b6d4aULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "HitAccumParams";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 48;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
  * @brief InstanceSkipMaskBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
@@ -636,6 +676,40 @@ namespace Set0 {
     };
 
     /**
+     * @brief HitAccumTable
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_HIT_ACCUM_FUSED
+     */
+    struct Binding21 {
+        static constexpr const char* NAME = "HitAccumTable";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 21;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadWrite;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_HIT_ACCUM_FUSED"};
+        using DataType = HitAccumTable;
+    };
+
+    /**
+     * @brief HitAccumParamsSSBO
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_HIT_ACCUM_FUSED
+     */
+    struct Binding22 {
+        static constexpr const char* NAME = "HitAccumParamsSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 22;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_HIT_ACCUM_FUSED"};
+        using DataType = HitAccumParamsSSBO;
+    };
+
+    /**
      * @brief InstanceSkipMaskBuffer
      * Type: STORAGE_BUFFER
      */
@@ -670,6 +744,8 @@ using HitRecordBuffer = Set0::Binding17;
 using ShadowConfigSSBO = Set0::Binding18;
 using SpatialReservoirDebugBuffer = Set0::Binding19;
 using LightTreeBufferSSBO = Set0::Binding20;
+using HitAccumTable = Set0::Binding21;
+using HitAccumParamsSSBO = Set0::Binding22;
 using InstanceSkipMaskBuffer = Set0::Binding35;
 } // namespace Bind
 
@@ -801,6 +877,8 @@ struct MemberInfo {
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
 inline constexpr const char* const kFeatures_Set0_Binding19[] = {"VIXEN_WAVE_RESERVOIR_PHASE"};
 inline constexpr const char* const kFeatures_Set0_Binding20[] = {"VIXEN_WAVE_RESERVOIR_PHASE"};
+inline constexpr const char* const kFeatures_Set0_Binding21[] = {"VIXEN_HIT_ACCUM_FUSED"};
+inline constexpr const char* const kFeatures_Set0_Binding22[] = {"VIXEN_HIT_ACCUM_FUSED"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"ESVOBuffer", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
@@ -819,6 +897,8 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"ShadowConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
     {"SpatialReservoirDebugBuffer", false, 0, 19, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding19},
     {"LightTreeBufferSSBO", false, 0, 20, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding20},
+    {"HitAccumTable", false, 0, 21, 0, Access::ReadWrite, 1, kFeatures_Set0_Binding21},
+    {"HitAccumParamsSSBO", false, 0, 22, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding22},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
@@ -854,8 +934,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ShadowVisibilityWave";
-    static constexpr uint32_t NUM_MEMBERS = 30;
-    static constexpr uint32_t NUM_FEATURES = 2;
+    static constexpr uint32_t NUM_MEMBERS = 32;
+    static constexpr uint32_t NUM_FEATURES = 3;
 };
 
 } // namespace ShadowVisibilityWave

@@ -42,6 +42,9 @@ inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
 // reservoir). Same program, own compiled variant; no device requirement.
 inline constexpr ShaderFeature kFeatureWaveReservoirPhase{"VIXEN_WAVE_RESERVOIR_PHASE"};
+// Wavefront W3c-1: the (recipeId, cell@mip) accumulate tail fused into the
+// wave's analytic phase (the standalone pass paid ~2 ms re-reading records).
+inline constexpr ShaderFeature kFeatureHitAccumFused{"VIXEN_HIT_ACCUM_FUSED"};
 
 /**
  * @brief The set of active shader features for a stage/frame.

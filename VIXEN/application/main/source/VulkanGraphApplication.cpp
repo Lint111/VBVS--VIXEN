@@ -604,27 +604,33 @@ void VulkanGraphApplication::PreTick() {
             RunRecipeBucketedDispatchPreTick();
         }
 
-        // W3b: the hit-accumulation pass anchors its per-mip cells on the
-        // CURRENT camera cell — refresh the camPos push constant every frame
-        // (the bucketing ViewProj-constant idiom). Independent of the
-        // bucketed-dispatch flag.
+        // W3c-1: the fused wave's per-frame params — ONE host-written 48-byte
+        // block (epoch, PRIMARY cone, detail, camera). NEVER push constants
+        // (record-time bake per ring slot — the W3b finding). primaryCoef
+        // replicates RaySizeCoefNode.cpp:31 (2·tan((fovYRad/height)·0.5);
+        // lastComputed_ is private — SYNC with that line), bias = 0 (pinhole).
         if (hitAccumEnabled_) {
             if (auto* cameraInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
-                const CameraData& hitAccumCam = cameraInst->GetCurrentCameraData();
-                if (auto* camPosConst = static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumCamPosConstant_))) {
-                    camPosConst->SetValue<glm::vec3>(hitAccumCam.cameraPos);
-                }
-                if (auto* camFwdConst = static_cast<ConstantNode*>(renderGraph->GetInstance(hitAccumCamForwardConstant_))) {
-                    camFwdConst->SetValue<glm::vec3>(hitAccumCam.cameraDir);
-                }
-            }
-            // Host-write the epoch buffer (the skip-mask per-frame-fill idiom).
-            if (auto* epochNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumEpochBuffer_))) {
-                if (auto* devInstEpoch = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
-                    if (auto* devEpoch = devInstEpoch->GetVulkanDevice()) {
-                        if (void* em = epochNode->MapForReadback(devEpoch)) {
-                            *reinterpret_cast<uint32_t*>(em) = ++hitAccumFrameEpoch_;
-                            epochNode->UnmapReadback(devEpoch);
+                if (auto* paramsNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumParamsBuffer_))) {
+                    if (auto* devInstHa = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+                        if (auto* devHa = devInstHa->GetVulkanDevice()) {
+                            if (void* pm = paramsNode->MapForReadback(devHa)) {
+                                const CameraData& haCam = cameraInst->GetCurrentCameraData();
+                                struct HitAccumParamsCpu {
+                                    uint32_t frameEpoch;
+                                    float primaryCoef, primaryBias, detailSize0;
+                                    glm::vec4 camPos, camForward;
+                                };
+                                static_assert(sizeof(HitAccumParamsCpu) == 48, "must match the shader's HitAccumParams");
+                                auto* p = reinterpret_cast<HitAccumParamsCpu*>(pm);
+                                p->frameEpoch = ++hitAccumFrameEpoch_;
+                                p->primaryCoef = 2.0f * std::tan((glm::radians(45.0f) / static_cast<float>(height)) * 0.5f);
+                                p->primaryBias = 0.0f;
+                                p->detailSize0 = hitAccumDetailSize0_;
+                                p->camPos = glm::vec4(haCam.cameraPos, 0.0f);
+                                p->camForward = glm::vec4(haCam.cameraDir, 0.0f);
+                                paramsNode->UnmapReadback(devHa);
+                            }
                         }
                     }
                 }
@@ -1383,9 +1389,6 @@ void VulkanGraphApplication::PostTick() {
         passes.push_back({"shadow_visibility_wave_reservoir", waveRes->GetGPUPerformanceLogger()});
     }
     // W3b (hit-accumulation opt-in; absent on the default path).
-    if (auto* hitAccum = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_accumulate"))) {
-        passes.push_back({"hit_accum_accumulate", hitAccum->GetGPUPerformanceLogger()});
-    }
     if (auto* shadowRayTrace = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("shadow_ray_trace"))) {
         passes.push_back({"shadow_ray_trace", shadowRayTrace->GetGPUPerformanceLogger()});
     }

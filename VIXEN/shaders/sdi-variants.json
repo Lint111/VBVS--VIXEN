@@ -56,19 +56,28 @@
         [
           "VIXEN_GPU_TRACE_HOOKS",
           "VIXEN_WAVE_RESERVOIR_PHASE"
+        ],
+        [
+          "VIXEN_HIT_ACCUM_FUSED"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_HIT_ACCUM_FUSED"
+        ],
+        [
+          "VIXEN_WAVE_RESERVOIR_PHASE",
+          "VIXEN_HIT_ACCUM_FUSED"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_WAVE_RESERVOIR_PHASE",
+          "VIXEN_HIT_ACCUM_FUSED"
         ]
       ]
     },
     {
       "name": "SpatialReuseGather",
       "source": "SpatialReuseGather.comp",
-      "variants": [
-        []
-      ]
-    },
-    {
-      "name": "HitAccumulate",
-      "source": "HitAccumulate.comp",
       "variants": [
         []
       ]

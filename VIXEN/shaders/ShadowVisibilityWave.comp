@@ -72,6 +72,105 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
+#ifdef VIXEN_HIT_ACCUM_FUSED
+// ============================================================================
+// FUSED HIT ACCUMULATION (wavefront W3c-1) — the (recipeId, cell@mip) tail
+// rides THIS pass because it already reads every hit record: the standalone
+// accumulate stage paid ~2 ms (Dozen) just to re-read 16 MB of records (the
+// dispatch-pattern readout's fix #1). Same protocol as the retired
+// HitAccumulate.comp: epoch-stamped entries, transient-handshake reclaim,
+// double-hashed probing — totals verified EXACT by the shutdown diag.
+// bodyInstances rides SceneBindings (binding 10, already included). Per-frame
+// params ride ONE host-written SSBO (NEVER push constants — they bake at
+// command-record time per ring slot; the W3b finding).
+// ============================================================================
+#include "HitAccumulationCommon.glsl"
+
+layout(std430, binding = 21) buffer HitAccumTable {
+    HitAccumEntryGpu accumEntries[];
+};
+
+struct HitAccumParams {
+    uint  frameEpoch;
+    float primaryCoef;   // the PRIMARY cone coefficient (RaySizeCoefNode's value — NOT pc.raySizeCoef, which carries the SECONDARY constant on this stage)
+    float primaryBias;
+    float detailSize0;
+    vec4  camPos;        // xyz used
+    vec4  camForward;    // xyz used
+};
+layout(std430, binding = 22) readonly buffer HitAccumParamsSSBO {
+    HitAccumParams hitAccumParams;
+};
+
+void FusedHitAccumulate(uint slot, HitRecord rec) {
+    if (hitAccumParams.primaryCoef <= 0.0) return;
+    float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
+    uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
+    if (mip == 0u) return;  // per-ray exact — the fail-soft path
+
+    uint instIdx = rec._pad0[0];
+    if (instIdx >= bodyInstances.length()) return;
+    uint recipeId = bodyInstances[instIdx].recipeId;
+
+    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
+    ivec3 cell   = HitAccumCellCoord(rec.worldPos, cellSize);
+    ivec3 anchor = HitAccumAnchorCell(hitAccumParams.camPos.xyz, hitAccumParams.camForward.xyz,
+                                      hitAccumParams.primaryCoef, hitAccumParams.detailSize0, mip);
+    uint keyLo = HitAccumPackCellKeyLo(cell, anchor);
+    if (keyLo == 0u) return;
+    uint keyHiBase = HitAccumPackCellKeyHi(recipeId, mip);
+    if (keyHiBase == 0u) return;
+
+    uint myEpoch = hitAccumParams.frameEpoch & 0xFFFFFu;
+    if (myEpoch == 0xFFFFFu) myEpoch = 0u;
+    uint keyHi = keyHiBase | myEpoch;
+    uint kTransient = keyHiBase | 0xFFFFFu;
+
+    uint baseSlot = HitAccumSlotOf(keyLo, keyHiBase);
+    uint stride = HitAccumProbeStride(keyLo);
+    bool claimed = false;
+    uint tableSlot = 0u;
+    for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
+        uint s = (baseSlot + probe * stride) % kHitAccumTableCapacity;
+        uint oldLo = atomicCompSwap(accumEntries[s].keyLo, 0u, keyLo);
+        if (oldLo != 0u && oldLo != keyLo) continue;
+        if (oldLo == 0u) {
+            atomicExchange(accumEntries[s].keyHi, keyHi);
+            tableSlot = s; claimed = true; break;
+        }
+        uint hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
+        if ((hiRead & 0xFFF00000u) != keyHiBase) continue;
+        if ((hiRead & 0xFFFFFu) == myEpoch) { tableSlot = s; claimed = true; break; }
+        if (hiRead == kTransient) continue;
+        if (atomicCompSwap(accumEntries[s].keyHi, hiRead, kTransient) == hiRead) {
+            atomicExchange(accumEntries[s].count, 0u);
+            atomicExchange(accumEntries[s].sumPosQX, 0); atomicExchange(accumEntries[s].sumPosQY, 0); atomicExchange(accumEntries[s].sumPosQZ, 0);
+            atomicExchange(accumEntries[s].sumDirQX, 0); atomicExchange(accumEntries[s].sumDirQY, 0); atomicExchange(accumEntries[s].sumDirQZ, 0);
+            atomicExchange(accumEntries[s].sumDistQ, 0);
+            atomicExchange(accumEntries[s].sumTpQX, 0); atomicExchange(accumEntries[s].sumTpQY, 0); atomicExchange(accumEntries[s].sumTpQZ, 0);
+            atomicExchange(accumEntries[s].keyHi, keyHi);
+            tableSlot = s; claimed = true; break;
+        }
+    }
+    if (!claimed) return;
+
+    vec3 cellOrigin = vec3(cell) * cellSize;
+    vec3 local = (rec.worldPos - cellOrigin) / cellSize;
+    vec3 dir = normalize(rec.worldPos - hitAccumParams.camPos.xyz);
+    atomicAdd(accumEntries[tableSlot].sumPosQX, int(round(local.x * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumPosQY, int(round(local.y * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumPosQZ, int(round(local.z * kHitAccumPosScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQX, int(round(dir.x * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQY, int(round(dir.y * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDirQZ, int(round(dir.z * kHitAccumDirScale)));
+    atomicAdd(accumEntries[tableSlot].sumDistQ, int(round(rec.hitT * kHitAccumPosScale / cellSize)));
+    atomicAdd(accumEntries[tableSlot].sumTpQX, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].sumTpQY, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].sumTpQZ, int(kHitAccumThroughputScale));
+    atomicAdd(accumEntries[tableSlot].count, 1u);
+}
+#endif  // VIXEN_HIT_ACCUM_FUSED
+
 #ifdef VIXEN_WAVE_RESERVOIR_PHASE
 // ============================================================================
 // RESERVOIR PHASE (wavefront W2a) — a SECOND dispatch of this program, as its
@@ -141,6 +240,7 @@ void main() {
 
 #else  // the ANALYTIC phase (default variant) — bits 0..3
 
+
 void main() {
     uint slot = gl_GlobalInvocationID.x;
     if (slot >= hitRecords.length()) return;
@@ -182,6 +282,14 @@ void main() {
     // RMW) is correct: it re-baselines the word each frame; the reservoir
     // phase RMWs bit 4 in afterwards.
     hitRecords[slot]._pad0[2] = visBits & 0xFu;
+
+#ifdef VIXEN_HIT_ACCUM_FUSED
+    // W3c-1: the accumulate tail rides the record this pass already holds —
+    // zero extra record traffic (the retired standalone pass's whole cost).
+    if ((flags & HITRECORD_FLAG_HIT) != 0u) {
+        FusedHitAccumulate(slot, hitRecords[slot]);
+    }
+#endif
 }
 
 #endif  // VIXEN_WAVE_RESERVOIR_PHASE
