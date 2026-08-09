@@ -634,6 +634,14 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
                    << " levelMin=" << walkCov.levelMin
                    << " levelMax=" << walkCov.levelMax << std::endl;
 
+        // B50-T1 follow-up C3 probe: does the composite blend execute, and is
+        // behindColor actually non-black when it does. All-zero on a
+        // composite-off boot (the shader never calls recordCompositeBlend
+        // there -- the whole blend is under VIXEN_REGIME3_COMPOSITE).
+        const auto compositeBlend = debugCaptureResource_->ReadCompositeBlendStats(vulkanDevice->device);
+        std::cout << "[CompositeBlend] blends=" << compositeBlend.blends
+                   << " behindMax=" << compositeBlend.behindMax << std::endl;
+
         // Round-7 blocker-1 probe: mip-resolve success/fail -- discriminates
         // hypothesis (a) "the mip resolve fails" from (b)/(c) "resolves fine
         // but is lost/ignored downstream".

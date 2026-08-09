@@ -52,13 +52,23 @@ struct SdfFixture {
 // the SerializedOctree's channelPool directly, NOT by calling into MipBake.h,
 // so this is a genuine independent check rather than testing the code
 // against itself.
+//
+// KI-047 (batch 50 follow-up): each octant group's coverage is now its OWN
+// fractional occupancy (occupiedVoxels/64, kVoxelsPerOctantGroup =
+// kVoxelsPerBrick/8 = 512/8 = 64 — see MipBake.h's ReduceBrickToMipSample),
+// not a bare occupied/empty bool. This helper re-derives that fraction
+// per-octant, independently of MipBake.h, and passes it as MipChildSample's
+// 3rd arg so FilterMipMinMagnitude's weighted sum (Weight() = coverage, since
+// coverage > 0 here whenever occupied) matches production exactly.
 MipSample IndependentReduceBrickSdf(const SerializedOctree& out, uint32_t brickIndex) {
     std::array<MipChildSample, 8> octantGroups{};
     std::array<float, 8> octantBest{};
     std::array<float, 8> octantBestAbs{};
     std::array<bool, 8> octantOccupied{};
+    std::array<uint32_t, 8> octantOccupiedCount{};
     octantBestAbs.fill(-1.0f);
     octantOccupied.fill(false);
+    octantOccupiedCount.fill(0u);
 
     // Occupancy from the material bricks array (materialId==0 -> empty),
     // matching MipBake.h's ReduceBrickToMipSample exactly — NOT "value==0",
@@ -82,10 +92,15 @@ MipSample IndependentReduceBrickSdf(const SerializedOctree& out, uint32_t brickI
             octantBest[octant] = value;
         }
         octantOccupied[octant] = true;
+        ++octantOccupiedCount[octant];
     }
 
+    constexpr float kVoxelsPerOctantGroup =
+        static_cast<float>(SerializedOctree::kVoxelsPerBrick) / 8.0f;  // 512/8 = 64
     for (int o = 0; o < 8; ++o) {
-        octantGroups[o] = MipChildSample{octantBest[o], octantOccupied[o]};
+        const float octantCoverage =
+            static_cast<float>(octantOccupiedCount[o]) / kVoxelsPerOctantGroup;
+        octantGroups[o] = MipChildSample{octantBest[o], octantOccupied[o], octantCoverage};
     }
     return FilterMipMinMagnitude(octantGroups);
 }
@@ -138,7 +153,13 @@ TEST(MipSampleBake, RootLevelSdfMatchesIndependentBrickReduction) {
         const uint32_t brickIndex = it->second;
 
         MipSample reduced = IndependentReduceBrickSdf(out, brickIndex);
-        expectedChildren[octant] = MipChildSample{reduced.value, reduced.coverage > 0.0f};
+        // KI-047: thread the leaf's own fractional coverage through (matches
+        // BakeMipPool's `children[octant] = MipChildSample{leafSample.value,
+        // leafSample.coverage > 0.0f, leafSample.coverage}` at MipBake.h) —
+        // NOT collapsed to a bool, or the parent-level weighted sum can't be
+        // reproduced independently.
+        expectedChildren[octant] =
+            MipChildSample{reduced.value, reduced.coverage > 0.0f, reduced.coverage};
     }
     MipSample expectedRootSdf = FilterMipMinMagnitude(expectedChildren);
 

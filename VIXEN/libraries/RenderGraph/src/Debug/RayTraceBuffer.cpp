@@ -223,8 +223,12 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
         header->walkCovMaxBits = 0u;
         header->walkSampledLevelMin = 0xFFFFFFFFu;
         header->walkSampledLevelMax = 0u;
-        header->_padWalkCov[0] = 0u;
-        header->_padWalkCov[1] = 0u;
+        // B50-T1 follow-up C3 probe: plain accumulator + a NON-NEGATIVE float-bits
+        // max, so 0 is the correct seed for both (never-fired reads back as
+        // blends=0, behindMax=0 -- distinguishable from "fired with black behind",
+        // which reads blends>0, behindMax=0).
+        header->compositeBlends = 0u;
+        header->compositeBehindMaxBits = 0u;
         vkUnmapMemory(device, memory_);
     }
 
@@ -634,6 +638,25 @@ WalkCovStats RayTraceBuffer::ReadWalkCovStats(VkDevice device) const {
     stats.covMax = std::bit_cast<float>(header->walkCovMaxBits);
     stats.levelMin = header->walkSampledLevelMin;
     stats.levelMax = header->walkSampledLevelMax;
+    vkUnmapMemory(device, memory_);
+    return stats;
+}
+
+// B50-T1 follow-up C3 probe: composite-blend execution count + max behindColor
+// magnitude over exactly those executions (see compositeBlends field comment,
+// DebugRaySample.h).
+CompositeBlendStats RayTraceBuffer::ReadCompositeBlendStats(VkDevice device) const {
+    CompositeBlendStats stats{};
+    if (!IsValid() || !isHostVisible_) {
+        return stats;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return stats;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    stats.blends = header->compositeBlends;
+    stats.behindMax = std::bit_cast<float>(header->compositeBehindMaxBits);
     vkUnmapMemory(device, memory_);
     return stats;
 }

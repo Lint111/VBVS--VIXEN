@@ -461,7 +461,10 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
     uint walkCovMaxBits;
     uint walkSampledLevelMin;
     uint walkSampledLevelMax;
-    uint _padWalkCov[2];
+    // B50-T1 follow-up (C3 gate probe): repurposes _padWalkCov, no growth.
+    // Must mirror DebugRaySample.h's TraceBufferHeader field order exactly.
+    uint compositeBlends;
+    uint compositeBehindMaxBits;
     uint traceData[];
 };
 
@@ -738,6 +741,18 @@ void recordWalkCov(float cov) {
 void recordWalkSampledLevel(uint level) {
     atomicMin(walkSampledLevelMin, level);
     atomicMax(walkSampledLevelMax, level);
+}
+
+// recordCompositeBlend: B50-T1 follow-up C3 probe. Called from
+// BodyInstanceRayMarch.comp at the composite blend itself, INSIDE the
+// residualT in-range gate, so the count is exactly "blends that executed"
+// and the max is over exactly those blends' behindColor. behindColor is
+// non-negative by construction (a product of mip colors and instance tints),
+// so floatBitsToUint preserves ordering -- same encoding as recordWalkCov.
+void recordCompositeBlend(vec3 behindColor) {
+    atomicAdd(compositeBlends, 1u);
+    float mag = max(max(behindColor.r, behindColor.g), behindColor.b);
+    atomicMax(compositeBehindMaxBits, floatBitsToUint(max(mag, 0.0)));
 }
 
 // recordEsvoMipArm: batch-29 JOB 4, see esvoMipArmHits field comment. Called

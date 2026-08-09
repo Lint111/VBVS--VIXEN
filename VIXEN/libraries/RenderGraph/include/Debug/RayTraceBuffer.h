@@ -203,6 +203,18 @@ struct WalkCovStats {
 };
 
 /**
+ * @brief B50-T1 follow-up (C3 gate probe): how many times the composite blend
+ * actually executed, and the largest max(behindColor.rgb) seen over exactly
+ * those executions. blends>0 with behindMax==0 is the decisive "the blend runs
+ * but behindColor is black" reading (see compositeBlends field comment,
+ * DebugRaySample.h).
+ */
+struct CompositeBlendStats {
+    uint32_t blends = 0;
+    float behindMax = 0.0f;
+};
+
+/**
  * @brief GPU buffer for capturing per-ray traversal traces
  *
  * This class implements IDebugBuffer for ray trace data, enabling
@@ -457,6 +469,13 @@ public:
      * discipline.
      */
     WalkCovStats ReadWalkCovStats(VkDevice device) const;
+
+    /**
+     * @brief B50-T1 follow-up C3 probe: read the composite-blend execution
+     * count + max behindColor magnitude (see CompositeBlendStats above).
+     * Same header-only, never-reset discipline.
+     */
+    CompositeBlendStats ReadCompositeBlendStats(VkDevice device) const;
 
     std::any GetData() const override;
 

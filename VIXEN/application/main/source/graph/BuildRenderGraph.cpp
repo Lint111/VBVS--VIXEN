@@ -6355,6 +6355,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // when this flag is absent.
             const bool sparseBodyNebulaEnabled = sparseBodyEnabled &&
                                                   envFlagEnabled("VIXEN_SPARSE_BODY_NEBULA");
+            // Batch 50 / KI-047 residual: a THIRD independent gate on top of
+            // VIXEN_SPARSE_BODY. Sol's V1.3 finding (sol-b49-validation.md) was
+            // that the regime-3 composite blend genuinely EXECUTES at
+            // residualT=0.015625 (BodyInstanceRayMarch.comp:255's gate passes),
+            // but frames stayed byte-identical because TraceWorld.glsl's same-pass
+            // second-nearest candidate (secondColor, :642/:672) is never populated
+            // -- the 3 seeded near bodies (D~612/800/1200wu) sit on distinct,
+            // non-overlapping camera rays. This flag adds a 7th body directly
+            // BEHIND the existing D~612wu body (octreeIdx 3, world (200,64,-297))
+            // on the SAME ray, so a ray through the near body's silhouette also
+            // finds the far one as TraceWorld's real "lost isCloserHit but still a
+            // hit" second candidate. Historical near/FAR/NEBULA placements are
+            // untouched when this flag is unset (byte-identical, criterion C1).
+            const bool sparseBodyOverlapEnabled = sparseBodyEnabled &&
+                                                   envFlagEnabled("VIXEN_SPARSE_BODY_OVERLAP");
             constexpr float kSmokeFrameHeight = 500.0f;
             constexpr float kCameraFovDegrees = 45.0f;
             constexpr float kPi = 3.14159265358979323846f;
@@ -6388,6 +6403,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
             const glm::vec3 behindSparseNebulaCenter =
                 sparseFarCamera + sparseFarDirection * (sparseNebulaDistance + 700.0f);
             const bool sparseBodyFarPlacementEnabled = sparseBodyFarEnabled || sparseBodyNebulaEnabled;
+            // VIXEN_SPARSE_BODY_OVERLAP placement: same ray as the round-12 D~612wu
+            // body (octreeIdx 3, world center (200,64,-297); camera at
+            // (64,64,300) looking -Z per round-12's convention). Extending
+            // 150wu further along that exact camera->near-body direction lands
+            // the new body's CENTER on the near body's own ray, at D~762wu --
+            // a genuine near/behind overlap pair, not a parallel/offset one.
+            //
+            // ⚠ FIRST ATTEMPT (both bodies at kRenderScale=0.75) measured a
+            // byte-identical frame vs the non-overlap baseline: the far body's
+            // angular radius (0.282deg at D~762wu) was SMALLER than the near
+            // body's (0.351deg at D~612wu) and both are centered on the exact
+            // same ray direction, so the far body's silhouette sat entirely
+            // INSIDE the near body's -- every ray that could hit the far body
+            // hit the near one first, and TraceWorld's "lost isCloserHit but
+            // still a real hit" branch (the only thing that populates
+            // secondColor) never fired for ANY pixel. Fix: give the BEHIND
+            // body a larger renderScale (kOverlapBehindRenderScale=1.5, vs the
+            // near body's 0.75) so its silhouette's angular radius
+            // (~0.53deg) exceeds the near body's and visibly rims out around
+            // it -- guaranteeing rays exist that miss the near body's disc but
+            // hit the far body's, the genuine "second candidate" case.
+            constexpr glm::vec3 kOverlapNearBodyCenter(200.0f, 64.0f, -297.0f);
+            const glm::vec3 overlapRayDir =
+                glm::normalize(kOverlapNearBodyCenter - sparseFarCamera);
+            constexpr float kOverlapBehindExtraDistance = 150.0f;
+            const glm::vec3 overlapBehindCenter =
+                kOverlapNearBodyCenter + overlapRayDir * kOverlapBehindExtraDistance;
+            constexpr float kOverlapBehindRenderScale = 1.5f;  // 2x the near body's 0.75
 
             auto placeStoredSdf = [&](float cx, float cy, float cz,
                                        float r, float g, float b,
@@ -6463,6 +6506,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                    0.20f, 0.90f, 0.95f, 6u,
                                    sparseBodyNebulaEnabled ? kSparseNebulaRenderScale : kRenderScale));
             }
+            // VIXEN_SPARSE_BODY_OVERLAP: a 7th body, BRIGHT (color at/near 1.0 --
+            // quantization bar per sol-b49-validation.md V1.3: residualT=0.015625
+            // needs behindColor >= ~0.251 to move even one 8-bit LSB; this uses
+            // 1.0 -- flat white -- well clear of that bar), placed directly
+            // behind the D~612wu body on the SAME camera ray (see
+            // overlapBehindCenter derivation above). octreeIdx 7 is
+            // EnsureOctreesBuilt's batch-50 kind (plain sphere, same recipe as
+            // the other round-18/sparse-shell kinds).
+            if (sparseBodyOverlapEnabled) {
+                brickmapBodies.push_back(
+                    placeStoredSdf(overlapBehindCenter.x, overlapBehindCenter.y, overlapBehindCenter.z,
+                                   1.00f, 1.00f, 1.00f, 7u, kOverlapBehindRenderScale));
+            }
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                 bodyScene->SetInstances(std::move(brickmapBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_BRICKMAP_SCENE: seeded " +
@@ -6471,7 +6527,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                   "(round 12: +1 far body D~612wu; round 18: +2 more D~800/D~1200wu; "
                                   "VIXEN_SPARSE_BODY: +1 scattered-shell occluder; FAR=" +
                                   (sparseBodyNebulaEnabled ? "nebula-level2+" :
-                                   sparseBodyFarEnabled ? "level2+" : "off") + ")");
+                                   sparseBodyFarEnabled ? "level2+" : "off") +
+                                  "; OVERLAP=" + (sparseBodyOverlapEnabled ? "on" : "off") + ")");
             }
         } else if (envFlagEnabled("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).

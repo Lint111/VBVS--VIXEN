@@ -253,6 +253,10 @@ void main() {
     // regime-3 winner always has residualT strictly < 1 (anySampled requires
     // cov > 0), so excluding the sentinel loses nothing.
     if (anyHit && worldHit.residualT > 1e-6 && worldHit.residualT < 0.999999) {
+        // B50-T1 follow-up C3 probe: measure the blend rather than infer it --
+        // count is "blends that executed", max is over exactly those blends'
+        // behindColor (see recordCompositeBlend, SceneBindings.glsl).
+        recordCompositeBlend(worldHit.behindColor);
         worldHit.color += worldHit.residualT * worldHit.behindColor;
     }
 #endif

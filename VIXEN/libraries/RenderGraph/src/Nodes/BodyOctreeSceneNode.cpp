@@ -685,8 +685,19 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
     // ponytail: sparse body only ever asked for alongside the brickmap scene (the
     // divergence matrix is brickmap-based end to end) -- no standalone combination.
     const bool isSparseBody = isBrickmapScene && envFlagEnabled("VIXEN_SPARSE_BODY");
+    // Batch 50 / KI-047 residual (VIXEN_SPARSE_BODY_OVERLAP, sol-b49-validation.md
+    // V1.3): +1 more kind, a plain sphere placed directly behind the round-12
+    // D~612wu body on the SAME camera ray (BuildRenderGraph.cpp's
+    // overlapBehindCenter) -- gives TraceWorld.glsl a genuine same-pass second
+    // candidate to populate secondColor with, unlike the existing near/FAR/NEBULA
+    // kinds which sit on distinct, non-overlapping rays. Orthogonal to
+    // VIXEN_SPARSE_BODY the same way NEBULA is orthogonal to FAR: gated only on
+    // VIXEN_SPARSE_BODY being set too, so an overlap-off boot bakes exactly the
+    // same kind count as before (byte-identical, criterion C1).
+    const bool isSparseBodyOverlap = isSparseBody && envFlagEnabled("VIXEN_SPARSE_BODY_OVERLAP");
     const uint32_t sdfKindCount =
-        (isBrickmapScene ? kKindCount + 3 : kKindCount) + (isSparseBody ? 1 : 0);
+        (isBrickmapScene ? kKindCount + 3 : kKindCount) + (isSparseBody ? 1 : 0) +
+        (isSparseBodyOverlap ? 1 : 0);
     if (envFlagEnabled("VIXEN_STORED_SDF_DEMO") || isBrickmapScene) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_STORED_SDF_DEMO/VIXEN_BRICKMAP_SCENE/VIXEN_SPARSE_BODY: baking " +
                       std::to_string(sdfKindCount) + " Stored-SDF octrees");
@@ -752,6 +763,7 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         // shell surface). Truth instrument: the baked pool BYTES ([BrickDataHash]
         // sizes:, printed unconditionally) must land well below a dense body's ~6.24MB.
         constexpr uint32_t kSparseBodyKind = kKindCount + 3;  // = 6
+        constexpr uint32_t kSparseBodyOverlapKind = kKindCount + 4;  // = 7 (VIXEN_SPARSE_BODY_OVERLAP only)
         // Coarse occupancy tally (measured evidence tier, not behavioral inference):
         // counts every DISTINCT brick index sparseShellEval is asked to classify and
         // how many it keeps, giving an exact kept-brick fraction for the boot log
@@ -804,6 +816,14 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
                     center, kSdfN, kSdfBand, kSdfBrickDepth);
             } else if (k == kSparseBodyKind) {
                 baked = Vixen::SVO::BakeSdfWorld(sparseShellEval, center, kSdfN, kSdfBand, kSdfBrickDepth);
+            } else if (k == kSparseBodyOverlapKind) {
+                // Plain solid sphere, same recipe/radius as kinds 3/4/5 -- the
+                // "behind" body only needs to be a real, brick-resident SDF body
+                // TraceWorld.glsl can actually hit; placement (not baked shape)
+                // is what makes it overlap the D~612wu body's ray.
+                Vixen::SVO::RecipeParams rp{};
+                rp.radius = kSdfRadius;
+                baked = Vixen::SVO::BakeRecipeToSdfWorld(Vixen::SVO::RECIPE_SPHERE, center, rp, kSdfN, kSdfBand);
             } else {
                 const SdfKind& sk = kSdfKinds[k];
                 Vixen::SVO::RecipeParams rp{};

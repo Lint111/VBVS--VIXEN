@@ -608,7 +608,17 @@ struct alignas(16) TraceBufferHeader {
     // seed rule (min=0xFFFFFFFF, max=0).
     uint32_t walkSampledLevelMin;
     uint32_t walkSampledLevelMax;
-    uint32_t _padWalkCov[2];  // keeps the struct 16 B-aligned (alignas(16) above)
+    // B50-T1 follow-up (C3 gate probe): repurposes _padWalkCov -- no struct
+    // growth, so the 528 B static_assert below is unchanged. compositeBlends
+    // counts executions of the composite blend itself (BodyInstanceRayMarch.comp,
+    // the residualT in-range gate); compositeBehindMaxBits is the float-bits max
+    // of max(behindColor.r,g,b) over exactly those executions. The pair is
+    // decisive for "does the blend run but with a black behindColor": a large
+    // compositeBlends with compositeBehindMaxBits == 0 means secondColor never
+    // got populated on the blending pixels. Plain accumulator + non-negative
+    // float-bits max (seeded 0, same encoding as walkCovMaxBits).
+    uint32_t compositeBlends;
+    uint32_t compositeBehindMaxBits;
 };
 
 static_assert(sizeof(TraceBufferHeader) == 528, "TraceBufferHeader must be 528 bytes (512 B through regime-3 slice 1 + 16 B walkCov/walkSampledLevel min/max probe)");
