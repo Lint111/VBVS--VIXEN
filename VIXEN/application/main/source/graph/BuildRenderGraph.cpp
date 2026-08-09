@@ -1661,6 +1661,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         mainLogger->Info("[BuildRenderGraph] VIXEN_REGIME3: cosmic-accumulation entry-dispatch walk ENGAGED "
                                           "(footprint >= K*cell promotes to a transmittance accumulator, K=pc.cosmicK)");
                     }
+
+                    // Batch-48 level-floor probe: force the regime-3 walk's sampled
+                    // ladder level to be at least L while leaving the default source
+                    // and production path unchanged. The shader applies this only to
+                    // the walk's footprint before it calls descendToNodeOrdinal;
+                    // that keeps the canonical mipPolicyLevel selection in one place.
+                    if (const char* levelFloorEnv = std::getenv("VIXEN_REGIME3_LEVEL_FLOOR")) {
+                        char* parseEnd = nullptr;
+                        const long parsedLevelFloor = std::strtol(levelFloorEnv, &parseEnd, 10);
+                        if (parseEnd != levelFloorEnv && *parseEnd == '\0' && parsedLevelFloor >= 0) {
+                            const size_t firstNewlineFloor = splicedSource.find('\n');
+                            const std::string levelFloorDefine =
+                                "#define VIXEN_REGIME3_LEVEL_FLOOR " + std::to_string(parsedLevelFloor) + "\n";
+                            if (firstNewlineFloor == std::string::npos) {
+                                splicedSource += "\n" + levelFloorDefine;
+                            } else {
+                                splicedSource.insert(firstNewlineFloor + 1, levelFloorDefine);
+                            }
+                            if (mainLogger && mainLogger->IsEnabled()) {
+                                mainLogger->Info("[BuildRenderGraph] VIXEN_REGIME3_LEVEL_FLOOR=" +
+                                                  std::to_string(parsedLevelFloor) +
+                                                  ": regime-3 walk minimum sampled level ENGAGED");
+                            }
+                        } else if (mainLogger && mainLogger->IsEnabled()) {
+                            mainLogger->Warning("[BuildRenderGraph] VIXEN_REGIME3_LEVEL_FLOOR ignored: expected a non-negative integer");
+                        }
+                    }
                 }
 
             }
@@ -6313,8 +6340,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // This moves every VIXEN_BRICKMAP_SCENE body -- the flag-off identity hash
             // (0bbf6e47..., batch 19) is now STALE; re-baseline required (see ledger).
             constexpr float kRenderScale = 0.75f;
-            constexpr float kHalf        = 5.0f * kRenderScale;  // = 3.75f -- TRUE half of the [0,10] localToWorld span
-
             // Deep-field-mip-policy regime-3 divergence placement. The stored-SDF
             // brick is the mip-policy leaf here: kWorldGridSize/8*renderScale =
             // 0.9375 world units. At the smoke window's measured 500 px height,
@@ -6322,8 +6347,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // so level 2 (leaf*4) begins at 2387.32 world units. Keep the default
             // scene untouched; the FAR gate adds a 10% margin and also moves the
             // existing kind-5 body behind the sparse shell for the composite leg.
-            const bool sparseBodyFarEnabled = envFlagEnabled("VIXEN_SPARSE_BODY") &&
+            const bool sparseBodyEnabled = envFlagEnabled("VIXEN_SPARSE_BODY");
+            const bool sparseBodyFarEnabled = sparseBodyEnabled &&
                                               envFlagEnabled("VIXEN_SPARSE_BODY_FAR");
+            // Batch 47 / NEBULA: a second gate on top of VIXEN_SPARSE_BODY.
+            // The historical near and FAR placements remain byte-identical
+            // when this flag is absent.
+            const bool sparseBodyNebulaEnabled = sparseBodyEnabled &&
+                                                  envFlagEnabled("VIXEN_SPARSE_BODY_NEBULA");
             constexpr float kSmokeFrameHeight = 500.0f;
             constexpr float kCameraFovDegrees = 45.0f;
             constexpr float kPi = 3.14159265358979323846f;
@@ -6332,19 +6363,41 @@ void VulkanGraphApplication::BuildRenderGraph() {
             const float sparseLevel2Footprint = (10.0f / 8.0f) * kRenderScale * 4.0f;
             const float sparseLevel2Distance = sparseLevel2Footprint / sparseRaySizeCoef;
             const float sparseFarDistance = sparseLevel2Distance * 1.10f;
+            // NEBULA derivation (batch 47): the local bake remains 8^3 bricks,
+            // so one brick is (10/8)*scale world units and a level-2 node spans
+            // 4 bricks. With scale=128, level 2 starts at
+            //   ((10/8)*128*4) / 0.001570797 = 407,436wu;
+            // the 10% placement margin is 448,180wu. The same scale makes the
+            // kind-6 shell diameter (52/64)*10*128 = 1,040wu, or only 1.48px
+            // at that distance. Scaling the instance scales both the object and
+            // its cells, so this ratio cannot improve; the measured bar outcome
+            // is reported rather than hidden in scene authoring.
+            constexpr float kSparseNebulaRenderScale = 128.0f;
+            const float sparseNebulaLevel2Footprint = (10.0f / 8.0f) *
+                                                       kSparseNebulaRenderScale * 4.0f;
+            const float sparseNebulaLevel2Distance = sparseNebulaLevel2Footprint / sparseRaySizeCoef;
+            const float sparseNebulaDistance = sparseNebulaLevel2Distance * 1.10f;
             const glm::vec3 sparseFarCamera(64.0f, 64.0f, 300.0f);
             const glm::vec3 sparseFarDirection = glm::normalize(glm::vec3(220.0f, 0.0f, -1170.0f));
             const glm::vec3 sparseFarCenter = sparseFarCamera + sparseFarDirection * sparseFarDistance;
             const glm::vec3 behindSparseFarCenter = sparseFarCamera + sparseFarDirection * (sparseFarDistance + 400.0f);
+            const glm::vec3 sparseNebulaCenter = sparseFarCamera + sparseFarDirection * sparseNebulaDistance;
+            // Keep the kind-5 sphere behind the nebula's ~520wu front shell
+            // surface on the shared camera ray. The old FAR separation remains
+            // +400wu; the scaled control uses +700wu.
+            const glm::vec3 behindSparseNebulaCenter =
+                sparseFarCamera + sparseFarDirection * (sparseNebulaDistance + 700.0f);
+            const bool sparseBodyFarPlacementEnabled = sparseBodyFarEnabled || sparseBodyNebulaEnabled;
 
             auto placeStoredSdf = [&](float cx, float cy, float cz,
                                        float r, float g, float b,
-                                       uint32_t octreeIdx) {
+                                       uint32_t octreeIdx,
+                                       float renderScale) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0]  = cx - kHalf;
-                inst.worldPos[1]  = cy - kHalf;
-                inst.worldPos[2]  = cz - kHalf;
-                inst.renderScale  = kRenderScale;
+                inst.worldPos[0]  = cx - 5.0f * renderScale;
+                inst.worldPos[1]  = cy - 5.0f * renderScale;
+                inst.worldPos[2]  = cz - 5.0f * renderScale;
+                inst.renderScale  = renderScale;
                 inst.color[0]     = r;
                 inst.color[1]     = g;
                 inst.color[2]     = b;
@@ -6379,15 +6432,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // D~1200: fwd=1170wu, lateral=220wu -> max_lateral=484.2wu, margin=54.6%, D=1190.5wu.
             // octreeIdx 4/5 are EnsureOctreesBuilt's round-18 kinds (plain sphere, same recipe).
             std::vector<Vixen::SVO::BodyInstanceGpu> brickmapBodies = {
-                placeStoredSdf( 14.0f,  64.0f,   64.0f, 1.00f, 0.95f, 0.85f, 0u),
-                placeStoredSdf( 64.0f,  64.0f,   64.0f, 0.55f, 0.75f, 1.00f, 1u),
-                placeStoredSdf(114.0f,  64.0f,   64.0f, 0.85f, 0.90f, 1.00f, 2u),
-                placeStoredSdf(200.0f,  64.0f, -297.0f, 1.00f, 0.60f, 0.20f, 3u),
-                placeStoredSdf(214.0f,  64.0f, -480.0f, 0.90f, 0.40f, 0.90f, 4u),
-                placeStoredSdf(sparseBodyFarEnabled ? behindSparseFarCenter.x : 284.0f,
+                placeStoredSdf( 14.0f,  64.0f,   64.0f, 1.00f, 0.95f, 0.85f, 0u, kRenderScale),
+                placeStoredSdf( 64.0f,  64.0f,   64.0f, 0.55f, 0.75f, 1.00f, 1u, kRenderScale),
+                placeStoredSdf(114.0f,  64.0f,   64.0f, 0.85f, 0.90f, 1.00f, 2u, kRenderScale),
+                placeStoredSdf(200.0f,  64.0f, -297.0f, 1.00f, 0.60f, 0.20f, 3u, kRenderScale),
+                placeStoredSdf(214.0f,  64.0f, -480.0f, 0.90f, 0.40f, 0.90f, 4u, kRenderScale),
+                placeStoredSdf(sparseBodyFarPlacementEnabled
+                                   ? (sparseBodyNebulaEnabled ? behindSparseNebulaCenter.x : behindSparseFarCenter.x)
+                                   : 284.0f,
                                64.0f,
-                               sparseBodyFarEnabled ? behindSparseFarCenter.z : -870.0f,
-                               0.40f, 0.90f, 0.60f, 5u),
+                               sparseBodyFarPlacementEnabled
+                                   ? (sparseBodyNebulaEnabled ? behindSparseNebulaCenter.z : behindSparseFarCenter.z)
+                                   : -870.0f,
+                               0.40f, 0.90f, 0.60f, 5u, kRenderScale),
             };
             // Deep-field-mip-policy regime-3 divergence scene (2026-08-08),
             // env-gated (VIXEN_SPARSE_BODY=1, default off -- the hard identity gate):
@@ -6395,13 +6452,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // unless VIXEN_SPARSE_BODY_FAR is also enabled. FAR moves it to the
             // derived level-2+ distance and moves kind 5 behind it on the same
             // in-cone ray, preserving actual sparse-shell-over-background layering.
-            if (envFlagEnabled("VIXEN_SPARSE_BODY")) {
-                const glm::vec3 sparseCenter = sparseBodyFarEnabled
-                    ? sparseFarCenter
-                    : glm::vec3(191.5f, 64.0f, -363.0f);
+            if (sparseBodyEnabled) {
+                const glm::vec3 sparseCenter = sparseBodyNebulaEnabled
+                    ? sparseNebulaCenter
+                    : sparseBodyFarEnabled
+                        ? sparseFarCenter
+                        : glm::vec3(191.5f, 64.0f, -363.0f);
                 brickmapBodies.push_back(
                     placeStoredSdf(sparseCenter.x, sparseCenter.y, sparseCenter.z,
-                                   0.20f, 0.90f, 0.95f, 6u));
+                                   0.20f, 0.90f, 0.95f, 6u,
+                                   sparseBodyNebulaEnabled ? kSparseNebulaRenderScale : kRenderScale));
             }
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                 bodyScene->SetInstances(std::move(brickmapBodies));
@@ -6410,7 +6470,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                   " FORMAT_STORED_SDF body instances "
                                   "(round 12: +1 far body D~612wu; round 18: +2 more D~800/D~1200wu; "
                                   "VIXEN_SPARSE_BODY: +1 scattered-shell occluder; FAR=" +
-                                  (sparseBodyFarEnabled ? "level2+" : "off") + ")");
+                                  (sparseBodyNebulaEnabled ? "nebula-level2+" :
+                                   sparseBodyFarEnabled ? "level2+" : "off") + ")");
             }
         } else if (envFlagEnabled("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).

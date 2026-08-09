@@ -2656,8 +2656,25 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                         int walkDepth = farFieldDescentDepth(octreeConfig.bricksPerAxis);
                         uint walkNodeOrdinal;
                         uint walkSampledLevel;
+                        float walkWorldDist = cellWorldDist;
+#ifdef VIXEN_REGIME3_LEVEL_FLOOR
+                        // Batch-48 level-floor probe: raise only the walk's
+                        // effective footprint before the existing canonical
+                        // descendToNodeOrdinal/mipPolicyLevel selection. This is
+                        // equivalent to max(footprint level, L), while the tree
+                        // depth cap prevents a shift beyond the available ladder.
+                        int walkFloorLevel = clamp(VIXEN_REGIME3_LEVEL_FLOOR, 0, walkDepth);
+                        float walkFloorFootprint = entryCellWorldSize *
+                            float(1u << uint(walkFloorLevel));
+                        float walkFootprint = cellWorldDist * pc.raySizeCoef + pc.raySizeBias;
+                        walkFootprint = max(walkFootprint, walkFloorFootprint);
+                        if (pc.raySizeCoef > 0.0) {
+                            walkWorldDist = max(cellWorldDist,
+                                (walkFootprint - pc.raySizeBias) / pc.raySizeCoef);
+                        }
+#endif
                         bool walkReachedBrick = descendToNodeOrdinal(walkCell, walkOctantMask, walkDepth,
-                                                                      cellWorldDist, entryCellWorldSize,
+                                                                      walkWorldDist, entryCellWorldSize,
                                                                       walkNodeOrdinal, walkSampledLevel);
                         if (walkReachedBrick) {
                             vec2 walkSdf = readMipSample(walkNodeOrdinal, SEM_SDF, 0.0);
@@ -3108,4 +3125,3 @@ bool traverseCoarseGridInstancedSdfAnyHit(vec3 rayOrigin, vec3 rayDir,
 }
 
 #include "TraceWorld.glsl"   // Sampled Lighting Inc1 M1: single traversal seam (pure extraction)
-

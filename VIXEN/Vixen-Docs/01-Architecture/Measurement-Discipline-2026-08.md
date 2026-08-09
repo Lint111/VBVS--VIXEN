@@ -117,8 +117,9 @@ input itself is UNMEASURED; classification makes it harmless. Protocol that foll
    esvo/whole ratio — it divides the anti-correlated pair and amplifies the regime split.
 3. **Classify each boot's regime FIRST (esvo/whole ratio, threshold 0.49), compare
    within-regime.** This collapsed 28–54% cross-boot spreads to 0.1–5.0% on existing data and
-   surfaced a consistent ~6–15% mip-policy cost win on both backends (strong-provisional as of
-   this writing; pre-registered confirmatory run in flight, batch 44).
+   surfaced a consistent ~6–15% mip-policy cost win on both backends (strong-provisional at
+   the time; the batch-44 run was voided, and the later round-robin/resumable sweep closed
+   certification — see the Cost closure section below).
 4. **Masked-hash boot-stability instrument:** zeroing rows 240–259 collapses all 24 historical
    legs across 3 batches × 5 configs to ONE hash (`c76867f9ba34defd`). Use it to separate
    "alternation-band flip" from a real out-of-band regression — its first live use caught a
@@ -171,3 +172,77 @@ discipline (reference: `~/scripts/sweep-cert-resumable.sh`):
 - The per-boot binary-mix stamp remains the detection backstop for anyone bypassing this.
 Generalization: when wrapping any multi-step job, ask "what is the ATOMIC invariant?" and
 hold a lock exactly as wide as that invariant — the queue-visible resource stays per-step.
+
+## Cost closure — six attempts, and what each failure bought (2026-08-09)
+
+The six-attempt lineage is now closed: **Steam misattribution → GPU-warming dead end →
+ratio-metric dead end → voided flag run → streak-starved cells → within-regime +
+round-robin closure**. Each failure bought a durable instrument or protocol correction:
+
+| attempt / failure | instrument or correction earned |
+|---|---|
+| Steam misattribution | independent process/GPU-state verification; filtered `tasklist` silence is not a negative |
+| GPU-warming dead end | clock/pacing hypotheses were ruled out; classify the actual boot regime before comparing cost |
+| ratio-metric dead end | use the conserved row-wise sum `esvo + shadow_visibility_wave` |
+| voided flag run | flag-integrity guard; quoted `set "VAR="` clears are mandatory because presence-only gates treat whitespace as ON |
+| streak-starved cells | round-robin sampling, which disambiguated streaks from config-dependent regime bias |
+| resumed top-up | resume-scan, incremental artifacts, per-boot locks, and a run-wide binary hold |
+| Sol validation | a metric is its implementation: compare against `regime_of.py`, not a hand-rederived proxy |
+
+The final protocol discarded frames 1–4, classified LOW/HIGH first, used the conserved sum,
+guarded every OFF leg, interleaved configs round-robin, resumed persisted work, and kept
+the binary stable. It certified all four cost cells; see
+[[Deep-Field-Mip-Accessor-Policy-2026-08]]'s Cost section.
+
+## Config-dependent boot-regime bias (round-robin finding, 2026-08-09)
+
+Round-robin sampling disambiguated the streak question: in the same time window,
+`dda-off` drew **4L/3H** while `dda-on` drew **1L/11H**. The bias also drifted across
+nights: `dda-on` was **11L/1H** yesterday and **1L/11H** tonight. This is a characterized
+phenomenon, not a causal explanation for the boot regime.
+
+Fingerprint calibration is COMPLETE: **22 boots, 21 distinct fingerprints**. The only repeat
+is `af3ba039199ec6b6`, occurring **2×**, both LOW. DDA-off frame↔regime association is
+**2/2 LOW and 2/2 HIGH**; composed-on produces one frame state in both regimes. The
+sharpened hypothesis is a pairwise precedence between the ESVO/march dispatch and
+`shadow_visibility_wave`. Sol found no dependency path in either direction, statically and
+across the logged boots: the intended march→shadow semantic ordering is **not encoded in
+graph topology**. BATCH-48 OUTCOME: the probe ran (8 boots) and FALSIFIED the pairwise-
+precedence hypothesis — shadow precedes march in all 8 while regimes split 4/4. The regime's
+input remains unidentified (next candidates: frame-sync group assignment, pipeline-cache
+state). The missing semantic edge remains a design-hygiene gap, no longer the bistability
+kill. (Edge COUNT was already a proven non-predictor; batch 48 killed the ORDER hypothesis
+too — no schedule-derived predictor of the regime survives.)
+
+## EFFORT POLICY (adopted 2026-08-09)
+
+Use HIGH for GPU/Windows-boundary work, builds, driver watches, boot matrices,
+synchronization, and artifact production. Use MEDIUM for bounded static analysis,
+simulate-first modeling, formula derivation, and narrow code inspection. Promote MEDIUM to
+HIGH—or move the mechanics to the controller—after the first process-launch or watch
+failure. HIGH is a persistence/mechanical-execution tier, not an analysis-quality upgrade.
+This policy is part of dispatch discipline for the measurement workflow.
+
+## `cmd.exe` UNC-cwd stall fingerprint
+
+Launching `cmd.exe /c` from a WSL-path current directory can enter the UNC fallback and
+**hang silently**. The diagnostic fingerprint is: the invocation originates from a WSL
+cwd rather than `/mnt/c`, the Windows-side command produces no useful progress, and the
+same command proceeds when the caller first executes `cd /mnt/c`. This stalled the same
+invocation three times in the batch-46 execution work.
+
+For Windows-side builds and boots, change to `/mnt/c` before `cmd.exe /c`; do not accept a
+silent wait or a superficial success line as evidence of execution. This is separate from
+the build-log false-green trap: a build still requires checking for `ninja: build stopped`
+and confirming the binary mtime advanced.
+
+## Three-axis measurement tables (user directive, 2026-08-09)
+
+Every certification/measurement table reports **performance** (the conserved-sum metric),
+**bandwidth** (boot pool upload bytes + steady-state bytes/frame), and **efficiency**
+(performance per byte moved) — or explicitly labels an axis UNINSTRUMENTED. Known gap at
+adoption: the perf-CSV `boot_bytes_uploaded`/`steady_state_bytes_uploaded` columns read ZERO
+on the brickmap benchmark path (its wholesale upload bypasses the instrumented
+BatchedUploader/residency uploader); until that scene routes through residency, boot
+bandwidth comes from the `[BrickDataHash] sizes: pool=` log line. The sweep driver's
+results.tsv carries bootUploadB / ssBytesPerFrame per boot.

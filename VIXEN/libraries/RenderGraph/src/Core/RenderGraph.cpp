@@ -581,6 +581,13 @@ void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[BootScheduleFingerprint] fp=" + fingerprint.str() +
                    " nodes=" + std::to_string(executionOrder.size()) +
                    " edges=" + std::to_string(topology.GetEdgeCount()));
+    const auto findExecutionIndex = [this](const char* name) {
+        const auto it = std::find_if(executionOrder.begin(), executionOrder.end(),
+            [name](const NodeInstance* node) { return node->GetInstanceName() == name; });
+        return it == executionOrder.end() ? -1 : static_cast<int>(it - executionOrder.begin());
+    };
+    GRAPH_LOG_INFO("[BootSchedulePrecedence] test_dispatch=" + std::to_string(findExecutionIndex("test_dispatch")) +
+                   " shadow_visibility_wave=" + std::to_string(findExecutionIndex("shadow_visibility_wave")));
     GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
         std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
         std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");

@@ -15,6 +15,9 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-08-09 | Deep-field mip policy cost closed: all four backend/regime cells certified (−7.91% to −15.23%); matched-level nodes are approximately pixel-order, with LEVEL_FLOOR test instrument and tree-of-trees production shape | [[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]] |
+| 2026-08-09 | Measurement closure: six-attempt lineage, completed fingerprint calibration, pairwise-precedence hypothesis, missing march→shadow semantic edge, resumable round-robin protocol, and cmd.exe UNC-cwd stall fingerprint | [[../01-Architecture/Measurement-Discipline-2026-08]] |
+| 2026-08-09 | Known issues: KI-047 coverage adjudication, KI-048 UNC-cwd hang, KI-049 config-dependent boot-regime bias | [[../04-Development/Known-Issues]] |
 | 2026-07-27 | Gaia bulk voxel mutation: multicore immutable assembly, single-owner commit, batched range upload, atomic page publication | [[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]] |
 | 2026-07-26 | Voxel asset editor research: hybrid authoring, runtime-capability library partition, sim context, and explicit Blender ownership | [[../03-Research/Voxel-Asset-Editor-Product-Research-2026-07]] |
 | 2026-07-18 | Recipe load tiers: footprint gating ✅; precision routing 🚧 mechanism complete/full consumer open; content-detail LOD deferred | [[../01-Architecture/Recipe-Load-Tier-Contract-Direction-2026-07]] |
@@ -47,6 +50,8 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | Runtime tiered recipe pipeline/JIT | [[../01-Architecture/Runtime-Tiered-Recipe-Pipeline-JIT-Direction-2026-07]] |
 | Recipe load-tier contract | [[../01-Architecture/Recipe-Load-Tier-Contract-Direction-2026-07]] |
 | Recipe spatial contract / two-pass culling (future) | [[../01-Architecture/Recipe-Spatial-Contract-Two-Pass-Culling-Direction-2026-07]] |
+| Deep-field mip accessor policy / certified cost | [[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]] |
+| Measurement discipline / wavefront evidence rules | [[../01-Architecture/Measurement-Discipline-2026-08]] |
 
 ---
 

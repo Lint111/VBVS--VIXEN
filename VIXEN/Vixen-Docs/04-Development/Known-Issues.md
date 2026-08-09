@@ -11,6 +11,64 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-049 — Config-dependent boot-regime bias remains unexplained after round-robin disambiguation
+
+**Discovered:** 2026-08-09, overnight round-robin sweep in the wavefront epoch ledger.
+
+**Symptom:** the LOW/HIGH boot regime is not distributed independently of configuration.
+In the same interleaved time window, `dda-off` drew **4L/3H** while `dda-on` drew
+**1L/11H**. The bias also drifted across nights: `dda-on` was **11L/1H** yesterday and
+**1L/11H** tonight.
+
+**Interpretation:** round-robin sampling disambiguated the prior block-sequential streak
+explanation and established config-dependent bias as a characterized phenomenon, but it
+does not identify the cause. The leading candidate is pointer-ordered graph scheduling:
+heap-allocated nodes enter a `std::set<NodeInstance*>`, whose ordering seeds DFS and can
+affect execution order and frame-sync grouping. Edge count alone is not predictive.
+
+**Probe/status:** fingerprint calibration is COMPLETE: **22 boots, 21 distinct
+fingerprints**; `af3ba039199ec6b6` is the only repeat and both occurrences are LOW.
+DDA-off frame↔regime association is **2/2 LOW and 2/2 HIGH**; composed-on produces one
+frame state in both regimes. The sharpened hypothesis is pairwise precedence between the
+ESVO/march dispatch and `shadow_visibility_wave`. Sol found no dependency path in either
+direction: the intended march→shadow semantic ordering is **not encoded in graph topology**.
+**BATCH-48: the precedence hypothesis was FALSIFIED** (shadow precedes march 8/8, regimes
+4/4 — sign predicts a coin flip). The edge stays queued as hygiene; the regime's deciding
+input is UNIDENTIFIED (frame-sync group assignment / pipeline-cache state are next).
+(The pre-falsification plan read "probe first, then add the edge and watch the regime
+collapse" — the probe ran and the collapse prediction is DEAD; the edge remains queued as
+design hygiene only.)
+
+**Effort policy:** HIGH for GPU/Windows-boundary work, builds, driver watches, boot matrices,
+synchronization, and artifact production; MEDIUM for bounded static analysis, simulate-first
+modeling, formula derivation, and narrow inspection. Promote on the first process-launch or
+watch failure (or move the mechanics to the controller). HIGH is persistence, not analysis
+quality.
+
+**Severity:** Medium (measurement-stratification risk, not a rendering regression) ·
+**Status:** OPEN, characterized but not root-caused.
+
+---
+
+## KI-048 — `cmd.exe` launched from a WSL/UNC cwd can hang silently
+
+**Discovered:** 2026-08-09, batch-46 execution work; the same invocation stalled three
+times.
+
+**Symptom:** `cmd.exe /c` launched while the caller's current directory is a WSL path can
+enter the Windows UNC fallback and hang without useful progress or an actionable error.
+The diagnostic fingerprint is that the command stalls from a WSL cwd but proceeds after
+the caller first changes to `/mnt/c`.
+
+**Workaround:** execute `cd /mnt/c` before every Windows-side `cmd.exe /c` build or boot
+invocation. A superficial build-success line is not sufficient; also check the build log
+for `ninja: build stopped` and confirm that the binary mtime advanced.
+
+**Severity:** Medium (silently stalls execution and can consume a worker window) ·
+**Status:** OPEN, workaround documented.
+
+---
+
 ## KI-044 — Deep-field mip-accessor entry dispatch anchors footprint at ray-entry, systematically undershoots, admits coarse rays into the DDA detail march
 
 **Discovered:** 2026-08-08, wavefront epoch batch 35 (undertow ledger
@@ -48,7 +106,7 @@ not a bug).
 
 ---
 
-## KI-043 — Deep-field mip-accessor cost win UNCERTIFIABLE — root cause was WRONG (not concurrent GPU load); frame is compute-latency-bound
+## KI-043 — Deep-field mip-accessor cost win was once UNCERTIFIABLE (RETIRED: certified in batch 46)
 
 **Discovered:** 2026-08-08, wavefront epoch batch 35. **Root cause corrected:** batch
 38-40.
@@ -80,18 +138,18 @@ MHz (P3, 46% of max) for exactly one 4s sample while utilization read 4%, then f
 there is no clock plateau to warm into, so GPU-warming was tried and correctly abandoned
 as the fix (`tools/bench/gpu_warm.py`, stdlib, refuses to claim warm on timeout).
 
-**Impact:** the march-AVOIDED cost win the entry-dispatch inversion was built to deliver
-remains **unmeasured, not disproven** — three consecutive theories (external contention,
-pacing, warm-up) have now been ruled out, narrowing but not yet resolving the variance:
-within-leg variance (identity-1 2.80 ms vs identity-3 3.99 ms, same config/binary) still
-exceeds any between-leg effect.
+**Historical impact:** the march-AVOIDED cost win was **unmeasured, not disproven** while
+three consecutive theories (external contention, pacing, warm-up) were ruled out. The
+later within-regime + round-robin sweep closed the question: all four backend/regime cells
+are certified cheaper; see [[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]]'s
+Cost section.
 
-**Fix:** the next probe is per-boot clock stamping + fence-wait jitter (not more boots,
-not GPU warm-up — both tried). `cf3a30fd`'s lever ranking stands for where the
-compute-latency budget goes: W-RT ray query > B2 shared-mem premerge > kernel splitting.
+**Disposition:** the cost measurement blocker is retired by the certified protocol. The
+compute-latency diagnosis and its lever ranking remain historical context; the measurement
+discipline, not another warm-up pass, is the durable resolution.
 
-**Severity:** Low (measurement-only, blocks claiming a number, not a code defect) ·
-**Status:** OPEN, root cause narrowed to compute-latency, next-probe identified.
+**Severity:** Low (historical measurement-only issue) ·
+**Status:** RETIRED (batch 46 cost closure; see Measurement-Discipline-2026-08).
 
 ---
 
@@ -1432,22 +1490,46 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 
 **Severity:** Low (cosmetic log noise, no functional/behavioral impact observed across 4 milestones of live gating) · **Status:** OPEN, tracked, not blocking.
 
-## KI-047 — MipBake collapses child coverage to a BOOL at every level; regime-3's density proxy cannot see bake sparsity (MEASURED)
+## KI-047 — Mip coverage semantics were misdiagnosed as the regime-3 blocker (CLARIFIED)
 
-**Discovered:** 2026-08-08, batches 41→42-fixes (hypothesis → measured).
+**Discovered:** 2026-08-08, batches 41→42-fixes; statically adjudicated by Sol on
+2026-08-09.
 
-**Mechanism:** `ReduceBrickToMipSample` (MipBake.h:110-146) marks a 64-voxel octant group
-occupied if ANY voxel is live; interior levels (MipBake.h:203,223) build children as
-`coverage > 0` bools, then `coverage = occupiedCount/8`. A child at coverage 0.125 and one
-at 1.0 are identical to the parent. Result: `.y` measures shell topology, not density.
+**Correct semantics:** coverage is arithmetically fractional at each level
+(`occupiedCount/8`), but each child's contribution is binarized (`coverage > 0`). This is
+fraction-of-children-with-any-content, not density-weighted coverage. The arithmetic is
+correct; the earlier claim that this was a MipBake defect blocking regime-3 divergence was
+overstated.
 
-**Measured consequence:** `[WalkCov] covMin=1 covMax=1 levelMin=0 levelMax=0` on the 60%-dense
+**Historical measurement (superseded by Sol's adjudication):** `[WalkCov] covMin=1 covMax=1 levelMin=0 levelMax=0` on the 60%-dense
 sparse test body — the regime-3 walk reads coverage ≡ 1.0 at level 0, transmittance dies on the
 first cell, and the cross-instance compositing path is a permanent (correct) no-op. Counters
 were bit-identical across a 98%-dense and a 60%-dense bake of the same shell.
 
-**Blast radius:** the regime-3 walk is the ONLY `.y`-as-magnitude consumer (all others test
+**Historical interpretation (superseded):** the regime-3 walk is the ONLY `.y`-as-magnitude consumer (all others test
 `> 0`, which weighted values preserve). Fix = weighted propagation (leaf: fraction-of-64;
 interior: `sum(child.coverage)/8`) + the walk sampling its footprint-matched level (descent
 currently lands at 0 even at K=0.2). In flight as batch-44 stream B; moves pool-content
 hashes ⇒ new declared references.
+
+**Sol's adjudication (retired batch-45 bake):** ESVO descent genuinely returns multi-brick
+interior nodes. The six-brick bake was **75.6% brick density post-dilation (387/512)**, and
+its eight level-2 nodes were all full, so `cov=1` at level 2 was correct data. This bake is
+retired.
+
+**Current bake:** the two-brick cells keep **3%**, giving **111/512 = 21.68%**; it contains
+**5 fractional L2 nodes** and **31 fractional L1 nodes**. The coverage question is
+**RESOLVED**: the data is correct; test-scale was the blocker. The stale far-body result was
+**8 pixels**. The matched-level law is approximate (one L2 node is **0.909 px** at the
+actual placement), so the next test uses `VIXEN_REGIME3_LEVEL_FLOOR=<L>` rather than a
+nebula-scale shell. The production shape is a tiered tree-of-trees. Weighted propagation
+remains a possible quality upgrade, not the current divergence blocker.
+
+**Ledger note:** the earlier ledger snapshot records **33/64** fractional L1 nodes and
+**5** fractional L2 nodes (lines 4191 and 4304); the current corrected bake figures above
+are the Sol batch-47 reconciliation.
+
+**Severity:** Informational (interpretation corrected; no current MipBake bug established)
+· **Status:** CLOSED AS A MISDIAGNOSIS. LEVEL_FLOOR test RAN (batch 48): level pinning
+works; covMin stayed 1 — cause is bool-collapse BETWEEN levels (fractionality does not
+propagate upward); fix = weighted propagation, queued.

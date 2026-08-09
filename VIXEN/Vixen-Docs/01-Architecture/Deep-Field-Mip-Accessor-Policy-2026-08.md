@@ -129,7 +129,30 @@ regime-2 parity bar holding at full strength, not a regression). The two states 
 1,089 px; census `count` reads 414 on both (stable but coarse — frame hashes are the
 sharper parity instrument going forward). See Known-Issues.md for the flake-family note.
 
-## Cost
+## Cost — CLOSED (batch 46, 2026-08-09)
+
+The deep-field mip policy is **CERTIFIED cheaper in every cell**: both backends and both
+boot regimes, using binary **00:57**, the pre-registered protocol, the `regime_of.py`
+metric, and approximately 44 boots plus the resumable top-up. The certified table is:
+
+| cell | delta | bar | verdict |
+|---|---|---|---|
+| dda LOW | **−7.91%** | 4.78% | **✅ CERTIFIED** |
+| dda HIGH | **−6.90%** | 6.23% | **✅ CERTIFIED** |
+| composed LOW | **−12.75%** | 5.14% | **✅ CERTIFIED** |
+| composed HIGH | **−15.23%** | 12.56% | **✅ CERTIFIED** |
+
+The composed-HIGH result replicated across two binaries and two nights (**−15.38% →
+−15.23%**). The closure required regime classification, the conserved-sum metric,
+discarding frames 1–4, the flag-integrity guard, round-robin sampling, resume-scan,
+per-boot locks, and Sol's metric-drift catch. W-BASE cost work (#29 family) can now cite
+these certified figures.
+
+The earlier contention, warm-up, and ratio-metric explanations are historical findings,
+not the cost verdict: the final comparison is certified by the protocol and metric above.
+
+<details>
+<summary>Historical pre-closure cost diagnosis</summary>
 
 **NOT-CERTIFIABLE — root cause narrowed, not resolved (batch 39/40, supersedes the
 earlier "concurrent GPU workload" framing below).** The "another app" contention theory
@@ -161,6 +184,10 @@ concurrent-workload claim was a controller instrument defect (`tasklist /FI` bla
 trap, see Known-Issues.md) and is retracted; the compute-latency-bound framing above
 supersedes it.
 </details>
+
+</details>
+
+<!-- The historical diagnosis above is superseded by the certified closure table. -->
 
 ## Regime 3 (COSMIC) — slice 1 CLOSED (batch 40 landing + post-batch-40 close-out)
 
@@ -197,10 +224,36 @@ GLSL↔C++ field-for-field, md5-sync-verified across all 7 touched files.
     `march=5400 ≠ 2700`; suspect is safety-net re-entry counts under the walk. Flagged for
     the next instrument pass, not yet root-caused.
 
-**Slice 1 complete:** code + instruments + reachability + byte-exact flag-off +
-opaque-limit parity. Still needed for regime 3 to be MEANINGFUL: a scene with
-translucent/sparse coarse content, the sky-sphere cache, anisotropy consumption,
-hysteresis.
+**Slice 1 machinery is verified end-to-end:** code + instruments + reachability +
+byte-exact flag-off + opaque-limit parity; the bake simulation matched the real pool to
+the byte (**1,363,968 B**, **111 bricks**), fractional nodes exist, the walk samples
+levels 0–2, and compositing is wired. The regime-3 blocker is now characterized by the
+**matched-level pixel-order law**, not by a missing nebula-scale object: one sampled
+matched-level node is approximately one pixel at the actual placement (**0.909 px for one
+L2 node**), so the measured **8 pixels** is a 2×4 rasterization footprint, not a linear
+body-size target. An 8³-brick body is the floor case; a production body that owns many
+pixels at matched-level sampling needs many nodes at that level, supplied by the tiered
+**tree-of-trees** shape. Do not pursue scene-scaling gymnastics for this test.
+
+`VIXEN_REGIME3_LEVEL_FLOOR=<L>` SHIPPED (batch 48): pins the walk's sampled level (verified
+min=max=2) and is image-visible (frame state changes under the floor). **Its covMin<1 /
+composite-divergence prediction did NOT hold**: baked coverage at level L counts NONEMPTY
+L−1 CHILDREN (bool-collapse between levels, MipBake.h:201) — sub-child sparsity is erased
+at every level, so a 30%-brick octant can legitimately read 8/8. **The only remaining path
+to fractional coarse coverage is KI-047's weighted propagation (sum(child.coverage)/8) —
+the next implementation slice (moves pool content ⇒ new references).**
+
+**EFFORT POLICY (adopted 2026-08-09):** use HIGH for GPU/Windows-boundary work, builds,
+driver watches, boot matrices, synchronization, and artifact production; use MEDIUM for
+bounded static analysis, simulate-first modeling, formula derivation, and narrow code
+inspection. Promote MEDIUM to HIGH—or move the mechanics to the controller—after the first
+process-launch or watch failure. HIGH is a persistence/mechanical-execution tier, not an
+analysis-quality upgrade. (Ledger: 2026-08-09 final reconciliation, lines 4354–4355.)
+
+**Known gap:** the walk's grayscale-color path reads lane 0 only from the mip pool, so its
+grayscale result is not a color-parity proof; this remains a known limitation (the
+LEVEL_FLOOR instrument itself SHIPPED in batch 48). The sky-sphere cache, anisotropy consumption, and
+hysteresis remain follow-on work.
 
 ### Sparse-body divergence attempt (batch 41 / 41-v2) — bake bug found+fixed; cross-instance compositing is genuinely out of scope for slice 1
 
