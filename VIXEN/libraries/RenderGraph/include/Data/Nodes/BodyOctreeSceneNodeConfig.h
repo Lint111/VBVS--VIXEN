@@ -13,7 +13,8 @@ namespace BodyOctreeSceneNodeCounts {
     // 4 octree buffers + 2 SDF buffers + instance buffer + instance count + mip pool buffer (Inc1 M3)
     // + 2 shell buffers (Surface-Shell ESVO cache, main) + tier-ref table buffer (Tiered-ESVO Inc2 M3)
     // + occupancy grid buffer (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13) — merge of parallel features.
-    static constexpr size_t OUTPUTS = 13;
+    // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
+    static constexpr size_t OUTPUTS = 14;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -144,6 +145,17 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // W-RTQUERY Slice A: TLAS handle for the ray_query traversal backend (VIXEN_RTQUERY_TRAVERSAL).
+    // VK_NULL_HANDLE when the flag is off or the device lacks RTXCapabilities.rayQuery — same
+    // "always emitted, placeholder when inactive" convention as the other optional slots above.
+    // Deduced as ResourceType::AccelerationStructure from the C++ type alone (see
+    // AccelerationStructureNodeConfig::TLAS_HANDLE for the identical precedent); a
+    // DescriptorResourceGathererNode binding VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
+    // to this slot needs no new gatherer code.
+    OUTPUT_SLOT(RTQUERY_TLAS, VkAccelerationStructureKHR, 13,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
@@ -219,6 +231,12 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         BufferDescriptor occupancyGridDesc{};
         occupancyGridDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_OCCUPANCYGRID_BUFFER, "octree_occupancygrid_buffer", ResourceLifetime::Persistent, occupancyGridDesc);
+
+        // W-RTQUERY Slice A: TLAS handle output — HandleDescriptor mirrors
+        // AccelerationStructureNodeConfig::TLAS_HANDLE exactly (same handle-passthrough
+        // convention as VULKAN_DEVICE_IN above; not a buffer-usage resource).
+        HandleDescriptor rtQueryTlasDesc{"VkAccelerationStructureKHR"};
+        INIT_OUTPUT_DESC(RTQUERY_TLAS, "rtquery_tlas", ResourceLifetime::Persistent, rtQueryTlasDesc);
     }
 
     // Automated config validation
@@ -244,6 +262,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(SHELL_LOOKUP_BUFFER_Slot::index == 10, "SHELL_LOOKUP_BUFFER must be at index 10");
     static_assert(OCTREE_TIERREFTABLE_BUFFER_Slot::index == 11, "OCTREE_TIERREFTABLE_BUFFER must be at index 11");
     static_assert(OCTREE_OCCUPANCYGRID_BUFFER_Slot::index == 12, "OCTREE_OCCUPANCYGRID_BUFFER must be at index 12");
+    static_assert(RTQUERY_TLAS_Slot::index == 13, "RTQUERY_TLAS must be at index 13");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -261,6 +280,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<SHELL_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_TIERREFTABLE_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_OCCUPANCYGRID_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<RTQUERY_TLAS_Slot::Type, VkAccelerationStructureKHR>);
 };
 
 } // namespace Vixen::RenderGraph

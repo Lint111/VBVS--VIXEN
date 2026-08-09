@@ -1,0 +1,102 @@
+#version 460
+// SkySphereAccumulate.comp — Deep-Field Mip-Accessor Policy, batch 29 stream C (scaffold, UNWIRED).
+//
+// Fills SkySphereNode's persistent octahedral image via regime-3 (COSMIC) ray accumulation, per
+// docs/superpowers/specs/2026-08-08-deep-field-mip-policy-design.md:
+//
+//   "COSMIC (footprint >= K*cell — steps span many cells): no hits. The ray is a transmittance
+//   accumulator: per coarse cell along the ray at the matched level, sample (color, coverage[,
+//   orientation]) -> C += T*cov*color; T *= (1-cov); early-out at T~=eps; composite over deeper
+//   content."
+//
+// One thread per OUTPUT texel: unprojects its octahedral UV to a world-space direction from the
+// (implicit, world-origin) observer, marches that ray outward through a coarse mip ladder, and
+// writes the composited (color, transmittance) to the output image. Self-contained descriptor
+// namespace like HiZDownsample.comp/RecipeInstanceBucketing.comp — does NOT #include
+// SceneBindings.glsl (stream A owns it; this node is UNWIRED, so there is no real scene mip pool
+// to bind yet). MipPoolSample below documents the eventual binding shape (mirrors
+// SceneBindings.glsl's own "mipPool[base + nodeIdx*channelCount + channelIdx] packs a MipSample
+// (2 floats: value, coverage)" comment) without touching that file.
+//
+// SCAFFOLD SCOPE: samples the EXISTING mip pool ISOTROPICALLY (uniform weight per cell, no
+// directional distribution) — anisotropic coarse-mip consumption (spec "Anisotropic coarse mips")
+// is out of scope for this slice; the accumulation loop's cell-sample call is the single seam a
+// future increment adds the orientation term to.
+//
+// Wiring plan (next batch, not this one): a ComputePipelineNode + ComputeDispatchNode pair (or a
+// ComputeStageNode instance) built in BuildRenderGraph.cpp, bound to a real scene mip-pool SSBO
+// (the same binding SceneBindings.glsl's MipPoolBuffer already exposes to other shaders) and to
+// SkySphereNode's CURRENT_VIEW output, dispatched only when SkySphereNode's dirty flag is set
+// (the lazy-refresh contract SkySphereNode.h stubs) — the accessor's footprint->level function
+// (also not yet implemented; policy owner is stream A) selects which mip rung this shader reads
+// per step, replacing kFixedLevel below.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Output: persistent octahedral-mapped sky cache (SkySphereNode::target_'s image). RGBA: rgb =
+// accumulated color, a = remaining transmittance (1 = untouched sky, 0 = fully opaque).
+layout(rgba16f, binding = 0) uniform writeonly image2D skySphereImage;
+
+// Scaffold-local stand-in for the real per-body coarse mip pool (SceneBindings.glsl's
+// MipPoolBuffer, binding 13, NOT bound here — see file header). Same (value, coverage) pair
+// SVO::MipSample already defines (libraries/SVO/include/MipSample.h) so a future rewire is a
+// binding-source swap, not a struct-shape change.
+struct MipPoolSample {
+    float value;
+    float coverage;
+};
+
+layout(std430, binding = 1) readonly buffer MipPoolStandIn {
+    MipPoolSample mipPoolStandIn[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint  outputWidth;
+    uint  outputHeight;
+    uint  cellCount;       // marchable coarse-cell count along a ray (mipPoolStandIn.length() proxy)
+    float transmittanceEpsilon;  // early-out threshold, T ~= 0
+} pc;
+
+// --- Octahedral mapping (standard signed-octahedron encode/decode; no existing helper in this
+// codebase to reuse — see SkySphereNode.h's file header for why octahedral was chosen over a
+// cubemap in the first place). UV in [0,1]^2 -> unit direction. ---
+vec3 OctDecode(vec2 uv) {
+    vec2 f = uv * 2.0 - 1.0;               // [-1, 1]
+    vec3 n = vec3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    float t = clamp(-n.z, 0.0, 1.0);
+    n.x += n.x >= 0.0 ? -t : t;
+    n.y += n.y >= 0.0 ? -t : t;
+    return normalize(n);
+}
+
+// Regime-3 transmittance accumulation over the coarse mip ladder along `dir`, isotropic sample
+// per cell (ponytail: uniform index-stride march over the stand-in buffer; the real accessor's
+// footprint->level function replaces this indexing scheme, not the accumulate math, when wired).
+vec4 AccumulateCosmic(vec3 dir) {
+    vec3  color = vec3(0.0);
+    float T = 1.0;
+
+    for (uint i = 0u; i < pc.cellCount; ++i) {
+        if (T <= pc.transmittanceEpsilon) break;  // early-out at T~=eps, per spec
+
+        MipPoolSample s = mipPoolStandIn[i];
+        // C += T*cov*color; T *= (1-cov) — direct transcription of the spec's accumulation rule.
+        // Isotropic: `dir` does not modulate the sample this slice (see file header scope note).
+        color += T * s.coverage * vec3(s.value);
+        T *= (1.0 - s.coverage);
+    }
+
+    return vec4(color, T);
+}
+
+void main() {
+    const uint x = gl_GlobalInvocationID.x;
+    const uint y = gl_GlobalInvocationID.y;
+    if (x >= pc.outputWidth || y >= pc.outputHeight) return;
+
+    vec2 uv = (vec2(x, y) + 0.5) / vec2(pc.outputWidth, pc.outputHeight);
+    vec3 dir = OctDecode(uv);
+
+    vec4 result = AccumulateCosmic(dir);
+    imageStore(skySphereImage, ivec2(x, y), result);
+}

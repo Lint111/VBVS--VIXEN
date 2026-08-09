@@ -71,6 +71,11 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
             sizeof(VkPhysicalDeviceRayTracingPipelineFeaturesKHR)
         },
+        {
+            VK_KHR_RAY_QUERY_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+            sizeof(VkPhysicalDeviceRayQueryFeaturesKHR)
+        },
         // VIXEN_PIPELINE_STATS opt-in (see DeviceNode::CreateLogicalDevice): only reaches
         // `extensions` when the env var is set AND the device advertises the extension, so this
         // row is a no-op in the default (unset) case -- HasExtension below never matches.
@@ -110,6 +115,9 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR) {
             VkPhysicalDeviceRayTracingPipelineFeaturesKHR* rtFeatures = reinterpret_cast<VkPhysicalDeviceRayTracingPipelineFeaturesKHR*>(featureStruct.get());
             rtFeatures->rayTracingPipeline = VK_TRUE;
+        } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR) {
+            VkPhysicalDeviceRayQueryFeaturesKHR* rqFeatures = reinterpret_cast<VkPhysicalDeviceRayQueryFeaturesKHR*>(featureStruct.get());
+            rqFeatures->rayQuery = VK_TRUE;
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR) {
             VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR* pipeStatsFeatures = reinterpret_cast<VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR*>(featureStruct.get());
             pipeStatsFeatures->pipelineExecutableInfo = VK_TRUE;
@@ -407,6 +415,7 @@ std::vector<const char*> VulkanDevice::GetRTXExtensions() {
     return {
         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
         VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,
         VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
         VK_KHR_SPIRV_1_4_EXTENSION_NAME,

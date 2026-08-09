@@ -194,6 +194,117 @@ ivec3 brickVoxelCoord(uint linearIndex) {
     return ivec3(x, y, z);
 }
 
+// octantMaskFromDir: reconstruct octant_mask from a LOCAL ray direction --
+// the far-field DDA/RT sites never build a full RayCoefficients (that's the
+// ESVO backend's own machinery), but the mask is exactly the same 3-bit XOR
+// initRayCoefficients computes from d.x/d.y/d.z sign (ESVOCoefficients.glsl
+// ~82-85), so a full coefficients build isn't needed just for this bit. Used
+// by descendToNodeOrdinal (ESVOTraversal.glsl, defined after fetchESVONode).
+int octantMaskFromDir(vec3 localDir) {
+    int mask = 7;
+    if (localDir.x > 0.0) mask ^= 1;
+    if (localDir.y > 0.0) mask ^= 2;
+    if (localDir.z > 0.0) mask ^= 4;
+    return mask;
+}
+
+// farFieldDescentDepth: the brick level's distance from root, for
+// descendToNodeOrdinal (ESVOTraversal.glsl). esvoMaxScale - brickESVOScale is
+// the EXACT root-to-brick hop count straight from the config's own scale
+// fields (ShellOctreeGpu.h: brickESVOScale = esvoMaxScale - (userMaxLevels-1
+// - brickUserScale), the same builder-depth derivation that stamps
+// bricksPerAxis) -- round-3 fix item 2 (minor) replaces the old call sites'
+// plain findMSB(bpa), which FLOORS log2(bpa) and is silently wrong whenever
+// bricksPerAxis isn't a power of two (SVORebuild.cpp:261 builds it via a
+// ceiling division, voxelsPerAxis+brickSideLength-1)/brickSideLength -- e.g.
+// bpa=3 gives findMSB=1 instead of the correct depth 2, stopping the descent
+// a level short while still reporting success. Deriving directly from the
+// scale fields sidesteps the floor/ceil question (and the bpa-power-of-two
+// assumption) entirely.
+//
+// SHALLOW-ROOT CAVEAT (round-3 fix item 2, blocker -- NOT fully closed here):
+// this assumes the octree's node-array root sits at the frame-spanning depth
+// (root hop 0 == the true tree root). SVORebuild.cpp:498-571 documents that a
+// clustered sparse tree can converge SHALLOWER (Octree::rootDepth <
+// frameDepth, see LaineKarrasOctree::rootShortfall()/effectiveLevels()) --
+// but that shortfall is a CPU-only quantity today: ShellOctreeGpu.h's
+// OctreeConfig builder never reads rootDepth/rootShortfall, so no GPU-visible
+// signal exists to correct for it here. Fixing this fully needs a schema
+// change (a new OctreeConfig field, kernel-codegen-owned, out of this file's
+// scope) -- descendToNodeOrdinal's own per-hop childExists/leaf checks fail
+// closed (return false, caller falls back) rather than silently sampling a
+// wrong node in the common case where the mismatch causes a missing-child or
+// early-leaf hit, but a shallow root that still validly resolves bpa-many
+// hops down a WRONG path is not caught. Latent on the shipped (frame-
+// spanning) scene; tracked as a follow-up, not fixed by this ceil-div change.
+// ROUND-16 FIX (supersedes round-15's "+1" probe, which was test-scene
+// special-casing -- see the round-15 CORRECTIONS ledger entry): descent
+// needs log2(bricksPerAxis) coordinate-bit hops to uniquely address every
+// brick along an axis, NOT esvoMaxScale-brickESVOScale (that's
+// brickDepthLevels-1, a different quantity that only coincides with
+// log2(bpa) when log2(bpa)==2*brickDepth -- true for this scene's bpa=8/
+// brickDepth=3 by coincidence, false in general, e.g. bpa=128 or bpa=32).
+// bricksPerAxis is guaranteed a power of two by the octree builder
+// (SVORebuild.cpp bricksPerAxis derivation), so findMSB is an EXACT log2
+// here (unlike the old bpa-only callers' findMSB(bpa) this function's
+// header already documents replacing -- that concern was about a
+// non-power-of-two bpa from a ceiling division elsewhere; the config's
+// bricksPerAxis field itself is the already-rounded power-of-two value).
+int farFieldDescentDepth(int bricksPerAxis) {
+    return max(findMSB(bricksPerAxis), 0);
+}
+
+// ============================================================================
+// DEEP-FIELD MIP POLICY — the footprint->level function (deep-field-mip-
+// policy design doc, "the governing statement": ONE deterministic function
+// maps a ray's footprint to a level of the recursive hierarchy; every
+// backend consults mip data by this one function).
+// ============================================================================
+// mipPolicyLevel: regime-2 (MIP HIT) level selection, generalized from the
+// brick-rung special case ESVOTraversal.glsl's descendToNodeOrdinal shipped
+// with (D=612 parity gate) — SAME arithmetic, now the canonical named
+// function instead of an inline per-caller loop body, so DDA/RT/ESVO all
+// consult ONE definition (no drift between twins).
+//
+// SPACE/UNITS (documented once, here, per the design doc's ask): both
+// operands are WORLD-space distances. `footprint` is the ray's projected
+// cone width at the sample point (worldDist*raySizeCoef+raySizeBias — the
+// SAME quantity the ordinary ESVO screen-space LOD gate uses,
+// SceneBindings.glsl's "tv_max*raySizeCoef+raySizeBias >= scale_exp2").
+// `leafWorldSize` is the WORLD size of the finest level in the ladder this
+// call is walking (a brick for the octree-node ladder above brick level; a
+// sub-brick voxel for the ladder BELOW brick level, once that tier is
+// walked by a caller — this function doesn't care which, it only compares
+// sizes). Level L's world size is leafWorldSize * 2^L (standard octree
+// scale-doubling, one hop per level, level 0 == the leaf itself). The
+// policy is "finest level the footprint still covers": return the LARGEST L
+// whose node size (leafWorldSize*2^L) is still <= footprint — the node the
+// ray's cone genuinely spans. This is ESVO's own semantics: its gate fires
+// at the first node the footprint COVERS (footprint >= scale_exp2).
+//
+// ⚠ BATCH-32 CORRECTION (design ruling). The original returned the first
+// level STRICTLY LARGER than the footprint (footprint < size(L)) — ONE LEVEL
+// COARSER whenever the footprint falls between rungs. Measured divergence
+// from ESVO's rule: 68% of 3200 pairs (batch-31 validator) / 74% of 4000
+// (controller), and NEVER finer. Sampling a blurrier mip than the reference
+// caps recoverable coverage — the prime suspect for batch-31's census moving
+// only 1-2%. The old header also claimed "the same criterion, not an analog";
+// that was false in ~70% of cases. Rule and claim both corrected here.
+// raySizeCoef<=0 disables LOD entirely (full-detail marching) — returns 0,
+// same convention every other pc.raySizeCoef>0.0 gate in this codebase uses.
+// maxLevel caps the search (callers pass their own hierarchy depth so this
+// never walks past the root).
+int mipPolicyLevel(float footprint, float leafWorldSize, int maxLevel) {
+    if (footprint <= 0.0 || leafWorldSize <= 0.0) return 0;
+    // Walk coarse->fine; the first level the footprint still COVERS is the
+    // finest one the cone genuinely spans. Falls through to 0 (the leaf) when
+    // the footprint is smaller than a leaf — regime-1 territory, LOD off.
+    for (int level = maxLevel; level > 0; --level) {
+        if (footprint >= leafWorldSize * float(1u << uint(level))) return level;
+    }
+    return 0;
+}
+
 // ============================================================================
 // MATERIAL DATA (matches C++ Material struct)
 // ============================================================================

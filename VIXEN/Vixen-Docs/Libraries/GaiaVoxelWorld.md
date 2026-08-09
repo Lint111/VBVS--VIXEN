@@ -11,7 +11,16 @@ related:
 
 # GaiaVoxelWorld Library
 
-ECS-backed sparse voxel storage using Gaia-ECS with Morton code indexing. Provides 11x memory reduction vs dense storage.
+ECS-backed sparse voxel storage using Gaia-ECS with Morton code indexing.
+
+> **Concurrency and scale status (verified 2026-07-27):** this wrapper is safe only under a
+> single structural-mutation owner. The Gaia world, Morton index, and block cache are not jointly
+> synchronized. `createVoxelsBatch` is currently a serial wrapper around per-entity/per-component
+> additions; it is not Gaia's `add_n`/`copy_n` bulk-archetype path.
+>
+> Do not use `VoxelInjectionQueue` for concurrent writes. For the researched replacement—parallel
+> immutable region assembly, short single-owner publication, offset GPU uploads, and atomic page
+> swaps—see [[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]].
 
 ---
 
@@ -72,7 +81,7 @@ for (int x = 0; x < 10; ++x) {
         {Density{1.0f}}
     });
 }
-world.createVoxels(requests);
+world.createVoxelsBatch(requests);
 ```
 
 ### 2.2 Query by Position
@@ -198,6 +207,8 @@ for (uint32_t i = 0; i < brick.count; ++i) {
 
 ### 6.1 Sparse Storage
 
+The following is an illustrative occupancy comparison, not a current measured benchmark:
+
 ```
 Scene: 100x100x100 potential voxels (1M)
 Occupied: 90,000 voxels (9%)
@@ -228,7 +239,25 @@ Components are stored contiguously per archetype for cache efficiency.
 
 ---
 
-## 7. Code References
+## 7. Threading and bulk-mutation boundary
+
+- Concurrent reads are a separate question from structural mutation. Callers must not infer
+  write safety from read-only tests or Gaia's parallel query iteration.
+- Structural add/remove plus `mortonIndex` and block-cache maintenance belongs to one logical owner.
+- Worker jobs may evaluate recipes, merge deltas, sort Morton addresses, build topology/bricks/mips,
+  and compress into owned immutable payloads.
+- Sparse structural changes discovered during a Gaia query should use the iterator command buffer.
+  Large region replacement should publish a page generation rather than enqueue one delete per
+  visible voxel.
+- If per-voxel ECS storage remains necessary for authoring, group requests by exact component mask
+  and prototype Gaia's `copy_n(..., CopyIter)` path before replacing the existing loop.
+
+The current `VoxelCreationRequest` contains a borrowed component span. Any future async queue must own
+or retain the component payload; copying the request object alone is insufficient.
+
+---
+
+## 8. Code References
 
 | File | Purpose |
 |------|---------|

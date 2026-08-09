@@ -48,6 +48,8 @@
 #include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
 #include "RecipeContentCacher.h"              // Recipe Pipeline Cache Inc1 Task 4: population call site
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
+#include "Nodes/HitAccumParamsConfigNode.h"   // B2 (batch-23): ring-buffered hit_accum_params_buffer, MapCurrentForWrite
+#include "Nodes/FrameSyncNode.h"              // B2 (batch-23): GetCurrentFrameIndex() for the params ring's PreTick write
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
 #include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
 #include "Generated/ReservoirRecord.g.h"      // Sampled Lighting Inc3 M4: Vixen::Gpu::ReservoirRecord layout for the readback
@@ -611,33 +613,50 @@ void VulkanGraphApplication::PreTick() {
         // lastComputed_ is private — SYNC with that line), bias = 0 (pinhole).
         if (hitAccumEnabled_) {
             if (auto* cameraInst = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
-                if (auto* paramsNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumParamsBuffer_))) {
-                    if (auto* devInstHa = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
-                        if (auto* devHa = devInstHa->GetVulkanDevice()) {
-                            if (void* pm = paramsNode->MapForReadback(devHa)) {
-                                const CameraData& haCam = cameraInst->GetCurrentCameraData();
-                                struct HitAccumParamsCpu {
-                                    uint32_t frameEpoch;
-                                    float primaryCoef, primaryBias, detailSize0;
-                                    glm::vec4 camPos, camForward;
-                                };
-                                static_assert(sizeof(HitAccumParamsCpu) == 48, "must match the shader's HitAccumParams");
-                                auto* p = reinterpret_cast<HitAccumParamsCpu*>(pm);
-                                p->frameEpoch = ++hitAccumFrameEpoch_;
-                                p->primaryCoef = 2.0f * std::tan((glm::radians(45.0f) / static_cast<float>(height)) * 0.5f);
-                                p->primaryBias = 0.0f;
-                                p->detailSize0 = hitAccumDetailSize0_;
-                                // W3c-3: camPos.w carries the temporal-absorption EMA
-                                // alpha (spare pad reused — the bandwidth ruling);
-                                // 1.0 = no history.
-                                p->camPos = glm::vec4(haCam.cameraPos, hitAccumTemporalAlpha_);
-                                // W-LEAN L1: camForward.w carries the lean switch
-                                // (the last spare pad; > 0 = skip per-pixel traces
-                                // for fully cell-resolved pixels).
-                                p->camForward = glm::vec4(haCam.cameraDir, hitAccumLeanEnabled_ ? 1.0f : 0.0f);
-                                paramsNode->UnmapReadback(devHa);
-                            }
+                if (auto* paramsNode = static_cast<HitAccumParamsConfigNode*>(renderGraph->GetInstance(hitAccumParamsBuffer_))) {
+                    // B2 (batch-23): the buffer is now ring-buffered (was a single
+                    // un-ringed StorageBufferNode — batch-22 root cause). PreTick
+                    // runs BEFORE this frame's graph Execute pass, so it must write
+                    // into the SAME ring slot ExecuteImpl will emit this frame.
+                    // B2 ring-lag fix (batch-28): FrameSyncNode::ExecuteImpl
+                    // advances currentFrameIndex at ITS OWN top, before this
+                    // frame's Execute pass runs — GetCurrentFrameIndex() now
+                    // predicts that advance so PreTick targets the same slot
+                    // Execute/the descriptor set/the dispatch will read (the
+                    // un-advanced value was one ring slot behind, every frame).
+                    auto* frameSyncInst = static_cast<FrameSyncNode*>(renderGraph->GetInstanceByName("frame_sync"));
+                    if (void* pm = frameSyncInst ? paramsNode->MapCurrentForWrite(frameSyncInst->GetCurrentFrameIndex()) : nullptr) {
+                        const CameraData& haCam = cameraInst->GetCurrentCameraData();
+                        struct HitAccumParamsCpu {
+                            uint32_t frameEpoch;
+                            float primaryCoef, primaryBias, detailSize0;
+                            glm::vec4 camPos, camForward;
+                        };
+                        static_assert(sizeof(HitAccumParamsCpu) == 48, "must match the shader's HitAccumParams");
+                        auto* p = reinterpret_cast<HitAccumParamsCpu*>(pm);
+                        p->frameEpoch = ++hitAccumFrameEpoch_;
+                        // B2 epoch pinning (batch-24): PreTick for frame N assigns
+                        // epoch value to frame N (frameCounter_ is still N-1 here,
+                        // pre-increment happens after Tick()'s PostTick -- so the
+                        // target frame's PreTick is when frameCounter_+1 ==
+                        // hitAccumDiagFrame_). Capture the epoch actually stamped
+                        // on that exact frame, not whatever the counter races to
+                        // later.
+                        if (hitAccumDiagFrame_ > 0 && frameCounter_ + 1 == hitAccumDiagFrame_) {
+                            diagSampledEpoch_ = hitAccumFrameEpoch_;
                         }
+                        p->primaryCoef = 2.0f * std::tan((glm::radians(45.0f) / static_cast<float>(height)) * 0.5f);
+                        p->primaryBias = 0.0f;
+                        p->detailSize0 = hitAccumDetailSize0_;
+                        // W3c-3: camPos.w carries the temporal-absorption EMA
+                        // alpha (spare pad reused — the bandwidth ruling);
+                        // 1.0 = no history.
+                        p->camPos = glm::vec4(haCam.cameraPos, hitAccumTemporalAlpha_);
+                        // W-LEAN L1: camForward.w carries the lean switch
+                        // (the last spare pad; > 0 = skip per-pixel traces
+                        // for fully cell-resolved pixels).
+                        p->camForward = glm::vec4(haCam.cameraDir, hitAccumLeanEnabled_ ? 1.0f : 0.0f);
+                        paramsNode->UnmapCurrentForWrite();
                     }
                 }
             }
@@ -1254,7 +1273,7 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
 // table AND the hit records, runs the CPU mirror over the same records with
 // the same inputs, logs both sides. Counts are rounding-immune; totals and
 // per-mip histograms compare EXACTLY, occupancy as >= (benign duplicates).
-void VulkanGraphApplication::RunHitAccumDiagReadback() {
+void VulkanGraphApplication::RunHitAccumDiagReadback(uint64_t sampleFrame) {
     if (!renderGraph) return;
         auto* tableNode = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer_));
         auto* hrBufDiag = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
@@ -1268,28 +1287,57 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
             // --- GPU side: scan the table (two-word key, 14-word stride) ---
             uint32_t gpuOccupied = 0, gpuTotal = 0;
             uint32_t gpuMipHist[16] = {};
-            uint32_t maxEpoch = 0;  // hoisted: the radiance readback below re-scans at this epoch
+            // B2 fix: the target epoch is KNOWN. For the mid-run diag frame
+            // (sampleFrame != 0) it's diagSampledEpoch_, captured AT PreTick the
+            // instant it was stamped on the sampled frame (batch-24 third layer
+            // -- the LIVE hitAccumFrameEpoch_ races ahead by the time this
+            // deferred readback fires, since PostTick can trail PreTick by up to
+            // MAX_FRAMES_IN_FLIGHT-1 unretired frames). The shutdown call
+            // (sampleFrame == 0) has no such race -- it runs after the last
+            // frame, so the live counter IS the final epoch.
+            uint32_t maxEpoch = (sampleFrame != 0 ? diagSampledEpoch_ : hitAccumFrameEpoch_) & 0xFFFFFu;  // hoisted: the radiance readback below re-scans at this epoch
             constexpr uint32_t kStrideWords = 14;  // HitAccumEntryGpu, 56 B (W3c-2 repInstIdx)
+            // Batch-27 JOB 1 task 2: histogram the TABLE'S ACTUAL keyHi epoch
+            // stamps at readback time, [maxEpoch-4 .. maxEpoch+4] plus an
+            // "other" bucket -- shows exactly which epoch(s) the shader
+            // stamped for the sampled frame's work, alongside maxEpoch, so a
+            // mismatch between what diagSampledEpoch_ names and what the
+            // table actually holds is visible directly instead of inferred
+            // from the occupied/ratio numbers alone.
+            constexpr int kEpochHistRadius = 4;
+            uint32_t epochHist[2 * kEpochHistRadius + 1] = {};
+            uint32_t epochHistOther = 0;
             if (void* tmapped = tableNode->MapForReadback(devDiag)) {
                 const auto* words = reinterpret_cast<const uint32_t*>(tmapped);
                 // Entries persist across frames (epoch-stamped, no clear):
-                // the FINAL frame's entries carry the max epoch — count those.
-                for (uint32_t s = 0; s < kHitAccumTableCapacity; ++s) {
-                    const uint32_t keyLo = words[s * kStrideWords + 0];
-                    if ((keyLo & 0x80000000u) == 0u) continue;
-                    maxEpoch = std::max(maxEpoch, words[s * kStrideWords + 1] & 0xFFFFFu);
-                }
+                // scan only entries stamped with the single target epoch above.
                 for (uint32_t s = 0; s < kHitAccumTableCapacity; ++s) {
                     const uint32_t keyLo = words[s * kStrideWords + 0];
                     if ((keyLo & 0x80000000u) == 0u) continue;
                     const uint32_t keyHi = words[s * kStrideWords + 1];
-                    if ((keyHi & 0xFFFFFu) != maxEpoch) continue;  // stale epoch
+                    const uint32_t stampEpoch = keyHi & 0xFFFFFu;
+                    const int64_t delta = static_cast<int64_t>(stampEpoch) - static_cast<int64_t>(maxEpoch);
+                    if (delta >= -kEpochHistRadius && delta <= kEpochHistRadius) {
+                        ++epochHist[delta + kEpochHistRadius];
+                    } else {
+                        ++epochHistOther;
+                    }
+                    if (stampEpoch != maxEpoch) continue;  // stale epoch
                     const uint32_t cnt = words[s * kStrideWords + 2];
                     ++gpuOccupied;
                     gpuTotal += cnt;
                     gpuMipHist[(keyHi >> 20) & 0xFu] += cnt;
                 }
                 tableNode->UnmapReadback(devDiag);
+            }
+            if (mainLogger) {
+                std::string histLine = "[HitAccumEpochHist] sampledEpoch=" + std::to_string(maxEpoch) + " ";
+                for (int d = -kEpochHistRadius; d <= kEpochHistRadius; ++d) {
+                    histLine += (d == 0 ? "[" : "") + std::to_string(d) + "=" +
+                                std::to_string(epochHist[d + kEpochHistRadius]) + (d == 0 ? "]" : "") + " ";
+                }
+                histLine += "other=" + std::to_string(epochHistOther);
+                mainLogger->Info(histLine);
             }
 
             // --- CPU side: the mirror over the same records ---
@@ -1351,7 +1399,10 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
                 return s.empty() ? std::string(" (none)") : s;
             };
             if (mainLogger) {
-                mainLogger->Info("[HitAccumDiag] GPU: occupied=" + std::to_string(gpuOccupied) +
+                const std::string frameTag = sampleFrame > 0
+                    ? (" frame=" + std::to_string(sampleFrame))
+                    : " frame=shutdown";
+                mainLogger->Info("[HitAccumDiag]" + frameTag + " GPU: occupied=" + std::to_string(gpuOccupied) +
                                  " total=" + std::to_string(gpuTotal) + " mips:" + histStr(gpuMipHist));
                 mainLogger->Info("[HitAccumDiag] CPU-predict: distinctKeys=" + std::to_string(cpuKeys.size()) +
                                  " engaged=" + std::to_string(cpuEngaged) + " mips:" + histStr(cpuMipHist) +
@@ -1402,6 +1453,31 @@ void VulkanGraphApplication::RunHitAccumDiagReadback() {
 }
 
 void VulkanGraphApplication::PostTick() {
+    // B2 determinism slice (VIXEN_HIT_ACCUM_DIAG_FRAME=<n>): sample the hit-accum
+    // table at a FIXED frame instead of shutdown, so repeat boots compare the
+    // exact same accumulation window. Checked ahead of the perf-CSV early-return
+    // below (unconditional on VIXEN_PERF_CSV) — frameCounter_ is post-increment
+    // (Tick(): ...; PostTick(); ++frameCounter_;), so it still reads N-1 here;
+    // ask for n+1 to land exactly on frame n's completed state.
+    // B2 epoch pinning (batch-24, REVERTED batch-25): the MAX_FRAMES_IN_FLIGHT
+    // deferral scanned epoch(sampled) AFTER several epochs of shader-side slot
+    // reclaim had already overwritten it (HitAccumulate.comp's ClaimAccumSlot
+    // reclaims slots across epochs by design) -- fire at the sampled frame
+    // itself. B2 (batch-26, gated OFF by default batch-27): HitAccumClear.comp
+    // (VIXEN_HIT_ACCUM_CLEAR, off by default) is an UNCONDITIONAL every-frame
+    // zero of every table slot -- it carries no epoch filter, so with it on it
+    // wipes the sampled frame's own rows too (a later in-flight frame's clear
+    // can beat this deferred readback). The readback below does not depend on
+    // any clear: it scans the table for rows stamped with diagSampledEpoch_
+    // (captured at PreTick, the single epoch the shader actually stamped for
+    // the sampled frame) and ignores every other epoch -- ClaimAccumSlot's
+    // lazy per-slot reclaim is the only reclaim mechanism in the default path.
+    if (hitAccumEnabled_ && hitAccumDiagFrame_ > 0 && !hitAccumDiagFrameFired_ &&
+        frameCounter_ + 1 >= hitAccumDiagFrame_) {
+        hitAccumDiagFrameFired_ = true;
+        RunHitAccumDiagReadback(hitAccumDiagFrame_);
+    }
+
     if (!perfCsvWriter_.IsEnabled() || !renderGraph) {
         return;
     }

@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <vulkan/vulkan.h>
 
 // Forward declarations
 namespace Vixen::Vulkan::Resources {
@@ -251,6 +252,17 @@ private:
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
     void DeriveResidencyDefaultIfUnset();  // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4
 
+    // --- W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query traversal backend ---
+    // Built (VIXEN_RTQUERY_TRAVERSAL + RTXCapabilities.rayQuery only) once octree buffers
+    // AND the demo's per-octree instance list are both known. Hand-rolled (not via
+    // CashSystem::AccelerationStructureCacher — that cacher is single-instance/single-AABB-
+    // blob shaped; this needs one BLAS per octree's per-brick AABBs plus one TLAS instance
+    // per BodyOctreeSceneNode instance with its own local-to-world transform and
+    // instanceCustomIndex = octree index). Rebuilt whenever the instance/octree identity
+    // that produced it changes (see rtQueryTlasBuiltForInstanceCount_/OctreeCount_ below).
+    void EnsureRtQueryTlasBuilt(Vixen::Vulkan::Resources::VulkanDevice* device);
+    void DestroyRtQueryTlas();
+
     // --- Surface-Shell ESVO cache ---
     // Derive the reachable shell of octree 0 from concatenated_ into BOTH CPU
     // double-buffer slots (bootstrap). No-op when octree 0 is not Stored-SDF.
@@ -413,6 +425,32 @@ private:
     // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
     PerFrameResources perFrame_;
     VkDeviceSize      instanceRingCapacity_ = 0;  // bytes per ring slot (grow-only)
+
+    // --- W-RTQUERY Slice A: per-brick-AABB TLAS (VIXEN_RTQUERY_TRAVERSAL) ---
+    // One BLAS per octree (per-brick AABBs, octree-LOCAL [0,1]^3 space) + one shared TLAS
+    // with one instance per BodyOctreeSceneNode instance (instanceCustomIndex = octree
+    // index, transform = that instance's local-to-world). Rebuilt when the (instance count,
+    // octree count) pair that produced it changes — cheap identity check, not a hash of
+    // the actual data (this is a slice-scoped feasibility build, not a steady-state cacher).
+    struct RtQueryBlas {
+        VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
+        VkBuffer       asBuffer   = VK_NULL_HANDLE;
+        VkDeviceMemory asMemory   = VK_NULL_HANDLE;
+        VkBuffer       aabbBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory aabbMemory = VK_NULL_HANDLE;
+        VkDeviceAddress deviceAddress = 0;
+    };
+    std::vector<RtQueryBlas>    rtQueryBlas_;           // one per octree (concatenated_.count)
+    VkAccelerationStructureKHR  rtQueryTlas_        = VK_NULL_HANDLE;
+    VkBuffer                    rtQueryTlasBuffer_  = VK_NULL_HANDLE;
+    VkDeviceMemory               rtQueryTlasMemory_  = VK_NULL_HANDLE;
+    VkBuffer                    rtQueryScratchBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory               rtQueryScratchMemory_ = VK_NULL_HANDLE;
+    VkBuffer                    rtQueryInstanceBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory               rtQueryInstanceMemory_ = VK_NULL_HANDLE;
+    bool                         rtQueryTlasBuilt_    = false;
+    int32_t                      rtQueryTlasBuiltForInstanceCount_ = -1;
+    uint32_t                     rtQueryTlasBuiltForOctreeCount_   = 0;
 };
 
 } // namespace Vixen::RenderGraph

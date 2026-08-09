@@ -47,10 +47,63 @@ inline constexpr ShaderFeature kFeatureWaveReservoirPhase{"VIXEN_WAVE_RESERVOIR_
 // fusion cost more (+7-8 ms structural) than the re-read it was meant to
 // avoid (~2 ms). The wave is unconditionally plain again.
 
+/** @brief B2 (docs/plans/2026-08-04-wavefront-recipe-shading.md): shared-
+ *  memory same-key pre-merge inside HitAccumulate.comp's own 64-wide
+ *  workgroup — one global atomic per distinct table slot per workgroup
+ *  instead of one per thread. No device requirement (plain shared memory +
+ *  barrier()). */
+inline constexpr ShaderFeature kFeatureHitAccumPremerge{"VIXEN_HIT_ACCUM_PREMERGE"};
+
 /** @brief W-LEAN L3: SpatialReuseShade's cell-resolve fold (the retired
  *  standalone HitAccumResolve stage as a tail of the shade — bindings 36/37/38
  *  gated on this). */
 inline constexpr ShaderFeature kFeatureSrsCellResolve{"VIXEN_SRS_CELL_RESOLVE"};
+
+/** @brief W-BRICKMAP Slice 2: coarse-grid DDA backend for the ESVO leaf march
+ *  (traverseCoarseGridInstancedSdf[AnyHit] in SceneBindings.glsl, FORMAT_STORED_SDF
+ *  only — FORMAT_BINARY bodies fall back to the ESVO path per-instance at
+ *  runtime, since brickGridLookup/brickLookupBase are only populated by the
+ *  SDF serialization path (round-3 retarget; round 2 had this inverted).
+ *  Env-gated at the BuildRenderGraph march registration site via
+ *  VIXEN_BRICKMAP_TRAVERSAL; flag-off (env unset) never pushes this feature,
+ *  so the source is byte-identical to pre-slice-2. */
+inline constexpr ShaderFeature kFeatureBrickmapTraversal{"VIXEN_BRICKMAP_TRAVERSAL"};
+
+/** @brief W-BRICKMAP Gate-B bisection: closest-hit-only diagnostic overwrite of
+ *  hitColor for a hardcoded pixel rect around the two Gate-B divergent silhouette
+ *  pixels (see traverseCoarseGridInstancedSdf's VIXEN_BRICKMAP_DEBUG block,
+ *  SceneBindings.glsl). Env-gated separately from VIXEN_BRICKMAP_TRAVERSAL so a
+ *  non-debug ON boot is unaffected; requires VIXEN_BRICKMAP_TRAVERSAL to also be
+ *  set (the debug block lives inside the DDA backend it instruments). */
+inline constexpr ShaderFeature kFeatureBrickmapDebug{"VIXEN_BRICKMAP_DEBUG"};
+
+/** @brief W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS traversal backend
+ *  (traverseRayQueryInstancedSdf[AnyHit] in RayQueryTraversal.glsl, FORMAT_STORED_SDF
+ *  only -- same scope restriction as kFeatureBrickmapTraversal, since the TLAS is built
+ *  from the identical brickGridLookup source). Env-gated at the BuildRenderGraph march
+ *  registration site via VIXEN_RTQUERY_TRAVERSAL; flag-off never pushes this feature, so
+ *  the source is byte-identical to pre-W-RTQUERY. When BOTH VIXEN_BRICKMAP_TRAVERSAL and
+ *  VIXEN_RTQUERY_TRAVERSAL are set, RTQUERY wins (see TraceWorld.glsl's dispatch order) --
+ *  this is a THIRD search backend (ESVO / DDA / RT), not a replacement, isolating the
+ *  search phase across all three while the sampling tail (marchBrickSdfCell) stays shared.
+ */
+inline constexpr ShaderFeature kFeatureRtQueryTraversal{"VIXEN_RTQUERY_TRAVERSAL"};
+
+/** @brief W-COMPOSED: the role ruling made code -- RT-traversal + DDA-leaf +
+ *  ESVO-data-access are complementary tiers of ONE traversal, not rival
+ *  backends. Env-gated via VIXEN_COMPOSED_TRAVERSAL at the BuildRenderGraph
+ *  march registration site: picks EITHER kFeatureRtQueryTraversal (device has
+ *  RTXCapabilities.rayQuery) OR kFeatureBrickmapTraversal (software DDA
+ *  fallback) as the near-field search phase -- never both, no new GLSL
+ *  branching, the existing TraceWorld.glsl #ifdef/#elif chain already
+ *  expresses the choice. The far-field (footprint > brick) tier mirrors the
+ *  ESVO screen-space cutoff (pc.raySizeCoef) at the candidate-cell level in
+ *  both traverseCoarseGridInstancedSdf (SceneBindings.glsl) and
+ *  traverseRayQueryWorld (RayQueryTraversal.glsl). The three single-backend
+ *  flags (kFeatureBrickmapTraversal/kFeatureRtQueryTraversal/ESVO-default)
+ *  keep working unchanged for A/B instrumentation -- this is a fourth,
+ *  additive axis, not a replacement. */
+inline constexpr ShaderFeature kFeatureComposedTraversal{"VIXEN_COMPOSED_TRAVERSAL"};
 
 /**
  * @brief The set of active shader features for a stage/frame.

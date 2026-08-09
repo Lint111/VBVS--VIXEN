@@ -11,8 +11,196 @@
 #include <any>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace Vixen::RenderGraph::Debug {
+
+/**
+ * @brief Round-6 DDA-threshold-degeneracy probe readback (see
+ * TraceBufferHeader's farFieldLhs/RhsMin/MaxBits): min/max of both operands
+ * compared at the far-field gate, across the whole boot.
+ */
+struct FarFieldRanges {
+    float lhsMin = 0.0f;
+    float lhsMax = 0.0f;
+    float rhsMin = 0.0f;
+    float rhsMax = 0.0f;
+};
+
+/**
+ * @brief Round-7 blocker-1 probe readback (see TraceBufferHeader's
+ * farFieldMipSuccess/farFieldMipFail): does descendToNodeOrdinal +
+ * shadeFromMipSample resolve a real mip sample, or fall through to the
+ * vec3(0.5) placeholder, across the whole boot.
+ */
+struct FarFieldMipStats {
+    uint32_t success = 0;
+    uint32_t fail = 0;
+};
+
+/**
+ * @brief Round-17 probe: octree-3-only breakdown of traverseRayQueryWorld's
+ * candidate loop (see rtLoopEntriesOct3/farFieldGateRejectOct3/
+ * farFieldCandidatesOct3 in DebugRaySample.h). Discriminates which stage
+ * thins octree 3's candidates: loopEntries (raw AABB candidates from the
+ * TLAS), gateReject (tCellEnter>=bestT continue), candidatesReachingGate.
+ */
+struct FarFieldOct3Stats {
+    uint32_t loopEntries = 0;
+    uint32_t gateReject = 0;
+    uint32_t candidatesReachingGate = 0;
+};
+
+/**
+ * @brief Batch-10 readback (see TraceBufferHeader's farFieldColorResolved/
+ * farFieldColorFallback): splits shadeFromMipSample's success into "a real
+ * SEM_COLOR mip sample was resolved" vs "fell through to the flat grey
+ * vec3(0.5) placeholder" -- farFieldMipSuccess above cannot distinguish these.
+ */
+struct FarFieldColorStats {
+    uint32_t resolved = 0;
+    uint32_t fallback = 0;
+};
+
+/**
+ * @brief Round-11 readback (see TraceBufferHeader's *ByTag arrays):
+ * far-field candidates/count/colorResolved/colorFallback split by which of
+ * TraceWorld's two callers is executing -- index 0 = primary camera march
+ * (BodyInstanceRayMarch.comp), index 1 = probe gather (ProbeGather.comp).
+ * These are the ONLY two dispatches that can carry far-field firings on
+ * either backend (TraceWorldShadow's AnyHit twins contain no far-field
+ * logic at all).
+ */
+struct FarFieldByTagStats {
+    uint32_t candidates[2] = {0, 0};
+    uint32_t count[2] = {0, 0};
+    uint32_t colorResolved[2] = {0, 0};
+    uint32_t colorFallback[2] = {0, 0};
+};
+
+/**
+ * @brief Batch-24 FARGEN readback (see rectRays/rectCellEntries/rectGateCross
+ * in DebugRaySample.h): rect-scoped generation funnel over the far clusters
+ * c1∪c2, isolating whether missing candidates die at entry, at the gate, or
+ * after crossing it.
+ */
+struct FarFieldRectStats {
+    uint32_t rays = 0;
+    uint32_t cellEntries = 0;
+    uint32_t gateCross = 0;
+};
+
+/**
+ * @brief Batch-25 JOB 2: 8-bucket histogram of FarFieldGateLhs, rect-scoped
+ * (see rectLhsHistogram in DebugRaySample.h). Bucket edges around the
+ * 0.9375 gate threshold: <0.25,<0.5,<0.75,<0.9375,<1.25,<2,<4,>=4.
+ */
+struct FarFieldRectLhsHistogram {
+    uint32_t buckets[8] = {};
+};
+
+/**
+ * @brief Batch-27 JOB 2: ESVO's own cutoff criterion (tv_max*coef+bias vs
+ * scale_exp2, traverseOctreeInstancedOnce), rect-scoped, same rays as
+ * FarFieldRanges/FarFieldRectLhsHistogram above -- side-by-side comparison.
+ * lhs/rhs are LOCAL/NORMALIZED octree-space (no world scale).
+ */
+struct EsvoCutoffOperands {
+    float lhsMin = 0.0f;
+    float lhsMax = 0.0f;
+    float rhsMin = 0.0f;
+    float rhsMax = 0.0f;
+    uint32_t histogram[8] = {};  // same 8 edges as FarFieldRectLhsHistogram
+    uint32_t crossLevelMin = 0;
+    uint32_t crossLevelMax = 0;
+};
+
+/**
+ * @brief Batch-29 JOB 3 (deep-field mip-accessor policy): 8-bucket histogram
+ * of the LEVEL mipPolicyLevel (SVOTypes.glsl) resolves to at every
+ * descendToNodeOrdinal call, VIXEN_MIP_POLICY only, rect-agnostic
+ * (whole-frame). Buckets 0-6 = levels 0..6 above brick, bucket 7 = level>=7.
+ */
+struct PolicyLevelHistogram {
+    uint32_t buckets[8] = {};
+};
+
+/**
+ * @brief Batch-29 JOB 4: rect-scoped attribution for ESVO's five
+ * shadeFromMipSample call sites (SceneBindings.glsl) -- see
+ * recordEsvoMipArm's header comment for the arm index -> call site mapping.
+ * Batch-30 stream B adds index 5 (policy-level arm, VIXEN_MIP_POLICY only).
+ */
+struct EsvoMipArmStats {
+    uint32_t hits[6] = {};
+};
+
+/**
+ * @brief Batch-32 JOB 1: min/max/mean-ish of the LEVEL that actually fed a
+ * shaded far-field pixel, recorded at the mip-sample call site (see
+ * farFieldSampledLevelMin/Max/Sum/Count field comment, DebugRaySample.h).
+ */
+struct FarFieldSampledLevelStats {
+    uint32_t min = 0;
+    uint32_t max = 0;
+    uint32_t sum = 0;
+    uint32_t count = 0;
+};
+
+/**
+ * @brief Batch-33 JOB 2: [FarFieldSampleIntensity] -- luminance of the shaded
+ * mip color at the same call site as FarFieldSampledLevel (shares its
+ * count). min/max are decoded floatBitsToUint bits; mean divides the
+ * fixed-point sum by kIntensityFixedPointScale (SceneBindings.glsl) * count.
+ * See DebugRaySample.h's farFieldSampleIntensity* field comment.
+ */
+struct FarFieldSampleIntensityStats {
+    float min = 0.0f;
+    float max = 0.0f;
+    float mean = 0.0f;
+};
+
+/**
+ * @brief Batch-35: [PolicyEntryDispatch] -- counts how many instance rays
+ * took the entry-point mip path (no march) vs fell through to the exact
+ * per-cell march, at the DDA's traverseCoarseGridInstancedSdf entry. See
+ * policyEntryDispatchMip/March field comment, DebugRaySample.h.
+ */
+struct PolicyEntryDispatchStats {
+    uint32_t mip = 0;
+    uint32_t march = 0;
+    // Batch-39: subset of `march` where the ray WAS policy-admitted but its
+    // entry cell held no brick (entryLocalBrickIdx == 0xFFFFFFFF) -- distinct
+    // from the genuine detail-regime population also folded into `march`.
+    // Additive: mip/march are unchanged, this is a breakdown on top.
+    uint32_t emptyEntry = 0;
+};
+
+/**
+ * @brief Regime-3 (cosmic accumulation) first slice readback (see
+ * regime3EntryCount/regime3EarlyOutCount, DebugRaySample.h). entry = rays
+ * that took the accumulation walk instead of a single mip-hit commit;
+ * earlyOut = subset that hit the T~eps early-out (rather than exhausting the
+ * walk's cell budget).
+ */
+struct Regime3Stats {
+    uint32_t entry = 0;
+    uint32_t earlyOut = 0;
+};
+
+/**
+ * @brief Compositing-slice part 1 (walkCov source audit): min/max of walkCov
+ * (readMipSample(SEM_SDF).y clamped [0,1]) and walkSampledLevel at the
+ * regime-3 walk's sample call site (see walkCovMinBits/walkSampledLevelMin
+ * field comment, DebugRaySample.h). min/max are decoded floatBitsToUint bits
+ * for cov (non-negative by construction, same encoding as EntryGateRange).
+ */
+struct WalkCovStats {
+    float covMin = 0.0f;
+    float covMax = 0.0f;
+    uint32_t levelMin = 0;
+    uint32_t levelMax = 0;
+};
 
 /**
  * @brief GPU buffer for capturing per-ray traversal traces
@@ -21,8 +209,8 @@ namespace Vixen::RenderGraph::Debug {
  * polymorphic buffer handling in the render graph.
  *
  * Buffer layout:
- * - [0..15]: TraceBufferHeader (writeIndex, capacity, padding)
- * - [16..]: RayTrace[] array (header + MAX_TRACE_STEPS * TraceStep each)
+ * - [0..sizeof(TraceBufferHeader)-1]: TraceBufferHeader (writeIndex, capacity, counters, padding)
+ * - [sizeof(TraceBufferHeader)..]: RayTrace[] array (header + MAX_TRACE_STEPS * TraceStep each)
  *
  * Usage:
  * @code
@@ -109,6 +297,166 @@ public:
 
     bool Reset(VkDevice device) override;
     uint32_t Read(VkDevice device) override;
+
+    /**
+     * @brief Read the accumulated far-field-cutoff counter (round-3 fix item 3).
+     * Header-only map, independent of Read()/IDebugCapture wiring; Reset()
+     * never clears this field, so it accumulates for the boot's lifetime.
+     */
+    uint32_t ReadFarFieldCount(VkDevice device) const;
+
+    /**
+     * @brief Read the accumulated far-field-candidates counter (round-5
+     * diagnostics). Same header-only, never-reset discipline as
+     * ReadFarFieldCount above.
+     */
+    uint32_t ReadFarFieldCandidates(VkDevice device) const;
+
+    /**
+     * @brief Read the round-6 far-field gate operand min/max ranges (see
+     * FarFieldRanges above). Same header-only, never-reset discipline.
+     */
+    FarFieldRanges ReadFarFieldRanges(VkDevice device) const;
+
+    // BATCH 38: the ENTRY dispatch gate's own LHS range. Distinct from
+    // ReadFarFieldRanges, whose probe is blind to the entry decision (its call
+    // sites are the mid-march safety net + the RT twin) — batch-37 finding.
+    struct EntryGateRange { float lhsMin; float lhsMax; };
+    EntryGateRange ReadEntryGateRange(VkDevice device) const;
+
+    /**
+     * @brief Read the round-6 blocker-2 RT TLAS candidate-loop-entry counter
+     * (see rtLoopEntries in DebugRaySample.h). Same never-reset discipline.
+     */
+    uint32_t ReadRtLoopEntries(VkDevice device) const;
+
+    /**
+     * @brief Read the round-7 blocker-1 far-field mip-resolve success/fail
+     * counters (see FarFieldMipStats above). Same never-reset discipline.
+     */
+    FarFieldMipStats ReadFarFieldMipStats(VkDevice device) const;
+
+    /**
+     * @brief Read the round-13 far-field descent-fail counter (see
+     * farFieldDescentFail in DebugRaySample.h): splits farFieldMipFail into
+     * "descendToNodeOrdinal never reached the brick level" vs "reached it but
+     * shadeFromMipSample found no coverage". Same never-reset discipline.
+     */
+    uint32_t ReadFarFieldDescentFail(VkDevice device) const;
+
+    /**
+     * @brief Read the round-17 octree-3-only candidate-loop breakdown (see
+     * FarFieldOct3Stats above). Same header-only, never-reset discipline.
+     */
+    FarFieldOct3Stats ReadFarFieldOct3Stats(VkDevice device) const;
+
+    /**
+     * @brief Read the round-13 probe #2 descent-fail level min/max (see
+     * farFieldDescentFailLevelMin/Max in DebugRaySample.h). Same never-reset
+     * discipline. Returns {min, max} as a pair (hops = depth - level).
+     */
+    std::pair<uint32_t, uint32_t> ReadFarFieldDescentFailLevelRange(VkDevice device) const;
+
+    /**
+     * @brief Read the round-7 blocker-1 probe #2 tight-bounds far-hit-
+     * rejection discard count. Same never-reset discipline.
+     */
+    uint32_t ReadFarFieldRejectedByBounds(VkDevice device) const;
+
+    /**
+     * @brief Read the round-7 blocker-1 probe #3 far-field-firings-that-won
+     * TraceWorld's isCloserHit count. Same never-reset discipline.
+     */
+    uint32_t ReadFarFieldWon(VkDevice device) const;
+
+    /**
+     * @brief Read the round-9 per-pixel TERMINAL far-field count -- pixels
+     * whose FINAL rendered HitRecord carries HITRECORD_FLAG_FAR_FIELD, not
+     * just "won its own per-instance-loop compare" (see farFieldTerminal in
+     * DebugRaySample.h). Same never-reset discipline.
+     */
+    uint32_t ReadFarFieldTerminal(VkDevice device) const;
+
+    /**
+     * @brief Read the batch-10 far-field color-resolved/fallback split (see
+     * FarFieldColorStats above). Same never-reset discipline.
+     */
+    FarFieldColorStats ReadFarFieldColorStats(VkDevice device) const;
+
+    /**
+     * @brief Read the round-11 per-dispatch-tag far-field split (see
+     * FarFieldByTagStats above). Same never-reset discipline.
+     */
+    FarFieldByTagStats ReadFarFieldByTagStats(VkDevice device) const;
+
+    /**
+     * @brief Read the batch-24 FARGEN rect-scoped generation funnel (see
+     * FarFieldRectStats above). Same header-only, never-reset discipline.
+     */
+    FarFieldRectStats ReadFarFieldRectStats(VkDevice device) const;
+
+    /**
+     * @brief Batch-25 JOB 2: read the rect-scoped FarFieldGateLhs histogram
+     * (see FarFieldRectLhsHistogram above). Same header-only, never-reset
+     * discipline.
+     */
+    FarFieldRectLhsHistogram ReadFarFieldRectLhsHistogram(VkDevice device) const;
+
+    /**
+     * @brief Batch-27 JOB 2: read ESVO's own cutoff criterion operand log
+     * (see EsvoCutoffOperands above). Same header-only, never-reset discipline.
+     */
+    EsvoCutoffOperands ReadEsvoCutoffOperands(VkDevice device) const;
+
+    /**
+     * @brief Batch-29 JOB 3: read the rect-agnostic policy-level histogram
+     * (see PolicyLevelHistogram above). Same header-only, never-reset
+     * discipline. Zero across the board when VIXEN_MIP_POLICY is unset (the
+     * shader never calls recordPolicyLevel in that build).
+     */
+    PolicyLevelHistogram ReadPolicyLevelHistogram(VkDevice device) const;
+
+    /**
+     * @brief Batch-29 JOB 4: read the rect-scoped ESVO shadeFromMipSample
+     * arm attribution (see EsvoMipArmStats above). Same header-only,
+     * never-reset discipline.
+     */
+    EsvoMipArmStats ReadEsvoMipArmStats(VkDevice device) const;
+
+    /**
+     * @brief Batch-32 JOB 1: read the level-sensitive far-field counter (see
+     * FarFieldSampledLevelStats above). Same header-only, never-reset
+     * discipline.
+     */
+    FarFieldSampledLevelStats ReadFarFieldSampledLevelStats(VkDevice device) const;
+
+    /**
+     * @brief Batch-33 JOB 2: read the far-field sample-intensity stats (see
+     * FarFieldSampleIntensityStats above). Same header-only, never-reset
+     * discipline.
+     */
+    FarFieldSampleIntensityStats ReadFarFieldSampleIntensityStats(VkDevice device) const;
+
+    /**
+     * @brief Batch-35: read the entry-point dispatch counters (see
+     * PolicyEntryDispatchStats above). Same header-only, never-reset
+     * discipline.
+     */
+    PolicyEntryDispatchStats ReadPolicyEntryDispatchStats(VkDevice device) const;
+
+    /**
+     * @brief Regime-3 (cosmic accumulation) first slice: read the entry/
+     * early-out counters (see Regime3Stats above). Same header-only,
+     * never-reset discipline.
+     */
+    Regime3Stats ReadRegime3Stats(VkDevice device) const;
+
+    /**
+     * @brief Compositing-slice part 1: read the walkCov/walkSampledLevel
+     * min/max probe (see WalkCovStats above). Same header-only, never-reset
+     * discipline.
+     */
+    WalkCovStats ReadWalkCovStats(VkDevice device) const;
 
     std::any GetData() const override;
 

@@ -425,7 +425,29 @@ private:
     // frame — an in-loop readback races the flight ring (waitIdle also waits
     // the NEXT frame's already-submitted CLEAR, so the map reads a zeroed
     // table; found live at the rev-2 gate: CPU 36826 vs GPU 0).
-    void RunHitAccumDiagReadback();
+    // sampleFrame: the frame number this call is happening at (frameCounter_'s
+    // value), threaded through purely for the [HitAccumDiag] print — B2
+    // determinism slice (see the plan ledger's "Batch 6 result"). 0 = the
+    // shutdown call site (unlabeled, matches the pre-existing print exactly).
+    void RunHitAccumDiagReadback(uint64_t sampleFrame = 0);
+    // B2 determinism slice: VIXEN_HIT_ACCUM_DIAG_FRAME=<n> samples the SAME
+    // readback mid-run, right after frame n's vkDeviceWaitIdle-equivalent
+    // settle point (PostTick, every tick unconditionally), instead of at
+    // shutdown. Frame count is already exact (VulkanApplicationBase::Tick is
+    // a hard integer loop, not wall-clock-gated) -- fixing the SAMPLE POINT
+    // to a specific frame number makes repeat boots compare apples to apples
+    // even if a boot's real-world pacing differs. 0 = disabled (env unset).
+    uint64_t hitAccumDiagFrame_ = 0;
+    bool hitAccumDiagFrameFired_ = false;  // one-shot latch (PostTick runs every tick)
+    // B2 third layer (batch-24): a fixed FRAME still doesn't pin a fixed EPOCH --
+    // PostTick fires with up to MAX_FRAMES_IN_FLIGHT-1 unretired frames whose
+    // PreTicks already ++'d hitAccumFrameEpoch_ past the sampled frame's value.
+    // Capture the epoch AT PreTick, the instant it's assigned to the target frame
+    // (frameCounter_+1 == hitAccumDiagFrame_), and scan for THAT captured value --
+    // then defer the actual readback trigger by MAX_FRAMES_IN_FLIGHT frames so
+    // every frame sharing that epoch's ring slot has retired (vkDeviceWaitIdle
+    // alone doesn't order writes from frames still in flight at the sample point).
+    uint32_t diagSampledEpoch_ = 0;
     NodeHandle hitAccumTableBuffer_{};     // mapped by the VIXEN_HIT_ACCUM_PROBE_LOG diag readback
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)

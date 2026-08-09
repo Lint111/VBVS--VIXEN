@@ -1,5 +1,5 @@
 {
-  "_comment": "Semantic Shader Wiring S0 \u2014 enumerated feature-variant sets per program. Axes listed here are the boolean, interface-affecting defines the runtime graph builders inject (env-driven). Value-defines (VIXEN_SHADOW_DBG_PX/_PY) and interface-invariant toggles (VIXEN_SHADOW_NO_MIP_ANYHIT) are deliberately excluded. Regenerate: sdi_tool merge-variants shaders/sdi-variants.json ; verify: ... --check",
+  "_comment": "Semantic Shader Wiring S0 \u2014 enumerated feature-variant sets per program. Axes listed here are the boolean, interface-affecting defines the runtime graph builders inject (env-driven). Value-defines (VIXEN_SHADOW_DBG_PX/_PY) and interface-invariant toggles (VIXEN_SHADOW_NO_MIP_ANYHIT) are deliberately excluded. VIXEN_COMPOSED_TRAVERSAL and VIXEN_BRICKMAP_TRAVERSAL fall in the excluded bucket too: both only gate internal branches inside SceneBindings.glsl/RayQueryTraversal.glsl (the W-COMPOSED far-field tier, the DDA backend selection) and add no new bindings/interface to any .comp entrypoint -- confirmed no 'layout(set' inside either #ifdef block -- so they are not added as variant axes here. Regenerate: sdi_tool merge-variants shaders/sdi-variants.json ; verify: ... --check",
   "sdiDir": "../generated/sdi/merged",
   "includePaths": [
     "../libraries/SVO/shaders"
@@ -19,6 +19,9 @@
         [
           "VIXEN_GPU_TRACE_HOOKS",
           "VIXEN_B1_OCCLUSION_CULL"
+        ],
+        [
+          "VIXEN_RTQUERY_TRAVERSAL"
         ]
       ]
     },
@@ -69,6 +72,13 @@
     {
       "name": "HitAccumulate",
       "source": "HitAccumulate.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "HitAccumClear",
+      "source": "HitAccumClear.comp",
       "variants": [
         []
       ]
@@ -136,6 +146,13 @@
         [
           "VIXEN_GPU_TRACE_HOOKS"
         ]
+      ]
+    },
+    {
+      "name": "SkySphereAccumulate",
+      "source": "SkySphereAccumulate.comp",
+      "variants": [
+        []
       ]
     }
   ]

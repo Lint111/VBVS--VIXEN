@@ -10,9 +10,12 @@
 #include "Recipe/RecipeRegistry.h"
 #include "SdfBake.h"         // BakeRecipeInstructionsToSdfWorld, BuildSdfBodyOctree
 #include "ShellOctreeGpu.h"  // ConcatenatedOctrees
-#include "MipBake.h"         // ConcatenateSdfWithMips
+#include "MipBake.h"         // ConcatenateSdfWithMips, ConcatenateSdfWithAniso
+#include "MipAnisoPool.h"    // MipAnisoSelfCheck*
 
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
@@ -58,6 +61,17 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
 
     res.owned.reserve(ids.size());
 
+    // Deep-Field Mip Policy — anisotropic coarse mips: flag-gated, additive.
+    // VIXEN_MIP_ANISO_BAKE unset (default) reproduces the exact prior
+    // behavior (ConcatenateSdfWithMips, no mipAnisoPool) — flag-off is
+    // byte-exact. Set to opt into the ConcatenateSdfWithAniso path, which
+    // also bakes+attaches mipAnisoPool and prints the boot self-check.
+    const bool anisoBake = std::getenv("VIXEN_MIP_ANISO_BAKE") != nullptr;
+    uint32_t anisoCoarseTotal = 0;
+    uint32_t anisoThresholdLevelReported = 0;
+    bool     anisoSampleRowPrinted = false;
+    MipAnisoSample anisoBody0Root{};
+
     for (uint32_t k = 0; k < static_cast<uint32_t>(ids.size()); ++k) {
         const uint32_t id    = ids[k];
         RecipeRegistry::RecipeEntry* entry = reg.GetMutable(id);
@@ -88,6 +102,32 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
                "BakeRegistryToPool: baked octree has no LaineKarrasOctree — mip bake would be skipped");
 
         entry->octreeSlot = k;
+
+        if (anisoBake) {
+            // One extra bake pass per body, boot-time only, purely diagnostic
+            // (the real per-body bake ConcatenateSdfWithAniso does below is
+            // what actually ships in res.pool — this one just feeds the boot
+            // print/self-check numbers without threading state out of the
+            // concat loop).
+            const Octree* oct = res.owned.back().octree->getOctree();
+            if (oct && oct->root && !oct->root->childDescriptors.empty()) {
+                SerializedOctree s = SerializeSdfWithMips(res.owned.back());
+                const uint32_t thr = detail::DefaultAnisoThresholdLevel(s.config);
+                MipAnisoPool p = BakeMipAnisoPool(*oct, s, thr);
+                anisoCoarseTotal += p.coarseNodeCount;
+                anisoThresholdLevelReported = thr;
+
+                if (!anisoSampleRowPrinted) {
+                    anisoBody0Root = p.Get(0, 0);
+                    std::printf("[MipAnisoPool] sample row: recipeId=%u node=0 channel=0 thresholdLevel=%u "
+                                "cov(+X=%.3f -X=%.3f +Y=%.3f -Y=%.3f +Z=%.3f -Z=%.3f) source=BakeRegistryToPool body 0\n",
+                                id, thr, anisoBody0Root.covPosX, anisoBody0Root.covNegX,
+                                anisoBody0Root.covPosY, anisoBody0Root.covNegY,
+                                anisoBody0Root.covPosZ, anisoBody0Root.covNegZ);
+                    anisoSampleRowPrinted = true;
+                }
+            }
+        }
     }
 
     // Build pointer vector from owned (after reserving so no realloc occurs).
@@ -96,7 +136,24 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
     for (const auto& o : res.owned) ptrs.push_back(&o);
 
     if (!ptrs.empty()) {
-        res.pool = ConcatenateSdfWithMips(ptrs);
+        res.pool = anisoBake ? ConcatenateSdfWithAniso(ptrs) : ConcatenateSdfWithMips(ptrs);
+    }
+
+    if (anisoBake && !ptrs.empty()) {
+        std::printf("[MipAnisoPool] bodies=%zu totalPoolBytes=%zu coarseNodesWithSample=%u thresholdLevel=%u "
+                    "(default = userMaxLevels-brickDepthLevels)\n",
+                    res.owned.size(), res.pool.mipAnisoPool.size(), anisoCoarseTotal, anisoThresholdLevelReported);
+
+        // CPU-side self-check (spec item 3): axis-aligned slab -> strong
+        // asymmetry, solid cube -> near-isotropic. Reuses body 0's root
+        // sample already computed in the loop above (no extra bake pass).
+        // A dedicated slab/cube pair is exercised directly in
+        // test_mip_aniso_pool.cpp; this just reports PASS/FAIL against
+        // whatever body 0 actually is, so every real boot prints numbers.
+        if (anisoSampleRowPrinted) {
+            const auto slabCheck = MipAnisoSelfCheckSlabAsymmetry(anisoBody0Root);
+            std::printf("%s\n", slabCheck.report.c_str());
+        }
     }
 
     // Budget check (0 = unbounded).

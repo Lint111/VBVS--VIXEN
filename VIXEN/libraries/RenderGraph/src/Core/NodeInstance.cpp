@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <functional>
 #include <atomic>
+#include <string>
+#include <vector>
 #include "MessageBus.h"
 #include "Message.h"
 
@@ -38,8 +40,10 @@ NodeInstance::NodeInstance(
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
 
-    // Initialize logger with shared ownership (disabled by default)
-    nodeLogger = std::make_shared<Logger>(instanceName, false);
+    // Initialize logger with shared ownership (disabled by default, unless VIXEN_NODE_LOG opts it in).
+    // The env check is redundant with Logger's own ctor (Logger::IsNodeLogEnvEnabled), kept explicit
+    // here for readability; Logger.cpp's shared parser is the single source of truth (batch-3 dedupe).
+    nodeLogger = std::make_shared<Logger>(instanceName, Logger::IsNodeLogEnvEnabled(instanceName));
 }
 
 NodeInstance::~NodeInstance() {

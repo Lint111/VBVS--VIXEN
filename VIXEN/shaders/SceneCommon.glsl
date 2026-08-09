@@ -52,6 +52,13 @@ layout(push_constant) uniform PushConstants {
                              // 1-based, reset to 1 by AccumulationConfigNode the instant the
                              // camera moves; drives the accumulate seam's converging-1/N alpha
                              // below (bytes 68-71)
+    // Regime-3 (cosmic accumulation) first slice, deep-field-mip-policy design doc: the
+    // K threshold ("footprint >= K*cell") that promotes a ray from a single mip-hit
+    // commit to a transmittance-accumulation walk. Push constant (not baked) so tests
+    // can sweep it later; VIXEN_REGIME3-gated on the shader side, so this field is inert
+    // (read but never branched on) when the flag is off. Default wired to 4.0 by the
+    // CPU side when the flag is unset -- irrelevant since the flag guards every use.
+    float cosmicK;          // regime-3 threshold multiplier (bytes 72-75)
 } pc;
 
 // Camera-ray construction (pc-only, no octreeConfig — see the file's header).

@@ -66,6 +66,208 @@ uvec2 fetchESVONode(uint nodeIndex) {
 }
 
 // ============================================================================
+// COORDINATE-BIT DESCENT — far-field candidate cell -> ESVO node ordinal
+// ============================================================================
+// W-COMPOSED far-field tier (RT + DDA twins, SceneBindings.glsl/
+// RayQueryTraversal.glsl) previously shaded a degenerate entry-point sample
+// (sampleHitShadingChannels at the cell's ray-entry voxel) once the footprint
+// cutoff fired. That's not what the ordinary ESVO LOD cutoff does
+// (SceneBindings.glsl ~1195): it reads a REAL baked mip sample
+// (shadeFromMipSample) at the node ordinal it stopped descending at. The far-
+// field DDA/RT search resolves a brick GRID cell (ivec3, 0..bpa-1 per axis)
+// rather than an ESVO node pointer -- the coarse-grid brickLookup[] is a flat
+// array, not the ESVO tree, so there is no node pointer sitting around to
+// reuse. This function bridges that gap using the one SVO property that
+// makes it cheap: bpa == 2^(esvoMaxScale - brickESVOScale) (ShellOctreeGpu.h
+// stamps bricksPerAxis from the SAME builder depth that derives
+// brickESVOScale), so canonicalCell's bits, read MSB-to-LSB, ARE the
+// root-to-brick octant path -- no ray-marching, no per-level t-tests, just
+// depth child-pointer hops (standard SVO coordinate-bit-descent property).
+//
+// MIRROR-FRAME CAVEAT (the likely parity trap, read before editing): the DDA/
+// RT far-field candidates hand this function a CANONICAL (unmirrored) cell --
+// same convention documented at SceneBindings.glsl ~1993 ("the DDA never
+// mirrors so brick/gridEntry are already the canonical coordinates"). The
+// REAL ESVO traversal, by contrast, walks in MIRRORED space (state.idx/pos,
+// this file) and only unmirrors at the very end for brick/voxel addressing
+// (unmirrorToLocalSpace, CoordinateTransforms.glsl; the same pattern
+// handleLeafHitInstancedSdf's ESVO-leaf bridge follows). So each level's
+// octant bit here is computed by mirroring canonicalCell's bit per-axis via
+// octantMask (identical rule to unmirrorToLocalSpace at unit scale:
+// mirroredBit = bit XOR (axis mirrored ? 1 : 0), the same XOR
+// initRayCoefficients uses to build octant_mask itself), THEN converted
+// mirrored->local via mirroredToLocalOctant before indexing validMask/
+// childPointer -- descriptors are always stored in LOCAL (unmirrored) octant
+// order (checkChildValidity/executePushPhase both do this same conversion at
+// every ordinary hop, ~line 214/262 below). Skipping either conversion
+// silently reads the wrong child at every level below the root.
+//
+// canonicalCell: UNMIRRORED brick-grid coordinate (0..bpa-1 per axis, same
+//   frame the DDA backend's `cell` and the RT backend's `cell` already use).
+// octantMask: this ray's octant mask (see octantMaskFromDir, SVOTypes.glsl).
+// depth: the brick level's distance from root (see farFieldDescentDepth,
+//   SVOTypes.glsl -- NOT assumed frame-spanning; round-3 fix item 2). Caller
+//   derives this from octreeConfig's scale fields directly, sidestepping the
+//   old findMSB(bpa)-on-a-maybe-non-power-of-two-bpa bug; the deeper
+//   shallow-rooted-tree case is a separate, NOT-fully-closed gap -- see
+//   farFieldDescentDepth's own header for why.
+// worldDistToBrick / brickWorldSize: the SAME quantities the caller already
+//   derived for its own (brick-level) footprint test, in WORLD units.
+//   ESVO LEVEL-SELECTION CRITERION (round-3 fix item 1 -- reuse verbatim,
+//   not an analog): SceneBindings.glsl's non-leaf LOD gate stops descending
+//   at the FIRST level whose footprint crosses (tv_max*raySizeCoef+
+//   raySizeBias >= scale_exp2). Each level's node is exactly 2x the size of
+//   the next (standard octree scale halving), and worldDistToBrick is a
+//   good approximation of "distance to this node's content" at every level
+//   on this path (the candidate cell's own entry distance -- the same
+//   approximation the caller already made at the brick level). So the ratio
+//   test needed is: nodeWorldSize (== brickWorldSize * 2^(depth-1-level))
+//   compared against worldDistToBrick*raySizeCoef+raySizeBias, level by
+//   level from the root down -- stopping at the FIRST (coarsest) level that
+//   crosses, exactly mirroring the ordinary ESVO gate's early-stop.
+// Returns false (leaving nodeOrdinal at the last internal node visited) if
+// the path runs into a missing child, a farBit/tier-crossing descriptor
+// (round-3 fix item 2 -- not interpreted here, caller falls back), or a leaf
+// above the level the criterion selected -- caller falls back exactly like
+// the ordinary "no mip coverage" case does.
+// outLevel (batch-32 JOB 1): the LEVEL (levels-above-brick, 0 == brick
+// itself) nodeOrdinal was actually resolved at -- depth-level at every
+// return site below. Lets the caller record which level fed the sample it
+// just shaded (recordFarFieldSampledLevel, SceneBindings.glsl), independent
+// of nodeOrdinal itself.
+bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
+                          float worldDistToBrick, float brickWorldSize,
+                          out uint nodeOrdinal, out uint outLevel) {
+    uint parentPtr = 0u;
+    nodeOrdinal = 0u;
+    outLevel = uint(depth);
+    float footprint = worldDistToBrick * pc.raySizeCoef + pc.raySizeBias;
+#ifdef VIXEN_MIP_POLICY
+    // Deep-Field Mip-Accessor Policy (design doc §regimes, regime 2 MIP HIT):
+    // consult the ONE shared footprint->level function (mipPolicyLevel,
+    // SVOTypes.glsl) instead of this loop's own per-hop crossing test --
+    // same arithmetic (brickWorldSize*2^level), now shared with the DDA/RT
+    // gate sites so every backend's level choice agrees. targetLevel is
+    // levels-above-brick (0 = brick itself); the walk below still hops
+    // node-by-node (descriptor fetch requires it -- no direct addressing
+    // above brick level), it just stops at the POLICY's level instead of
+    // re-deriving the crossing per hop.
+    int policyTargetLevel = mipPolicyLevel(footprint, brickWorldSize, depth);
+    recordPolicyLevel(uint(policyTargetLevel));  // batch-29 JOB 3: level histogram
+#endif
+    for (int level = depth - 1; level >= 0; --level) {
+        // ESVO criterion, evaluated BEFORE descending into this level's
+        // children: this node's (the current parentPtr's) world size is
+        // brickWorldSize * 2^(level+1) (level==depth-1 => root's own child
+        // cube; level==0's node, about to be descended, is the brick's
+        // immediate parent, size brickWorldSize*2). Stop and return the
+        // CURRENT node (coarser than brick level) the first time the
+        // footprint already covers it -- matches "descend and stop at the
+        // first level whose footprint crossing fires" verbatim.
+#ifdef VIXEN_MIP_POLICY
+        // INVARIANT (batch-30 fix; the shipped '>=' made this branch inert):
+        // the loop DESCENDS (level = depth-1 .. 0), so on entry level+1 ==
+        // depth and policyTargetLevel <= maxLevel == depth. With '>=' the
+        // test fired on iteration 1 for EVERY input and returned the ROOT
+        // (validator sweep: 9600/9600 coarsest, 65.0% mismatch vs flag-off).
+        // Correct shape: keep DESCENDING while this node is still coarser
+        // than the policy's answer, and stop at EQUALITY -- i.e. return the
+        // node whose own level (level+1) equals policyTargetLevel, which is
+        // exactly the level mipPolicyLevel() selected for this footprint.
+        if (pc.raySizeCoef > 0.0 && (level + 1) <= policyTargetLevel) {
+            nodeOrdinal = parentPtr;
+            outLevel = uint(level + 1);
+            return true;
+        }
+#else
+        float nodeWorldSize = brickWorldSize * float(1u << uint(level + 1));
+        if (pc.raySizeCoef > 0.0 && footprint >= nodeWorldSize) {
+            nodeOrdinal = parentPtr;
+            outLevel = uint(level + 1);
+            return true;
+        }
+#endif
+
+        uvec2 descriptor = fetchESVONode(parentPtr);
+        uint validMask = getValidMask(descriptor);
+        uint leafMask  = getLeafMask(descriptor);
+
+        // MSB-to-LSB: bit `level` of each axis selects the octant at this
+        // depth (bpa's binary expansion IS the root-to-brick path, per the
+        // header derivation above). Mirror into ESVO traversal-space per
+        // axis, then convert mirrored->local for descriptor indexing.
+        int mirroredIdx = 0;
+        if (((canonicalCell.x >> level) & 1) != 0) mirroredIdx |= 1;
+        if (((canonicalCell.y >> level) & 1) != 0) mirroredIdx |= 2;
+        if (((canonicalCell.z >> level) & 1) != 0) mirroredIdx |= 4;
+        mirroredIdx ^= ((~octantMask) & 7);  // same rule mirroredToLocalOctant applies
+        int localIdx = mirroredToLocalOctant(mirroredIdx, octantMask);
+
+        if (!childExists(validMask, localIdx)) {
+            nodeOrdinal = parentPtr;
+            outLevel = uint(level + 1);
+            recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
+            return false;
+        }
+        bool isLastHop = (level == 0);
+        bool childLeaf = childIsLeaf(leafMask, localIdx);
+        if (childLeaf) {
+            // farBit guard (round-3 fix item 2, SVOTypes.glsl:84-96): a leaf
+            // with farBit set is a TIER-CROSSING reference, not a brick --
+            // descriptor.y's bits mean something else entirely there. This
+            // function only understands the brick-mode interpretation, so
+            // fail closed rather than resolve a wrong index.
+            if (getFarBit(descriptor)) {
+                nodeOrdinal = parentPtr;
+                outLevel = uint(level + 1);
+                recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
+                return false;
+            }
+            // Leaf reached: at the brick level this is the real target; a
+            // leaf found ABOVE the brick level means a coarser LOD collapsed
+            // this branch -- return its ordinal anyway (still a valid,
+            // shallower mip sample) but report false so the caller knows it
+            // didn't reach the requested depth.
+            nodeOrdinal = resolveLeafDescriptorIndex(descriptor, validMask, leafMask, localIdx);
+            outLevel = uint(level);  // level 0 == brick itself when isLastHop
+            if (!isLastHop) recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2 (early-leaf collapse)
+            return isLastHop;
+        }
+        if (isLastHop) {
+            // Internal node still standing exactly at the brick level
+            // (shouldn't happen for a resident brick -- fail closed, this
+            // node's own ordinal is still a valid coarser mip sample).
+            nodeOrdinal = parentPtr;
+            outLevel = uint(level + 1);
+            recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
+            return false;
+        }
+
+        // farBit guard on the internal hop too (round-3 fix item 2): an
+        // indirect childPointer means getChildPointer's plain &0x7FFF mask
+        // truncated a real offset into the far-pointer table. Not resolved
+        // here -- fail closed exactly like the leaf case above.
+        if (getFarBit(descriptor)) {
+            nodeOrdinal = parentPtr;
+            outLevel = uint(level + 1);
+            recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
+            return false;
+        }
+
+        // Internal hop: childPointer + count of non-leaf siblings before us
+        // (identical arithmetic to executePushPhase's childLocalIndex below).
+        uint childPointer = getChildPointer(descriptor);
+        uint nonLeafMask = validMask & ~leafMask;
+        uint maskBeforeChild = (1u << localIdx) - 1u;
+        uint childLocalIndex = bitCount(nonLeafMask & maskBeforeChild);
+        parentPtr = childPointer + childLocalIndex;
+    }
+    nodeOrdinal = parentPtr;
+    outLevel = 0u;  // full descent reached the brick itself
+    return true;
+}
+
+// ============================================================================
 // DEBUG STATE SNAPSHOT
 // ============================================================================
 

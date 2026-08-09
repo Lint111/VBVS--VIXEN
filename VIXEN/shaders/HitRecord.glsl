@@ -62,6 +62,13 @@
 
 #define HITRECORD_FLAG_HIT 0x1u
 #define HITRECORD_FLAG_CELL_RESOLVED 0x2u
+// round-9: set iff this pixel's FINAL (terminal) winning hit came off the
+// far-field mip-resolve path (TraceWorld's WorldHit.wasFarField), not merely
+// "some instance's far-field candidate won its own per-instance compare" --
+// see WorldHit.wasFarField's comment in TraceWorld.glsl for why those differ.
+// Rides the bestHit selection (overwritten/cleared whenever a later,
+// non-far-field instance wins), never a sticky global.
+#define HITRECORD_FLAG_FAR_FIELD 0x4u
 
 struct HitRecord {
     vec3  albedo;

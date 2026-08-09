@@ -1,5 +1,7 @@
 #include "Logger.h"
 #include <iostream>
+#include <cstdlib>
+#include <vector>
 
 namespace Vixen::Log {
 
@@ -10,8 +12,39 @@ std::atomic<LogLevel> Logger::globalMinLevel{LogLevel::LOG_DEBUG};
 // Process-wide terminal-output opt-in (see Logger::SetGlobalTerminalOutput). Off by default.
 std::atomic<bool> Logger::globalTerminalOutput{false};
 
+// VIXEN_NODE_LOG=<comma-list-of-names|all>: opt a logger into enabled by NAME at construction.
+// Lives HERE (the one ctor every Logger — NodeInstance's, GPUPerformanceLogger's,
+// ILoggable::InitializeLogger's, any independently-constructed one — routes through) rather than
+// duplicated per call site (batch-3 review: the original hook lived only in NodeInstance.cpp's
+// file-local NodeLogEnabledForName and missed every other construction path). Read once, at first
+// use; unset/empty leaves every logger exactly as its caller's `enabled` argument already said.
+bool Logger::IsNodeLogEnvEnabled(const std::string& name) {
+    static const std::vector<std::string> enabledNames = [] {
+        std::vector<std::string> names;
+        const char* env = std::getenv("VIXEN_NODE_LOG");
+        if (!env) return names;
+        std::string value(env);
+        size_t start = 0;
+        while (start <= value.size()) {
+            size_t comma = value.find(',', start);
+            std::string tok = value.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+            if (!tok.empty()) names.push_back(tok);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return names;
+    }();
+
+    if (enabledNames.empty()) return false;
+    for (const auto& n : enabledNames) {
+        if (n == "all" || n == name) return true;
+    }
+    return false;
+}
+
 Logger::Logger(const std::string& name, bool enabled)
-    : name(name), enabled(enabled)
+    : name(name), enabled(enabled || IsNodeLogEnvEnabled(name))
+    , envForcedEnabled(!enabled && IsNodeLogEnvEnabled(name))
 {
 }
 
@@ -67,9 +100,11 @@ void Logger::Log(LogLevel level, const std::string& message)
     std::string logEntry = oss.str();
     logEntries.push_back(logEntry);
 
-    // Print to terminal if this instance opted in, the process-wide opt-in is set, or this
-    // message is Error/Critical (which always reaches the terminal, see above).
-    if (terminalOutput || globalTerminalOutput || isErrorOrAbove) {
+    // Print to terminal if this instance opted in, the process-wide opt-in is set, this message is
+    // Error/Critical (see above), or VIXEN_NODE_LOG is what enabled this instance — a logger the
+    // knob resurrects is dead-by-default (SetEnabled(true)/SetTerminalOutput(true) never called),
+    // so satisfying only `enabled` would still print nothing; the knob's whole purpose is visibility.
+    if (terminalOutput || globalTerminalOutput || isErrorOrAbove || envForcedEnabled) {
         std::cout << logEntry << std::endl;
     }
 }

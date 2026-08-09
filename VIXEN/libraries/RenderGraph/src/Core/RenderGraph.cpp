@@ -8,6 +8,8 @@
 #include <unordered_set>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <system_error>
 #include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
 
@@ -19,6 +21,25 @@
 #define GRAPH_LOG_CRITICAL(msg) do { if (mainLogger) mainLogger->Error(msg); std::cerr << msg << std::endl; } while(0)
 
 namespace Vixen::RenderGraph {
+
+namespace {
+uint64_t HashExecutionNodeNames(const std::vector<NodeInstance*>& executionOrder) {
+    constexpr uint64_t offsetBasis = 14695981039346656037ULL;
+    constexpr uint64_t prime = 1099511628211ULL;
+    uint64_t hash = offsetBasis;
+
+    for (const NodeInstance* node : executionOrder) {
+        const std::string& name = node->GetInstanceName();
+        for (unsigned char byte : name) {
+            hash ^= byte;
+            hash *= prime;
+        }
+        hash ^= 0;
+        hash *= prime;
+    }
+    return hash;
+}
+} // namespace
 
 RenderGraph::RenderGraph(
     NodeTypeRegistry* registry,
@@ -554,6 +575,12 @@ void RenderGraph::Compile() {
         }
     }
     frameSyncScheduler_.Build(executionOrder, resourceAccessTracker_, swapchainResource);
+    std::ostringstream fingerprint;
+    fingerprint << std::hex << std::setfill('0') << std::setw(16)
+                << HashExecutionNodeNames(executionOrder);
+    GRAPH_LOG_INFO("[BootScheduleFingerprint] fp=" + fingerprint.str() +
+                   " nodes=" + std::to_string(executionOrder.size()) +
+                   " edges=" + std::to_string(topology.GetEdgeCount()));
     GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
         std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
         std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");

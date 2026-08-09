@@ -76,24 +76,21 @@ layout(std430, binding = 3) readonly buffer HitAccumParamsSSBO {
 // transient-handshake reclaim, double-hashed probing. Totals still verified
 // EXACT by the shutdown diag (RunHitAccumDiagReadback).
 // ============================================================================
-void AccumulateHit(uint slot, HitRecord rec) {
-    if (hitAccumParams.primaryCoef <= 0.0) return;
-    float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
-    uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
-    if (mip == 0u) return;  // per-ray exact — the fail-soft path
-
-    uint instIdx = rec._pad0[0];
-    if (instIdx >= bodyInstances.length()) return;
-    uint recipeId = bodyInstances[instIdx].recipeId;
-
-    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
-    ivec3 cell   = HitAccumCellCoord(rec.worldPos, cellSize);
+// ClaimAccumSlot returns the claimed table slot, or ~0u (INVALID) if the
+// record doesn't engage the table or every probe failed (fail-soft drop).
+// Split from the numeric accumulation so B2 (VIXEN_HIT_ACCUM_PREMERGE) can
+// pre-merge the sums in shared memory BEFORE the atomics below — claiming
+// itself is untouched (a CAS chain over global memory; nothing to pre-merge,
+// since different threads' keys can resolve to different table slots and the
+// claim must pick the true slot before any sum has a destination).
+uint ClaimAccumSlot(HitRecord rec, uint instIdx, uint recipeId, uint mip,
+                     ivec3 cell, float cellSize) {
     ivec3 anchor = HitAccumAnchorCell(hitAccumParams.camPos.xyz, hitAccumParams.camForward.xyz,
                                       hitAccumParams.primaryCoef, hitAccumParams.detailSize0, mip);
     uint keyLo = HitAccumPackCellKeyLo(cell, anchor);
-    if (keyLo == 0u) return;
+    if (keyLo == 0u) return ~0u;
     uint keyHiBase = HitAccumPackCellKeyHi(recipeId, mip);
-    if (keyHiBase == 0u) return;
+    if (keyHiBase == 0u) return ~0u;
 
     uint myEpoch = hitAccumParams.frameEpoch & 0xFFFFFu;
     if (myEpoch == 0xFFFFFu) myEpoch = 0u;
@@ -102,8 +99,6 @@ void AccumulateHit(uint slot, HitRecord rec) {
 
     uint baseSlot = HitAccumSlotOf(keyLo, keyHiBase);
     uint stride = HitAccumProbeStride(keyLo);
-    bool claimed = false;
-    uint tableSlot = 0u;
     for (uint probe = 0u; probe < kHitAccumProbeLimit; ++probe) {
         uint s = (baseSlot + probe * stride) % kHitAccumTableCapacity;
         uint oldLo = atomicCompSwap(accumEntries[s].keyLo, 0u, keyLo);
@@ -114,11 +109,11 @@ void AccumulateHit(uint slot, HitRecord rec) {
             // repInstIdx (the publish-last protocol's own ordering).
             atomicExchange(accumEntries[s].repInstIdx, instIdx);
             atomicExchange(accumEntries[s].keyHi, keyHi);
-            tableSlot = s; claimed = true; break;
+            return s;
         }
         uint hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
         if ((hiRead & 0xFFF00000u) != keyHiBase) continue;
-        if ((hiRead & 0xFFFFFu) == myEpoch) { tableSlot = s; claimed = true; break; }
+        if ((hiRead & 0xFFFFFu) == myEpoch) return s;
         if (hiRead == kTransient) {
             // W3c-3: BOUNDED wait on the reclaim winner's zeroing window
             // (~13 atomic stores) instead of probing on immediately — the
@@ -127,13 +122,11 @@ void AccumulateHit(uint slot, HitRecord rec) {
             // every mint can flip the resolve's duplicate selection (the
             // frame-hash instability's root). Still fail-soft: a spin that
             // never sees the publish probes on exactly as before.
-            bool joined = false;
             for (uint spin = 0u; spin < 16u; ++spin) {
                 hiRead = atomicAdd(accumEntries[s].keyHi, 0u);
-                if (hiRead == keyHi) { tableSlot = s; claimed = true; joined = true; break; }
+                if (hiRead == keyHi) return s;
                 if (hiRead != kTransient) break;  // published, but not our epoch
             }
-            if (joined) break;
             continue;
         }
         if (atomicCompSwap(accumEntries[s].keyHi, hiRead, kTransient) == hiRead) {
@@ -144,10 +137,177 @@ void AccumulateHit(uint slot, HitRecord rec) {
             atomicExchange(accumEntries[s].sumTpQX, 0); atomicExchange(accumEntries[s].sumTpQY, 0); atomicExchange(accumEntries[s].sumTpQZ, 0);
             atomicExchange(accumEntries[s].repInstIdx, instIdx);  // W3c-2: before the publish
             atomicExchange(accumEntries[s].keyHi, keyHi);
-            tableSlot = s; claimed = true; break;
+            return s;
         }
     }
-    if (!claimed) return;
+    return ~0u;
+}
+
+#ifdef VIXEN_HIT_ACCUM_PREMERGE
+// ============================================================================
+// B2: shared-memory same-key pre-merge (docs/plans/2026-08-04-wavefront-
+// recipe-shading.md § B2). The nine accumulated fields are ALL plain integer
+// atomics (quantized fixed-point sums + a uint count — see
+// HitAccumulationCommon.glsl's header comment), so integer addition is
+// order-free: summing in shared memory first and issuing ONE global atomicAdd
+// per distinct tableSlot per workgroup produces the IDENTICAL total the
+// per-thread atomics would, just with fewer L2 round-trips. Claiming
+// (ClaimAccumSlot) is untouched — only the numeric adds below are batched.
+//
+// Reduction shape: each of the 64 threads (gl_WorkGroupSize.x) publishes its
+// resolved tableSlot + quantized contribution to shared arrays, barriers,
+// then does an O(n) leader scan: the lowest-index thread that owns a given
+// tableSlot sums every later thread sharing that slot and issues the group's
+// one atomic per field for it. 64 threads -> <=64*64 shared-mem compares,
+// trivial next to the global atomics it replaces.
+// ============================================================================
+const uint kAccumWorkgroupSize = 64u;
+const uint kAccumInvalidSlot = ~0u;
+
+shared uint  sh_tableSlot[kAccumWorkgroupSize];
+shared int   sh_sumPosQX[kAccumWorkgroupSize];
+shared int   sh_sumPosQY[kAccumWorkgroupSize];
+shared int   sh_sumPosQZ[kAccumWorkgroupSize];
+shared int   sh_sumDirQX[kAccumWorkgroupSize];
+shared int   sh_sumDirQY[kAccumWorkgroupSize];
+shared int   sh_sumDirQZ[kAccumWorkgroupSize];
+shared int   sh_sumDistQ[kAccumWorkgroupSize];
+shared int   sh_sumTpQX[kAccumWorkgroupSize];
+shared int   sh_sumTpQY[kAccumWorkgroupSize];
+shared int   sh_sumTpQZ[kAccumWorkgroupSize];
+
+// Called by every thread in the workgroup (uniform control flow — required
+// for the barrier below); tableSlot/valid carry this thread's own claim.
+void PreMergeAndAccumulate(uint localIdx, uint tableSlot, bool valid,
+                            int posQX, int posQY, int posQZ,
+                            int dirQX, int dirQY, int dirQZ,
+                            int distQ, int tpQX, int tpQY, int tpQZ) {
+    sh_tableSlot[localIdx] = valid ? tableSlot : kAccumInvalidSlot;
+    sh_sumPosQX[localIdx] = posQX; sh_sumPosQY[localIdx] = posQY; sh_sumPosQZ[localIdx] = posQZ;
+    sh_sumDirQX[localIdx] = dirQX; sh_sumDirQY[localIdx] = dirQY; sh_sumDirQZ[localIdx] = dirQZ;
+    sh_sumDistQ[localIdx] = distQ;
+    sh_sumTpQX[localIdx] = tpQX; sh_sumTpQY[localIdx] = tpQY; sh_sumTpQZ[localIdx] = tpQZ;
+    memoryBarrierShared();
+    barrier();
+
+    if (!valid) return;
+    // Leader rule: the lowest local index claiming this tableSlot reduces
+    // and fires the group atomics; every later same-key thread contributes
+    // nothing further (already folded into the leader's sum).
+    for (uint i = 0u; i < localIdx; ++i) {
+        if (sh_tableSlot[i] == tableSlot) return;  // an earlier leader owns this key
+    }
+
+    // int/uint check (batch-3 major, HitAccumulationCommon.glsl:46-56): count
+    // is uint and mCount is uint (fine); the ten sum fields are int and are
+    // reduced into plain int locals here. The header's i32 headroom argument
+    // (|per-sample quantum| <= 2^16, safe to 2^15 samples/cell) was sized for
+    // the GLOBAL per-entry total; local-accumulating <=64 lanes first before
+    // ONE atomicAdd cannot overflow any earlier than that same-scale global
+    // sum would (strictly fewer terms, same per-term bound) — headroom holds.
+    int mPosQX = posQX, mPosQY = posQY, mPosQZ = posQZ;
+    int mDirQX = dirQX, mDirQY = dirQY, mDirQZ = dirQZ;
+    int mDistQ = distQ;
+    int mTpQX = tpQX, mTpQY = tpQY, mTpQZ = tpQZ;
+    uint mCount = 1u;
+    for (uint j = localIdx + 1u; j < kAccumWorkgroupSize; ++j) {
+        if (sh_tableSlot[j] != tableSlot) continue;
+        mPosQX += sh_sumPosQX[j]; mPosQY += sh_sumPosQY[j]; mPosQZ += sh_sumPosQZ[j];
+        mDirQX += sh_sumDirQX[j]; mDirQY += sh_sumDirQY[j]; mDirQZ += sh_sumDirQZ[j];
+        mDistQ += sh_sumDistQ[j];
+        mTpQX += sh_sumTpQX[j]; mTpQY += sh_sumTpQY[j]; mTpQZ += sh_sumTpQZ[j];
+        ++mCount;
+    }
+
+    // Batch-3 blocker #3: the leader defers ALL of the workgroup's adds until
+    // after the O(n) scan, widening the window against ClaimAccumSlot's own
+    // reclaim branch (which zeroes sum fields and republishes keyHi under a
+    // NEW epoch/transient marker) — a concurrent reclaim from another
+    // workgroup could zero the entry in between, silently discarding up to
+    // 64 lanes' contributions instead of one. Re-verify the slot is still
+    // OURS (same frame epoch, not transient) immediately before the atomic
+    // batch; a reclaim in the window means DROP (fail-soft, same as a claim
+    // that never landed) rather than corrupt a reclaimed entry.
+    uint myEpoch = hitAccumParams.frameEpoch & 0xFFFFFu;
+    if (myEpoch == 0xFFFFFu) myEpoch = 0u;
+    uint hiNow = atomicAdd(accumEntries[tableSlot].keyHi, 0u);
+    if ((hiNow & 0xFFFFFu) != myEpoch) return;  // reclaimed out from under us — drop
+
+    atomicAdd(accumEntries[tableSlot].sumPosQX, mPosQX);
+    atomicAdd(accumEntries[tableSlot].sumPosQY, mPosQY);
+    atomicAdd(accumEntries[tableSlot].sumPosQZ, mPosQZ);
+    atomicAdd(accumEntries[tableSlot].sumDirQX, mDirQX);
+    atomicAdd(accumEntries[tableSlot].sumDirQY, mDirQY);
+    atomicAdd(accumEntries[tableSlot].sumDirQZ, mDirQZ);
+    atomicAdd(accumEntries[tableSlot].sumDistQ, mDistQ);
+    atomicAdd(accumEntries[tableSlot].sumTpQX, mTpQX);
+    atomicAdd(accumEntries[tableSlot].sumTpQY, mTpQY);
+    atomicAdd(accumEntries[tableSlot].sumTpQZ, mTpQZ);
+    atomicAdd(accumEntries[tableSlot].count, mCount);
+}
+#endif // VIXEN_HIT_ACCUM_PREMERGE
+
+// AccumulateHit stays byte-identical when VIXEN_HIT_ACCUM_PREMERGE is off —
+// same claim, same per-thread atomics, same call shape as before the split.
+// hasHit: false means this thread has nothing to contribute this dispatch
+// (out-of-bounds slot or a miss record) — under premerge it still MUST call
+// through to the barrier below with valid=false; rec is unused in that case.
+void AccumulateHit(uint localIdx, uint slot, HitRecord rec, bool hasHit) {
+#ifdef VIXEN_HIT_ACCUM_PREMERGE
+    bool valid = false;
+    uint tableSlot = kAccumInvalidSlot;
+    int posQX = 0, posQY = 0, posQZ = 0;
+    int dirQX = 0, dirQY = 0, dirQZ = 0;
+    int distQ = 0, tpQX = 0, tpQY = 0, tpQZ = 0;
+
+    if (hasHit && hitAccumParams.primaryCoef > 0.0) {
+        float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
+        uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
+        uint instIdx = rec._pad0[0];
+        if (mip != 0u && instIdx < bodyInstances.length()) {
+            uint recipeId = bodyInstances[instIdx].recipeId;
+            float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
+            ivec3 cell = HitAccumCellCoord(rec.worldPos, cellSize);
+            uint claimed = ClaimAccumSlot(rec, instIdx, recipeId, mip, cell, cellSize);
+            if (claimed != kAccumInvalidSlot) {
+                tableSlot = claimed;
+                valid = true;
+                vec3 cellOrigin = vec3(cell) * cellSize;
+                vec3 local = (rec.worldPos - cellOrigin) / cellSize;
+                posQX = int(round(local.x * kHitAccumPosScale));
+                posQY = int(round(local.y * kHitAccumPosScale));
+                posQZ = int(round(local.z * kHitAccumPosScale));
+                dirQX = int(round(rec.worldNormal.x * kHitAccumDirScale));
+                dirQY = int(round(rec.worldNormal.y * kHitAccumDirScale));
+                dirQZ = int(round(rec.worldNormal.z * kHitAccumDirScale));
+                distQ = int(round(rec.hitT * kHitAccumPosScale / cellSize));
+                tpQX = int(round(rec.albedo.x * kHitAccumThroughputScale));
+                tpQY = int(round(rec.albedo.y * kHitAccumThroughputScale));
+                tpQZ = int(round(rec.albedo.z * kHitAccumThroughputScale));
+            }
+        }
+    }
+    // Every thread in the workgroup MUST reach this call (it barriers) even
+    // when it has nothing to contribute (out-of-range slot, early-outs
+    // above) — valid=false threads still publish an INVALID marker so the
+    // leader scan sees a stable shared array.
+    PreMergeAndAccumulate(localIdx, tableSlot, valid,
+                          posQX, posQY, posQZ, dirQX, dirQY, dirQZ,
+                          distQ, tpQX, tpQY, tpQZ);
+#else
+    if (hitAccumParams.primaryCoef <= 0.0) return;
+    float footprint = rec.hitT * hitAccumParams.primaryCoef + hitAccumParams.primaryBias;
+    uint mip = HitAccumSelectMip(footprint, hitAccumParams.detailSize0);
+    if (mip == 0u) return;  // per-ray exact — the fail-soft path
+
+    uint instIdx = rec._pad0[0];
+    if (instIdx >= bodyInstances.length()) return;
+    uint recipeId = bodyInstances[instIdx].recipeId;
+
+    float cellSize = HitAccumCellSize(mip, hitAccumParams.detailSize0);
+    ivec3 cell = HitAccumCellCoord(rec.worldPos, cellSize);
+    uint tableSlot = ClaimAccumSlot(rec, instIdx, recipeId, mip, cell, cellSize);
+    if (tableSlot == ~0u) return;
 
     vec3 cellOrigin = vec3(cell) * cellSize;
     vec3 local = (rec.worldPos - cellOrigin) / cellSize;
@@ -167,14 +327,13 @@ void AccumulateHit(uint slot, HitRecord rec) {
     atomicAdd(accumEntries[tableSlot].sumTpQY, int(round(rec.albedo.y * kHitAccumThroughputScale)));
     atomicAdd(accumEntries[tableSlot].sumTpQZ, int(round(rec.albedo.z * kHitAccumThroughputScale)));
     atomicAdd(accumEntries[tableSlot].count, 1u);
+#endif // VIXEN_HIT_ACCUM_PREMERGE
 }
 
 void main() {
     uint slot = gl_GlobalInvocationID.x;
-    if (slot >= hitRecords.length()) return;
-
-    uint flags = hitRecords[slot].flags;
-    if ((flags & HITRECORD_FLAG_HIT) == 0u) return;
+    uint localIdx = gl_LocalInvocationID.x;
+    bool inBounds = slot < hitRecords.length();
 
     // W-LEAN L1 classification (moved here from ShadowVisibilityWave.comp):
     // a pixel whose blend weight saturates (footprint >= 2*detailSize0, the
@@ -182,13 +341,34 @@ void main() {
     // composite. This pass now OWNS the stamp — one thread per record, plain
     // non-atomic write is fine (no other pass touches this record's flags
     // this frame before the wave reads it back).
-    if (hitAccumParams.camForward.w > 0.0 && hitAccumParams.primaryCoef > 0.0) {
-        float footprint = hitRecords[slot].hitT * hitAccumParams.primaryCoef
-                         + hitAccumParams.primaryBias;
-        if (footprint >= 2.0 * hitAccumParams.detailSize0) {
-            hitRecords[slot].flags = flags | HITRECORD_FLAG_CELL_RESOLVED;
+    // Zero-init: under VIXEN_HIT_ACCUM_PREMERGE every lane (including
+    // out-of-bounds ones) falls through to AccumulateHit and passes rec BY
+    // VALUE — an uninitialized struct copy is UB in GLSL/SPIR-V even though
+    // the hasHit=false guard prevents any field READ (batch-3 validator).
+    HitRecord rec = HitRecord(vec3(0.0), 0.0, vec3(0.0), 0.0, vec3(0.0), 0u, uint[3](0u, 0u, 0u));
+    bool hasHit = false;
+    if (inBounds) {
+        uint flags = hitRecords[slot].flags;
+        hasHit = (flags & HITRECORD_FLAG_HIT) != 0u;
+        if (hasHit) {
+            if (hitAccumParams.camForward.w > 0.0 && hitAccumParams.primaryCoef > 0.0) {
+                float footprint = hitRecords[slot].hitT * hitAccumParams.primaryCoef
+                                 + hitAccumParams.primaryBias;
+                if (footprint >= 2.0 * hitAccumParams.detailSize0) {
+                    hitRecords[slot].flags = flags | HITRECORD_FLAG_CELL_RESOLVED;
+                }
+            }
+            rec = hitRecords[slot];
         }
     }
 
-    AccumulateHit(slot, hitRecords[slot]);
+#ifndef VIXEN_HIT_ACCUM_PREMERGE
+    // Flag-off path: no barrier below AccumulateHit, so non-participating
+    // threads can return early exactly as before the split.
+    if (!hasHit) return;
+#endif
+    // Premerge path: EVERY thread in the workgroup must reach AccumulateHit
+    // (it barriers internally) regardless of hasHit/inBounds — rec is unused
+    // when hasHit is false.
+    AccumulateHit(localIdx, slot, rec, hasHit);
 }

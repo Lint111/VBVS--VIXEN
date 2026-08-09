@@ -936,4 +936,114 @@ bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDi
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// marchBrickSdfCell / marchBrickSdfCellAnyHit (W-BRICKMAP Slice 2 round 3):
+// SINGLE-BRICK sphere-trace twins of marchBrickSdf/marchBrickSdfAnyHit above,
+// for the coarse-grid DDA backend (traverseCoarseGridInstancedSdf). Same
+// crossing test + step formula (kept byte-identical to the ESVO-leaf version
+// on purpose -- no algorithmic drift), but NEVER hops to a neighbour brick:
+// on a brick exit without a crossing, this returns false and the CALLER's
+// own DDA cell loop advances to the next cell (mirroring exactly how the
+// binary DDA already treats a marchBrickInstanced miss -- "continue the DDA,
+// not an immediate whole-ray miss"). marchBrickSdf's hop continuation calls
+// _advanceToNextSdfLeaf, which walks the REAL ESVO stack (fetchESVONode at
+// state.parentPtr) -- the DDA has no such state, so reusing marchBrickSdf
+// unmodified here would mean passing dummy/uninitialized TraversalState into
+// live node fetches on every brick-boundary miss. A DDA-native, hop-less
+// twin is the correct fix, not a workaround (see task brief Deliverable 2:
+// no out-of-bounds reads under any format/scene combination).
+// ---------------------------------------------------------------------------
+bool marchBrickSdfCell(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
+                       out vec3 hitNormal, out float sHit) {
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    sHit      = 0.0;
+
+    uint sdfBase = channelBaseFloats(SEM_SDF);
+    const int   MAX_STEPS   = 96;
+    const float EPS         = 0.01;
+    const float SENTINEL_D  = 100.0;
+
+    vec3 bMin = vec3(brick) * 8.0;
+    vec3 bMax = bMin + vec3(8.0);
+    const float kAxisParallelSlabDist = 64.0;
+    vec3 invD = vec3(
+        abs(gridDirN.x) > 1e-8 ? 1.0 / gridDirN.x : 0.0,
+        abs(gridDirN.y) > 1e-8 ? 1.0 / gridDirN.y : 0.0,
+        abs(gridDirN.z) > 1e-8 ? 1.0 / gridDirN.z : 0.0);
+    bvec3 axisParallel = lessThanEqual(abs(gridDirN), vec3(1e-8));
+    vec3  t0   = mix((bMin - gridEntry) * invD, vec3(-kAxisParallelSlabDist), axisParallel);
+    vec3  t1   = mix((bMax - gridEntry) * invD, vec3( kAxisParallelSlabDist), axisParallel);
+    vec3  thi  = max(t0, t1);
+    float sMax = max(min(min(thi.x, thi.y), thi.z), 0.0);
+
+    float s = 0.0;
+    float dPrev = 0.0;
+    float stepTakenPrev = 0.0;
+    bool forceHonestStep = false;
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        if (s > sMax) return false;   // brick exit, no crossing -- caller's DDA continues
+        vec3  p = gridEntry + gridDirN * s;
+        vec3 cellF; vec4 cellZ0, cellZ1;
+        _loadTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1);
+        float d = _interpolateTrilinearCell(cellF, cellZ0, cellZ1);
+        if (d < EPS) {
+            hitNormal = sdfGradientStoredFromCell(p, octreeIdx, cellF, cellZ0, cellZ1);
+            sHit      = s;
+            return true;
+        }
+        bool sentinel = d > SENTINEL_D;
+        float honestStep = sentinel ? 1.0 : max(d * 0.5773503, EPS);
+        if (i > 0 && !sentinel && !forceHonestStep && stepTakenPrev > dPrev + d) {
+            s += (dPrev * 0.5773503) - stepTakenPrev;
+            forceHonestStep = true;
+            continue;
+        }
+        float stepTaken = (forceHonestStep || sentinel) ? honestStep : VIXEN_SDF_MARCH_OMEGA * honestStep;
+        dPrev = d;
+        stepTakenPrev = stepTaken;
+        forceHonestStep = false;
+        s += stepTaken;
+    }
+    return false;
+}
+
+bool marchBrickSdfCellAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
+                             float sMaxLimit, out float sHit) {
+    sHit = 0.0;
+    uint sdfBase = channelBaseFloats(SEM_SDF);
+    const int   MAX_STEPS  = 96;
+    const float SENTINEL_D = 100.0;
+    const float kBand = 2.0;  // matches marchBrickSdfAnyHit's OCCLUDE_EPS derivation
+    const float OCCLUDE_EPS = -kBand;
+
+    vec3 bMin = vec3(brick) * 8.0;
+    vec3 bMax = bMin + vec3(8.0);
+    const float kAxisParallelSlabDist = 64.0;
+    vec3 invD = vec3(
+        abs(gridDirN.x) > 1e-8 ? 1.0 / gridDirN.x : 0.0,
+        abs(gridDirN.y) > 1e-8 ? 1.0 / gridDirN.y : 0.0,
+        abs(gridDirN.z) > 1e-8 ? 1.0 / gridDirN.z : 0.0);
+    bvec3 axisParallel = lessThanEqual(abs(gridDirN), vec3(1e-8));
+    vec3  t0   = mix((bMin - gridEntry) * invD, vec3(-kAxisParallelSlabDist), axisParallel);
+    vec3  t1   = mix((bMax - gridEntry) * invD, vec3( kAxisParallelSlabDist), axisParallel);
+    vec3  thi  = max(t0, t1);
+    float sMax = max(min(min(thi.x, thi.y), thi.z), 0.0);
+    float sMaxClamped = min(sMax, sMaxLimit);
+
+    float s = 0.0;
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        if (s > sMaxClamped) return false;
+        vec3  p = gridEntry + gridDirN * s;
+        vec3 cellF; vec4 cellZ0, cellZ1;
+        _loadTrilinearCell(sdfBase, p, octreeIdx, cellF, cellZ0, cellZ1);
+        float d = _interpolateTrilinearCell(cellF, cellZ0, cellZ1);
+        if (d < OCCLUDE_EPS) {
+            sHit = s;
+            return true;
+        }
+        s += (d > SENTINEL_D) ? 1.0 : max(abs(d) * 0.5773503, 0.01);
+    }
+    return false;
+}
+
 #endif // STORED_SDF_GLSL

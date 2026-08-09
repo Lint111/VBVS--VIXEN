@@ -57,6 +57,11 @@ public:
     static void SetGlobalTerminalOutput(bool enable) { globalTerminalOutput = enable; }
     static bool GetGlobalTerminalOutput() { return globalTerminalOutput; }
 
+    // VIXEN_NODE_LOG=<comma-list-of-names|all>: true if `name` is opted into logging by the env
+    // knob. Exposed so every construction path (this ctor included) shares ONE parser instead of
+    // each caller re-implementing the same comma-split (batch-3 review finding).
+    static bool IsNodeLogEnvEnabled(const std::string& name);
+
     // Extract logs recursively
     std::string ExtractLogs(int indentLevel = 0) const;
 
@@ -74,6 +79,10 @@ protected:
     std::string name;
     bool enabled;
     bool terminalOutput = false;
+    // True when `enabled` came from VIXEN_NODE_LOG rather than the caller's own `enabled` arg.
+    // The knob exists to make an otherwise-silent (SetEnabled never called) logger visible, so
+    // Log() also treats it as satisfying the terminal-output gate — see Log().
+    bool envForcedEnabled = false;
     std::vector<std::shared_ptr<Logger>> children; // Shared ownership of child loggers
     std::vector<std::string> logEntries;
 

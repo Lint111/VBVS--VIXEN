@@ -84,6 +84,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/WindowNodeConfig.h
     include/Data/Nodes/BodyOctreeSceneNodeConfig.h
     include/Data/Nodes/SkyProjectionNodeConfig.h
+    include/Data/Nodes/SkySphereNodeConfig.h  # Deep-Field Mip-Accessor Policy batch 29 stream C: sky-sphere cache scaffold (UNWIRED)
 )
 
 # ============================================================================
@@ -244,6 +245,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
     include/Nodes/BodyOctreeSceneNode.h
+    include/Nodes/SkySphereNode.h  # Deep-Field Mip-Accessor Policy batch 29 stream C: sky-sphere cache scaffold (UNWIRED)
 )
 
 set(RENDERGRAPH_NODE_SOURCES
@@ -272,10 +274,12 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/WorldPosHistoryNode.cpp     # Sampled Lighting Inc3 M2: persistent worldPos/depth companion history image (KI-023)
     src/Nodes/DepthTargetNode.cpp         # Raster-proxy B1 M4: occlusion depth ping-pong pair (march writes, HiZ reads last frame's)
     src/Nodes/PrevCameraConfigNode.cpp    # Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
+    src/Nodes/HitAccumParamsConfigNode.cpp # B2: hit-accumulate per-frame params upload ring (batch-23)
     src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
     src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
     src/Nodes/ProbeGridConfigNode.cpp     # Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
     src/Nodes/ProbeAtlasNode.cpp          # Sampled Lighting Inc4 M2: persistent DDGI probe atlas image (irradiance/visibility)
+    src/Nodes/SkySphereNode.cpp           # Deep-Field Mip-Accessor Policy batch 29 stream C: sky-sphere cache scaffold (UNWIRED)
     src/Nodes/MvpUniformNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp

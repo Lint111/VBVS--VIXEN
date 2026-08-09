@@ -47,6 +47,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "MipAnisoPool.h"
 #include "MipSample.h"
 #include "ShellOctreeGpu.h"
 #include "SVOBuilder.h"
@@ -400,6 +401,102 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
         brickBase += s.brickCount;
         poolBase  += s.brickCount * s.brickStrideFloats;
         mipPoolBase += s.nodeCount * s.channelCount;
+        tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
+        brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
+    }
+
+    return cat;
+}
+
+// ===========================================================================
+// Deep-Field Mip Policy — anisotropic coarse mips, additive entry points
+// ===========================================================================
+// Mirrors SerializeSdfWithMips/ConcatenateSdfWithMips exactly, one level up:
+// these ALSO bake+attach the MipAnisoPool.h side pool. Kept as separate
+// functions (not folded into the *WithMips versions above) so every existing
+// caller of SerializeSdfWithMips/ConcatenateSdfWithMips stays byte-identical
+// — opting into aniso baking is a caller's explicit choice, per the spec's
+// "ADDITIVE side pool... zero risk to shipped consumers."
+
+// Bake + attach both mipPool and mipAnisoPool (default threshold level —
+// see MipAnisoPool.h::DefaultAnisoThresholdLevel) for one octree body.
+inline SerializedOctree SerializeSdfWithAniso(const SdfBodyOctree& body) {
+    SerializedOctree s = SerializeSdfWithMips(body);
+    const Octree* oct = body.octree->getOctree();
+    if (oct != nullptr) {
+        MipAnisoPool anisoPool = BakeMipAnisoPool(*oct, s);
+        s.mipAnisoPool = SerializeMipAnisoPool(anisoPool);
+    }
+    return s;
+}
+
+// ConcatenateSdf + mip bake + aniso bake, in one pass. Mirrors
+// ConcatenateSdfWithMips's own per-octree loop/bookkeeping, plus tracks each
+// octree's mipAnisoPoolBases entry (element offset in MipAnisoSample units,
+// same convention as mipPoolBase).
+inline ConcatenatedOctrees ConcatenateSdfWithAniso(
+        const std::vector<const SdfBodyOctree*>& octrees,
+        const std::unordered_map<size_t, SerializedOctree>& precomputed = {}) {
+    ConcatenatedOctrees cat;
+    cat.count = static_cast<uint32_t>(octrees.size());
+    cat.configs.resize(octrees.size());
+    cat.nodeCounts.resize(octrees.size());
+    cat.brickCounts.resize(octrees.size());
+    cat.tierRefCounts.resize(octrees.size());
+    cat.occupiedVoxelCounts.resize(octrees.size());
+    cat.mipAnisoPoolBases.resize(octrees.size());
+
+    uint32_t nodeBase        = 0;
+    uint32_t brickBase       = 0;
+    uint32_t poolBase        = 0;
+    uint32_t mipPoolBase     = 0;
+    uint32_t mipAnisoBase    = 0;
+    uint32_t tierRefBase     = 0;
+    uint32_t brickLookupBase = 0;
+
+    for (size_t k = 0; k < octrees.size(); ++k) {
+        if (octrees[k] == nullptr) {
+            throw std::invalid_argument("MipBake::ConcatenateSdfWithAniso: null octree pointer");
+        }
+        auto precomputedIt = precomputed.find(k);
+        SerializedOctree s = (precomputedIt != precomputed.end())
+            ? precomputedIt->second
+            : SerializeSdfWithAniso(*octrees[k]);
+
+        s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
+        s.config.brickArrayBase = static_cast<int32_t>(brickBase);
+        setSdfBrickArrayBase(s.config, poolBase);
+        setMipPoolBase(s.config, mipPoolBase);
+        setTierRefTableBase(s.config, tierRefBase);
+        setBrickLookupBase(s.config, brickLookupBase);
+
+        cat.configs[k]     = s.config;
+        cat.nodeCounts[k]  = s.nodeCount;
+        cat.brickCounts[k] = s.brickCount;
+        cat.tierRefCounts[k] = static_cast<uint32_t>(s.tierRefs.size());
+        cat.occupiedVoxelCounts[k] = s.occupiedVoxelCount;
+        cat.mipAnisoPoolBases[k] = mipAnisoBase;
+
+        cat.nodes.insert(cat.nodes.end(),   s.nodes.begin(),   s.nodes.end());
+        cat.bricks.insert(cat.bricks.end(), s.bricks.begin(),  s.bricks.end());
+        cat.channelPool.insert(cat.channelPool.end(),
+                               s.channelPool.begin(), s.channelPool.end());
+        cat.brickGridLookup.insert(cat.brickGridLookup.end(),
+                                   s.brickGridLookup.begin(), s.brickGridLookup.end());
+        cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+        cat.mipAnisoPool.insert(cat.mipAnisoPool.end(),
+                                s.mipAnisoPool.begin(), s.mipAnisoPool.end());
+        cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
+
+        if (cat.materials.empty()) {
+            cat.materials = std::move(s.materials);
+        }
+
+        nodeBase  += s.nodeCount;
+        brickBase += s.brickCount;
+        poolBase  += s.brickCount * s.brickStrideFloats;
+        mipPoolBase += s.nodeCount * s.channelCount;
+        mipAnisoBase += static_cast<uint32_t>(s.mipAnisoPool.size() / sizeof(MipAnisoSample));
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
         brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }

@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: BodyInstanceRayMarch
-// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_GPU_TRACE_HOOKS
+// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_GPU_TRACE_HOOKS VIXEN_RTQUERY_TRAVERSAL
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -739,6 +739,22 @@ namespace Set0 {
         static constexpr const char* FEATURES[1] = {"VIXEN_B1_OCCLUSION_CULL"};
     };
 
+    /**
+     * @brief rtQueryTlas
+     * Type: ACCELERATION_STRUCTURE_KHR
+     * Requires: VIXEN_RTQUERY_TRAVERSAL
+     */
+    struct Binding40 {
+        static constexpr const char* NAME = "rtQueryTlas";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 40;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RTQUERY_TRAVERSAL"};
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -765,6 +781,7 @@ using historyImage = Set0::Binding21;
 using PrevCameraConfigSSBO = Set0::Binding22;
 using InstanceSkipMaskBuffer = Set0::Binding35;
 using depthDistanceImage = Set0::Binding36;
+using rtQueryTlas = Set0::Binding40;
 } // namespace Bind
 
 namespace Push {
@@ -894,6 +911,7 @@ struct MemberInfo {
 
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
 inline constexpr const char* const kFeatures_Set0_Binding36[] = {"VIXEN_B1_OCCLUSION_CULL"};
+inline constexpr const char* const kFeatures_Set0_Binding40[] = {"VIXEN_RTQUERY_TRAVERSAL"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
@@ -918,6 +936,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"PrevCameraConfigSSBO", false, 0, 22, 0, Access::ReadOnly, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"depthDistanceImage", false, 0, 36, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding36},
+    {"rtQueryTlas", false, 0, 40, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding40},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -952,8 +971,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 35;
-    static constexpr uint32_t NUM_FEATURES = 2;
+    static constexpr uint32_t NUM_MEMBERS = 36;
+    static constexpr uint32_t NUM_FEATURES = 3;
 };
 
 } // namespace BodyInstanceRayMarch

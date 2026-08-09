@@ -68,7 +68,13 @@ bool shadeFromMipSample(uint nodeIdx, out vec3 hitColor, out vec3 hitNormal) {
     if (sdfSample.y <= 0.0) return false;  // no coverage: nothing baked here to shade
 
     vec2 colorSample = readMipSample(nodeIdx, SEM_COLOR, 0.5);
-    hitColor  = (colorSample.y > 0.0) ? vec3(colorSample.x) : vec3(0.5);
+    if (colorSample.y > 0.0) {
+        hitColor = vec3(colorSample.x);
+        incrFarFieldColorResolved();  // batch 10: real SEM_COLOR mip sample resolved
+    } else {
+        hitColor = vec3(0.5);
+        incrFarFieldColorFallback();  // batch 10: no SEM_COLOR coverage, flat grey
+    }
     hitNormal = vec3(0.0, 1.0, 0.0);  // v1: flat/placeholder normal, no coarse-normal derivation yet
     return true;
 }

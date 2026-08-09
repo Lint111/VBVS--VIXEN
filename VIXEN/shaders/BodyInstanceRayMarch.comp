@@ -220,6 +220,8 @@ void main() {
 
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
 
+    incrFarGenRectRay();  // batch-24 FARGEN: rect-scoped invocation census (c1∪c2)
+
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imgSize);
     vec3 rayOrigin = pc.cameraPos;
     vec3 rayDir    = getRayDir(uv);
@@ -235,6 +237,25 @@ void main() {
     // -----------------------------------------------------------------------
     WorldHit worldHit;
     bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
+
+#ifdef VIXEN_REGIME3_COMPOSITE
+    // Compositing slice part 2: fill the winner's residual T with what's BEHIND
+    // it (the same-pass second-nearest candidate TraceWorld already found)
+    // instead of discarding it as black (slice-1 behavior, VIXEN_REGIME3_COMPOSITE
+    // unset). Energy-sane: final = accumColor + T_residual*behindColor, no
+    // double-counting -- accumColor already carries (1-T_residual) worth of
+    // coverage from the walk's own accumulation, so this adds exactly the
+    // missing (1-coverage) fraction, never re-adds the covered part.
+    // residualT == 1.0 is the consume-DEFAULT (ordinary winner, no regime-3
+    // walk) -- it means "not a partial-coverage hit", NOT "fully transparent".
+    // Blending at 1.0 would add the full second-nearest color on top of every
+    // opaque winner (double-lighting; batch-42 controller fix). A genuine
+    // regime-3 winner always has residualT strictly < 1 (anySampled requires
+    // cov > 0), so excluding the sentinel loses nothing.
+    if (anyHit && worldHit.residualT > 1e-6 && worldHit.residualT < 0.999999) {
+        worldHit.color += worldHit.residualT * worldHit.behindColor;
+    }
+#endif
 
     // -----------------------------------------------------------------------
     // Baked-Perf M5 Task 5.4 / M5b Task 5b.2 (far-hit rejection) -- ENABLED.
@@ -292,6 +313,7 @@ void main() {
                     all(greaterThanEqual(hitWorldPos, worldBoundsMin - vec3(brickWorldEps))) &&
                     all(lessThanEqual(hitWorldPos, worldBoundsMax + vec3(brickWorldEps)));
                 if (!inBounds) {
+                    incrFarFieldRejectedByBounds();  // round-7 blocker-1 probe #2
                     anyHit = false;  // reject: treat as a miss, not a clamped/corrupted hit
                 }
             }
@@ -316,6 +338,15 @@ void main() {
     rec.hitT        = worldHit.t;
     rec.worldPos    = rayOrigin + rayDir * worldHit.t;
     rec.flags       = anyHit ? HITRECORD_FLAG_HIT : 0u;
+    // Round 9: tag the FINAL winning hit as far-field iff it survived the
+    // far-hit-rejection block above (anyHit would already be false if
+    // rejected) AND TraceWorld's bestHit selection actually carries
+    // wasFarField (cleared whenever a later non-far-field instance won).
+    if (anyHit && worldHit.wasFarField) {
+        rec.flags |= HITRECORD_FLAG_FAR_FIELD;
+        incrFarFieldTerminal();  // round 9: per-pixel TERMINAL far-field count
+        recordFarFieldTerminalPixel(gl_GlobalInvocationID.xy);  // round 11 STEP 2: pixel decode
+    }
     // M3 round 3 (2026-07-14): stash the winning instance index in HitRecord's own spare
     // padding (a real, always-64-byte field, test_hitrecord_sdi_parity.cpp's own layout
     // assert is unaffected) -- a Cornell-demo diagnostic aid for localizing a stray

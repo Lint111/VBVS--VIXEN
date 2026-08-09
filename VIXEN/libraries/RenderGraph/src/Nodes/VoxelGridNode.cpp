@@ -8,10 +8,12 @@
 #include "Core/TaskProfiles/SimpleTaskProfile.h"  // Sprint 6.5: Profile integration
 #include "MainCacher.h"
 #include "VoxelSceneCacher.h"
+#include <algorithm>  // round 11: std::min for pixel-ring valid-slot clamp
 #include <cmath>
 #include <cstdlib>  // Task 0.2: std::getenv("VIXEN_DEBUG_CAPTURE")
 #include <cstring>
 #include <fstream>
+#include <iostream>  // [FarFieldCount] boot-summary print (round-3 fix item 3)
 #include <span>
 
 // New SVO library integration
@@ -431,6 +433,305 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     }
 
     vkDeviceWaitIdle(vulkanDevice->device);
+
+    // W-COMPOSED round-3 fix item 3 (mandatory observability, 3rd request):
+    // unconditional per-boot far-field-cutoff counter, printed the same way
+    // BodyOctreeSceneNode's [BrickDataHash] does -- std::cout, not the
+    // per-node logger (which is disabled by default for these nodes) or the
+    // GPU trace-hook route (proven unwired for the live app).
+    if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
+        // Round 12 instrument fix (a): every FarField* counter below is a
+        // boot-lifetime accumulation (RayTraceBuffer::Reset() never clears
+        // them, by design -- see TraceBufferHeader's "Never reset" comments).
+        // Batch 11 found bare "n=" prints being misread as per-frame values
+        // (347,400 > screen pixel count, an impossibility per-frame). Fix:
+        // divide by the boot's frame count at print time, labeled. Frame
+        // count comes straight from VIXEN_EXIT_AFTER_FRAMES (the boot
+        // contract always sets it for these gates) rather than plumbing
+        // VulkanApplicationBase::frameCounter_ through RenderGraph -- it's
+        // the smaller, already-available number and CleanupImpl only runs
+        // once all frames have completed.
+        uint64_t exitAfterFrames = 0;
+        if (const char* env = std::getenv("VIXEN_EXIT_AFTER_FRAMES")) {
+            exitAfterFrames = std::strtoull(env, nullptr, 10);
+        }
+        const double frames = exitAfterFrames > 0 ? static_cast<double>(exitAfterFrames) : 1.0;
+        auto perFrame = [frames](uint32_t n) { return static_cast<double>(n) / frames; };
+
+        const uint32_t farFieldCandidates = debugCaptureResource_->ReadFarFieldCandidates(vulkanDevice->device);
+        std::cout << "[FarFieldCandidates] n=" << farFieldCandidates
+                   << " (" << perFrame(farFieldCandidates) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        const uint32_t farFieldCount = debugCaptureResource_->ReadFarFieldCount(vulkanDevice->device);
+        std::cout << "[FarFieldCount] n=" << farFieldCount
+                   << " (" << perFrame(farFieldCount) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Round-6 blocker-1 probe: min/max of both far-field gate operands.
+        // Not a count -- no per-frame division applies.
+        const auto ranges = debugCaptureResource_->ReadFarFieldRanges(vulkanDevice->device);
+        std::cout << "[FarFieldGateLhs] min=" << ranges.lhsMin << " max=" << ranges.lhsMax << std::endl;
+        // BATCH 38: the ENTRY dispatch gate's own LHS range. The line above is the
+        // mid-march safety net + RT twin only (batch-37: blind to the entry path).
+        const auto entryRange = debugCaptureResource_->ReadEntryGateRange(vulkanDevice->device);
+        std::cout << "[EntryGateLhs] min=" << entryRange.lhsMin << " max=" << entryRange.lhsMax << std::endl;
+        std::cout << "[FarFieldGateRhs] min=" << ranges.rhsMin << " max=" << ranges.rhsMax << std::endl;
+
+        // Round-6 blocker-2 probe: raw RT TLAS candidate-loop entries.
+        const uint32_t rtLoopEntries = debugCaptureResource_->ReadRtLoopEntries(vulkanDevice->device);
+        std::cout << "[RtLoopEntries] n=" << rtLoopEntries
+                   << " (" << perFrame(rtLoopEntries) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Round-17 probe: octree-3-only candidate-loop breakdown -- isolates
+        // whether the far body's ~4 candidates/frame gap is (a) the TLAS/BLAS
+        // not proposing octree-3 candidates at all, (b) the tCellEnter>=bestT
+        // early-continue eating them, or (c) genuine gate-reach parity.
+        const auto oct3Stats = debugCaptureResource_->ReadFarFieldOct3Stats(vulkanDevice->device);
+        std::cout << "[RtLoopEntriesOct3] n=" << oct3Stats.loopEntries
+                   << " (" << perFrame(oct3Stats.loopEntries) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        std::cout << "[FarFieldGateRejectOct3] n=" << oct3Stats.gateReject
+                   << " (" << perFrame(oct3Stats.gateReject) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        std::cout << "[FarFieldCandidatesOct3] n=" << oct3Stats.candidatesReachingGate
+                   << " (" << perFrame(oct3Stats.candidatesReachingGate) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Batch-24 FARGEN: rect-scoped generation funnel over the far clusters
+        // c1∪c2 (x363-390,y239-260) -- rectRays (invocation census) vs
+        // rectCellEntries (candidate/cell entries) vs rectGateCross (gate
+        // passes) localizes where those pixels' candidates die relative to
+        // ESVO's reference lit count.
+        const auto rectStats = debugCaptureResource_->ReadFarFieldRectStats(vulkanDevice->device);
+        std::cout << "[FarFieldRectRays] n=" << rectStats.rays
+                   << " (" << perFrame(rectStats.rays) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        std::cout << "[FarFieldRectCellEntries] n=" << rectStats.cellEntries
+                   << " (" << perFrame(rectStats.cellEntries) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        std::cout << "[FarFieldRectGateCross] n=" << rectStats.gateCross
+                   << " (" << perFrame(rectStats.gateCross) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Batch-25 JOB 2: 8-bucket FarFieldGateLhs histogram, same rect scope,
+        // edges around the 0.9375 gate threshold.
+        const auto lhsHist = debugCaptureResource_->ReadFarFieldRectLhsHistogram(vulkanDevice->device);
+        std::cout << "[FarFieldRectLhsHistogram] <0.25=" << lhsHist.buckets[0]
+                   << " <0.5=" << lhsHist.buckets[1]
+                   << " <0.75=" << lhsHist.buckets[2]
+                   << " <0.9375=" << lhsHist.buckets[3]
+                   << " <1.25=" << lhsHist.buckets[4]
+                   << " <2=" << lhsHist.buckets[5]
+                   << " <4=" << lhsHist.buckets[6]
+                   << " >=4=" << lhsHist.buckets[7] << std::endl;
+
+        // Batch-27 JOB 2: ESVO's own cutoff criterion, SAME rect scope, SAME
+        // boot -- side-by-side with FarFieldGateLhs/Rhs above. lhs/rhs here are
+        // LOCAL/NORMALIZED octree-space (tv_max, scale_exp2); contrast with the
+        // world-space FarFieldGate operands.
+        const auto esvoOps = debugCaptureResource_->ReadEsvoCutoffOperands(vulkanDevice->device);
+        std::cout << "[EsvoCutoffLhs] min=" << esvoOps.lhsMin << " max=" << esvoOps.lhsMax << std::endl;
+        std::cout << "[EsvoCutoffRhs] min=" << esvoOps.rhsMin << " max=" << esvoOps.rhsMax << std::endl;
+        std::cout << "[EsvoCutoffLhsHistogram] <0.25=" << esvoOps.histogram[0]
+                   << " <0.5=" << esvoOps.histogram[1]
+                   << " <0.75=" << esvoOps.histogram[2]
+                   << " <0.9375=" << esvoOps.histogram[3]
+                   << " <1.25=" << esvoOps.histogram[4]
+                   << " <2=" << esvoOps.histogram[5]
+                   << " <4=" << esvoOps.histogram[6]
+                   << " >=4=" << esvoOps.histogram[7] << std::endl;
+        std::cout << "[EsvoCutoffCrossLevel] min=" << esvoOps.crossLevelMin
+                   << " max=" << esvoOps.crossLevelMax << std::endl;
+
+        // Batch-29 JOB 3: rect-agnostic 8-bucket histogram of the LEVEL
+        // mipPolicyLevel resolved to at every descendToNodeOrdinal call
+        // (VIXEN_MIP_POLICY only -- all-zero on a flag-off boot, since the
+        // shader never calls recordPolicyLevel in that build).
+        const auto policyLevels = debugCaptureResource_->ReadPolicyLevelHistogram(vulkanDevice->device);
+        std::cout << "[PolicyLevelHistogram] L0=" << policyLevels.buckets[0]
+                   << " L1=" << policyLevels.buckets[1]
+                   << " L2=" << policyLevels.buckets[2]
+                   << " L3=" << policyLevels.buckets[3]
+                   << " L4=" << policyLevels.buckets[4]
+                   << " L5=" << policyLevels.buckets[5]
+                   << " L6=" << policyLevels.buckets[6]
+                   << " L7plus=" << policyLevels.buckets[7] << std::endl;
+
+        // Batch-29 JOB 4: rect-scoped attribution across ESVO's five
+        // shadeFromMipSample call sites (batch-28b validator's "make
+        // attribution measured" ask) -- see recordEsvoMipArm's header
+        // comment (SceneBindings.glsl) for the arm index -> call site map.
+        // Batch-30 stream B adds policyLevel (arm 5, VIXEN_MIP_POLICY only) --
+        // the streaming-grace(1)->policy(5) shift is the gate signal.
+        const auto mipArms = debugCaptureResource_->ReadEsvoMipArmStats(vulkanDevice->device);
+        std::cout << "[EsvoMipArmHits] tierCrossSubpixel=" << mipArms.hits[0]
+                   << " streamingGrace=" << mipArms.hits[1]
+                   << " deliberateLod=" << mipArms.hits[2]
+                   << " tierCrossChildMiss=" << mipArms.hits[3]
+                   << " hopExhausted=" << mipArms.hits[4]
+                   << " policyLevel=" << mipArms.hits[5] << std::endl;
+
+        // Batch-32 JOB 1: level-sensitive far-field counter -- min/max/mean of
+        // the LEVEL that actually fed a shaded far pixel (recorded at the mip-
+        // sample call site, both twins), so a level-selection change CAN move
+        // this even though the FarField*/Esvo*/Rect* population counters
+        // around the policy branch can't (they sit outside the ifdef).
+        const auto sampledLevel = debugCaptureResource_->ReadFarFieldSampledLevelStats(vulkanDevice->device);
+        const double sampledLevelMean = sampledLevel.count > 0
+            ? static_cast<double>(sampledLevel.sum) / static_cast<double>(sampledLevel.count)
+            : 0.0;
+        std::cout << "[FarFieldSampledLevel] min=" << sampledLevel.min
+                   << " max=" << sampledLevel.max
+                   << " mean=" << sampledLevelMean
+                   << " n=" << sampledLevel.count
+                   << " (" << perFrame(sampledLevel.count) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        // Standing rule (batch-13 postmortem): min seeded 0xFFFFFFFF at
+        // Create(); a real min of 0 is only credible with count > 0.
+        if (sampledLevel.count == 0u && sampledLevel.min != 0xFFFFFFFFu) {
+            std::cout << "[FarFieldSampledLevel] SEEDED-SANITY WARNING: "
+                          "count=0 but min!=0xFFFFFFFF -- looks like an "
+                          "unseeded/stale atomicMin. Verify Create() seeds this field."
+                       << std::endl;
+        }
+
+        // Batch-33 JOB 2: [FarFieldSampleIntensity] -- luminance of the
+        // shaded mip color at the SAME call site as FarFieldSampledLevel
+        // (shares its count). Distinguishes "level chosen" from "sample
+        // value" -- the batch-32 open ruling needs this: ESVO dimmed under
+        // policy (rect mean 244.3->149.9) while FarFieldSampledLevel/count
+        // stayed flat.
+        const auto sampleIntensity = debugCaptureResource_->ReadFarFieldSampleIntensityStats(vulkanDevice->device);
+        std::cout << "[FarFieldSampleIntensity] min=" << sampleIntensity.min
+                   << " max=" << sampleIntensity.max
+                   << " mean=" << sampleIntensity.mean
+                   << " n=" << sampledLevel.count << std::endl;
+
+        // Batch-35: [PolicyEntryDispatch] -- proves the entry-point dispatch
+        // inversion happened. mip = rays that resolved via the mip ladder
+        // directly at instance entry (no march); march = rays that fell
+        // through to the exact per-cell march (genuine detail at entry, OR
+        // an admitted-but-empty entry cell -- these two populations are
+        // conflated in `march` by construction). All-zero on a flag-off/
+        // no-VIXEN_MIP_POLICY boot -- the shader never calls
+        // recordPolicyEntryDispatch there.
+        // Batch-39: emptyEntry splits out the admitted-but-empty-entry-cell
+        // subset of `march` (entryPolicyAdmits==true but entryLocalBrickIdx
+        // was 0xFFFFFFFF) so it's distinguishable from genuine detail-regime
+        // rays. Additive -- mip/march themselves are unchanged.
+        const auto entryDispatch = debugCaptureResource_->ReadPolicyEntryDispatchStats(vulkanDevice->device);
+        std::cout << "[PolicyEntryDispatch] mip=" << entryDispatch.mip
+                   << " march=" << entryDispatch.march
+                   << " emptyEntry=" << entryDispatch.emptyEntry << std::endl;
+
+        // Regime-3 (cosmic accumulation) first slice, deep-field-mip-policy design doc:
+        // entry = rays that took the accumulation walk (VIXEN_REGIME3 && footprint >=
+        // K*cell at entry dispatch); earlyOut = subset that hit the T~eps early-out.
+        // All-zero on a flag-off/no-VIXEN_REGIME3 boot -- the shader never calls
+        // recordRegime3Entry/recordRegime3EarlyOut there.
+        const auto regime3 = debugCaptureResource_->ReadRegime3Stats(vulkanDevice->device);
+        std::cout << "[Regime3] entry=" << regime3.entry
+                   << " earlyOut=" << regime3.earlyOut << std::endl;
+
+        // Compositing-slice part 1 (walkCov source audit): min/max of walkCov
+        // (readMipSample(SEM_SDF).y) and the level it was sampled at, from the
+        // regime-3 walk's sample call site. All-zero/seeded-min on a flag-off/
+        // no-VIXEN_REGIME3 boot -- the shader never calls recordWalkCov there.
+        const auto walkCov = debugCaptureResource_->ReadWalkCovStats(vulkanDevice->device);
+        std::cout << "[WalkCov] covMin=" << walkCov.covMin
+                   << " covMax=" << walkCov.covMax
+                   << " levelMin=" << walkCov.levelMin
+                   << " levelMax=" << walkCov.levelMax << std::endl;
+
+        // Round-7 blocker-1 probe: mip-resolve success/fail -- discriminates
+        // hypothesis (a) "the mip resolve fails" from (b)/(c) "resolves fine
+        // but is lost/ignored downstream".
+        const auto mipStats = debugCaptureResource_->ReadFarFieldMipStats(vulkanDevice->device);
+        std::cout << "[FarFieldMipSuccess] n=" << mipStats.success
+                   << " (" << perFrame(mipStats.success) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        std::cout << "[FarFieldMipFail] n=" << mipStats.fail
+                   << " (" << perFrame(mipStats.fail) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Round 13 probe: splits farFieldMipFail into "descendToNodeOrdinal
+        // never reached the brick level" vs "reached it but shadeFromMipSample
+        // found no coverage". descentFail==mipFail => root cause is IN the
+        // descent (missing child / farBit / wrong cell-octant-depth inputs),
+        // not in mip sampling.
+        const uint32_t descentFail = debugCaptureResource_->ReadFarFieldDescentFail(vulkanDevice->device);
+        std::cout << "[FarFieldDescentFail] n=" << descentFail
+                   << " (" << perFrame(descentFail) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Round 13 probe #2: min/max hop-depth (depth - level) at the point of
+        // descent failure -- localizes whether failures cluster near the root
+        // (small hops) or near the brick (hops close to farDepth).
+        const auto descentFailLevels = debugCaptureResource_->ReadFarFieldDescentFailLevelRange(vulkanDevice->device);
+        std::cout << "[FarFieldDescentFailLevel] min=" << descentFailLevels.first
+                   << " max=" << descentFailLevels.second << std::endl;
+        // Standing rule (batch-13 postmortem): every min-tracker is seeded
+        // 0xFFFFFFFF at Create(); a real min of 0 is only credible when max is
+        // ALSO near 0 (root-adjacent failures cluster tight). min==0 with a
+        // much larger max is the unseeded-atomicMin signature -- flag it loud
+        // instead of silently trusting a fabricated reading.
+        if (descentFailLevels.first == 0u && descentFailLevels.second > 2u) {
+            std::cout << "[FarFieldDescentFailLevel] SEEDED-SANITY WARNING: "
+                          "min=0 but max=" << descentFailLevels.second
+                       << " -- looks like an unseeded atomicMin, not a real "
+                          "root-adjacent failure. Verify Create() seeds this field."
+                       << std::endl;
+        }
+
+        const uint32_t rejectedByBounds = debugCaptureResource_->ReadFarFieldRejectedByBounds(vulkanDevice->device);
+        std::cout << "[FarFieldRejectedByBounds] n=" << rejectedByBounds
+                   << " (" << perFrame(rejectedByBounds) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        const uint32_t farFieldWon = debugCaptureResource_->ReadFarFieldWon(vulkanDevice->device);
+        std::cout << "[FarFieldWon] n=" << farFieldWon
+                   << " (" << perFrame(farFieldWon) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Round 9: per-pixel TERMINAL far-field count (does the pixel's FINAL
+        // rendered HitRecord carry HITRECORD_FLAG_FAR_FIELD, not just "won a
+        // per-instance-loop compare" like farFieldWon above).
+        const uint32_t farFieldTerminal = debugCaptureResource_->ReadFarFieldTerminal(vulkanDevice->device);
+        std::cout << "[FarFieldTerminal] n=" << farFieldTerminal
+                   << " (" << perFrame(farFieldTerminal) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Batch 10: splits farFieldMipSuccess into "a real SEM_COLOR mip
+        // sample was resolved" vs "fell through to the flat grey vec3(0.5)
+        // placeholder" (MipFallback.glsl's shadeFromMipSample colorSample.y
+        // branch). colorFallback==farFieldCount => bake-side gap (no SEM_COLOR
+        // mip coverage at all); colorResolved==farFieldCount => resolve is fine,
+        // sizes the contrast gap instead.
+        const auto colorStats = debugCaptureResource_->ReadFarFieldColorStats(vulkanDevice->device);
+        std::cout << "[FarFieldColorResolved] n=" << colorStats.resolved
+                   << " (" << perFrame(colorStats.resolved) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+        std::cout << "[FarFieldColorFallback] n=" << colorStats.fallback
+                   << " (" << perFrame(colorStats.fallback) << "/frame over " << exitAfterFrames << " frames)" << std::endl;
+
+        // Round 11: dispatch attribution. TraceWorld is the ONLY far-field-
+        // carrying call path on either backend (its AnyHit twins, used by
+        // TraceWorldShadow/ShadowRayTrace.comp/HitAccumCellShade.comp, contain
+        // no far-field logic). TraceWorld's only two callers: index 0 =
+        // primary march (BodyInstanceRayMarch.comp), index 1 = "not-primary"
+        // (ProbeGather.comp / TraceWorld's non-primary-march caller -- round
+        // 12 instrument fix (b): renamed from "probe" to the honest label;
+        // SceneBindings compiles into 16 translation units and TraceWorld has
+        // three callers total, so "probe" overclaimed what index 1 means).
+        const auto tagStats = debugCaptureResource_->ReadFarFieldByTagStats(vulkanDevice->device);
+        std::cout << "[FarFieldCandidatesByTag] primary=" << tagStats.candidates[0]
+                   << " (" << perFrame(tagStats.candidates[0]) << "/frame) not-primary=" << tagStats.candidates[1]
+                   << " (" << perFrame(tagStats.candidates[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
+        std::cout << "[FarFieldCountByTag] primary=" << tagStats.count[0]
+                   << " (" << perFrame(tagStats.count[0]) << "/frame) not-primary=" << tagStats.count[1]
+                   << " (" << perFrame(tagStats.count[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
+        std::cout << "[FarFieldColorResolvedByTag] primary=" << tagStats.colorResolved[0]
+                   << " (" << perFrame(tagStats.colorResolved[0]) << "/frame) not-primary=" << tagStats.colorResolved[1]
+                   << " (" << perFrame(tagStats.colorResolved[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
+        std::cout << "[FarFieldColorFallbackByTag] primary=" << tagStats.colorFallback[0]
+                   << " (" << perFrame(tagStats.colorFallback[0]) << "/frame) not-primary=" << tagStats.colorFallback[1]
+                   << " (" << perFrame(tagStats.colorFallback[1]) << "/frame) over " << exitAfterFrames << " frames" << std::endl;
+
+        // Round 12 instrument fix (b): the 32-slot pixel decode ring is
+        // REMOVED. It decodes the TAIL of atomicAdd dispatch order (last-32
+        // writes before wrap), not a spatial sample of the far-field
+        // population -- batch 11 confirmed the "16x3 patch" it showed was a
+        // ring artifact, not real geometry. ByTag counters above remain the
+        // honest source of attribution; a spatial read now comes from
+        // localized_diff.py's --region mode against an actual HUD capture,
+        // not this ring.
+
+    }
+
     DestroyOctreeBuffers();
 
     // CRITICAL FIX: Clear output Resources BEFORE destroying wrapper objects.

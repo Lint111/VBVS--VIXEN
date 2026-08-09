@@ -1,0 +1,46 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// HitAccumClear.comp - table-wide epoch clear for the (recipeId, cell@mip)
+// hit-accumulation table (HitAccumTable, kHitAccumTableCapacity=65536 slots).
+// ============================================================================
+// (undertow docs/plans/2026-08-04-wavefront-recipe-shading.md § B2)
+//
+// ClaimAccumSlot's own reclaim (HitAccumulate.comp) is LAZY PER-SLOT: it only
+// reclaims a slot whose keyHiBase (recipeId|mip) matches the CURRENT probe's
+// key AND whose stored epoch is stale -- a slot occupied by a DIFFERENT
+// recipeId/mip/cell key is never touched unless that exact different key
+// happens to probe through it later. With MAX_FRAMES_IN_FLIGHT epochs live,
+// the table stays dominated by 3-4 epochs' worth of stale entries
+// (measured: counts/occupied-slot 1.03 vs CPU-predict's 2.46 -- a uniform
+// "freshly reclaimed stragglers" signature). This dispatch is the missing
+// table-wide clear: one thread per slot, zeroes keyLo (the CAS sentinel) so
+// every slot starts this epoch genuinely empty. Runs BEFORE
+// HitAccumulate.comp's accumulate pass in the frame (topology, not hazard,
+// orders it -- same convention as the accumulate-before-wave edge).
+//
+// Dispatch: 1D over kHitAccumTableCapacity (65536/64 = 1024 workgroups).
+// Standalone bindings, mirroring HitAccumulate.comp's own leanness (no
+// SceneBindings, nothing but the one buffer this pass touches).
+// ============================================================================
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "HitAccumulationCommon.glsl"
+
+layout(std430, binding = 0) buffer HitAccumTable {
+    HitAccumEntryGpu accumEntries[];
+};
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= kHitAccumTableCapacity) return;
+    // keyLo=0 is the CAS sentinel ClaimAccumSlot's atomicCompSwap(...,0u,keyLo)
+    // requires to claim a slot fresh -- zeroing it alone makes the slot
+    // logically empty. keyHi is zeroed too so a stale epoch can never be read
+    // back before the slot is reclaimed (readback/diag code paths key off
+    // keyHi's low 20 bits without re-checking keyLo in a couple of spots).
+    accumEntries[slot].keyLo = 0u;
+    accumEntries[slot].keyHi = 0u;
+}

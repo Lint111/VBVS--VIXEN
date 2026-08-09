@@ -11,6 +11,242 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-044 — Deep-field mip-accessor entry dispatch anchors footprint at ray-entry, systematically undershoots, admits coarse rays into the DDA detail march
+
+**Discovered:** 2026-08-08, wavefront epoch batch 35 (undertow ledger
+`docs/plans/2026-08-04-wavefront-recipe-shading.md`). See
+[[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]] for the full architecture
+context.
+
+**Symptom:** the entry-point dispatch that decides mip-sample vs DDA-march
+(`shaders/SceneBindings.glsl:2478-2548`) computes the footprint at the ray/instance
+**entry** point — the ray's nearest approach to the instance, not the distance the sample
+is actually resolved at. Measured: the admission-gate LHS collapses **1.86984 →
+0.375855 (−80%)** at entry vs. resolved-distance evaluation on the same leaf.
+
+**Root cause:** the entry point systematically underestimates footprint (it's the closest
+the ray ever gets), so the dispatch selects too FINE a level and wrongly admits rays into
+the exact DDA march that should have been mip-sampled outright at their true (coarser)
+resolved distance. RT-composed doesn't have this problem — it evaluates per-candidate, so
+its level naturally tracks the resolved distance.
+
+**Fix (SHIPPED batch 36, CONFIRMED WORKING batch 38):** anchor the level-selection
+footprint on the ray/instance **midpoint** distance (`entryMidT`) instead of entry.
+`recordEntryGateLhs` (`SceneBindings.glsl:2539`) sits before the admit branch so both
+admitted and rejected rays are sampled. Batch 38, dda-on, 3/3 boots byte-identical:
+`[EntryGateLhs] min=0.369571 max=1.87239` — max moved **0.375855 → 1.87239 (4.98×)**,
+landing at the mid-march ceiling (ratio 1.0014). Regression bars held: flag-off identity
+`87473180f7b4e603`; DDA census count 414/420 (mean/max are NOT boot-stable, see the
+mean/max entry below — gate on count only); DDA policy-on frame parity 0px delta; D=612
+parity. **Scope limit: the dispatch split itself (409,500 mip / 9,900 march / 7,200
+safety-net) is unchanged by this fix — footprint SIZING moved, regime ASSIGNMENT did not.**
+
+**Severity:** was Medium, now informational · **Status:** CLOSED (batch 38). Composed has
+no anchor conclusion available — it's a per-candidate RT mechanism that never routes
+through the entry-dispatch call site (`[EntryGateLhs]` reads `-nan/0` there, structural,
+not a bug).
+
+---
+
+## KI-043 — Deep-field mip-accessor cost win UNCERTIFIABLE — root cause was WRONG (not concurrent GPU load); frame is compute-latency-bound
+
+**Discovered:** 2026-08-08, wavefront epoch batch 35. **Root cause corrected:** batch
+38-40.
+
+**Symptom:** attempted before/after cost measurement of the entry-dispatch inversion
+showed within-config spread up to 165× batch-34's, and even unchanged policy-off
+baselines drifted run to run. Batch 38 measured dda-on spread 54.60%, dda-off 15.58%; even
+identity boots (no flag touched, same binary) swung 1.3137 ms against a naive "win" of
+2.0438 ms — the effect is smaller than the noise of the null comparison.
+
+**⛔ ORIGINAL ROOT CAUSE WAS WRONG.** batch 35 attributed the spread to "another game
+running on the GPU, contending for the device" — this was a controller instrument defect,
+not a real finding. Root cause: `tasklist /FI "IMAGENAME eq steam.exe"` returns **blank
+output** on this machine instead of "No tasks", so absence-of-match was misread as
+absence-of-process (Steam WAS running, 10 processes). Once corrected via unfiltered
+`tasklist | grep`, `nvidia-smi` showed the **GPU idle at P8, 12 W / 130 W**, only
+`explorer.exe` on the device — Steam-alive ≠ GPU-busy, and there was never any external
+contention to blame. See "tasklist /FI blank-output trap" below.
+
+**Batch 39's follow-up theory (CPU/pacing-bound) was ALSO overturned (batch 40).** Present
+mode is already IMMEDIATE (uncapped; `VulkanSwapChain.cpp:380-408` `ManagePresentMode`),
+so there was no pacing knob to add. The real diagnosis, reconciled with commit `cf3a30fd`
+("W-BASE stall decomposition closed — the frame busy-waits at 0.4% SM issue"): **the frame
+is COMPUTE-LATENCY-BOUND.** GPU 98.8% busy while SM issue = 0.39% (L2 25.2%, warps
+resident 35.6%) — a dependent-load latency chain inside the ESVO traversal shader
+(pointer-chase + L2 atomic round-trips) backpressures `vkWaitForFences`
+(`FrameSyncNode.cpp:148-149`, ~20 ms). Under a 3000-frame load boot the clock touched 960
+MHz (P3, 46% of max) for exactly one 4s sample while utilization read 4%, then fell back —
+there is no clock plateau to warm into, so GPU-warming was tried and correctly abandoned
+as the fix (`tools/bench/gpu_warm.py`, stdlib, refuses to claim warm on timeout).
+
+**Impact:** the march-AVOIDED cost win the entry-dispatch inversion was built to deliver
+remains **unmeasured, not disproven** — three consecutive theories (external contention,
+pacing, warm-up) have now been ruled out, narrowing but not yet resolving the variance:
+within-leg variance (identity-1 2.80 ms vs identity-3 3.99 ms, same config/binary) still
+exceeds any between-leg effect.
+
+**Fix:** the next probe is per-boot clock stamping + fence-wait jitter (not more boots,
+not GPU warm-up — both tried). `cf3a30fd`'s lever ranking stands for where the
+compute-latency budget goes: W-RT ray query > B2 shared-mem premerge > kernel splitting.
+
+**Severity:** Low (measurement-only, blocks claiming a number, not a code defect) ·
+**Status:** OPEN, root cause narrowed to compute-latency, next-probe identified.
+
+---
+
+## KI-045 — `SdfBake.h` one-brick dilation trap: a sparsity mask coarser than its own skirt silently re-densifies "sparse" content back to ~solid
+
+**Discovered:** 2026-08-08, wavefront epoch batch 41 (sparse-body regime-3 divergence
+slice). See
+[[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08#sparse-body-divergence-attempt-batch-41--41-v2--bake-bug-foundfixed-cross-instance-compositing-is-genuinely-out-of-scope-for-slice-1]].
+
+**Symptom:** an authored 29.5%-dense sparse body (151/512 bricks kept by the occupancy
+mask) baked to **502/512 = 98.0% dense** — effectively solid — with no error, no warning,
+and a downstream regime-3 divergence test that consequently found no divergence at all
+(genuine null result, not a test bug).
+
+**Root cause:** `SdfBake.h:176-201` dilates the occupied brick mask by exactly **one
+brick** to build a safety skirt around real geometry. When the mask's own gaps are also
+one brick wide, the dilation seals every gap — every "hole" the mask tried to carve gets
+filled back in by the skirt meant to protect its edges. Confirmed independently via pool
+bytes (the bake-sparsity truth instrument, unconditional): sparse body 6,168,576 B =
+98.8% of a dense body's 6,242,304 B, matching the 502/512 brick count exactly.
+
+**Fix (SHIPPED, batch 41-v2):** widen mask cells 1→4 bricks so gaps ≥4 bricks survive a
+1-brick skirt as ≥2-brick holes; compensate keep-rate 40%→25% (the skirt re-inflates kept
+regions by ~(6/4)²). Confirmed by pool bytes: sparse-on 41,201,664 B − sparse-off
+37,453,824 B = 3,747,840 B = **60.0%** of dense (down from 98.8%), landing on the
+predicted (6/4)²×25% ≈ 56%.
+
+**Standing rule:** mask granularity must exceed the skirt width, or the skirt eats the
+mask. Any future occupancy-mask + dilation pairing in the bake path needs this checked
+explicitly — pool bytes is the cheap unconditional check (`[BrickDataHash] sizes:`, no
+`VIXEN_NODE_LOG` required).
+
+**Severity:** Medium (silently defeats sparse-content baking with no error signal) ·
+**Status:** CLOSED (batch 41-v2), fix landed.
+
+---
+
+## KI-046 — Two-state boot alternation: nominally-identical boots draw from exactly two frame states, not one
+
+**Discovered:** 2026-08-08, wavefront epoch batch 40 (validator frame-hash finding).
+
+> **⭐ RESOLVED-AS-CHARACTERIZED (batch 43, same day): downgraded from parity-bound to a
+> solved masking recipe + a unified mechanism.** (1) All diff pixels live in y∈[240,259]
+> (three x-clusters; config-independent; AA-magnitude brightness shifts). **Masking rows
+> 240-259 collapses all 24 historical legs across 3 batches × 5 configs to ONE hash
+> (`c76867f9ba34defd`)** — the boot-stability gate. Corollary: all config signal in these
+> captures ALSO lives inside that band, so far-field parity still compares inside it,
+> state-set-aware. (2) **The alternation is the pixel face of a per-boot bistable
+> RENDER-WORK regime:** across 30 legs, esvo⇄shadow_visibility_wave trade ~1.4 ms with
+> r = −0.88 in two clean bands — the same two-state phenomenon seen through timers. Cost
+> measurement therefore classifies each boot's regime first (see
+> Measurement-Discipline-2026-08). The bistable INPUT remains unmeasured; a "third state"
+> report (composed-on-2) was DISPROVED — same flip in that config's own hash pair.
+
+**Symptom:** repeated boots of the *same* config (same binary, same flags) do not
+byte-reproduce a single frame — they alternate between exactly **two** frame states.
+Default scene, dda-on/identity: MD5 `87473180f7b4e603` and `9f5ea513…`, differing in 1,089
+px (census 414 both — count is stable but too coarse to see the alternation; frame hashes
+are the sharper instrument).
+
+**Impact — this is a KNOWN FLAKE FAMILY, not necessarily a new bug:** `cmp` proved
+dda-on-3 ≡ identity-1 and dda-on-1 ≡ identity-2 byte-identical, while their counters
+differ absolutely (409500/9900/9900 vs 0/0/0 — configs genuinely differ, verified via the
+ENGAGED log line). Batch 40 identified this as likely the **same flake family as the
+closed HUD-text saga** (KI-039/KI-033's boot-time recompile-trigger class), not a new
+regime-3/policy-related regression: dda-on ≡ identity at full byte-exactness once you
+account for which of the two states each boot happened to land on.
+
+**Consequence for parity work:** any pixel-delta parity check on this scene must either
+hash the whole frame and check membership in the known state SET (not equality to a
+single reference), or explicitly bound the comparison window to exclude this alternation.
+A raw px-delta count between two arbitrary boots of "the same" config can show up to 1,089
+false-positive px and mislead a parity verdict.
+
+**Fix:** not yet root-caused to the specific bistable input; identifying it is carried
+forward on the wavefront ledger's NEXT list (batch 40 entry). Workaround in place:
+state-set hashing instead of single-reference equality (used successfully in the batch-41
+sparse-body work: "frame ∈ known state set").
+
+**Severity:** Medium (parity-instrument-affecting; not a rendering-correctness bug) ·
+**Status:** OPEN, workaround in use, root cause not yet found.
+
+---
+
+## walkCov possibly blind to bake sparsity (hypothesis, batch 41-v2) — carried as a caveat, not a KI
+
+Not filed as a numbered KI because it is explicitly a hypothesis, not a measured defect:
+`walkCov = clamp(walkSdf.y,0,1)` (from `readMipSample(SEM_SDF)`) read ≈0.62 on BOTH the
+98%-dense (pre-fix) and 60%-dense (post-fix) sparse-body bakes in batch 41/41-v2 — the
+same regime-3 counters (`entry=420000 earlyOut=417300 march=5400 emptyEntry=2700`) came
+out bit-identical across two bakes with very different actual density. This suggests
+`walkCov` may measure in-band voxel fraction *within* occupied bricks (constant for a
+given shell thickness) rather than brick-level occupancy — i.e. regime 3's density proxy
+might not see bake-level sparsity at all. The evidence is the counter-identity coincidence
+across two bakes, not a direct measurement of the sampling path; a dedicated
+walkCov/walkSampledLevel probe is needed before the next regime-3 slice leans on this
+value as a sparsity signal. See
+[[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]] for the full context.
+
+---
+
+## `tasklist /FI` blank-output trap — a filtered process query returns nothing (not "no match") on this machine, and reads as false-negative
+
+**Discovered:** 2026-08-08, wavefront epoch batch 38 (root-caused a false "GPU
+contention" narrative that had stood since batch 35).
+
+**Symptom:** `tasklist /FI "IMAGENAME eq steam.exe"` returned **blank output** (no rows,
+no "INFO: No tasks are running which match the specified criteria." message either) on
+this machine when Steam WAS in fact running (10 processes). A controller briefed agents
+"Steam is closed, verified" based on this blank read and the false premise stood for a
+full batch before a validator's independent spread check caught it.
+
+**Root cause:** environmental — the filtered form's absence-of-match output is
+indistinguishable from a real "nothing found" on this box, and is NOT the documented
+Windows fallback string. Not yet traced to a specific Windows/tasklist version quirk;
+treated as a standing environmental fact for this machine, not a one-off fluke.
+
+**Standing rule (⭐, must be followed going forward):** only ever use the **unfiltered**
+form and grep client-side — `tasklist | grep -i <name>` — never `tasklist /FI`, on this
+box. A verified-state claim in a briefing still deserves a cheap independent check when a
+whole batch's figures depend on it.
+
+**Severity:** Low (tooling gotcha, not a product defect) but historically expensive (cost
+a full batch's worth of mis-attributed findings) · **Status:** documented, workaround
+(unfiltered tasklist) in standing use.
+
+---
+
+## RETIRED — "the frame is CPU/pacing-bound" — SUPERSEDED by compute-latency-bound (batch 40, reconciled with `cf3a30fd`)
+
+Tracked as the diagnosis from batch 39's warm-up investigation: no clock plateau to warm
+into ⇒ concluded CPU/pacing-bound, present-mode-uncapped as the proposed fix. **Retired,
+batch 40:** present mode was already IMMEDIATE (`VulkanSwapChain.cpp:380-408`), so there
+was no pacing knob left to add — the premise that pacing/vsync was the limiter does not
+survive that check. The correct diagnosis, reconciled with commit `cf3a30fd` ("W-BASE
+stall decomposition closed — the frame busy-waits at 0.4% SM issue"): **the frame is
+COMPUTE-LATENCY-BOUND** — GPU 98.8% busy, SM issue 0.39%, a dependent-load latency chain
+inside the ESVO traversal shader backpressures the frame's fence wait. The 210 MHz/P8
+clock reading that drove the pacing theory is latency-bound-but-occupied, not idle. See
+KI-043 above for the full reconciliation.
+
+---
+
+## RETIRED (false target) — "DDA should reach L1+ / DDA's level-spread is an efficiency defect"
+
+Tracked across batches 32-35 as if DDA sampling only L0 were a gap to close. **Retired by
+user correction, 2026-08-08:** DDA's domain IS voxel-brick traversal — level 0 by
+definition. Coarser levels belong to the entry dispatch in front of DDA, never to DDA
+itself; RT-composed's L0/L1/L2 spread is a different mechanism (per-candidate evaluation),
+not DDA "doing better." The per-backend level-spread histogram is not an efficiency
+instrument for DDA and must not be gated on again. See
+[[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]].
+
+---
+
 ## KI-042 — Window minimization during a `VIXEN_PERF_CSV` capture corrupts the rolling-average `steady_state_fps` column with non-physical spikes
 
 **Discovered:** 2026-07-18, Recipe Diversity Stress Scene Inc6 M4, during the N=150 FPS sweep (one of 3
@@ -583,13 +819,33 @@ itself) · **Status:** OPEN, pre-existing, out of scope for
 
 **Symptom shape:** interleaved log output from concurrent threads (`"[GaiaVoxelWorld] Batch progress: [GaiaVoxelWorld] Batch progress: 0%0%"` — two threads' `std::cout` calls torn mid-line), heap corruption, and Gaia ECS-internal invariant violations — consistent with `GaiaVoxelWorld`/`createVoxelsBatch`/the Gaia ECS `world` object being mutated from multiple threads without adequate synchronization somewhere in `VoxelInjectionQueue`'s worker/enqueue path.
 
-**Root cause:** not yet investigated in depth — this entry documents the discovery and evidence for pre-existing status, not a diagnosis. Likely candidates for a future investigation: `GaiaVoxelWorld`'s underlying `gaia::ecs::World` may not be safe for concurrent `add()`/entity-creation calls at all (ECS libraries frequently assume single-threaded mutation with external synchronization left to the caller), and `VoxelInjectionQueue`'s worker-thread dispatch may be missing a mutex/lock around its calls into the shared `GaiaVoxelWorld` instance.
+**Root cause (source audit 2026-07-27):** confirmed as a compound concurrency/lifetime defect, not
+only a missing Gaia mutex. (1) Every worker calls `createVoxelsBatch` against the same Gaia world,
+unsynchronized Morton index, and unsynchronized block cache. (2) The ring uses one atomic read and
+write index without producer/consumer reservation or per-slot sequence numbers, so it is an SPSC
+algorithm advertised and tested as multi-producer/multi-consumer. (3) `VoxelCreationRequest` retains
+a caller-owned component `std::span`; copying a request into the async ring does not preserve its
+payload lifetime. (4) workers publish the new read index before world creation completes, so
+`flush()` can report empty early. (5) `stop()` clears `m_running` before draining and workers break
+on that flag. Gaia's pinned documentation separately requires structural changes during parallel
+query work to be deferred through command buffers; its parallel query/jobs API is not a guarantee
+that arbitrary concurrent `World::add()` calls are valid.
 
-**Impact:** `VoxelInjectionQueue`/`VoxelInjector`'s parallel voxel-creation path is currently unsound — heap corruption and ECS state corruption under concurrent use. Any production caller of this path (if one exists — not yet audited) is at risk; any future caller should not be added until this is fixed.
+**Impact:** `VoxelInjectionQueue`/`VoxelInjector`'s parallel voxel-creation path is currently unsound
+— heap corruption and ECS state corruption under concurrent use. The 2026-07-27 reference audit found
+no production instantiation/call site; the current scene build calls `createVoxelsBatch` synchronously.
+The defect is therefore latent outside its tests today, but any future caller would activate it and
+must not be added.
 
-**Fix options:** (a) add proper synchronization (a mutex around the shared `GaiaVoxelWorld` mutation, or per-worker private ECS staging + a single-threaded merge step) in `VoxelInjectionQueue`'s worker path; (b) confirm/document whether Gaia ECS itself is fundamentally single-threaded and restructure `VoxelInjectionQueue` to serialize all `GaiaVoxelWorld` mutation onto one thread regardless of how work is parallelized elsewhere (e.g. parallel voxel *computation*, serial *insertion*).
+**Fix direction:** retire/replace this queue rather than add only a world mutex. Assemble owned,
+immutable region/page payloads in parallel; submit them through a bounded, correct completion queue
+to one Gaia/world-index commit owner; batch GPU range uploads; publish by page generation; and defer
+old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark grouped prototype
+`copy_n` publication on that single owner. Full design and proof gates:
+[[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]].
 
-**Severity:** High (heap corruption is a real memory-safety bug, not just a failing assertion) · **Status:** OPEN, pre-existing, out of scope for the 2026-07-12 sweep audit that discovered it (that audit's scope was fixing/triaging failures surfaced by its own session's changes, not auditing unrelated pre-existing concurrency bugs)
+**Severity:** High (heap corruption is a real memory-safety bug, not just a failing assertion) ·
+**Status:** OPEN, root cause verified 2026-07-27; replacement designed but not implemented.
 
 ---
 
@@ -1175,3 +1431,23 @@ Error (all three, identical): `.vulkan-sdk/1.4.350.1/x86_64/Include/vulkan/vulka
 **Root cause:** not yet investigated — flagged for whoever next touches `probeUpdatePushConstantGatherer` or the push-constant gatherer's internal type-checking path to root-cause and either fix or explain why it is expected. Deliberately NOT investigated as part of M7's docs-only close-out scope (would require RenderGraph library source changes, out of scope for a measurement+docs milestone).
 
 **Severity:** Low (cosmetic log noise, no functional/behavioral impact observed across 4 milestones of live gating) · **Status:** OPEN, tracked, not blocking.
+
+## KI-047 — MipBake collapses child coverage to a BOOL at every level; regime-3's density proxy cannot see bake sparsity (MEASURED)
+
+**Discovered:** 2026-08-08, batches 41→42-fixes (hypothesis → measured).
+
+**Mechanism:** `ReduceBrickToMipSample` (MipBake.h:110-146) marks a 64-voxel octant group
+occupied if ANY voxel is live; interior levels (MipBake.h:203,223) build children as
+`coverage > 0` bools, then `coverage = occupiedCount/8`. A child at coverage 0.125 and one
+at 1.0 are identical to the parent. Result: `.y` measures shell topology, not density.
+
+**Measured consequence:** `[WalkCov] covMin=1 covMax=1 levelMin=0 levelMax=0` on the 60%-dense
+sparse test body — the regime-3 walk reads coverage ≡ 1.0 at level 0, transmittance dies on the
+first cell, and the cross-instance compositing path is a permanent (correct) no-op. Counters
+were bit-identical across a 98%-dense and a 60%-dense bake of the same shell.
+
+**Blast radius:** the regime-3 walk is the ONLY `.y`-as-magnitude consumer (all others test
+`> 0`, which weighted values preserve). Fix = weighted propagation (leaf: fraction-of-64;
+interior: `sum(child.coverage)/8`) + the walk sampling its footprint-matched level (descent
+currently lands at 0 even at K=0.2). In flight as batch-44 stream B; moves pool-content
+hashes ⇒ new declared references.

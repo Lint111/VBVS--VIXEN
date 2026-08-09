@@ -288,6 +288,27 @@ endif()
 gtest_discover_tests(test_mip_sample_bake)
 
 # ===========================================================================
+# Mip Aniso Pool Tests (Deep-Field Mip Policy — anisotropic coarse mips,
+# MipAnisoPool.h). Uses a synthetic single-node Octree, no recipe/SdfBake
+# plumbing needed.
+# ===========================================================================
+add_executable(test_mip_aniso_pool test_mip_aniso_pool.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_mip_aniso_pool PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_mip_aniso_pool PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_mip_aniso_pool PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_mip_aniso_pool POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_aniso_pool>
+        COMMENT "Copying TBB DLL for test_mip_aniso_pool")
+endif()
+gtest_discover_tests(test_mip_aniso_pool)
+
+# ===========================================================================
 # Light Tree Tests  (Sampled Lighting Inc3 M3 — mip-cut light-tree: bounded
 # cut through the emissive mip pyramid, plus the brute-force-leaf-sum vs cut
 # tolerance validation)
@@ -726,6 +747,30 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_recipe_nested_invocation")
 endif()
 gtest_discover_tests(test_recipe_nested_invocation)
+
+# ===========================================================================
+# W-RT Slice 1 feasibility spike (2026-08-07) — standalone proof that VK_KHR_ray_query works
+# end-to-end on this toolchain (capability gate, device+feature-chain creation, procedural
+# voxel-sphere BLAS/TLAS build, rayQueryEXT compute dispatch, CPU parity, microbench).
+# Deliberately no SVO dependency — the scene is self-contained, no octree integration.
+# Same SetUp()-GTEST_SKIP shape as the fixtures above: SKIPs on missing Vulkan / no real GPU /
+# missing RT extensions or features (WSL/Dozen always SKIPs here).
+# ===========================================================================
+add_executable(test_rayquery_feasibility test_rayquery_feasibility.cpp)
+if(TARGET ShaderManagement AND TARGET VulkanResources)
+    target_link_libraries(test_rayquery_feasibility PRIVATE
+        GTest::gtest_main ShaderManagement VulkanResources)
+else()
+    target_link_libraries(test_rayquery_feasibility PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_rayquery_feasibility PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_rayquery_feasibility POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_rayquery_feasibility>
+        COMMENT "Copying TBB DLL for test_rayquery_feasibility")
+endif()
+gtest_discover_tests(test_rayquery_feasibility)
 
 # ===========================================================================
 # Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype's

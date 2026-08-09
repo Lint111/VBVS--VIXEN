@@ -11,11 +11,13 @@
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
 #include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
+#include <cctype>    // std::isspace for whitespace-safe boolean env flags
 #include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
 #include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
 #include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
 #include <future>   // Baked-Perf M7 Task 7.1: std::async per-body parallel bake
+#include <iostream> // Round-5 [ComposedBackend] boot print (mirrors VoxelGridNode.cpp's [FarFieldCount])
 #include <mutex>    // Baked-Perf M7 Task 7.1: serializes calls into Gaia's shared ChunkAllocator
 #include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
@@ -42,6 +44,7 @@
 #include "merged/SpatialReuseGather-SDI.h"      // W2a: the ReSTIR spatial fold (gather)
 #include "merged/HitAccumCellShade-SDI.h"       // W3c-2: per-cell shade over the accumulation table
 #include "merged/HitAccumulate-SDI.h"           // W-SPLIT: the re-split accumulate, standalone bindings
+#include "merged/HitAccumClear-SDI.h"           // B2 (batch-26): table-wide epoch clear, standalone bindings
 // W-LEAN L3: HitAccumResolve-SDI.h RETIRED — the resolve is SpatialReuseShade's
 // own VIXEN_SRS_CELL_RESOLVE axis now (gated bindings 36-39 in ReuseSdi).
 
@@ -61,6 +64,7 @@ namespace WaveSdi = ShaderInterface::ShadowVisibilityWave;
 namespace SrgSdi = ShaderInterface::SpatialReuseGather;  // W2a: the ReSTIR spatial fold (GatherSdi = ProbeGather, taken)
 namespace CellShadeSdi = ShaderInterface::HitAccumCellShade;  // W3c-2
 namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
+namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wide epoch clear
 // --- nodes this subgraph wires ---
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"  // M-wire: sparse shell octree + instance SSBO config
 #include "Data/Nodes/CameraNodeConfig.h"
@@ -91,6 +95,7 @@ namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 #include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
+#include "Data/Nodes/HitAccumParamsConfigNodeConfig.h"  // B2: hit-accumulate params upload ring
 #include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Data/Nodes/WorldPosHistoryNodeConfig.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
@@ -138,6 +143,7 @@ namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 #include "Nodes/InstanceNode.h"
 #include "Nodes/LightingConfigNode.h"  // Sampled Lighting Inc0 M3: LightingConfig upload ring
 #include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
+#include "Nodes/HitAccumParamsConfigNode.h"  // B2: hit-accumulate params upload ring
 #include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Nodes/WorldPosHistoryNode.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
@@ -171,6 +177,15 @@ namespace AccumSdi = ShaderInterface::HitAccumulate;  // W-SPLIT
 
 namespace {
 
+bool envFlagEnabled(const char* name) {
+    const char* value = std::getenv(name);
+    if (value == nullptr) return false;
+    for (; *value != '\0'; ++value) {
+        if (!std::isspace(static_cast<unsigned char>(*value))) return true;
+    }
+    return false;
+}
+
 // Baked-perf-pipeline M2 (audit D1, Task 2.1): reads a shader source file and, when
 // VIXEN_DEBUG_CAPTURE is set, injects "#define VIXEN_GPU_TRACE_HOOKS 1\n" -- the same
 // textual-#define-injection technique Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource
@@ -203,7 +218,7 @@ std::string ReadShaderSourceWithTraceHooksGate(const std::filesystem::path& comp
     std::ostringstream buf;
     buf << file.rdbuf();
     std::string source = buf.str();
-    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+    if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         const size_t firstNewline = source.find('\n');
         const std::string defineLine = "#define VIXEN_GPU_TRACE_HOOKS 1\n";
         if (firstNewline == std::string::npos) {
@@ -363,7 +378,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     // S0: opt into the UI-only RmlUi demo graph via env var, leaving the voxel path untouched.
-    if (std::getenv("VIXEN_UI_DEMO")) {
+    if (envFlagEnabled("VIXEN_UI_DEMO")) {
         mainLogger->Info("VIXEN_UI_DEMO set - building UI-only RmlUi demo graph");
         BuildUIGraph();
         return;
@@ -371,7 +386,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // AR#31: opt into the isolated instanced-cube raster demo via env var, leaving the
     // live voxel-compute path untouched.
-    if (std::getenv("VIXEN_INSTANCING_DEMO")) {
+    if (envFlagEnabled("VIXEN_INSTANCING_DEMO")) {
         mainLogger->Info("VIXEN_INSTANCING_DEMO set - building instanced-cube raster demo graph");
         BuildInstancingDemoGraph();
         return;
@@ -380,7 +395,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // AR#21 P4: opt into the isolated auto-sync FrameGraph demo via env var. Proves
     // buffer-hazard auto-synchronization (compute->compute->render->present in ONE
     // command buffer via PassGroupNode). Leaves the live voxel-compute path untouched.
-    if (std::getenv("VIXEN_AUTOSYNC_DEMO")) {
+    if (envFlagEnabled("VIXEN_AUTOSYNC_DEMO")) {
         mainLogger->Info("VIXEN_AUTOSYNC_DEMO set - building auto-sync FrameGraph demo graph");
         BuildAutoSyncDemoGraph();
         return;
@@ -391,7 +406,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // compute submits write 2 buffers, 1 consumer compute submit waits BOTH via 2 baked
     // timeline edges (NO binary handoff between them) + writes the swapchain. Leaves the
     // live voxel-compute path untouched.
-    if (std::getenv("VIXEN_FANIN_DEMO")) {
+    if (envFlagEnabled("VIXEN_FANIN_DEMO")) {
         mainLogger->Info("VIXEN_FANIN_DEMO set - building multi-submit fan-in timeline demo graph");
         BuildFanInDemoGraph();
         return;
@@ -738,10 +753,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the CPU mirror (HitAccumulation.h) over the same records. B1-shape
     // conditional creation on VIXEN_HIT_ACCUM (default off): zero nodes when
     // unset.
-    const bool hitAccumEnabled = (std::getenv("VIXEN_HIT_ACCUM") != nullptr);
+    const bool hitAccumEnabled = envFlagEnabled("VIXEN_HIT_ACCUM");
     hitAccumEnabled_ = hitAccumEnabled;
+    // B2 determinism slice: VIXEN_HIT_ACCUM_DIAG_FRAME=<n> -- sample the diag
+    // readback (RunHitAccumDiagReadback) at a fixed frame n instead of only at
+    // shutdown (PostTick, VulkanGraphApplication.cpp). 0/unset = disabled.
+    if (const char* diagFrameEnv = std::getenv("VIXEN_HIT_ACCUM_DIAG_FRAME")) {
+        hitAccumDiagFrame_ = static_cast<uint64_t>(std::strtoull(diagFrameEnv, nullptr, 10));
+    }
+    // B2 (docs/plans/2026-08-04-wavefront-recipe-shading.md): shared-memory
+    // same-key pre-merge within the accumulate pass's own 64-wide workgroup —
+    // flag-off keeps HitAccumulate.comp's compiled variant byte-identical
+    // (B1's conditional-creation shape, same as VIXEN_HIT_ACCUM_RESOLVE below).
+    const bool hitAccumPremergeEnabled =
+        hitAccumEnabled && envFlagEnabled("VIXEN_HIT_ACCUM_PREMERGE");
+    // B2 (batch-27): the table-wide clear (batch-26) is OFF by default now.
+    // The diag readback already scans a single named epoch (VulkanGraphApplication
+    // .cpp's maxEpoch filter) -- for diag purposes the clear is redundant. Worse,
+    // its unconditional every-frame dispatch wipes the SAMPLED frame's own rows
+    // before the deferred readback runs (a later in-flight frame's clear beats the
+    // scan), which is what drove batch-26's occupied=0. Opt back in with
+    // VIXEN_HIT_ACCUM_CLEAR once a correct (epoch-conditional or fenced) clear is
+    // designed; until then ClaimAccumSlot's lazy per-slot reclaim is the only
+    // reclaim mechanism (accepted: counts/occupied-slot settles below CPU-predict's
+    // 2.46 under multi-epoch staleness, not a diag-readback concern).
+    const bool hitAccumClearEnabled =
+        hitAccumEnabled && envFlagEnabled("VIXEN_HIT_ACCUM_CLEAR");
     NodeHandle hitAccumTableBuffer{};
     NodeHandle hitAccumParamsBuffer{};
+    NodeHandle hitAccumClearShaderLib{}, hitAccumClearNode{};
+    NodeHandle hitAccumClearWriteGatherer{};
     NodeHandle hitAccumAccumulateShaderLib{}, hitAccumAccumulateNode{};
     NodeHandle hitAccumAccumulateReadGatherer{}, hitAccumAccumulateWriteGatherer{};
     if (hitAccumEnabled) {
@@ -755,7 +796,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // params (epoch, primary cone, detail, camera) ride ONE host-written
         // 48-byte buffer, written each PreTick — NEVER push constants (they
         // bake at record time per ring slot; the W3b finding).
-        hitAccumParamsBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_params_buffer");
+        // B2 (batch-23): ring-buffered — was a single un-ringed StorageBufferNode
+        // (batch-22 root cause: k frames in flight shared one epoch stamp).
+        // Mirrors ShadowConfigNode/PrevCameraConfigNode's PerFrameResources ring.
+        hitAccumParamsBuffer = renderGraph->AddNode<HitAccumParamsConfigNodeType>("hit_accum_params_buffer");
+        // B2 (batch-26, gated OFF by default batch-27, VIXEN_HIT_ACCUM_CLEAR):
+        // table-wide epoch clear. Its EVERY-FRAME unconditional dispatch wipes
+        // ALL slots regardless of epoch (including the just-sampled frame's own
+        // rows, since it carries no epoch filter) -- a later in-flight frame's
+        // clear can run before the deferred diag readback scans, which is what
+        // produced batch-26's occupied=0. Node creation is skipped entirely
+        // unless hitAccumClearEnabled; ClaimAccumSlot's lazy per-slot reclaim
+        // (HitAccumulate.comp) remains the only reclaim path by default.
+        if (hitAccumClearEnabled) {
+            hitAccumClearShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_clear_shader_lib");
+            hitAccumClearNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_clear");
+            hitAccumClearWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_clear_write_gatherer");
+        }
         hitAccumAccumulateShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_accumulate_shader_lib");
         hitAccumAccumulateNode      = renderGraph->AddNode<ComputeStageNodeType>("hit_accum_accumulate");
         // Reads: hitRecordBuffer. Writes: {table, hitRecordBuffer} — it RMWs
@@ -774,7 +831,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the graph — and the frames — bit-identical (B1's conditional-creation
     // shape, again).
     const bool hitAccumResolveEnabled =
-        hitAccumEnabled && (std::getenv("VIXEN_HIT_ACCUM_RESOLVE") != nullptr);
+        hitAccumEnabled && envFlagEnabled("VIXEN_HIT_ACCUM_RESOLVE");
     hitAccumResolveEnabled_ = hitAccumResolveEnabled;
     NodeHandle hitAccumCellRadianceBuffer{};
     NodeHandle hitAccumCellShadeShaderLib{}, hitAccumCellShadeNode{};
@@ -835,12 +892,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // When UNSET (default): none of the nodes below are created at all -- the graph builds EXACTLY
     // as it did pre-M3, satisfying the milestone's own "flag-unset is a genuine, provable no-op"
     // bar at the strongest level (no new node, not just an inert one).
-    const bool recipeBucketedDispatchEnabled = (std::getenv("VIXEN_RECIPE_BUCKETED_DISPATCH") != nullptr);
+    const bool recipeBucketedDispatchEnabled = envFlagEnabled("VIXEN_RECIPE_BUCKETED_DISPATCH");
     recipeBucketedDispatchEnabled_ = recipeBucketedDispatchEnabled;  // stored for PreTick's live orchestration
     // W2b: the identity bucket-shade skeleton rides the bucketed-dispatch
     // machinery (BucketMeta/indirect commands/MultiDispatchNode), so it
     // REQUIRES that flag — shade-without-buckets has nothing to dispatch over.
-    bucketedShadeEnabled_ = recipeBucketedDispatchEnabled && (std::getenv("VIXEN_BUCKETED_SHADE") != nullptr);
+    bucketedShadeEnabled_ = recipeBucketedDispatchEnabled && envFlagEnabled("VIXEN_BUCKETED_SHADE");
 
     NodeHandle recipeBucketCountBuffer{};
     NodeHandle recipeBucketIndicesBuffer{};
@@ -1065,6 +1122,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (auto* rl = rscInst->GetLogger()) { rl->SetEnabled(true); rl->SetTerminalOutput(true); }
     }
     NodeHandle raySizeBiasConstant = renderGraph->AddNode<ConstantNodeType>("ray_size_bias");
+
+    // Regime-3 (cosmic accumulation) first slice, deep-field-mip-policy design doc: cosmicK
+    // push-constant literal ("footprint >= K*cell" promotes a ray to the transmittance-
+    // accumulation walk). Push constant (not baked) so a later slice can sweep it without a
+    // rebuild -- same "ConstantNode + env override" lever as tierCrossingLodCoefOverrideConstant/
+    // secondaryRaySizeCoefConstant above. Default 4.0; VIXEN_REGIME3_K overrides. Value is inert
+    // (read by the shader, but VIXEN_REGIME3-gated) when the flag is off.
+    NodeHandle regime3KConstant = renderGraph->AddNode<ConstantNodeType>("regime3_cosmic_k");
 
     // Tiered-ESVO Inc2 M4 Task 9 live-gate knob: a demo-only ConstantNode that, when
     // VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE is set, is wired to push-constant field 8 INSTEAD of
@@ -1410,6 +1475,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* raySizeBiasConst = static_cast<ConstantNode*>(renderGraph->GetInstance(raySizeBiasConstant));
     raySizeBiasConst->SetValue<float>(0.0f);   // 0.0 = pinhole camera bias
 
+    // Regime-3 cosmicK: default 4.0, VIXEN_REGIME3_K env overrides (sweep without a rebuild).
+    {
+        float regime3KValue = 4.0f;
+        if (const char* regime3KEnv = std::getenv("VIXEN_REGIME3_K")) {
+            regime3KValue = std::strtof(regime3KEnv, nullptr);
+        }
+        auto* regime3KConst = static_cast<ConstantNode*>(renderGraph->GetInstance(regime3KConstant));
+        regime3KConst->SetValue<float>(regime3KValue);
+    }
+
     // Tiered-ESVO Inc2 M4 Task 9 live-gate knob (see tierCrossingLodCoefOverrideConstant's own
     // declaration comment above for why a direct literal, not an FOV bump, is the correct lever).
     // Tiered-ESVO Inc3 M8 Task 17 reuses this SAME generic ConstantNode-bypass knob (it is not
@@ -1527,6 +1602,90 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetOccupancyGrid(std::move(occupancyGridBlob));
             }
 
+            // Round 11 (far-field dispatch attribution): tag this shader as the
+            // primary march so SceneBindings.glsl's g_dispatchTag routes its
+            // far-field counters into index 0 (TraceBufferHeader::
+            // farFieldCountByTag etc, DebugRaySample.h) -- ProbeGather.comp is
+            // TraceWorld's only other caller and is left untagged (falls to
+            // index 1). Same textual-#define-after-#version technique as
+            // ReadShaderSourceWithTraceHooksGate's VIXEN_GPU_TRACE_HOOKS (this
+            // shader doesn't route through that helper, hence the inline splice
+            // here instead). Unconditional -- always-on, not env-gated, since a
+            // compile-time tag is free at runtime and only affects debug-counter
+            // bucketing.
+            {
+                const size_t firstNewline = splicedSource.find('\n');
+                const std::string tagDefine = "#define VIXEN_DISPATCH_IS_PRIMARY_MARCH 1\n";
+                if (firstNewline == std::string::npos) {
+                    splicedSource += "\n" + tagDefine;
+                } else {
+                    splicedSource.insert(firstNewline + 1, tagDefine);
+                }
+            }
+
+            // Batch-29 (deep-field mip-accessor policy, regime-2 level ladder):
+            // VIXEN_MIP_POLICY=1 env -> shader define, same textual-#define-
+            // after-#version splice as VIXEN_DISPATCH_IS_PRIMARY_MARCH just
+            // above. Gates descendToNodeOrdinal's level-selection loop
+            // (ESVOTraversal.glsl) onto the shared mipPolicyLevel function
+            // (SVOTypes.glsl) instead of the per-hop single-brick-rung crossing
+            // check; flag-off leaves that loop's source byte-identical to
+            // pre-batch-29.
+            if (envFlagEnabled("VIXEN_MIP_POLICY")) {
+                const size_t firstNewline = splicedSource.find('\n');
+                const std::string mipPolicyDefine = "#define VIXEN_MIP_POLICY 1\n";
+                if (firstNewline == std::string::npos) {
+                    splicedSource += "\n" + mipPolicyDefine;
+                } else {
+                    splicedSource.insert(firstNewline + 1, mipPolicyDefine);
+                }
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_MIP_POLICY: regime-2 level-ladder policy ENGAGED "
+                                      "(descendToNodeOrdinal consults mipPolicyLevel instead of the single brick rung)");
+                }
+
+                // Deep-field-mip-policy design doc, regime 3 (cosmic accumulation) first slice:
+                // VIXEN_REGIME3=1 env -> shader define, requires VIXEN_MIP_POLICY (regime 3 reuses
+                // its ladder machinery -- descendToNodeOrdinal/shadeFromMipSample -- so it cannot be
+                // meaningfully engaged alone). Off by default; flag-off leaves the entry dispatch's
+                // source byte-identical to pre-regime-3.
+                if (envFlagEnabled("VIXEN_REGIME3")) {
+                    const size_t firstNewlineR3 = splicedSource.find('\n');
+                    const std::string regime3Define = "#define VIXEN_REGIME3 1\n";
+                    if (firstNewlineR3 == std::string::npos) {
+                        splicedSource += "\n" + regime3Define;
+                    } else {
+                        splicedSource.insert(firstNewlineR3 + 1, regime3Define);
+                    }
+                    if (mainLogger && mainLogger->IsEnabled()) {
+                        mainLogger->Info("[BuildRenderGraph] VIXEN_REGIME3: cosmic-accumulation entry-dispatch walk ENGAGED "
+                                          "(footprint >= K*cell promotes to a transmittance accumulator, K=pc.cosmicK)");
+                    }
+                }
+
+            }
+
+            // Compositing slice part 2 (cross-instance transmittance fill): VIXEN_REGIME3_COMPOSITE=1
+            // env -> shader define. Only meaningful on top of VIXEN_REGIME3 (the walk's residual T
+            // global is never written away from its 1.0 default otherwise) -- deliberately NOT gated
+            // on VIXEN_REGIME3 OR VIXEN_MIP_POLICY (batch-42 validator: the splice was accidentally
+            // nested inside the VIXEN_MIP_POLICY block, contradicting this very comment and making
+            // the composite-alone neutrality control VACUOUS -- it must inject the define so the
+            // inertness being tested is the RUNTIME no-op, not the absence of the code).
+            if (envFlagEnabled("VIXEN_REGIME3_COMPOSITE")) {
+                const size_t firstNewlineR3c = splicedSource.find('\n');
+                const std::string regime3CompositeDefine = "#define VIXEN_REGIME3_COMPOSITE 1\n";
+                if (firstNewlineR3c == std::string::npos) {
+                    splicedSource += "\n" + regime3CompositeDefine;
+                } else {
+                    splicedSource.insert(firstNewlineR3c + 1, regime3CompositeDefine);
+                }
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_REGIME3_COMPOSITE: cross-instance transmittance fill ENGAGED "
+                                      "(regime-3 winner's residual T composites with the same-pass second-nearest candidate)");
+                }
+            }
+
             if (mainLogger && mainLogger->IsEnabled()) {
                 mainLogger->Info("[BuildRenderGraph] Using BodyInstanceRayMarch shader: " + compPath.string() +
                                  " (" + std::to_string(proceduralRecipes_.Ids().size()) + " procedural recipes spliced)");
@@ -1540,18 +1699,107 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the single end-to-end trace-recording toggle: CPU readback + GPU
     // writes; audit D1 Task 2.1).
     std::vector<std::string> marchShaderFeatures;
-    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+    if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
     if (b1OcclusionCullEnabled) {  // one source of truth — the default-on gate above
         marchShaderFeatures.push_back(kFeatureB1OcclusionCull.define);
     }
+    if (envFlagEnabled("VIXEN_BRICKMAP_TRAVERSAL")) {  // W-BRICKMAP Slice 2 A/B gate
+        marchShaderFeatures.push_back(kFeatureBrickmapTraversal.define);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] VIXEN_BRICKMAP_TRAVERSAL: coarse-grid DDA backend ENGAGED (FORMAT_STORED_SDF instances route through traverseCoarseGridInstancedSdf)");
+        }
+    }
+    if (envFlagEnabled("VIXEN_BRICKMAP_DEBUG")) {  // W-BRICKMAP Gate-B bisection
+        marchShaderFeatures.push_back(kFeatureBrickmapDebug.define);
+    }
+    // W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS backend (third search
+    // backend alongside ESVO/DDA -- see kFeatureRtQueryTraversal's header comment).
+    // Own env var, independent of VIXEN_BRICKMAP_TRAVERSAL; TraceWorld.glsl gives RTQUERY
+    // precedence when both are set. Kept as its own if-block (not folded into the
+    // VIXEN_BRICKMAP_TRAVERSAL block above) so this hunk stays a minimal, independently
+    // reviewable addition.
+    if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL")) {
+        marchShaderFeatures.push_back(kFeatureRtQueryTraversal.define);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] VIXEN_RTQUERY_TRAVERSAL: VK_KHR_ray_query TLAS backend ENGAGED (FORMAT_STORED_SDF instances route through traverseRayQueryWorld)");
+        }
+    }
+    // W-COMPOSED: the role ruling made code -- RT-traversal / DDA-leaf / ESVO-data
+    // are complementary tiers of ONE traversal (docs/plans/2026-08-04-wavefront-
+    // recipe-shading.md, "USER RULING: composed traversal"), not rival backends.
+    // VIXEN_COMPOSED_TRAVERSAL picks the near-field search phase by CAPABILITY --
+    // RT when the device has RTXCapabilities.rayQuery, DDA (the software
+    // traversal substitute) otherwise -- pushing EITHER kFeatureRtQueryTraversal
+    // OR kFeatureBrickmapTraversal, never both, so TraceWorld.glsl's existing
+    // #ifdef/#elif chain (no new GLSL branching) picks the same backend the SDI
+    // wiring below wires bindings for. The capability is only known once the
+    // device exists (DeviceNode::CompileImpl, which runs before this shader
+    // library's own CompileImpl per graph dependency order) -- deferred into the
+    // RegisterShaderBuilder lambda below instead of decided here, where the
+    // VulkanDevice doesn't exist yet. The three single-backend env vars above are
+    // untouched by this block; composed is a fourth, additive axis.
+    const bool composedTraversalRequested = envFlagEnabled("VIXEN_COMPOSED_TRAVERSAL");
+    if (composedTraversalRequested && mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL requested -- near-field backend "
+                          "(RT vs DDA) resolved by device capability at shader-compile time");
+    }
 
     computeShaderLibNode->RegisterShaderBuilder(
-        [this, marchFamily, marchShaderFeatures](int vulkanVer, int spirvVer) {
-        auto builder = marchFamily->MakeBuilder(marchShaderFeatures);
+        [this, marchFamily, marchShaderFeatures, deviceNode, composedTraversalRequested]
+        (int vulkanVer, int spirvVer) {
+        // Composed-traversal capability resolution: the VulkanDevice is live by
+        // now (this lambda runs from ShaderLibraryNode::CompileImpl, which reads
+        // its own VULKAN_DEVICE_IN input -- populated by DeviceNode::CompileImpl,
+        // an upstream dependency that has already run). Mirrors the same
+        // RTXCapabilities.rayQuery check BodyOctreeSceneNode::EnsureRtQueryTlasBuilt
+        // uses at TLAS-build time, so both sites agree on device support. Local
+        // copy of marchShaderFeatures (not mutating the captured vector) since
+        // this builder can re-run on device recompilation -- a mutable lambda
+        // would accumulate the pushed define on every re-invocation.
+        std::vector<std::string> resolvedFeatures = marchShaderFeatures;
+        bool composedUsesRtQuery = false;
+        if (composedTraversalRequested) {
+            auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
+            Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice =
+                deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
+            const bool hasRayQuery = vulkanDevice &&
+                vulkanDevice->GetRTXCapabilities().supported &&
+                vulkanDevice->GetRTXCapabilities().rayQuery;
+            composedUsesRtQuery = hasRayQuery;
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Info(std::string("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: ") +
+                                  (hasRayQuery ? "RT-traversal (RTXCapabilities.rayQuery available)"
+                                               : "grid-DDA (software traversal substitute -- rayQuery unavailable)"));
+            }
+            resolvedFeatures.push_back(
+                hasRayQuery ? kFeatureRtQueryTraversal.define : kFeatureBrickmapTraversal.define);
+            // Also push the composed identity define itself -- gates the far-field
+            // (footprint > brick) tier in SceneBindings.glsl/RayQueryTraversal.glsl,
+            // which is additive to whichever near-field backend define was just
+            // selected above (that define alone only picks the TraceWorld.glsl
+            // dispatch branch, per the existing #ifdef/#elif chain).
+            resolvedFeatures.push_back(kFeatureComposedTraversal.define);
+            // Round-5 mandatory observability: which near-field backend the composed
+            // path actually resolved to, on std::cout (not mainLogger, which is
+            // disabled by default for this node) -- matches the [FarFieldCount]
+            // precedent (VoxelGridNode.cpp) so a boot log always answers "which
+            // #ifdef branch is live" without re-deriving it from device caps.
+            std::cout << "[ComposedBackend] " << (hasRayQuery ? "RTQUERY" : "BRICKMAP") << std::endl;
+        }
+        auto builder = marchFamily->MakeBuilder(resolvedFeatures);
+        // W-RTQUERY Slice A: GL_EXT_ray_query needs SPIR-V 1.4+ (rayQueryEXT opaque type +
+        // the rayQuery* built-ins). The device-reported spirvVer is already >=140 whenever
+        // VIXEN_RTQUERY_TRAVERSAL can actually be engaged (RTXCapabilities.rayQuery requires
+        // the same VK_KHR_spirv_1_4 extension GetRTXExtensions() already requires for RT
+        // generally -- see VulkanDevice.cpp), so this is a defensive floor, not a real bump
+        // on any device this feature runs on; a flag-off compile never touches spirvVer.
+        const int effectiveSpirvVer =
+            (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") || composedUsesRtQuery)
+                ? std::max(spirvVer, 140) : spirvVer;
         builder.SetTargetVulkanVersion(vulkanVer)
-               .SetTargetSpirvVersion(spirvVer)
+               .SetTargetSpirvVersion(effectiveSpirvVer)
                .AddIncludePath("shaders")
                .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
@@ -1640,7 +1888,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // M10 causation A/B (env-gated, off by default): disables the coarse
                 // mip-coverage any-hit occlusion paths (SceneBindings.glsl) so a shadow
                 // ray only reports occlusion on a real SDF/DDA leaf crossing.
-                if (std::getenv("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
+                if (envFlagEnabled("VIXEN_SHADOW_NO_MIP_ANYHIT")) {
                     const std::string noMipDef = "#define VIXEN_SHADOW_NO_MIP_ANYHIT 1\n";
                     const size_t fnl2 = source.find('\n');
                     if (fnl2 == std::string::npos) source += "\n" + noMipDef;
@@ -1650,7 +1898,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             });
     };
     std::vector<std::string> lightingShaderFeatures;
-    if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+    if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         lightingShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
     const auto registerLightingFamily = [this, lightingShaderFeatures](
@@ -1721,6 +1969,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // SceneBindings, no trace-hooks axis; the shared lighting feature set is
     // inert for it, same as ProbeApply/RecipeInstanceBucketing above).
     if (hitAccumEnabled) {
+        // B2 (batch-26, gated OFF by default batch-27): the table-wide clear —
+        // same standalone-bindings shape as the accumulate pass, registered
+        // ahead of it (topology orders clear -> accumulate below). Only
+        // register when the node was actually created (hitAccumClearEnabled).
+        if (hitAccumClearEnabled) {
+            registerLightingFamily(hitAccumClearShaderLib,
+                                   makeLightingFamily("HitAccumClear.comp", "HitAccumClear"));
+        }
         registerLightingFamily(hitAccumAccumulateShaderLib,
                                makeLightingFamily("HitAccumulate.comp", "HitAccumulate"));
     }
@@ -1891,7 +2147,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 });
         };
         std::vector<std::string> b1ShaderFeatures;
-        if (std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr) {
+        if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
             b1ShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
         }
         const auto registerFamily = [this, b1ShaderFeatures](
@@ -1966,6 +2222,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
+        // B2 (batch-26, gated OFF by default batch-27): the table-wide clear —
+        // 1D over kHitAccumTableCapacity (65536/64 = 1024 workgroups; the
+        // cell-shade dispatch's own capacity-sized shape,
+        // VulkanGraphApplication::kHitAccumTableCapacity). When enabled it
+        // runs before the accumulate pass (topology below) so every slot
+        // starts this epoch genuinely empty.
+        if (hitAccumClearEnabled) {
+            auto* clearStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(hitAccumClearNode));
+            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, kHitAccumTableCapacity / 64u);
+            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+            clearStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+        }
+
         // W-SPLIT: the accumulate pass — SAME 1D dispatch shape as the wave
         // (it walks the identical hit-record slot count, just earlier in the
         // frame). Exists whenever hitAccumEnabled (not just resolve — the
@@ -2008,8 +2278,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // own dispatch). Constants: mode selectors, extents, detailSize0; the
         // camera-position constant is (re)set every frame from PreTick.
         if (hitAccumEnabled) {
-            static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumParamsBuffer))
-                ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 48u);  // HitAccumParams (uint,3 floats,2 vec4)
+            // Size (48 bytes, HitAccumParams: uint,3 floats,2 vec4) is now fixed
+            // inside HitAccumParamsConfigNode::CompileImpl — no PARAM_SIZE_BYTES
+            // to set (B2 ring conversion, batch-23).
             // Engagement threshold: env-overridable (the primary cone coef is
             // tan-based ~0.0016 at 500 px, so default scenes need a SMALL
             // detail to engage — the Dozen readout's finding #1; the diag boot
@@ -2031,7 +2302,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // per-pixel bits ARE the image): skip per-pixel shadow traces for
             // pixels the composite fully replaces (w == 1).
             hitAccumLeanEnabled_ = hitAccumResolveEnabled &&
-                                   (std::getenv("VIXEN_HIT_ACCUM_LEAN") != nullptr);
+                                   envFlagEnabled("VIXEN_HIT_ACCUM_LEAN");
             auto* tableInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitAccumTableBuffer));
             // uint32_t, matching the ValueTag the node reads (the ddgiLeakGateDebug
             // precedent's own `60u` — a uint64_t here stores a mismatched tag and
@@ -2086,6 +2357,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // pass's own write gatherer below.
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(1);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(1);
+    // B2 (batch-26, gated OFF by default batch-27): the clear pass writes
+    // {table} only (no reads).
+    if (hitAccumClearEnabled) {
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumClearWriteGatherer))->PreRegisterBufferSlots(1);
+    }
     // W-SPLIT: the accumulate pass reads {hitRecordBuffer}, writes {table,
     // hitRecordBuffer} (it RMWs the record's flags word AND writes the table).
     if (hitAccumEnabled) {
@@ -2227,7 +2503,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // frames, not a tier-crossing or aim bug). Widen near-clip for this demo only, the same
     // "widen the bound, own justified commit" precedent CameraNode.h's kOrbitDistanceMin
     // widening already established for an analogous too-coarse-default problem.
-    if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+    if (envFlagEnabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         // M8 Task 23: with the corrected (camera-anchored) crossing gate at the REAL
         // unoverridden raySizeCoef, hop1 (T1->T2) fires only below ~7.3e-3wu camera-to-child
         // and T2's own content needs an approach to ~2e-4wu to subtend more than a few
@@ -2262,7 +2538,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // until this was added). Configuring PARAM_ORBIT_CENTER_* here declares orbit-mode intent
     // from SetupImpl (CameraNode.cpp's own orbitActive_ latch), so EngageOrbit()'s idempotent
     // guard makes the zoom demo's first SetOrbitDistanceForTest call a no-op re-seed.
-    if (std::getenv("VIXEN_TIER_ZOOM_DEMO")) {
+    if (envFlagEnabled("VIXEN_TIER_ZOOM_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -2278,7 +2554,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // orbitDistance (caught live: this milestone's first capture pass showed a tiny distant
     // dot at EVERY tick, near and far alike, until this was added -- the exact class of bug
     // M5's own comment above already documents and warns about).
-    if (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO") || std::getenv("VIXEN_TIER_EARTH_ZOOM_SCRIPT")) {
+    if (envFlagEnabled("VIXEN_TIER_EARTH_ZOOM_DEMO") || envFlagEnabled("VIXEN_TIER_EARTH_ZOOM_SCRIPT")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -2293,7 +2569,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // hand-picked distance (e.g. the predicted hop0/hop1 handoffs), without needing a scripted
     // zoom -- this milestone's own gate is "confirm concentric magnification on the
     // reconstructed body", not the live zoom (that is M7 Task 14, a separate milestone).
-    if (std::getenv("VIXEN_TIER_OBSERVABLE_DEMO")) {
+    if (envFlagEnabled("VIXEN_TIER_OBSERVABLE_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -2320,14 +2596,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // at scene-build time). The flight-path demo needs FIXED mode (cameraPosition authoritative
     // at rest, per the "bodies-0" convention) so its own scripted position writes are what
     // actually drives the camera.
-    if (std::getenv("VIXEN_TIER_M8_EARTH_DEMO") && !std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+    if (envFlagEnabled("VIXEN_TIER_M8_EARTH_DEMO") && !envFlagEnabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 236.0f);
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: orbitCenter set to demo "
                           "body's world center (64,64,64) so the scripted zoom actually orbits the body");
-    } else if (std::getenv("VIXEN_TIER_M8_FLIGHT_DEMO")) {
+    } else if (envFlagEnabled("VIXEN_TIER_M8_FLIGHT_DEMO")) {
         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_M8_FLIGHT_DEMO: skipping orbit-param "
                           "wiring -- camera stays in FIXED mode so the Task 19 scripted "
                           "SetPositionForTest flight path is authoritative, not overridden by "
@@ -2345,7 +2621,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Pitch angled downward (looking down at the grid from above-and-outside, not a flat
     // horizontal view into a wall of overlapping-in-screen-space spheres) gives the widest
     // legible view of the grid's near corner within the distance cap.
-    if (std::getenv("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
+    if (envFlagEnabled("VIXEN_RECIPE_DIVERSITY_STRESS_DEMO")) {
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
@@ -2376,8 +2652,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // VoxelGridNode PRESET-1 default, pointed away from the actual scene -- symptom was a
     // near-total scene miss (3279/250000 hits) that looked like a rendering bug but was
     // purely a wrong camera transform.
-    if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO") || std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
-        std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO") || std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
+    if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO") || envFlagEnabled("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO") ||
+        envFlagEnabled("VIXEN_DDGI_CORNELL_HYBRID_DEMO") || envFlagEnabled("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
         using namespace Vixen::App::CornellBox;
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, kCameraOrbitCenter.x);
         camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, kCameraOrbitCenter.y);
@@ -2416,7 +2692,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // near-white per instance (slight warm/neutral/cool bias) so each stays bright and the three are
     // distinguishable by both base material and tint.
     {
-        if (std::getenv("VIXEN_TIER_CROSSING_DEMO")) {
+        if (envFlagEnabled("VIXEN_TIER_CROSSING_DEMO")) {
             // Tiered-ESVO Inc2 M3 Task 8: live gate — a single tier-crossing leaf,
             // one PARENT SDF octree (octree 0) with ONE leaf marked farBit=1 via
             // MarkLeafAsTierCrossing, pointing at an independently-built CHILD SDF
@@ -2665,8 +2941,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // above, so the scripted zoom (VulkanGraphApplication::Update) has a real 0->1
                 // transition to exercise mid-flight via its own scripted RequestBrickResidency(true)
                 // at tick 24 -- proving the composed lifecycle live, not just as two separate runs.
-                const bool forceNonResident = std::getenv("VIXEN_TIER_CROSSING_NONRESIDENT") != nullptr
-                                            || std::getenv("VIXEN_TIER_ZOOM_DEMO") != nullptr;
+                const bool forceNonResident = envFlagEnabled("VIXEN_TIER_CROSSING_NONRESIDENT")
+                                            || envFlagEnabled("VIXEN_TIER_ZOOM_DEMO");
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
@@ -2952,7 +3228,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                  std::to_string(n) + " zero-bake procedural body instances "
                                  "(0 BakeSdfWorld/BuildSdfBodyOctree calls for these bodies)");
             }
-        } else if (std::getenv("VIXEN_RECIPE_HOT_COLD_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_RECIPE_HOT_COLD_DEMO")) {
             // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: live-gate scene construction --
             // registers a mix of "hot" recipes (>= kRecipeBucketingHotnessThreshold instances
             // each, so VIXEN_RECIPE_BUCKETED_DISPATCH's bucketing pass promotes them) and "cold"
@@ -3351,7 +3627,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                  std::to_string(gridCols) + "x" + std::to_string(gridRows) + " grid "
                                  "(spacing=" + std::to_string(kGridSpacing) + ")");
             }
-        } else if (std::getenv("VIXEN_TIER_CHAIN_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_TIER_CHAIN_DEMO")) {
             // Tiered-ESVO Inc3 M3 Task 5 live gate: a THREE-tree chain, T0 -> T1 -> T2,
             // reusing the EXACT construction pattern the two-tree VIXEN_TIER_CROSSING_DEMO
             // above already live-gates (SDF sphere per tree, magenta/color-override for
@@ -3544,7 +3820,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (std::getenv("VIXEN_TIER_EARTH_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_TIER_EARTH_DEMO")) {
             // Tiered-ESVO Inc3 M4 Task 6 (the epic gate): the SAME T0->T1->T2 chained
             // construction as VIXEN_TIER_CHAIN_DEMO above, but at the REAL per-hop tier
             // ratio the epic exists for (childScale=2^-10 at BOTH hops, not M3's
@@ -3791,7 +4067,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 // Inc2 M5 pattern exactly (see the Update()/PreTick scripted-zoom block).
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     bodyScene->SetRecipePool(std::move(cat));
-                    if (std::getenv("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
+                    if (envFlagEnabled("VIXEN_TIER_EARTH_ZOOM_DEMO")) {
                         bodyScene->RequestBrickResidency(false);
                         mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_ZOOM_DEMO: "
                                           "RequestBrickResidency(false) -- all octrees mip-only at start");
@@ -3820,7 +4096,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (std::getenv("VIXEN_TIER_OBSERVABLE_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_TIER_OBSERVABLE_DEMO")) {
             // Tiered-ESVO Inc3 M7 Task 13: the SAME T0->T1->T2 chained construction as
             // VIXEN_TIER_CHAIN_DEMO/VIXEN_TIER_EARTH_DEMO above (per-tier color override,
             // camera-facing-octant selection, RootLeafOctantCenterLocal concentric
@@ -4053,7 +4329,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (std::getenv("VIXEN_RESTIR_GATE_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_RESTIR_GATE_DEMO")) {
             // Sampled Lighting Inc3 M4 live gate: the equal-error-vs-brute-force check the
             // plan's Task 4 requires. Bakes THE SAME >=10^3-emissive-voxel gate scene
             // test_light_tree.cpp's BakeEmissiveGateScene uses (n=32, r=10, center(16,16,16),
@@ -4175,7 +4451,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetInstances({inst});
                 mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: seeded 1 Stored-SDF body instance");
             }
-        } else if (std::getenv("VIXEN_TIER_M8_EARTH_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_TIER_M8_EARTH_DEMO")) {
             // Tiered-ESVO Inc3 M8 Task 17: the TRUE Earth-scale (childScale=2^-10 at BOTH
             // hops) observable surface-to-orbit demo -- the epic's literal original ask,
             // finally attempted with a genuinely controllable camera (Task 16's look-target
@@ -4470,7 +4746,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_TIER_M8_EARTH_DEMO: no camera-facing leaf found in T0 or T1 — demo scene not built");
             }
-        } else if (std::getenv("VIXEN_SHADOW_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_SHADOW_DEMO")) {
             // VIXEN_SHADOW_DEMO — Sampled Lighting Inc1 M4 live gate: two Procedural
             // spheres positioned so the smaller "occluder" sits directly between the
             // larger "target" sphere's CAMERA-FACING surface and the default directional
@@ -4534,7 +4810,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
             }
-        } else if (std::getenv("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).
             // Plan: Vixen-Docs/01-Architecture/Sampled-Lighting-Cornell-Box-Demo-Plan-2026-07.md
             //
@@ -5140,7 +5416,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_BAKED_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (probe grid must be on for this "
                               "demo's own point -- visible bounce lighting -- to be visible at all)");
-        } else if (std::getenv("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_VIRTUAL_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M2 (virtual/zero-bake variant).
             // Plan: Vixen-Docs/01-Architecture/Sampled-Lighting-Cornell-Box-Demo-Plan-2026-07.md
             //
@@ -5340,7 +5616,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_VIRTUAL_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1 (probe grid must be on for this "
                               "demo's own point -- visible bounce lighting -- to be visible at all)");
-        } else if (std::getenv("VIXEN_DDGI_CORNELL_HYBRID_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_HYBRID_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M6b Task 6b.1 (hybrid
             // provider variant, "hole in the wall"). Plan: Baked-Perf-Fix-Pipeline-Plan-2026-07.md
             // Milestone M6b.
@@ -5567,7 +5843,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #endif
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_HYBRID_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
-        } else if (std::getenv("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_MIXED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M6b Task 6b.2 (mixed-provider
             // split). Plan: Baked-Perf-Fix-Pipeline-Plan-2026-07.md Milestone M6b.
             //
@@ -5757,7 +6033,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #endif
             mainLogger->Info("[BuildRenderGraph] VIXEN_DDGI_CORNELL_MIXED_DEMO: force-enabled "
                               "VIXEN_PROBE_GRID_CONFIG_ENABLED=1");
-        } else if (std::getenv("VIXEN_DDGI_LEAK_GATE_DEMO") || std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_DDGI_LEAK_GATE_DEMO") || envFlagEnabled("VIXEN_DDGI_EDIT_LOOP_DEMO")) {
             // Sampled Lighting Inc4 M6 reuses this EXACT scene (geometry, probe placement,
             // near/far indices) for the edit-loop responsiveness gate when
             // VIXEN_DDGI_EDIT_LOOP_DEMO=1 -- same "don't invent a new mechanism" discipline
@@ -5766,7 +6042,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // construction time (the source starts "off") and the REAL cut is stashed via
             // g_ddgiEditLoopWorldCut for VulkanGraphApplication.cpp's readback hook to flip in
             // live at a chosen tick -- a genuine mid-run scene-content edit, not a restart.
-            const bool isEditLoopMode = std::getenv("VIXEN_DDGI_EDIT_LOOP_DEMO") != nullptr;
+            const bool isEditLoopMode = envFlagEnabled("VIXEN_DDGI_EDIT_LOOP_DEMO");
 
             // Sampled Lighting Inc4 M4 live gate: the leak-test scene the plan's Task 4
             // requires -- thin-wall occluder geometry between an emissive source and a
@@ -6003,32 +6279,176 @@ void VulkanGraphApplication::BuildRenderGraph() {
             } else {
                 mainLogger->Error("[BuildRenderGraph] VIXEN_DDGI_LEAK_GATE_DEMO: source body octree is null -- gate scene not built");
             }
-        } else if (std::getenv("VIXEN_STORED_SDF_DEMO")) {
+        } else if (envFlagEnabled("VIXEN_BRICKMAP_SCENE")) {
+            // W-BRICKMAP Slice 2 round 3 RETARGET: the default (env-unset) fallback below is
+            // Procedural (providerKind=1, no octree at all -- see its own comment), so an A/B
+            // against it is a no-op by construction. The coarse-grid DDA backend now serves
+            // FORMAT_STORED_SDF (round-3 root-cause finding: brickGridLookup/brickLookupBase
+            // are only populated by the SDF serialization path, ShellOctreeGpu.h's
+            // SerializeSdf/ConcatenateSdf -- a FORMAT_BINARY octree's brickLookup binding is a
+            // 1-byte placeholder, so round 2's FORMAT_BINARY-only scope-down read it out of
+            // bounds). BodyOctreeSceneNode::EnsureOctreesBuilt bakes 3 Stored-SDF octrees when
+            // EITHER VIXEN_STORED_SDF_DEMO or VIXEN_BRICKMAP_SCENE is set (same bake, shared) --
+            // this branch just points instances at them (providerKind=0/PROVIDER_STORED,
+            // formatId==FORMAT_STORED_SDF), reusing VIXEN_STORED_SDF_DEMO's placeStored geometry
+            // convention verbatim (kSdfN=64 grid, renderScale=0.75, same transform math).
+            // Gated on its OWN env var (VIXEN_BRICKMAP_SCENE), separate from
+            // VIXEN_BRICKMAP_TRAVERSAL (the shader-backend toggle) -- an A/B run needs
+            // the SAME scene on both OFF and ON boots, varying only the traversal
+            // backend; run_brickmap_ab.bat sets both for every boot.
+            // BATCH-18/POST-CLOSURE CORRECTION: kHalf below used to be 32*renderScale (a
+            // "grid-[0,64] scales directly by renderScale" mental model) -- that is NOT what
+            // the actual transform composes (BodyOctreeSceneNode::EnsureRtQueryTlasBuilt /
+            // TraceWorld.glsl): world = worldPos + renderScale * (octreeConfig.localToWorld *
+            // local[0,1]^3), and localToWorld is a FIXED scale(kWorldGridSize=10) unrelated to
+            // the 64-grid resolution -- confirmed by the OTHER demo block in this same file
+            // (VIXEN_DDGI_LEAK_GATE_DEMO, ~line 2825), which already uses the correct
+            // `kHalf = 5.0f * kRenderScale` form (= 0.5*kWorldGridSize*renderScale) and whose
+            // own comment derives it from an [RtTlasInst] corner-transform dump. The body's TRUE
+            // world half-extent is renderScale*kWorldGridSize/2 = 0.75*10/2 = 3.75wu (full
+            // extent 7.5wu), not 32*0.75=24wu. The old 24wu offset shifted every body ~20.25wu
+            // off its intended center per axis (0.5*kWorldGridSize*(32/5 - 1) = 20.25) -- nearly
+            // 3 body-diameters, well past "visible": VALUE FIXED, not just the comment. Example
+            // (center (64,64,64)): old worldPos (40,40,40) -> new worldPos (60.25,60.25,60.25).
+            // This moves every VIXEN_BRICKMAP_SCENE body -- the flag-off identity hash
+            // (0bbf6e47..., batch 19) is now STALE; re-baseline required (see ledger).
+            constexpr float kRenderScale = 0.75f;
+            constexpr float kHalf        = 5.0f * kRenderScale;  // = 3.75f -- TRUE half of the [0,10] localToWorld span
+
+            // Deep-field-mip-policy regime-3 divergence placement. The stored-SDF
+            // brick is the mip-policy leaf here: kWorldGridSize/8*renderScale =
+            // 0.9375 world units. At the smoke window's measured 500 px height,
+            // the live RaySizeCoefNode formula gives coef=0.001570797 and bias=0,
+            // so level 2 (leaf*4) begins at 2387.32 world units. Keep the default
+            // scene untouched; the FAR gate adds a 10% margin and also moves the
+            // existing kind-5 body behind the sparse shell for the composite leg.
+            const bool sparseBodyFarEnabled = envFlagEnabled("VIXEN_SPARSE_BODY") &&
+                                              envFlagEnabled("VIXEN_SPARSE_BODY_FAR");
+            constexpr float kSmokeFrameHeight = 500.0f;
+            constexpr float kCameraFovDegrees = 45.0f;
+            constexpr float kPi = 3.14159265358979323846f;
+            const float sparseRaySizeCoef = 2.0f * std::tan(
+                (kCameraFovDegrees * kPi / 180.0f / kSmokeFrameHeight) * 0.5f);
+            const float sparseLevel2Footprint = (10.0f / 8.0f) * kRenderScale * 4.0f;
+            const float sparseLevel2Distance = sparseLevel2Footprint / sparseRaySizeCoef;
+            const float sparseFarDistance = sparseLevel2Distance * 1.10f;
+            const glm::vec3 sparseFarCamera(64.0f, 64.0f, 300.0f);
+            const glm::vec3 sparseFarDirection = glm::normalize(glm::vec3(220.0f, 0.0f, -1170.0f));
+            const glm::vec3 sparseFarCenter = sparseFarCamera + sparseFarDirection * sparseFarDistance;
+            const glm::vec3 behindSparseFarCenter = sparseFarCamera + sparseFarDirection * (sparseFarDistance + 400.0f);
+
+            auto placeStoredSdf = [&](float cx, float cy, float cz,
+                                       float r, float g, float b,
+                                       uint32_t octreeIdx) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0]  = cx - kHalf;
+                inst.worldPos[1]  = cy - kHalf;
+                inst.worldPos[2]  = cz - kHalf;
+                inst.renderScale  = kRenderScale;
+                inst.color[0]     = r;
+                inst.color[1]     = g;
+                inst.color[2]     = b;
+                inst.octreeIndex  = octreeIdx;
+                inst.providerKind = 0u;  // PROVIDER_STORED: octree path (formatId==FORMAT_STORED_SDF here)
+                inst.recipeId     = 0u;
+                return inst;
+            };
+            // Round 12 (far-field default-coef parity, plan ledger 2026-08-04
+            // "ROUND 12"): the 3 near bodies above sit at D≈507-539wu camera
+            // distance -- below the TRUE default-coef tier-crossing distance
+            // (596.75wu, closed by arithmetic in Batch 11) -- so this scene could
+            // never fire the far-field gate at default coef. Add a 4th body past
+            // it. Camera geometry for this scene is FIXED (no PARAM_ORBIT_* is
+            // set for VIXEN_BRICKMAP_SCENE): position (64,64,300), yaw=0/pitch=0,
+            // which looks toward -Z (BuildRenderGraph.cpp's PRESET-1 comment) --
+            // so "far" means SMALLER z, not larger (an earlier version of this
+            // edit placed the body at z=+800, behind the camera and invisible;
+            // confirmed by a zero-pixel-diff boot against the pre-edit 3-body
+            // baseline). x=200,z=-297 -> forward dist 597wu, lateral offset
+            // 136wu, D=612.3wu > 597wu crossing, and comfortably inside the
+            // 45-deg-FOV cone at that depth (max lateral ~247wu, ~111wu margin)
+            // and clear of the HUD band (x69-332/y286-312). octreeIdx=3 is
+            // BodyOctreeSceneNode::EnsureOctreesBuilt's VIXEN_BRICKMAP_SCENE-only
+            // 4th Stored-SDF bake (kind 3, plain sphere). Near bodies are
+            // untouched -- in-frame internal control for the near-region parity leg.
+            // ROUND-18 STEP 5 (multi-distance close): 2 more in-cone far bodies, WELL past
+            // the 597wu tier-crossing, D~800/D~1200, margins >30% off the FOV cone edge
+            // (half-FOV ~22.48deg derived from round-12's own 247wu@597wu figure). Camera
+            // fixed at (64,64,300) looking -Z, so "far" = smaller z (round-12 convention).
+            // D~800: fwd=780wu, lateral=150wu -> max_lateral=322.8wu, margin=53.5%, D=794.3wu.
+            // D~1200: fwd=1170wu, lateral=220wu -> max_lateral=484.2wu, margin=54.6%, D=1190.5wu.
+            // octreeIdx 4/5 are EnsureOctreesBuilt's round-18 kinds (plain sphere, same recipe).
+            std::vector<Vixen::SVO::BodyInstanceGpu> brickmapBodies = {
+                placeStoredSdf( 14.0f,  64.0f,   64.0f, 1.00f, 0.95f, 0.85f, 0u),
+                placeStoredSdf( 64.0f,  64.0f,   64.0f, 0.55f, 0.75f, 1.00f, 1u),
+                placeStoredSdf(114.0f,  64.0f,   64.0f, 0.85f, 0.90f, 1.00f, 2u),
+                placeStoredSdf(200.0f,  64.0f, -297.0f, 1.00f, 0.60f, 0.20f, 3u),
+                placeStoredSdf(214.0f,  64.0f, -480.0f, 0.90f, 0.40f, 0.90f, 4u),
+                placeStoredSdf(sparseBodyFarEnabled ? behindSparseFarCenter.x : 284.0f,
+                               64.0f,
+                               sparseBodyFarEnabled ? behindSparseFarCenter.z : -870.0f,
+                               0.40f, 0.90f, 0.60f, 5u),
+            };
+            // Deep-field-mip-policy regime-3 divergence scene (2026-08-08),
+            // env-gated (VIXEN_SPARSE_BODY=1, default off -- the hard identity gate):
+            // the kind-6 scattered shell is near at the historical D~675wu placement
+            // unless VIXEN_SPARSE_BODY_FAR is also enabled. FAR moves it to the
+            // derived level-2+ distance and moves kind 5 behind it on the same
+            // in-cone ray, preserving actual sparse-shell-over-background layering.
+            if (envFlagEnabled("VIXEN_SPARSE_BODY")) {
+                const glm::vec3 sparseCenter = sparseBodyFarEnabled
+                    ? sparseFarCenter
+                    : glm::vec3(191.5f, 64.0f, -363.0f);
+                brickmapBodies.push_back(
+                    placeStoredSdf(sparseCenter.x, sparseCenter.y, sparseCenter.z,
+                                   0.20f, 0.90f, 0.95f, 6u));
+            }
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(brickmapBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_BRICKMAP_SCENE: seeded " +
+                                  std::to_string(bodyScene->GetInstances().size()) +
+                                  " FORMAT_STORED_SDF body instances "
+                                  "(round 12: +1 far body D~612wu; round 18: +2 more D~800/D~1200wu; "
+                                  "VIXEN_SPARSE_BODY: +1 scattered-shell occluder; FAR=" +
+                                  (sparseBodyFarEnabled ? "level2+" : "off") + ")");
+            }
+        } else if (envFlagEnabled("VIXEN_STORED_SDF_DEMO")) {
             // VIXEN_STORED_SDF_DEMO — Stored-SDF bodies (Increment 2, M5 Task 10).
             // EnsureOctreesBuilt has baked 3 SdfBodyOctrees (kinds 0/1/2) via ConcatenateSdf,
             // setting configs[k].formatId = STORED_SDF and populating the sdfBricks /
             // brickGridLookup buffers (bindings 11/12). Instances use providerKind=0 (STORED)
             // and octreeIndex=0/1/2 to select the per-kind OctreeConfig.
             //
-            // Transform convention (binary-shell / marchStoredSdf AABB):
-            //   renderScale = 0.75       — scales grid-voxel [0,64] into world units
-            //   worldPos    = center - 32*0.75 = center - 24
+            // Transform convention (binary-shell / marchStoredSdf AABB), BATCH-18/POST-CLOSURE
+            // CORRECTED: the world span of the instance transform is renderScale *
+            // octreeConfig.localToWorld * local[0,1]^3, and localToWorld is a FIXED
+            // scale(kWorldGridSize=10) INDEPENDENT of the 64-grid resolution -- so kHalf is
+            // 0.5*kWorldGridSize*renderScale = 5*renderScale, NOT 32*renderScale (that formula
+            // wrongly assumed the [0,64] grid-voxel index scales directly by renderScale; see
+            // the matching correction + derivation at the VIXEN_BRICKMAP_SCENE block above,
+            // and the already-correct `5.0f * kRenderScale` reference form at the
+            // VIXEN_DDGI_LEAK_GATE_DEMO block, ~line 2825).
+            //   renderScale = 0.75       — the world half-extent of the [0,10] localToWorld span
+            //   kHalf       = 5 * 0.75 = 3.75   (TRUE half-extent; full extent 7.5wu)
+            //   worldPos    = center - 3.75
             //     → de-instance transform: instOrigin = (rayOrigin - worldPos) / renderScale
-            //       so a ray at world center maps to grid (32,32,32) = [0,64] AABB center.
+            //       maps a ray at world center to the octree's local center.
             //
             // Body centers in world space (same spread as the Procedural seed so the
             // default camera (X=64, Z=300, looking -Z) frames all three):
-            //   left   center = (14, 64, 64)  → worldPos = (14-24, 64-24, 64-24) = (-10, 40, 40)
-            //   centre center = (64, 64, 64)  → worldPos = (64-24, 64-24, 64-24) = ( 40, 40, 40)
-            //   right  center = (114,64, 64)  → worldPos = (114-24,64-24, 64-24) = ( 90, 40, 40)
+            //   left   center = (14, 64, 64)  → worldPos = (14-3.75, 64-3.75, 64-3.75) = (10.25, 60.25, 60.25)
+            //   centre center = (64, 64, 64)  → worldPos = (64-3.75, 64-3.75, 64-3.75) = (60.25, 60.25, 60.25)
+            //   right  center = (114,64, 64)  → worldPos = (114-3.75,64-3.75, 64-3.75) = (110.25,60.25, 60.25)
+            // (previously, with the wrong kHalf=24: (-10,40,40) / (40,40,40) / (90,40,40) --
+            // every body was ~20.25wu off its intended center per axis. VALUE FIXED.)
             constexpr float kRenderScale = 0.75f;
-            constexpr float kHalf        = 32.0f * kRenderScale;  // = 24.0f
+            constexpr float kHalf        = 5.0f * kRenderScale;  // = 3.75f -- TRUE half of the [0,10] localToWorld span
 
             auto placeStored = [&](float cx, float cy, float cz,
                                    float r, float g, float b,
                                    uint32_t octreeIdx) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0]  = cx - kHalf;  // worldPos = center - 24 per axis
+                inst.worldPos[0]  = cx - kHalf;  // worldPos = center - 3.75 per axis
                 inst.worldPos[1]  = cy - kHalf;
                 inst.worldPos[2]  = cz - kHalf;
                 inst.renderScale  = kRenderScale;
@@ -6120,7 +6540,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // used throughout this file). The [CornellDiag] tick-150 instIdx-map diagnostic
     // (VulkanGraphApplication.cpp) is UNAFFECTED -- it reads hit_record_buffer directly via its
     // own vkDeviceWaitIdle + MapForReadback, with no dependency on this node's capture path.
-    const bool debugCaptureEnabled = std::getenv("VIXEN_DEBUG_CAPTURE") != nullptr;
+    const bool debugCaptureEnabled = envFlagEnabled("VIXEN_DEBUG_CAPTURE");
     auto* debugCapture = static_cast<DebugBufferReaderNode*>(renderGraph->GetInstance(debugCaptureNode));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, 1000u);
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, debugCaptureEnabled);
@@ -6891,8 +7311,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hitAccumEnabled) {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       hitAccumTableBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+        // B2 (batch-23): hitAccumParamsBuffer is now a HitAccumParamsConfigNode
+        // (ring-buffered) — same device + CURRENT_FRAME_INDEX wiring pattern as
+        // shadowConfigNode above.
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                      hitAccumParamsBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+                      hitAccumParamsBuffer, HitAccumParamsConfigNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      hitAccumParamsBuffer, HitAccumParamsConfigNodeConfig::CURRENT_FRAME_INDEX);
     }
     // W3c-2: the cell-radiance buffer — same shape (device only, fixed size).
     if (hitAccumResolveEnabled) {
@@ -7025,6 +7450,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(accumulationConfigNode, AccumulationConfigNodeConfig::FRAME_COUNTER,
                           pushConstantGatherer, MarchSdi::Push::accumFrameCount::INDEX,  // push constant field 12: uint accumFrameCount
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // cosmicK (binding 13, regime-3 cosmic accumulation first slice): the K threshold literal.
+    // Primary march gatherer only in this slice -- regime 3 is not yet wired into the RT/composed
+    // or secondary-ray shader programs (their PushConstantGathererNode instances below stay
+    // unconnected for this field; harmless, VIXEN_REGIME3 is off there too).
+    batch.Connect(regime3KConstant, ConstantNodeConfig::OUTPUT,
+                          pushConstantGatherer, MarchSdi::Push::cosmicK::INDEX,  // push constant field 13: float cosmicK
+                          SlotRoleModifier(SlotRole::Execute));
 
     // Connect ray marching resources to the descriptor gatherer using the merged-SDI
     // named constants (MarchSdi::Bind::*, generated/sdi/merged/BodyInstanceRayMarch-SDI.h).
@@ -7076,6 +7508,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::OCTREE_MIPPOOL_BUFFER, kSceneRoles);
     sceneProviders.Provide("TierRefTableBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::OCTREE_TIERREFTABLE_BUFFER, kSceneRoles);
+    // W-RTQUERY Slice A: TLAS for the ray_query traversal backend (binding 40,
+    // RayQueryTraversal.glsl). Provider name MUST match the GLSL identifier exactly
+    // (same convention as "depthDistanceImage" below matching its own GLSL name) --
+    // the SDI reflector keys members by the shader-side identifier, not an arbitrary
+    // label. VK_NULL_HANDLE placeholder when VIXEN_RTQUERY_TRAVERSAL is unset or the
+    // device lacks RTXCapabilities.rayQuery (BodyOctreeSceneNode::EnsureRtQueryTlasBuilt's
+    // guard); the member itself is feature-filtered out of the plan entirely unless
+    // marchFeatures.Enable(kFeatureRtQueryTraversal) below is also set, so this
+    // registration is inert (never consulted) on a flag-off build.
+    sceneProviders.Provide("rtQueryTlas", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::RTQUERY_TLAS, kSceneRoles);
     sceneProviders.Provide("historyImage", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
                            SlotRole::Execute);
@@ -7111,6 +7554,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sceneProviders.Provide("depthDistanceImage", b1DepthTarget,
                                DepthTargetNodeConfig::DEPTH_WRITE_VIEW,
                                SlotRole::Execute);
+    }
+    // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
+    // B1's depthDistanceImage gates binding 36 above -- the merged-SDI MEMBERS table
+    // is feature-filtered, so marchFeatures must carry this flag or the plan silently
+    // omits the member (RtQueryTLAS's provider registration above then goes unused,
+    // not an error) even though marchShaderFeatures already compiled the variant in.
+    // W-COMPOSED: whether the composed builder (RegisterShaderBuilder lambda
+    // above) actually picks RT or DDA isn't known until Compile (device
+    // capability); wiring the binding here (graph-construction time, before
+    // Compile) can't wait for that answer. Wire rtQueryTlas whenever composed
+    // traversal is REQUESTED, same as the plain VIXEN_RTQUERY_TRAVERSAL gate --
+    // an unused binding when composed resolves to DDA is inert (same precedent
+    // as the comment above: provider registered-but-unused is not an error).
+    if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") ||
+        envFlagEnabled("VIXEN_COMPOSED_TRAVERSAL")) {
+        marchFeatures.Enable(kFeatureRtQueryTraversal);
     }
 
     WireStageFromSdi<MarchSdi::Metadata, MarchSdi::MEMBERS>(
@@ -7436,7 +7895,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
         sceneProviders.Provide("HitAccumParamsSSBO", hitAccumParamsBuffer,
-                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+                               HitAccumParamsConfigNodeConfig::HIT_ACCUM_PARAMS_BUFFER, SlotRole::Execute);
     }
     if (hitAccumResolveEnabled) {
         srsSdiFeatures.Enable(kFeatureSrsCellResolve);
@@ -7655,6 +8114,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
     CensusStageFromSdi<ApplySdi::Metadata, ApplySdi::MEMBERS>(
         sdiHazardCensus_, probeApplyNode, sceneProviders, sdiNoFeatures,
         &sdiCensusExclusions);
+    // B2 (batch-26, gated OFF by default batch-27, VIXEN_HIT_ACCUM_CLEAR): the
+    // table-wide clear — standalone bindings, its ONLY member is HitAccumTable
+    // (already has a registry provider from the SRS synthesis site, same
+    // provider the accumulate pass below consumes). When enabled it runs FIRST
+    // in the frame (topology below, ahead of accumulate). Node handles are
+    // invalid unless hitAccumClearEnabled (see the creation site above), so
+    // this dispatch must be gated the same way.
+    if (hitAccumClearEnabled) {
+        const auto clearSynth = SynthesizeComputeStage<ClearSdi::Metadata, ClearSdi::MEMBERS>(
+            renderGraph, batch, "hit_accum_clear", hitAccumClearShaderLib,
+            hitAccumClearNode, lightingCommon, sceneProviders, {});
+        (void)clearSynth;  // zero push members; nothing left to hand-wire
+        CensusStageFromSdi<ClearSdi::Metadata, ClearSdi::MEMBERS>(
+            sdiHazardCensus_, hitAccumClearNode, sceneProviders, sdiNoFeatures,
+            &sdiCensusExclusions);
+    }
     // W-SPLIT: the re-split accumulate — standalone bindings, full wire (no
     // SceneBindings push block to hand-wire; its SDI has zero push members,
     // the ProbeApply/RecipeInstanceBucketing precedent). Every member
@@ -7666,9 +8141,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // wave used to). Runs FIRST in the frame (topology below): it classifies
     // W-LEAN L1 and writes the table before the wave ever reads the flag bit.
     if (hitAccumEnabled) {
+        // B2: pre-merge is its OWN opt-in on top of VIXEN_HIT_ACCUM (default
+        // off) — flag-off keeps this stage's compiled variant byte-identical
+        // (same B1 conditional-creation shape as VIXEN_HIT_ACCUM_RESOLVE).
+        SdiFeatureSet accumSdiFeatures;
+        if (hitAccumPremergeEnabled) {
+            accumSdiFeatures.Enable(kFeatureHitAccumPremerge);
+        }
         const auto accumSynth = SynthesizeComputeStage<AccumSdi::Metadata, AccumSdi::MEMBERS>(
             renderGraph, batch, "hit_accum_accumulate", hitAccumAccumulateShaderLib,
-            hitAccumAccumulateNode, lightingCommon, sceneProviders, {});
+            hitAccumAccumulateNode, lightingCommon, sceneProviders, accumSdiFeatures);
         (void)accumSynth;  // zero push members; nothing left to hand-wire
         CensusStageFromSdi<AccumSdi::Metadata, AccumSdi::MEMBERS>(
             sdiHazardCensus_, hitAccumAccumulateNode, sceneProviders, sdiNoFeatures,
@@ -7899,6 +8381,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(probeApplyReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   probeApplyNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
+    // B2 (batch-26, gated OFF by default batch-27): the clear pass's own
+    // hazard — writes {hitAccumTable} only (no reads; it unconditionally
+    // zeroes every slot). Ordering-only edge pins clear -> accumulate
+    // (accumulate's own slot-21 ORDERING_WAIT_SEMAPHORE input was otherwise
+    // unused — each ComputeStageNode instance owns its own slot 21, so this
+    // does not collide with the accumulate -> wave edge below).
+    if (hitAccumClearEnabled) {
+        batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      hitAccumClearWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(hitAccumClearWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      hitAccumClearNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(hitAccumClearNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      hitAccumAccumulateNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
+
     // W-SPLIT: the accumulate pass's own hazards — reads {hitRecordBuffer},
     // writes {hitAccumTable, hitRecordBuffer} (the RMW of the flags word AND
     // the table). Runs BEFORE the wave (topology below): the wave's analytic
@@ -7916,11 +8413,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       hitAccumAccumulateNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
         // Ordering-only edge (the Blit ORDERING_WAIT_SEMAPHORE convention —
         // shared-Resource* hazards do NOT order two stages, the W3c-2 finding
-        // reused here): pins accumulate → wave, so the frame runs accumulate
-        // → wave → cell_shade → SRS (cell_shade's own ordering source is the
-        // wave, which transitively follows the accumulate — no edge needed
-        // there). The wave's slot-21 ORDERING_WAIT_SEMAPHORE input was
-        // otherwise unused.
+        // reused here): pins accumulate → wave, so the frame runs clear →
+        // accumulate → wave → cell_shade → SRS (cell_shade's own ordering
+        // source is the wave, which transitively follows accumulate — no
+        // edge needed there). The wave's slot-21 ORDERING_WAIT_SEMAPHORE
+        // input was otherwise unused.
         batch.Connect(hitAccumAccumulateNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       shadowVisibilityWaveNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
     }

@@ -52,6 +52,10 @@ const uint TRACE_STEP_BRICK_DDA = 4u;   // DDA step within brick
 const uint TRACE_STEP_BRICK_EXIT = 5u;  // Exited brick without hit
 const uint TRACE_STEP_HIT = 6u;         // Found solid voxel
 const uint TRACE_STEP_MISS = 7u;        // Exited octree without hit
+const uint TRACE_STEP_FAR_FIELD_CUTOFF = 8u; // W-COMPOSED: candidate footprint
+                                              // > brick size, resolved via the
+                                              // degenerate mip-equivalent path
+                                              // instead of a full brick march
 
 // ============================================================================
 // DATA STRUCTURES

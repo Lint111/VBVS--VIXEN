@@ -78,6 +78,22 @@ public:
         return VK_NULL_HANDLE;
     }
 
+    /**
+     * @brief Get the ring index THIS frame's ExecuteImpl calls will use.
+     *
+     * B2 ring-lag fix (batch-28): the earlier doc here ("advances only in
+     * CleanupImpl") was FALSE — ExecuteImpl itself advances currentFrameIndex
+     * at its own top, BEFORE publishing it via ctx.Out(CURRENT_FRAME_INDEX).
+     * So a PreTick reader of the raw member was always one slot BEHIND what
+     * this same frame's Execute pass (and everything wired from its
+     * CURRENT_FRAME_INDEX output — descriptor sets, dispatch) actually uses.
+     * Predict that same advance here so PreTick and Execute agree on which
+     * ring slot belongs to this frame.
+     */
+    uint32_t GetCurrentFrameIndex() const {
+        return (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+    }
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;

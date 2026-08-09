@@ -397,8 +397,11 @@ ProduceRegion(recipeRef, regionAddress, lod, deltaChain, neighborBoundaryDeltas)
 
 - **v1 placement: CPU worker threads** (bake is single-threaded today; the two n³ loops run on the
   calling thread — the producer introduces the job infrastructure). Placement-agnostic contract:
-  inputs/outputs are pool-format bytes + a completion signal, never ECS state, so a GPU compute
-  producer can be substituted later.
+  inputs/outputs are owned pool-format bytes + a completion signal, never borrowed spans or ECS
+  state, so a GPU compute producer can be substituted later. The scheduler must have one owner
+  (Gaia background jobs or an adapter to the engine/TBB scheduler), and workers must not mutate the
+  shared `GaiaVoxelWorld`; see
+  [[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]].
 - **Direct-to-pool**: the ECS per-voxel round-trip (create entity per voxel at `SdfBake.h:167`,
   re-read per voxel at `ShellOctreeGpu.h:556-608`) is pure overhead for procedural content and is
   bypassed — the producer writes node/brick/channel bytes directly. `GaiaVoxelWorld` remains the
@@ -495,6 +498,13 @@ served async); materialized delta → re-produce affected bricks + **bottom-up d
 (`BakeMipPool` is whole-tree only, `MipBake.h:155-287`). Per-region offset uploads via
 `BatchedUploader` replace whole-pool re-upload. `Rematerialize` survives only as the fallback for
 structural scene changes and pool resize.
+
+The detailed publication contract is
+[[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]]:
+parallel immutable page assembly → generation-checked single-owner metadata commit → coalesced
+offset uploads → timeline-complete atomic page-table flip → deferred retirement. It also records the
+legacy grouped Gaia `copy_n` candidate for authoring-time per-voxel storage and rejects the current
+multi-worker `VoxelInjectionQueue` path.
 
 ## 5. Seam map
 

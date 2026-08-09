@@ -26,6 +26,16 @@
 // include order in BodyInstanceRayMarch.comp).
 // ============================================================================
 
+// W-RTQUERY Slice A fix 5: GL_EXT_ray_query must be declared as early as this
+// file can offer -- RayQueryTraversal.glsl is #included ~400 lines below (after
+// configs[]/brickLookup/StoredSdf's marchBrickSdfCell are already declared, its
+// real dependency order), which put the #extension mid-translation-unit. Hoisted
+// here, at this file's own head, guarded by the identical #ifdef so a flag-off
+// build never emits it (byte-identical source in that case).
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+#extension GL_EXT_ray_query : require
+#endif
+
 #include "SVOTypes.glsl"
 #include "Materials.glsl"
 #include "VoxelChannelFormat.glsl"   // Inc3 M3: SEM_* and FK_* defines
@@ -239,9 +249,549 @@ bool anyInstanceSkipped() {
 layout(std430, binding = 4) buffer RayTraceBuffer {
     uint traceWriteIndex;
     uint traceCapacity;
-    uint _padding[2];
+    // W-COMPOSED round-3 fix item 3: unconditional far-field-cutoff counter
+    // (mirrors C++ TraceBufferHeader::farFieldCount, DebugRaySample.h) --
+    // NOT gated on VIXEN_GPU_TRACE_HOOKS/ENABLE_SHADER_COUNTERS, since both far-
+    // field call sites (SceneBindings.glsl/RayQueryTraversal.glsl) increment it
+    // unconditionally on every real firing. CPU-side Reset() (RayTraceBuffer.cpp)
+    // deliberately never clears it, so it accumulates for the whole boot.
+    uint farFieldCount;
+    // Round-5 far-field diagnostics (validator-mandated): candidates REACHING the
+    // gate test, vs farFieldCount above which only counts firings that PASS it.
+    // Bumped immediately before each far-field if-test (RayQueryTraversal.glsl,
+    // SceneBindings.glsl's traverseCoarseGridInstancedSdf) -- distinguishes "the
+    // candidate loop yields nothing" from "the gate expression rejects everything"
+    // per the round-5 interpretation tree. Same unconditional/never-reset
+    // discipline as farFieldCount; repurposes the former _padding1 tail slot so
+    // TraceBufferHeader stays 16 B (DebugRaySample.h).
+    uint farFieldCandidates;
+    // Round-6 DDA-threshold-degeneracy probe (blocker 1): min/max of BOTH
+    // gate operands, bit-encoded via floatBitsToUint (values are always
+    // non-negative distances -- raw bit order == float order, no sign trick
+    // needed) and combined with atomicMin/atomicMax. lhs = the projected
+    // footprint (worldDistToCell*raySizeCoef+raySizeBias); rhs = the actual
+    // cell size (cellWorldSize). Never reset -- accumulates for the boot.
+    uint farFieldLhsMinBits;
+    uint farFieldLhsMaxBits;
+    uint farFieldRhsMinBits;
+    uint farFieldRhsMaxBits;
+    // Round-6 blocker-2 localization probe: raw TLAS candidate-loop entries
+    // (RayQueryTraversal.glsl's traverseRayQueryWorld, FIRST statement inside
+    // while(rayQueryProceedEXT) -- before the AABB-type continue), separate
+    // from farFieldCandidates above (which counts candidates reaching the
+    // far-field GATE specifically, several continues later). Never reset.
+    uint rtLoopEntries;
+    // Round-7 blocker-1 probe: does descendToNodeOrdinal+shadeFromMipSample
+    // actually resolve a shaded mip sample, or fall through to the
+    // vec3(0.5)/-farDirN placeholder? Bumped immediately after that check in
+    // both far-field twins (mirrors incrFarFieldCandidates' call-site
+    // discipline). Discriminates hypothesis (a) from (b)/(c) -- see
+    // farFieldMipSuccess/Fail in DebugRaySample.h's TraceBufferHeader. Never
+    // reset.
+    uint farFieldMipSuccess;
+    uint farFieldMipFail;
+    // Round-7 blocker-1 probe #2: how many times the M5/M5b tight-bounds
+    // far-hit-rejection guard (BodyInstanceRayMarch.comp, "anyHit = false"
+    // near the getOctreeTraceBounds check) actually discards a hit. If this
+    // tracks farFieldCount closely, the far-field's own hitWorldPos is
+    // routinely landing outside the winning instance's tight trace bounds --
+    // the mechanism losing the visible result downstream of a successful mip
+    // resolve. Never reset.
+    uint farFieldRejectedByBounds;
+    // Round-7 blocker-1 probe #3: how many far-field firings (g_lastHitWasFarField)
+    // actually WIN TraceWorld's isCloserHit competition against every other
+    // instance/candidate for the SAME pixel, i.e. become the pixel's final
+    // bestInstIdx. Bumped in TraceWorld.glsl right after each call site's own
+    // isCloserHit branch. If this stays near 0 while farFieldCount is huge, the
+    // far-field firing is real but never SURVIVES to be the pixel's winning
+    // hit -- a closer ordinary hit (same or another instance) always beats it,
+    // confirming hypothesis (b). Never reset.
+    uint farFieldWon;
+    // Round 9: the per-pixel TERMINAL far-field count -- how many pixels'
+    // FINAL rendered HitRecord (post far-hit-rejection, post cross-instance
+    // isCloserHit resolution) actually carries HITRECORD_FLAG_FAR_FIELD.
+    // farFieldWon (above) counts per-instance-loop local wins; this counts
+    // survivors of the WHOLE pixel, i.e. what a screenshot could show.
+    // Bumped once in BodyInstanceRayMarch.comp right after rec.flags is
+    // finalized (after the far-hit-rejection block, so a rejected far-field
+    // hit is correctly NOT counted). Never reset.
+    uint farFieldTerminal;
+    // Batch 10: splits MipFallback.glsl's shadeFromMipSample colorSample.y>0.0
+    // branch (see its comment) -- farFieldMipSuccess above proves ONLY that
+    // shadeFromMipSample returned true (both the resolved-color arm AND the
+    // vec3(0.5) grey-fallback arm return true; only SDF-coverage-missing
+    // returns false). These two counters discriminate "a real SEM_COLOR mip
+    // sample was resolved" from "fell through to the flat grey placeholder".
+    // Never reset. Grows the header by one 16 B block (80 B total) since
+    // round-7's single-uint _padRound7B tail had no free slot.
+    uint farFieldColorResolved;
+    uint farFieldColorFallback;
+    // Round 13 probe: splits farFieldMipFail into "descendToNodeOrdinal never
+    // reached the brick level" vs "reached it but shadeFromMipSample found no
+    // coverage" -- see DebugRaySample.h's TraceBufferHeader for the full
+    // rationale. Never reset.
+    uint farFieldDescentFail;
+    // Round 13 probe #2: min/max of the LEVEL descendToNodeOrdinal was at when
+    // it returned false (childExists/farBit/internal-node-at-brick guards),
+    // bit-packed as (depth - level) so a level-0 (brick-adjacent) failure
+    // reads as a LARGE "hops taken" value and a root-adjacent failure reads
+    // small -- lets a single min/max pair localize where in the descent every
+    // failure clusters. Never reset.
+    uint farFieldDescentFailLevelMin;
+    uint farFieldDescentFailLevelMax;
+    // (no _padRound10 remainder -- these two fields exactly consumed the
+    // slack; struct stays 80 B, matches C++ TraceBufferHeader's alignas(16).)
+    // Round 11 (dispatch attribution): see DebugRaySample.h's TraceBufferHeader
+    // for the full rationale. index 0 = primary march (BodyInstanceRayMarch.comp),
+    // index 1 = probe gather (ProbeGather.comp) -- the ONLY two callers of
+    // TraceWorld, itself the ONLY far-field-carrying call path on either
+    // backend. Never reset.
+    uint farFieldCandidatesByTag[2];
+    uint farFieldCountByTag[2];
+    uint farFieldColorResolvedByTag[2];
+    uint farFieldColorFallbackByTag[2];
+    // Round 11 STEP 2: primary-march-only pixel decode ring, see
+    // DebugRaySample.h's TraceBufferHeader for layout. Packed (x<<16)|y.
+    uint farFieldTerminalPixelWriteCount;
+    // Round 17 probe: repurposes _padRound11Pixels[3] (see DebugRaySample.h's
+    // TraceBufferHeader for the full rationale) -- octree-3-only candidate-loop
+    // breakdown for traverseRayQueryWorld.
+    uint rtLoopEntriesOct3;
+    uint farFieldGateRejectOct3;
+    uint farFieldCandidatesOct3;
+    uint farFieldTerminalPixels[32];
+    // Batch-24 FARGEN funnel: rect-scoped generation counters (must mirror
+    // DebugRaySample.h's TraceBufferHeader field order exactly -- this SSBO
+    // layout and the C++ struct read the SAME buffer).
+    uint rectRays;
+    uint rectCellEntries;
+    uint rectGateCross;
+    uint _padRound24;
+    // Batch-25 JOB 2: 8-bucket histogram of FarFieldGateLhs, rect-scoped
+    // (isFarGenRectPixel), edges around the 0.9375 gate threshold:
+    // <0.25,<0.5,<0.75,<0.9375,<1.25,<2,<4,>=4. Never reset.
+    uint rectLhsHistogram[8];
+    // Batch-27 JOB 2: ESVO's OWN cutoff criterion (traverseOctreeInstancedOnce
+    // ~SceneBindings.glsl:1497-1498, "tv_max*coef+bias >= scale_exp2"), logged
+    // side-by-side with the far-field gate above for the SAME rect pixels, same
+    // boot. tv_max/scale_exp2 are LOCAL/NORMALIZED octree-space quantities (no
+    // world scale applied) -- contrast with worldDistToCell/cellWorldSize above,
+    // which are already world-space. Min/max as float bits (recordFarFieldGateOperands'
+    // convention: both operands non-negative, ordering-preserving). Histogram uses
+    // the SAME 8 edges as rectLhsHistogram so the two populations are directly
+    // comparable. Crossing level = state.scale, recorded at EVERY evaluation of the
+    // test (not just crossings) so min/max bracket the full range of depths the
+    // test runs at for rect rays. Never reset.
+    uint esvoLhsMinBits;
+    uint esvoLhsMaxBits;
+    uint esvoRhsMinBits;
+    uint esvoRhsMaxBits;
+    uint esvoLhsHistogram[8];
+    uint esvoCrossLevelMin;
+    uint esvoCrossLevelMax;
+    uint _padBatch27[2];  // keeps the struct 16 B-aligned (alignas(16) TraceBufferHeader)
+    // Batch-29 JOB 3 (deep-field mip-accessor policy, regime-2 level ladder):
+    // rect-agnostic (whole-frame) 8-bucket histogram of the LEVEL
+    // mipPolicyLevel (SVOTypes.glsl) resolves to at every descendToNodeOrdinal
+    // call, VIXEN_MIP_POLICY only. Buckets 0-6 = levels 0..6 above brick,
+    // bucket 7 = level>=7 (deep/coarse tail). Lets a gate see the ladder
+    // actually in use (single-brick-rung shipped behavior would show 100% in
+    // bucket 0/1; a working ladder should spread across buckets as far
+    // clusters resolve coarser). Never reset (same discipline as the rest of
+    // this family).
+    uint policyLevelHistogram[8];
+    // Batch-29 JOB 4: rect-scoped attribution for ESVO's shadeFromMipSample
+    // arms (SceneBindings.glsl) -- the batch-28b validator's ask ("make
+    // attribution measured"). Indices match the arm order documented at each
+    // recordEsvoMipArm call site. Batch-30 stream B adds index 5 (policy-level
+    // arm, VIXEN_MIP_POLICY only) so the gate can see the streaming-grace(1)
+    // -> policy(5) arm shift the deep-field mip-policy design doc calls for.
+    uint esvoMipArmHits[6];
+    uint _padBatch29[2];  // keeps the struct 16 B-aligned (alignas(16) TraceBufferHeader)
+    // Batch-32 JOB 1: level-sensitive far-field counter -- min/max/sum/count
+    // of the LEVEL that actually fed a shaded far pixel, recorded at the mip-
+    // sample call site (both far-field twins), so a level-selection change
+    // CAN move this even when the population counters around the policy
+    // branch (FarField*/Esvo*/Rect*) can't. Must mirror
+    // DebugRaySample.h's field order exactly. Never reset.
+    uint farFieldSampledLevelMin;
+    uint farFieldSampledLevelMax;
+    uint farFieldSampledLevelSum;
+    uint farFieldSampledLevelCount;
+    // Batch-33 JOB 2: [FarFieldSampleIntensity] -- see DebugRaySample.h's
+    // mirror of this struct for the full rationale. Fixed-point sum (not
+    // float-bits) because GLSL has no portable atomic float add here.
+    uint farFieldSampleIntensityMinBits;
+    uint farFieldSampleIntensityMaxBits;
+    uint farFieldSampleIntensityFixedSum;
+    uint _padBatch33;
+    // Batch-35: [PolicyEntryDispatch] -- proves the entry-point inversion
+    // (deep-field-mip-policy design doc's "DDA is the exception" ruling)
+    // actually happened. Recorded once per instance ray at the DDA's
+    // traverseCoarseGridInstancedSdf entry (VIXEN_MIP_POLICY only, before
+    // the per-cell march loop): mip = the entry-footprint test picked the
+    // mip path directly (no march at all), march = footprint still in the
+    // detail regime, falls through to the exact per-cell march unchanged.
+    // Plain accumulators, zero-init correct, never reset.
+    uint policyEntryDispatchMip;
+    uint policyEntryDispatchMarch;
+    // BATCH 38: the entry-dispatch gate's OWN LHS probe. Batch 37 proved the
+    // existing recordFarFieldGateOperands is BLIND to the entry decision (its two
+    // call sites are the mid-march safety net + the RT twin; it fired 7,200x while
+    // the entry path ran 409,500x). These two slots repurpose _padBatch35 — no
+    // struct growth. Float-bits min/max, same encoding as the round-6 probe.
+    uint entryGateLhsMinBits;
+    uint entryGateLhsMaxBits;
+    // BATCH 39: [PolicyEntryDispatch] third bucket -- splits policyEntryDispatchMarch's
+    // conflated population. See DebugRaySample.h's mirror of this struct for the full
+    // rationale. Must mirror its field order exactly. Never reset.
+    uint policyEntryDispatchEmptyEntry;
+    uint _padBatch39;
+    // Regime-3 (cosmic accumulation) first slice, deep-field-mip-policy design doc: proves
+    // rays actually take the accumulation walk and terminate via the early-out. Must mirror
+    // DebugRaySample.h's TraceBufferHeader field order exactly. Plain accumulators, never reset.
+    uint regime3EntryCount;
+    uint regime3EarlyOutCount;
+    // Compositing-slice part 1 (walkCov source audit): repurposes _padRegime3
+    // for walkCov min/max (readMipSample(SEM_SDF).y clamped [0,1], the same
+    // walkCov the regime-3 walk already computes at SceneBindings.glsl's
+    // sample call site) plus walkSampledLevel min/max. Must mirror
+    // DebugRaySample.h's TraceBufferHeader field order exactly.
+    uint walkCovMinBits;
+    uint walkCovMaxBits;
+    uint walkSampledLevelMin;
+    uint walkSampledLevelMax;
+    uint _padWalkCov[2];
     uint traceData[];
 };
+
+// Fixed-point scale for farFieldSampleIntensityFixedSum -- luminance is a
+// small [0,~2] float (shaded mip color channel range), so this keeps ~6
+// decimal digits of precision in a uint sum well under overflow for any
+// realistic per-frame far-field sample count.
+const uint kIntensityFixedPointScale = 1000000u;
+
+// recordFarFieldTerminalPixel: round 11 STEP 2, primary-march-only pixel
+// decode. Called from BodyInstanceRayMarch.comp right alongside
+// incrFarFieldTerminal() -- gl_GlobalInvocationID.xy IS the pixel coordinate
+// at that call site (one invocation per pixel). 32-slot ring, wraps by %32;
+// a slot collision just overwrites an earlier sample (a decode aid, not a
+// census -- farFieldTerminal already gives the exact count).
+void recordFarFieldTerminalPixel(uvec2 pixel) {
+    uint slot = atomicAdd(farFieldTerminalPixelWriteCount, 1u) % 32u;
+    farFieldTerminalPixels[slot] = (pixel.x << 16) | (pixel.y & 0xFFFFu);
+}
+
+// g_dispatchIsPrimaryMarch: round 11, set once (compile-time constant folds
+// to a single branch) from VIXEN_DISPATCH_IS_PRIMARY_MARCH, which is spliced
+// into BodyInstanceRayMarch.comp only (see BuildRenderGraph.cpp's
+// ReadShaderSourceWithTraceHooksGate precedent). Every other TraceWorld
+// caller (currently just ProbeGather.comp) leaves it undefined -> tag 1.
+#ifdef VIXEN_DISPATCH_IS_PRIMARY_MARCH
+const uint g_dispatchTag = 0u;
+#else
+const uint g_dispatchTag = 1u;
+#endif
+
+// incrFarFieldCount: single atomic call site for both far-field twins (DDA in
+// SceneBindings.glsl, RT in RayQueryTraversal.glsl) -- see the struct comment
+// above for why this is unconditional rather than #ifdef-gated.
+void incrFarFieldCount() {
+    atomicAdd(farFieldCount, 1u);
+    atomicAdd(farFieldCountByTag[g_dispatchTag], 1u);  // round 11
+}
+
+// incrFarFieldCandidates: mirrors incrFarFieldCount but counts candidates
+// REACHING the far-field gate test, called immediately before the if() in both
+// twins -- see the struct comment above.
+void incrFarFieldCandidates() {
+    atomicAdd(farFieldCandidates, 1u);
+    atomicAdd(farFieldCandidatesByTag[g_dispatchTag], 1u);  // round 11
+}
+
+// recordFarFieldGateOperands: round-6 min/max probe, called immediately
+// before the gate if() in both far-field twins (mirrors incrFarFieldCandidates'
+// call-site discipline). lhs/rhs are non-negative world-space distances, so
+// floatBitsToUint preserves ordering and plain atomicMin/atomicMax work with
+// no sign-bit correction.
+// recordEntryGateLhs (batch 38): min/max of the ENTRY dispatch's footprint LHS.
+// Separate counter from recordFarFieldGateOperands on purpose -- that one is
+// called only from the mid-march safety net and the RT twin, so it cannot see
+// the entry decision at all (batch-37 finding). Non-negative by construction,
+// so raw float bits preserve ordering for atomicMin/Max.
+void recordEntryGateLhs(float lhs) {
+    uint bits = floatBitsToUint(max(lhs, 0.0));
+    atomicMin(entryGateLhsMinBits, bits);
+    atomicMax(entryGateLhsMaxBits, bits);
+}
+
+void recordFarFieldGateOperands(float lhs, float rhs) {
+    atomicMin(farFieldLhsMinBits, floatBitsToUint(lhs));
+    atomicMax(farFieldLhsMaxBits, floatBitsToUint(lhs));
+    atomicMin(farFieldRhsMinBits, floatBitsToUint(rhs));
+    atomicMax(farFieldRhsMaxBits, floatBitsToUint(rhs));
+}
+
+// incrRtLoopEntries: round-6 blocker-2 probe, see rtLoopEntries field comment.
+void incrRtLoopEntries() {
+    atomicAdd(rtLoopEntries, 1u);
+}
+
+// Batch-24 FARGEN funnel: rect-scoped generation counters, TIGHTENED batch-25
+// JOB 2 from the loose 28x22 box (x363-390,y239-260, 616px) to the exact
+// census rects c1∪c2 (c1: 366,240-376,259; c2: 380,240-389,259; 420px total)
+// so the funnel and the ESVO/dda/composed census agree on the SAME pixel
+// population. gl_GlobalInvocationID.xy IS the pixel coordinate in this
+// compute stage (same convention as recordFarFieldTerminalPixel above) -- no
+// plumbing needed, just a bounds check at each call site.
+bool isFarGenRectPixel() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    bool inC1 = p.x >= 366 && p.x <= 376 && p.y >= 240 && p.y <= 259;
+    bool inC2 = p.x >= 380 && p.x <= 389 && p.y >= 240 && p.y <= 259;
+    return inC1 || inC2;
+}
+
+// incrFarGenRectRay: bump once per invocation landing in the rect (census).
+void incrFarGenRectRay() {
+    if (isFarGenRectPixel()) atomicAdd(rectRays, 1u);
+}
+
+// incrFarGenRectCellEntry: bump at the far-field candidate-loop entry point
+// (mirrors incrFarFieldCandidates' call-site discipline) for rect rays only.
+void incrFarGenRectCellEntry() {
+    if (isFarGenRectPixel()) atomicAdd(rectCellEntries, 1u);
+}
+
+// incrFarGenRectGateCross: bump when a rect ray's candidate PASSES the
+// far-field footprint gate (mirrors the gate if() call sites).
+void incrFarGenRectGateCross() {
+    if (isFarGenRectPixel()) atomicAdd(rectGateCross, 1u);
+}
+
+// recordFarGenRectLhsHistogram: batch-25 JOB 2. Bucket lhs against edges
+// around the 0.9375 gate threshold; rect-scoped only. Called alongside
+// recordFarFieldGateOperands in both far-field twins.
+void recordFarGenRectLhsHistogram(float lhs) {
+    if (!isFarGenRectPixel()) return;
+    uint b = lhs < 0.25 ? 0u : lhs < 0.5 ? 1u : lhs < 0.75 ? 2u : lhs < 0.9375 ? 3u :
+             lhs < 1.25 ? 4u : lhs < 2.0 ? 5u : lhs < 4.0 ? 6u : 7u;
+    atomicAdd(rectLhsHistogram[b], 1u);
+}
+
+// recordEsvoCutoffOperands: batch-27 JOB 2. Called at ESVO's own LOD cutoff
+// test (traverseOctreeInstancedOnce, ~line 1497-1498), rect-scoped only —
+// side-by-side with recordFarFieldGateOperands/recordFarGenRectLhsHistogram
+// so both criteria's operands come out of the SAME boot for the SAME rays.
+// lhs/rhs are non-negative local/normalized quantities (tv_max, scale_exp2),
+// same ordering-preserving floatBitsToUint trick as the far-field probe.
+// level = state.scale, the octree depth the test evaluated at.
+void recordEsvoCutoffOperands(float lhs, float rhs, uint level) {
+    if (!isFarGenRectPixel()) return;
+    atomicMin(esvoLhsMinBits, floatBitsToUint(lhs));
+    atomicMax(esvoLhsMaxBits, floatBitsToUint(lhs));
+    atomicMin(esvoRhsMinBits, floatBitsToUint(rhs));
+    atomicMax(esvoRhsMaxBits, floatBitsToUint(rhs));
+    uint b = lhs < 0.25 ? 0u : lhs < 0.5 ? 1u : lhs < 0.75 ? 2u : lhs < 0.9375 ? 3u :
+             lhs < 1.25 ? 4u : lhs < 2.0 ? 5u : lhs < 4.0 ? 6u : 7u;
+    atomicAdd(esvoLhsHistogram[b], 1u);
+    atomicMin(esvoCrossLevelMin, level);
+    atomicMax(esvoCrossLevelMax, level);
+}
+
+// Round-17 probe: octree-3-only breakdown of traverseRayQueryWorld's
+// candidate loop, see rtLoopEntriesOct3/farFieldGateRejectOct3/
+// farFieldCandidatesOct3 field comment (DebugRaySample.h).
+void incrRtLoopEntriesOct3() {
+    atomicAdd(rtLoopEntriesOct3, 1u);
+}
+void incrFarFieldGateRejectOct3() {
+    atomicAdd(farFieldGateRejectOct3, 1u);
+}
+void incrFarFieldCandidatesOct3() {
+    atomicAdd(farFieldCandidatesOct3, 1u);
+}
+
+// incrFarFieldWon: round-7 blocker-1 probe #3, see farFieldWon field comment.
+void incrFarFieldWon() {
+    atomicAdd(farFieldWon, 1u);
+}
+
+// recordFarFieldMipResolve: round-7 blocker-1 probe, see farFieldMipSuccess/
+// Fail field comment. Called immediately after the descendToNodeOrdinal +
+// shadeFromMipSample check in both far-field twins.
+void recordFarFieldMipResolve(bool resolved) {
+    if (resolved) {
+        atomicAdd(farFieldMipSuccess, 1u);
+    } else {
+        atomicAdd(farFieldMipFail, 1u);
+    }
+}
+
+// incrFarFieldDescentFail: round-13 probe, see farFieldDescentFail field
+// comment. Called when descendToNodeOrdinal itself returns false (before the
+// short-circuited shadeFromMipSample call) -- splits farFieldMipFail's two
+// sub-causes apart.
+void incrFarFieldDescentFail() {
+    atomicAdd(farFieldDescentFail, 1u);
+}
+
+// recordFarFieldDescentFailLevel: round-13 probe #2, see
+// farFieldDescentFailLevelMin/Max field comment. `hops` = depth - level at
+// the point of failure (0 == failed immediately at the root's own first
+// child-existence check, larger == failed deeper/closer to brick level).
+void recordFarFieldDescentFailLevel(uint hops) {
+    atomicMin(farFieldDescentFailLevelMin, hops);
+    atomicMax(farFieldDescentFailLevelMax, hops);
+}
+
+// recordPolicyLevel: batch-29 JOB 3, see policyLevelHistogram field comment
+// (DebugRaySample.h/this file's TraceBufferHeader). Called from
+// descendToNodeOrdinal (ESVOTraversal.glsl) every VIXEN_MIP_POLICY call,
+// rect-agnostic (whole-frame) -- this is the "is the ladder in use" gate,
+// not an attribution probe, so it deliberately isn't scoped to the far
+// clusters like the rectLhsHistogram family above.
+void recordPolicyLevel(uint level) {
+    atomicAdd(policyLevelHistogram[min(level, 7u)], 1u);
+}
+
+// recordFarFieldSampledLevel: batch-32 JOB 1, see farFieldSampledLevelMin/
+// Max/Sum/Count field comment. Called at the mip-sample call site (both
+// far-field twins) right after descendToNodeOrdinal returns + shadeFromMipSample
+// resolves -- level is the ACTUAL level the sample was read at (depth - the
+// loop level descendToNodeOrdinal stopped on), so unlike PolicyLevelHistogram
+// (every policy decision, rect-agnostic) this only counts levels that fed a
+// real shaded far pixel. Rect-agnostic like PolicyLevelHistogram (whole-frame
+// liveness signal, not an attribution probe).
+void recordFarFieldSampledLevel(uint level) {
+    atomicMin(farFieldSampledLevelMin, level);
+    atomicMax(farFieldSampledLevelMax, level);
+    atomicAdd(farFieldSampledLevelSum, level);
+    atomicAdd(farFieldSampledLevelCount, 1u);
+}
+
+// recordFarFieldSampleIntensity: batch-33 JOB 2. Called alongside
+// recordFarFieldSampledLevel (same call site, both far-field twins) so
+// [FarFieldSampleIntensity] and [FarFieldSampledLevel] share one count
+// (farFieldSampledLevelCount) -- distinguishes "level chosen" from "sample
+// value", per the batch-32 open ruling (ESVO dimmed under policy while the
+// level/count census stayed flat). `luminance` is the shaded mip color's
+// luminance (dot with standard Rec.709 weights) at the point
+// recordFarFieldSampledLevel is called. min/max via floatBitsToUint (valid
+// since luminance >= 0); sum via fixed-point uint (see kIntensityFixedPointScale).
+void recordFarFieldSampleIntensity(float luminance) {
+    uint bits = floatBitsToUint(luminance);
+    atomicMin(farFieldSampleIntensityMinBits, bits);
+    atomicMax(farFieldSampleIntensityMaxBits, bits);
+    atomicAdd(farFieldSampleIntensityFixedSum, uint(clamp(luminance, 0.0, 4000.0) * float(kIntensityFixedPointScale)));
+}
+
+// recordPolicyEntryDispatch: batch-35, see policyEntryDispatchMip/March field
+// comment. Called ONCE per instance ray at the DDA's entry-point regime
+// decision (before the per-cell march loop) -- proves the dispatch inversion
+// happened: mip=true means the entry footprint already covered a voxel-or-
+// coarser rung and the ray took the mip path with NO march; mip=false means
+// genuine detail was in view and the ray fell through to the exact march.
+void recordPolicyEntryDispatch(bool tookMip) {
+    if (tookMip) {
+        atomicAdd(policyEntryDispatchMip, 1u);
+    } else {
+        atomicAdd(policyEntryDispatchMarch, 1u);
+    }
+}
+
+// recordPolicyEntryEmptyEntry: batch-39, see policyEntryDispatchEmptyEntry field
+// comment. Called ONLY for the admitted-but-empty-entry-cell population, right
+// where that fall-through happens -- BEFORE the shared recordPolicyEntryDispatch(false)
+// call, so march (unchanged) still counts this population too (additive split, not
+// a move): march = detail-regime rays + empty-entry rays; emptyEntry = the subset of
+// march that was actually admitted but had no brick at the entry cell.
+void recordPolicyEntryEmptyEntry() {
+    atomicAdd(policyEntryDispatchEmptyEntry, 1u);
+}
+
+// recordRegime3Entry / recordRegime3EarlyOut: regime-3 (cosmic accumulation)
+// first slice, see regime3EntryCount/regime3EarlyOutCount field comment.
+// recordRegime3Entry is called once per ray that takes the accumulation walk
+// (VIXEN_REGIME3 && footprint >= K*cell at entry dispatch); recordRegime3EarlyOut
+// once for the subset that terminates via the T~eps early-out rather than
+// exhausting the walk's cell budget.
+void recordRegime3Entry() {
+    atomicAdd(regime3EntryCount, 1u);
+}
+
+void recordRegime3EarlyOut() {
+    atomicAdd(regime3EarlyOutCount, 1u);
+}
+
+// recordWalkCov / recordWalkSampledLevel: compositing-slice part 1 probe.
+// Called at the regime-3 walk's SEM_SDF mip-sample call site (walkCov is
+// already computed there for the accumulation math) to establish whether
+// coverage tracks bake sparsity or saturates regardless of it. Non-negative
+// by construction (clamp(...,0,1)), so floatBitsToUint preserves ordering --
+// same encoding/seeding discipline as recordEntryGateLhs.
+void recordWalkCov(float cov) {
+    uint bits = floatBitsToUint(max(cov, 0.0));
+    atomicMin(walkCovMinBits, bits);
+    atomicMax(walkCovMaxBits, bits);
+}
+
+void recordWalkSampledLevel(uint level) {
+    atomicMin(walkSampledLevelMin, level);
+    atomicMax(walkSampledLevelMax, level);
+}
+
+// recordEsvoMipArm: batch-29 JOB 4, see esvoMipArmHits field comment. Called
+// at each of ESVO's shadeFromMipSample call sites (rect-scoped, same
+// isFarGenRectPixel population as the rest of the rect family) so the
+// batch-28b validator's "make attribution measured" ask has real per-arm
+// counts instead of an elimination argument. Arm indices:
+//   0 = tier-crossing subpixel-footprint/childNotResident (~line 1413+K)
+//   1 = streaming-grace non-resident brick (~line 1478+K)
+//   2 = deliberate LOD screen-space cutoff (~line 1546+K, ESVO's OWN
+//       criterion -- the regime-2 mip-hit site proper)
+//   3 = tier-crossing child-miss fallback (~line 1761+K)
+//   4 = hop-budget-exhausted fallback (~line 1864+K, the SAME site the
+//       batch-28b elimination argument pointed at as "lights far content
+//       today by incidental fallback, not the policy")
+//   5 = batch-30 stream B: policy-level arm (VIXEN_MIP_POLICY only) -- the
+//       streaming-grace site (arm 1) resolved a policy level > 0 and sampled
+//       an ancestor node instead of the leaf. Flag-off this index is never
+//       written (arm 1 fires unconditionally, matching pre-batch-30 behavior
+//       byte-exact); flag-on the gate reads the arm-1-vs-arm-5 split.
+void recordEsvoMipArm(uint armIndex) {
+    if (!isFarGenRectPixel()) return;
+    atomicAdd(esvoMipArmHits[min(armIndex, 5u)], 1u);
+}
+
+// incrFarFieldRejectedByBounds: round-7 blocker-1 probe #2, see
+// farFieldRejectedByBounds field comment. Called in BodyInstanceRayMarch.comp
+// when the M5/M5b tight-bounds far-hit-rejection guard discards a hit whose
+// worldHit.t traces back to a TRACE_STEP_FAR_FIELD_CUTOFF sample.
+void incrFarFieldRejectedByBounds() {
+    atomicAdd(farFieldRejectedByBounds, 1u);
+}
+
+// incrFarFieldTerminal: round 9, see farFieldTerminal field comment. Called
+// once in BodyInstanceRayMarch.comp right after rec.flags is finalized
+// (after the far-hit-rejection block), when the pixel's FINAL HitRecord
+// carries HITRECORD_FLAG_FAR_FIELD.
+void incrFarFieldTerminal() {
+    atomicAdd(farFieldTerminal, 1u);
+}
+
+// incrFarFieldColorResolved/incrFarFieldColorFallback: batch 10, see
+// farFieldColorResolved/farFieldColorFallback field comment. Called from
+// MipFallback.glsl's shadeFromMipSample on the resolved-color arm vs the
+// vec3(0.5) grey-fallback arm of its colorSample.y>0.0 branch.
+void incrFarFieldColorResolved() {
+    atomicAdd(farFieldColorResolved, 1u);
+    atomicAdd(farFieldColorResolvedByTag[g_dispatchTag], 1u);  // round 11
+}
+
+void incrFarFieldColorFallback() {
+    atomicAdd(farFieldColorFallback, 1u);
+    atomicAdd(farFieldColorFallbackByTag[g_dispatchTag], 1u);  // round 11
+}
 
 // ============================================================================
 // OCTREE CONFIG SSBO (binding 5, std430, 432 B / element, N elements)
@@ -340,6 +890,26 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
 // g_brickArrayBase applies the per-octree brick offset in marchBrickInstanced().
 int g_octreeIdx      = 0;   // index into configs[] for the active octree
 int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
+// Round-7 blocker-1 probe #3: set true immediately before the far-field
+// early-return in both twins (traverseCoarseGridInstancedSdf below,
+// traverseRayQueryWorld in RayQueryTraversal.glsl), read by TraceWorld.glsl
+// right after each per-instance call to count how many far-field firings
+// actually WIN isCloserHit (survive to bestT/bestColor) vs lose to a nearer
+// hit from another instance/candidate -- discriminates hypothesis (b).
+// Per-invocation global (same convention as g_octreeIdx above); reset to
+// false at the top of TraceWorld() before the loop, like anyHit.
+bool g_lastHitWasFarField = false;
+
+// Regime-3 compositing (VIXEN_REGIME3_COMPOSITE), part 2: residual transmittance
+// T left over from the regime-3 accumulation walk's early-out/budget-exhaustion
+// (SceneBindings.glsl's regime3Admits block below) -- 1.0 (fully transparent,
+// i.e. this candidate contributed no coverage) whenever the winning hit did NOT
+// come from that walk. Same per-invocation-global / reset-before-call convention
+// as g_lastHitWasFarField above; consumed+reset by TraceWorld.glsl right after
+// each per-instance call. Flag-off (VIXEN_REGIME3_COMPOSITE unset): never
+// written away from its 1.0 default, so the composite blend at the shade
+// resolve is always a no-op -- see BodyInstanceRayMarch.comp's blend site.
+float g_lastRegime3ResidualT = 1.0;
 
 #ifdef VIXEN_SHADOW_DBG
 // M10 shadow-diagnostic (env-gated, off by default): populated ONLY when the
@@ -392,6 +962,14 @@ int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
 #include "SdfRecipes.glsl"
 #include "StoredSdf.glsl"    // Inc2 M4: trilinear SDF fetch + sphere-trace handler
 #include "MipFallback.glsl"  // Inc1 M3: sparse-mip ESVO LOD shader-side fallback read
+// W-RTQUERY Slice A: VK_KHR_ray_query per-brick-AABB TLAS backend (third search
+// backend alongside ESVO/DDA). Self-#ifdef-guarded on VIXEN_RTQUERY_TRAVERSAL --
+// entirely compiled out (including its TLAS binding) on a flag-off build, exactly
+// like the coarse-grid DDA backend below stays compiled out without
+// VIXEN_BRICKMAP_TRAVERSAL. Included here (after configs[]/brickLookup/StoredSdf's
+// marchBrickSdfCell, all declared above) so it can call marchBrickSdfCell/
+// brickLocalToGrid directly, same dependency order the DDA backend relies on.
+#include "RayQueryTraversal.glsl"
 // Provider kinds (mirror ShellOctreeGpu.h ProviderKind + SdfRecipes.h).
 #define PROVIDER_STORED     0u
 #define PROVIDER_PROCEDURAL 1u
@@ -1051,6 +1629,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
 
                                 if (subPixelFootprint || childNotResident) {
                                     hitT = tEntryWorld + state.t_min;
+                                    recordEsvoMipArm(0u);  // batch-29 JOB 4: tier-crossing subpixel/non-resident arm
                                     if (!shadeFromMipSample(leafDescriptorIndexTc, hitColor, hitNormal)) {
                                         hitColor  = vec3(0.5);
                                         hitNormal = vec3(0.0, 1.0, 0.0);
@@ -1116,7 +1695,56 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                     if (localChildIdx >= 0 && localChildIdx <= 7) {
                         uint leafDescriptorIndex = resolveLeafDescriptorIndex(
                             parent_descriptor, validMask, leafMask, localChildIdx);
+#ifdef VIXEN_MIP_POLICY
+                        // Deep-Field Mip-Accessor Policy (batch-30 stream B): the
+                        // streaming-grace fallback (Sparse-Mip Inc1 M3 Task 7) always
+                        // sampled THIS leaf's own mip node regardless of the ray's
+                        // actual footprint -- correct only by accident at the single
+                        // brick rung. Consult the SAME shared footprint->level function
+                        // ESVO's ladder walk uses (mipPolicyLevel, SVOTypes.glsl):
+                        // leafWorldSize is this leaf's own normalized size (parent's
+                        // scale_exp2, halved once -- the same halving executePushPhase
+                        // performs on descent), footprint is ESVO's own criterion units
+                        // (tv_max*coef+bias, identical to the deliberate-LOD arm below
+                        // so both consult the ladder in the SAME space). policyLevel==0
+                        // means "the leaf itself is already the correct level" -- same
+                        // node the flag-off code samples, so leafDescriptorIndex is left
+                        // unchanged (no behavior change, no extra fallback needed).
+                        // policyLevel>0 means the footprint has grown past this leaf;
+                        // walk up the stack this traversal already populated
+                        // (executePushPhase writes stack[state.scale] before every
+                        // descent) to the ancestor node at that level and sample IT
+                        // instead. If the requested level is out of the stack's
+                        // populated range (shouldn't happen -- state.scale bounds the
+                        // walk -- but guarded per the fallback contract: policy data
+                        // unavailable falls back to the streaming-grace leaf sample,
+                        // counted as arm 1 same as today) the streaming-grace leaf
+                        // sample is used unchanged.
+                        float leafWorldSize = state.scale_exp2 * 0.5;
+                        float policyFootprint = tv_max * pc.raySizeCoef + pc.raySizeBias;
+                        int policyLevel = mipPolicyLevel(policyFootprint, leafWorldSize,
+                                                          state.scale);
+                        uint policyNodeOrdinal = leafDescriptorIndex;
+                        bool policyLevelAvailable = true;
+                        if (policyLevel > 0) {
+                            int ancestorScale = state.scale + policyLevel - 1;
+                            if (ancestorScale >= 0 && ancestorScale < STACK_SIZE) {
+                                policyNodeOrdinal = stack[ancestorScale].parentPtr;
+                            } else {
+                                policyLevelAvailable = false;
+                            }
+                        }
+                        if (policyLevelAvailable) {
+                            recordEsvoMipArm(5u);  // batch-30 stream B: policy-level arm
+                            leafHit = shadeFromMipSample(policyNodeOrdinal, hitColor, hitNormal);
+                        } else {
+                            recordEsvoMipArm(1u);  // batch-29 JOB 4: streaming-grace fallback (policy data unavailable)
+                            leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
+                        }
+#else
+                        recordEsvoMipArm(1u);  // batch-29 JOB 4: streaming-grace non-resident-brick arm
                         leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
+#endif
                         if (leafHit) {
                             hitT              = tEntryWorld + state.t_min;
                             hitRoughness      = 0.5;
@@ -1174,9 +1802,17 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                 // tree stops here once its footprint is sub-pixel — state.parentPtr is
                 // this non-leaf node's own index (just fetched at the top of this
                 // iteration), the same ordinal MipBake.h bakes a sample for.
+                // Batch-27 JOB 2: log ESVO's own operands for rect pixels, same call-
+                // site discipline as recordFarFieldGateOperands (called right before the
+                // gate's if()). Level (state.scale) is the depth this exact evaluation
+                // ran at, recorded unconditionally so both the crossing AND rejecting
+                // levels are visible via min/max.
+                recordEsvoCutoffOperands(tv_max * pc.raySizeCoef + pc.raySizeBias,
+                                          state.scale_exp2, uint(state.scale));
                 if (pc.raySizeCoef > 0.0 &&
                     tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
                     hitT = tEntryWorld + state.t_min;
+                    recordEsvoMipArm(2u);  // batch-29 JOB 4: deliberate LOD screen-space cutoff arm
                     if (!shadeFromMipSample(state.parentPtr, hitColor, hitNormal)) {
                         // No mip coverage (binary/Procedural bodies, or an SDF octree
                         // with no baked mip pool): fall back to the pre-M3 neutral-grey
@@ -1392,6 +2028,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                 g_esvoNodeBase   = fallbackEsvoNodeBase;
                 g_brickArrayBase = fallbackBrickArrayBase;
                 vec3 mipColor; vec3 mipNormal;
+                recordEsvoMipArm(3u);  // batch-29 JOB 4: tier-crossing child-miss fallback arm
                 bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal);
                 g_octreeIdx      = originOctreeIdx;
                 g_esvoNodeBase   = originEsvoNodeBase;
@@ -1495,6 +2132,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         g_esvoNodeBase   = fallbackEsvoNodeBase;
         g_brickArrayBase = fallbackBrickArrayBase;
         vec3 mipColor; vec3 mipNormal;
+        recordEsvoMipArm(4u);  // batch-29 JOB 4: hop-budget-exhausted fallback arm
         bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal);
         g_octreeIdx      = originOctreeIdx;
         g_esvoNodeBase   = originEsvoNodeBase;
@@ -1841,6 +2479,631 @@ bool traverseOctreeInstancedAnyHit(vec3 rayOrigin, vec3 rayDir,
     g_octreeIdx      = originOctreeIdx;
     g_esvoNodeBase   = originEsvoNodeBase;
     g_brickArrayBase = originBrickArrayBase;
+    return false;
+}
+
+// The FORMAT_BINARY coarse-grid DDA twins (traverseCoarseGridInstanced/AnyHit)
+// were DELETED (slice-2 round-3 validator): they can never be correctly invoked
+// today — the binary Serialize()/Concatenate() never populate
+// brickGridLookup/brickLookupBase, so a FORMAT_BINARY octree has no lookup table
+// to DDA over (it binds a 1-byte placeholder; every read was out-of-bounds).
+// Re-introduce them only after the binary bake writes the lookup (invert
+// brickGridToBrickView exactly as SerializeSdf does, stamp brickLookupBase in
+// Concatenate(), upload a real buffer in BodyOctreeSceneNode). Git blame on this
+// comment finds the last working copy.
+
+// ============================================================================
+// COARSE-GRID DDA TRAVERSAL -- STORED_SDF (W-BRICKMAP Slice 2, round 3 retarget)
+// ============================================================================
+// The coarse-grid DDA backend (STORED_SDF only). Round-2 scoped this
+// backend to FORMAT_BINARY only; verified WRONG (round-3 root-cause finding):
+// brickGridLookup/brickLookupBase are populated ONLY by the SDF serialization
+// path (SerializeSdf/ConcatenateSdf, ShellOctreeGpu.h) -- the binary Serialize/
+// Concatenate never touch them, so a FORMAT_BINARY octree's brickLookup reads
+// were out-of-bounds against a 1-byte placeholder. STORED_SDF is the format
+// this backend can actually serve; FORMAT_BINARY now stays on the ESVO path
+// (see the retargeted call-site condition in TraceWorld.glsl).
+//
+// Same DDA loop as the binary twin (identical cell/step/enterAxis machinery --
+// bricksPerAxis/brickLookupBase/brickSize are ALL populated for STORED_SDF too:
+// SerializeSdf stamps c.bricksPerAxis = oct->bricksPerAxis (the SAME field the
+// binary path uses, byte 24) in addition to bricksPerAxisSdf (byte 204, the
+// ESVO-leaf-hit path's own field) -- both hold the identical brick-grid side
+// length for an SDF octree, so this loop's bpa/lookup indexing is unchanged
+// from the binary twin, byte-for-byte). Only the per-cell refine call differs:
+// marchBrickSdfCell (StoredSdf.glsl) instead of marchBrickInstanced -- a
+// single-brick trilinear sphere-trace with NO ESVO-hop continuation (the DDA's
+// own cell loop already provides that continuation, exactly as it already does
+// for a marchBrickInstanced miss below).
+// ============================================================================
+// ROUND-5 NOTE (validator-mandated): this whole function is COMPILED OUT on any
+// composed boot where the device has VK_KHR_ray_query (TraceWorld.glsl:549
+// gives VIXEN_RTQUERY_TRAVERSAL precedence in the #ifdef/#elif chain) -- on
+// this machine's 3060, VIXEN_COMPOSED_TRAVERSAL always resolves to RTQUERY
+// (BuildRenderGraph.cpp:1610-1631), so edits here are dead code for every
+// composed boot; only a STANDALONE VIXEN_BRICKMAP_TRAVERSAL boot (no RTQUERY,
+// no COMPOSED) actually executes this body. The instRenderScale fix below is
+// correct arithmetic and stays live on non-rayQuery machines / forced-DDA
+// boots -- KEEP it.
+bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
+                                     vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
+                                     float instRenderScale,
+                                     out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                                     out float hitRoughness,
+                                     out uint hitBrickIndex, out uint hitVoxelLinearIdx,
+                                     inout DebugRaySample debugInfo) {
+    hitColor = vec3(0.0); hitNormal = vec3(0.0); hitT = 0.0; hitRoughness = 0.5;
+    hitBrickIndex = 0u; hitVoxelLinearIdx = 0u;
+    debugInfo.hitFlag = 0u;
+    debugInfo.exitCode = DEBUG_EXIT_NONE;
+
+    if (gridT.y < 0.0) { debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN; return false; }
+
+    int bpa = octreeConfig.bricksPerAxis;
+    if (bpa <= 0) { debugInfo.exitCode = DEBUG_EXIT_NONE; return false; }
+    float bpaF = float(bpa);
+
+    bool rayStartsInside = (gridT.x < 0.0);
+    float tEnter = rayStartsInside ? 0.0 : (gridT.x + EPSILON);
+    vec3 pos = rayOriginLocal + rayDirLocal * tEnter;
+    ivec3 cell = clamp(ivec3(floor(pos * bpaF)), ivec3(0), ivec3(bpa - 1));
+
+    ivec3 stepDir; vec3 tDelta; vec3 tMax;
+    for (int axis = 0; axis < 3; ++axis) {
+        float d = rayDirLocal[axis];
+        if (abs(d) < DIR_EPSILON) {
+            stepDir[axis] = 0; tDelta[axis] = 1e30; tMax[axis] = 1e30;
+        } else {
+            stepDir[axis] = d > 0.0 ? 1 : -1;
+            tDelta[axis] = (1.0 / bpaF) / abs(d);
+            float nextBoundary = (float(cell[axis]) + (d > 0.0 ? 1.0 : 0.0)) / bpaF;
+            tMax[axis] = (nextBoundary - rayOriginLocal[axis]) / d;
+        }
+    }
+
+    vec3 rayStartWorld;
+    if (rayStartsInside) { rayStartWorld = rayOrigin; }
+    else { rayStartWorld = (octreeConfig.localToWorld * vec4(pos, 1.0)).xyz; }
+    float tBias = length(rayStartWorld - rayOrigin);
+
+#ifdef VIXEN_MIP_POLICY
+    // BATCH-35 ENTRY-POINT DISPATCH (USER RULING 2026-08-08 "DDA IS THE
+    // EXCEPTION, MIP SAMPLING IS THE DEFAULT" -- deep-field-mip-policy design
+    // doc): decide the regime BEFORE the march starts, not mid-march per-cell
+    // (the batch-33/34 gate below, now demoted to a SAFETY NET -- see its own
+    // comment).
+    //
+    // BATCH-36 ANCHOR FIX (deep-field-mip-policy design doc, "Anchoring
+    // rule"): batch 35 anchored the footprint at tEnter -- the ray's nearest
+    // approach to the instance AABB (gridT.x) -- which systematically
+    // UNDER-estimates the footprint (measured: gate LHS 1.86984 -> 0.375855,
+    // -80%), since tEnter is the closest point on the whole span the ray
+    // could possibly resolve at, not where a non-marching ray actually
+    // resolves. A ray that takes the mip path here never marches at all, so
+    // there is no single "resolved cell" to anchor on the way a DDA hit-cell
+    // or an RT candidate's per-instance slab test would give one for free;
+    // the representative distance for the whole traversed span is its
+    // MIDPOINT: gridT.x is already tEnter (this function's own local, see
+    // above), and gridT.y is the same slab test's far-face exit t for this
+    // instance -- both already computed by the caller before this function
+    // runs, so the midpoint costs one add and one multiply, no extra trace.
+    // This mirrors the SEMANTICS RayQueryTraversal.glsl's per-candidate gate
+    // achieves structurally (each RT candidate's tCellEnter is its own
+    // slab-test entry into ITS candidate span, which lands far deeper into
+    // the scene than DDA's single whole-grid tEnter) without introducing a
+    // second traversal: candidate (c) from the design doc ("resolve the
+    // candidate cell first, then anchor there") would require walking the
+    // DDA to find the first occupied cell before deciding, which defeats the
+    // entire march-avoidance point of an entry-point decision. `cell` (used
+    // below for the brick-lookup index) stays anchored at the true entry
+    // point -- only the DISTANCE used to size the footprint moves to
+    // mid-span; the design doc's "anchoring rule" targets the footprint,
+    // not which cell the dispatch starts scanning from.
+    {
+        float entryDirLen = length(rayDirLocal);
+        if (entryDirLen >= 1e-12) {
+            float entryMidT = 0.5 * (tEnter + gridT.y);
+            float entryWorldDist = entryMidT * instRenderScale;
+            float entryCellWorldSize = ((1.0 / bpaF) / entryDirLen) * instRenderScale;
+            const float kEntryBrickSize = 8.0;  // BRICK_SIZE_SDF, matches the mid-march gate
+            float entryAdmitFootprint = entryCellWorldSize / kEntryBrickSize;  // finest ladder rung == one voxel
+            float entryGateLhs = entryWorldDist * pc.raySizeCoef + pc.raySizeBias;
+            recordEntryGateLhs(entryGateLhs);  // batch-38: the entry gate's OWN probe
+            bool entryPolicyAdmits = pc.raySizeCoef > 0.0 &&
+                entryGateLhs >= entryAdmitFootprint;
+#ifdef VIXEN_REGIME3
+            // Deep-field-mip-policy design doc, regime 3 (cosmic accumulation) first
+            // slice: when the footprint has grown past K*cell (strictly coarser than
+            // the regime-2 mip-hit rung, entryAdmitFootprint above), the ray stops
+            // being a hit-finder and becomes a transmittance accumulator -- per coarse
+            // cell at the matched level, sample (color, coverage), C += T*cov*color,
+            // T *= (1-cov), early-out at T~eps. This slice does NOT composite over
+            // deeper content (out of scope per the task ledger) -- it commits the
+            // accumulated color as the hit, same return shape as the regime-2 mip-hit
+            // path just below, so it is independently testable (counters + census)
+            // without the composed/RT integration a later slice adds.
+            bool regime3Admits = entryPolicyAdmits &&
+                entryGateLhs >= pc.cosmicK * entryCellWorldSize;
+            if (regime3Admits) {
+                recordRegime3Entry();
+                const float kRegime3Eps = 0.02;      // T~eps early-out (design doc)
+                const int kRegime3MaxCells = 64;      // cell-budget cap, mirrors maxIters' role below
+                vec3 accumColor = vec3(0.0);
+                float T = 1.0;
+                ivec3 walkCell = cell;
+                float walkTMax_x = tMax.x, walkTMax_y = tMax.y, walkTMax_z = tMax.z;
+                bool anySampled = false;
+                bool earlyOut = false;
+                for (int walkIter = 0; walkIter < kRegime3MaxCells; ++walkIter) {
+                    if (any(lessThan(walkCell, ivec3(0))) || any(greaterThanEqual(walkCell, ivec3(bpa)))) break;
+                    // Advance to this cell's exit t (same DDA step the ordinary march
+                    // below performs) BEFORE sampling, so worldDistToCell below anchors
+                    // on the cell's own span like the entry/mid-march gates do.
+                    float cellTEnter = (walkIter == 0) ? tEnter : min(walkTMax_x, min(walkTMax_y, walkTMax_z));
+                    int walkAxis = (walkTMax_x <= walkTMax_y && walkTMax_x <= walkTMax_z) ? 0
+                                  : (walkTMax_y <= walkTMax_z) ? 1 : 2;
+                    float cellTExit = walkTMax_x;
+                    if (walkAxis == 1) cellTExit = walkTMax_y;
+                    else if (walkAxis == 2) cellTExit = walkTMax_z;
+                    float cellMidT = 0.5 * (cellTEnter + cellTExit);
+                    float cellWorldDist = cellMidT * instRenderScale;
+
+                    uint walkLookupBase = octreeConfig.brickLookupBase;
+                    uint walkFlatIdx = uint(walkCell.z * bpa * bpa + walkCell.y * bpa + walkCell.x);
+                    uint walkLocalBrickIdx = brickLookup[walkLookupBase + walkFlatIdx];
+                    if (walkLocalBrickIdx != 0xFFFFFFFFu) {
+                        int walkOctantMask = octantMaskFromDir(rayDirLocal);
+                        int walkDepth = farFieldDescentDepth(octreeConfig.bricksPerAxis);
+                        uint walkNodeOrdinal;
+                        uint walkSampledLevel;
+                        bool walkReachedBrick = descendToNodeOrdinal(walkCell, walkOctantMask, walkDepth,
+                                                                      cellWorldDist, entryCellWorldSize,
+                                                                      walkNodeOrdinal, walkSampledLevel);
+                        if (walkReachedBrick) {
+                            vec2 walkSdf = readMipSample(walkNodeOrdinal, SEM_SDF, 0.0);
+                            if (walkSdf.y > 0.0) {
+                                vec2 walkColorSample = readMipSample(walkNodeOrdinal, SEM_COLOR, 0.5);
+                                vec3 walkColor = walkColorSample.y > 0.0 ? vec3(walkColorSample.x) : vec3(0.5);
+                                float walkCov = clamp(walkSdf.y, 0.0, 1.0);
+                                recordWalkCov(walkCov);  // part-1 audit probe
+                                recordWalkSampledLevel(walkSampledLevel);  // part-1 audit probe
+                                accumColor += T * walkCov * walkColor;
+                                T *= (1.0 - walkCov);
+                                anySampled = true;
+                                if (T < kRegime3Eps) { earlyOut = true; break; }
+                            }
+                        }
+                    }
+
+                    // Step the DDA state (same increment shape as the ordinary march
+                    // loop below) to reach the next cell along the ray.
+                    if (walkAxis == 0) { walkCell.x += stepDir.x; walkTMax_x += tDelta.x; }
+                    else if (walkAxis == 1) { walkCell.y += stepDir.y; walkTMax_y += tDelta.y; }
+                    else { walkCell.z += stepDir.z; walkTMax_z += tDelta.z; }
+                    if (cellTExit > gridT.y) break;  // left the instance span
+                }
+                if (earlyOut) recordRegime3EarlyOut();
+                if (anySampled) {
+                    hitColor          = accumColor;
+                    hitNormal         = -(rayDirLocal / entryDirLen);
+                    hitT              = tEnter;
+                    hitBrickIndex     = uint(g_brickArrayBase);
+                    hitVoxelLinearIdx = 0u;
+                    debugInfo.hitFlag  = 1u;
+                    debugInfo.exitCode = DEBUG_EXIT_HIT;
+                    recordTraceStep(TRACE_STEP_FAR_FIELD_CUTOFF, 0u, 0,
+                                     0u, vec3(cell), tEnter, tEnter, uvec2(0u, 0u));
+                    g_lastHitWasFarField = true;
+#ifdef VIXEN_REGIME3_COMPOSITE
+                    // Compositing slice part 2: carry the walk's residual T out via the
+                    // per-invocation global (g_lastRegime3ResidualT's header comment) --
+                    // slice-1 behavior (VIXEN_REGIME3_COMPOSITE unset) never touches this,
+                    // so accumColor/T stay a pure opaque-hit commit exactly as before.
+                    g_lastRegime3ResidualT = T;
+#endif
+                    return true;
+                }
+                // Nothing sampled along the whole walk (every cell empty/no coverage)
+                // -- fall through to the ordinary march exactly like the regime-2
+                // empty-entry case below (the mid-march safety-net gate re-evaluates
+                // once a real cell is found). Do NOT return false: that would report a
+                // definitive miss for a ray the ordinary march might still resolve.
+                recordPolicyEntryEmptyEntry();
+                // NOTE deliberately NO recordPolicyEntryDispatch(false) here: control
+                // falls through to the shared outer call below, which already counts
+                // this ray. The inner call double-counted every no-sample walk
+                // (march read 5400 for 2700 rays -- luna3's reconciliation, batch 45).
+            } else
+#endif
+            if (entryPolicyAdmits) {
+                // Regime 2+ at entry: no real detail in view for this whole
+                // ray -- resolve via the mip ladder directly, no march at all.
+                uint entryLookupBase = octreeConfig.brickLookupBase;
+                uint entryFlatIdx = uint(cell.z * bpa * bpa + cell.y * bpa + cell.x);
+                uint entryLocalBrickIdx = brickLookup[entryLookupBase + entryFlatIdx];
+                if (entryLocalBrickIdx != 0xFFFFFFFFu) {
+                    recordPolicyEntryDispatch(true);  // batch-35: [PolicyEntryDispatch] mip
+                    int entryOctantMask = octantMaskFromDir(rayDirLocal);
+                    int entryDepth = farFieldDescentDepth(octreeConfig.bricksPerAxis);
+                    uint entryNodeOrdinal;
+                    uint entrySampledLevel;
+                    bool entryReachedBrick = descendToNodeOrdinal(cell, entryOctantMask, entryDepth,
+                                                                   entryWorldDist, entryCellWorldSize,
+                                                                   entryNodeOrdinal, entrySampledLevel);
+                    incrFarFieldCount();
+                    if (!entryReachedBrick) incrFarFieldDescentFail();
+                    bool entryMipResolved = entryReachedBrick && shadeFromMipSample(entryNodeOrdinal, hitColor, hitNormal);
+                    recordFarFieldMipResolve(entryMipResolved);
+                    if (entryMipResolved) {
+                        recordFarFieldSampledLevel(entrySampledLevel);
+                        recordFarFieldSampleIntensity(dot(hitColor, vec3(0.2126, 0.7152, 0.0722)));
+                    }
+                    if (!entryMipResolved) {
+                        hitColor  = vec3(0.5);
+                        hitNormal = -(rayDirLocal / entryDirLen);
+                    }
+                    hitT              = tEnter;
+                    hitBrickIndex     = uint(g_brickArrayBase) + entryLocalBrickIdx;
+                    hitVoxelLinearIdx = 0u;
+                    debugInfo.hitFlag  = 1u;
+                    debugInfo.exitCode = DEBUG_EXIT_HIT;
+                    recordTraceStep(TRACE_STEP_FAR_FIELD_CUTOFF, entryNodeOrdinal, 0,
+                                     0u, vec3(cell), tEnter, tEnter, uvec2(0u, 0u));
+                    g_lastHitWasFarField = true;
+                    return true;
+                }
+                // Entry cell itself is empty (no brick there yet) -- fall
+                // through to the ordinary march, which already knows how to
+                // skip empty cells; the mid-march safety-net gate below will
+                // re-evaluate once a real cell is found.
+                recordPolicyEntryEmptyEntry();  // batch-39: admitted-but-empty-entry-cell subset of march
+            }
+        }
+        recordPolicyEntryDispatch(false);  // detail regime (or empty entry cell): falls through to the exact march
+    }
+#endif
+
+    uint lookupBase = octreeConfig.brickLookupBase;
+    float tCellEnter = tEnter;
+    int enterAxis = -1;
+    int maxIters = 3 * bpa;
+    for (int iter = 0; iter < maxIters; ++iter) {
+        if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(bpa)))) break;
+
+        uint flatIdx = uint(cell.z * bpa * bpa + cell.y * bpa + cell.x);
+        uint localBrickIdx = brickLookup[lookupBase + flatIdx];
+        if (localBrickIdx != 0xFFFFFFFFu) {
+// ROUND-5 FIX: widened from bare VIXEN_COMPOSED_TRAVERSAL -- the far-field
+// gate's math is backend-agnostic (world-frame distance vs world-frame cell
+// size, no composed-identity dependency), but it only compiled under the
+// composed identity define, which a STANDALONE VIXEN_BRICKMAP_TRAVERSAL boot
+// (no VIXEN_COMPOSED_TRAVERSAL) never pushes (BuildRenderGraph.cpp:1623-1631)
+// -- so this whole tier was dead code on every non-composed DDA boot (round-5
+// symptom 2, [FarFieldCount]=0 on a VIXEN_BRICKMAP_TRAVERSAL=1-only boot even
+// though the block IS compiled in for composed). Also compiling under the
+// single-backend flag directly makes the tier reachable whenever THIS
+// backend is actually selected, composed or not.
+#if defined(VIXEN_COMPOSED_TRAVERSAL) || defined(VIXEN_BRICKMAP_TRAVERSAL)
+            // W-COMPOSED far-field tier: mirror the ESVO screen-space LOD cutoff
+            // (SceneBindings.glsl's non-leaf LOD_ENABLED check, ~line 1195: "tv_max *
+            // raySizeCoef + raySizeBias >= scale_exp2"), expressed in WORLD units --
+            // the same fix applied at the RT twin (RayQueryTraversal.glsl ~217).
+            //
+            // ROUND-15 FIX, comment corrected ROUND-16 (supersedes round-5's
+            // "tBias + tCellEnter" -- that was a DOUBLE-COUNT, proven both
+            // algebraically and by a raw-probe A/B against the RT twin on the SAME
+            // scene/geometry, batch-15 investigation; the round-15 agent's own
+            // comment here overstated the mechanism as a renderScale-proportional
+            // relationship -- corrected below per the round-15 CORRECTIONS ledger
+            // entry, validator-verified):
+            // tCellEnter starts as tEnter (line ~2182), and tEnter is EXACTLY the
+            // slab parameter used to build `pos` (line 2160), which `rayStartWorld`/
+            // `tBias` (lines 2176-2179) then RE-DERIVE by reprojecting that SAME
+            // point through octreeConfig.localToWorld and measuring its distance
+            // from the camera. tBias and tCellEnter are BOTH already inst-frame
+            // (localToWorld carries no renderScale -- pure kWorldGridSize scale,
+            // ShellOctreeGpu.h:588-590 -- and instDir is unit), so the two are
+            // EXACTLY EQUAL, not merely proportional by instRenderScale: tBias ==
+            // tCellEnter to the ULP (round-15 numeric check: tBias=613.5,
+            // tCellEnter=818 was measured BEFORE the raySizeCoef/bias multiply was
+            // stripped from the probe; the two quantities' ratio 818/613.5 is
+            // instRenderScale's RECIPROCAL from an artifact of that probe's units,
+            // not a genuine scale relationship -- see the round-15 CORRECTIONS
+            // entry: round-5's (tBias+tCellEnter)*instRenderScale double-counted by
+            // EXACTLY 2.0x, which only follows if tBias and tCellEnter are equal
+            // BEFORE either is scaled). The prior fix's "hitT = tBias + tHitLocal"
+            // proof (still true) is for a DIFFERENT quantity: tHitLocal there is an
+            // IN-CELL MARCH REMAINDER measured from the entry point tBias already
+            // reached -- genuinely additive. tCellEnter here is not a remainder, it
+            // IS the entry point tBias already represents, so summing them double-
+            // counts the camera-to-entry leg. The correct world distance is
+            // tCellEnter alone, scaled to world (this also generalizes correctly
+            // past the first cell: the DDA loop advances tCellEnter through the
+            // SAME rayDirLocal-parameterized frame via tMax[axis], so the identity
+            // extends to every stepped cell, not just the entry one). tBias is
+            // still used unmodified below by the ordinary (non-far-field) hit path,
+            // where it correctly represents the bias added to a genuine in-cell
+            // march distance -- only this far-field branch's use of it was wrong.
+            float farDirLen = length(rayDirLocal);
+            if (farDirLen < 1e-12) { debugInfo.exitCode = DEBUG_EXIT_NONE; return false; }
+            float worldDistToCell = tCellEnter * instRenderScale;
+            float cellWorldSize = ((1.0 / bpaF) / farDirLen) * instRenderScale;
+            incrFarFieldCandidates();  // round-5: counts candidates reaching the gate test, before it runs
+            incrFarGenRectCellEntry();  // batch-24 FARGEN: rect-scoped cell-entry funnel
+            recordFarFieldGateOperands(worldDistToCell * pc.raySizeCoef + pc.raySizeBias, cellWorldSize);  // round-6 probe
+            recordFarGenRectLhsHistogram(worldDistToCell * pc.raySizeCoef + pc.raySizeBias);  // batch-25 JOB 2
+            // BATCH-35: SAFETY NET, not the primary dispatch anymore. The
+            // entry-point decision above (this function's head, right after
+            // tBias) now handles the common case -- a ray whose footprint
+            // already covers a voxel-or-coarser rung AT ENTRY never reaches
+            // this loop iteration at all (recordPolicyEntryDispatch(true)
+            // returned before the march started). This gate still fires for
+            // rays that started in the detail regime (genuine march, entry
+            // footprint < voxel) but travel far enough that a LATER cell's
+            // footprint crosses the same threshold -- e.g. grazing a near
+            // body then continuing outward past it. Left unchanged below.
+            // This if() is the regime-1(SURFACE)/regime-2(MIP HIT) TRANSITION test
+            // (deep-field mip-accessor policy design doc §regimes: regime-1 is
+            // "footprint < voxel size", exact fine march -- NOT "footprint <
+            // cell/brick size"). BATCH-33 FIX: the old test admitted a candidate
+            // only when the footprint already covered a WHOLE BRICK CELL
+            // (worldDistToCell*coef+bias >= cellWorldSize) -- that's ONE rung of
+            // the ladder (the brick rung), not "does the policy have ANY level to
+            // serve here". Every candidate whose footprint fell between voxel size
+            // and cell size was rejected and fell through to the exact fine march,
+            // even though the ladder has finer-than-brick rungs the policy could
+            // still serve (this was the measured admission ceiling: dda dropped
+            // 99.5% of candidates here). Under VIXEN_MIP_POLICY, admit whenever the
+            // footprint covers ANY level of the full ladder (mipPolicyLevel walked
+            // with the ladder's true maxLevel, not the degenerate single-level
+            // case) -- i.e. footprint >= voxelWorldSize (level 0, the finest
+            // servable rung), letting descendToNodeOrdinal (which already walks
+            // the whole ladder, batch-29/30) resolve the actual level. The
+            // regime-1 boundary itself does NOT move: a footprint smaller than a
+            // leaf/voxel (voxelWorldSize = cellWorldSize/brickSize, brickSize=8
+            // per BRICK_SIZE_SDF below) still takes the exact fine march --
+            // policyAdmitFootprint below is exactly cellWorldSize/8, i.e. the
+            // voxel size, not the cell size, so this widens admission strictly
+            // WITHIN regime-2/3 territory and cannot swallow a regime-1 pixel.
+            // D=612 near-body parity is unaffected: those are regime-1/2 boundary
+            // pixels (footprint ~= voxel size), and the boundary test's threshold
+            // (voxel size) is unchanged from what descendToNodeOrdinal/the
+            // ordinary ESVO gate already used at that boundary.
+            // Flag-off keeps the original single-rung (cell-size) test byte-
+            // identical in the #else.
+#ifdef VIXEN_MIP_POLICY
+            const float kFarFieldBrickSize = 8.0;  // BRICK_SIZE_SDF, see brickSize below
+            float policyAdmitFootprint = cellWorldSize / kFarFieldBrickSize;  // finest ladder rung == one voxel
+            bool policyAdmits = pc.raySizeCoef > 0.0 &&
+                worldDistToCell * pc.raySizeCoef + pc.raySizeBias >= policyAdmitFootprint;
+            if (policyAdmits) {
+#else
+            if (pc.raySizeCoef > 0.0 && worldDistToCell * pc.raySizeCoef + pc.raySizeBias >= cellWorldSize) {
+#endif
+                incrFarGenRectGateCross();  // batch-24 FARGEN: rect-scoped gate-cross funnel
+                vec3 farEntryPos = rayOriginLocal + rayDirLocal * tCellEnter;
+                vec3 farDirN = rayDirLocal / farDirLen;
+
+                // Coordinate-bit descent to the REAL ESVO mip sample (replaces the
+                // degenerate sampleHitShadingChannels entry-point resolution -- see
+                // descendToNodeOrdinal's header, ESVOTraversal.glsl, for the full
+                // derivation incl. the mirror-frame conversion AND the round-3
+                // level-selection/farBit/depth fixes. `cell` is already canonical/
+                // unmirrored (see the comment at the ordinary-hit gridEntry
+                // construction just below); depth is the brick level's distance
+                // from root (farFieldDescentDepth, SVOTypes.glsl -- NOT the old
+                // findMSB(bpa), see its header for why). worldDistToCell/
+                // cellWorldSize are the SAME quantities the footprint test just
+                // above already computed -- descendToNodeOrdinal reuses them to
+                // evaluate ESVO's own per-level criterion while walking, so it can
+                // stop coarser than brick level exactly like the ordinary gate does.
+                int farOctantMask = octantMaskFromDir(rayDirLocal);
+                int farDepth = farFieldDescentDepth(octreeConfig.bricksPerAxis);
+                uint farNodeOrdinal;
+                uint farSampledLevel;
+                bool farReachedBrick = descendToNodeOrdinal(cell, farOctantMask, farDepth,
+                                                            worldDistToCell, cellWorldSize, farNodeOrdinal, farSampledLevel);
+                incrFarFieldCount();
+                if (!farReachedBrick) incrFarFieldDescentFail();  // round-13 probe
+                bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal);
+                recordFarFieldMipResolve(farMipResolved);  // round-7 blocker-1 probe
+                if (farMipResolved) {
+                    recordFarFieldSampledLevel(farSampledLevel);  // batch-32 JOB 1
+                    recordFarFieldSampleIntensity(dot(hitColor, vec3(0.2126, 0.7152, 0.0722)));  // batch-33 JOB 2
+                }
+                if (!farMipResolved) {
+                    hitColor  = vec3(0.5);
+                    hitNormal = -farDirN;
+                }
+                hitT              = tBias + tCellEnter;
+                hitBrickIndex     = uint(g_brickArrayBase) + localBrickIdx;
+                hitVoxelLinearIdx = 0u;
+                debugInfo.hitFlag  = 1u;
+                debugInfo.exitCode = DEBUG_EXIT_HIT;
+                recordTraceStep(TRACE_STEP_FAR_FIELD_CUTOFF, farNodeOrdinal, 0,
+                                 0u, vec3(cell), tCellEnter, hitT, uvec2(0u, 0u));
+                g_lastHitWasFarField = true;  // round-7 blocker-1 probe #3
+                return true;
+            }
+#endif
+            // gridEntry/gridDirN in TRUE geometric grid-voxel space ([0,bpa*8]) --
+            // the SAME frame marchBrickSdfCell/sampleHitShadingChannels expect
+            // (mirrors handleLeafHitInstancedSdf's ESVO-leaf bridge, but the DDA
+            // never mirrors so brick/gridEntry are already the canonical
+            // (unmirrored) coordinates -- no octant-unmirror step needed).
+            vec3 cellEntryPos = rayOriginLocal + rayDirLocal * tCellEnter;
+            vec3 fracInCell = clamp(cellEntryPos * bpaF - vec3(cell), vec3(0.0), vec3(0.999999));
+            if (enterAxis >= 0) {
+                fracInCell[enterAxis] = stepDir[enterAxis] > 0 ? 0.0 : 0.999999;
+            }
+            // Pinned to marchBrickSdfCell's hardcoded 8.0 brick extent (it slabs
+            // bMin = vec3(brick)*8.0 .. +8.0) — the same constant
+            // handleLeafHitInstancedSdf pins as BRICK_SIZE_SDF, NOT the runtime
+            // octreeConfig.brickSize (round-3 validator, latent-coupling finding).
+            const int brickSize = 8;  // BRICK_SIZE_SDF
+            vec3 posInBrick = clamp(fracInCell * float(brickSize), vec3(0.0), vec3(float(brickSize) - 0.001));
+            vec3 gridEntry = brickLocalToGrid(posInBrick, cell, brickSize);
+
+            float dirLen = length(rayDirLocal);
+            if (dirLen < 1e-12) { debugInfo.exitCode = DEBUG_EXIT_NONE; return false; }
+            vec3 gridDirN = rayDirLocal / dirLen;
+            // Bias the entry an epsilon INTO the brick along the ray so it never sits
+            // exactly on a slab plane: an exact-zero (bMin - gridEntry) numerator at
+            // grazing incidence lets compiler-variant FMA contraction decide the slab
+            // test's outcome — the source of the boot-bimodal frame hash (round-3
+            // Gate B blocker). The bias's share of the march distance is added back
+            // into tHit below so reported t stays exact.
+            const float kEntryBias = 1e-3;  // grid-voxel units (voxel = 1.0, brick = 8.0)
+            gridEntry += gridDirN * kEntryBias;
+
+            vec3  nrm;
+            float sHit;
+            if (marchBrickSdfCell(g_octreeIdx, cell, gridEntry, gridDirN, nrm, sHit)) {
+                float gridScale = float(bpa * brickSize);
+                float tHitLocal = tCellEnter + (sHit + kEntryBias) / (dirLen * gridScale);
+                hitNormal         = nrm;
+                hitT              = tBias + tHitLocal;
+                hitBrickIndex     = uint(g_brickArrayBase) + localBrickIdx;
+                hitVoxelLinearIdx = 0u;
+
+                vec3 gridHit = gridEntry + gridDirN * sHit;
+                sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness);
+
+#ifdef VIXEN_BRICKMAP_DEBUG
+                // W-BRICKMAP Gate-B bisection: overwrite hitColor with quantized
+                // diagnostics for the two divergent silhouette pixels only. hitColor
+                // still passes through `* inst.color` (TraceWorld.glsl) and the full
+                // lighting/tonemap/PNG-8bit chain before the HUD capture reads it --
+                // there is no direct-to-outputImage debug path in this pipeline (see
+                // this block's own header note) -- so values are quantized into a
+                // handful of WIDELY separated buckets (multiples of 1/8) rather than
+                // packed bit-for-bit; exact decode contract lives in
+                // decode_brickmap_debug.py alongside the analysis script.
+                {
+                    ivec2 dbgPixel = ivec2(gl_GlobalInvocationID.xy);
+                    bool inMainRect = dbgPixel.x >= 318 && dbgPixel.x <= 330 &&
+                                       dbgPixel.y >= 288 && dbgPixel.y <= 296;
+                    // Second row, directly below the main rect: iter count + brick idx.
+                    bool inAuxRect  = dbgPixel.x >= 318 && dbgPixel.x <= 330 &&
+                                       dbgPixel.y >= 297 && dbgPixel.y <= 305;
+                    if (inMainRect) {
+                        float cellCode = float(cell.x * 64 + cell.y * 8 + cell.z); // 0..511
+                        hitColor = vec3(
+                            clamp(cellCode / 511.0, 0.0, 1.0),   // R: final hit cell (DDA-int -> [0,1])
+                            clamp(sHit / 8.0, 0.0, 1.0),         // G: sHit in [0, brickSize] grid units
+                            clamp(tCellEnter, 0.0, 1.0));        // B: tCellEnter (ray-space [0,1])
+                    } else if (inAuxRect) {
+                        hitColor = vec3(
+                            clamp(float(iter) / float(maxIters), 0.0, 1.0), // R: DDA iter count
+                            clamp(float(localBrickIdx) / 64.0, 0.0, 1.0),   // G: localBrickIdx
+                            0.0);
+                    }
+                }
+#endif
+
+                debugInfo.hitFlag = 1u;
+                return true;
+            }
+            // No crossing in this brick -- continue the DDA into the next cell,
+            // matching the binary twin's own "miss falls through to POP/ADVANCE" semantics.
+        }
+
+        int axis = (tMax.x < tMax.y) ? ((tMax.x < tMax.z) ? 0 : 2) : ((tMax.y < tMax.z) ? 1 : 2);
+        tCellEnter = tMax[axis];
+        cell[axis] += stepDir[axis];
+        tMax[axis] += tDelta[axis];
+        enterAxis = axis;
+    }
+
+    debugInfo.exitCode = DEBUG_EXIT_NONE;
+    return false;
+}
+
+// Any-hit twin of traverseCoarseGridInstancedSdf: same DDA, no shading payload,
+// early-out the instant an occupied cell's marchBrickSdfCellAnyHit confirms a
+// crossing.
+bool traverseCoarseGridInstancedSdfAnyHit(vec3 rayOrigin, vec3 rayDir,
+                                           vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
+                                           float tmin, float tmax) {
+    if (gridT.y < 0.0) return false;
+
+    int bpa = octreeConfig.bricksPerAxis;
+    if (bpa <= 0) return false;
+    float bpaF = float(bpa);
+
+    bool rayStartsInside = (gridT.x < 0.0);
+    float tEnter = rayStartsInside ? 0.0 : (gridT.x + EPSILON);
+    vec3 pos = rayOriginLocal + rayDirLocal * tEnter;
+    ivec3 cell = clamp(ivec3(floor(pos * bpaF)), ivec3(0), ivec3(bpa - 1));
+
+    ivec3 stepDir; vec3 tDelta; vec3 tMax;
+    for (int axis = 0; axis < 3; ++axis) {
+        float d = rayDirLocal[axis];
+        if (abs(d) < DIR_EPSILON) {
+            stepDir[axis] = 0; tDelta[axis] = 1e30; tMax[axis] = 1e30;
+        } else {
+            stepDir[axis] = d > 0.0 ? 1 : -1;
+            tDelta[axis] = (1.0 / bpaF) / abs(d);
+            float nextBoundary = (float(cell[axis]) + (d > 0.0 ? 1.0 : 0.0)) / bpaF;
+            tMax[axis] = (nextBoundary - rayOriginLocal[axis]) / d;
+        }
+    }
+
+    vec3 rayStartWorld;
+    if (rayStartsInside) { rayStartWorld = rayOrigin; }
+    else { rayStartWorld = (octreeConfig.localToWorld * vec4(pos, 1.0)).xyz; }
+    float tBias = length(rayStartWorld - rayOrigin);
+
+    uint lookupBase = octreeConfig.brickLookupBase;
+    float tCellEnter = tEnter;
+    int enterAxis = -1;
+    int maxIters = 3 * bpa;
+    for (int iter = 0; iter < maxIters; ++iter) {
+        if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(bpa)))) break;
+        if (tBias + tCellEnter > tmax) break;
+
+        uint flatIdx = uint(cell.z * bpa * bpa + cell.y * bpa + cell.x);
+        uint localBrickIdx = brickLookup[lookupBase + flatIdx];
+        if (localBrickIdx != 0xFFFFFFFFu) {
+            vec3 cellEntryPos = rayOriginLocal + rayDirLocal * tCellEnter;
+            vec3 fracInCell = clamp(cellEntryPos * bpaF - vec3(cell), vec3(0.0), vec3(0.999999));
+            if (enterAxis >= 0) {
+                fracInCell[enterAxis] = stepDir[enterAxis] > 0 ? 0.0 : 0.999999;
+            }
+            const int brickSize = 8;  // BRICK_SIZE_SDF — see closest-hit twin's pin comment
+            vec3 posInBrick = clamp(fracInCell * float(brickSize), vec3(0.0), vec3(float(brickSize) - 0.001));
+            vec3 gridEntry = brickLocalToGrid(posInBrick, cell, brickSize);
+
+            float dirLen = length(rayDirLocal);
+            if (dirLen < 1e-12) return false;
+            vec3 gridDirN = rayDirLocal / dirLen;
+            float gridScale = float(bpa * brickSize);
+            // Entry-bias: see closest-hit twin. The march budget below shrinks by the
+            // same bias so the [tmin,tmax] window stays exact.
+            const float kEntryBias = 1e-3;
+            gridEntry += gridDirN * kEntryBias;
+
+            float sMaxLimit = (tmax > 0.0)
+                ? max((tmax - tBias - tCellEnter) * dirLen * gridScale - kEntryBias, 0.0)
+                : 1e6;
+            if (tmax > 0.0 && sMaxLimit <= 0.0) { /* no room in this cell -- try next */ }
+            else {
+                float sHit;
+                if (marchBrickSdfCellAnyHit(g_octreeIdx, cell, gridEntry, gridDirN, sMaxLimit, sHit)) {
+                    float tHitLocal = tCellEnter + (sHit + kEntryBias) / (dirLen * gridScale);
+                    float hitT = tBias + tHitLocal;
+                    if (hitT >= tmin && hitT <= tmax) return true;
+                }
+            }
+        }
+
+        int axis = (tMax.x < tMax.y) ? ((tMax.x < tMax.z) ? 0 : 2) : ((tMax.y < tMax.z) ? 1 : 2);
+        tCellEnter = tMax[axis];
+        cell[axis] += stepDir[axis];
+        tMax[axis] += tDelta[axis];
+        enterAxis = axis;
+    }
+
     return false;
 }
 

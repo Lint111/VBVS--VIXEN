@@ -85,6 +85,21 @@ struct WorldHit {
     // self-lit term for the Cornell ceiling light without a new SEM_* channel or any
     // change to the light-tree/GI path, which already samples emission independently.
     float emission;
+    // Round 9: does the pixel's FINAL winning hit come off the far-field mip-resolve
+    // path? NOT the same as "some far-field candidate won its own per-instance
+    // isCloserHit compare" (the round-8-located [FarFieldWon] conflation) -- this
+    // rides bestInstIdx's actual selection, so a later non-far-field instance
+    // overwriting the winner also overwrites/clears this. false when anyHit is false.
+    bool wasFarField;
+    // Regime-3 compositing (VIXEN_REGIME3_COMPOSITE), part 2: residual transmittance
+    // left over from a regime-3 accumulation-walk winner (g_lastRegime3ResidualT's
+    // header comment, SceneBindings.glsl) -- 1.0 (no coverage contributed, blend is a
+    // no-op) whenever the winner did NOT come from that walk, INCLUDING every flag-off
+    // boot (the global is never written away from 1.0 there). behindColor is the
+    // SAME-PASS second-nearest candidate's color (see the instance loop's secondBest
+    // bookkeeping below) -- vec3(0.0) when no second candidate existed this frame.
+    float residualT;
+    vec3  behindColor;
 };
 
 // ============================================================================
@@ -137,8 +152,79 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     float bestRoughness   = 0.5;   // Inc3 M3: default for binary/procedural paths
     uint  bestBrickIndex  = 0u;
     uint  bestVoxelIdx    = 0u;
+#ifdef VIXEN_REGIME3_COMPOSITE
+    // Compositing slice part 2: same-pass second-nearest candidate, tracked
+    // ALONGSIDE best* (never a re-trace) -- every candidate that loses
+    // isCloserHit against the CURRENT best but beats the current second
+    // becomes the new second. Only meaningful when the eventual winner is a
+    // regime-3 partial-coverage hit (WorldHit.residualT < 1.0); unused
+    // otherwise. #ifdef'd out entirely on a flag-off build -- zero cost there.
+    float secondT     = 1e30;
+    vec3  secondColor = vec3(0.0);
+    float bestResidualT = 1.0;  // 1.0 == no-op; overwritten only if the winner is a regime-3 hit
+#endif
     uint  bestInstIdx     = 0xFFFFFFFFu;  // M3 round 3: winning instance, see WorldHit.instIdx
     float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
+    bool  bestWasFarField = false;        // round 9: see WorldHit.wasFarField
+
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+    // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: search every
+    // FORMAT_STORED_SDF instance's per-brick-AABB TLAS in ONE rayQuery, with
+    // the TRUE WORLD ray, before the per-instance loop below runs (see
+    // traverseRayQueryWorld's header in RayQueryTraversal.glsl for the full
+    // t-space contract -- the returned hitT is already world-space, no
+    // *renderScale correction needed, unlike the ESVO/DDA per-instance calls
+    // inside the loop). Seed bestT/bestInstIdx/best* from its result via the
+    // SAME isCloserHit tie-break the instance loop itself uses, so a TLAS hit
+    // competes fairly with a non-SDF instance's own march. The loop below then
+    // SKIPS any instance this search already covered (FORMAT_STORED_SDF) --
+    // non-SDF instances (FORMAT_BINARY / procedural) still run their normal
+    // per-instance branch untouched.
+    {
+        vec3  rqColor, rqNormal; float rqT, rqRoughness;
+        uint  rqBrick, rqVoxel, rqInstIdx;
+        DebugRaySample rqDbg;
+        rqDbg.pixel         = uvec2(ivec2(gl_GlobalInvocationID.xy));
+        rqDbg.rayDir        = rayDir;
+        rqDbg.octantMask    = 0u;
+        rqDbg.hitFlag       = 0u;
+        rqDbg.exitCode      = DEBUG_EXIT_NONE;
+        rqDbg.lastStepMask  = 0u;
+        rqDbg.iterationCount = 0u;
+        rqDbg.scale         = 0;
+        rqDbg.stateIdx      = 0u;
+        rqDbg.tMin          = 0.0;
+        rqDbg.tMax          = 0.0;
+        rqDbg.scaleExp2     = 0.0;
+        rqDbg.posMirrored   = vec3(0.0);
+        rqDbg.localNorm     = vec3(0.0);
+        g_lastHitWasFarField = false;  // round-7 blocker-1 probe #3: reset before the call
+        bool rqHit = traverseRayQueryWorld(rayOrigin, normalize(rayDir),
+                                            rqColor, rqNormal, rqT, rqRoughness,
+                                            rqBrick, rqVoxel, rqInstIdx, rqDbg);
+        bool rqWasFarField = g_lastHitWasFarField;
+        if (rqHit && isCloserHit(rqT, rqInstIdx, bestT, bestInstIdx)) {
+            if (rqWasFarField) { incrFarFieldWon(); }  // round-7 blocker-1 probe #3
+#ifdef VIXEN_REGIME3_COMPOSITE
+            // The instance we're about to displace becomes the new second-nearest
+            // candidate (same-pass bookkeeping, not a re-trace -- see secondT's
+            // header comment). Only takes effect the first time a winner exists.
+            if (anyHit) { secondT = bestT; secondColor = bestColor; }
+#endif
+            BodyInstance rqInst = bodyInstances[rqInstIdx];
+            bestT          = rqT;
+            bestColor      = rqColor * rqInst.color;
+            bestNormal     = rqNormal;
+            bestRoughness  = rqRoughness;
+            bestBrickIndex = rqBrick;
+            bestVoxelIdx   = rqVoxel;
+            bestInstIdx    = rqInstIdx;
+            bestEmission   = rqInst.recipeParams[3];
+            bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
+            anyHit         = true;
+        }
+    }
+#endif
 
     // -----------------------------------------------------------------------
     // INSTANCE LOOP
@@ -263,6 +349,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
 
             if (pHit && isCloserHit(pT, uint(instIdx), bestT, bestInstIdx)) {
+#ifdef VIXEN_REGIME3_COMPOSITE
+                if (anyHit) { secondT = bestT; secondColor = bestColor; }
+#endif
                 bestT          = pT;
                 bestColor      = inst.color;   // procedural base colour = instance tint
                 bestNormal     = pNormal;      // smooth SDF-gradient normal
@@ -390,6 +479,23 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             continue;  // ray misses this instance's AABB
         }
 
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+        // Round-3 hoist redesign: this instance's FORMAT_STORED_SDF geometry was
+        // already searched (or not) by the single traverseRayQueryWorld call above
+        // the loop -- its TLAS covers every FORMAT_STORED_SDF instance in one pass.
+        // Re-running the ESVO/DDA path here for the same instance would be
+        // redundant work at best and a double-counted candidate at worst. Non-SDF
+        // instances (FORMAT_BINARY) are NOT in the TLAS (BodyOctreeSceneNode::
+        // EnsureRtQueryTlasBuilt only builds BLASes from FORMAT_STORED_SDF's
+        // brickGridLookup) and fall through to the normal branch below.
+        if (configs[oi].formatId == FORMAT_STORED_SDF) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
+            instanceIterCount[instIdx] = 0u;  // covered by the hoisted TLAS search, not this loop
+#endif
+            continue;
+        }
+#endif
+
         // Inc1 M4b: instances are sorted front-to-back CPU-side (see
         // BodyOctreeSceneNode::SortInstancesFrontToBack), so bestT here already
         // reflects every CLOSER instance's hit. gridT.x is a LOCAL grid-space t
@@ -480,17 +586,62 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // ray-vs-AABB math a second time — a single "beam test" pre-pass result shared by
         // both the cull check and the traversal, so they can never disagree at the AABB
         // silhouette (see traverseOctreeInstanced's own comment for why that mattered).
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+        // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: FORMAT_STORED_SDF
+        // instances never reach this call site anymore (skipped above, covered by
+        // the hoisted traverseRayQueryWorld search before the loop) -- only
+        // FORMAT_BINARY instances land here, same as the flag-off ESVO path.
         bool instHit = traverseOctreeInstanced(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness,
                                            hitBrick, hitVoxel, dbg);
+#elif defined(VIXEN_BRICKMAP_TRAVERSAL)
+        // W-BRICKMAP Slice 2 round 3: coarse-grid DDA backend, FORMAT_STORED_SDF
+        // only (RETARGETED -- round 2 had this inverted; brickGridLookup is only
+        // populated for STORED_SDF octrees, see traverseCoarseGridInstanced's
+        // header). FORMAT_BINARY falls back to the ESVO path at runtime per-
+        // instance -- its brickLookup binding is a 1-byte placeholder.
+        bool instHit = (configs[oi].formatId == FORMAT_STORED_SDF)
+            ? traverseCoarseGridInstancedSdf(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           inst.renderScale,
+                                           hitColor, hitNormal, hitT,
+                                           hitRoughness,
+                                           hitBrick, hitVoxel, dbg)
+            : traverseOctreeInstanced(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           hitColor, hitNormal, hitT,
+                                           hitRoughness,
+                                           hitBrick, hitVoxel, dbg);
+#else
+        bool instHit = traverseOctreeInstanced(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           hitColor, hitNormal, hitT,
+                                           hitRoughness,
+                                           hitBrick, hitVoxel, dbg);
+#endif
+        bool instWasFarField = g_lastHitWasFarField;  // round-7 blocker-1 probe #3
+        g_lastHitWasFarField = false;  // consume before the next instance's call
+#ifdef VIXEN_REGIME3_COMPOSITE
+        // Compositing slice part 2: consume+reset the SAME call-boundary-global
+        // convention as g_lastHitWasFarField above (residualT's header comment,
+        // SceneBindings.glsl). 1.0 (no-op) unless this instance's call was a
+        // regime-3 accumulation-walk winner.
+        float instResidualT = g_lastRegime3ResidualT;
+        g_lastRegime3ResidualT = 1.0;
+#endif
         hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see comment above)
 #ifdef VIXEN_GPU_TRACE_HOOKS
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
 #endif
 
         if (instHit && isCloserHit(hitT, uint(instIdx), bestT, bestInstIdx)) {
+            if (instWasFarField) { incrFarFieldWon(); }  // round-7 blocker-1 probe #3
+#ifdef VIXEN_REGIME3_COMPOSITE
+            if (anyHit) { secondT = bestT; secondColor = bestColor; }
+            bestResidualT = instResidualT;
+#endif
             bestT           = hitT;
             // Tint by instance colour (multiply LOD-grey or material colour)
             bestColor       = hitColor * inst.color;
@@ -505,8 +656,22 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             // SEM_EMISSION channel read (that channel is baked but stays reserved for the
             // light-tree's own bake-side consumption, per the M11.2 brief's scope).
             bestEmission    = inst.recipeParams[3];
+            bestWasFarField = instWasFarField;  // round 9: rides the winner, not a sticky global
             anyHit          = true;
         }
+#ifdef VIXEN_REGIME3_COMPOSITE
+        else if (instHit) {
+            // Lost isCloserHit against the current best, but still a real hit
+            // this frame -- if it's nearer than the current second, it becomes
+            // the new second (same-pass bookkeeping, not a re-trace). Not
+            // gated on THIS candidate's own residualT: the composite blend
+            // only ever consults secondColor when the WINNER (bestResidualT)
+            // was a regime-3 partial-coverage hit, so any nearer loser is a
+            // valid "what's behind the winner" candidate regardless of its
+            // own kind.
+            if (hitT < secondT) { secondT = hitT; secondColor = hitColor * inst.color; }
+        }
+#endif
     }
 
     hit.color      = bestColor;
@@ -517,6 +682,14 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.voxelIdx   = bestVoxelIdx;
     hit.instIdx    = bestInstIdx;
     hit.emission   = bestEmission;
+    hit.wasFarField = anyHit && bestWasFarField;
+#ifdef VIXEN_REGIME3_COMPOSITE
+    hit.residualT   = bestResidualT;
+    hit.behindColor = secondColor;
+#else
+    hit.residualT   = 1.0;
+    hit.behindColor = vec3(0.0);
+#endif
     return anyHit;
 }
 
@@ -559,6 +732,20 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
+
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+    // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: same hoist as TraceWorld's
+    // own closest-hit search above -- ONE rayQuery against the TRUE WORLD ray and
+    // [tmin,tmax] covers every FORMAT_STORED_SDF instance's occlusion test before
+    // the per-instance loop below runs. See traverseRayQueryWorldAnyHit's header
+    // (RayQueryTraversal.glsl) for the t-space contract; tmin/tmax are passed
+    // straight through, WORLD-space, no per-instance renderScale division (unlike
+    // the loop's own instTmin/instTmax below, which feed the ESVO/DDA de-instanced
+    // frame).
+    if (traverseRayQueryWorldAnyHit(rayOrigin, normalize(rayDir), tmin, tmax)) {
+        return true;
+    }
+#endif
 
     int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap, matches TraceWorld
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
@@ -653,6 +840,15 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
             continue;  // ray misses this instance's AABB entirely
         }
 
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+        // Round-3 hoist redesign: this instance's FORMAT_STORED_SDF geometry was
+        // already occlusion-tested by the single traverseRayQueryWorldAnyHit call
+        // above the loop -- see TraceWorld's identical skip for the full rationale.
+        if (configs[oi].formatId == FORMAT_STORED_SDF) {
+            continue;
+        }
+#endif
+
         // Baked-Perf M4 Task 4.2 (audit C1/C2 / Top #7): instance reject at entry-t > tmax --
         // this instance's AABB entry point cannot possibly hold an occluder within [tmin,tmax]
         // if the entry itself is already farther than tmax (the light). Same world-space
@@ -677,9 +873,28 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         // multiply, the world-space [tmin,tmax] by renderScale to match.
         float instTmin = tmin / inst.renderScale;
         float instTmax = tmax / inst.renderScale;
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+        // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: FORMAT_STORED_SDF
+        // instances never reach this call site anymore (skipped above, covered by
+        // the hoisted traverseRayQueryWorldAnyHit search before the loop) -- only
+        // FORMAT_BINARY instances land here.
         bool instHit = traverseOctreeInstancedAnyHit(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            instTmin, instTmax);
+#elif defined(VIXEN_BRICKMAP_TRAVERSAL)
+        // Round 3: retargeted to FORMAT_STORED_SDF -- see the closest-hit call site above.
+        bool instHit = (configs[oi].formatId == FORMAT_STORED_SDF)
+            ? traverseCoarseGridInstancedSdfAnyHit(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           instTmin, instTmax)
+            : traverseOctreeInstancedAnyHit(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           instTmin, instTmax);
+#else
+        bool instHit = traverseOctreeInstancedAnyHit(instOrigin, instDir,
+                                           localRayOrigin, localRayDir, gridT,
+                                           instTmin, instTmax);
+#endif
 
         if (instHit) {
 #ifdef VIXEN_SHADOW_DBG

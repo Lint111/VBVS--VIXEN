@@ -15,6 +15,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-07-27 | Gaia bulk voxel mutation: multicore immutable assembly, single-owner commit, batched range upload, atomic page publication | [[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]] |
 | 2026-07-26 | Voxel asset editor research: hybrid authoring, runtime-capability library partition, sim context, and explicit Blender ownership | [[../03-Research/Voxel-Asset-Editor-Product-Research-2026-07]] |
 | 2026-07-18 | Recipe load tiers: footprint gating ✅; precision routing 🚧 mechanism complete/full consumer open; content-detail LOD deferred | [[../01-Architecture/Recipe-Load-Tier-Contract-Direction-2026-07]] |
 | 2026-07-18 | Recipe nested invocation: M1 mechanism ✅; M2 unroll-vs-natural scale A/B open | [[../01-Architecture/Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07]] |
@@ -79,6 +80,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Topic | File |
 |-------|------|
+| Gaia bulk voxel mutation, job dispatch, region upload, and removal semantics | [[../03-Research/Gaia-Bulk-Voxel-Mutation-and-Upload-Research-2026-07]] |
 | Voxel asset editor product, runtime-share partition, UI/UX, materials, metadata, and Blender round-trip | [[../03-Research/Voxel-Asset-Editor-Product-Research-2026-07]] |
 | ESVO (Efficient Sparse Voxel Octrees) | [[../03-Research/ESVO-Algorithm]] |
 | Voxel ray-tracing research overview | [[../03-Research/Overview]] |

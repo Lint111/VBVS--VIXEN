@@ -328,6 +328,16 @@ struct SerializedOctree {
     // callers are unaffected until they choose to call it).
     std::vector<uint8_t> mipPool;
 
+    // Deep-Field Mip Policy — anisotropic coarse mips (MipAnisoPool.h): a
+    // fully ADDITIVE side pool, same SoA addressing as mipPool
+    // (mipAnisoPool[nodeIdx * channelCount + channelIdx], stride
+    // sizeof(MipAnisoSample) = 24 bytes) but populated ONLY for coarse
+    // interior nodes (see MipAnisoPool.h's threshold-level parameter).
+    // Empty unless the caller opts in via SerializeSdfWithAniso/
+    // ConcatenateSdfWithAniso (MipBake.h) — existing mipPool consumers and
+    // every other SerializeSdf/ConcatenateSdf* caller are byte-identical.
+    std::vector<uint8_t> mipAnisoPool;
+
     // Tiered-ESVO Inc2 M1 Task 2 — this octree's own tier-crossing edges
     // (one TierRef per registered cross-tier leaf; §3.2). Unlike mipPool/
     // channelPool, this is NOT baked from the tree's existing geometry — it
@@ -405,6 +415,20 @@ struct ConcatenatedOctrees {
     // (empty unless the caller populated each SerializedOctree::mipPool before
     // concatenation — see ConcatenateSdf).
     std::vector<uint8_t> mipPool;
+
+    // Deep-Field Mip Policy — concatenated per-octree ADDITIVE aniso pools
+    // (empty unless the caller populated each SerializedOctree::mipAnisoPool
+    // before concatenation — see MipBake.h::ConcatenateSdfWithAniso). Uses
+    // its OWN base offset (mipAnisoPoolBases below), NOT mipPoolBase — the
+    // two pools have different per-node strides (2 floats vs 6 floats) so
+    // they cannot share one base's arithmetic.
+    std::vector<uint8_t> mipAnisoPool;
+    // Per-octree element offset (MipAnisoSample units) into mipAnisoPool
+    // above, mirroring configs[]/nodeCounts[]'s parallel-array convention
+    // (kept OUT of OctreeConfig — that struct is kernel-codegen-generated,
+    // see Generated/OctreeConfig.g.h; this pool stays host-side-only until a
+    // shader-consumption slice adds a generated field for it).
+    std::vector<uint32_t> mipAnisoPoolBases;
 
     // Tiered-ESVO Inc2 M1 Task 2 — concatenated per-octree tier-crossing
     // edges: octree0's tierRefs ++ octree1's tierRefs ++ ... , in the exact
