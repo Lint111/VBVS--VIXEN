@@ -31,9 +31,25 @@ namespace Vixen::SVO {
 // One child's contribution to a parent-level mip sample: a single scalar
 // lane's value, plus whether this child slot is occupied at all (an empty
 // child octant contributes no coverage and is excluded from the mean).
+//
+// KI-047 (weighted propagation): `coverage` carries the child's OWN fractional
+// occupancy so the parent can sum fractions instead of counting booleans.
+// Before this, a parent's coverage was (#children with ANY content)/8, so a
+// child that was itself 1/8 covered contributed exactly as much as a fully
+// solid one — sub-child sparsity was erased at every level and coverage
+// saturated to 1.0 a level or two above the bricks (measured: covMin≡covMax≡1).
+// A child with occupied=true and coverage left at 0 is treated as fully
+// covered (1.0), so every pre-KI-047 construction site keeps its old meaning.
 struct MipChildSample {
     float value = 0.0f;
     bool occupied = false;
+    float coverage = 0.0f;
+
+    // Effective fractional weight this child contributes to its parent.
+    [[nodiscard]] float Weight() const {
+        if (!occupied) return 0.0f;
+        return coverage > 0.0f ? coverage : 1.0f;
+    }
 };
 
 // A per-node, per-channel mip sample: one filtered scalar lane. Multi-
@@ -53,16 +69,21 @@ struct MipSample {
 inline MipSample FilterMipMean(const std::array<MipChildSample, 8>& children) {
     float sum = 0.0f;
     int occupiedCount = 0;
+    float weightSum = 0.0f;
     for (const MipChildSample& c : children) {
         if (c.occupied) {
             sum += c.value;
             ++occupiedCount;
+            weightSum += c.Weight();
         }
     }
     MipSample out;
     if (occupiedCount > 0) {
         out.value = sum / static_cast<float>(occupiedCount);
-        out.coverage = static_cast<float>(occupiedCount) / 8.0f;
+        // KI-047: sum of the children's OWN fractional coverage, not a count of
+        // nonempty children. Identical to the old occupiedCount/8 whenever every
+        // occupied child is fully covered (Weight()==1).
+        out.coverage = weightSum / 8.0f;
     }
     return out;
 }
@@ -78,9 +99,11 @@ inline MipSample FilterMipMinMagnitude(const std::array<MipChildSample, 8>& chil
     float best = 0.0f;
     float bestAbs = -1.0f;
     int occupiedCount = 0;
+    float weightSum = 0.0f;
     for (const MipChildSample& c : children) {
         if (!c.occupied) continue;
         ++occupiedCount;
+        weightSum += c.Weight();
         const float a = std::fabs(c.value);
         if (bestAbs < 0.0f || a < bestAbs) {
             bestAbs = a;
@@ -90,7 +113,8 @@ inline MipSample FilterMipMinMagnitude(const std::array<MipChildSample, 8>& chil
     MipSample out;
     if (occupiedCount > 0) {
         out.value = best;
-        out.coverage = static_cast<float>(occupiedCount) / 8.0f;
+        // KI-047: see FilterMipMean — fractional sum, not nonempty-child count.
+        out.coverage = weightSum / 8.0f;
     }
     return out;
 }

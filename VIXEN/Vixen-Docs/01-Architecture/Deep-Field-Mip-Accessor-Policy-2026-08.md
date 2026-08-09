@@ -237,11 +237,20 @@ pixels at matched-level sampling needs many nodes at that level, supplied by the
 
 `VIXEN_REGIME3_LEVEL_FLOOR=<L>` SHIPPED (batch 48): pins the walk's sampled level (verified
 min=max=2) and is image-visible (frame state changes under the floor). **Its covMin<1 /
-composite-divergence prediction did NOT hold**: baked coverage at level L counts NONEMPTY
-L−1 CHILDREN (bool-collapse between levels, MipBake.h:201) — sub-child sparsity is erased
-at every level, so a 30%-brick octant can legitimately read 8/8. **The only remaining path
-to fractional coarse coverage is KI-047's weighted propagation (sum(child.coverage)/8) —
-the next implementation slice (moves pool content ⇒ new references).**
+composite-divergence prediction did NOT hold**: baked coverage at level L counted NONEMPTY
+L−1 CHILDREN (bool-collapse between levels) — sub-child sparsity was erased at every level.
+
+**KI-047 WEIGHTED PROPAGATION SHIPPED (batch 49, 2026-08-09, Sol-validated):** coverage now
+propagates `sum(child.coverage)/8` with brick-level `occupiedVoxels/64` per octant group.
+covMin reads **0.984375 (exactly 63/64)** at the level-2 floor — fractional coverage reaches
+the walk; floor2 frame hash moved b654ae71 → 3951c2c5 (declared reference movement); the
+policy-off/identity path is byte-identical. **Composite divergence remains undemonstrated,
+and the blocker is no longer the bake or ε: the blend executes at residualT = 0.015625
+(gate BodyInstanceRayMarch.comp:255 passes; [FarFieldWon] ≡ earlyOut = 417300), but
+`behindColor` is black — no same-pass second-nearest candidate exists in the current
+non-overlapping test scene (secondColor ≡ vec3(0), TraceWorld.glsl:642, 672). Levers:
+sparser bake · lower eps · overlapping second body (direct) · brighter/HDR candidate above
+8-bit quantization. See Known-Issues KI-047 residuals + sol-b49-validation.md V1.3.**
 
 **EFFORT POLICY (adopted 2026-08-09):** use HIGH for GPU/Windows-boundary work, builds,
 driver watches, boot matrices, synchronization, and artifact production; use MEDIUM for

@@ -15,6 +15,8 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 
 | Date | Topic | File |
 |------|-------|------|
+| 2026-08-09 | KI-047 weighted coverage propagation SHIPPED (covMin 63/64, floor2 hash b654ae71→3951c2c5, identity byte-stable); composite blocker recharacterized: blend executes, second candidate is black — four unblock levers pending user pick | [[../04-Development/Known-Issues]] |
+| 2026-08-09 | Residency unification design: one FootprintRegime function for render policy + brick residency; benchmark bandwidth instrumentation gap pinned; three-axis measurement plan | [[../Deep-Field-Residency-Unification-2026-08]] |
 | 2026-08-09 | Deep-field mip policy cost closed: all four backend/regime cells certified (−7.91% to −15.23%); matched-level nodes are approximately pixel-order, with LEVEL_FLOOR test instrument and tree-of-trees production shape | [[../01-Architecture/Deep-Field-Mip-Accessor-Policy-2026-08]] |
 | 2026-08-09 | Measurement closure: six-attempt lineage, completed fingerprint calibration, pairwise-precedence hypothesis, missing march→shadow semantic edge, resumable round-robin protocol, and cmd.exe UNC-cwd stall fingerprint | [[../01-Architecture/Measurement-Discipline-2026-08]] |
 | 2026-08-09 | Known issues: KI-047 coverage adjudication, KI-048 UNC-cwd hang, KI-049 config-dependent boot-regime bias | [[../04-Development/Known-Issues]] |

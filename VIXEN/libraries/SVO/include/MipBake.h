@@ -132,14 +132,24 @@ inline MipSample ReduceBrickToMipSample(const SerializedOctree& serialized,
         ++octantOccupiedCount[octant];
     }
 
+    // KI-047: each octant group is 64 voxels, so its own fractional occupancy
+    // is occupiedVoxels/64. Feeding that as the child's coverage makes the
+    // brick reduction the BASE of the weighted chain — a 30%-dense brick now
+    // reports ~0.3, where the old boolean form reported 8/8 = 1.0 as soon as
+    // every octant held at least one live voxel.
+    constexpr float kVoxelsPerOctantGroup =
+        static_cast<float>(SerializedOctree::kVoxelsPerBrick) / 8.0f;
     for (int o = 0; o < 8; ++o) {
+        const float octantCoverage =
+            static_cast<float>(octantOccupiedCount[o]) / kVoxelsPerOctantGroup;
         if (octantOccupiedCount[o] == 0) {
-            octantGroups[o] = MipChildSample{0.0f, false};
+            octantGroups[o] = MipChildSample{0.0f, false, 0.0f};
         } else if (kind == FK_DISTANCE) {
-            octantGroups[o] = MipChildSample{octantBestOrSum[o], true};
+            octantGroups[o] = MipChildSample{octantBestOrSum[o], true, octantCoverage};
         } else {
             octantGroups[o] = MipChildSample{
-                octantBestOrSum[o] / static_cast<float>(octantOccupiedCount[o]), true};
+                octantBestOrSum[o] / static_cast<float>(octantOccupiedCount[o]), true,
+                octantCoverage};
         }
     }
 
@@ -200,7 +210,9 @@ inline MipPool BakeMipPool(const Octree& oct, const SerializedOctree& serialized
                     const uint32_t brickIndex = it->second;
                     MipSample leafSample = detail::ReduceBrickToMipSample(
                         serialized, brickIndex, sem, kind, comp);
-                    children[octant] = MipChildSample{leafSample.value, leafSample.coverage > 0.0f};
+                    children[octant] = MipChildSample{leafSample.value,
+                                                      leafSample.coverage > 0.0f,
+                                                      leafSample.coverage};
                 } else {
                     // Non-leaf child: its mip sample was already computed
                     // (higher index, processed earlier in this reverse walk).
@@ -220,7 +232,9 @@ inline MipPool BakeMipPool(const Octree& oct, const SerializedOctree& serialized
                     if (resolvedChildIdx >= pool.nodeCount) continue;
 
                     const MipSample childSample = pool.Get(resolvedChildIdx, ch);
-                    children[octant] = MipChildSample{childSample.value, childSample.coverage > 0.0f};
+                    children[octant] = MipChildSample{childSample.value,
+                                                      childSample.coverage > 0.0f,
+                                                      childSample.coverage};
                 }
             }
 

@@ -1533,3 +1533,29 @@ are the Sol batch-47 reconciliation.
 · **Status:** CLOSED AS A MISDIAGNOSIS. LEVEL_FLOOR test RAN (batch 48): level pinning
 works; covMin stayed 1 — cause is bool-collapse BETWEEN levels (fractionality does not
 propagate upward); fix = weighted propagation, queued.
+
+**WEIGHTED PROPAGATION SHIPPED (batch 49, 2026-08-09; Sol-validated).** `MipChildSample`
+carries fractional `coverage` + `Weight()`; both filters sum weights (`sum(child.coverage)/8`);
+the brick level supplies `occupiedVoxels/64` per octant group (MipBake.h/MipSample.h, +45/−7).
+Verified: covMin 1 → **0.984375 = exactly 63/64** (the arithmetic signature: leaf 7/8, parent
+(7×1.0+0.875)/8) on all floor2 legs; image-visible (floor2 frame hash b654ae71 → 3951c2c5);
+identity leg BYTE-identical (policy-off path untouched — `Weight()` returns 1.0 for legacy
+2-arg `{value, occupied}` initializations, arithmetically inert on solid data). Declared
+reference movements: floor2/composite frame hashes b654ae71 → 3951c2c5; covMin 1 → 0.984375.
+
+**Residuals (open):**
+- **Composite divergence still undemonstrated — cause is a BLACK second candidate, not ε**
+  (Sol V1.3, sol-b49-validation.md): the blend gate (BodyInstanceRayMarch.comp:255) PASSES at
+  residualT = 0.015625 and [FarFieldWon] ≡ earlyOut proves the blend executes; frames are
+  byte-identical because `secondColor` stays vec3(0) (TraceWorld.glsl:642, 672) — the seeded
+  instances (D≈612/800/1200wu) never overlap along a ray. Four levers (USER decision): sparser
+  bake · lower kRegime3Eps · overlapping second body (direct fix) · brighter/HDR second
+  candidate clearing 8-bit quantization (needs behindColor ≳ 0.251 at T=0.015625).
+- **`test_mip_sample_bake.cpp` exact-coverage oracle (:152, :294-296) is expected RED** until
+  it gets the same weighted treatment — declared at ship time, fix queued (batch 50).
+- **No mip-pool hash instrument**: [BrickDataHash] does not witness mip-pool bytes; frame
+  hashes are the only end-to-end pool witness.
+- **`MipAnisoPool` (MipAnisoPool.h:146, 156-158) retains its own independent bool-collapse**
+  in the 6-axis encoding — out of scope for this slice, unfixed.
+- Value filtering is still unweighted (coverage-weighted mean of values would move value
+  references too — deliberately out of scope).
