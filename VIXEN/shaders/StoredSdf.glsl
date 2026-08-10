@@ -132,7 +132,10 @@ void _loadTrilinearCellComp(uint base, vec3 gridPos, int comp, int octreeIdx,
     localOut    = ivec3(0);
     oneBrickOut = false;
 
-    if (base == 0xFFFFFFFFu) {
+    // E21-S1: the config readiness bits are published only after the fine-data copy
+    // is visible. Pending/absent payloads take the existing mip sentinel path before
+    // any brickLookup or channelPool address is calculated.
+    if ((configs[octreeIdx]._tailPad[0] & 3u) != 3u || base == 0xFFFFFFFFu) {
         z0 = vec4(1e9);
         z1 = vec4(1e9);
         return;

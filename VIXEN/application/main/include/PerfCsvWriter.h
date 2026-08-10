@@ -23,6 +23,21 @@ namespace Vixen::RenderGraph { class GPUPerformanceLogger; }
 
 class PerfCsvWriter {
 public:
+    struct WholesaleMetrics {
+        uint32_t desiredMask = 0;
+        uint32_t readyMask = 0;
+        uint32_t generation = 0;
+        uint64_t allocatedCapacityBytes = 0;
+        uint64_t populatedShaderReadableBytes = 0;
+        uint64_t reusablePopulatedBytes = 0;
+        uint64_t wholeBufferUploadBytes = 0;
+        uint64_t channelPoolPopulatedBytes = 0;
+        uint64_t brickLookupPopulatedBytes = 0;
+        uint64_t mipPoolPopulatedBytes = 0;
+        uint64_t tierRefPopulatedBytes = 0;
+        uint64_t occupancyGridPopulatedBytes = 0;
+        uint64_t residentSignatureFnv64 = 0;
+    };
     // One GPU-timed pass to record each frame, named for its CSV column
     // (e.g. {"esvo_traverse_shade_ms", node->GetGPUPerformanceLogger()}).
     struct PassSource {
@@ -43,7 +58,8 @@ public:
     // their relative submission order). 0.0 if not computed/unavailable.
     void RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
                      uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
-                     double wholeFrameGpuSpanMs = 0.0);
+                     double wholeFrameGpuSpanMs,
+                     WholesaleMetrics wholesale);
 
     // Writes the accumulated rows to VIXEN_PERF_CSV. Safe to call once at shutdown; no-op if
     // disabled or already flushed (idempotent — DeInitialize() may run more than once-guarded,
@@ -58,6 +74,7 @@ private:
         uint64_t bootBytesUploaded = 0;
         uint64_t steadyStateBytesUploaded = 0;
         double wholeFrameGpuSpanMs = 0.0;  // Task 0.1: first CB start -> last CB end, this frame
+        WholesaleMetrics wholesale;
         std::vector<std::pair<std::string, double>> passMs;  // (columnName, ms) — same set every row
     };
 

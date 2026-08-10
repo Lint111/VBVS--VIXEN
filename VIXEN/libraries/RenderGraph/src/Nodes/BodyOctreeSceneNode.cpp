@@ -231,6 +231,10 @@ std::unique_ptr<NodeInstance> BodyOctreeSceneNodeType::CreateInstance(
 BodyOctreeSceneNode::BodyOctreeSceneNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<BodyOctreeSceneNodeConfig>(instanceName, nodeType)
 {
+    wholesaleAdmissionEnabled_ = envFlagEnabled("VIXEN_WHOLESALE_ADMISSION");
+    if (envFlagEnabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
+        residencyRequested_ = true;
+    }
     NODE_LOG_INFO("[BodyOctreeSceneNode] constructor");
 }
 
@@ -339,6 +343,9 @@ void BodyOctreeSceneNode::SetOccupancyGrid(std::vector<float> concatenatedGrid) 
 }
 
 void BodyOctreeSceneNode::RequestBrickResidency(bool resident) {
+    if (wholesaleAdmissionEnabled_ && envFlagEnabled("VIXEN_WHOLESALE_ADMISSION_SURFACE")) {
+        resident = true;
+    }
     // Stash only — mirrors SetBakeRecipe/SetRecipePool's dirty-flag pattern. ExecuteImpl
     // performs the actual BatchedUploader call next frame; never upload synchronously here.
     residencyRequested_  = resident;
@@ -489,6 +496,25 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Inc1 M2: a residency request toggled since the last Execute is serviced here — the
     // same fence-waited safe point recipeDirty_ uses, never synchronously in the setter.
+    const auto classifiedRegime = residencyRequested_
+        ? Vixen::SVO::FootprintRegime::Surface
+        : Vixen::SVO::FootprintRegime::MipHit;
+    const bool wholesaleTransition = wholesaleAdmissionEnabled_ &&
+        Vixen::SVO::AdvanceWholesaleAvailability(
+            wholesaleAvailability_, classifiedRegime,
+            static_cast<uint32_t>(Vixen::SVO::WholesalePayload::ChannelPool) |
+            static_cast<uint32_t>(Vixen::SVO::WholesalePayload::BrickLookup));
+    if (wholesaleTransition && wholesaleAvailability_.committedRegime ==
+        Vixen::SVO::FootprintRegime::Surface) {
+        brickResidencyDirty_ = true;
+    }
+    if (wholesaleTransition) {
+        NODE_LOG_INFO("[WholesaleAvailability] transition generation=" +
+                      std::to_string(wholesaleAvailability_.generation) +
+                      " desired=" + std::to_string(static_cast<uint32_t>(wholesaleAvailability_.desiredRegime)) +
+                      " pendingMask=" + std::to_string(wholesaleAvailability_.pendingMask) +
+                      " readyMask=" + std::to_string(wholesaleAvailability_.readyMask));
+    }
     if (brickResidencyDirty_) {
         UploadBrickPool();
         brickResidencyDirty_ = false;
@@ -953,6 +979,15 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         (residencyRequested_ && !concatenated_.bricks.empty()) ? concatenated_.bricks.data() : nullptr,
         bricksBuffer_, bricksMemory_, "octree bricks SSBO");
     brickPoolUploaded_ = residencyRequested_ && !concatenated_.bricks.empty();
+    if (brickPoolUploaded_) {
+        wholesaleAvailability_.committedRegime = Vixen::SVO::FootprintRegime::Surface;
+        wholesaleAvailability_.readyMask =
+            static_cast<uint32_t>(Vixen::SVO::WholesalePayload::ChannelPool) |
+            static_cast<uint32_t>(Vixen::SVO::WholesalePayload::BrickLookup);
+    }
+    for (auto& cfg : concatenated_.configs) {
+        cfg._tailPad[0] = wholesaleAvailability_.readyMask;
+    }
 
     CreateHostBuffer(device, materialsSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -1454,6 +1489,9 @@ void BodyOctreeSceneNode::PollBrickUploadCompletion() {
         const bool haveShellCache = !shellCache_[0].compact.configs.empty();
         std::vector<Vixen::SVO::OctreeConfig>* activeConfigs =
             Vixen::SVO::StampAndSelectActiveConfigs(concatenated_, shellCache_);
+        for (auto& cfg : *activeConfigs) {
+            cfg._tailPad[0] = wholesaleAvailability_.pendingMask;
+        }
 
         const VkDeviceSize configSize =
             static_cast<VkDeviceSize>(activeConfigs->size()) *
@@ -1479,6 +1517,7 @@ void BodyOctreeSceneNode::PollBrickUploadCompletion() {
             return;
         }
         pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+        Vixen::SVO::PublishWholesaleReady(wholesaleAvailability_);
         NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brickResident config visible on GPU");
     }
 }

@@ -12,7 +12,8 @@ PerfCsvWriter::PerfCsvWriter() {
 
 void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSource>& passes,
                                 uint64_t bootBytesUploaded, uint64_t steadyStateBytesUploaded,
-                                double wholeFrameGpuSpanMs) {
+                                double wholeFrameGpuSpanMs,
+                                WholesaleMetrics wholesale) {
     if (!IsEnabled()) return;
 
     recentFrameTimesMs_[frameCounter_ % kFpsWindow] = cpuFrameTimeMs;
@@ -24,6 +25,7 @@ void PerfCsvWriter::RecordFrame(double cpuFrameTimeMs, const std::vector<PassSou
     row.bootBytesUploaded = bootBytesUploaded;
     row.steadyStateBytesUploaded = steadyStateBytesUploaded;
     row.wholeFrameGpuSpanMs = wholeFrameGpuSpanMs;
+    row.wholesale = wholesale;
 
     // Steady-state FPS: rolling average over the last kFpsWindow frames (or however many
     // have run so far, before the window fills) — mirrors VulkanApplicationBase::FrameTimer's
@@ -51,8 +53,17 @@ void PerfCsvWriter::Flush() {
 
     // Header. Per-pass columns are named from the first row (every row records the same
     // pass set — RecordFrame's caller passes the same `passes` vector every frame).
-    out << "frame,cpu_frame_time_ms,steady_state_fps,boot_bytes_uploaded,steady_state_bytes_uploaded,"
-           "whole_frame_gpu_span_ms";
+    // E21-S1: keep the wholesale ledger schema stable across the slice ladder.  The
+    // node-specific values are supplied by later admission slices; zero is an honest
+    // value for a field which has not been admitted on a given frame, and avoids
+    // changing the CSV shape between S1-S5.
+    out << "scene_leg,frame,cpu_frame_time_ms,steady_state_fps,boot_bytes_uploaded,"
+           "steady_state_bytes_uploaded,whole_frame_gpu_span_ms,wholesale_desired_mask,"
+           "wholesale_ready_mask,wholesale_generation,allocated_capacity_bytes,"
+           "populated_shader_readable_bytes,reusable_populated_bytes,boot_bytes_uploaded_ledger,"
+           "steady_state_bytes_uploaded_ledger,whole_buffer_upload_bytes,"
+           "channel_pool_populated_bytes,brick_lookup_populated_bytes,mip_pool_populated_bytes,"
+           "tier_ref_populated_bytes,occupancy_grid_populated_bytes,resident_signature_fnv64";
     if (!rows_.empty()) {
         for (const auto& [name, _] : rows_.front().passMs) {
             out << "," << name << "_ms";
@@ -61,9 +72,17 @@ void PerfCsvWriter::Flush() {
     out << "\n";
 
     for (const auto& row : rows_) {
-        out << row.frameIndex << "," << row.cpuFrameTimeMs << "," << row.steadyStateFps << ","
+        out << "S1," << row.frameIndex << "," << row.cpuFrameTimeMs << "," << row.steadyStateFps << ","
             << row.bootBytesUploaded << "," << row.steadyStateBytesUploaded << ","
-            << row.wholeFrameGpuSpanMs;
+            << row.wholeFrameGpuSpanMs
+            << "," << row.wholesale.desiredMask << "," << row.wholesale.readyMask << ","
+            << row.wholesale.generation << "," << row.wholesale.allocatedCapacityBytes << ","
+            << row.wholesale.populatedShaderReadableBytes << "," << row.wholesale.reusablePopulatedBytes << ","
+            << row.bootBytesUploaded << "," << row.steadyStateBytesUploaded << ","
+            << row.wholesale.wholeBufferUploadBytes << ","
+            << row.wholesale.channelPoolPopulatedBytes << "," << row.wholesale.brickLookupPopulatedBytes << ","
+            << row.wholesale.mipPoolPopulatedBytes << "," << row.wholesale.tierRefPopulatedBytes << ","
+            << row.wholesale.occupancyGridPopulatedBytes << "," << row.wholesale.residentSignatureFnv64;
         for (const auto& [_, ms] : row.passMs) {
             out << "," << ms;
         }

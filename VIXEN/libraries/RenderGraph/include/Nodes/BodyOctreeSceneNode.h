@@ -10,6 +10,7 @@
 #include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
+#include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
 
 #include <glm/glm.hpp>
@@ -212,6 +213,12 @@ public:
     /// perf-CSV writer's byte-uploaded columns; CPU-observable, no GPU readback needed.
     [[nodiscard]] uint64_t BootBytesUploaded() const { return bootBytesUploaded_; }
     [[nodiscard]] uint64_t SteadyStateBytesUploaded() const { return steadyStateBytesUploaded_; }
+    [[nodiscard]] uint64_t ChannelPoolBytes() const { return concatenated_.channelPool.size(); }
+    [[nodiscard]] uint64_t BrickLookupBytes() const { return concatenated_.brickGridLookup.size(); }
+    [[nodiscard]] uint64_t MipPoolBytes() const { return concatenated_.mipPool.size(); }
+    [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
+    [[nodiscard]] uint64_t OccupancyGridBytes() const { return occupancyGrid_.size() * sizeof(float); }
+    [[nodiscard]] const Vixen::SVO::WholesaleAvailability& WholesaleState() const { return wholesaleAvailability_; }
     [[nodiscard]] const std::vector<UploadLedgerEntry>& UploadLedgerSnapshot() const {
         return uploadLedger_;
     }
@@ -318,6 +325,8 @@ private:
     bool                                    residencyRequested_  = true;
     bool                                    brickPoolUploaded_   = false;
     bool                                    brickResidencyDirty_ = false;
+    Vixen::SVO::WholesaleAvailability       wholesaleAvailability_;
+    bool                                    wholesaleAdmissionEnabled_ = false;
 
     // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: latch marking that residencyRequested_
     // was set EXPLICITLY (a real RequestBrickResidency call), as opposed to still holding its

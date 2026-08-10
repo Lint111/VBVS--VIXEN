@@ -1580,12 +1580,43 @@ void VulkanGraphApplication::PostTick() {
     }
 
     uint64_t bootBytes = 0, steadyBytes = 0;
+    PerfCsvWriter::WholesaleMetrics wholesale;
     if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode_))) {
         bootBytes = bodyScene->BootBytesUploaded();
         steadyBytes = bodyScene->SteadyStateBytesUploaded();
+        const auto& admission = bodyScene->WholesaleState();
+        wholesale.desiredMask = static_cast<uint32_t>(admission.desiredRegime == Vixen::SVO::FootprintRegime::Surface ? 3u : 0u);
+        wholesale.readyMask = admission.readyMask;
+        wholesale.generation = admission.generation;
+        wholesale.channelPoolPopulatedBytes = bodyScene->IsBrickPoolUploaded() ? bodyScene->ChannelPoolBytes() : 0u;
+        wholesale.brickLookupPopulatedBytes = bodyScene->IsBrickPoolUploaded() ? bodyScene->BrickLookupBytes() : 0u;
+        wholesale.mipPoolPopulatedBytes = bodyScene->MipPoolBytes();
+        wholesale.tierRefPopulatedBytes = bodyScene->TierRefBytes();
+        wholesale.occupancyGridPopulatedBytes = bodyScene->OccupancyGridBytes();
+        wholesale.allocatedCapacityBytes = wholesale.channelPoolPopulatedBytes + wholesale.brickLookupPopulatedBytes +
+            bodyScene->MipPoolBytes() + bodyScene->TierRefBytes() + bodyScene->OccupancyGridBytes();
+        wholesale.populatedShaderReadableBytes = wholesale.channelPoolPopulatedBytes + wholesale.brickLookupPopulatedBytes +
+            wholesale.mipPoolPopulatedBytes + wholesale.tierRefPopulatedBytes + wholesale.occupancyGridPopulatedBytes;
+        wholesale.wholeBufferUploadBytes = bootBytes + steadyBytes;
+        // Canonical S1 signature seed: the admitted payload tuple is stable across
+        // boots because it is derived from sorted, concatenated buffer sizes and the
+        // published readiness state. Later slices extend this with content hashes.
+        uint64_t signature = 1469598103934665603ull;
+        const uint64_t signatureValues[] = {
+            wholesale.desiredMask, wholesale.readyMask, wholesale.generation,
+            wholesale.channelPoolPopulatedBytes, wholesale.brickLookupPopulatedBytes,
+            wholesale.mipPoolPopulatedBytes, wholesale.tierRefPopulatedBytes,
+            wholesale.occupancyGridPopulatedBytes};
+        for (uint64_t value : signatureValues) {
+            for (unsigned shift = 0; shift < 64; shift += 8) {
+                signature ^= (value >> shift) & 0xffu;
+                signature *= 1099511628211ull;
+            }
+        }
+        wholesale.residentSignatureFnv64 = signature;
     }
 
-    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs);
+    perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs, wholesale);
 }
 
 void VulkanGraphApplication::Update() {
