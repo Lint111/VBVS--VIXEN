@@ -186,6 +186,21 @@ bool envFlagEnabled(const char* name) {
     return false;
 }
 
+bool envFlagIsSet(const char* name, bool& value) {
+    const char* raw = std::getenv(name);
+    if (raw == nullptr) return false;
+    while (*raw != '\0' && std::isspace(static_cast<unsigned char>(*raw))) ++raw;
+    if (*raw == '0') {
+        value = false;
+        return true;
+    }
+    if (*raw == '1') {
+        value = true;
+        return true;
+    }
+    return false;
+}
+
 // Baked-perf-pipeline M2 (audit D1, Task 2.1): reads a shader source file and, when
 // VIXEN_DEBUG_CAPTURE is set, injects "#define VIXEN_GPU_TRACE_HOOKS 1\n" -- the same
 // textual-#define-injection technique Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource
@@ -1810,9 +1825,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // RegisterShaderBuilder lambda below instead of decided here, where the
     // VulkanDevice doesn't exist yet. The three single-backend env vars above are
     // untouched by this block; composed is a fourth, additive axis.
-    const bool composedTraversalRequested = envFlagEnabled("VIXEN_COMPOSED_TRAVERSAL");
-    if (composedTraversalRequested && mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL requested -- near-field backend "
+    // The orbital-structure admission is the current far-field scene-demand seam. Keep this
+    // predicate at graph construction, upstream of BodyOctreeSceneNode's TLAS owner, so the
+    // composed identity is selected for the same scene that can produce far-field mip samples.
+    const bool sceneRequestsFarFieldTraversal =
+        envFlagEnabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
+    bool composedTraversalOverride = false;
+    const bool hasComposedTraversalOverride =
+        envFlagIsSet("VIXEN_COMPOSED_TRAVERSAL", composedTraversalOverride);
+    const bool composedTraversalRequested = hasComposedTraversalOverride
+        ? composedTraversalOverride : sceneRequestsFarFieldTraversal;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info(std::string("[BuildRenderGraph] composed traversal predicate: ") +
+                         (sceneRequestsFarFieldTraversal ? "ON (far-field/orbital scene demand)"
+                                                         : "OFF (no far-field/orbital scene demand)") +
+                         (hasComposedTraversalOverride
+                              ? (composedTraversalOverride ? "; VIXEN_COMPOSED_TRAVERSAL=1 override"
+                                                           : "; VIXEN_COMPOSED_TRAVERSAL=0 override")
+                              : "; no override"));
+    }
+    if (hasComposedTraversalOverride && mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL override resolved -- near-field backend "
                           "(RT vs DDA) resolved by device capability at shader-compile time");
     }
 
@@ -8033,8 +8066,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // traversal is REQUESTED, same as the plain VIXEN_RTQUERY_TRAVERSAL gate --
     // an unused binding when composed resolves to DDA is inert (same precedent
     // as the comment above: provider registered-but-unused is not an error).
-    if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") ||
-        envFlagEnabled("VIXEN_COMPOSED_TRAVERSAL")) {
+    if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") || composedTraversalRequested) {
         marchFeatures.Enable(kFeatureRtQueryTraversal);
     }
     // E11-T1: gates the PolicyStencilTileBuffer member (binding 41) the same

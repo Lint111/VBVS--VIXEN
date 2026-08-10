@@ -1527,13 +1527,17 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
 // (same struct fills, same synchronous submit-and-wait -- this runs at most once per
 // scene-identity change, not per frame, so synchronous is fine here too).
 void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
-    // W-COMPOSED: VIXEN_COMPOSED_TRAVERSAL can also resolve to the RT backend
-    // (BuildRenderGraph.cpp's RegisterShaderBuilder lambda, decided by the SAME
-    // RTXCapabilities.rayQuery check this function makes below) -- build the
-    // TLAS whenever RT *could* be the selected backend; the capability check
-    // right below is still the real gate on whether it actually gets used.
-    if (!envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") &&
-        !envFlagEnabled("VIXEN_COMPOSED_TRAVERSAL")) {
+    // W-COMPOSED: mirror BuildRenderGraph.cpp's resolved scene predicate at the
+    // downstream TLAS owner. The orbital structure admission selects composed
+    // traversal by default; the explicit 0/1 override remains authoritative.
+    const char* composedEnv = std::getenv("VIXEN_COMPOSED_TRAVERSAL");
+    bool composedTraversalEnabled = envFlagEnabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
+    if (composedEnv != nullptr) {
+        while (*composedEnv != '\0' && std::isspace(static_cast<unsigned char>(*composedEnv))) ++composedEnv;
+        if (*composedEnv == '0') composedTraversalEnabled = false;
+        else if (*composedEnv == '1') composedTraversalEnabled = true;
+    }
+    if (!envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") && !composedTraversalEnabled) {
         return;  // both flags off: never build, never touch the RT function pointers
     }
 

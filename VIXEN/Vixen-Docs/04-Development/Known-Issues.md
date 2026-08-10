@@ -52,8 +52,13 @@ regimes produced the same image, and the differing-image boot's counter histogra
 byte-identical to its siblings. The pure-VIRTUAL leg is hash-identical across all its boots
 (3/3) — the variance is a property of the stored-control path only.
 
-**Status:** OPEN, characterized, unadjudicated — needs its own pre-registered probe (candidate
-inputs: stored-pool upload timing/order, descriptor/allocation order in the stored path).
+**Status:** OPEN, characterized (E16-T1, 2026-08-10), not root-caused — the stored path remains
+two-hash bistable after interleaved repeat boots and existing boot schedule/frame-sync/pipeline
+fingerprints do not select the image member. The mechanism boundary is therefore above the
+shader's deterministic image-producing logic and below the external/persistent GPU scheduling
+state; no minimal product fix is justified. Keep the two-member reference set and defer a fix
+until a probe can observe the stored-pool submission/allocation boundary without reintroducing
+launch/poll races.
 **Severity:** Medium (byte-stability gates on the stored control must expect a two-hash
 reference set until root-caused).
 
