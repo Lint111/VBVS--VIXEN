@@ -11,6 +11,24 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-050 — Stored-control boot image bistability (second nondeterminism axis, orthogonal to KI-049)
+
+**Discovered:** 2026-08-09/10, E4-T1 virtual-census run (`perf/e4-t1-virtual-census-report.md`).
+
+**Symptom:** the stored Cornell control produces one of TWO frame-100 image hashes across boots
+(`87473180…` vs `9f5ea513…`) — measured on counters-ON (1/4 boots) AND counters-OFF (1/3 boots)
+arms, so it is **not counter-induced**. It is also **not KI-049**: boots in opposite KI-049
+regimes produced the same image, and the differing-image boot's counter histograms were
+byte-identical to its siblings. The pure-VIRTUAL leg is hash-identical across all its boots
+(3/3) — the variance is a property of the stored-control path only.
+
+**Status:** OPEN, characterized, unadjudicated — needs its own pre-registered probe (candidate
+inputs: stored-pool upload timing/order, descriptor/allocation order in the stored path).
+**Severity:** Medium (byte-stability gates on the stored control must expect a two-hash
+reference set until root-caused).
+
+---
+
 ## KI-049 — Config-dependent boot-regime bias remains unexplained after round-robin disambiguation
 
 **Discovered:** 2026-08-09, overnight round-robin sweep in the wavefront epoch ledger.
@@ -26,18 +44,44 @@ does not identify the cause. The leading candidate is pointer-ordered graph sche
 heap-allocated nodes enter a `std::set<NodeInstance*>`, whose ordering seeds DFS and can
 affect execution order and frame-sync grouping. Edge count alone is not predictive.
 
-**Probe/status:** fingerprint calibration is COMPLETE: **22 boots, 21 distinct
-fingerprints**; `af3ba039199ec6b6` is the only repeat and both occurrences are LOW.
-DDA-off frame↔regime association is **2/2 LOW and 2/2 HIGH**; composed-on produces one
-frame state in both regimes. The sharpened hypothesis is pairwise precedence between the
-ESVO/march dispatch and `shadow_visibility_wave`. Sol found no dependency path in either
-direction: the intended march→shadow semantic ordering is **not encoded in graph topology**.
-**BATCH-48: the precedence hypothesis was FALSIFIED** (shadow precedes march 8/8, regimes
-4/4 — sign predicts a coin flip). The edge stays queued as hygiene; the regime's deciding
-input is UNIDENTIFIED (frame-sync group assignment / pipeline-cache state are next).
-(The pre-falsification plan read "probe first, then add the edge and watch the regime
-collapse" — the probe ran and the collapse prediction is DEAD; the edge remains queued as
-design hygiene only.)
+**Probe/status: deciding input still UNIDENTIFIED — four hypotheses down (E3-T1, 2026-08-09,
+24-boot frozen adjudication).** The regime is **not** explained by:
+1. total frame-sync edge count, full schedule hash, or pairwise precedence (batch 47/48);
+2. the two passes' execution-order positions (batch 48 — shadow precedes march in all 8,
+   regimes split 4/4);
+3. **frame-sync submit-group PAYLOAD** (E3-T1) — FALSIFIED. Only 4 distinct `(wait,sig,bar)×2`
+   fingerprints exist across 24 boots and the regime splits *within* two of them
+   (`(2,0,2,0,0,0)` n=12 and `(2,1,2,0,1,0)` n=5 each contain both regimes). The frozen
+   `march_eff > wave_eff` rule is degenerate — true 24/24, predicting HIGH always (5/24 = the
+   HIGH base rate);
+4. **compute pipeline creation ORDER** (E3-T1, same boots) — FALSIFIED. `march_create <
+   wave_create` never occurs (0/24), so the frozen rule predicts LOW always and its 19/24 is
+   exactly the LOW base rate, not signal; fingerprint `(9,0,6,3,0,0)` (n=3) contains both
+   regimes. `march_vkcache`/`wave_vkcache` were 0 on all 24 boots — the compute
+   `VkPipelineCache` really is a stub, as designed. SPIR-V cache warmth (`8/1` cold vs `9/0`
+   warm) does not select the regime: HIGH boots occur in both strata.
+
+**Standing instruments (keep — all log-only, boot-time, zero hot-path cost, image-inert):**
+`[BootScheduleFingerprint]`, `[BootSchedulePrecedence]`, `[BootFrameSyncProbe]`,
+`[BootPipelineProbe]`. Image inertness re-verified at E3-T1: identity frame MD5
+`87473180f7b4e6032e3051f35820099b` unchanged. Full evidence:
+`perf/e3-t1-framesync-probe/` (winbuild) + `perf/e3-t1-framesync-probe-report.md` (undertow).
+
+**E5-T1 (2026-08-10, frozen 48-boot matrix — `perf/e5-t1-mip-regime-report.md`): candidate 5
+DOWN. H-FORCES REFUTED** — 3 integrity-valid policy-on HIGH boots (dda-on-2, dda-on-5,
+composed-on-8); the E3-T1 12/12-LOW observation was small-sample. H-BIASES INCONCLUSIVE: only
+8/48 boots went HIGH at all (3/2/2/1 per cell), failing the ≥4-per-regime base-rate bar in
+EVERY cell — the **night-to-night regime-rate drift is the dominant phenomenon** and no
+boot-time fingerprint (schedule, precedence, payload, pipeline order, mip-policy, SPIR-V
+warmth) touches it. The off-state selector remains UNIDENTIFIED.
+
+**Orchestrator recommendation (pending user ratification):** demote KI-049 from active probing
+to a STANDING CHARACTERIZED PHENOMENON — keep the four boot-time instruments and the
+regime-stratified reporting protocol (classify every measurement boot; report per-regime), and
+resume probing only when an unrelated finding produces a mechanism candidate that could explain
+NIGHT-SCALE drift (driver/thermal/persistent-state class, not boot-time state). Five frozen
+probes in, the cost/information ratio no longer favors fishing.
+(The march→shadow semantic edge remains queued as design hygiene only.)
 
 **Effort policy:** HIGH for GPU/Windows-boundary work, builds, driver watches, boot matrices,
 synchronization, and artifact production; MEDIUM for bounded static analysis, simulate-first
