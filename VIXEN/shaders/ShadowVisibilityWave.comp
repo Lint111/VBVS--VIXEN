@@ -22,13 +22,15 @@
 //         here; the Cornell diagnostics read it back, and W2's recipe-bucketed
 //         shade resolves pixel→instance→recipe through it).
 //   [1] = WorldHit.emission (written by the march — NEVER touched here).
-//   [2] = THIS WAVE's visibility answers; the wave read-modify-writes ONLY
-//         this word. Bits 0..3 = analytic-light visibility (bit i = light i
+//   [2] = shared word; this wave read-modify-writes ONLY the fields it owns.
+//         Bits 0..3 = analytic-light visibility (bit i = light i
 //         unoccluded; all-ones for miss pixels / disabled shadows / lights
 //         past lightCount — exact-math-safe: the shade pass only consumes a
 //         bit when NdotL>0 for that light, mirroring the merged shader's own
-//         NdotL-before-trace gate). Bit 4 = reserved for the ReSTIR
-//         reservoir-ray answer (opt-in path; unwritten until W2's seam).
+//         NdotL-before-trace gate). Bit 4 = the ReSTIR reservoir-ray answer;
+//         bits 5..7 are reserved. Bits 8..15 are the primary policy stencil
+//         written by the march (regime 8..10, VIRTUAL 11, MATERIALIZED 12,
+//         reserved 13..15) and preserved by both shadow-phase RMWs.
 //   Under VIXEN_SHADOW_DBG the M10 diagnostic stashes over all three for its
 //   ONE diagnosed pixel — ordering-safe: that stash happens in the shade pass
 //   AFTER the light loop consumed [2], and the march + this wave rewrite the
@@ -141,8 +143,14 @@ void main() {
     }
 
     if (visible) {
-        // RMW: preserve the analytic phase's bits 0..3, set only bit 4.
-        hitRecords[slot]._pad0[2] = (hitRecords[slot]._pad0[2] & 0xFu) | 0x10u;
+        // RMW: preserve every non-owned bit (including the policy stencil in
+        // bits 8..15), set only the reservoir answer in bit 4.
+        uint beforeWord = hitRecords[slot]._pad0[2];
+        uint afterWord = beforeWord | 0x10u;
+        hitRecords[slot]._pad0[2] = afterWord;
+#ifdef VIXEN_POLICY_STENCIL
+        recordPolicyStencilReservoir(beforeWord, afterWord);
+#endif
     }
 }
 
@@ -194,13 +202,16 @@ void main() {
         }
     }
 
-    // Mask to the analytic bits this phase owns — bit 4 (the ReSTIR answer)
-    // belongs to the reservoir phase's post-gather dispatch (an unmasked
-    // all-ones init would silently flip the opt-in from zero-contribution to
-    // UNSHADOWED-contribution). This phase runs FIRST, so a plain store (not
-    // RMW) is correct: it re-baselines the word each frame; the reservoir
-    // phase RMWs bit 4 in afterwards.
-    hitRecords[slot]._pad0[2] = visBits & 0xFu;
+    // Mask to the analytic bits this phase owns. Preserve every other bit:
+    // bit 4 belongs to the reservoir phase and bits 8..15 belong to the
+    // primary policy stencil. The march re-baselines the full word each frame;
+    // this phase updates only its analytic-light field.
+    uint beforeWord = hitRecords[slot]._pad0[2];
+    uint afterWord = (beforeWord & ~0xFu) | (visBits & 0xFu);
+    hitRecords[slot]._pad0[2] = afterWord;
+#ifdef VIXEN_POLICY_STENCIL
+    recordPolicyStencilAnalytic(beforeWord, afterWord);
+#endif
 }
 
 #endif  // VIXEN_WAVE_RESERVOIR_PHASE

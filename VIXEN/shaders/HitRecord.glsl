@@ -49,10 +49,12 @@
 // through it). [1] = M11.2: floatBitsToUint(WorldHit.emission) -- the winning
 // instance's emission intensity, so SpatialReuseShade.comp can add a self-lit
 // term at the primary hit without re-deriving it from bodyInstances[] a
-// second time. [2] = ShadowVisibilityWave's visibility answers (wavefront
-// W1b): bits 0..3 = analytic-light bitmask (bit i = light i unoccluded),
-// bit 4 = reserved ReSTIR reservoir-ray answer (unwritten until W2's seam);
-// the march zero-inits it, the wave is its only writer. (VIXEN_SHADOW_DBG's
+// second time. [2] has split ownership: bits 0..3 = ShadowVisibilityWave's
+// analytic-light bitmask (bit i = light i unoccluded), bit 4 = its ReSTIR
+// reservoir-ray answer, bits 5..7 reserved, and bits 8..15 = the primary
+// policy stencil (regime bits 8..10, VIRTUAL bit 11, MATERIALIZED bit 12,
+// bits 13..15 reserved). The march owns bits 8..15; both shadow phases use
+// masked RMWs and own only bits 0..4. (VIXEN_SHADOW_DBG's
 // debug packing reuses all three under #ifdef, but that path never coexists
 // with a real frame's [0]/[1]/[2] content.)
 // ============================================================================

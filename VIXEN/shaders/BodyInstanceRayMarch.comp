@@ -362,7 +362,14 @@ void main() {
     // round 4's own g_cornellDiagWinnerInstIdx was.
     // M11.2: stash the winning instance's emission intensity alongside instIdx --
     // SpatialReuseShade.comp reads it back to add a self-lit term at the primary hit.
-    rec._pad0       = uint[3](worldHit.instIdx, floatBitsToUint(worldHit.emission), 0u);
+    uint policyStencilWord = 0u;
+#ifdef VIXEN_POLICY_STENCIL
+    if (anyHit) {
+        policyStencilWord = packPolicyStencilWord(
+            worldHit.footprintRegime, worldHit.sourceMask);
+    }
+#endif
+    rec._pad0       = uint[3](worldHit.instIdx, floatBitsToUint(worldHit.emission), policyStencilWord);
 
     uint hitRecordIdx = uint(pixelCoords.y) * uint(imgSize.x) + uint(pixelCoords.x);
 
@@ -419,6 +426,9 @@ void main() {
     }
 
     HitRecord recReadback = hitRecords[hitRecordIdx];
+#ifdef VIXEN_POLICY_STENCIL
+    recordPolicyStencilPrimary(recReadback._pad0[2]);
+#endif
 
     // anyHitRT (not the original anyHit) drives everything below, so a lossy
     // pack/unpack would visibly break the byte-identity gate rather than

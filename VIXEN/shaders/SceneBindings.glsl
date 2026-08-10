@@ -489,9 +489,10 @@ const uint kIntensityFixedPointScale = 1000000u;
 // a slot collision just overwrites an earlier sample (a decode aid, not a
 // census -- farFieldTerminal already gives the exact count).
 void recordFarFieldTerminalPixel(uvec2 pixel) {
-#ifdef VIXEN_COMPOSITION_COUNTERS
-    // Slice 0 owns this historical ring while enabled; the exact terminal
-    // pixel coordinate decode is intentionally unavailable on probe boots.
+#if defined(VIXEN_COMPOSITION_COUNTERS) || defined(VIXEN_POLICY_STENCIL)
+    // The composition census and policy-stencil readback reuse this historical
+    // ring while enabled; exact terminal-pixel decode is unavailable on those
+    // probe boots. Composition owns [0,28), policy-stencil owns [28,32).
     return;
 #else
     uint slot = atomicAdd(farFieldTerminalPixelWriteCount, 1u) % 32u;
@@ -518,9 +519,73 @@ uint classifyFootprintRegime(float worldDist, float cellWorldSize,
         : (footprint < cosmicK * cellWorldSize ? 2u : 3u);
 }
 
-// E1-T1 stencil slice 0. The design's authoritative values are kept local to
-// this probe until FootprintRegime exists as production code: 1=Surface,
-// 2=MipHit, 3=Cosmic; source bits 1=virtual, 2=materialized.
+// E7-T1 primary policy stencil. The frozen byte layout is regime bits 0..2,
+// VIRTUAL bit 3, MATERIALIZED bit 4, reserved bits 5..7. HitRecord._pad0[2]
+// stores that byte shifted to bits 8..15 so shadow visibility retains bits
+// 0..4. TraceWorld's sourceMask is 1=virtual/procedural, 2=materialized/stored.
+const uint POLICY_STENCIL_WORD_MASK = 0x0000FF00u;
+
+uint packPolicyStencilByte(uint regime, uint sourceMask) {
+    uint stencil = regime & 0x7u;
+    if ((sourceMask & 1u) != 0u) stencil |= 0x08u;
+    if ((sourceMask & 2u) != 0u) stencil |= 0x10u;
+    return stencil;
+}
+
+uint packPolicyStencilWord(uint regime, uint sourceMask) {
+    return packPolicyStencilByte(regime, sourceMask) << 8u;
+}
+
+#ifdef VIXEN_POLICY_STENCIL
+// The four boot-lifetime readback words are the last formerly-reserved slots
+// in TraceBufferHeader.farFieldTerminalPixels:
+//   28 primary materializations, 29 analytic RMW checks, 30 reservoir RMWs,
+//   31 atomic-OR summary:
+//      [0..7] primary stencil, [8..15] analytic stencil,
+//      [16..23] reservoir stencil, [24..27] analytic visibility bits,
+//      [28] reservoir-visible bit, [29] primary low-word contamination,
+//      [30] analytic stencil mismatch, [31] reservoir preservation mismatch
+//      (analytic bits 0..3 or stencil bits 8..15 changed).
+void recordPolicyStencilPrimary(uint word) {
+    uint stencil = (word & POLICY_STENCIL_WORD_MASK) >> 8u;
+    if (stencil == 0u) return;
+    atomicAdd(farFieldTerminalPixels[28], 1u);
+    uint summary = stencil;
+    if ((word & 0x1Fu) != 0u) summary |= 1u << 29u;
+    atomicOr(farFieldTerminalPixels[31], summary);
+}
+
+void recordPolicyStencilAnalytic(uint beforeWord, uint afterWord) {
+    uint beforeStencil = beforeWord & POLICY_STENCIL_WORD_MASK;
+    if (beforeStencil == 0u) return;
+    atomicAdd(farFieldTerminalPixels[29], 1u);
+    uint summary = ((afterWord & POLICY_STENCIL_WORD_MASK) >> 8u) << 8u;
+    summary |= (afterWord & 0xFu) << 24u;
+    if ((beforeWord & POLICY_STENCIL_WORD_MASK) !=
+        (afterWord & POLICY_STENCIL_WORD_MASK)) {
+        summary |= 1u << 30u;
+    }
+    atomicOr(farFieldTerminalPixels[31], summary);
+}
+
+void recordPolicyStencilReservoir(uint beforeWord, uint afterWord) {
+    uint beforeStencil = beforeWord & POLICY_STENCIL_WORD_MASK;
+    if (beforeStencil == 0u) return;
+    atomicAdd(farFieldTerminalPixels[30], 1u);
+    uint summary = ((afterWord & POLICY_STENCIL_WORD_MASK) >> 8u) << 16u;
+    if ((afterWord & 0x10u) != 0u) summary |= 1u << 28u;
+    const uint reservoirPreserveMask = POLICY_STENCIL_WORD_MASK | 0xFu;
+    if ((beforeWord & reservoirPreserveMask) !=
+        (afterWord & reservoirPreserveMask)) {
+        summary |= 1u << 31u;
+    }
+    atomicOr(farFieldTerminalPixels[31], summary);
+}
+#endif
+
+// E1-T1 stencil slice 0 composition census, now consuming the shared production
+// FootprintRegime classifier: 1=Surface, 2=MipHit, 3=Cosmic; source bits
+// 1=virtual, 2=materialized.
 #ifdef VIXEN_COMPOSITION_COUNTERS
 uint compositionSourceClass(uint sourceMask) {
     return sourceMask == 1u ? 0u : (sourceMask == 2u ? 1u : 2u);
@@ -979,9 +1044,9 @@ uint g_mipSampleLevel = 0u; // last resolved mip level for readMipSample account
 // false at the top of TraceWorld() before the loop, like anyHit.
 bool g_lastHitWasFarField = false;
 
-// Slice-0 call-boundary results. These are probe-only consumers of the exact
-// inline FootprintRegime formula; no production classifier abstraction exists
-// yet (Deep-Field-Residency-Unification §B).
+// Shared call-boundary results consumed by the production policy stencil and
+// the optional composition census. FootprintRegime is classified once by the
+// shared function above and carried with the winning WorldHit.
 uint g_lastFootprintRegime = 1u;
 uint g_lastShadowCompositionRegime = 1u;
 uint g_lastShadowCompositionSourceMask = 0u;

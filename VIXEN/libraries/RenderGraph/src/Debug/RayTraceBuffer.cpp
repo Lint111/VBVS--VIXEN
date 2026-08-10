@@ -719,6 +719,32 @@ CompositionCounterStats RayTraceBuffer::ReadCompositionCounterStats(VkDevice dev
     return stats;
 }
 
+PolicyStencilStats RayTraceBuffer::ReadPolicyStencilStats(VkDevice device) const {
+    PolicyStencilStats stats{};
+    if (!IsValid() || !isHostVisible_) {
+        return stats;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return stats;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    stats.primaryMaterializations = header->farFieldTerminalPixels[28];
+    stats.analyticPreservationChecks = header->farFieldTerminalPixels[29];
+    stats.reservoirWrites = header->farFieldTerminalPixels[30];
+    const uint32_t summary = header->farFieldTerminalPixels[31];
+    stats.primaryStencilOr = static_cast<uint8_t>(summary & 0xFFu);
+    stats.analyticStencilOr = static_cast<uint8_t>((summary >> 8u) & 0xFFu);
+    stats.reservoirStencilOr = static_cast<uint8_t>((summary >> 16u) & 0xFFu);
+    stats.analyticShadowOr = static_cast<uint8_t>((summary >> 24u) & 0xFu);
+    stats.reservoirVisible = (summary & (1u << 28u)) != 0u;
+    stats.primaryLowBitsNonzero = (summary & (1u << 29u)) != 0u;
+    stats.analyticStencilMismatch = (summary & (1u << 30u)) != 0u;
+    stats.reservoirPreservationMismatch = (summary & (1u << 31u)) != 0u;
+    vkUnmapMemory(device, memory_);
+    return stats;
+}
+
 FarFieldMipStats RayTraceBuffer::ReadFarFieldMipStats(VkDevice device) const {
     FarFieldMipStats stats{};
     if (!IsValid() || !isHostVisible_) {

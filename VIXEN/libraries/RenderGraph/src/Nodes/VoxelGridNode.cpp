@@ -703,6 +703,23 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
             std::cout << "[CompositionRelaxed] rays=" << composition.relaxedRays << std::endl;
         }
 
+        if (std::getenv("VIXEN_POLICY_STENCIL")) {
+            const auto stencil =
+                debugCaptureResource_->ReadPolicyStencilStats(vulkanDevice->device);
+            std::cout << "[PolicyStencil] primary=" << stencil.primaryMaterializations
+                       << " analytic=" << stencil.analyticPreservationChecks
+                       << " reservoir=" << stencil.reservoirWrites
+                       << " primaryByteOr=" << static_cast<uint32_t>(stencil.primaryStencilOr)
+                       << " analyticByteOr=" << static_cast<uint32_t>(stencil.analyticStencilOr)
+                       << " reservoirByteOr=" << static_cast<uint32_t>(stencil.reservoirStencilOr)
+                       << " analyticShadowOr=" << static_cast<uint32_t>(stencil.analyticShadowOr)
+                       << " reservoirVisible=" << (stencil.reservoirVisible ? 1 : 0)
+                       << " primaryLowBitsNonzero=" << (stencil.primaryLowBitsNonzero ? 1 : 0)
+                       << " analyticMismatch=" << (stencil.analyticStencilMismatch ? 1 : 0)
+                       << " reservoirMismatch=" << (stencil.reservoirPreservationMismatch ? 1 : 0)
+                       << std::endl;
+        }
+
         // Round-7 blocker-1 probe: mip-resolve success/fail -- discriminates
         // hypothesis (a) "the mip resolve fails" from (b)/(c) "resolves fine
         // but is lost/ignored downstream".

@@ -11,6 +11,34 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-051 — Mixed-leg reservoir/secondary-wave COUNTER variance across repeated boots (third nondeterminism axis; not stencil-data variance)
+
+**Discovered:** 2026-08-10, E7-T1 stencil-slice re-gate (`perf/e7-t1-stencil-report.md`).
+
+**Symptom:** with `VIXEN_POLICY_STENCIL=1` and the reservoir phase enabled
+(`VIXEN_RESERVOIR_CONFIG_ENABLED=1`) on the mixed-source Cornell scene
+(`VIXEN_DDGI_CORNELL_MIXED_DEMO=objects_stored`), repeated boots of the identical config produce
+different frame-100 image hashes and different queued/visibility/reservoir *population counts*
+(measured ~0.24–0.34% spread across four boots: e.g. reservoir writes 32,786,068 vs 32,675,649).
+This is **orthogonal to both KI-049 and KI-050**: it engages only when the reservoir/secondary-wave
+path is live (not exercised by either prior finding's legs), and — critically — it is **not a
+stencil-correctness defect**: the per-pixel stencil byte itself (`primaryByteOr`/`analyticByteOr`/
+`reservoirByteOr`/`analyticShadowOr`) is bit-identical across every affected boot, and the
+preservation readback (`analyticMismatch=0`, `reservoirMismatch=0`) is clean on all boots. Only the
+raw population totals in the pre-existing reservoir/secondary-wave accumulation layer vary — a
+GPU wavefront-race characteristic of that layer, not of the stencil write path.
+
+**Status:** OPEN, characterized, unadjudicated (same disposition as KI-049/KI-050) — needs its own
+pre-registered probe if a future task wants a root cause (candidate inputs: reservoir dispatch
+occupancy/scheduling order, same class of instrument already used for KI-049/KI-050). Orchestrator
+ruling (2026-08-10): does not block promotion of stencil-materialization/preservation work, since
+the doc's acceptance criterion for that work is classification+preservation stability, not
+counter-level reproducibility of an unrelated accumulation stage.
+**Severity:** Low for the stencil arc (doesn't block it); Medium for any future work that asserts
+frame-hash or population-count determinism on the mixed/reservoir path specifically.
+
+---
+
 ## KI-050 — Stored-control boot image bistability (second nondeterminism axis, orthogonal to KI-049)
 
 **Discovered:** 2026-08-09/10, E4-T1 virtual-census run (`perf/e4-t1-virtual-census-report.md`).

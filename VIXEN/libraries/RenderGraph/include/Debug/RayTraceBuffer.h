@@ -226,6 +226,21 @@ struct CompositionCounterStats {
     uint32_t relaxedRays = 0;
 };
 
+/** E7-T1 policy-stencil materialization and shadow-word preservation gate. */
+struct PolicyStencilStats {
+    uint32_t primaryMaterializations = 0;
+    uint32_t analyticPreservationChecks = 0;
+    uint32_t reservoirWrites = 0;
+    uint8_t primaryStencilOr = 0;
+    uint8_t analyticStencilOr = 0;
+    uint8_t reservoirStencilOr = 0;
+    uint8_t analyticShadowOr = 0;
+    bool reservoirVisible = false;
+    bool primaryLowBitsNonzero = false;
+    bool analyticStencilMismatch = false;
+    bool reservoirPreservationMismatch = false;
+};
+
 /**
  * @brief GPU buffer for capturing per-ray traversal traces
  *
@@ -497,6 +512,9 @@ public:
 
     /** Read the env-gated slice-0 histogram stored in the terminal-pixel ring. */
     CompositionCounterStats ReadCompositionCounterStats(VkDevice device) const;
+
+    /** Read the env-gated E7-T1 policy-stencil parity summary. */
+    PolicyStencilStats ReadPolicyStencilStats(VkDevice device) const;
 
     std::any GetData() const override;
 

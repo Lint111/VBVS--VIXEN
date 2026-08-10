@@ -1732,6 +1732,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
+        marchShaderFeatures.push_back(kFeaturePolicyStencil.define);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] VIXEN_POLICY_STENCIL: primary policy-stencil materialization ENGAGED");
+        }
+    }
     if (b1OcclusionCullEnabled) {  // one source of truth — the default-on gate above
         marchShaderFeatures.push_back(kFeatureB1OcclusionCull.define);
     }
@@ -1933,6 +1939,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         lightingShaderFeatures.push_back(kFeatureCompositionCounters.define);
+    }
+    if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
+        lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);
     }
     const auto registerLightingFamily = [this, lightingShaderFeatures](
                                             NodeHandle libHandle,
@@ -4291,16 +4300,102 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 obsRefT1ToT2.childScale = kObsChildScale;
                 Vixen::SVO::MarkLeafAsTierCrossing(obsT1Ser, obsT1MarkDescIdx, obsT1MarkOctant, obsRefT1ToT2, 22);
 
-                Vixen::SVO::ConcatenatedOctrees obsCat;
-                obsCat.count = 3;
-                obsCat.configs.resize(3);
-                obsCat.nodeCounts.resize(3);
-                obsCat.brickCounts.resize(3);
-                obsCat.tierRefCounts.resize(3);
+                // E7-T2/E8-T1: optional 4th sibling body, NOT tier-linked (no TierRef into
+                // it, so it cannot disturb the T0/T1/T2 chain above) -- a large, independently
+                // instanced SDF body whose OWN intra-tree mip ladder gives the plateau fixture
+                // levels a small R=0.1/kBrickDepth=3 tree structurally cannot (verified empirically:
+                // a 720-frame plateau capture against T0/T1/T2 alone produced level=0 at every
+                // hold including the 120wu far ceiling -- perf/e7-t2-multirung-fixture-design.md
+                // Sec.2's own pre-authorized contingency). Gated separately from
+                // VIXEN_TIER_OBSERVABLE_PLATEAU_DEMO so a plain VIXEN_TIER_OBSERVABLE_DEMO boot
+                // (existing gates, existing goldens) is byte-for-byte unaffected.
+                const bool obsAddFarSibling = std::getenv("VIXEN_TIER_OBSERVABLE_FAR_SIBLING") != nullptr;
+                Vixen::SVO::SdfBodyOctree obsFarBody;
+                Vixen::SVO::SerializedOctree obsFarSer;
+                if (obsAddFarSibling) {
+                    // Large radius + coarse voxel band (kBand=8.0) relative to kN=32 so the
+                    // resulting octree is genuinely deep (unlike the tiny R=0.1 T0/T1/T2
+                    // bodies) -- gives mipPolicyLevel's coarse->fine ladder walk room to
+                    // resolve level>0 at distance. Centered far from (64,64,64) so it never
+                    // occludes/interferes with the T0/T1/T2 cluster's own on-axis framing.
+                    // kFarN sweep history (each value's MEASURED MipReadBytes levels, the
+                    // pre-registered instrument, not the looser PolicyLevelHistogram):
+                    //   32  -> {0,1}      128 -> {0,2,3}      256 -> {0,3,4}
+                    //   384 (band=8)  -> {0} (regression)     384 (band=16) -> {0} (regression)
+                    // NOT a monotonic lever: level count/identity shifts non-linearly with
+                    // kFarN, and does not simply accumulate toward the full union. 256 is
+                    // the best result found (3 distinct levels: {0,3,4}) after a 4-value
+                    // sweep; reverted to it rather than continuing an unprincipled parameter
+                    // search (orchestrator flag: an 8th signature-adjudication rebuild pass
+                    // is judgment-call territory, not "check the arithmetic").
+                    constexpr int   kFarN      = 256;
+                    constexpr float kFarRadius = 12.0f;
+                    constexpr float kFarBand   = 8.0f;
+                    const glm::vec3 kFarCenter(16.0f, 16.0f, 16.0f);
+                    Vixen::SVO::RecipeParams farRp{};
+                    farRp.radius = kFarRadius;
+                    Vixen::SVO::SdfBakeResult farBaked = Vixen::SVO::BakeRecipeToSdfWorld(
+                        Vixen::SVO::RECIPE_SPHERE, kFarCenter, farRp, kFarN, kFarBand);
+                    obsFarBody = Vixen::SVO::BuildSdfBodyOctree(farBaked, kBrickDepth);
+                    obsFarSer = Vixen::SVO::SerializeSdf(obsFarBody);
+                    if (const Vixen::SVO::Octree* octFar = obsFarBody.octree->getOctree()) {
+                        Vixen::SVO::BakeAndAttachMipPool(*octFar, obsFarSer);
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_FAR_SIBLING: "
+                                      "baked large non-tiered sibling body (radius=" + std::to_string(kFarRadius)
+                                      + ", kN=" + std::to_string(kFarN) + ", band=" + std::to_string(kFarBand) + ")");
+                }
 
-                Vixen::SVO::SerializedOctree* obsOcts[3] = {&obsT0Ser, &obsT1Ser, &obsT2Ser};
+                // E8-T1 second attempt: body 3 (above) only ever resolved to levels {3,4} at the
+                // holds where its far-field gate engaged at all (hop1_19.89wu through far_120wu;
+                // the two nearest holds never reach it -- it sits ~83wu from the T0/T1/T2
+                // cluster). A SECOND, smaller/shallower/CLOSER sibling (smaller kN -> shallower
+                // farFieldDescentDepth ceiling per SVOTypes.glsl, placed nearer the cluster so
+                // the currently-uncovered near/mid holds can reach it) targets the missing
+                // low-level band (1-2) directly rather than re-sweeping kFarN on the one body.
+                const bool obsAddNearSibling = std::getenv("VIXEN_TIER_OBSERVABLE_NEAR_SIBLING") != nullptr;
+                Vixen::SVO::SdfBodyOctree obsNearBody;
+                Vixen::SVO::SerializedOctree obsNearSer;
+                if (obsAddNearSibling) {
+                    constexpr int   kNearN      = 48;   // bpa=6, ceilDepth=findMSB(6)=2 -- shallow on purpose
+                    constexpr float kNearRadius = 5.0f;
+                    constexpr float kNearBand   = 4.0f;
+                    // Placed along the SAME camera axis as T0/T1/T2 but offset so it doesn't
+                    // occlude the cluster, at a distance the near/mid holds (10-40wu) can reach.
+                    const glm::vec3 kNearCenter(40.0f, 40.0f, 40.0f);
+                    Vixen::SVO::RecipeParams nearRp{};
+                    nearRp.radius = kNearRadius;
+                    Vixen::SVO::SdfBakeResult nearBaked = Vixen::SVO::BakeRecipeToSdfWorld(
+                        Vixen::SVO::RECIPE_SPHERE, kNearCenter, nearRp, kNearN, kNearBand);
+                    obsNearBody = Vixen::SVO::BuildSdfBodyOctree(nearBaked, kBrickDepth);
+                    obsNearSer = Vixen::SVO::SerializeSdf(obsNearBody);
+                    if (const Vixen::SVO::Octree* octNear = obsNearBody.octree->getOctree()) {
+                        Vixen::SVO::BakeAndAttachMipPool(*octNear, obsNearSer);
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_NEAR_SIBLING: "
+                                      "baked small non-tiered sibling body (radius=" + std::to_string(kNearRadius)
+                                      + ", kN=" + std::to_string(kNearN) + ", band=" + std::to_string(kNearBand) + ")");
+                }
+                // Build a DENSE octree list so each sibling's octreeIndex is always its real
+                // position regardless of which subset of {far,near} siblings is enabled --
+                // avoids an empty/default SerializedOctree ever being concatenated as a
+                // real (zero-node) tree.
+                std::vector<Vixen::SVO::SerializedOctree*> obsOctList = {&obsT0Ser, &obsT1Ser, &obsT2Ser};
+                int obsFarOctreeIndex = -1, obsNearOctreeIndex = -1;
+                if (obsAddFarSibling)  { obsFarOctreeIndex  = static_cast<int>(obsOctList.size()); obsOctList.push_back(&obsFarSer); }
+                if (obsAddNearSibling) { obsNearOctreeIndex = static_cast<int>(obsOctList.size()); obsOctList.push_back(&obsNearSer); }
+                const int obsTreeCount = static_cast<int>(obsOctList.size());
+
+                Vixen::SVO::ConcatenatedOctrees obsCat;
+                obsCat.count = obsTreeCount;
+                obsCat.configs.resize(obsTreeCount);
+                obsCat.nodeCounts.resize(obsTreeCount);
+                obsCat.brickCounts.resize(obsTreeCount);
+                obsCat.tierRefCounts.resize(obsTreeCount);
+
+                Vixen::SVO::SerializedOctree** obsOcts = obsOctList.data();
                 uint32_t obsNodeBase = 0, obsBrickBase = 0, obsPoolBase = 0, obsTierRefBase = 0, obsMipPoolBase = 0;
-                for (int k = 0; k < 3; ++k) {
+                for (int k = 0; k < obsTreeCount; ++k) {
                     Vixen::SVO::SerializedOctree& s = *obsOcts[k];
                     s.config.nodeArrayBase  = static_cast<int32_t>(obsNodeBase);
                     s.config.brickArrayBase = static_cast<int32_t>(obsBrickBase);
@@ -4352,7 +4447,48 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     obsInst.providerKind = 0u;
                     obsInst.recipeId     = 0u;
 
-                    bodyScene->SetInstances({obsInst});
+                    std::vector<Vixen::SVO::BodyInstanceGpu> obsInstances{obsInst};
+                    if (obsAddFarSibling) {
+                        // Same orbit center (64,64,64) as the T0/T1/T2 cluster, so the
+                        // existing camera sweep samples it too, but a much larger
+                        // renderScale -- the far-ceiling hold (120wu) sees a genuinely
+                        // production-shaped body instead of the 1.0wu T0/T1/T2 cluster's
+                        // own already-tiny world footprint.
+                        constexpr float kFarRenderScale = 4.8f;
+                        constexpr float kFarHalf = 5.0f * kFarRenderScale;
+                        Vixen::SVO::BodyInstanceGpu obsFarInst{};
+                        obsFarInst.worldPos[0]  = 64.0f - kFarHalf;
+                        obsFarInst.worldPos[1]  = 64.0f - kFarHalf;
+                        obsFarInst.worldPos[2]  = 64.0f - kFarHalf;
+                        obsFarInst.renderScale  = kFarRenderScale;
+                        obsFarInst.color[0]     = 1.0f;
+                        obsFarInst.color[1]     = 0.5f;
+                        obsFarInst.color[2]     = 0.0f;
+                        obsFarInst.octreeIndex  = static_cast<uint32_t>(obsFarOctreeIndex);
+                        obsFarInst.providerKind = 0u;
+                        obsFarInst.recipeId     = 0u;
+                        obsInstances.push_back(obsFarInst);
+                    }
+                    if (obsAddNearSibling) {
+                        // Closer than the far sibling, on the SAME orbit-center axis, so the
+                        // currently-uncovered near/mid holds (below_hop1_10wu, hop1_19.89wu,
+                        // mid_40wu) can reach its far-field gate.
+                        constexpr float kNearInstRenderScale = 2.0f;
+                        constexpr float kNearInstHalf = 5.0f * kNearInstRenderScale;
+                        Vixen::SVO::BodyInstanceGpu obsNearInst{};
+                        obsNearInst.worldPos[0]  = 64.0f - kNearInstHalf;
+                        obsNearInst.worldPos[1]  = 64.0f - kNearInstHalf;
+                        obsNearInst.worldPos[2]  = 64.0f - kNearInstHalf;
+                        obsNearInst.renderScale  = kNearInstRenderScale;
+                        obsNearInst.color[0]     = 0.5f;
+                        obsNearInst.color[1]     = 0.0f;
+                        obsNearInst.color[2]     = 1.0f;
+                        obsNearInst.octreeIndex  = static_cast<uint32_t>(obsNearOctreeIndex);
+                        obsNearInst.providerKind = 0u;
+                        obsNearInst.recipeId     = 0u;
+                        obsInstances.push_back(obsNearInst);
+                    }
+                    bodyScene->SetInstances(std::move(obsInstances));
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: T0 leaf ("
                                   + std::to_string(obsT0MarkDescIdx) + "," + std::to_string(obsT0MarkOctant)
                                   + ") -> T1 octree1 (childScale=0.25); T1 leaf (" + std::to_string(obsT1MarkDescIdx) + ","

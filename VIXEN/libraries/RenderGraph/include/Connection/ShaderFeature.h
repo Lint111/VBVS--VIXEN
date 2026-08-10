@@ -40,6 +40,10 @@ inline constexpr ShaderFeature kFeatureGpuTraceHooks{"VIXEN_GPU_TRACE_HOOKS"};
 // E1-T1 stencil slice 0: image-inert composition histograms in the existing
 // TraceBufferHeader terminal-pixel ring. Env-gated; no capability requirement.
 inline constexpr ShaderFeature kFeatureCompositionCounters{"VIXEN_COMPOSITION_COUNTERS"};
+// E7-T1: materialize the primary ray's policy stencil in HitRecord._pad0[2]
+// bits 8..15 and preserve/read back that byte across both shadow writers.
+// Env-gated; no capability or descriptor-interface requirement.
+inline constexpr ShaderFeature kFeaturePolicyStencil{"VIXEN_POLICY_STENCIL"};
 inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"};
 // Wavefront W2a: ShadowVisibilityWave's SECOND dispatch — the post-gather
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined

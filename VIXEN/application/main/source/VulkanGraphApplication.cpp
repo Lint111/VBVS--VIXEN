@@ -3063,6 +3063,56 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // E7-T2/E8-T1: multi-rung control fixture -- a PLATEAU variant of the
+        // VIXEN_TIER_OBSERVABLE_ZOOM_DEMO block directly above. That block continuously
+        // log-interpolates distance every tick; this one holds at fixed distances for
+        // fixed windows so residency/mip-level counters can be attributed to a specific,
+        // named hold rather than smeared across a continuously-moving camera. Same body
+        // (VIXEN_TIER_OBSERVABLE_DEMO's T0/T1/T2 tree-of-trees, childScale=0.25,
+        // renderScale=0.1), same predicted tier handoffs (hop1 T1->T2 ~=19.89wu, hop0
+        // T0->T1 ~=79.58wu, perf/e7-t2-multirung-fixture-design.md Sec.1). Deterministic,
+        // tick-indexed, no input injection -- gated on VIXEN_TIER_OBSERVABLE_PLATEAU_DEMO.
+        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
+            std::getenv("VIXEN_TIER_OBSERVABLE_PLATEAU_DEMO")) {
+            static long obsPlateauTick = 0;
+            ++obsPlateauTick;
+            // Design Sec.2 hold list (near-to-far-to-near omitted -- far ceiling is the
+            // last hold, no return leg needed for the level-spread signature) with the
+            // design's own six named distances, 60-frame holds, in ascending order so the
+            // trip is monotonic (close detail -> below hop1 -> hop1 band -> mid band ->
+            // hop0 band -> far ceiling):
+            static constexpr double kObsPlateauDistances[] = {
+                1.2,    // close detail: just outside the 0.5625wu solid surface
+                10.0,   // below hop1 (~19.89wu): T2/child path visible
+                19.89,  // hop1 band: T1 parent mip fallback should engage
+                40.0,   // mid band: between hop1 and hop0
+                79.58,  // hop0 band: T0 parent mip fallback should engage
+                120.0,  // far ceiling: coarsest available levels should dominate
+            };
+            static constexpr const char* kObsPlateauNames[] = {
+                "close_1.2wu", "below_hop1_10wu", "hop1_19.89wu",
+                "mid_40wu", "hop0_79.58wu", "far_120wu",
+            };
+            constexpr long kObsPlateauHoldFrames = 60;
+            constexpr size_t kObsPlateauHoldCount =
+                sizeof(kObsPlateauDistances) / sizeof(kObsPlateauDistances[0]);
+
+            const size_t holdIndex = static_cast<size_t>(
+                std::min<long>(obsPlateauTick - 1, kObsPlateauHoldCount * kObsPlateauHoldFrames - 1) /
+                kObsPlateauHoldFrames);
+            const size_t clampedHoldIndex = std::min(holdIndex, kObsPlateauHoldCount - 1);
+
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                camera->SetOrbitDistanceForTest(static_cast<float>(kObsPlateauDistances[clampedHoldIndex]));
+            }
+            if ((obsPlateauTick - 1) % kObsPlateauHoldFrames == 0 && mainLogger) {
+                mainLogger->Info(std::string("[TierObservablePlateauDemo] tick ") +
+                                  std::to_string(obsPlateauTick) + " hold=" +
+                                  kObsPlateauNames[clampedHoldIndex] + " dist=" +
+                                  std::to_string(kObsPlateauDistances[clampedHoldIndex]));
+            }
+        }
+
         // Tiered-ESVO Inc3 M8 Task 17 (the epic's literal headline): the TRUE Earth-scale
         // (childScale=2^-10/hop) surface-to-orbit transition, using Task 16's CameraNode
         // look-target decoupling to keep the marked crossing octant framed through its

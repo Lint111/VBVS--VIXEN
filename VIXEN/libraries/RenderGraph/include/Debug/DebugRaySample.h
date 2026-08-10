@@ -519,8 +519,9 @@ struct alignas(16) TraceBufferHeader {
     // VIXEN_COMPOSITION_COUNTERS is compiled: slots [0,9) are the primary
     // regime(3) x source-class(3) histogram; [9,27) are wave-type(2) x
     // regime(3) x source-class(3); slot 27 is E2-T1's relaxed-ray count.
-    // Gate-off retains the pixel-ring contract. The remaining four slots stay
-    // reserved; the 528-B header ABI is fixed.
+    // Gate-off retains the pixel-ring contract. E7-T1's policy-stencil gate
+    // owns [28,32): primary/analytic/reservoir counts plus a packed parity
+    // summary. The 528-B header ABI stays fixed.
     uint32_t farFieldTerminalPixels[32];
     // Batch-24 FARGEN funnel: rect-scoped generation counters over the far
     // clusters c1∪c2 (x363-390,y239-260, gl_GlobalInvocationID-gated), tracing
