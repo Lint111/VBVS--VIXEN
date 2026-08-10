@@ -53,9 +53,9 @@ void PerfCsvWriter::Flush() {
 
     // Header. Per-pass columns are named from the first row (every row records the same
     // pass set — RecordFrame's caller passes the same `passes` vector every frame).
-    // E21-S1: keep the wholesale ledger schema stable across the slice ladder.  The
-    // node-specific values are supplied by later admission slices; zero is an honest
-    // value for a field which has not been admitted on a given frame, and avoids
+    // E22-S2: keep the wholesale ledger schema stable across the slice ladder.  The
+    // node-specific values are supplied by the admission node; reusable_populated_bytes
+    // is the retained-payload reuse event metric, and zero is honest when absent, avoiding
     // changing the CSV shape between S1-S5.
     out << "scene_leg,frame,cpu_frame_time_ms,steady_state_fps,boot_bytes_uploaded,"
            "steady_state_bytes_uploaded,whole_frame_gpu_span_ms,wholesale_desired_mask,"

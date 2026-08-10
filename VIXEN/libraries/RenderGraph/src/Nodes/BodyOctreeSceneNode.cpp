@@ -507,6 +507,10 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     if (wholesaleTransition && wholesaleAvailability_.committedRegime ==
         Vixen::SVO::FootprintRegime::Surface) {
         brickResidencyDirty_ = true;
+        if (wholesaleAvailability_.reusablePopulatedBytes != 0u) {
+            PublishWholesaleReuse();
+            brickResidencyDirty_ = false;
+        }
     }
     if (wholesaleTransition) {
         NODE_LOG_INFO("[WholesaleAvailability] transition generation=" +
@@ -1070,6 +1074,9 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
         brickLookupBuffer_, brickLookupMemory_, "brick-grid lookup SSBO");
+    Vixen::SVO::RetainWholesalePayload(wholesaleAvailability_, Vixen::SVO::WholesalePayloadMask(),
+        concatenated_.channelPool.size(), concatenated_.brickGridLookup.size(),
+        Fnv1a64(concatenated_.channelPool), Fnv1a64(concatenated_.brickGridLookup));
 
     // Sparse-Mip ESVO LOD Inc1 M3: mip pool buffer (binding 13). Pad to 1 byte when empty
     // — a tree that was never mip-baked (ConcatenateSdf's plain, non-mip sibling) leaves
@@ -1405,6 +1412,7 @@ void BodyOctreeSceneNode::UploadBrickPool() {
     // state machine once the GPU-side copy is actually visible, non-blocking.
     device->FlushUploads();
     pendingBrickUploadHandle_ = handle;
+    ++wholesalePairTransferCount_;
 
     RecordBrickPoolUpload(static_cast<uint64_t>(size));
 
@@ -1421,6 +1429,24 @@ void BodyOctreeSceneNode::UploadBrickPool() {
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
                   std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
+}
+
+void BodyOctreeSceneNode::PublishWholesaleReuse() {
+    VulkanDevice* device = GetDevice();
+    if (!device) return;
+    lastWholesaleReusableBytes_ = wholesaleAvailability_.reusablePopulatedBytes;
+    auto* activeConfigs = Vixen::SVO::StampAndSelectActiveConfigs(concatenated_, shellCache_);
+    for (auto& cfg : *activeConfigs) cfg._tailPad[0] = Vixen::SVO::WholesalePayloadMask();
+    const VkDeviceSize configSize = static_cast<VkDeviceSize>(activeConfigs->size()) * sizeof(Vixen::SVO::OctreeConfig);
+    if (configSize == 0) return;
+    const auto handle = device->Upload(activeConfigs->data(), configSize, configBuffer_, 0);
+    if (handle == ResourceManagement::InvalidUploadHandle) return;
+    device->FlushUploads();
+    wholesaleAvailability_.readyMask = Vixen::SVO::WholesalePayloadMask();
+    wholesaleAvailability_.pendingMask = 0u;
+    wholesaleAvailability_.reusablePopulatedBytes = 0u;
+    NODE_LOG_INFO("[WholesaleAvailability] reused retained channelPool+brickLookup; transfer_count=" +
+                  std::to_string(wholesalePairTransferCount_));
 }
 
 void BodyOctreeSceneNode::RecordWholeBufferUpload(uint64_t bytes) {

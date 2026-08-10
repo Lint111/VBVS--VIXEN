@@ -219,6 +219,8 @@ public:
     [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
     [[nodiscard]] uint64_t OccupancyGridBytes() const { return occupancyGrid_.size() * sizeof(float); }
     [[nodiscard]] const Vixen::SVO::WholesaleAvailability& WholesaleState() const { return wholesaleAvailability_; }
+    [[nodiscard]] uint64_t WholesalePairTransferCount() const { return wholesalePairTransferCount_; }
+    [[nodiscard]] uint64_t LastWholesaleReusableBytes() const { return lastWholesaleReusableBytes_; }
     [[nodiscard]] const std::vector<UploadLedgerEntry>& UploadLedgerSnapshot() const {
         return uploadLedger_;
     }
@@ -270,6 +272,7 @@ private:
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
     void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
+    void PublishWholesaleReuse();
     void DeriveResidencyDefaultIfUnset();  // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4
     void RecordWholeBufferUpload(uint64_t bytes);
     void RecordBrickPoolUpload(uint64_t bytes);
@@ -327,6 +330,8 @@ private:
     bool                                    brickResidencyDirty_ = false;
     Vixen::SVO::WholesaleAvailability       wholesaleAvailability_;
     bool                                    wholesaleAdmissionEnabled_ = false;
+    uint64_t                                wholesalePairTransferCount_ = 0;
+    uint64_t                                lastWholesaleReusableBytes_ = 0;
 
     // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: latch marking that residencyRequested_
     // was set EXPLICITLY (a real RequestBrickResidency call), as opposed to still holding its

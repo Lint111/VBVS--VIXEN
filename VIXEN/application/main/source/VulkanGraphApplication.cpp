@@ -1588,6 +1588,7 @@ void VulkanGraphApplication::PostTick() {
         wholesale.desiredMask = static_cast<uint32_t>(admission.desiredRegime == Vixen::SVO::FootprintRegime::Surface ? 3u : 0u);
         wholesale.readyMask = admission.readyMask;
         wholesale.generation = admission.generation;
+        wholesale.reusablePopulatedBytes = bodyScene->LastWholesaleReusableBytes();
         wholesale.channelPoolPopulatedBytes = bodyScene->IsBrickPoolUploaded() ? bodyScene->ChannelPoolBytes() : 0u;
         wholesale.brickLookupPopulatedBytes = bodyScene->IsBrickPoolUploaded() ? bodyScene->BrickLookupBytes() : 0u;
         wholesale.mipPoolPopulatedBytes = bodyScene->MipPoolBytes();
@@ -1601,7 +1602,7 @@ void VulkanGraphApplication::PostTick() {
         // Canonical S1 signature seed: the admitted payload tuple is stable across
         // boots because it is derived from sorted, concatenated buffer sizes and the
         // published readiness state. Later slices extend this with content hashes.
-        uint64_t signature = 1469598103934665603ull;
+        uint64_t signature = Vixen::SVO::WholesaleResidentSignatureFNV64(admission);
         const uint64_t signatureValues[] = {
             wholesale.desiredMask, wholesale.readyMask, wholesale.generation,
             wholesale.channelPoolPopulatedBytes, wholesale.brickLookupPopulatedBytes,

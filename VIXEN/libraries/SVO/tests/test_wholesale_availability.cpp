@@ -30,3 +30,38 @@ TEST(WholesaleAvailability, DemotesAfterFourNonSurfaceFramesAndClearsReadyFirst)
     EXPECT_EQ(state.readyMask, 0u);
     EXPECT_EQ(state.generation, generation + 1u);
 }
+
+TEST(WholesaleAvailability, PairIsAtomicAndReAdmissionReusesRetainedBytes) {
+    WholesaleAvailability state;
+    const uint32_t pair = WholesalePayloadMask();
+    AdvanceWholesaleAvailability(state, FootprintRegime::Surface, pair);
+    AdvanceWholesaleAvailability(state, FootprintRegime::Surface, pair);
+    RetainWholesalePayload(state, pair, 120u, 24u, 0x11u, 0x22u);
+    PublishWholesaleReady(state);
+    ASSERT_EQ(state.readyMask, pair);
+
+    for (int i = 0; i < 4; ++i) AdvanceWholesaleAvailability(state, FootprintRegime::MipHit, pair);
+    EXPECT_EQ(state.readyMask, 0u);
+    EXPECT_EQ(state.retainedMask, pair);
+    EXPECT_EQ(state.reusablePopulatedBytes, 0u);
+
+    AdvanceWholesaleAvailability(state, FootprintRegime::Surface, pair);
+    EXPECT_TRUE(AdvanceWholesaleAvailability(state, FootprintRegime::Surface, pair));
+    EXPECT_EQ(state.pendingMask, 0u);
+    EXPECT_EQ(state.readyMask, 0u);
+    EXPECT_EQ(state.reusablePopulatedBytes, 144u);
+    PublishWholesaleReady(state);
+    EXPECT_EQ(state.readyMask, pair);
+}
+
+TEST(WholesaleAvailability, SignatureIsDeterministicForIdenticalState) {
+    WholesaleAvailability a, b;
+    const uint32_t pair = WholesalePayloadMask();
+    for (auto* state : {&a, &b}) {
+        AdvanceWholesaleAvailability(*state, FootprintRegime::Surface, pair);
+        AdvanceWholesaleAvailability(*state, FootprintRegime::Surface, pair);
+        RetainWholesalePayload(*state, pair, 120u, 24u, 0x11u, 0x22u);
+        PublishWholesaleReady(*state);
+    }
+    EXPECT_EQ(WholesaleResidentSignatureFNV64(a, 7u), WholesaleResidentSignatureFNV64(b, 7u));
+}
