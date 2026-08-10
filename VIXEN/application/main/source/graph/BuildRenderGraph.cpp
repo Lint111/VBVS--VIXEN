@@ -4328,8 +4328,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     // sweep; reverted to it rather than continuing an unprincipled parameter
                     // search (orchestrator flag: an 8th signature-adjudication rebuild pass
                     // is judgment-call territory, not "check the arithmetic").
-                    constexpr int   kFarN      = 256;
-                    constexpr float kFarRadius = 12.0f;
+                    // E9-T1: kN/renderScale overridable for the predict-then-measure sweep
+                    // (perf/e9-t1-level-targeting-report.md) -- unset envs reproduce the
+                    // literal defaults below byte-for-byte (same std::getenv+strtof/strtol
+                    // pattern as VIXEN_TIER_OBSERVABLE_DISTANCE, BuildRenderGraph.cpp:2619).
+                    int   kFarN      = 256;
+                    if (const char* farNEnv = std::getenv("VIXEN_TIER_OBSERVABLE_FAR_N")) {
+                        long parsed = std::strtol(farNEnv, nullptr, 10);
+                        if (parsed > 0) kFarN = static_cast<int>(parsed);
+                    }
+                    float kFarRadius = 12.0f;
+                    if (const char* farRadiusEnv = std::getenv("VIXEN_TIER_OBSERVABLE_FAR_RADIUS")) {
+                        float parsed = std::strtof(farRadiusEnv, nullptr);
+                        if (parsed > 0.0f) kFarRadius = parsed;
+                    }
                     constexpr float kFarBand   = 8.0f;
                     const glm::vec3 kFarCenter(16.0f, 16.0f, 16.0f);
                     Vixen::SVO::RecipeParams farRp{};
@@ -4376,14 +4388,65 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                       "baked small non-tiered sibling body (radius=" + std::to_string(kNearRadius)
                                       + ", kN=" + std::to_string(kNearN) + ", band=" + std::to_string(kNearBand) + ")");
                 }
+                // E10-T1: optional 5th sibling body, the "orbital structure" fixture
+                // (perf/e10-t1-orbital-fixture-report.md) -- a coarse, recognizable voxel
+                // structure (slab base + tower, hand-carved SDF via BakeSdfWorld's EvalFn,
+                // NOT RECIPE_SPHERE) sized/placed per the E9-T1 recipe
+                // (perf/e9-t1-level-targeting-report.md Sec.6/8.2) so its far-field samples
+                // land on target level L=depth=3 at the far orbital hold (>=120wu). Gated
+                // separately from FAR_SIBLING/NEAR_SIBLING so a plain VIXEN_TIER_OBSERVABLE_DEMO
+                // boot (existing gates, existing goldens) stays byte-for-byte unaffected.
+                const bool obsAddStructure = std::getenv("VIXEN_TIER_OBSERVABLE_STRUCTURE") != nullptr;
+                Vixen::SVO::SdfBodyOctree obsStructBody;
+                Vixen::SVO::SerializedOctree obsStructSer;
+                if (obsAddStructure) {
+                    // Recipe arithmetic (E9-T1 Sec.6/8.2, occFrac well above floor -> top
+                    // level reaches depth itself):
+                    //   kN=64, brickSide=8 -> bpa=ceil(64/8)=8, depth=findMSB(8)=3.
+                    //   Structure solid volume (slab 20x20x6 + tower 8x8x24, grid cells) =
+                    //   2400+1536=3936 -> occFrac=3936/64^3=0.01501 >> 0.0005 floor.
+                    //   -> predicted top level L=depth=3, plus 1-2 rungs below (D-series
+                    //   pattern): predicted set {1,2,3}.
+                    constexpr int   kStructN         = 64;
+                    constexpr float kStructBand      = 8.0f;
+                    const glm::vec3 kStructCenter(32.0f, 32.0f, 32.0f);
+                    // Slab base: 20x20x6 cells centered in X/Z, sitting on the grid floor
+                    // in Y. Tower: 8x8x24 cells centered on the slab, rising well above
+                    // it -- together a recognizable silhouette (a compact building cluster),
+                    // not a sphere fill, so the far-field render reads as a STRUCTURE.
+                    const glm::vec3 kSlabHalf(10.0f, 3.0f, 10.0f);
+                    const glm::vec3 kSlabCenter = kStructCenter + glm::vec3(0.0f, -kStructN * 0.5f + 3.0f, 0.0f);
+                    const glm::vec3 kTowerHalf(4.0f, 12.0f, 4.0f);
+                    const glm::vec3 kTowerCenter = kSlabCenter + glm::vec3(0.0f, kSlabHalf.y + kTowerHalf.y, 0.0f);
+                    auto boxSdf = [](const glm::vec3& p, const glm::vec3& c, const glm::vec3& half) {
+                        const glm::vec3 q = glm::abs(p - c) - half;
+                        const glm::vec3 qMax = glm::max(q, glm::vec3(0.0f));
+                        return glm::length(qMax) + std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+                    };
+                    auto structEval = [&](const glm::vec3& p) {
+                        return std::min(boxSdf(p, kSlabCenter, kSlabHalf), boxSdf(p, kTowerCenter, kTowerHalf));
+                    };
+                    Vixen::SVO::SdfBakeResult structBaked = Vixen::SVO::BakeSdfWorld(
+                        structEval, kStructCenter, kStructN, kStructBand);
+                    obsStructBody = Vixen::SVO::BuildSdfBodyOctree(structBaked, kBrickDepth);
+                    obsStructSer = Vixen::SVO::SerializeSdf(obsStructBody);
+                    if (const Vixen::SVO::Octree* octStruct = obsStructBody.octree->getOctree()) {
+                        Vixen::SVO::BakeAndAttachMipPool(*octStruct, obsStructSer);
+                    }
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_STRUCTURE: "
+                                      "baked slab+tower structure body (kN=" + std::to_string(kStructN)
+                                      + ", band=" + std::to_string(kStructBand) + ")");
+                }
+
                 // Build a DENSE octree list so each sibling's octreeIndex is always its real
-                // position regardless of which subset of {far,near} siblings is enabled --
-                // avoids an empty/default SerializedOctree ever being concatenated as a
-                // real (zero-node) tree.
+                // position regardless of which subset of {far,near,structure} siblings is
+                // enabled -- avoids an empty/default SerializedOctree ever being concatenated
+                // as a real (zero-node) tree.
                 std::vector<Vixen::SVO::SerializedOctree*> obsOctList = {&obsT0Ser, &obsT1Ser, &obsT2Ser};
-                int obsFarOctreeIndex = -1, obsNearOctreeIndex = -1;
+                int obsFarOctreeIndex = -1, obsNearOctreeIndex = -1, obsStructOctreeIndex = -1;
                 if (obsAddFarSibling)  { obsFarOctreeIndex  = static_cast<int>(obsOctList.size()); obsOctList.push_back(&obsFarSer); }
                 if (obsAddNearSibling) { obsNearOctreeIndex = static_cast<int>(obsOctList.size()); obsOctList.push_back(&obsNearSer); }
+                if (obsAddStructure)   { obsStructOctreeIndex = static_cast<int>(obsOctList.size()); obsOctList.push_back(&obsStructSer); }
                 const int obsTreeCount = static_cast<int>(obsOctList.size());
 
                 Vixen::SVO::ConcatenatedOctrees obsCat;
@@ -4454,8 +4517,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         // renderScale -- the far-ceiling hold (120wu) sees a genuinely
                         // production-shaped body instead of the 1.0wu T0/T1/T2 cluster's
                         // own already-tiny world footprint.
-                        constexpr float kFarRenderScale = 4.8f;
-                        constexpr float kFarHalf = 5.0f * kFarRenderScale;
+                        float kFarRenderScale = 4.8f;
+                        if (const char* farRsEnv = std::getenv("VIXEN_TIER_OBSERVABLE_FAR_RENDER_SCALE")) {
+                            float parsed = std::strtof(farRsEnv, nullptr);
+                            if (parsed > 0.0f) kFarRenderScale = parsed;
+                        }
+                        const float kFarHalf = 5.0f * kFarRenderScale;
                         Vixen::SVO::BodyInstanceGpu obsFarInst{};
                         obsFarInst.worldPos[0]  = 64.0f - kFarHalf;
                         obsFarInst.worldPos[1]  = 64.0f - kFarHalf;
@@ -4487,6 +4554,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         obsNearInst.providerKind = 0u;
                         obsNearInst.recipeId     = 0u;
                         obsInstances.push_back(obsNearInst);
+                    }
+                    if (obsAddStructure) {
+                        // E10-T1: placed at the SAME orbit center (64,64,64) as every other
+                        // sibling. Per ShellOctreeGpu.h:281 (world = worldPos + (local *
+                        // kWorldGridSize) * renderScale), the octree's own local space is a
+                        // FIXED [0,kWorldGridSize=10) unit cube regardless of kN -- so the
+                        // half-extent is always 5.0*renderScale (matching every other sibling
+                        // body here), NOT a function of kStructN. renderScale chosen so
+                        // brickWorldSize*2^L (L=3, the predicted top level) is comfortably
+                        // inside the far hold's footprint (>=120wu) -- same renderScale as the
+                        // far sibling (4.8), reusing the orbital-scale distance already proven
+                        // to reach level>=2 in E8-T1/E9-T1.
+                        constexpr float kStructRenderScale = 4.8f;
+                        constexpr float kStructHalf = 5.0f * kStructRenderScale;
+                        Vixen::SVO::BodyInstanceGpu obsStructInst{};
+                        obsStructInst.worldPos[0]  = 64.0f - kStructHalf;
+                        obsStructInst.worldPos[1]  = 64.0f - kStructHalf;
+                        obsStructInst.worldPos[2]  = 64.0f - kStructHalf;
+                        obsStructInst.renderScale  = kStructRenderScale;
+                        obsStructInst.color[0]     = 0.0f;
+                        obsStructInst.color[1]     = 1.0f;
+                        obsStructInst.color[2]     = 1.0f;
+                        obsStructInst.octreeIndex  = static_cast<uint32_t>(obsStructOctreeIndex);
+                        obsStructInst.providerKind = 0u;
+                        obsStructInst.recipeId     = 0u;
+                        obsInstances.push_back(obsStructInst);
                     }
                     bodyScene->SetInstances(std::move(obsInstances));
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_OBSERVABLE_DEMO: T0 leaf ("

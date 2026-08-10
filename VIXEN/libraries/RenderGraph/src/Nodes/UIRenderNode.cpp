@@ -255,7 +255,13 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
     renderInterface_.BeginFrame(cmd, extent_);
-    if (context_) {
+    // E10-T2: VIXEN_HUD_SUPPRESS skips the RmlUi document draw so image-evidence captures show
+    // the underlying voxel scene unobstructed by HUD/inspector chrome. Only context_->Render() is
+    // skipped -- the render pass still LOADs/STOREs the framebuffer (PARAM_COLOR_LOAD_OP=Load,
+    // BuildRenderGraph.cpp) so the voxel scene already drawn into it by the prior pass is
+    // untouched. Off-path (env unset) byte-identical: same Update()/Render() calls as before.
+    const bool hudSuppressed = std::getenv("VIXEN_HUD_SUPPRESS") != nullptr;
+    if (context_ && !hudSuppressed) {
         // M-ui: realize any mount requested before the context existed (the first frame it's alive).
         // Must run BEFORE Update() so a freshly mounted fragment renders this same frame (spike §2).
         RealizePendingMounts();
