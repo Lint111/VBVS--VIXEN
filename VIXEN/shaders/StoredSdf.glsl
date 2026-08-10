@@ -280,9 +280,19 @@ vec3 sampleChannelVec3Trilinear(uint sem, vec3 gridPos, vec3 missing) {
 // on which channel's data is being read, so the hit-shading call site can
 // resolve it once and read all 4 components — color's 3 + roughness's 1 —
 // from that single resolved brick).
+//
+// E15-T1: outEmission (SEM_EMISSION, 1 comp) is a SEPARATE, independent
+// sampleChannelScalarTrilinear call, not woven into the shared-brick fast
+// path above -- SEM_EMISSION is absent (channelBaseFloats returns
+// 0xFFFFFFFFu) on every octree that wasn't baked with
+// VIXEN_TIER_OBSERVABLE_STRUCTURE_EMISSIVE, so this is a single cheap
+// early-return (missing=0.0) off that path, preserving byte-identical output
+// for non-emissive stored bodies without perturbing the color/roughness
+// brick-resolution optimization.
 // ---------------------------------------------------------------------------
 void sampleHitShadingChannels(vec3 gridPos, vec3 missingColor, float missingRoughness,
-                              out vec3 outColor, out float outRoughness) {
+                              out vec3 outColor, out float outRoughness, out float outEmission) {
+    outEmission = sampleChannelScalarTrilinear(SEM_EMISSION, gridPos, 0.0);
     uint colorBase = channelBaseFloats(SEM_COLOR);
     uint roughBase = channelBaseFloats(SEM_ROUGHNESS);
     outColor     = missingColor;

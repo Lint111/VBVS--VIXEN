@@ -88,11 +88,12 @@ layout(set = 0, binding = 40) uniform accelerationStructureEXT rtQueryTlas;
 // ----------------------------------------------------------------------------
 bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                             out vec3 hitColor, out vec3 hitNormal, out float hitT,
-                            out float hitRoughness,
+                            out float hitRoughness, out float hitEmission,
                             out uint hitBrickIndex, out uint hitVoxelLinearIdx,
                             out uint hitInstanceIdx,
                             inout DebugRaySample debugInfo) {
     hitColor = vec3(0.0); hitNormal = vec3(0.0); hitT = 0.0; hitRoughness = 0.5;
+    hitEmission = 0.0;
     hitBrickIndex = 0u; hitVoxelLinearIdx = 0u; hitInstanceIdx = 0xFFFFFFFFu;
     g_lastFootprintRegime = 1u;
     debugInfo.hitFlag = 0u;
@@ -342,7 +343,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 incrFarFieldCount();
                 if (!farReachedBrick) incrFarFieldDescentFail();  // round-13 probe
                 g_mipSampleLevel = farSampledLevel;
-                bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal);
+                bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal, hitEmission);
                 recordFarFieldMipResolve(farMipResolved);  // round-7 blocker-1 probe
                 if (farMipResolved) {
                     recordFarFieldSampledLevel(farSampledLevel);  // batch-32 JOB 1
@@ -394,7 +395,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 g_lastFootprintRegime = 1u;
                 // Fix 4 (prior version): populate hitColor/hitRoughness via the SAME
                 // channel-sample helper the DDA twin calls.
-                sampleHitShadingChannels(gridEntry + gridDirN * sHit, vec3(1.0), 0.5, hitColor, hitRoughness);
+                sampleHitShadingChannels(gridEntry + gridDirN * sHit, vec3(1.0), 0.5, hitColor, hitRoughness, hitEmission);
                 // GENERATE-MIN-TRACKING: the rayQuery's own interval is WORLD-space
                 // (see the initialize call above), so generate this same tWorld --
                 // the quantity bestT just tracked -- as the precondition requires.

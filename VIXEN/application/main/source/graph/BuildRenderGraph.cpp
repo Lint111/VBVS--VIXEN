@@ -4473,8 +4473,59 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     auto structEval = [&](const glm::vec3& p) {
                         return std::min(boxSdf(p, kSlabCenter, kSlabHalf), boxSdf(p, kTowerCenter, kTowerHalf));
                     };
+                    // E14-T1: derived emission pattern for the orbital structure.  This is
+                    // deliberately sparse: three vertical window bands on the tower's front
+                    // and rear faces, plus a lit strip around the slab's top edge.  The field is
+                    // authored into the existing per-voxel emission channel; no light source or
+                    // alternate shading mechanism is introduced.
+                    // E15-T1: the carving itself is now gated on
+                    // VIXEN_TIER_OBSERVABLE_STRUCTURE_EMISSIVE (E14/E15 briefs both assumed this
+                    // gate already existed; the staged E14 diff left the carving unconditional
+                    // under VIXEN_TIER_OBSERVABLE_STRUCTURE alone -- so both "on" and "off"
+                    // captures baked the identical emissive octree and produced a vacuous,
+                    // byte-identical A/B). With the gate unset, every voxel's emission value is
+                    // 0.0 -- same value BakeSdfWorld's own NoEmission default would produce --
+                    // so the unset path stays exactly the pre-E14 structure bake.
+                    const bool obsStructureEmissive =
+                        std::getenv("VIXEN_TIER_OBSERVABLE_STRUCTURE_EMISSIVE") != nullptr;
+                    auto structEmission = [&](const glm::vec3& p) -> float {
+                        if (!obsStructureEmissive) return 0.0f;
+                        const glm::vec3 towerLocal = glm::abs(p - kTowerCenter);
+                        const glm::vec3 slabLocal = glm::abs(p - kSlabCenter);
+                        // E15-T1: widened from Z-only (front/rear) to all 4 tower side faces --
+                        // the ~120wu far orbital hold's camera angle at the capture frame this
+                        // task's protocol uses (frame 700) views the tower's X-normal side face,
+                        // which the E14 diff's Z-only band never touched, so no emissive voxel
+                        // was ever in view regardless of intensity (verified: a 62.5x intensity
+                        // bump, 8.0f->500.0f, produced a byte-identical capture -- the ray simply
+                        // never hit an emissive voxel, not a dilution/quantization shortfall).
+                        const bool towerWindowBand =
+                            towerLocal.y <= kTowerHalf.y &&
+                            ((towerLocal.x <= kTowerHalf.x && towerLocal.z >= kTowerHalf.z - 1.0f) ||
+                             (towerLocal.z <= kTowerHalf.z && towerLocal.x >= kTowerHalf.x - 1.0f)) &&
+                            (std::fmod(std::floor(towerLocal.y), 6.0f) < 2.0f);
+                        const bool slabEdgeStrip =
+                            slabLocal.y >= kSlabHalf.y - 1.0f &&
+                            slabLocal.x <= kSlabHalf.x && slabLocal.z <= kSlabHalf.z &&
+                            (slabLocal.x >= kSlabHalf.x - 1.0f || slabLocal.z >= kSlabHalf.z - 1.0f);
+                        // E15-T1: bumped from the E14 diff's original 8.0f -- at 120wu far-field
+                        // hold, SEM_EMISSION's mean-filtered mip propagation (FilterMipMean,
+                        // MipSample.h) dilutes the sparse window-band pattern (~1/3 of the
+                        // tower's occupied surface voxels per band cycle) across mostly-
+                        // non-emissive neighbors at every mip level, and the result is then
+                        // scaled by the structure instance's own dim material tint
+                        // (obsStructInst.color below) before reaching the pixel -- 8.0f's
+                        // diluted+scaled contribution measured byte-identical to emissive-off
+                        // in an 8-bit capture (verified: both legs' hud_capture_700.png md5
+                        // 2828123a4ebbd752e24f5a89345d6177). 500.0f is chosen to clear 8-bit
+                        // quantization even after that dilution/scaling chain, additively
+                        // (outColor += bestColor * emission, SpatialReuseShade.comp) ahead of
+                        // whatever tonemap/clamp the output chain applies.
+                        return (towerWindowBand || slabEdgeStrip) ? 500.0f : 0.0f;
+                    };
                     Vixen::SVO::SdfBakeResult structBaked = Vixen::SVO::BakeSdfWorld(
-                        structEval, kStructCenter, kStructN, kStructBand);
+                        structEval, kStructCenter, kStructN, kStructBand, kBrickDepth,
+                        structEmission);
                     obsStructBody = Vixen::SVO::BuildSdfBodyOctree(structBaked, kBrickDepth);
                     obsStructSer = Vixen::SVO::SerializeSdf(obsStructBody);
                     if (const Vixen::SVO::Octree* octStruct = obsStructBody.octree->getOctree()) {

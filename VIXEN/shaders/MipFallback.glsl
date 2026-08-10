@@ -76,10 +76,18 @@ vec2 readMipSample(uint nodeIdx, uint sem, float missingValue) {
 // shade color; falls back to a neutral grey (matching the existing LOD-cutoff
 // placeholder shade) when no color channel is present (binary bodies, or an
 // SDF octree with no color channel baked).
+//
+// E15-T1: hitEmission reads SEM_EMISSION's mip mean the SAME way colorSample
+// reads SEM_COLOR's -- BakeMipPool (MipBake.h) mips EVERY baked channel
+// generically (loops serialized.channelCount, no per-semantic special case),
+// so SEM_EMISSION -- present whenever the source octree was baked with
+// VIXEN_TIER_OBSERVABLE_STRUCTURE_EMISSIVE -- already has a valid mip
+// representative at every node; 0.0 (coverage 0) on any octree without that
+// channel, matching the near-path zero-fallback.
 // ---------------------------------------------------------------------------
-bool shadeFromMipSample(uint nodeIdx, out vec3 hitColor, out vec3 hitNormal) {
+bool shadeFromMipSample(uint nodeIdx, out vec3 hitColor, out vec3 hitNormal, out float hitEmission) {
     vec2 sdfSample = readMipSample(nodeIdx, SEM_SDF, 0.0);
-    if (sdfSample.y <= 0.0) return false;  // no coverage: nothing baked here to shade
+    if (sdfSample.y <= 0.0) { hitEmission = 0.0; return false; }  // no coverage: nothing baked here to shade
 
     vec2 colorSample = readMipSample(nodeIdx, SEM_COLOR, 0.5);
     if (colorSample.y > 0.0) {
@@ -90,6 +98,8 @@ bool shadeFromMipSample(uint nodeIdx, out vec3 hitColor, out vec3 hitNormal) {
         incrFarFieldColorFallback();  // batch 10: no SEM_COLOR coverage, flat grey
     }
     hitNormal = vec3(0.0, 1.0, 0.0);  // v1: flat/placeholder normal, no coarse-normal derivation yet
+    vec2 emissionSample = readMipSample(nodeIdx, SEM_EMISSION, 0.0);
+    hitEmission = emissionSample.y > 0.0 ? emissionSample.x : 0.0;
     return true;
 }
 

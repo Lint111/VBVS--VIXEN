@@ -191,7 +191,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     // non-SDF instances (FORMAT_BINARY / procedural) still run their normal
     // per-instance branch untouched.
     {
-        vec3  rqColor, rqNormal; float rqT, rqRoughness;
+        vec3  rqColor, rqNormal; float rqT, rqRoughness, rqEmission;
         uint  rqBrick, rqVoxel, rqInstIdx;
         DebugRaySample rqDbg;
         rqDbg.pixel         = uvec2(ivec2(gl_GlobalInvocationID.xy));
@@ -211,7 +211,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         g_lastHitWasFarField = false;  // round-7 blocker-1 probe #3: reset before the call
         g_lastFootprintRegime = 1u;
         bool rqHit = traverseRayQueryWorld(rayOrigin, normalize(rayDir),
-                                            rqColor, rqNormal, rqT, rqRoughness,
+                                            rqColor, rqNormal, rqT, rqRoughness, rqEmission,
                                             rqBrick, rqVoxel, rqInstIdx, rqDbg);
         bool rqWasFarField = g_lastHitWasFarField;
         uint rqFootprintRegime = g_lastFootprintRegime;
@@ -231,7 +231,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestBrickIndex = rqBrick;
             bestVoxelIdx   = rqVoxel;
             bestInstIdx    = rqInstIdx;
-            bestEmission   = rqInst.recipeParams[3];
+            // E15-T1: this RTQuery search only ever serves FORMAT_STORED_SDF instances
+            // (see this block's header comment) -- recipeParams[3] is never populated for
+            // those (M11.2's convention is procedural/legacy-only), so the winning voxel's
+            // own SEM_EMISSION reading (near march via sampleHitShadingChannels, or the
+            // mip representative via shadeFromMipSample on the far-field arm) is the
+            // correct emission source here, mirroring the ESVO stored-branch fix below.
+            bestEmission   = rqEmission;
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = rqFootprintRegime;
             sourceMask |= 2u;
@@ -619,6 +625,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         vec3  hitNormal;
         float hitT;
         float hitRoughness;
+        float hitEmission;
         uint  hitBrick;
         uint  hitVoxel;
 
@@ -646,7 +653,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         bool instHit = traverseOctreeInstanced(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
-                                           hitRoughness,
+                                           hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg);
 #elif defined(VIXEN_BRICKMAP_TRAVERSAL)
         // W-BRICKMAP Slice 2 round 3: coarse-grid DDA backend, FORMAT_STORED_SDF
@@ -659,18 +666,18 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                                            localRayOrigin, localRayDir, gridT,
                                            inst.renderScale,
                                            hitColor, hitNormal, hitT,
-                                           hitRoughness,
+                                           hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg)
             : traverseOctreeInstanced(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
-                                           hitRoughness,
+                                           hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg);
 #else
         bool instHit = traverseOctreeInstanced(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
-                                           hitRoughness,
+                                           hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg);
 #endif
         bool instWasFarField = g_lastHitWasFarField;  // round-7 blocker-1 probe #3
@@ -704,12 +711,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
             bestInstIdx     = uint(instIdx);
-            // M11.2: STORED bodies don't touch recipeParams (providerKind==PROVIDER_STORED
-            // never reads it), so recipeParams[3] is free here too -- same per-instance
-            // emission-intensity convention as the PROCEDURAL branch above, not a per-voxel
-            // SEM_EMISSION channel read (that channel is baked but stays reserved for the
-            // light-tree's own bake-side consumption, per the M11.2 brief's scope).
-            bestEmission    = inst.recipeParams[3];
+            // E15-T1 (supersedes the old M11.2 recipeParams[3] read): the per-voxel
+            // SEM_EMISSION channel now reaches primary shading -- hitEmission carries the winning
+            // brick/voxel's own emission (near march: sampleHitShadingChannels reading
+            // SEM_EMISSION at the hit grid position; far-field: shadeFromMipSample's
+            // mip representative of the same channel), 0.0 for every non-emissive
+            // stored body and for FORMAT_BINARY instances (no SEM_EMISSION channel;
+            // the dispatch above sets hitEmission = 0.0 explicitly on that branch) --
+            // byte-identical to the old recipeParams[3] read (always 0.0 for STORED,
+            // since providerKind==PROVIDER_STORED never touches recipeParams).
+            bestEmission    = hitEmission;
             bestWasFarField = instWasFarField;  // round 9: rides the winner, not a sticky global
             bestFootprintRegime = instFootprintRegime;
             anyHit          = true;

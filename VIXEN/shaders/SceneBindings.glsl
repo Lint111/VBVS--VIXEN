@@ -1363,16 +1363,19 @@ bool handleLeafHitInstanced(TraversalState state, RayCoefficients coef,
 // roughness (SEM_ROUGHNESS) from the generic channel pool via trilinear gather.
 // hitColor is the voxel color (NOT the vec3(1) tint placeholder); hitRoughness
 // is the per-voxel roughness. Instance tint is still applied in main().
+// E15-T1: hitEmission (SEM_EMISSION) is sampled the same way -- 0.0 for every
+// stored body that wasn't baked with VIXEN_TIER_OBSERVABLE_STRUCTURE_EMISSIVE.
 bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
                                vec3 rayDir, float tBias,
                                inout StackEntry stack[STACK_SIZE],
                                out vec3 hitColor, out vec3 hitNormal, out float hitT,
-                               out float hitRoughness,
+                               out float hitRoughness, out float hitEmission,
                                out uint hitBrickIndex, out uint hitVoxelLinearIdx) {
     hitColor          = vec3(1.0);
     hitNormal         = vec3(0.0, 1.0, 0.0);
     hitT              = 0.0;
     hitRoughness      = 0.5;
+    hitEmission       = 0.0;
     hitBrickIndex     = 0u;
     hitVoxelLinearIdx = 0u;
 
@@ -1435,7 +1438,7 @@ bool handleLeafHitInstancedSdf(TraversalState state, RayCoefficients coef,
     // both channels from it, instead of two independent trilinear gathers each
     // re-deriving the same brickCoord/brickLookup for the identical gridHit.
     vec3 gridHit = gridEntry + gridDirN * sHit;
-    sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness);
+    sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness, hitEmission);
 
     // Best-effort pick/ID: the flat grid index of the brick the crossing was ACTUALLY found in
     // (hitBrick, which may be an adjacent brick reached via the seam-spanning continuation), not
@@ -1642,7 +1645,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                               vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                               float tWorldBase, float tLocalUnitWorld,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
-                              out float hitRoughness,
+                              out float hitRoughness, out float hitEmission,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
                               out bool tierCrossHit, out uint tierCrossRefIndex,
                               out vec3 tierCrossParentLocalOrigin, out vec3 tierCrossParentLocalDir,
@@ -1651,6 +1654,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
     hitBrickIndex     = 0u;
     hitVoxelLinearIdx = 0u;
     hitRoughness      = 0.5;
+    hitEmission       = 0.0;
     tierCrossHit       = false;
     tierCrossRefIndex  = 0u;
     tierCrossParentLocalOrigin = vec3(0.0);
@@ -1846,7 +1850,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                                     hitT = tEntryWorld + state.t_min;
                                     recordEsvoMipArm(0u);  // batch-29 JOB 4: tier-crossing subpixel/non-resident arm
                                     g_mipSampleLevel = 0u; // this crossing leaf is the finest mip rung
-                                    if (!shadeFromMipSample(leafDescriptorIndexTc, hitColor, hitNormal)) {
+                                    if (!shadeFromMipSample(leafDescriptorIndexTc, hitColor, hitNormal, hitEmission)) {
                                         hitColor  = vec3(0.5);
                                         hitNormal = vec3(0.0, 1.0, 0.0);
                                     }
@@ -1953,16 +1957,16 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                         if (policyLevelAvailable) {
                             recordEsvoMipArm(5u);  // batch-30 stream B: policy-level arm
                             g_mipSampleLevel = uint(policyLevel);
-                            leafHit = shadeFromMipSample(policyNodeOrdinal, hitColor, hitNormal);
+                            leafHit = shadeFromMipSample(policyNodeOrdinal, hitColor, hitNormal, hitEmission);
                         } else {
                             recordEsvoMipArm(1u);  // batch-29 JOB 4: streaming-grace fallback (policy data unavailable)
                             g_mipSampleLevel = 0u;
-                            leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
+                            leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal, hitEmission);
                         }
 #else
                         recordEsvoMipArm(1u);  // batch-29 JOB 4: streaming-grace non-resident-brick arm
                         g_mipSampleLevel = 0u;
-                        leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
+                        leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal, hitEmission);
 #endif
                         if (leafHit) {
                             hitT              = tEntryWorld + state.t_min;
@@ -1974,15 +1978,18 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                 } else {
                     // Inc3 M3: dispatch the leaf hit-test by content format. Stored-SDF
                     // bricks march the trilinear iso-surface and sample per-voxel color +
-                    // roughness; binary bricks DDA voxels (roughness defaults to 0.5).
+                    // roughness + emission; binary bricks DDA voxels (roughness defaults
+                    // to 0.5, emission defaults to 0.0 -- E15-T1: binary bricks carry no
+                    // SEM_EMISSION channel, only stored-SDF bodies do).
                     if (octreeConfig.formatId == FORMAT_STORED_SDF) {
                         leafHit = handleLeafHitInstancedSdf(state, coef, rayDir, tBias,
                                                             stack,
                                                             hitColor, hitNormal, hitT,
-                                                            hitRoughness,
+                                                            hitRoughness, hitEmission,
                                                             hitBrickIndex, hitVoxelLinearIdx);
                     } else {
                         hitRoughness = 0.5;  // binary path: default roughness
+                        hitEmission  = 0.0;  // binary path: no SEM_EMISSION channel
                         leafHit = handleLeafHitInstanced(state, coef, rayStartWorld, rayDir, tBias,
                                                          parent_descriptor, validMask, leafMask,
                                                          stack, hitColor, hitNormal, hitT,
@@ -2033,7 +2040,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                     hitT = tEntryWorld + state.t_min;
                     recordEsvoMipArm(2u);  // batch-29 JOB 4: deliberate LOD screen-space cutoff arm
                     g_mipSampleLevel = uint(max(state.scale - octreeConfig.brickESVOScale, 0));
-                    if (!shadeFromMipSample(state.parentPtr, hitColor, hitNormal)) {
+                    if (!shadeFromMipSample(state.parentPtr, hitColor, hitNormal, hitEmission)) {
                         // No mip coverage (binary/Procedural bodies, or an SDF octree
                         // with no baked mip pool): fall back to the pre-M3 neutral-grey
                         // placeholder shade — no visual regression for those bodies.
@@ -2167,7 +2174,7 @@ const int MAX_TIER_HOPS = 5;
 bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                               vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                               out vec3 hitColor, out vec3 hitNormal, out float hitT,
-                              out float hitRoughness,
+                              out float hitRoughness, out float hitEmission,
                               out uint hitBrickIndex, out uint hitVoxelLinearIdx,
                               inout DebugRaySample debugInfo) {
     // Save the ORIGINAL (hop-0) per-tree globals once — restored unconditionally
@@ -2220,7 +2227,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
 
         bool hit = traverseOctreeInstancedOnce(curRayOrigin, curRayDir, curRayOriginLocal, curRayDirLocal, curGridT,
                                                tWorldBase, tLocalUnitWorld,
-                                               hitColor, hitNormal, hitT, hitRoughness,
+                                               hitColor, hitNormal, hitT, hitRoughness, hitEmission,
                                                hitBrickIndex, hitVoxelLinearIdx,
                                                tierCrossHit, tierCrossRefIndex,
                                                tierCrossParentLocalOrigin, tierCrossParentLocalDir,
@@ -2247,10 +2254,10 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                 g_octreeIdx      = fallbackOctreeIdx;
                 g_esvoNodeBase   = fallbackEsvoNodeBase;
                 g_brickArrayBase = fallbackBrickArrayBase;
-                vec3 mipColor; vec3 mipNormal;
+                vec3 mipColor; vec3 mipNormal; float mipEmission;
                 recordEsvoMipArm(3u);  // batch-29 JOB 4: tier-crossing child-miss fallback arm
                 g_mipSampleLevel = 0u;
-                bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal);
+                bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal, mipEmission);
                 g_octreeIdx      = originOctreeIdx;
                 g_esvoNodeBase   = originEsvoNodeBase;
                 g_brickArrayBase = originBrickArrayBase;
@@ -2259,6 +2266,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                     hitNormal         = mipNormal;
                     hitT              = fallbackHitT;
                     hitRoughness      = 0.5;
+                    hitEmission       = mipEmission;
                     hitBrickIndex     = 0u;
                     hitVoxelLinearIdx = 0u;
                     return true;
@@ -2352,10 +2360,10 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         g_octreeIdx      = fallbackOctreeIdx;
         g_esvoNodeBase   = fallbackEsvoNodeBase;
         g_brickArrayBase = fallbackBrickArrayBase;
-        vec3 mipColor; vec3 mipNormal;
+        vec3 mipColor; vec3 mipNormal; float mipEmission;
         recordEsvoMipArm(4u);  // batch-29 JOB 4: hop-budget-exhausted fallback arm
         g_mipSampleLevel = 0u;
-        bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal);
+        bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal, mipEmission);
         g_octreeIdx      = originOctreeIdx;
         g_esvoNodeBase   = originEsvoNodeBase;
         g_brickArrayBase = originBrickArrayBase;
@@ -2364,6 +2372,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
             hitNormal         = mipNormal;
             hitT              = fallbackHitT;
             hitRoughness      = 0.5;
+            hitEmission       = mipEmission;
             hitBrickIndex     = 0u;
             hitVoxelLinearIdx = 0u;
             return true;
@@ -2751,10 +2760,11 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                                      vec3 rayOriginLocal, vec3 rayDirLocal, vec2 gridT,
                                      float instRenderScale,
                                      out vec3 hitColor, out vec3 hitNormal, out float hitT,
-                                     out float hitRoughness,
+                                     out float hitRoughness, out float hitEmission,
                                      out uint hitBrickIndex, out uint hitVoxelLinearIdx,
                                      inout DebugRaySample debugInfo) {
     hitColor = vec3(0.0); hitNormal = vec3(0.0); hitT = 0.0; hitRoughness = 0.5;
+    hitEmission = 0.0;
     hitBrickIndex = 0u; hitVoxelLinearIdx = 0u;
     g_lastFootprintRegime = 1u;
     g_mipSampleLevel = 0u;
@@ -2988,7 +2998,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                     incrFarFieldCount();
                     if (!entryReachedBrick) incrFarFieldDescentFail();
                     g_mipSampleLevel = entrySampledLevel;
-                    bool entryMipResolved = entryReachedBrick && shadeFromMipSample(entryNodeOrdinal, hitColor, hitNormal);
+                    bool entryMipResolved = entryReachedBrick && shadeFromMipSample(entryNodeOrdinal, hitColor, hitNormal, hitEmission);
                     recordFarFieldMipResolve(entryMipResolved);
                     if (entryMipResolved) {
                         recordFarFieldSampledLevel(entrySampledLevel);
@@ -3162,7 +3172,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                 incrFarFieldCount();
                 if (!farReachedBrick) incrFarFieldDescentFail();  // round-13 probe
                 g_mipSampleLevel = farSampledLevel;
-                bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal);
+                bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal, hitEmission);
                 recordFarFieldMipResolve(farMipResolved);  // round-7 blocker-1 probe
                 if (farMipResolved) {
                     recordFarFieldSampledLevel(farSampledLevel);  // batch-32 JOB 1
@@ -3224,7 +3234,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                 hitVoxelLinearIdx = 0u;
 
                 vec3 gridHit = gridEntry + gridDirN * sHit;
-                sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness);
+                sampleHitShadingChannels(gridHit, vec3(1.0), 0.5, hitColor, hitRoughness, hitEmission);
 
 #ifdef VIXEN_BRICKMAP_DEBUG
                 // W-BRICKMAP Gate-B bisection: overwrite hitColor with quantized
