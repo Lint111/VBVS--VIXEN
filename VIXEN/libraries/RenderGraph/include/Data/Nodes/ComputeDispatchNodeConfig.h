@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 19;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1), +RENDER_TARGET_INFO (M4), +BUFFER_WRITE (Sampled Lighting Inc3 M1)
+    static constexpr size_t INPUTS = 20;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1), +RENDER_TARGET_INFO (M4), +BUFFER_WRITE (Sampled Lighting Inc3 M1), +BUFFER_WRITE_ARRAY (KI-052 fix, E12-T1)
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -285,6 +285,32 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotScope::NodeLevel,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
+    /**
+     * @brief Set of storage buffers this dispatch WRITES (producer role) — KI-052 fix
+     * (E12-T1): the array-typed sibling of BUFFER_WRITE above, mirroring
+     * ComputeStageNodeConfig's own BUFFER_WRITE_ARRAY verbatim (see that config's file
+     * header for the full rationale — a fixed single-buffer slot does not scale once a
+     * producer writes more than one cross-submit-hazarded buffer). BUFFER_WRITE stayed a
+     * single fixed slot because Sampled Lighting Inc3 M1 only ever needed ONE
+     * (HitRecordBuffer); this dispatch (BodyInstanceRayMarch) now also writes
+     * PolicyStencilTileBuffer under VIXEN_POLICY_STENCIL_TILES (E11-T1), which had NO
+     * hazard-tracked slot at all (KI-052) — registered only through the SDI provider
+     * registry, a purely descriptor-binding mechanism the ResourceAccessTracker never
+     * walks. Fed by a BufferSyncGathererNode's BUFFER_ARRAY output (same "gatherer
+     * produces one array slot" shape used everywhere else). Auto-sync:
+     * ComputeStorageWrite — the tracker expands each constituent's own Resource* (see
+     * Resource::hazardConstituents_) so a downstream ComputeStageNode reader
+     * (ShadowVisibilityWave's BUFFER_READ_ARRAY on the SAME constituent Resource*) bakes
+     * a real SyncEdge. Optional: existing ComputeDispatchNode graphs that leave this
+     * unconnected are unaffected (purely additive).
+     */
+    INPUT_SLOT_SYNC(BUFFER_WRITE_ARRAY, std::vector<VkBuffer>, 19,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadWrite,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -376,6 +402,13 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         // Sampled Lighting Inc3 M1: optional cross-submit buffer-write hazard slot
         HandleDescriptor bufferWriteDesc{"VkBuffer"};
         INIT_INPUT_DESC(BUFFER_WRITE, "buffer_write", ResourceLifetime::Persistent, bufferWriteDesc);
+
+        // KI-052 fix (E12-T1): array-typed sibling, same Transient rationale as
+        // ComputeStageNodeConfig's own BUFFER_WRITE_ARRAY descriptor (a value type
+        // re-gathered fresh every frame by BufferSyncGathererNode::ExecuteImpl, not a
+        // handle whose identity persists across recompiles).
+        HandleDescriptor bufferWriteArrayDesc{"std::vector<VkBuffer>"};
+        INIT_INPUT_DESC(BUFFER_WRITE_ARRAY, "buffer_write_array", ResourceLifetime::Transient, bufferWriteArrayDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

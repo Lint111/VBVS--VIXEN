@@ -893,6 +893,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // workgroup (tile index = gl_WorkGroupID); ShadowVisibilityWave reads it to skip
     // evaluator work for source axes provably absent tile-wide.
     NodeHandle policyStencilTileBuffer = renderGraph->AddNode<StorageBufferNodeType>("policy_stencil_tile_buffer");
+    // KI-052 fix (E12-T1): march-side write-hazard gatherer for policyStencilTileBuffer,
+    // feeding computeDispatch's new BUFFER_WRITE_ARRAY slot (see ComputeDispatchNodeConfig.h)
+    // so ResourceAccessTracker records the march as a writer of this Resource* — paired with
+    // shadowVisibilityWaveReadGatherer's matching read entry (added below) to bake the
+    // previously-missing march->wave SyncEdge.
+    NodeHandle policyStencilTileWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("policy_stencil_tile_write_gatherer");
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: gated behind VIXEN_RECIPE_BUCKETED_DISPATCH
     // (opt-in, following the VIXEN_PROCEDURAL_UBER_DEMO/VIXEN_UI_DEMO convention -- read once here
@@ -2429,10 +2435,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(probeApplyReadGatherer))->PreRegisterBufferSlots(2);
     // W1b: the shadow wave reads {hitRecordBuffer} and writes {hitRecordBuffer}
     // (an RMW of one word — but the hazard model tracks whole resources).
-    // W-SPLIT: always 1-wide again — the table write moved to the accumulate
-    // pass's own write gatherer below.
-    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(1);
+    // W-SPLIT: 2-wide again — {hitRecordBuffer, policyStencilTileBuffer} (KI-052 fix,
+    // E12-T1). policyStencilTileBuffer is wired unconditionally (same convention as its
+    // provider registration below), matching the buffer's own always-created, only-
+    // exercised-under-VIXEN_POLICY_STENCIL_TILES no-op-when-idle shape (E11-T1 §7) — a
+    // baked barrier on a buffer neither side touches this frame costs nothing observable.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveReadGatherer))->PreRegisterBufferSlots(2);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(shadowVisibilityWaveWriteGatherer))->PreRegisterBufferSlots(1);
+    // KI-052 fix (E12-T1): march-side write gatherer, 1 entry (policyStencilTileBuffer only
+    // — HitRecordBuffer keeps using computeDispatch's original singular BUFFER_WRITE slot,
+    // unmigrated, exactly as the DirectLighting hazard comment below already documents).
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(policyStencilTileWriteGatherer))->PreRegisterBufferSlots(1);
     // B2 (batch-26, gated OFF by default batch-27): the clear pass writes
     // {table} only (no reads).
     if (hitAccumClearEnabled) {
@@ -7927,7 +7940,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     // E11-T1: written by BodyInstanceRayMarch (tile reduction), read by
     // ShadowVisibilityWave (evaluator-skip) -- same read-write-shared shape as
-    // HitRecordBuffer below, gated by VIXEN_POLICY_STENCIL_TILES's feature set.
+    // HitRecordBuffer below, gated by VIXEN_POLICY_STENCIL_TILES's feature set. This
+    // Provide() call is purely a descriptor-binding registration (the SDI wiring path) --
+    // it does NOT feed ResourceAccessTracker. KI-052 fix (E12-T1): the actual hazard
+    // registration is the SEPARATE policyStencilTileWriteGatherer/shadowVisibilityWave-
+    // ReadGatherer wiring below (search "KI-052 fix"), which is what bakes the march->wave
+    // SyncEdge this Provide() call alone never could.
     sceneProviders.Provide("PolicyStencilTileBuffer", policyStencilTileBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
@@ -8846,12 +8864,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // reads-before-march or writes-after-shade would break the hash loudly).
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   shadowVisibilityWaveReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    // KI-052 fix (E12-T1): PolicyStencilTileBuffer's read side — pairs with
+    // policyStencilTileWriteGatherer's entry into computeDispatch's BUFFER_WRITE_ARRAY
+    // below, on the SAME policyStencilTileBuffer::STORAGE_BUFFER Resource*, so
+    // ResourceAccessTracker::AddNode finally correlates the march's write against the
+    // wave's read and FrameSyncScheduler bakes the previously-missing SyncEdge.
+    batch.Connect(policyStencilTileBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  shadowVisibilityWaveReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowVisibilityWaveReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   shadowVisibilityWaveNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   shadowVisibilityWaveWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowVisibilityWaveWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   shadowVisibilityWaveNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
+    // KI-052 fix (E12-T1): the march's write side — policyStencilTileWriteGatherer feeds
+    // computeDispatch's new BUFFER_WRITE_ARRAY slot (ComputeDispatchNodeConfig.h). This is
+    // the ONLY producer-side registration of PolicyStencilTileBuffer as a tracked hazard
+    // resource; previously it was registered ONLY through sceneProviders.Provide (a
+    // descriptor-binding mechanism ResourceAccessTracker never walks), which is exactly
+    // KI-052's root cause.
+    batch.Connect(policyStencilTileBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  policyStencilTileWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(policyStencilTileWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
     // Sync slot: IMAGE_WRITE_ARRAY — the genuine write hazard on the persistent probe
     // atlases, now owned by probe_apply (W1a: the frame's ONLY atlas writer — this

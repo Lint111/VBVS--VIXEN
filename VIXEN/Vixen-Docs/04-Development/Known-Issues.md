@@ -11,29 +11,6 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
-## KI-052 — PolicyStencilTileBuffer has no ResourceAccessTracker entry: undeclared same-frame RAW hazard when VIXEN_POLICY_STENCIL_TILES=1 (E11-T1, 2026-08-10)
-
-**Symptom:** none observed directly — the hazard is structural, masked in measurement by KI-050
-(raw frame hash is not a valid oracle on the stored-content scene; the stencil BYTE stayed
-deterministic in all runs).
-**Root cause:** the tile buffer is registered only through the SDI provider registry
-(`sceneProviders.Provide`, a descriptor-binding mechanism), giving it ZERO entries in
-`ResourceAccessTracker`; `FrameSyncScheduler` therefore bakes no barrier between the march
-dispatch's tile writes and the wave dispatch's tile reads. `RenderPassNodeConfig` has a single
-hazard-tracked `BUFFER_WRITE` slot (occupied by `HitRecordBuffer`) and no `BUFFER_WRITE_ARRAY`
-(that shape exists only on `ComputeStageNodeConfig`).
-**Impact:** OFF-path (flags unset): none — byte-identical, proven. ON-path: a real same-frame
-RAW race; results may be stale-by-one-dispatch nondeterministically.
-**Fix path (documented, not implemented):** either extend `RenderPassNodeConfig` with a
-`BUFFER_WRITE_ARRAY` slot mirroring `ComputeStageNodeConfig`'s, or register the tile buffer as
-a tracked resource on the producing node so the scheduler bakes the barrier. See
-undertow `perf/e11-t1-stencil-perf-report.md` §5 (incl. the KI-050 control experiment that
-falsified the initial image-corruption reading).
-**Severity:** low while the feature is experimental/default-off; MUST be fixed before
-`VIXEN_POLICY_STENCIL_TILES` graduates ([[feature-flags-policy]] gate). Perf note: on the dense
-stored-content scene, tiles+skip measured 63-67% SLOWER than stencil-off (E11-T1 §8) — the
-payoff scene (sparse, tile-uniform) does not exist in the rig yet.
-
 ---
 
 ## KI-051 — Mixed-leg reservoir/secondary-wave COUNTER variance across repeated boots (third nondeterminism axis; not stencil-data variance)
@@ -1401,6 +1378,65 @@ So a handle the driver just reported as successfully allocated is rejected as st
 ---
 
 ## Resolved
+
+### KI-052 — PolicyStencilTileBuffer has no ResourceAccessTracker entry: undeclared same-frame RAW hazard when VIXEN_POLICY_STENCIL_TILES=1 (E11-T1, 2026-08-10; fixed E12-T1, 2026-08-10)
+
+**Symptom:** none observed directly — the hazard was structural, masked in measurement by KI-050
+(raw frame hash is not a valid oracle on the stored-content scene; the stencil BYTE stayed
+deterministic in all runs even pre-fix).
+**Root cause:** the tile buffer was registered only through the SDI provider registry
+(`sceneProviders.Provide`, a descriptor-binding mechanism), giving it ZERO entries in
+`ResourceAccessTracker`; `FrameSyncScheduler` therefore baked no barrier between the march
+dispatch's tile writes and the wave dispatch's tile reads. **Correction to the original entry:**
+the march node is `ComputeDispatchNode`/`ComputeDispatchNodeConfig`, not `RenderPassNodeConfig`
+(a different config type) — `ComputeDispatchNodeConfig` had a single hazard-tracked `BUFFER_WRITE`
+slot (occupied by `HitRecordBuffer`) and no `BUFFER_WRITE_ARRAY` (that shape existed only on
+`ComputeStageNodeConfig`, which the wave — `shadowVisibilityWaveNode` — already uses).
+**Fix (E12-T1):** extended `ComputeDispatchNodeConfig` with a `BUFFER_WRITE_ARRAY` slot
+(`std::vector<VkBuffer>`, index 19, `INPUT_SLOT_SYNC`/`AccessKind::ComputeStorageWrite`) mirroring
+`ComputeStageNodeConfig`'s own verbatim — the structural option, not the minimal patch, chosen
+because `ComputeDispatchNode` has exactly ONE consumer in the whole engine (`computeDispatch`,
+instance-named `test_dispatch`; verified via grep — no other `AddNode<ComputeDispatchNodeType>`
+call exists outside tests), so there was no other consumer to risk breaking, and the slot is now
+structurally available for the next SDI-provider-registered buffer this dispatch ever needs to
+write. `BUFFER_WRITE` itself is never read at Execute (grep confirmed — it only feeds the
+tracker's hazard walk), so the new array slot needed zero Compile/Execute logic, only the config
+schema + the `BuildRenderGraph.cpp` wiring: a new `policyStencilTileWriteGatherer`
+(`BufferSyncGathererNode`, 1 entry) feeds `computeDispatch`'s `BUFFER_WRITE_ARRAY`;
+`shadowVisibilityWaveReadGatherer` (pre-existing, previously 1-wide for `HitRecordBuffer`) is
+bumped to 2 entries, adding `policyStencilTileBuffer`'s `STORAGE_BUFFER` output. Both sides
+resolve to the SAME `Resource*`, so `ResourceAccessTracker::AddNode`'s existing generic
+`hazardConstituents_` expansion (already used by every other `BufferSyncGathererNode` pairing —
+no tracker code changed) correlates the march's write against the wave's read and
+`FrameSyncScheduler` bakes the edge. Wiring is unconditional (same convention as the buffer's own
+always-created, provider-registered-regardless-of-flag shape) — a baked barrier on a buffer
+neither side touches this frame (tiles feature off) costs nothing observable.
+**Evidence (`undertow perf/e12-t1-ki052-report.md`):**
+- **SCHED dump** (`VIXEN_SDI_HAZARD_REPORT=1`): OFF-path (`VIXEN_POLICY_STENCIL_TILES` unset)
+  bakes 11 edges total, exactly one `shadow_visibility_wave -> test_dispatch` SCHED line
+  (the pre-existing HitRecord edge), stable across repeat boots. ON-path bakes 12 edges, TWO
+  `shadow_visibility_wave -> test_dispatch` lines — the new PolicyStencilTileBuffer edge alongside
+  the pre-existing HitRecord one.
+- **OFF-path byte-identity:** two `dda-off` (flags-unset) boots produced identical frame-100
+  hashes (`85436c6b...` both), matching E11-T1's own reference hash exactly — genuine no-op,
+  confirmed post-fix.
+- **ON-path determinism:** 3 `mixed-tiles-on` boots (including one where the skip fired 58,000
+  times and one where it fired 0 times) produced a bit-identical stencil-byte oracle
+  (`primaryByteOr=25 analyticByteOr=25 analyticShadowOr=15` in every boot) — the same bar E11-T1
+  established, now reproduced with the barrier baked (not just "not observed racing").
+- **Perf re-measurement:** with the barrier in place, tiles+skip vs stencil-off measured
+  `+56.5% to +57.9%` whole-frame-GPU-span (vs E11-T1's pre-fix `+63.3% to +63.5%`) and
+  `+263% to +296%` shadow-wave-time (vs E11-T1's pre-fix `+270.9% to +296.6%`) — closely matching
+  the ORIGINAL (unbarriered) measurement, confirming the missing barrier was not masking a large
+  hidden cost. **Verdict unchanged: tiles+skip is still a clear LOSS on this dense scene** — the
+  payoff scene (sparse, tile-uniform) still does not exist in the rig; that remains a separate,
+  open item (E11-T1 §8, not reopened by this fix).
+**Severity:** was low (experimental/default-off feature); this fix clears the graduation gate
+([[feature-flags-policy]]) for `VIXEN_POLICY_STENCIL_TILES` on the CORRECTNESS axis — the PERF
+axis (measured loss) is a separate, still-open blocker to actually flipping the flag on.
+**Status:** RESOLVED (E12-T1, engine changes staged uncommitted at time of writing).
+
+---
 
 ### KI-004 — Nodes/resources surviving device-loss recovery with stale device-scoped handles (crash class)
 
