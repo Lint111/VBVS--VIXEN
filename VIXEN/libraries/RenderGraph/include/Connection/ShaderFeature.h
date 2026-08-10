@@ -44,6 +44,13 @@ inline constexpr ShaderFeature kFeatureCompositionCounters{"VIXEN_COMPOSITION_CO
 // bits 8..15 and preserve/read back that byte across both shadow writers.
 // Env-gated; no capability or descriptor-interface requirement.
 inline constexpr ShaderFeature kFeaturePolicyStencil{"VIXEN_POLICY_STENCIL"};
+// E11-T1: reduce the per-pixel policy stencil (VIXEN_POLICY_STENCIL) into a
+// per-8x8-tile word (one word per BodyInstanceRayMarch workgroup) and use it
+// to skip ShadowVisibilityWave's evaluator work for source axes provably
+// absent from the whole tile. Adds a new binding (PolicyStencilTileBuffer),
+// so unlike kFeaturePolicyStencil this axis IS listed in sdi-variants.json.
+// Requires kFeaturePolicyStencil; env-gated, no capability requirement.
+inline constexpr ShaderFeature kFeaturePolicyStencilTiles{"VIXEN_POLICY_STENCIL_TILES"};
 inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"};
 // Wavefront W2a: ShadowVisibilityWave's SECOND dispatch — the post-gather
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined

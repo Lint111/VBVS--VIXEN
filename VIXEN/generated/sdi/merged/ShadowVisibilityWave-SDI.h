@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: ShadowVisibilityWave
-// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_WAVE_RESERVOIR_PHASE
+// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_WAVE_RESERVOIR_PHASE
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -801,6 +801,9 @@ struct MemberInfo {
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
 inline constexpr const char* const kFeatures_Set0_Binding19[] = {"VIXEN_WAVE_RESERVOIR_PHASE"};
 inline constexpr const char* const kFeatures_Set0_Binding20[] = {"VIXEN_WAVE_RESERVOIR_PHASE"};
+// E11-T1: hand-authored, sdi_tool not present in this tree — see the matching
+// comment in BodyInstanceRayMarch-SDI.h for the full rationale.
+inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"ESVOBuffer", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
@@ -820,6 +823,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"SpatialReservoirDebugBuffer", false, 0, 19, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding19},
     {"LightTreeBufferSSBO", false, 0, 20, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding20},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
+    {"PolicyStencilTileBuffer", false, 0, 41, 0, Access::ReadOnly, 2, kFeatures_Set0_Binding41},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -854,8 +858,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ShadowVisibilityWave";
-    static constexpr uint32_t NUM_MEMBERS = 30;
-    static constexpr uint32_t NUM_FEATURES = 2;
+    static constexpr uint32_t NUM_MEMBERS = 31;
+    static constexpr uint32_t NUM_FEATURES = 4;
 };
 
 } // namespace ShadowVisibilityWave

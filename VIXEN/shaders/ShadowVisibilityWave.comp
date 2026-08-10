@@ -161,6 +161,56 @@ void main() {
     uint slot = gl_GlobalInvocationID.x;
     if (slot >= hitRecords.length()) return;
 
+#ifdef VIXEN_POLICY_STENCIL_TILES
+    // E11-T1 evaluator-skip. KNOWN GAP (see perf/e11-t1-stencil-perf-report.md
+    // "Synchronization gap" section for the full diagnosis): PolicyStencilTileBuffer's
+    // march WRITE has no way to register as a hazard-tracked producer access
+    // on computeDispatch (BodyInstanceRayMarch's ComputeDispatchNode instance)
+    // -- ComputeDispatchNodeConfig has exactly ONE sync-tracked buffer-write
+    // slot (BUFFER_WRITE), permanently occupied by HitRecordBuffer, and no
+    // BUFFER_WRITE_ARRAY (that shape exists only on ComputeStageNodeConfig).
+    // This IS a real same-frame RAW hazard with no scheduler-baked barrier.
+    // A live A/B initially seemed to confirm this caused image nondeterminism
+    // (repeat-boot hash instability), but a control experiment on the
+    // COMPLETELY FLAG-OFF baseline (VIXEN_POLICY_STENCIL/_TILES both unset)
+    // showed the SAME hash instability -- this scene's stored-content path
+    // has a PRE-EXISTING, documented, orthogonal nondeterminism (KI-050,
+    // Known-Issues.md: "stored control produces one of TWO frame hashes...
+    // not counter-induced... OPEN, unadjudicated"), so raw image hash is NOT
+    // a valid correctness oracle for this scene/leg (same standing bar E7-T1
+    // already established for the mixed scene's reservoir counters). The
+    // missing hazard edge remains a real, worth-fixing gap (add
+    // BUFFER_WRITE_ARRAY to ComputeDispatchNodeConfig, mirroring
+    // ComputeStageNodeConfig's existing slot) -- deliberately NOT attempted
+    // in this slice: that config is shared by every ComputeDispatchNode
+    // consumer in the engine, and touching its INPUT count/index layout
+    // blind (without a dedicated build-iterate budget to validate every
+    // other consumer) is a correctness risk out of proportion to this task's
+    // scope. Correctness for THIS slice is instead verified the way E7-T1
+    // verified the mixed scene: the policy-stencil BYTE (not the raw image
+    // hash) stays deterministic across repeat boots (see the report's
+    // determinism section).
+    if (tileWords.length() > 0u) {
+        uint header = tileWords[0];
+        uint imgWidthPx = header >> 16u;
+        if (imgWidthPx > 0u) {
+            uint pixelX = slot % imgWidthPx;
+            uint pixelY = slot / imgWidthPx;
+            uint tileIdx = policyStencilTileIndex(pixelX, pixelY);
+            if (tileIdx < tileWords.length() && tileWords[tileIdx] == 0u) {
+                incrPolicyStencilTileSkip();
+                uint beforeWord = hitRecords[slot]._pad0[2];
+                uint afterWord = (beforeWord & ~0xFu) | 0xFu;
+                hitRecords[slot]._pad0[2] = afterWord;
+#ifdef VIXEN_POLICY_STENCIL
+                recordPolicyStencilAnalytic(beforeWord, afterWord);
+#endif
+                return;
+            }
+        }
+    }
+#endif
+
     // Default answer: every light visible. Covers miss pixels (no surface to
     // shadow), shadowConfig.enabled==0 (the merged shader's shadowFactor=1.0
     // no-trace path), lights past lightCount, and NdotL<=0 lights (whose bit

@@ -430,6 +430,58 @@ void main() {
     recordPolicyStencilPrimary(recReadback._pad0[2]);
 #endif
 
+#ifdef VIXEN_POLICY_STENCIL_TILES
+    // E11-T1 tile reduction. atomicOr (not shared-memory + barrier()): the
+    // dispatch is ceil(width/8) x ceil(height/8) workgroups (see
+    // ComputeDispatchNode.cpp), so an edge-row/column workgroup has some
+    // lanes rejected by this shader's own OOB `return` above (line ~221) --
+    // barrier() requires uniform participation across the WHOLE workgroup,
+    // which an edge tile can't guarantee. atomicOr has no such requirement:
+    // every in-bounds lane ORs its own pixel's policy bits into its tile's
+    // word directly; OR is commutative+associative, so the final tile word
+    // is identical regardless of atomic completion order (determinism
+    // preserved). One atomic per hit pixel (skipped for misses -- a miss
+    // pixel has stencil byte 0, an OR identity, so omitting it changes
+    // nothing about the final word and saves the atomic).
+    //
+    // ponytail: tileWords[] is NEVER cleared between frames (same
+    // never-cleared convention as HitRecordBuffer itself -- see the M2
+    // comment on hitRecordIdx's write above), and this is OR-only (no
+    // per-frame reset pass -- avoiding a whole new clear dispatch, the
+    // HitAccumClear.comp precedent, was judged disproportionate for this
+    // slice). Consequence: a bit set in a prior frame can outlive the
+    // pixel/regime/source that set it. This is CONSERVATIVE, not unsound --
+    // the evaluator-skip below only ever skips when a bit is ABSENT, so a
+    // stale-set bit can cause a missed skip opportunity (extra evaluator
+    // work) but never a wrong pixel value (a bit is never incorrectly
+    // cleared while real per-pixel content backing it is still present this
+    // frame, since this frame's own pixels re-OR their own bits every
+    // dispatch). Add a per-frame clear pass when a scene demonstrates the
+    // stale-bit tax actually costs more than a real clear would.
+    if (anyHit) {
+        uint tileWord = policyStencilWord >> 8u;  // bits 8..15 -> bits 0..7
+        if (tileWord != 0u) {
+            uint tileIdx = policyStencilTileIndex(uint(pixelCoords.x), uint(pixelCoords.y));
+            if (tileIdx < tileWords.length()) {
+                atomicOr(tileWords[tileIdx], tileWord);
+            }
+        }
+    }
+    // Header write: exactly one lane per dispatch (workgroup (0,0)'s local
+    // index 0) publishes (width << 16 | height) so the wave -- which has no
+    // width/height push field of its own -- can recover the pixel stride.
+    // Every dispatch re-publishes it (not just the first), so a live resize
+    // (VIXEN_WINDOW_WIDTH/HEIGHT or render-scale change) stays correct next
+    // frame with zero extra plumbing. Also resets tileWords[1] (the wave's
+    // skipped-tile-pixel counter) to 0 here -- march always runs before the
+    // wave in the frame's topology, so this is the correct "start of frame"
+    // point to zero a counter the wave then accumulates into.
+    if (gl_WorkGroupID.x == 0u && gl_WorkGroupID.y == 0u && gl_LocalInvocationIndex == 0u) {
+        tileWords[0] = (uint(imgSize.x) << 16u) | (uint(imgSize.y) & 0xFFFFu);
+        tileWords[1] = 0u;
+    }
+#endif
+
     // anyHitRT (not the original anyHit) drives everything below, so a lossy
     // pack/unpack would visibly break the byte-identity gate rather than
     // being silently masked by using the pre-round-trip locals.

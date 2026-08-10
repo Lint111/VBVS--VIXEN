@@ -886,6 +886,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // placeholder, so production and tests share one no-op convention instead of two.
     NodeHandle instanceSkipMaskBuffer = renderGraph->AddNode<StorageBufferNodeType>("instance_skip_mask_buffer");
 
+    // E11-T1: per-8x8-tile policy word buffer (VIXEN_POLICY_STENCIL_TILES). Fixed-size
+    // (NO SWAPCHAIN_INFO), same shape as instanceSkipMaskBuffer above — 500x500 (the
+    // established test resolution) / 8x8 workgroups = 63x63 = 3,969 tiles, one uint
+    // each (PARAM_SIZE_BYTES set below). BodyInstanceRayMarch writes one word per
+    // workgroup (tile index = gl_WorkGroupID); ShadowVisibilityWave reads it to skip
+    // evaluator work for source axes provably absent tile-wide.
+    NodeHandle policyStencilTileBuffer = renderGraph->AddNode<StorageBufferNodeType>("policy_stencil_tile_buffer");
+
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: gated behind VIXEN_RECIPE_BUCKETED_DISPATCH
     // (opt-in, following the VIXEN_PROCEDURAL_UBER_DEMO/VIXEN_UI_DEMO convention -- read once here
     // so every node-creation/wiring decision below is consistent for this whole function's build).
@@ -1298,6 +1306,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // path is identical in production and in every test.
     auto* instanceSkipMaskInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(instanceSkipMaskBuffer));
     instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 256u);
+
+    // E11-T1: PolicyStencilTileBuffer (binding 41) -- fixed-size, not extent-driven
+    // (same convention as instanceSkipMaskBuffer/ddgiLeakGateDebugBuffer above).
+    // ponytail: sized for the 500x500 established test resolution's 63x63=3,969
+    // 8x8-workgroup tile grid, not derived from the live swapchain extent (the
+    // shared StorageBufferNode type's extent-driven mode is per-pixel bytes only,
+    // not per-tile) -- if VIXEN_WINDOW_WIDTH/HEIGHT push the tile grid past 63x63,
+    // grow kPolicyStencilMaxTilesPerAxis. The shader clamps writes to this bound.
+    constexpr uint32_t kPolicyStencilMaxTilesPerAxis = 63u;
+    auto* policyStencilTileInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(policyStencilTileBuffer));
+    policyStencilTileInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
+        (2u + kPolicyStencilMaxTilesPerAxis * kPolicyStencilMaxTilesPerAxis) * 4u);  // +2: header words (see SceneBindings.glsl)
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing-pass SSBO sizing, matching
     // shaders/RecipeInstanceBucketing.comp's own push-constant caps (kRecipeMaxBuckets,
@@ -1732,10 +1752,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
         marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
+    const bool policyStencilTilesEnabled =
+        envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES");
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
         marchShaderFeatures.push_back(kFeaturePolicyStencil.define);
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] VIXEN_POLICY_STENCIL: primary policy-stencil materialization ENGAGED");
+        }
+    }
+    if (policyStencilTilesEnabled) {
+        marchShaderFeatures.push_back(kFeaturePolicyStencilTiles.define);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] VIXEN_POLICY_STENCIL_TILES: tile reduction + evaluator-skip ENGAGED");
         }
     }
     if (b1OcclusionCullEnabled) {  // one source of truth — the default-on gate above
@@ -1942,6 +1970,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (envFlagEnabled("VIXEN_POLICY_STENCIL")) {
         lightingShaderFeatures.push_back(kFeaturePolicyStencil.define);
+    }
+    if (envFlagEnabled("VIXEN_POLICY_STENCIL") && envFlagEnabled("VIXEN_POLICY_STENCIL_TILES")) {
+        // E11-T1: only ShadowVisibilityWave.comp #includes PolicyStencilTileBuffer;
+        // every other lighting family just gets an inert #define (same shape as
+        // kFeaturePolicyStencil's own broad share above).
+        lightingShaderFeatures.push_back(kFeaturePolicyStencilTiles.define);
     }
     const auto registerLightingFamily = [this, lightingShaderFeatures](
                                             NodeHandle libHandle,
@@ -7689,6 +7723,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   instanceSkipMaskBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
 
+    // E11-T1: PolicyStencilTileBuffer — device only, same fixed-size (NO
+    // SWAPCHAIN_INFO) shape as instanceSkipMaskBuffer immediately above.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  policyStencilTileBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+
     // W1a: shadow-ray queue/payload buffers — device only, same fixed-size (NO
     // SWAPCHAIN_INFO) shape as ddgiLeakGateDebugBuffer above (slot-geometry
     // PARAM_SIZE_BYTES sizing set at the dispatch section). NOTE: this block is
@@ -7886,6 +7925,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
                            StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    // E11-T1: written by BodyInstanceRayMarch (tile reduction), read by
+    // ShadowVisibilityWave (evaluator-skip) -- same read-write-shared shape as
+    // HitRecordBuffer below, gated by VIXEN_POLICY_STENCIL_TILES's feature set.
+    sceneProviders.Provide("PolicyStencilTileBuffer", policyStencilTileBuffer,
+                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
     sceneProviders.Provide("LightingConfigSSBO", lightingConfigNode,
                            LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, kSceneRoles);
     sceneProviders.Provide("HitRecordBuffer", hitRecordBufferNode,
@@ -7923,6 +7967,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") ||
         envFlagEnabled("VIXEN_COMPOSED_TRAVERSAL")) {
         marchFeatures.Enable(kFeatureRtQueryTraversal);
+    }
+    // E11-T1: gates the PolicyStencilTileBuffer member (binding 41) the same
+    // way B1's depthDistanceImage gates binding 36 above -- marchShaderFeatures
+    // (shader compile) and marchFeatures (SDI wire plan) must both carry this
+    // flag or the compiled variant and the wire plan disagree.
+    if (policyStencilTilesEnabled) {
+        marchFeatures.Enable(kFeaturePolicyStencil);
+        marchFeatures.Enable(kFeaturePolicyStencilTiles);
     }
 
     WireStageFromSdi<MarchSdi::Metadata, MarchSdi::MEMBERS>(
@@ -8515,13 +8567,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // SceneBindings push block is hand-wired below like every tracing stage.
     // W-SPLIT: unconditionally plain now — VIXEN_HIT_ACCUM_FUSED retired, the
     // table write moved to the accumulate pass's own gatherers above.
+    // E11-T1: gates the PolicyStencilTileBuffer member (binding 41), same
+    // rule as marchFeatures above -- must mirror lightingShaderFeatures'
+    // VIXEN_POLICY_STENCIL_TILES define or the compiled variant and the wire
+    // plan disagree.
+    SdiFeatureSet waveSdiFeatures;
+    if (policyStencilTilesEnabled) {
+        waveSdiFeatures.Enable(kFeaturePolicyStencil);
+        waveSdiFeatures.Enable(kFeaturePolicyStencilTiles);
+    }
     const auto waveSynth = SynthesizeComputeStage<WaveSdi::Metadata, WaveSdi::MEMBERS>(
         renderGraph, batch, "shadow_visibility_wave", shadowVisibilityWaveShaderLib,
-        shadowVisibilityWaveNode, lightingCommon, sceneProviders, sdiNoFeatures,
+        shadowVisibilityWaveNode, lightingCommon, sceneProviders, waveSdiFeatures,
         SdiWireSet::DescriptorsOnly);
     shadowVisibilityWavePushConstantGatherer = waveSynth.pushGatherer;
     CensusStageFromSdi<WaveSdi::Metadata, WaveSdi::MEMBERS>(
-        sdiHazardCensus_, shadowVisibilityWaveNode, sceneProviders, sdiNoFeatures,
+        sdiHazardCensus_, shadowVisibilityWaveNode, sceneProviders, waveSdiFeatures,
         &sdiCensusExclusions);
 
     // Both TRACING stages consume SceneBindings.glsl's PushConstants block and

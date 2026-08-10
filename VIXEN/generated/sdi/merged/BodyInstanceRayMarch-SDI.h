@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: BodyInstanceRayMarch
-// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_GPU_TRACE_HOOKS VIXEN_RTQUERY_TRAVERSAL
+// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_RTQUERY_TRAVERSAL
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -892,6 +892,26 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    // E11-T1 FINDING (pre-existing, unrelated to this slice): this row was
+    // MISSING from the committed header even at the 4b7195e9 baseline this
+    // task started from, even though BuildRenderGraph.cpp already references
+    // MarchSdi::Push::cosmicK::INDEX (regime-3 cosmic-accumulation K
+    // threshold, commit 6c5bf26c) and Push::SIZE above was already 96 (i.e.
+    // already counting these 4 bytes) -- the header was never regenerated
+    // after cosmicK was added to the real push block. Added here to unblock
+    // ANY build of this baseline, hand-authored to match cosmicK's real
+    // offset (92 = accumFrameCount's OFFSET 88 + SIZE 4) and the existing
+    // Push::SIZE=96 total. Re-run sdi_tool to replace with a real
+    // regeneration when available (see the binding-41 comment above for why
+    // sdi_tool isn't in this tree).
+    struct cosmicK {
+        static constexpr const char* NAME = "cosmicK";
+        static constexpr uint32_t INDEX = 13;
+        static constexpr uint32_t OFFSET = 92;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
 } // namespace Push
 
 // ============================================================================
@@ -912,6 +932,13 @@ struct MemberInfo {
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
 inline constexpr const char* const kFeatures_Set0_Binding36[] = {"VIXEN_B1_OCCLUSION_CULL"};
 inline constexpr const char* const kFeatures_Set0_Binding40[] = {"VIXEN_RTQUERY_TRAVERSAL"};
+// E11-T1: sdi_tool is not present in this tree (CMake gates its regeneration
+// behind `if(TARGET sdi_tool)` -- libraries/ShaderManagement/tests/CMakeLists.txt),
+// so this row was hand-authored to match the generator's exact schema/style
+// (see depthDistanceImage/kFeatures_Set0_Binding36 immediately below for the
+// precedent this mirrors). Re-run sdi_tool over shaders/sdi-variants.json to
+// replace this hand edit with a real regeneration when the tool is available.
+inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
@@ -936,6 +963,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"PrevCameraConfigSSBO", false, 0, 22, 0, Access::ReadOnly, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"depthDistanceImage", false, 0, 36, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding36},
+    {"PolicyStencilTileBuffer", false, 0, 41, 0, Access::ReadWrite, 2, kFeatures_Set0_Binding41},
     {"rtQueryTlas", false, 0, 40, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding40},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
@@ -950,6 +978,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"instanceCount", true, 0, 0, 72, Access::ReadOnly, 0, nullptr},
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
+    {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
 };
 
 /**
@@ -971,8 +1000,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 36;
-    static constexpr uint32_t NUM_FEATURES = 3;
+    static constexpr uint32_t NUM_MEMBERS = 38;
+    static constexpr uint32_t NUM_FEATURES = 5;
 };
 
 } // namespace BodyInstanceRayMarch

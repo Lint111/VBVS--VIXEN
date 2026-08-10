@@ -8,6 +8,7 @@
 #include <cstdio>      // std::sscanf for VIXEN_TIER_M8_FLIGHT_AIM_OFFSET (M8 Task 23)
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 #include <cstring>     // std::memcpy for M5's shadeM5IndirectLumaBits float reinterpretation
+#include <iostream>    // E11-T1: std::cout for the [PolicyStencilTiles] teardown readback print
 #include <unordered_map>  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES groupId->name lookup
 #include "Core/FrameSyncSchedule.h"  // Sampled Lighting Inc4 M5: VIXEN_DUMP_SYNC_EDGES
 #include "ShaderLogger.h"  // Baked-perf-pipeline M2b: ShaderLogger::GetTelemetry() cache hit/miss counters
@@ -3519,6 +3520,41 @@ void VulkanGraphApplication::DeInitialize() {
             }
         }
         recipeSpecializedPipelineCache_.clear();
+    }
+
+    // E11-T1: PolicyStencilTileBuffer readback — app-level (not a node's own
+    // CleanupImpl) because the tile buffer and RayTraceBuffer's [PolicyStencil]
+    // print (VoxelGridNode::CleanupImpl) are owned by different nodes with no
+    // shared access; renderGraph->GetInstanceByName is still valid here, the
+    // same pattern RunRecipeBucketedDispatchPreTick's skipMaskNode readback
+    // uses (this file, ~line 750), and this is the last point before
+    // engine_.reset() destroys every node (including this one).
+    if (std::getenv("VIXEN_POLICY_STENCIL_TILES") && renderGraph) {
+        if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+            if (auto* device = deviceInst->GetVulkanDevice()) {
+                if (auto* tileNode = static_cast<StorageBufferNode*>(
+                        renderGraph->GetInstanceByName("policy_stencil_tile_buffer"))) {
+                    vkDeviceWaitIdle(device->device);
+                    if (void* mapped = tileNode->MapForReadback(device)) {
+                        auto* words = reinterpret_cast<uint32_t*>(mapped);
+                        const size_t wordCount = static_cast<size_t>(tileNode->GetSizeBytes() / 4);
+                        const uint32_t header = wordCount > 0 ? words[0] : 0u;
+                        const uint32_t skipped = wordCount > 1 ? words[1] : 0u;
+                        uint32_t nonZeroTiles = 0u;
+                        for (size_t i = 2; i < wordCount; ++i) {
+                            if (words[i] != 0u) ++nonZeroTiles;
+                        }
+                        std::cout << "[PolicyStencilTiles] imgWidth=" << (header >> 16u)
+                                   << " imgHeight=" << (header & 0xFFFFu)
+                                   << " skippedPixels=" << skipped
+                                   << " nonZeroTiles=" << nonZeroTiles
+                                   << " totalTileSlots=" << (wordCount > 2 ? wordCount - 2 : 0)
+                                   << std::endl;
+                        tileNode->UnmapReadback(device);
+                    }
+                }
+            }
+        }
     }
 
     if (mainLogger && mainLogger->IsEnabled()) {

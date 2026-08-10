@@ -187,6 +187,70 @@ bool isInstanceSkipped(int instIdx) {
     return (skipMask[wordIdx] & (1u << bitIdx)) != 0u;
 }
 
+// E11-T1: per-8x8-tile policy word (VIXEN_POLICY_STENCIL_TILES; requires
+// VIXEN_POLICY_STENCIL). One uint per BodyInstanceRayMarch workgroup — a
+// workgroup IS an 8x8 tile (local_size_x=8, local_size_y=8), so no separate
+// reduction dispatch exists; the march reduces in workgroup-shared memory
+// and writes one word here per dispatch. Layout mirrors the per-pixel byte
+// (SceneBindings.glsl's packPolicyStencilByte): bits 0-2 = OR of every
+// present pixel's regime bit (bit (regime-1) set iff that regime occurs
+// anywhere in the tile: bit0=Surface, bit1=MipHit, bit2=Cosmic), bit 3 =
+// VIRTUAL source present anywhere in the tile, bit 4 = MATERIALIZED source
+// present anywhere in the tile, bits 5-7 reserved. ShadowVisibilityWave
+// reads this to skip evaluator work for a source axis provably absent
+// tile-wide (a tile with bit 3 clear has NO virtual-sourced pixel, so any
+// per-pixel logic gated purely on "this pixel came from a virtual source"
+// is a no-op for the whole tile).
+//
+// Binding number 41 (not the next free number in THIS file's own local
+// sequence): 37-39 are already taken by other SceneBindings.glsl-adjacent
+// shaders (SpatialReuseShade.comp/ProbeGather.comp/ShadowRayTrace.comp each
+// declare their OWN binding 37; VIXEN_POLICY_STENCIL_TILES rides
+// lightingShaderFeatures, so it reaches every lighting shader's compiled
+// variant as an inert #define even where unused) and 40 is
+// RayQueryTraversal.glsl's rtQueryTlas. Confirmed via grep across every
+// shaders/*.comp + every SceneBindings.glsl includer's transitive includes:
+// 41 is free everywhere as of this milestone.
+#ifdef VIXEN_POLICY_STENCIL_TILES
+// tileWords[0] is a HEADER cell, not a tile: (imgWidthPx << 16) | imgHeightPx,
+// written once per dispatch by workgroup (0,0)'s local-index-0 lane (the
+// march has imageSize(outputImage) in scope; ShadowVisibilityWave does NOT --
+// its 1D dispatch over hitRecords.length() deliberately carries no width/
+// height push field (see this shader's own header comment: "no request
+// buffer... no extent plumbing"), so threading a new push field through the
+// shared 96-byte PushConstants block in SceneCommon.glsl -- consumed by
+// every OTHER lighting shader too -- would be a much larger blast radius
+// than reusing this buffer's own slot 0 as a self-describing header).
+// tileWords[1] is a SECOND header cell: the wave's own skipped-tile-pixel
+// counter (atomicAdd'd once per skipped invocation), reusing this buffer
+// instead of growing RayTraceBuffer's fixed TraceBufferHeader ABI (DebugRaySample.h)
+// for one debug counter. Reset each dispatch by the SAME lane that writes
+// the width/height header (workgroup (0,0)'s local-index-0), so it reads as
+// "skips this frame" every readback, not a lifetime total.
+// Real tile data occupies tileWords[2 .. 2+tileGridW*tileGridH). The wave
+// reads the header once (any lane; std430 same-buffer RAW is safe within one
+// dispatch's happens-before ordering here because the march pass fully
+// completes, with its own pipeline barrier, before the wave pass begins --
+// same march-writes-then-wave-reads ordering HitRecordBuffer itself relies
+// on) to recover width, then converts its linear pixel slot to a tile index.
+layout(std430, binding = 41) buffer PolicyStencilTileBuffer { uint tileWords[]; };
+
+// Tile grid width in tiles, matching BuildRenderGraph.cpp's
+// kPolicyStencilMaxTilesPerAxis (the buffer's fixed allocation, NOT the
+// live dispatch extent) -- the march clamps its own write to this bound
+// (see BodyInstanceRayMarch.comp). Both writer and reader must derive the
+// SAME stride for tileWords[2..], so this is the one shared authority for it.
+const uint kPolicyStencilTileGridDim = 63u;
+
+uint policyStencilTileIndex(uint pixelX, uint pixelY) {
+    return 2u + (pixelY >> 3u) * kPolicyStencilTileGridDim + (pixelX >> 3u);
+}
+
+void incrPolicyStencilTileSkip() {
+    atomicAdd(tileWords[1], 1u);
+}
+#endif
+
 // Recipe-Live-App-Bucketed-Dispatch Inc4 M2: true iff ANY instance is currently skip-masked
 // (word-scanned, not per-instance — cheap since the mask covers at most 3*64=192 instances,
 // i.e. 6 words, matching TraceWorld's own instance-count cap). Used by BodyInstanceRayMarch.comp

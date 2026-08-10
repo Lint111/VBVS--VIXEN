@@ -11,6 +11,31 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 
 ---
 
+## KI-052 — PolicyStencilTileBuffer has no ResourceAccessTracker entry: undeclared same-frame RAW hazard when VIXEN_POLICY_STENCIL_TILES=1 (E11-T1, 2026-08-10)
+
+**Symptom:** none observed directly — the hazard is structural, masked in measurement by KI-050
+(raw frame hash is not a valid oracle on the stored-content scene; the stencil BYTE stayed
+deterministic in all runs).
+**Root cause:** the tile buffer is registered only through the SDI provider registry
+(`sceneProviders.Provide`, a descriptor-binding mechanism), giving it ZERO entries in
+`ResourceAccessTracker`; `FrameSyncScheduler` therefore bakes no barrier between the march
+dispatch's tile writes and the wave dispatch's tile reads. `RenderPassNodeConfig` has a single
+hazard-tracked `BUFFER_WRITE` slot (occupied by `HitRecordBuffer`) and no `BUFFER_WRITE_ARRAY`
+(that shape exists only on `ComputeStageNodeConfig`).
+**Impact:** OFF-path (flags unset): none — byte-identical, proven. ON-path: a real same-frame
+RAW race; results may be stale-by-one-dispatch nondeterministically.
+**Fix path (documented, not implemented):** either extend `RenderPassNodeConfig` with a
+`BUFFER_WRITE_ARRAY` slot mirroring `ComputeStageNodeConfig`'s, or register the tile buffer as
+a tracked resource on the producing node so the scheduler bakes the barrier. See
+undertow `perf/e11-t1-stencil-perf-report.md` §5 (incl. the KI-050 control experiment that
+falsified the initial image-corruption reading).
+**Severity:** low while the feature is experimental/default-off; MUST be fixed before
+`VIXEN_POLICY_STENCIL_TILES` graduates ([[feature-flags-policy]] gate). Perf note: on the dense
+stored-content scene, tiles+skip measured 63-67% SLOWER than stencil-off (E11-T1 §8) — the
+payoff scene (sparse, tile-uniform) does not exist in the rig yet.
+
+---
+
 ## KI-051 — Mixed-leg reservoir/secondary-wave COUNTER variance across repeated boots (third nondeterminism axis; not stencil-data variance)
 
 **Discovered:** 2026-08-10, E7-T1 stencil-slice re-gate (`perf/e7-t1-stencil-report.md`).
