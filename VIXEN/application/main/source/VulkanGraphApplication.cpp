@@ -3114,6 +3114,42 @@ void VulkanGraphApplication::Update() {
             }
         }
 
+        // E19-T1: orbital showcase capture -- a monotonic approach from the far
+        // orbital hold to near-field detail. The explicit gate keeps the shipped
+        // plateau fixture byte-identical and gives the capture a stable, named
+        // hold for each frame requested by VIXEN_HUD_CAPTURE_FRAMES.
+        if (renderGraph && std::getenv("VIXEN_TIER_OBSERVABLE_DEMO") &&
+            std::getenv("VIXEN_TIER_OBSERVABLE_SHOWCASE_DEMO")) {
+            static long obsShowcaseTick = 0;
+            ++obsShowcaseTick;
+            static constexpr double kObsShowcaseDistances[] = {
+                120.0, 100.0, 79.58, 60.0, 40.0, 19.89, 10.0, 4.0, 1.2,
+            };
+            static constexpr const char* kObsShowcaseNames[] = {
+                "far_orbit_120wu", "approach_100wu", "silhouette_79.58wu",
+                "approach_60wu", "windows_40wu", "windows_19.89wu",
+                "detail_10wu", "near_4wu", "near_1.2wu",
+            };
+            constexpr long kObsShowcaseHoldFrames = 60;
+            constexpr size_t kObsShowcaseHoldCount =
+                sizeof(kObsShowcaseDistances) / sizeof(kObsShowcaseDistances[0]);
+            const size_t holdIndex = static_cast<size_t>(
+                std::min<long>(obsShowcaseTick - 1,
+                               kObsShowcaseHoldCount * kObsShowcaseHoldFrames - 1) /
+                kObsShowcaseHoldFrames);
+            const size_t clampedHoldIndex = std::min(holdIndex, kObsShowcaseHoldCount - 1);
+            if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
+                camera->SetOrbitDistanceForTest(
+                    static_cast<float>(kObsShowcaseDistances[clampedHoldIndex]));
+            }
+            if ((obsShowcaseTick - 1) % kObsShowcaseHoldFrames == 0 && mainLogger) {
+                mainLogger->Info(std::string("[TierObservableShowcaseDemo] tick ") +
+                                 std::to_string(obsShowcaseTick) + " hold=" +
+                                 kObsShowcaseNames[clampedHoldIndex] + " dist=" +
+                                 std::to_string(kObsShowcaseDistances[clampedHoldIndex]));
+            }
+        }
+
         // Tiered-ESVO Inc3 M8 Task 17 (the epic's literal headline): the TRUE Earth-scale
         // (childScale=2^-10/hop) surface-to-orbit transition, using Task 16's CameraNode
         // look-target decoupling to keep the marked crossing octant framed through its
