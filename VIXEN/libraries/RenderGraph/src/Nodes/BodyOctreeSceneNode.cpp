@@ -1065,14 +1065,21 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     const VkDeviceSize brickLookupSize =
         std::max<VkDeviceSize>(concatenated_.brickGridLookup.size(), 1);
 
+    // E23-S3: a mip-only wholesale leg keeps the mip payload populated, but the
+    // fine pair is deliberately reserved without being copied. This removes the
+    // legacy compile-time wholesale path from the admission transfer; the
+    // descriptor remains valid because the destination still has its full size.
+    const bool suppressFineWholesale = wholesaleAdmissionEnabled_ &&
+        wholesaleAvailability_.committedRegime != Vixen::SVO::FootprintRegime::Surface;
+
     CreateHostBuffer(device, sdfSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        concatenated_.channelPool.empty() ? nullptr : concatenated_.channelPool.data(),
+        suppressFineWholesale || concatenated_.channelPool.empty() ? nullptr : concatenated_.channelPool.data(),
         sdfBuffer_, sdfMemory_, "channel pool SSBO");
 
     CreateHostBuffer(device, brickLookupSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
+        suppressFineWholesale || concatenated_.brickGridLookup.empty() ? nullptr : concatenated_.brickGridLookup.data(),
         brickLookupBuffer_, brickLookupMemory_, "brick-grid lookup SSBO");
     Vixen::SVO::RetainWholesalePayload(wholesaleAvailability_, Vixen::SVO::WholesalePayloadMask(),
         concatenated_.channelPool.size(), concatenated_.brickGridLookup.size(),
@@ -1121,8 +1128,10 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     RecordWholeBufferUpload(static_cast<uint64_t>(bricksSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(materialsSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(configSize));
-    RecordWholeBufferUpload(static_cast<uint64_t>(sdfSize));
-    RecordWholeBufferUpload(static_cast<uint64_t>(brickLookupSize));
+    if (!suppressFineWholesale) {
+        RecordWholeBufferUpload(static_cast<uint64_t>(sdfSize));
+        RecordWholeBufferUpload(static_cast<uint64_t>(brickLookupSize));
+    }
     RecordWholeBufferUpload(static_cast<uint64_t>(mipPoolSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(tierRefTableSize));
     RecordWholeBufferUpload(static_cast<uint64_t>(occupancyGridSize));

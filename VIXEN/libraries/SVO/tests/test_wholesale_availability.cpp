@@ -65,3 +65,23 @@ TEST(WholesaleAvailability, SignatureIsDeterministicForIdenticalState) {
     }
     EXPECT_EQ(WholesaleResidentSignatureFNV64(a, 7u), WholesaleResidentSignatureFNV64(b, 7u));
 }
+
+TEST(WholesaleAvailability, MipOnlyTransitionKeepsFinePairUnreadable) {
+    WholesaleAvailability state;
+    const uint32_t pair = WholesalePayloadMask();
+
+    EXPECT_FALSE(AdvanceWholesaleAvailability(state, FootprintRegime::MipHit, pair));
+    EXPECT_EQ(state.committedRegime, FootprintRegime::MipHit);
+    EXPECT_EQ(state.readyMask, 0u);
+    EXPECT_EQ(state.pendingMask, 0u);
+
+    // A mip-only leg must not promote the fine pair merely because the pair is
+    // available in the retained ledger; only Surface demand may do that.
+    RetainWholesalePayload(state, pair, 120u, 24u, 0x11u, 0x22u);
+    for (int i = 0; i < 8; ++i) {
+        EXPECT_FALSE(AdvanceWholesaleAvailability(state, FootprintRegime::MipHit, pair));
+        EXPECT_EQ(state.committedRegime, FootprintRegime::MipHit);
+        EXPECT_EQ(state.readyMask, 0u);
+        EXPECT_EQ(state.pendingMask, 0u);
+    }
+}
