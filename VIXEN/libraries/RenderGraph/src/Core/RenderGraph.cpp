@@ -588,6 +588,35 @@ void RenderGraph::Compile() {
     };
     GRAPH_LOG_INFO("[BootSchedulePrecedence] test_dispatch=" + std::to_string(findExecutionIndex("test_dispatch")) +
                    " shadow_visibility_wave=" + std::to_string(findExecutionIndex("shadow_visibility_wave")));
+    // E3-T1 probe (temporary, log-only): frame-sync payload of the two timestamped compute
+    // passes. Absence is reported as -1, never coerced to 0 — an absent group must fail the
+    // boot's integrity check rather than masquerade as an empty payload.
+    {
+        struct ProbePayload { int gid = -1, wait = -1, sig = -1, bar = -1; };
+        const auto probeGroup = [this](const char* name) {
+            ProbePayload p;
+            const auto it = std::find_if(executionOrder.begin(), executionOrder.end(),
+                [name](const NodeInstance* node) { return node->GetInstanceName() == name; });
+            if (it == executionOrder.end()) return p;
+            const SubmitGroup* g = FindGroupForNode(GetFrameSyncSchedule(), *it);
+            if (!g) return p;
+            p.gid  = static_cast<int>(g->groupId);
+            p.wait = static_cast<int>(g->waitEdges.size());
+            p.sig  = static_cast<int>(g->signalEdges.size());
+            p.bar  = static_cast<int>(g->entryBarriers.size());
+            return p;
+        };
+        const auto fmt = [](const ProbePayload& p) {
+            return "gid:" + std::to_string(p.gid) + ",wait:" + std::to_string(p.wait) +
+                   ",sig:" + std::to_string(p.sig) + ",bar:" + std::to_string(p.bar);
+        };
+        const ProbePayload march = probeGroup("test_dispatch");
+        const ProbePayload wave  = probeGroup("shadow_visibility_wave");
+        const int marchEff = march.bar + (march.sig > 0 ? 1 : 0);
+        const int waveEff  =             (wave.sig  > 0 ? 1 : 0);
+        GRAPH_LOG_INFO("[BootFrameSyncProbe] march=" + fmt(march) + " wave=" + fmt(wave) +
+                       " eff=" + std::to_string(marchEff) + ":" + std::to_string(waveEff));
+    }
     GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
         std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
         std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");

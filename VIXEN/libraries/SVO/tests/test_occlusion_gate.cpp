@@ -28,13 +28,16 @@
 using namespace Vixen::SVO;
 
 namespace {
-constexpr float kScreenHeightPx = 1080.0f;
-constexpr float kLeafSize_m     = 0.01f;
-constexpr float kPxThreshold    = 1.0f;
 constexpr float kNear           = 0.1f;
 constexpr float kFar            = 5000.0f;  // wide enough that frustum far-plane never gates these tests
-constexpr int   kBrickTierLevel = 6;        // matches BodyOctreeSceneNode::kShellDepth
 constexpr float kBodyRadius     = 24.0f;    // matches BuildRenderGraph.cpp's shared body bounding radius
+// Test-only representative brick cell/cone values.  They keep the line-up
+// candidates in Surface while making the policy source the CPU FootprintRegime
+// twin, not the legacy screen-space resolvability helper.
+constexpr float kFootprintCellWorldSize = 32.0f;
+constexpr float kFootprintRaySizeCoef   = 0.001f;
+constexpr float kFootprintRaySizeBias   = 0.0f;
+constexpr float kFootprintCosmicK       = 4.0f;
 
 // Standard camera looking down +Z from the origin -- same convention as
 // test_residency_trigger.cpp's own Camera fixture, so results are directly comparable.
@@ -48,11 +51,12 @@ struct Camera {
 };
 
 bool WantsIgnoringOcclusion(const Camera& cam, const glm::vec3& bodyPos) {
-    return InstanceWantsBrickResidency(
+    return InstanceWantsBrickResidencyByFootprint(
         bodyPos, kBodyRadius,
         cam.pos, cam.dir, cam.up, cam.right,
-        cam.fovDeg, cam.aspect, kScreenHeightPx, kNear, kFar,
-        kBrickTierLevel, kLeafSize_m, kPxThreshold);
+        cam.fovDeg, cam.aspect, kNear, kFar,
+        kFootprintCellWorldSize, kFootprintRaySizeCoef,
+        kFootprintRaySizeBias, kFootprintCosmicK);
 }
 
 // The combined decision the live app's UpdateBodySceneResidency makes per-instance:
@@ -69,6 +73,13 @@ bool WantsResidency(const Camera& cam, const glm::vec3& bodyPos,
     return !IsOccludedByResidentTrees(cam.pos, bodyPos, distance, residentOccluders, candidateId);
 }
 }  // namespace
+
+TEST(OcclusionGate, ResidencyPrecheckUsesFootprintPolicySource) {
+    const Camera cam;
+    EXPECT_TRUE(WantsIgnoringOcclusion(cam, glm::vec3(0.0f, 0.0f, 50.0f)));
+    EXPECT_FALSE(WantsIgnoringOcclusion(cam, glm::vec3(1000.0f, 0.0f, 10.0f)))
+        << "The occlusion composition must retain the frustum gate around the CPU footprint policy.";
+}
 
 // ---------------------------------------------------------------------------
 // RaySphereNearestHit: isolated unit checks of the primitive the gate is built on,

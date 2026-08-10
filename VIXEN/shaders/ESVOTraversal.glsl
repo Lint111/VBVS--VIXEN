@@ -141,6 +141,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
     uint parentPtr = 0u;
     nodeOrdinal = 0u;
     outLevel = uint(depth);
+    g_mipSampleLevel = outLevel;
     float footprint = worldDistToBrick * pc.raySizeCoef + pc.raySizeBias;
 #ifdef VIXEN_MIP_POLICY
     // Deep-Field Mip-Accessor Policy (design doc §regimes, regime 2 MIP HIT):
@@ -177,6 +178,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
         if (pc.raySizeCoef > 0.0 && (level + 1) <= policyTargetLevel) {
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
+            g_mipSampleLevel = outLevel;
             return true;
         }
 #else
@@ -184,6 +186,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
         if (pc.raySizeCoef > 0.0 && footprint >= nodeWorldSize) {
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
+            g_mipSampleLevel = outLevel;
             return true;
         }
 #endif
@@ -206,6 +209,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
         if (!childExists(validMask, localIdx)) {
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
+            g_mipSampleLevel = outLevel;
             recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
             return false;
         }
@@ -220,6 +224,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
             if (getFarBit(descriptor)) {
                 nodeOrdinal = parentPtr;
                 outLevel = uint(level + 1);
+                g_mipSampleLevel = outLevel;
                 recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
                 return false;
             }
@@ -230,6 +235,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
             // didn't reach the requested depth.
             nodeOrdinal = resolveLeafDescriptorIndex(descriptor, validMask, leafMask, localIdx);
             outLevel = uint(level);  // level 0 == brick itself when isLastHop
+            g_mipSampleLevel = outLevel;
             if (!isLastHop) recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2 (early-leaf collapse)
             return isLastHop;
         }
@@ -239,6 +245,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
             // node's own ordinal is still a valid coarser mip sample).
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
+            g_mipSampleLevel = outLevel;
             recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
             return false;
         }
@@ -250,6 +257,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
         if (getFarBit(descriptor)) {
             nodeOrdinal = parentPtr;
             outLevel = uint(level + 1);
+            g_mipSampleLevel = outLevel;
             recordFarFieldDescentFailLevel(uint(depth - level));  // round-13 probe #2
             return false;
         }
@@ -264,6 +272,7 @@ bool descendToNodeOrdinal(ivec3 canonicalCell, int octantMask, int depth,
     }
     nodeOrdinal = parentPtr;
     outLevel = 0u;  // full descent reached the brick itself
+    g_mipSampleLevel = outLevel;
     return true;
 }
 

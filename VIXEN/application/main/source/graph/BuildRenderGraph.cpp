@@ -1729,6 +1729,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         marchShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
     }
+    if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
+        marchShaderFeatures.push_back(kFeatureCompositionCounters.define);
+    }
     if (b1OcclusionCullEnabled) {  // one source of truth — the default-on gate above
         marchShaderFeatures.push_back(kFeatureB1OcclusionCull.define);
     }
@@ -1927,6 +1930,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     std::vector<std::string> lightingShaderFeatures;
     if (envFlagEnabled("VIXEN_DEBUG_CAPTURE")) {
         lightingShaderFeatures.push_back(kFeatureGpuTraceHooks.define);
+    }
+    if (envFlagEnabled("VIXEN_COMPOSITION_COUNTERS")) {
+        lightingShaderFeatures.push_back(kFeatureCompositionCounters.define);
     }
     const auto registerLightingFamily = [this, lightingShaderFeatures](
                                             NodeHandle libHandle,

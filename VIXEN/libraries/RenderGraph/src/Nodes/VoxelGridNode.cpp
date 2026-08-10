@@ -473,6 +473,43 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
         // mid-march safety net + RT twin only (batch-37: blind to the entry path).
         const auto entryRange = debugCaptureResource_->ReadEntryGateRange(vulkanDevice->device);
         std::cout << "[EntryGateLhs] min=" << entryRange.lhsMin << " max=" << entryRange.lhsMax << std::endl;
+
+        // E6-T2: the fixed-capacity mip read ledger is snapshotted by the
+        // existing per-frame RayTraceBuffer::Reset path.  Emit only non-zero
+        // body/level cells so far/near legs can be reduced directly to p95/max.
+        const auto& mipSnapshots = debugCaptureResource_->GetMipReadSnapshots();
+        for (size_t frame = 0; frame < mipSnapshots.size(); ++frame) {
+            const auto& snapshot = mipSnapshots[frame];
+            for (uint32_t body = 0; body < Debug::MAX_MIP_COUNTER_BODIES; ++body) {
+                for (uint32_t level = 0; level < Debug::MAX_MIP_COUNTER_LEVELS; ++level) {
+                    const uint32_t bytes = snapshot.readBytes[body][level];
+                    const uint32_t samples = snapshot.sampleCount[body][level];
+                    if (bytes == 0u && samples == 0u) continue;
+                    std::cout << "[MipReadBytes] frame=" << frame
+                              << " body=" << body << " level=" << level
+                              << " bytes=" << bytes << " samples=" << samples << std::endl;
+                }
+            }
+            if (snapshot.overflow != 0u) {
+                std::cout << "[MipReadCounterOverflow] frame=" << frame << " value="
+                          << snapshot.overflow << std::endl;
+            }
+        }
+        const auto finalMipSnapshot = debugCaptureResource_->ReadMipReadByteCounters(vulkanDevice->device);
+        for (uint32_t body = 0; body < Debug::MAX_MIP_COUNTER_BODIES; ++body) {
+            for (uint32_t level = 0; level < Debug::MAX_MIP_COUNTER_LEVELS; ++level) {
+                const uint32_t bytes = finalMipSnapshot.readBytes[body][level];
+                const uint32_t samples = finalMipSnapshot.sampleCount[body][level];
+                if (bytes == 0u && samples == 0u) continue;
+                std::cout << "[MipReadBytes] frame=" << mipSnapshots.size()
+                          << " body=" << body << " level=" << level
+                          << " bytes=" << bytes << " samples=" << samples << std::endl;
+            }
+        }
+        if (finalMipSnapshot.overflow != 0u) {
+            std::cout << "[MipReadCounterOverflow] frame=" << mipSnapshots.size()
+                      << " value=" << finalMipSnapshot.overflow << std::endl;
+        }
         std::cout << "[FarFieldGateRhs] min=" << ranges.rhsMin << " max=" << ranges.rhsMax << std::endl;
 
         // Round-6 blocker-2 probe: raw RT TLAS candidate-loop entries.
@@ -641,6 +678,30 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
         const auto compositeBlend = debugCaptureResource_->ReadCompositeBlendStats(vulkanDevice->device);
         std::cout << "[CompositeBlend] blends=" << compositeBlend.blends
                    << " behindMax=" << compositeBlend.behindMax << std::endl;
+
+        if (std::getenv("VIXEN_COMPOSITION_COUNTERS")) {
+            const auto composition =
+                debugCaptureResource_->ReadCompositionCounterStats(vulkanDevice->device);
+            constexpr const char* regimes[3] = {"surface", "mip", "cosmic"};
+            for (uint32_t regime = 0; regime < 3; ++regime) {
+                std::cout << "[CompositionPixels] regime=" << regimes[regime]
+                           << " virtual=" << composition.pixels[regime][0]
+                           << " materialized=" << composition.pixels[regime][1]
+                           << " mixed=" << composition.pixels[regime][2] << std::endl;
+            }
+            constexpr const char* waves[2] = {"queued", "visibility"};
+            for (uint32_t wave = 0; wave < 2; ++wave) {
+                for (uint32_t regime = 0; regime < 3; ++regime) {
+                    std::cout << "[CompositionShadowWave] wave=" << waves[wave]
+                               << " regime=" << regimes[regime]
+                               << " virtual=" << composition.shadowWaveEntries[wave][regime][0]
+                               << " materialized=" << composition.shadowWaveEntries[wave][regime][1]
+                               << " mixed=" << composition.shadowWaveEntries[wave][regime][2]
+                               << std::endl;
+                }
+            }
+            std::cout << "[CompositionRelaxed] rays=" << composition.relaxedRays << std::endl;
+        }
 
         // Round-7 blocker-1 probe: mip-resolve success/fail -- discriminates
         // hypothesis (a) "the mip resolve fails" from (b)/(c) "resolves fine

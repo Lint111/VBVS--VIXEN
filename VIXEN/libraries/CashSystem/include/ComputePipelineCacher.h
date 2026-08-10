@@ -83,6 +83,19 @@ struct ComputePipelineCreateParams {
  * - Workgroup size (metadata only)
  * - Specialization constants
  */
+// E3-T1 probe (temporary, log-only): per-boot creation ordinals for the two timestamped compute
+// programs. `ordinal` is the 1-based count of ACTUAL ComputePipelineCacher::Create calls at the
+// moment that program's pipeline was created; 0 means no Vulkan pipeline was created for it (an
+// in-process cache hit, or the program never appeared). `vkCacheNonNull` records whether the
+// VkPipelineCache handed to vkCreateComputePipelines was non-null — expected 0 at this revision.
+struct ComputePipelineCreationProbe {
+    unsigned marchOrdinal = 0;
+    unsigned waveOrdinal = 0;
+    int marchVkCacheNonNull = 0;
+    int waveVkCacheNonNull = 0;
+};
+const ComputePipelineCreationProbe& GetComputePipelineCreationProbe();
+
 class ComputePipelineCacher : public TypedCacher<ComputePipelineWrapper, ComputePipelineCreateParams> {
 public:
     ComputePipelineCacher() = default;

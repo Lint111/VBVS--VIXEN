@@ -94,6 +94,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                             inout DebugRaySample debugInfo) {
     hitColor = vec3(0.0); hitNormal = vec3(0.0); hitT = 0.0; hitRoughness = 0.5;
     hitBrickIndex = 0u; hitVoxelLinearIdx = 0u; hitInstanceIdx = 0xFFFFFFFFu;
+    g_lastFootprintRegime = 1u;
     debugInfo.hitFlag = 0u;
     debugInfo.exitCode = DEBUG_EXIT_NONE;
 
@@ -146,6 +147,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         if (oi == 3) incrRtLoopEntriesOct3();
 
         g_octreeIdx      = oi;
+        g_mipSampleLevel = 0u;
         g_brickArrayBase = configs[oi].brickArrayBase;
         const int bpa = configs[oi].bricksPerAxis;
         if (bpa <= 0) continue;
@@ -307,6 +309,16 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 bestOctreeIdx = oi;
                 bestCell = cell;
                 hitNormal = -gridDirN;
+#ifdef VIXEN_COMPOSITION_COUNTERS
+                // Inline exact FootprintRegime formula (the production helper
+                // specified by the residency doc does not exist yet).
+                float compositionFootprint =
+                    tCellEnter * pc.raySizeCoef + pc.raySizeBias;
+                g_lastFootprintRegime =
+                    (pc.raySizeCoef <= 0.0 || compositionFootprint < worldCellSize / 8.0)
+                        ? 1u
+                        : (compositionFootprint < pc.cosmicK * worldCellSize ? 2u : 3u);
+#endif
 
                 // Coordinate-bit descent to the REAL ESVO mip sample (replaces the
                 // degenerate sampleHitShadingChannels entry-point resolution -- see
@@ -329,6 +341,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                                                             tCellEnter, worldCellSize, farNodeOrdinal, farSampledLevel);
                 incrFarFieldCount();
                 if (!farReachedBrick) incrFarFieldDescentFail();  // round-13 probe
+                g_mipSampleLevel = farSampledLevel;
                 bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal);
                 recordFarFieldMipResolve(farMipResolved);  // round-7 blocker-1 probe
                 if (farMipResolved) {
@@ -378,6 +391,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 g_lastHitWasFarField = false;  // round-7 blocker-1 probe #3: a closer
                                                 // ordinary brick march beat the far-field
                                                 // candidate within this SAME rayQuery loop
+                g_lastFootprintRegime = 1u;
                 // Fix 4 (prior version): populate hitColor/hitRoughness via the SAME
                 // channel-sample helper the DDA twin calls.
                 sampleHitShadingChannels(gridEntry + gridDirN * sHit, vec3(1.0), 0.5, hitColor, hitRoughness);
@@ -449,6 +463,7 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         const int  oi       = int(bodyInstances[ci].octreeIndex);
 
         g_octreeIdx      = oi;
+        g_mipSampleLevel = 0u;
         g_brickArrayBase = configs[oi].brickArrayBase;
         const int bpa = configs[oi].bricksPerAxis;
         if (bpa <= 0) continue;
@@ -475,6 +490,22 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         const vec3 tlo = min(t0, t1);
         const float tCellEnter = max(max(tlo.x, tlo.y), max(tlo.z, 0.0));
         int enterAxis = (tlo.x >= tlo.y) ? ((tlo.x >= tlo.z) ? 0 : 2) : ((tlo.y >= tlo.z) ? 1 : 2);
+
+#ifdef VIXEN_COMPOSITION_COUNTERS
+        // A candidate AABB is a materialized destination evaluated by this
+        // wave entry even when its SDF does not ultimately occlude the ray.
+        // FootprintRegime is not materialized in code yet, so keep the design
+        // formula inline for this probe call site.
+        float compositionCellWorldSize = (1.0 / float(bpa)) / dirLen;
+        float compositionFootprint = tCellEnter * pc.raySizeCoef + pc.raySizeBias;
+        uint compositionRegime =
+            (pc.raySizeCoef <= 0.0 || compositionFootprint < compositionCellWorldSize / 8.0)
+                ? 1u
+                : (compositionFootprint < pc.cosmicK * compositionCellWorldSize ? 2u : 3u);
+        g_lastShadowCompositionRegime =
+            max(g_lastShadowCompositionRegime, compositionRegime);
+        g_lastShadowCompositionSourceMask |= 2u;
+#endif
 
         const int brickSize = 8;
         const float bpaF = float(bpa);

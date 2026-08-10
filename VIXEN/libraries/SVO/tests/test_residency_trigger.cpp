@@ -78,7 +78,34 @@ Camera Yawed(const Camera& base, float yawDeg) {
     out.right = glm::normalize(glm::cross(base.up, out.dir));
     return out;
 }
+
+bool WantsByFootprint(const Camera& cam, const glm::vec3& bodyPos,
+                      float cellWorldSize = 1.0f, float raySizeCoef = 0.1f,
+                      float raySizeBias = 0.0f, float cosmicK = 4.0f) {
+    return InstanceWantsBrickResidencyByFootprint(
+        bodyPos, kBodyRadius, cam.pos, cam.dir, cam.up, cam.right,
+        cam.fovDeg, cam.aspect, kNear, kFar,
+        cellWorldSize, raySizeCoef, raySizeBias, cosmicK);
+}
 }  // namespace
+
+TEST(ResidencyTrigger, FootprintPolicyUsesSurfaceRegimeAfterFrustumGate) {
+    const Camera cam;
+    EXPECT_TRUE(WantsByFootprint(cam, glm::vec3(0.0f, 0.0f, 1.0f)));
+    EXPECT_FALSE(WantsByFootprint(cam, glm::vec3(0.0f, 0.0f, 20.0f)))
+        << "A MipHit/Cosmic footprint must not request the brick tier.";
+}
+
+TEST(ResidencyTrigger, FootprintPolicyRetainsFrustumRejection) {
+    const Camera cam;
+    EXPECT_FALSE(WantsByFootprint(cam, glm::vec3(1000.0f, 0.0f, 10.0f)));
+}
+
+TEST(ResidencyTrigger, FootprintPolicyTracksBiasAndCosmicInputs) {
+    const Camera cam;
+    EXPECT_TRUE(WantsByFootprint(cam, glm::vec3(0.0f, 0.0f, 1.0f), 1.0f, 0.1f, 0.0f));
+    EXPECT_FALSE(WantsByFootprint(cam, glm::vec3(0.0f, 0.0f, 1.0f), 1.0f, 0.1f, 0.2f));
+}
 
 // ---------------------------------------------------------------------------
 // Scenario (a): camera moves toward a stationary body at fixed FOV/orientation

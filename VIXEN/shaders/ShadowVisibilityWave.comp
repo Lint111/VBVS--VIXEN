@@ -134,7 +134,10 @@ void main() {
     if (shadowConfig.enabled != 0u) {
         vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
         float lightDist = sqrt(dist2);
-        visible = !TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
+        bool occluded = TraceWorldShadow(shadowOrigin, lightDir, 0.0, lightDist);
+        recordCompositionShadowWave(
+            1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
+        visible = !occluded;
     }
 
     if (visible) {
@@ -185,6 +188,8 @@ void main() {
             bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
                                              0.0,
                                              shadowConfig.maxShadowDistance);
+            recordCompositionShadowWave(
+                1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
             if (occluded) visBits &= ~(1u << i);
         }
     }

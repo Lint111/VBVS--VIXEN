@@ -31,6 +31,7 @@ RayTraceBuffer::RayTraceBuffer(RayTraceBuffer&& other) noexcept
     , capacity_(other.capacity_)
     , isHostVisible_(other.isHostVisible_)
     , rayTraces_(std::move(other.rayTraces_))
+    , mipReadSnapshots_(std::move(other.mipReadSnapshots_))
     , capturedCount_(other.capturedCount_)
     , totalWrites_(other.totalWrites_)
     , debugName_(std::move(other.debugName_))
@@ -53,6 +54,7 @@ RayTraceBuffer& RayTraceBuffer::operator=(RayTraceBuffer&& other) noexcept {
         capacity_ = other.capacity_;
         isHostVisible_ = other.isHostVisible_;
         rayTraces_ = std::move(other.rayTraces_);
+        mipReadSnapshots_ = std::move(other.mipReadSnapshots_);
         capturedCount_ = other.capturedCount_;
         totalWrites_ = other.totalWrites_;
         debugName_ = std::move(other.debugName_);
@@ -229,6 +231,7 @@ bool RayTraceBuffer::Create(VkDevice device, VkPhysicalDevice physicalDevice) {
         // which reads blends>0, behindMax=0).
         header->compositeBlends = 0u;
         header->compositeBehindMaxBits = 0u;
+        std::memset(&header->mipReadByteCounters, 0, sizeof(header->mipReadByteCounters));
         vkUnmapMemory(device, memory_);
     }
 
@@ -248,6 +251,7 @@ void RayTraceBuffer::Destroy(VkDevice device) {
 
     bufferSize_ = 0;
     rayTraces_.clear();
+    mipReadSnapshots_.clear();
     capturedCount_ = 0;
     totalWrites_ = 0;
 }
@@ -261,6 +265,18 @@ bool RayTraceBuffer::Reset(VkDevice device) {
         return false;
     }
 
+    // The debug ledger is written by shader atomics into this host-visible
+    // storage buffer.  Reset() runs while the next frame is being assembled,
+    // so without a capture-only idle point the host memset below can race the
+    // previous frame's GPU writes and make readBytes/sampleCount describe
+    // different partial snapshots (for example bytes=0 with samples>0).
+    // Normal rendering never enables capture, so this synchronization is
+    // confined to the diagnostic path whose correctness is more important
+    // than its added per-frame wait.
+    if (captureEnabled_) {
+        vkDeviceWaitIdle(device);
+    }
+
     void* data = nullptr;
     if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
         return false;
@@ -269,6 +285,8 @@ bool RayTraceBuffer::Reset(VkDevice device) {
     // Reset write index
     auto* header = static_cast<TraceBufferHeader*>(data);
     header->writeIndex = 0;
+    mipReadSnapshots_.push_back(header->mipReadByteCounters);
+    std::memset(&header->mipReadByteCounters, 0, sizeof(header->mipReadByteCounters));
 
     vkUnmapMemory(device, memory_);
 
@@ -278,6 +296,21 @@ bool RayTraceBuffer::Reset(VkDevice device) {
     totalWrites_ = 0;
 
     return true;
+}
+
+MipReadByteCounters RayTraceBuffer::ReadMipReadByteCounters(VkDevice device) const {
+    MipReadByteCounters result{};
+    if (!IsValid() || !isHostVisible_) {
+        return result;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return result;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    result = header->mipReadByteCounters;
+    vkUnmapMemory(device, memory_);
+    return result;
 }
 
 uint32_t RayTraceBuffer::Read(VkDevice device) {
@@ -657,6 +690,31 @@ CompositeBlendStats RayTraceBuffer::ReadCompositeBlendStats(VkDevice device) con
     const auto* header = static_cast<const TraceBufferHeader*>(data);
     stats.blends = header->compositeBlends;
     stats.behindMax = std::bit_cast<float>(header->compositeBehindMaxBits);
+    vkUnmapMemory(device, memory_);
+    return stats;
+}
+
+CompositionCounterStats RayTraceBuffer::ReadCompositionCounterStats(VkDevice device) const {
+    CompositionCounterStats stats{};
+    if (!IsValid() || !isHostVisible_) {
+        return stats;
+    }
+    void* data = nullptr;
+    if (vkMapMemory(device, memory_, 0, sizeof(TraceBufferHeader), 0, &data) != VK_SUCCESS) {
+        return stats;
+    }
+    const auto* header = static_cast<const TraceBufferHeader*>(data);
+    for (uint32_t regime = 0; regime < 3; ++regime) {
+        for (uint32_t source = 0; source < 3; ++source) {
+            stats.pixels[regime][source] =
+                header->farFieldTerminalPixels[regime * 3 + source];
+            for (uint32_t wave = 0; wave < 2; ++wave) {
+                stats.shadowWaveEntries[wave][regime][source] =
+                    header->farFieldTerminalPixels[9 + wave * 9 + regime * 3 + source];
+            }
+        }
+    }
+    stats.relaxedRays = header->farFieldTerminalPixels[27];
     vkUnmapMemory(device, memory_);
     return stats;
 }

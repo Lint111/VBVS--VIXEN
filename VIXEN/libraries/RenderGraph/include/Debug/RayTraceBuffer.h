@@ -214,6 +214,18 @@ struct CompositeBlendStats {
     float behindMax = 0.0f;
 };
 
+/** E1-T1 stencil slice 0 composition census. Indices are
+ * [regime: surface,mip,cosmic][source: virtual,materialized,mixed]. */
+struct CompositionCounterStats {
+    uint32_t pixels[3][3] = {};
+    // wave 0 = queued ShadowRayTrace; wave 1 = derived ShadowVisibilityWave
+    // (analytic and reservoir dispatches are the same wave type).
+    uint32_t shadowWaveEntries[2][3][3] = {};
+    // Rays for which the blend-interval-gated policy admitted at least one
+    // candidate that the former nearest-hit entry-cull would have rejected.
+    uint32_t relaxedRays = 0;
+};
+
 /**
  * @brief GPU buffer for capturing per-ray traversal traces
  *
@@ -362,6 +374,12 @@ public:
      */
     FarFieldOct3Stats ReadFarFieldOct3Stats(VkDevice device) const;
 
+    /// Read the per-frame fixed-capacity E6-T2 body x mip-level byte ledger.
+    MipReadByteCounters ReadMipReadByteCounters(VkDevice device) const;
+    [[nodiscard]] const std::vector<MipReadByteCounters>& GetMipReadSnapshots() const {
+        return mipReadSnapshots_;
+    }
+
     /**
      * @brief Read the round-13 probe #2 descent-fail level min/max (see
      * farFieldDescentFailLevelMin/Max in DebugRaySample.h). Same never-reset
@@ -477,6 +495,9 @@ public:
      */
     CompositeBlendStats ReadCompositeBlendStats(VkDevice device) const;
 
+    /** Read the env-gated slice-0 histogram stored in the terminal-pixel ring. */
+    CompositionCounterStats ReadCompositionCounterStats(VkDevice device) const;
+
     std::any GetData() const override;
 
 protected:
@@ -555,6 +576,7 @@ private:
     std::vector<RayTrace> rayTraces_;
     uint32_t capturedCount_ = 0;
     uint32_t totalWrites_ = 0;
+    std::vector<MipReadByteCounters> mipReadSnapshots_;
 
     // IDebugCapture identity/state (see SetDebugName/SetBindingIndex above)
     std::string debugName_ = "RayTraceBuffer";

@@ -100,6 +100,9 @@ struct WorldHit {
     // bookkeeping below) -- vec3(0.0) when no second candidate existed this frame.
     float residualT;
     vec3  behindColor;
+    // E1-T1 probe-only terminal classification; not serialized into HitRecord.
+    uint footprintRegime;
+    uint sourceMask;
 };
 
 // ============================================================================
@@ -162,10 +165,17 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     float secondT     = 1e30;
     vec3  secondColor = vec3(0.0);
     float bestResidualT = 1.0;  // 1.0 == no-op; overwritten only if the winner is a regime-3 hit
+#ifdef VIXEN_COMPOSITION_COUNTERS
+    // E2-T1: a ray may admit more than one behind candidate, but the census
+    // classifies rays, not extra instance traversals. Record at most once.
+    bool compositionRelaxedRayRecorded = false;
+#endif
 #endif
     uint  bestInstIdx     = 0xFFFFFFFFu;  // M3 round 3: winning instance, see WorldHit.instIdx
     float bestEmission    = 0.0;          // M11.2: winning instance's emission intensity
     bool  bestWasFarField = false;        // round 9: see WorldHit.wasFarField
+    uint  bestFootprintRegime = 1u;
+    uint  sourceMask = 0u;
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
     // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: search every
@@ -199,10 +209,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         rqDbg.posMirrored   = vec3(0.0);
         rqDbg.localNorm     = vec3(0.0);
         g_lastHitWasFarField = false;  // round-7 blocker-1 probe #3: reset before the call
+        g_lastFootprintRegime = 1u;
         bool rqHit = traverseRayQueryWorld(rayOrigin, normalize(rayDir),
                                             rqColor, rqNormal, rqT, rqRoughness,
                                             rqBrick, rqVoxel, rqInstIdx, rqDbg);
         bool rqWasFarField = g_lastHitWasFarField;
+        uint rqFootprintRegime = g_lastFootprintRegime;
         if (rqHit && isCloserHit(rqT, rqInstIdx, bestT, bestInstIdx)) {
             if (rqWasFarField) { incrFarFieldWon(); }  // round-7 blocker-1 probe #3
 #ifdef VIXEN_REGIME3_COMPOSITE
@@ -221,6 +233,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestInstIdx    = rqInstIdx;
             bestEmission   = rqInst.recipeParams[3];
             bestWasFarField = rqWasFarField;  // round 9: rides the winner, not a sticky global
+            bestFootprintRegime = rqFootprintRegime;
+            sourceMask |= 2u;
             anyHit         = true;
         }
     }
@@ -348,6 +362,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             }
 #endif
 
+            if (pHit) sourceMask |= 1u;
             if (pHit && isCloserHit(pT, uint(instIdx), bestT, bestInstIdx)) {
 #ifdef VIXEN_REGIME3_COMPOSITE
                 if (anyHit) { secondT = bestT; secondColor = bestColor; }
@@ -365,6 +380,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // spare for both, so it carries the light body's emission intensity (0.0 for
                 // every non-emissive body) without a new BodyInstance field.
                 bestEmission   = inst.recipeParams[3];
+                bestFootprintRegime = 1u;
                 anyHit         = true;
             }
             continue;  // procedural body fully handled; skip the ESVO path
@@ -380,6 +396,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // Set globals used by fetchESVONode (via g_esvoNodeBase in ESVOTraversal.glsl)
         // and by marchBrickInstanced (via g_brickArrayBase below).
         g_octreeIdx      = int(oi);
+        g_mipSampleLevel = 0u;
         g_esvoNodeBase   = configs[oi].nodeArrayBase;   // declared in ESVOTraversal.glsl
         g_brickArrayBase = configs[oi].brickArrayBase;
 
@@ -479,6 +496,22 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             continue;  // ray misses this instance's AABB
         }
 
+        g_lastFootprintRegime = 1u;
+#ifdef VIXEN_COMPOSITION_COUNTERS
+        // E6-T1: routed through the shared classifyFootprintRegime (SceneBindings.glsl)
+        // instead of the former inline duplicate. Same formula, same inputs.
+        float compositionDirLen = length(localRayDir);
+        int compositionBpa = configs[oi].bricksPerAxis;
+        if (compositionDirLen >= 1e-12 && compositionBpa > 0) {
+            float compositionWorldDist =
+                0.5 * (max(gridT.x, 0.0) + gridT.y) * inst.renderScale;
+            float compositionCellWorldSize =
+                ((1.0 / float(compositionBpa)) / compositionDirLen) * inst.renderScale;
+            g_lastFootprintRegime = classifyFootprintRegime(
+                compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
+        }
+#endif
+
 #ifdef VIXEN_RTQUERY_TRAVERSAL
         // Round-3 hoist redesign: this instance's FORMAT_STORED_SDF geometry was
         // already searched (or not) by the single traverseRayQueryWorld call above
@@ -531,7 +564,26 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             // this reject must never eliminate a candidate the winner compare would have
             // preferred.
             float entryTieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
-            if (entryTWorld > bestT + entryTieBand) {
+            bool entryBehindCurrentBest = entryTWorld > bestT + entryTieBand;
+#ifdef VIXEN_REGIME3_COMPOSITE
+            // E2-T1: the nearest-hit cull is valid for opaque winners, but a
+            // partial-coverage cosmic winner consumes one farther layer. Match
+            // BodyInstanceRayMarch.comp's blend interval exactly so candidates
+            // that cannot contribute retain the original cull.
+            bool relaxForComposite =
+                bestFootprintRegime == 3u &&
+                bestResidualT > 1e-6 &&
+                bestResidualT < 0.999999;
+#ifdef VIXEN_COMPOSITION_COUNTERS
+            if (entryBehindCurrentBest && relaxForComposite && !compositionRelaxedRayRecorded) {
+                recordCompositionRelaxedRay();
+                compositionRelaxedRayRecorded = true;
+            }
+#endif
+            if (!relaxForComposite && entryBehindCurrentBest) {
+#else
+            if (entryBehindCurrentBest) {
+#endif
                 // This instance's nearest possible entry is already farther than
                 // something already hit this ray — its full ESVO traversal
                 // (below) cannot possibly produce the nearest hit. Skip it
@@ -622,6 +674,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                                            hitBrick, hitVoxel, dbg);
 #endif
         bool instWasFarField = g_lastHitWasFarField;  // round-7 blocker-1 probe #3
+        uint instFootprintRegime = g_lastFootprintRegime;
         g_lastHitWasFarField = false;  // consume before the next instance's call
 #ifdef VIXEN_REGIME3_COMPOSITE
         // Compositing slice part 2: consume+reset the SAME call-boundary-global
@@ -632,6 +685,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         g_lastRegime3ResidualT = 1.0;
 #endif
         hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see comment above)
+        if (instHit) sourceMask |= 2u;
 #ifdef VIXEN_GPU_TRACE_HOOKS
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook
 #endif
@@ -657,6 +711,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             // light-tree's own bake-side consumption, per the M11.2 brief's scope).
             bestEmission    = inst.recipeParams[3];
             bestWasFarField = instWasFarField;  // round 9: rides the winner, not a sticky global
+            bestFootprintRegime = instFootprintRegime;
             anyHit          = true;
         }
 #ifdef VIXEN_REGIME3_COMPOSITE
@@ -683,6 +738,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     hit.instIdx    = bestInstIdx;
     hit.emission   = bestEmission;
     hit.wasFarField = anyHit && bestWasFarField;
+    hit.footprintRegime = bestFootprintRegime;
+    hit.sourceMask = sourceMask;
 #ifdef VIXEN_REGIME3_COMPOSITE
     hit.residualT   = bestResidualT;
     hit.behindColor = secondColor;
@@ -732,6 +789,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
+    g_lastShadowCompositionRegime = 1u;
+    g_lastShadowCompositionSourceMask = 0u;
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
     // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: same hoist as TraceWorld's
@@ -796,6 +855,9 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
 #endif
 
             if (pHit && pT >= tmin && pT <= tmax) {
+#ifdef VIXEN_COMPOSITION_COUNTERS
+                g_lastShadowCompositionSourceMask |= 1u;
+#endif
 #ifdef VIXEN_SHADOW_DBG
                 if (g_shadowDbgArm != 0) { g_shadowDbgInst = instIdx; g_shadowDbgSHitGrid = pT; g_shadowDbgLeafKind = 2; }
 #endif
@@ -810,6 +872,7 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         // and by marchBrickInstanced (via g_brickArrayBase below). Same contract as
         // TraceWorld -- see that function's identical block for the full rationale.
         g_octreeIdx      = int(oi);
+        g_mipSampleLevel = 0u;
         g_esvoNodeBase   = configs[oi].nodeArrayBase;
         g_brickArrayBase = configs[oi].brickArrayBase;
 
@@ -839,6 +902,28 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         if (gridT.y < 0.0) {
             continue;  // ray misses this instance's AABB entirely
         }
+
+#ifdef VIXEN_COMPOSITION_COUNTERS
+        uint instCompositionRegime = 1u;
+        // E6-T1: routed through the shared classifyFootprintRegime (SceneBindings.glsl)
+        // instead of the former inline duplicate. Same formula, same inputs.
+        float compositionDirLen = length(localRayDir);
+        int compositionBpa = configs[oi].bricksPerAxis;
+        if (compositionDirLen >= 1e-12 && compositionBpa > 0) {
+            float compositionWorldDist =
+                0.5 * (max(gridT.x, 0.0) + gridT.y) * inst.renderScale;
+            float compositionCellWorldSize =
+                ((1.0 / float(compositionBpa)) / compositionDirLen) * inst.renderScale;
+            instCompositionRegime = classifyFootprintRegime(
+                compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
+        }
+        // Slice 0 counts destination wave ENTRIES, not only occluders. Reaching
+        // this AABB means the materialized evaluator participated in the entry;
+        // preserve the most accumulative destination regime across candidates.
+        g_lastShadowCompositionRegime =
+            max(g_lastShadowCompositionRegime, instCompositionRegime);
+        g_lastShadowCompositionSourceMask |= 2u;
+#endif
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
         // Round-3 hoist redesign: this instance's FORMAT_STORED_SDF geometry was

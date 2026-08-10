@@ -383,6 +383,22 @@ endif()
 gtest_discover_tests(test_resolvable_level)
 
 # ===========================================================================
+# FootprintRegime Tests  (E6-T1 — the shared FootprintRegime classifier: CPU
+# twin of shaders/SceneBindings.glsl's classifyFootprintRegime. Pure math, no
+# octree/GPU needed: all three regimes, zero/negative coefficients, exact
+# thresholds, float boundary behavior)
+# ===========================================================================
+add_executable(test_footprint_regime test_footprint_regime.cpp)
+if(TARGET SVO)
+    target_link_libraries(test_footprint_regime PRIVATE
+        GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_footprint_regime PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_footprint_regime)
+
+# ===========================================================================
 # Frustum Cull Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, frustum piece
 # — pure math, no octree/GPU needed: BuildFrustum/SphereIntersectsFrustum, plus
 # the residency hysteresis-pad constant)

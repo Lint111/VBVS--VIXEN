@@ -24,6 +24,19 @@
 #ifndef MIP_FALLBACK_GLSL
 #define MIP_FALLBACK_GLSL
 
+void recordMipSampleRead(uint bodyId, uint level) {
+    if (bodyId >= 192u || level >= 16u) {
+        atomicExchange(mipReadCounterOverflow, 1u);
+        return;
+    }
+    const uint kSampleBytes = 8u; // one serialized MipSample = {value, coverage}
+    uint previousBytes = atomicAdd(mipReadBytes[bodyId][level], kSampleBytes);
+    uint previousSamples = atomicAdd(mipReadSamples[bodyId][level], 1u);
+    if (previousBytes > 0xFFFFFFFFu - kSampleBytes || previousSamples == 0xFFFFFFFFu) {
+        atomicExchange(mipReadCounterOverflow, 1u);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // mipChannelIndex: return the channel INDEX (0..channelCount-1) for a semantic
 // in the active OctreeConfig, or 0xFFFFFFFFu if absent. Distinct from
@@ -52,6 +65,7 @@ vec2 readMipSample(uint nodeIdx, uint sem, float missingValue) {
     uint base = octreeConfig.mipPoolBase + (nodeIdx * octreeConfig.channelCount + ch) * 2u;
     if (base + 1u >= mipPool.length()) return vec2(missingValue, 0.0);
 
+    recordMipSampleRead(uint(max(g_octreeIdx, 0)), g_mipSampleLevel);
     return vec2(mipPool[base], mipPool[base + 1u]);
 }
 

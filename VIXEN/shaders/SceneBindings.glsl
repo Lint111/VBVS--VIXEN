@@ -465,6 +465,14 @@ layout(std430, binding = 4) buffer RayTraceBuffer {
     // Must mirror DebugRaySample.h's TraceBufferHeader field order exactly.
     uint compositeBlends;
     uint compositeBehindMaxBits;
+    // E6-T2 fixed-capacity per-serialized-body/per-mip-level read ledger.
+    // The body index is g_octreeIdx; the level is the mip level selected by
+    // descendToNodeOrdinal (0 = brick level).  It is reset per frame by the
+    // existing RayTraceBuffer reset path and never grows in shader code.
+    uint mipReadBytes[192][16];
+    uint mipReadSamples[192][16];
+    uint mipReadCounterOverflow;
+    uint _mipReadPadding[3];
     uint traceData[];
 };
 
@@ -481,9 +489,64 @@ const uint kIntensityFixedPointScale = 1000000u;
 // a slot collision just overwrites an earlier sample (a decode aid, not a
 // census -- farFieldTerminal already gives the exact count).
 void recordFarFieldTerminalPixel(uvec2 pixel) {
+#ifdef VIXEN_COMPOSITION_COUNTERS
+    // Slice 0 owns this historical ring while enabled; the exact terminal
+    // pixel coordinate decode is intentionally unavailable on probe boots.
+    return;
+#else
     uint slot = atomicAdd(farFieldTerminalPixelWriteCount, 1u) % 32u;
     farFieldTerminalPixels[slot] = (pixel.x << 16) | (pixel.y & 0xFFFFu);
+#endif
 }
+
+// E6-T1: the shared FootprintRegime classifier (stencil doc's prerequisite +
+// residency-unification design's step 1). ZERO behavior change: this is the
+// exact three-comparison arithmetic that was previously duplicated inline at
+// this file's entry dispatch and at TraceWorld.glsl's two composition-probe
+// call sites, now named ONE function every call site routes through. Returns
+// 1=Surface, 2=MipHit, 3=Cosmic (E1-T1's stencil-slot numbering, preserved
+// bit-for-bit). `raySizeCoef`/`raySizeBias`/`cosmicK` come straight from the
+// frame's push constants; the /8.0 brick divisor is the entry-cell subdivision
+// this composition probe has always used (matches SceneBindings.glsl's real
+// (non-probe) entry-dispatch gate's constant at this same file, and
+// TraceWorld.glsl's two former inline copies).
+uint classifyFootprintRegime(float worldDist, float cellWorldSize,
+                              float raySizeCoef, float raySizeBias, float cosmicK) {
+    float footprint = worldDist * raySizeCoef + raySizeBias;
+    return (raySizeCoef <= 0.0 || footprint < cellWorldSize / 8.0)
+        ? 1u
+        : (footprint < cosmicK * cellWorldSize ? 2u : 3u);
+}
+
+// E1-T1 stencil slice 0. The design's authoritative values are kept local to
+// this probe until FootprintRegime exists as production code: 1=Surface,
+// 2=MipHit, 3=Cosmic; source bits 1=virtual, 2=materialized.
+#ifdef VIXEN_COMPOSITION_COUNTERS
+uint compositionSourceClass(uint sourceMask) {
+    return sourceMask == 1u ? 0u : (sourceMask == 2u ? 1u : 2u);
+}
+
+void recordCompositionPixel(uint regime, uint sourceMask) {
+    if (regime < 1u || regime > 3u || sourceMask == 0u) return;
+    atomicAdd(farFieldTerminalPixels[(regime - 1u) * 3u + compositionSourceClass(sourceMask)], 1u);
+}
+
+void recordCompositionShadowWave(uint waveType, uint regime, uint sourceMask) {
+    if (waveType > 1u || regime < 1u || regime > 3u || sourceMask == 0u) return;
+    uint slot = 9u + waveType * 9u + (regime - 1u) * 3u + compositionSourceClass(sourceMask);
+    atomicAdd(farFieldTerminalPixels[slot], 1u);
+}
+
+void recordCompositionRelaxedRay() {
+    // E2-T1 owns the first of slice 0's formerly five reserved slots. TraceWorld calls
+    // this at most once per primary ray whose old entry-cull is overridden.
+    atomicAdd(farFieldTerminalPixels[27], 1u);
+}
+#else
+void recordCompositionPixel(uint regime, uint sourceMask) {}
+void recordCompositionShadowWave(uint waveType, uint regime, uint sourceMask) {}
+void recordCompositionRelaxedRay() {}
+#endif
 
 // g_dispatchIsPrimaryMarch: round 11, set once (compile-time constant folds
 // to a single branch) from VIXEN_DISPATCH_IS_PRIMARY_MARCH, which is spliced
@@ -905,6 +968,7 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
 // g_brickArrayBase applies the per-octree brick offset in marchBrickInstanced().
 int g_octreeIdx      = 0;   // index into configs[] for the active octree
 int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
+uint g_mipSampleLevel = 0u; // last resolved mip level for readMipSample accounting
 // Round-7 blocker-1 probe #3: set true immediately before the far-field
 // early-return in both twins (traverseCoarseGridInstancedSdf below,
 // traverseRayQueryWorld in RayQueryTraversal.glsl), read by TraceWorld.glsl
@@ -914,6 +978,13 @@ int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 // Per-invocation global (same convention as g_octreeIdx above); reset to
 // false at the top of TraceWorld() before the loop, like anyHit.
 bool g_lastHitWasFarField = false;
+
+// Slice-0 call-boundary results. These are probe-only consumers of the exact
+// inline FootprintRegime formula; no production classifier abstraction exists
+// yet (Deep-Field-Residency-Unification §B).
+uint g_lastFootprintRegime = 1u;
+uint g_lastShadowCompositionRegime = 1u;
+uint g_lastShadowCompositionSourceMask = 0u;
 
 // Regime-3 compositing (VIXEN_REGIME3_COMPOSITE), part 2: residual transmittance
 // T left over from the regime-3 accumulation walk's early-out/budget-exhaustion
@@ -1645,6 +1716,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                                 if (subPixelFootprint || childNotResident) {
                                     hitT = tEntryWorld + state.t_min;
                                     recordEsvoMipArm(0u);  // batch-29 JOB 4: tier-crossing subpixel/non-resident arm
+                                    g_mipSampleLevel = 0u; // this crossing leaf is the finest mip rung
                                     if (!shadeFromMipSample(leafDescriptorIndexTc, hitColor, hitNormal)) {
                                         hitColor  = vec3(0.5);
                                         hitNormal = vec3(0.0, 1.0, 0.0);
@@ -1751,13 +1823,16 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                         }
                         if (policyLevelAvailable) {
                             recordEsvoMipArm(5u);  // batch-30 stream B: policy-level arm
+                            g_mipSampleLevel = uint(policyLevel);
                             leafHit = shadeFromMipSample(policyNodeOrdinal, hitColor, hitNormal);
                         } else {
                             recordEsvoMipArm(1u);  // batch-29 JOB 4: streaming-grace fallback (policy data unavailable)
+                            g_mipSampleLevel = 0u;
                             leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
                         }
 #else
                         recordEsvoMipArm(1u);  // batch-29 JOB 4: streaming-grace non-resident-brick arm
+                        g_mipSampleLevel = 0u;
                         leafHit = shadeFromMipSample(leafDescriptorIndex, hitColor, hitNormal);
 #endif
                         if (leafHit) {
@@ -1828,6 +1903,7 @@ bool traverseOctreeInstancedOnce(vec3 rayOrigin, vec3 rayDir,
                     tv_max * pc.raySizeCoef + pc.raySizeBias >= state.scale_exp2) {
                     hitT = tEntryWorld + state.t_min;
                     recordEsvoMipArm(2u);  // batch-29 JOB 4: deliberate LOD screen-space cutoff arm
+                    g_mipSampleLevel = uint(max(state.scale - octreeConfig.brickESVOScale, 0));
                     if (!shadeFromMipSample(state.parentPtr, hitColor, hitNormal)) {
                         // No mip coverage (binary/Procedural bodies, or an SDF octree
                         // with no baked mip pool): fall back to the pre-M3 neutral-grey
@@ -2044,6 +2120,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
                 g_brickArrayBase = fallbackBrickArrayBase;
                 vec3 mipColor; vec3 mipNormal;
                 recordEsvoMipArm(3u);  // batch-29 JOB 4: tier-crossing child-miss fallback arm
+                g_mipSampleLevel = 0u;
                 bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal);
                 g_octreeIdx      = originOctreeIdx;
                 g_esvoNodeBase   = originEsvoNodeBase;
@@ -2148,6 +2225,7 @@ bool traverseOctreeInstanced(vec3 rayOrigin, vec3 rayDir,
         g_brickArrayBase = fallbackBrickArrayBase;
         vec3 mipColor; vec3 mipNormal;
         recordEsvoMipArm(4u);  // batch-29 JOB 4: hop-budget-exhausted fallback arm
+        g_mipSampleLevel = 0u;
         bool mipShaded = shadeFromMipSample(fallbackLeafNodeIndex, mipColor, mipNormal);
         g_octreeIdx      = originOctreeIdx;
         g_esvoNodeBase   = originEsvoNodeBase;
@@ -2549,6 +2627,8 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                                      inout DebugRaySample debugInfo) {
     hitColor = vec3(0.0); hitNormal = vec3(0.0); hitT = 0.0; hitRoughness = 0.5;
     hitBrickIndex = 0u; hitVoxelLinearIdx = 0u;
+    g_lastFootprintRegime = 1u;
+    g_mipSampleLevel = 0u;
     debugInfo.hitFlag = 0u;
     debugInfo.exitCode = DEBUG_EXIT_NONE;
 
@@ -2580,6 +2660,19 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
     if (rayStartsInside) { rayStartWorld = rayOrigin; }
     else { rayStartWorld = (octreeConfig.localToWorld * vec4(pos, 1.0)).xyz; }
     float tBias = length(rayStartWorld - rayOrigin);
+
+#ifdef VIXEN_COMPOSITION_COUNTERS
+    // E6-T1: routed through the shared classifyFootprintRegime (SceneBindings.glsl,
+    // defined above) instead of the former inline duplicate. Same formula, same inputs.
+    float compositionEntryDirLen = length(rayDirLocal);
+    if (compositionEntryDirLen >= 1e-12) {
+        float compositionWorldDist = 0.5 * (tEnter + gridT.y) * instRenderScale;
+        float compositionCellWorldSize =
+            ((1.0 / bpaF) / compositionEntryDirLen) * instRenderScale;
+        g_lastFootprintRegime = classifyFootprintRegime(
+            compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
+    }
+#endif
 
 #ifdef VIXEN_MIP_POLICY
     // BATCH-35 ENTRY-POINT DISPATCH (USER RULING 2026-08-08 "DDA IS THE
@@ -2692,6 +2785,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                                                                       walkWorldDist, entryCellWorldSize,
                                                                       walkNodeOrdinal, walkSampledLevel);
                         if (walkReachedBrick) {
+                            g_mipSampleLevel = walkSampledLevel;
                             vec2 walkSdf = readMipSample(walkNodeOrdinal, SEM_SDF, 0.0);
                             if (walkSdf.y > 0.0) {
                                 vec2 walkColorSample = readMipSample(walkNodeOrdinal, SEM_COLOR, 0.5);
@@ -2764,6 +2858,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                                                                    entryNodeOrdinal, entrySampledLevel);
                     incrFarFieldCount();
                     if (!entryReachedBrick) incrFarFieldDescentFail();
+                    g_mipSampleLevel = entrySampledLevel;
                     bool entryMipResolved = entryReachedBrick && shadeFromMipSample(entryNodeOrdinal, hitColor, hitNormal);
                     recordFarFieldMipResolve(entryMipResolved);
                     if (entryMipResolved) {
@@ -2937,6 +3032,7 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
                                                             worldDistToCell, cellWorldSize, farNodeOrdinal, farSampledLevel);
                 incrFarFieldCount();
                 if (!farReachedBrick) incrFarFieldDescentFail();  // round-13 probe
+                g_mipSampleLevel = farSampledLevel;
                 bool farMipResolved = farReachedBrick && shadeFromMipSample(farNodeOrdinal, hitColor, hitNormal);
                 recordFarFieldMipResolve(farMipResolved);  // round-7 blocker-1 probe
                 if (farMipResolved) {

@@ -47,5 +47,7 @@ void main() {
         return;
     }
     bool occluded = TraceWorldShadow(req.origin, req.dir, req.tmin, req.tmax);
+    recordCompositionShadowWave(
+        0u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
     shadowRayResults[slot] = occluded ? 0u : 1u;
 }

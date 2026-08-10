@@ -14,6 +14,7 @@
 // always-false placeholder waiting to be wired later.
 
 #include "FrustumCull.h"
+#include "FootprintRegime.h"
 #include "ResolvableLevel.h"
 
 #include <glm/glm.hpp>
@@ -51,6 +52,35 @@ inline bool InstanceWantsBrickResidency(
     const float fovRadians = fovDegrees * (3.14159265358979323846f / 180.0f);
     const int resolvable = minResolvableLevel(distance, fovRadians, screenHeightPx, leafSize_m, pxThreshold);
     return resolvable <= brickTierLevel;
+}
+
+// E6-T2 live policy: keep the padded frustum gate, then use the CPU twin of
+// the shader's footprint classifier.  The render graph supplies the active
+// representative cell size and push-constant values.
+inline bool InstanceWantsBrickResidencyByFootprint(
+    const glm::vec3& instancePos,
+    float instanceRadius,
+    const glm::vec3& cameraPos,
+    const glm::vec3& cameraDir,
+    const glm::vec3& cameraUp,
+    const glm::vec3& cameraRight,
+    float fovDegrees,
+    float aspect,
+    float nearDist,
+    float farDist,
+    float cellWorldSize,
+    float raySizeCoef,
+    float raySizeBias,
+    float cosmicK) {
+    const Frustum frustum = BuildFrustum(
+        cameraPos, cameraDir, cameraUp, cameraRight,
+        fovDegrees, aspect, nearDist, farDist, kResidencyFrustumHysteresisDeg);
+    if (!SphereIntersectsFrustum(frustum, instancePos, instanceRadius)) {
+        return false;
+    }
+    return ClassifyFootprintRegime(
+        glm::distance(instancePos, cameraPos), cellWorldSize,
+        raySizeCoef, raySizeBias, cosmicK) == FootprintRegime::Surface;
 }
 
 }  // namespace Vixen::SVO

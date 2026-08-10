@@ -4,9 +4,20 @@
 #include "PipelineLayoutCacher.h"
 #include "VulkanDevice.h"
 #include <stdexcept>
+#include <atomic>
 #include <iostream>  // std::cout for VIXEN_PIPELINE_STATS -- see LogPipelineExecutableStatistics
 
 namespace CashSystem {
+
+// E3-T1 probe (temporary, log-only). Guarded by the same lock-free single-writer assumption the
+// rest of boot-time pipeline creation already makes; the counter is atomic so a threaded builder
+// still yields a coherent monotonic ordinal.
+namespace {
+std::atomic<unsigned> g_computeCreateCounter{0};
+ComputePipelineCreationProbe g_computeCreationProbe{};
+} // namespace
+
+const ComputePipelineCreationProbe& GetComputePipelineCreationProbe() { return g_computeCreationProbe; }
 
 // ============================================================================
 // PUBLIC API
@@ -40,6 +51,20 @@ std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::Create(
 
     // 2. Create compute pipeline
     CreateComputePipeline(ci, *wrapper);
+
+    // E3-T1 probe: ordinal of this ACTUAL Create call (1-based), recorded for the two measured
+    // programs. shaderKey is "<programName>:<spirvSha>" (ComputePipelineNode), so match the prefix.
+    {
+        const unsigned ordinal = g_computeCreateCounter.fetch_add(1) + 1;
+        const int vkCacheNonNull = (wrapper->cache != VK_NULL_HANDLE) ? 1 : 0;
+        if (ci.shaderKey.rfind("BodyInstanceRayMarch:", 0) == 0) {
+            g_computeCreationProbe.marchOrdinal = ordinal;
+            g_computeCreationProbe.marchVkCacheNonNull = vkCacheNonNull;
+        } else if (ci.shaderKey.rfind("ShadowVisibilityWave:", 0) == 0) {
+            g_computeCreationProbe.waveOrdinal = ordinal;
+            g_computeCreationProbe.waveVkCacheNonNull = vkCacheNonNull;
+        }
+    }
 
     LOG_INFO("[ComputePipelineCacher::Create] Compute pipeline created successfully");
     return wrapper;

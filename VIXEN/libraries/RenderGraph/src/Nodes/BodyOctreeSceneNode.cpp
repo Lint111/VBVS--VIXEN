@@ -1072,6 +1072,19 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         occupancyGrid_.empty() ? nullptr : occupancyGrid_.data(),
         occupancyGridBuffer_, occupancyGridMemory_, "occupancy grid SSBO");
 
+    // E6-T2: charge every wholesale CreateHostBuffer call separately.  A
+    // one-byte placeholder is still a known allocation and remains visible in
+    // the ledger; it is not silently folded into the brick upload row.
+    RecordWholeBufferUpload(static_cast<uint64_t>(nodesSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(bricksSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(materialsSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(configSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(sdfSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(brickLookupSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(mipPoolSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(tierRefTableSize));
+    RecordWholeBufferUpload(static_cast<uint64_t>(occupancyGridSize));
+
     NODE_LOG_INFO("[BodyOctreeSceneNode] Created octree buffers (nodes=" +
                   std::to_string(static_cast<uint64_t>(nodesSize)) + "B, bricks=" +
                   std::to_string(static_cast<uint64_t>(bricksSize)) + "B, materials=" +
@@ -1257,6 +1270,7 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
         CreateHostBuffer(device, needed, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                          (data && dataBytes > 0) ? data : nullptr, buf, mem, ctx);
         cap = needed;
+        RecordWholeBufferUpload(static_cast<uint64_t>(needed));
     };
 
     ensure(shellDataBuffer_[slot], shellDataMemory_[slot], shellDataCapacity_[slot],
@@ -1357,18 +1371,60 @@ void BodyOctreeSceneNode::UploadBrickPool() {
     device->FlushUploads();
     pendingBrickUploadHandle_ = handle;
 
+    RecordBrickPoolUpload(static_cast<uint64_t>(size));
+
     // Inc1 M4 Task 6b: first-ever queue is "boot", every later one (a residency toggle) is
     // "steady-state". brickPoolUploaded_ hasn't flipped true yet at this point (that happens
     // in PollBrickUploadCompletion once the GPU-side copy lands), so bootBytesUploaded_==0
     // is exactly "boot upload never queued".
-    if (bootBytesUploaded_ == 0) {
-        bootBytesUploaded_ = static_cast<uint64_t>(size);
+    if (!bootUploadRecorded_) {
+        bootBytesUploaded_ += static_cast<uint64_t>(size);
+        bootUploadRecorded_ = true;
     } else {
         steadyStateBytesUploaded_ += static_cast<uint64_t>(size);
     }
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
                   std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
+}
+
+void BodyOctreeSceneNode::RecordWholeBufferUpload(uint64_t bytes) {
+    uploadLedger_.push_back(UploadLedgerEntry{
+        UINT32_MAX, kWholePayloadLevel, bytes, 1u, true});
+    std::cout << "[UploadLedger] body=whole-buffer level=whole-buffer-payload bytes="
+              << bytes << " events=1" << std::endl;
+    if (!bootUploadRecorded_) {
+        bootBytesUploaded_ += bytes;
+    } else {
+        steadyStateBytesUploaded_ += bytes;
+    }
+}
+
+void BodyOctreeSceneNode::RecordBrickPoolUpload(uint64_t bytes) {
+    // Serialized metadata exposes per-octree brick counts, but not a reliable
+    // per-level histogram. Attribute each segment to the explicit whole-payload
+    // bucket instead of fabricating level attribution.
+    uint64_t accounted = 0;
+    for (uint32_t body = 0; body < concatenated_.brickCounts.size(); ++body) {
+        const uint64_t remaining = bytes - std::min(bytes, accounted);
+        const uint64_t bodyBytes = std::min<uint64_t>(
+            remaining,
+            static_cast<uint64_t>(concatenated_.brickCounts[body]) *
+                static_cast<uint64_t>(Vixen::SVO::SerializedOctree::kBrickStrideBytes));
+        if (bodyBytes == 0) continue;
+        uploadLedger_.push_back(UploadLedgerEntry{
+            body, kWholePayloadLevel, bodyBytes, 1u, true});
+        std::cout << "[UploadLedger] body=" << body
+                  << " level=whole-brick-payload bytes=" << bodyBytes
+                  << " events=1" << std::endl;
+        accounted += bodyBytes;
+    }
+    if (accounted < bytes) {
+        uploadLedger_.push_back(UploadLedgerEntry{
+            UINT32_MAX, kWholePayloadLevel, bytes - accounted, 1u, true});
+        std::cout << "[UploadLedger] body=whole-buffer level=whole-brick-payload bytes="
+                  << (bytes - accounted) << " events=1" << std::endl;
+    }
 }
 
 void BodyOctreeSceneNode::PollBrickUploadCompletion() {

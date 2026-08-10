@@ -2691,7 +2691,12 @@ void VulkanGraphApplication::Update() {
         // no recompile needed), NOT a new InputNode injector (that's a bigger, separate
         // mechanism — see the M4c live-gate investigation this milestone did before choosing
         // this approach).
-        if (renderGraph && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+        // E6-T2 measurement mode keeps the existing PolicyDisagreement rows but
+        // suppresses this demo's far->near camera animation, allowing a fixed
+        // VIXEN_TIER_OBSERVABLE_DISTANCE leg to be measured without changing the
+        // default residency-gate sweep when VIXEN_RESIDENCY_GATE_STATIC is unset.
+        if (renderGraph && std::getenv("VIXEN_RESIDENCY_GATE_DEMO") &&
+            !std::getenv("VIXEN_RESIDENCY_GATE_STATIC")) {
             static long gateTick = 0;
             ++gateTick;
             if (auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode_))) {
@@ -3525,6 +3530,17 @@ void VulkanGraphApplication::CompileRenderGraph() {
             mainLogger->Info("[CompileRenderGraph] Shader cache telemetry: hits=" +
                               std::to_string(shaderTelemetry.cacheHits.load()) + " misses=" +
                               std::to_string(shaderTelemetry.cacheMisses.load()));
+            // E3-T1 probe (temporary, log-only): joins the aggregate SPIR-V control above with the
+            // per-program Vulkan pipeline creation ordinals. create=0 means an in-process cache hit
+            // (no VkPipeline created). vkcache is expected 0 at this revision (compute cache stub).
+            const auto& pipeProbe = CashSystem::GetComputePipelineCreationProbe();
+            mainLogger->Info("[BootPipelineProbe] shader_hits=" +
+                              std::to_string(shaderTelemetry.cacheHits.load()) + " shader_misses=" +
+                              std::to_string(shaderTelemetry.cacheMisses.load()) + " march_create=" +
+                              std::to_string(pipeProbe.marchOrdinal) + " wave_create=" +
+                              std::to_string(pipeProbe.waveOrdinal) + " march_vkcache=" +
+                              std::to_string(pipeProbe.marchVkCacheNonNull) + " wave_vkcache=" +
+                              std::to_string(pipeProbe.waveVkCacheNonNull));
         }
     }
 
@@ -3989,6 +4005,8 @@ constexpr float kResidencyBoundingRadius = 24.0f;
 // silently go stale.
 constexpr float kResidencyPxThreshold = 1.0f;
 constexpr float kResidencyLeafSizeM   = 0.01f;  // matches ResolvableLevel.h's 1cm-voxel convention
+constexpr float kResidencyBricksPerAxis = 8.0f;
+constexpr float kResidencyDefaultCosmicK = 4.0f;
 }  // namespace
 
 void VulkanGraphApplication::UpdateBodySceneResidency() {
@@ -4061,6 +4079,15 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // near/far bound the same range CameraNode configures (BuildRenderGraph.cpp: 0.1/500.0).
     const float screenHeightPx = static_cast<float>(height > 0 ? height : 1080);
     const int brickTierLevel = Vixen::RenderGraph::BodyOctreeSceneNode::GetBrickTierLevel();
+    const float fovRadians = cam.fov * (3.14159265358979323846f / 180.0f);
+    float residencyRaySizeCoef = 2.0f * std::tan((fovRadians / screenHeightPx) * 0.5f);
+    if (const char* overrideEnv = std::getenv("VIXEN_TIER_CROSSING_LOD_COEF_OVERRIDE")) {
+        residencyRaySizeCoef = std::strtof(overrideEnv, nullptr);
+    }
+    float residencyCosmicK = kResidencyDefaultCosmicK;
+    if (const char* cosmicEnv = std::getenv("VIXEN_REGIME3_K")) {
+        residencyCosmicK = std::strtof(cosmicEnv, nullptr);
+    }
 
     // Sparse-Mip ESVO LOD Inc2 M3: the CPU-side residency occlusion gate Inc1 M4b deferred.
     // "Already brick-resident" here means resident as of the LAST re-check (lastResidencyGranted_),
@@ -4094,15 +4121,29 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     // already brick-resident tree (OcclusionGate.h, Inc2 M3) — the whole shared brick
     // pool must be populated the moment even one instance needs it and can see it.
     bool anyInstanceWantsBricks = false;
+    bool oldAnyInstanceWantsBricks = false;
+    std::vector<size_t> policyDisagreements;
     for (size_t i = 0; i < instances.size(); ++i) {
         const auto& inst = instances[i];
         const glm::vec3 pos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
-        if (!Vixen::SVO::InstanceWantsBrickResidency(
+        const bool oldPolicy = Vixen::SVO::InstanceWantsBrickResidency(
                 pos, kResidencyBoundingRadius,
                 cam.cameraPos, cam.cameraDir, cam.cameraUp, cam.cameraRight,
                 cam.fov, cam.aspect, screenHeightPx, /*nearDist=*/0.1f, /*farDist=*/500.0f,
-                brickTierLevel, kResidencyLeafSizeM, kResidencyPxThreshold)) {
-            continue;  // fails frustum+resolvability regardless of occlusion
+                brickTierLevel, kResidencyLeafSizeM, kResidencyPxThreshold);
+        oldAnyInstanceWantsBricks = oldAnyInstanceWantsBricks || oldPolicy;
+        const float cellWorldSize = std::max(std::abs(inst.renderScale), 1e-6f) /
+                                    kResidencyBricksPerAxis;
+        const bool footprintPolicy = Vixen::SVO::InstanceWantsBrickResidencyByFootprint(
+            pos, kResidencyBoundingRadius,
+            cam.cameraPos, cam.cameraDir, cam.cameraUp, cam.cameraRight,
+            cam.fov, cam.aspect, /*nearDist=*/0.1f, /*farDist=*/500.0f,
+            cellWorldSize, residencyRaySizeCoef, /*raySizeBias=*/0.0f, residencyCosmicK);
+        if (oldPolicy != footprintPolicy) {
+            policyDisagreements.push_back(i);
+        }
+        if (!footprintPolicy) {
+            continue;  // fails frustum or remains above the Surface regime
         }
         const float distance = glm::distance(pos, cam.cameraPos);
         if (Vixen::SVO::IsOccludedByResidentTrees(
@@ -4110,9 +4151,17 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
             continue;  // passes frustum+resolvability but a DIFFERENT already-resident tree blocks it
         }
         anyInstanceWantsBricks = true;
-        break;
     }
     if (mainLogger && std::getenv("VIXEN_RESIDENCY_GATE_DEMO")) {
+        std::string disagreementBodies;
+        for (size_t n = 0; n < policyDisagreements.size(); ++n) {
+            if (n != 0) disagreementBodies += ",";
+            disagreementBodies += std::to_string(policyDisagreements[n]);
+        }
+        mainLogger->Info("[ResidencyGateDemo] PolicyDisagreement old=" +
+                         std::string(oldAnyInstanceWantsBricks ? "true" : "false") +
+                         " new=" + std::string(anyInstanceWantsBricks ? "true" : "false") +
+                         " bodies=" + (disagreementBodies.empty() ? "-" : disagreementBodies));
         static bool lastLoggedDecision = false;
         static bool everLogged = false;
         if (!everLogged || lastLoggedDecision != anyInstanceWantsBricks) {

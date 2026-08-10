@@ -25,6 +25,16 @@ namespace Vixen::Vulkan::Resources {
 
 namespace Vixen::RenderGraph {
 
+constexpr uint32_t kWholePayloadLevel = UINT32_MAX;
+
+struct UploadLedgerEntry {
+    uint32_t bodyIndex = UINT32_MAX;
+    uint32_t level = kWholePayloadLevel;
+    uint64_t uploadBytes = 0;
+    uint32_t uploadEvents = 0;
+    bool wholePayload = true;
+};
+
 /**
  * @brief Node type for BodyOctreeSceneNode (SP2 Task 5b).
  */
@@ -202,6 +212,9 @@ public:
     /// perf-CSV writer's byte-uploaded columns; CPU-observable, no GPU readback needed.
     [[nodiscard]] uint64_t BootBytesUploaded() const { return bootBytesUploaded_; }
     [[nodiscard]] uint64_t SteadyStateBytesUploaded() const { return steadyStateBytesUploaded_; }
+    [[nodiscard]] const std::vector<UploadLedgerEntry>& UploadLedgerSnapshot() const {
+        return uploadLedger_;
+    }
 
     /// True once PollBrickUploadCompletion has observed the GPU-side brick copy actually
     /// complete (BodyOctreeSceneNode.cpp:991) -- NOT the same moment as BootBytesUploaded()
@@ -251,6 +264,8 @@ private:
     void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
     void DeriveResidencyDefaultIfUnset();  // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4
+    void RecordWholeBufferUpload(uint64_t bytes);
+    void RecordBrickPoolUpload(uint64_t bytes);
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query traversal backend ---
     // Built (VIXEN_RTQUERY_TRAVERSAL + RTXCapabilities.rayQuery only) once octree buffers
@@ -334,6 +349,8 @@ private:
     // into steadyStateBytesUploaded_ instead.
     uint64_t                                bootBytesUploaded_        = 0;
     uint64_t                                steadyStateBytesUploaded_ = 0;
+    bool                                    bootUploadRecorded_       = false;
+    std::vector<UploadLedgerEntry>          uploadLedger_;
 
     // Optional recipe for octree 0 (P2.1 materialization). Empty = analytic path.
     std::vector<Vixen::SVO::Recipe::SdfInstruction> bakeRecipe_;

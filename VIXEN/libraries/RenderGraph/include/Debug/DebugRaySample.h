@@ -2,6 +2,7 @@
 
 #include "IExportable.h"
 #include <glm/glm.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <sstream>
 #include <iomanip>
@@ -338,6 +339,30 @@ static_assert(sizeof(RayTraceHeader) == 16, "RayTraceHeader must be 16 bytes");
  */
 constexpr uint32_t MAX_TRACE_STEPS = 64;
 constexpr uint32_t TRACE_RAY_SIZE = sizeof(RayTraceHeader) + (MAX_TRACE_STEPS * sizeof(TraceStep));
+constexpr uint32_t MAX_MIP_COUNTER_BODIES = 192;
+constexpr uint32_t MAX_MIP_COUNTER_LEVELS = 16;
+
+// E6-T2: fixed-capacity per-serialized-body/per-mip read ledger.  Body identity
+// is the active serialized octree index (g_octreeIdx); repeated render
+// instances therefore share one row, matching the shared GPU pool ownership.
+// This is a scalar std430 sequence inside RayTraceBuffer.  The enclosing
+// TraceBufferHeader remains 16-byte aligned, but adding alignment here would
+// move the member from the shader's byte-516 offset to byte 528.
+struct MipReadByteCounters {
+    uint32_t readBytes[MAX_MIP_COUNTER_BODIES][MAX_MIP_COUNTER_LEVELS] = {};
+    uint32_t sampleCount[MAX_MIP_COUNTER_BODIES][MAX_MIP_COUNTER_LEVELS] = {};
+    uint32_t overflow = 0;
+    uint32_t _padding[3] = {};
+};
+
+static_assert(sizeof(MipReadByteCounters) == 24592,
+              "MipReadByteCounters must remain a fixed 192x16 ledger");
+static_assert(offsetof(MipReadByteCounters, readBytes) == 0,
+              "MipReadByteCounters.readBytes must start at byte 0");
+static_assert(offsetof(MipReadByteCounters, sampleCount) == 12288,
+              "MipReadByteCounters.sampleCount must follow readBytes");
+static_assert(offsetof(MipReadByteCounters, overflow) == 24576,
+              "MipReadByteCounters.overflow must follow both arrays");
 
 /**
  * @brief Complete ray trace record (header + all steps)
@@ -490,6 +515,12 @@ struct alignas(16) TraceBufferHeader {
     uint32_t rtLoopEntriesOct3;
     uint32_t farFieldGateRejectOct3;   // tCellEnter>=bestT continue (:187), octree 3 only
     uint32_t farFieldCandidatesOct3;   // reached incrFarFieldCandidates(), octree 3 only
+    // E1-T1 stencil slice 0 reuses this historical decode ring only when
+    // VIXEN_COMPOSITION_COUNTERS is compiled: slots [0,9) are the primary
+    // regime(3) x source-class(3) histogram; [9,27) are wave-type(2) x
+    // regime(3) x source-class(3); slot 27 is E2-T1's relaxed-ray count.
+    // Gate-off retains the pixel-ring contract. The remaining four slots stay
+    // reserved; the 528-B header ABI is fixed.
     uint32_t farFieldTerminalPixels[32];
     // Batch-24 FARGEN funnel: rect-scoped generation counters over the far
     // clusters c1∪c2 (x363-390,y239-260, gl_GlobalInvocationID-gated), tracing
@@ -619,8 +650,15 @@ struct alignas(16) TraceBufferHeader {
     // float-bits max (seeded 0, same encoding as walkCovMaxBits).
     uint32_t compositeBlends;
     uint32_t compositeBehindMaxBits;
+    // E6-T2: per-body x mip-level read bytes and sample counts.  This is a
+    // per-frame ledger reset by RayTraceBuffer::Reset, unlike the historical
+    // boot-lifetime probes above.  The overflow flag is set if an atomic
+    // increment would wrap.
+    MipReadByteCounters mipReadByteCounters;
 };
 
-static_assert(sizeof(TraceBufferHeader) == 528, "TraceBufferHeader must be 528 bytes (512 B through regime-3 slice 1 + 16 B walkCov/walkSampledLevel min/max probe)");
+static_assert(sizeof(TraceBufferHeader) == 25120, "TraceBufferHeader must include the fixed E6-T2 mip ledger");
+static_assert(offsetof(TraceBufferHeader, mipReadByteCounters) == 516,
+              "TraceBufferHeader mip ledger offset must match SceneBindings.glsl");
 
 } // namespace Vixen::RenderGraph::Debug

@@ -237,6 +237,9 @@ void main() {
     // -----------------------------------------------------------------------
     WorldHit worldHit;
     bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
+    if (anyHit) {
+        recordCompositionPixel(worldHit.footprintRegime, worldHit.sourceMask);
+    }
 
 #ifdef VIXEN_REGIME3_COMPOSITE
     // Compositing slice part 2: fill the winner's residual T with what's BEHIND
