@@ -250,6 +250,7 @@ set(RENDERGRAPH_NODE_HEADERS
 )
 
 set(RENDERGRAPH_NODE_SOURCES
+    src/Nodes/SceneRadianceNode.cpp
     src/Nodes/BoolOpNode.cpp
     src/Nodes/BlitNode.cpp  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
     src/Nodes/BufferSyncGathererNode.cpp  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer
