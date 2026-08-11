@@ -1,0 +1,15 @@
+# viewblob v1
+model undertowobserverdemand
+version 0x350496A1
+elem UndertowObserverDemandRow
+  observerRowId u64
+  bodyRowId u64
+  simLevel int
+  simDomainMask int
+  simAdmissionState int
+  reason int
+  dwellUntilTick int
+  desiredMacroFidelity int
+  macroEffectMask int
+  demandGeneration u64
+field rows array UndertowObserverDemandRow

@@ -1,0 +1,11 @@
+# viewblob v1
+model undertoworbitalstructurefacet
+version 0xCA8586A7
+elem UndertowOrbitalStructureFacetRow
+  body u64
+  owner u64
+  recipe string
+  extent float
+  activity float
+  rowId u64
+field rows array UndertowOrbitalStructureFacetRow
