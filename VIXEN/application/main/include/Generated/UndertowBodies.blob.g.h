@@ -22,6 +22,6 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kUndertowBodies_fields[] = {
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kUndertowBodiesBlob = {
-    "undertowbodies", kUndertowBodies_fields, 0x0A962057u /* generated version */ };
+    "undertowbodies", kUndertowBodies_fields, 0x7C70EFEEu /* generated version */ };
 
 }  // namespace Vixen::Views

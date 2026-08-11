@@ -85,3 +85,12 @@ TEST(WholesaleAvailability, MipOnlyTransitionKeepsFinePairUnreadable) {
         EXPECT_EQ(state.pendingMask, 0u);
     }
 }
+
+TEST(WholesaleAvailability, S4PayloadBitsAreIndependent) {
+    EXPECT_EQ(WholesaleS4PayloadMask(), 0xcu);
+    EXPECT_EQ(WholesaleFinePayloadMask(), 0x3u);
+    WholesaleAvailability state;
+    state.readyMask = static_cast<uint32_t>(WholesalePayload::TierRefTable);
+    EXPECT_NE(state.readyMask & static_cast<uint32_t>(WholesalePayload::TierRefTable), 0u);
+    EXPECT_EQ(state.readyMask & static_cast<uint32_t>(WholesalePayload::OccupancyGrid), 0u);
+}

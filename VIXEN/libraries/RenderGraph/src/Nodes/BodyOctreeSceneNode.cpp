@@ -1101,11 +1101,19 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // overwhelming common case; M2's farBit==1 construction path is explicit opt-in)
     // leaves tierRefTable empty; the shader's traversal-restart bounds-checks against
     // tierRefTable.length() and never reads past it, exactly like mipPool above.
+    // E24-S4: an unavailable table is represented by the one-byte placeholder.  The
+    // traversal's bounds check then leaves far references unresolved, preserving the
+    // parent mip fallback and any-hit no-occluder behavior; it must never see stale or
+    // partially admitted tier records.
+    const bool suppressTierRefTable = wholesaleAdmissionEnabled_ &&
+        (wholesaleAvailability_.readyMask & static_cast<uint32_t>(Vixen::SVO::WholesalePayload::TierRefTable)) == 0u;
+    const VkDeviceSize tierRefTableBytes = suppressTierRefTable ? 0u :
+        concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef);
     const VkDeviceSize tierRefTableSize =
-        std::max<VkDeviceSize>(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef), 1);
+        std::max<VkDeviceSize>(tierRefTableBytes, 1);
     CreateHostBuffer(device, tierRefTableSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        concatenated_.tierRefTable.empty() ? nullptr : concatenated_.tierRefTable.data(),
+        suppressTierRefTable || concatenated_.tierRefTable.empty() ? nullptr : concatenated_.tierRefTable.data(),
         tierRefTableBuffer_, tierRefTableMemory_, "tier-ref table SSBO");
 
     // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13: occupancy grid buffer (binding 16).

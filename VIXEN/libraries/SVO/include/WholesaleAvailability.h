@@ -7,12 +7,13 @@
 
 namespace Vixen::SVO {
 
-// CPU-owned S1 admission ledger. Payload bits are intentionally explicit: channelPool
-// and brickLookup are one atomic fine-data admission; the remaining bits are reserved
-// for later slices without changing the shader-visible mask contract.
+// CPU-owned wholesale admission ledger. Payload bits are explicit and independently
+// admissible; channelPool and brickLookup remain the atomic fine-data pair.
 enum class WholesalePayload : uint32_t {
     ChannelPool = 1u << 0,
     BrickLookup = 1u << 1,
+    TierRefTable = 1u << 2,
+    OccupancyGrid = 1u << 3,
 };
 
 struct WholesaleAvailability {
@@ -25,8 +26,8 @@ struct WholesaleAvailability {
     uint32_t nonSurfaceFrames = 0;
     // Retained payload content survives demotion but is never readable until the
     // matching pair is re-published. Entries are indexed by payload bit order.
-    std::array<uint64_t, 2> payloadBytes{};
-    std::array<uint64_t, 2> payloadContentHash{};
+    std::array<uint64_t, 4> payloadBytes{};
+    std::array<uint64_t, 4> payloadContentHash{};
     uint32_t retainedMask = 0;
     uint64_t reusablePopulatedBytes = 0;
 };
@@ -36,13 +37,24 @@ inline uint32_t WholesalePayloadMask() {
            static_cast<uint32_t>(WholesalePayload::BrickLookup);
 }
 
+inline uint32_t WholesaleFinePayloadMask() {
+    return static_cast<uint32_t>(WholesalePayload::ChannelPool) |
+           static_cast<uint32_t>(WholesalePayload::BrickLookup);
+}
+
+inline uint32_t WholesaleS4PayloadMask() {
+    return static_cast<uint32_t>(WholesalePayload::TierRefTable) |
+           static_cast<uint32_t>(WholesalePayload::OccupancyGrid);
+}
+
 inline void RetainWholesalePayload(WholesaleAvailability& state, uint32_t payloadMask,
                                    uint64_t channelPoolBytes, uint64_t brickLookupBytes,
                                    uint64_t channelPoolHash, uint64_t brickLookupHash) {
-    if ((payloadMask & WholesalePayloadMask()) != WholesalePayloadMask()) return;
-    state.payloadBytes = {channelPoolBytes, brickLookupBytes};
-    state.payloadContentHash = {channelPoolHash, brickLookupHash};
-    state.retainedMask |= WholesalePayloadMask();
+    if ((payloadMask & WholesaleFinePayloadMask()) == WholesaleFinePayloadMask()) {
+        state.payloadBytes[0] = channelPoolBytes; state.payloadBytes[1] = brickLookupBytes;
+        state.payloadContentHash[0] = channelPoolHash; state.payloadContentHash[1] = brickLookupHash;
+        state.retainedMask |= WholesaleFinePayloadMask();
+    }
 }
 
 // Apply the frozen hysteresis: two consecutive Surface classifications promote, while
@@ -58,9 +70,9 @@ inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
 
     bool changed = false;
     if (state.committedRegime != FootprintRegime::Surface && state.surfaceFrames >= 2u) {
-        if (payloadMask != WholesalePayloadMask()) return false;
+        if ((payloadMask & WholesaleFinePayloadMask()) != WholesaleFinePayloadMask()) return false;
         state.committedRegime = FootprintRegime::Surface;
-        state.pendingMask = WholesalePayloadMask();
+        state.pendingMask = payloadMask;
         state.readyMask = 0u;
         if ((state.retainedMask & payloadMask) == payloadMask) {
             state.reusablePopulatedBytes = state.payloadBytes[0] + state.payloadBytes[1];
@@ -82,7 +94,7 @@ inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
 
 inline void PublishWholesaleReady(WholesaleAvailability& state) {
     state.readyMask = state.pendingMask != 0u ? state.pendingMask :
-        (state.reusablePopulatedBytes != 0u ? WholesalePayloadMask() : 0u);
+        (state.reusablePopulatedBytes != 0u ? WholesaleFinePayloadMask() : 0u);
     state.pendingMask = 0u;
     state.reusablePopulatedBytes = 0u;
 }
