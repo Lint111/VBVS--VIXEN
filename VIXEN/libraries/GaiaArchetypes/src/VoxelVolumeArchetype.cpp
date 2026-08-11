@@ -194,11 +194,7 @@ void VoxelVolumeArchetype::updateVolumeStats(gaia::ecs::Entity volume, int voxel
         return;
     }
 
-    // set<T>() returns a direct mutable reference into the chunk's component
-    // storage (Gaia v0.9.2 Chunk::set<T>() -> view_mut<T>()[row]), not a
-    // write-proxy — binding by value (the old workaround for a prior Gaia
-    // version's deferred-commit proxy) silently drops every write to a copy.
-    auto& stats = m_world.set<VolumeStats>(volume);
+    auto stats = m_world.set<VolumeStats>(volume);
     stats.voxelCount = static_cast<uint32_t>(
         std::max(0, static_cast<int>(stats.voxelCount) + voxelDelta));
     stats.isDirty = true;
@@ -214,8 +210,7 @@ void VoxelVolumeArchetype::updateVolumeBounds(
         return;
     }
 
-    // See updateVolumeStats: set<T>() is a direct reference, not a write-proxy.
-    auto& bounds = m_world.set<VolumeBounds>(volume);
+    auto bounds = m_world.set<VolumeBounds>(volume);
     bounds.expand(voxelPos);
 }
 
