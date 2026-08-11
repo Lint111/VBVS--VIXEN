@@ -8,6 +8,11 @@ layout(std430, binding = 1) buffer ExposureMeterResult { float ev100; } result;
 
 shared float tile[256];
 
+// The brightest 5% of a tile is a solar/cosmic outlier regime, not a useful
+// adaptation target. Keep the cutoff fixed and sort in invocation 0 so the
+// result is deterministic across vendors and independent of subgroup order.
+const uint kMeterPercentileIndex = 243u; // ceil(0.95 * 256) - 1
+
 void main() {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(sceneRadianceHistory);
@@ -20,12 +25,27 @@ void main() {
     }
     tile[i] = l;
     barrier();
+    if (i == 0u) {
+        // Deterministic insertion sort is small (256 values) and avoids relying
+        // on subgroup ordering or floating-point atomics.
+        for (uint n = 1u; n < 256u; ++n) {
+            float value = tile[n];
+            uint j = n;
+            while (j > 0u && tile[j - 1u] > value) {
+                tile[j] = tile[j - 1u];
+                --j;
+            }
+            tile[j] = value;
+        }
+    }
+    barrier();
+    tile[i] = min(tile[i], tile[kMeterPercentileIndex]);
+    barrier();
     for (uint stride = 128u; stride != 0u; stride >>= 1u) {
         if (i < stride) tile[i] += tile[i + stride];
         barrier();
     }
-    // The graph dispatches one workgroup for the fixed witness. For larger images,
-    // the deterministic first tile remains a valid conservative meter until the
-    // multi-tile reduction node is introduced in the next ladder slice.
-    if (i == 0u) result.ev100 = -tile[0] / 256.0;
+    if (i == 0u) {
+        result.ev100 = -tile[0] / 256.0;
+    }
 }

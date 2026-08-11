@@ -81,6 +81,12 @@ set_target_properties(test_rendergraph_shadermirrors PROPERTIES FOLDER "Tests/Re
 
 gtest_discover_tests(test_rendergraph_shadermirrors)
 
+# HDR3 CPU mirror of ExposureMeter.comp's deterministic sun/cosmic percentile clamp.
+add_executable(test_exposure_meter_mirror Nodes/test_exposure_meter_mirror.cpp)
+target_compile_features(test_exposure_meter_mirror PRIVATE cxx_std_17)
+set_target_properties(test_exposure_meter_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+add_test(NAME test_exposure_meter_mirror COMMAND test_exposure_meter_mirror)
+
 # ===========================================================================
 # Sampling.glsl SPIR-V Compile Gate (Sampled Lighting Inc0 M4 — proves
 # shaders/Sampling.glsl #includes and compiles cleanly through the real
