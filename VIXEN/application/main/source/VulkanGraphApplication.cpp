@@ -1589,13 +1589,16 @@ void VulkanGraphApplication::PostTick() {
         wholesale.readyMask = admission.readyMask;
         wholesale.generation = admission.generation;
         wholesale.reusablePopulatedBytes = bodyScene->LastWholesaleReusableBytes();
-        wholesale.channelPoolPopulatedBytes = bodyScene->IsBrickPoolUploaded() ? bodyScene->ChannelPoolBytes() : 0u;
-        wholesale.brickLookupPopulatedBytes = bodyScene->IsBrickPoolUploaded() ? bodyScene->BrickLookupBytes() : 0u;
+        const uint32_t finePayloadMask =
+            static_cast<uint32_t>(Vixen::SVO::WholesalePayload::ChannelPool) |
+            static_cast<uint32_t>(Vixen::SVO::WholesalePayload::BrickLookup);
+        const bool finePayloadReady = (admission.readyMask & finePayloadMask) == finePayloadMask;
+        wholesale.channelPoolPopulatedBytes = finePayloadReady ? bodyScene->ChannelPoolBytes() : 0u;
+        wholesale.brickLookupPopulatedBytes = finePayloadReady ? bodyScene->BrickLookupBytes() : 0u;
         wholesale.mipPoolPopulatedBytes = bodyScene->MipPoolBytes();
         wholesale.tierRefPopulatedBytes = bodyScene->TierRefBytes();
         wholesale.occupancyGridPopulatedBytes = bodyScene->OccupancyGridBytes();
-        wholesale.allocatedCapacityBytes = wholesale.channelPoolPopulatedBytes + wholesale.brickLookupPopulatedBytes +
-            bodyScene->MipPoolBytes() + bodyScene->TierRefBytes() + bodyScene->OccupancyGridBytes();
+        wholesale.allocatedCapacityBytes = bodyScene->AllocatedCapacityBytes();
         wholesale.populatedShaderReadableBytes = wholesale.channelPoolPopulatedBytes + wholesale.brickLookupPopulatedBytes +
             wholesale.mipPoolPopulatedBytes + wholesale.tierRefPopulatedBytes + wholesale.occupancyGridPopulatedBytes;
         wholesale.wholeBufferUploadBytes = bootBytes + steadyBytes;

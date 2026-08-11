@@ -404,6 +404,12 @@ target_link_libraries(test_wholesale_availability PRIVATE GTest::gtest_main)
 set_target_properties(test_wholesale_availability PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_wholesale_availability)
 
+add_executable(test_wholesale_capacity_arena test_wholesale_capacity_arena.cpp)
+target_include_directories(test_wholesale_capacity_arena PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(test_wholesale_capacity_arena PRIVATE GTest::gtest_main)
+set_target_properties(test_wholesale_capacity_arena PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_wholesale_capacity_arena)
+
 # ===========================================================================
 # Frustum Cull Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, frustum piece
 # — pure math, no octree/GPU needed: BuildFrustum/SphereIntersectsFrustum, plus

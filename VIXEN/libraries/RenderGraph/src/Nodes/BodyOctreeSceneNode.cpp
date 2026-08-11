@@ -1060,9 +1060,16 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // Inc3 M2: Generic multi-channel pool buffer (binding 11) + brick-grid lookup (binding 12).
     // Pad to 1 byte when empty — binary/Procedural bodies leave channelPool empty;
     // the shader only reads these when OctreeConfig.formatId == FORMAT_STORED_SDF (1u).
-    const VkDeviceSize sdfSize =
+    // S5: when the compact shell is the active render payload, the legacy
+    // source pair remains descriptor-valid but no longer needs a wholesale
+    // allocation. Keep the full source buffers for flag-off identity and for
+    // non-shell paths; the shell pair owns the real shader-readable bytes.
+    const bool shellReplacesSourcePair = wholesaleAdmissionEnabled_ &&
+        !shellCache_[0].compact.channelPool.empty() &&
+        !shellCache_[0].compact.brickGridLookup.empty();
+    const VkDeviceSize sdfSize = shellReplacesSourcePair ? 1 :
         std::max<VkDeviceSize>(concatenated_.channelPool.size(), 1);
-    const VkDeviceSize brickLookupSize =
+    const VkDeviceSize brickLookupSize = shellReplacesSourcePair ? 1 :
         std::max<VkDeviceSize>(concatenated_.brickGridLookup.size(), 1);
 
     // E23-S3: a mip-only wholesale leg keeps the mip payload populated, but the

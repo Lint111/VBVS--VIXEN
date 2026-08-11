@@ -218,6 +218,28 @@ public:
     [[nodiscard]] uint64_t MipPoolBytes() const { return concatenated_.mipPool.size(); }
     [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
     [[nodiscard]] uint64_t OccupancyGridBytes() const { return occupancyGrid_.size() * sizeof(float); }
+    // Sum the byte capacities of every persistent payload buffer, including
+    // descriptor-valid 1-byte placeholders and both in-flight shell slots.
+    // This is allocation capacity, deliberately independent of readiness.
+    [[nodiscard]] uint64_t AllocatedCapacityBytes() const {
+        const auto padded = [](size_t bytes) -> uint64_t {
+            return static_cast<uint64_t>(bytes == 0 ? 1 : bytes);
+        };
+        uint64_t total = padded(concatenated_.nodes.size()) + padded(concatenated_.bricks.size()) +
+            padded(concatenated_.materials.size()) +
+            padded(concatenated_.configs.size() * sizeof(Vixen::SVO::OctreeConfig)) +
+            padded((wholesaleAdmissionEnabled_ && !shellCache_[0].compact.channelPool.empty() &&
+                    !shellCache_[0].compact.brickGridLookup.empty()) ? 0u : concatenated_.channelPool.size()) +
+            padded((wholesaleAdmissionEnabled_ && !shellCache_[0].compact.channelPool.empty() &&
+                    !shellCache_[0].compact.brickGridLookup.empty()) ? 0u : concatenated_.brickGridLookup.size()) +
+            padded(concatenated_.mipPool.size()) +
+            padded(concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef)) +
+            padded(occupancyGrid_.size() * sizeof(float));
+        for (uint32_t slot = 0; slot < 2; ++slot)
+            total += static_cast<uint64_t>(shellDataCapacity_[slot] + shellLookupCapacity_[slot] +
+                                           proxyAabbCapacity_[slot]);
+        return total;
+    }
     [[nodiscard]] const Vixen::SVO::WholesaleAvailability& WholesaleState() const { return wholesaleAvailability_; }
     [[nodiscard]] uint64_t WholesalePairTransferCount() const { return wholesalePairTransferCount_; }
     [[nodiscard]] uint64_t LastWholesaleReusableBytes() const { return lastWholesaleReusableBytes_; }
