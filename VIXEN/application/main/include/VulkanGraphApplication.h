@@ -430,6 +430,8 @@ private:
     // determinism slice (see the plan ledger's "Batch 6 result"). 0 = the
     // shutdown call site (unlabeled, matches the pre-existing print exactly).
     void RunHitAccumDiagReadback(uint64_t sampleFrame = 0);
+    // HDR2: opt-in observation only; the GPU meter remains the authoritative metering path.
+    void RunHdrMeterDebugReadback();
     // B2 determinism slice: VIXEN_HIT_ACCUM_DIAG_FRAME=<n> samples the SAME
     // readback mid-run, right after frame n's vkDeviceWaitIdle-equivalent
     // settle point (PostTick, every tick unconditionally), instead of at

@@ -54,6 +54,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/MultiDispatchNodeConfig.h
     include/Data/Nodes/ConstantNodeConfig.h
     include/Data/Nodes/DepthBufferNodeConfig.h
+    include/Data/Nodes/ExposureMeterNodeConfig.h
     include/Data/Nodes/RenderTargetNodeConfig.h
     include/Data/Nodes/PickIdTargetNodeConfig.h
     include/Data/Nodes/SelectionCoordinatorNodeConfig.h
@@ -249,7 +250,6 @@ set(RENDERGRAPH_NODE_HEADERS
 )
 
 set(RENDERGRAPH_NODE_SOURCES
-    src/Nodes/SceneRadianceNode.cpp
     src/Nodes/BoolOpNode.cpp
     src/Nodes/BlitNode.cpp  # Sampled Lighting Inc3 M1: presentation-only render-target->swapchain blit
     src/Nodes/BufferSyncGathererNode.cpp  # Sampled Lighting Inc3 M5: variadic VkBuffer sync gatherer

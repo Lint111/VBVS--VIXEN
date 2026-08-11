@@ -4,6 +4,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistory;
 layout(binding = 1, rgba8) writeonly uniform image2D outputImage;
+layout(std430, binding = 2) readonly buffer ExposureMeterResult { float ev100; } meter;
 
 // Slice 1 witness transform: pinned EV100=0, with no adaptive state or unordered
 // reduction. The shader intentionally owns the only HDR->UNORM conversion.
@@ -25,6 +26,6 @@ vec3 linearToSrgb(vec3 x) {
 void main() {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
     if (any(greaterThanEqual(p, imageSize(outputImage)))) return;
-    vec3 radiance = max(imageLoad(sceneRadianceHistory, p).rgb, vec3(0.0));
+    vec3 radiance = max(imageLoad(sceneRadianceHistory, p).rgb * exp2(meter.ev100), vec3(0.0));
     imageStore(outputImage, p, vec4(linearToSrgb(acesFitted(radiance)), 1.0));
 }

@@ -1454,6 +1454,9 @@ void VulkanGraphApplication::RunHitAccumDiagReadback(uint64_t sampleFrame) {
 }
 
 void VulkanGraphApplication::PostTick() {
+    if (std::getenv("VIXEN_HDR_METER_DEBUG")) {
+        RunHdrMeterDebugReadback();
+    }
     // B2 determinism slice (VIXEN_HIT_ACCUM_DIAG_FRAME=<n>): sample the hit-accum
     // table at a FIXED frame instead of shutdown, so repeat boots compare the
     // exact same accumulation window. Checked ahead of the perf-CSV early-return
@@ -1621,6 +1624,23 @@ void VulkanGraphApplication::PostTick() {
     }
 
     perfCsvWriter_.RecordFrame(cpuFrameTimeMs, passes, bootBytes, steadyBytes, wholeFrameGpuSpanMs, wholesale);
+}
+
+void VulkanGraphApplication::RunHdrMeterDebugReadback() {
+    static uint64_t lastLoggedFrame = ~uint64_t(0);
+    if (lastLoggedFrame == frameCounter_ || !renderGraph) return;
+    if (frameCounter_ != 0 && frameCounter_ != 59 && frameCounter_ != 119) return;
+    auto* meter = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("exposure_meter_buffer"));
+    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"));
+    if (!meter || !deviceNode || !deviceNode->GetVulkanDevice()) return;
+    auto* device = deviceNode->GetVulkanDevice();
+    vkDeviceWaitIdle(device->device); // observation-only settle point; never used by the meter
+    if (void* mapped = meter->MapForReadback(device)) {
+        const float ev100 = *reinterpret_cast<const float*>(mapped);
+        meter->UnmapReadback(device);
+        std::cout << "[HDRMeter] frame=" << frameCounter_ << " EV100=" << ev100 << "\n";
+        lastLoggedFrame = frameCounter_;
+    }
 }
 
 void VulkanGraphApplication::Update() {

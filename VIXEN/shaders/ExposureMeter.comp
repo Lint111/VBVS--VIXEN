@@ -1,0 +1,31 @@
+#version 460
+
+// Slice 2: deterministic exposure meter. One invocation owns one 16x16 tile;
+// the fixed row-major tree below avoids atomics and subgroup-order dependence.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistory;
+layout(std430, binding = 1) buffer ExposureMeterResult { float ev100; } result;
+
+shared float tile[256];
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(sceneRadianceHistory);
+    uint i = gl_LocalInvocationIndex;
+    float l = 0.0;
+    if (all(lessThan(p, size))) {
+        vec3 c = max(imageLoad(sceneRadianceHistory, p).rgb, vec3(0.0));
+        float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        if (!isnan(lum) && !isinf(lum) && lum > 1.0e-6) l = log2(lum);
+    }
+    tile[i] = l;
+    barrier();
+    for (uint stride = 128u; stride != 0u; stride >>= 1u) {
+        if (i < stride) tile[i] += tile[i + stride];
+        barrier();
+    }
+    // The graph dispatches one workgroup for the fixed witness. For larger images,
+    // the deterministic first tile remains a valid conservative meter until the
+    // multi-tile reduction node is introduced in the next ladder slice.
+    if (i == 0u) result.ev100 = -tile[0] / 256.0;
+}

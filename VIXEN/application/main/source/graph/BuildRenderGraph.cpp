@@ -38,6 +38,7 @@
 #include "merged/DirectLighting-SDI.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
 #include "merged/SpatialReuseShade-SDI.h"
 #include "merged/ExposureTonemap-SDI.h"
+#include "merged/ExposureMeter-SDI.h"
 #include "merged/ProbeGather-SDI.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.h"
 #include "merged/ShadowRayTrace-SDI.h"
@@ -543,9 +544,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle sceneRadianceNode = renderGraph->AddNode<SceneRadianceNodeType>("scene_radiance");
     NodeHandle exposureShaderLib{};
     NodeHandle exposureNode{};
+    NodeHandle exposureMeterShaderLib{};
+    NodeHandle exposureMeterNode{};
+    NodeHandle exposureMeterBuffer{};
     if (hdrExposureEnabled) {
         exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
         exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
+        exposureMeterShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_meter_shader_lib");
+        exposureMeterNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_meter");
+        exposureMeterBuffer = renderGraph->AddNode<StorageBufferNodeType>("exposure_meter_buffer");
     }
 
     // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherers for the reservoir
@@ -1308,6 +1315,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // outputImage's own extent (including under render-scale).
     auto* hitRecordBuffer = static_cast<StorageBufferNode*>(renderGraph->GetInstance(hitRecordBufferNode));
     hitRecordBuffer->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 64u);
+
+    if (hdrExposureEnabled) {
+        static_cast<StorageBufferNode*>(renderGraph->GetInstance(exposureMeterBuffer))
+            ->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 4u);
+    }
 
     // Sampled Lighting Inc3 M4: reservoir ping-pong SSBOs sized to sizeof(Vixen::Gpu::
     // ReservoirRecord) (16 B, see Generated/ReservoirRecord.g.h) bytes per pixel — same
@@ -2079,6 +2091,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
         ->RegisterShaderBuilder([this, exposureFamily](int vulkanVer, int spirvVer) {
             auto builder = exposureFamily->MakeBuilder({});
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
+    auto exposureMeterFamily = makeLightingFamily("ExposureMeter.comp", "ExposureMeter");
+    if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureMeterShaderLib))
+        ->RegisterShaderBuilder([this, exposureMeterFamily](int vulkanVer, int spirvVer) {
+            auto builder = exposureMeterFamily->MakeBuilder({});
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
@@ -7824,6 +7850,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReservoirDebugBuffer, StorageBufferNodeConfig::SWAPCHAIN_INFO);
 
+    if (hdrExposureEnabled) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      exposureMeterBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+    }
+
     // W3b: the hit-accumulation table — device only, NO SWAPCHAIN_INFO (fixed
     // PARAM_SIZE_BYTES sizing; capacity is the shader's own constant, not
     // extent-driven). The W1a missing-vulkan_device lesson, applied at
@@ -8058,6 +8089,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            SceneRadianceNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
     sceneProviders.Provide("sceneRadianceHistory", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    if (hdrExposureEnabled) {
+        sceneProviders.Provide("result", exposureMeterBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+        sceneProviders.Provide("meter", exposureMeterBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
+    }
     // Legacy march interface remains registered for the flag-off/identity path;
     // the HDR seam has a distinct name in SpatialReuseShade.
     sceneProviders.Provide("outputImage", renderTargetNode,
@@ -8460,6 +8497,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
         &sdiCensusExclusions);
 
     if (hdrExposureEnabled) {
+    const auto meterSynth = SynthesizeComputeStage<ShaderInterface::ExposureMeter::Metadata,
+                                                     ShaderInterface::ExposureMeter::MEMBERS>(
+        renderGraph, batch, "exposure_meter", exposureMeterShaderLib, exposureMeterNode,
+        lightingCommon, sceneProviders, {});
+    (void)meterSynth;
+    auto* meterStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureMeterNode));
+    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 1u);
+    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+    meterStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
     const auto exposureSynth = SynthesizeComputeStage<ShaderInterface::ExposureTonemap::Metadata,
                                                        ShaderInterface::ExposureTonemap::MEMBERS>(
         renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
