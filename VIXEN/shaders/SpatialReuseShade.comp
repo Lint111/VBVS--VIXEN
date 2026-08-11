@@ -30,7 +30,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // Binding 0 (outputImage): THIS pass owns the write (moved from DirectLighting.comp,
 // M5 — see that shader's own binding-0 comment for why it keeps a read-only copy).
 
-layout(binding = 0) uniform writeonly image2D outputImage;
+layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 
 // W1b (wavefront epoch): this pass NO LONGER TRACES on the default path — the
 // ShadowVisibilityWave answers every shadow question into HitRecord._pad0
@@ -99,7 +99,7 @@ layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
     AccumulationConfig accumulationConfig;
 };
 
-layout(rgba8, binding = 20) uniform image2D historyImage;
+layout(rgba16f, binding = 20) uniform image2D sceneRadianceHistory;
 
 // ============================================================================
 // PREV-FRAME CAMERA MATRIX (binding 21)
@@ -423,7 +423,7 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
 // ============================================================================
 void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 imgSize     = imageSize(outputImage);
+    ivec2 imgSize     = imageSize(sceneRadianceImage);
 
     if (pixelCoords.x >= imgSize.x || pixelCoords.y >= imgSize.y) return;
 
@@ -651,7 +651,7 @@ void main() {
                 valid = texelDist2 <= (kMaxReprojTexelDist * kMaxReprojTexelDist);
 
                 if (valid) {
-                    vec4 history = imageLoad(historyImage, reprojTexel);
+                    vec4 history = imageLoad(sceneRadianceHistory, reprojTexel);
 
                     vec4 histWorldPosT = imageLoad(worldPosHistoryImage, reprojTexel);
                     const float kMaxReprojWorldPosDelta = 0.1;
@@ -667,7 +667,7 @@ void main() {
             }
             blended = blendedResult;
         } else {
-            vec4 history = imageLoad(historyImage, pixelCoords);
+            vec4 history = imageLoad(sceneRadianceHistory, pixelCoords);
             blended = mix(history, vec4(outColor, 1.0), alpha);
         }
 #ifdef VIXEN_SRS_CELL_RESOLVE
@@ -678,22 +678,32 @@ void main() {
             if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
                 outStore.rgb = mix(outStore.rgb, cellMean, cellW);
             }
-            imageStore(outputImage, pixelCoords, outStore);
+            imageStore(sceneRadianceImage, pixelCoords, outStore);
         }
 #else
-        imageStore(outputImage, pixelCoords, blended);
+        imageStore(sceneRadianceImage, pixelCoords, blended);
 #endif
-        imageStore(historyImage, pixelCoords, blended);
+        imageStore(sceneRadianceHistory, pixelCoords, blended);
     } else {
+        vec4 historyStore = vec4(outColor, 1.0);
 #ifdef VIXEN_SRS_CELL_RESOLVE
         vec3 cellMean; float cellW;
         vec4 outStore = vec4(outColor, 1.0);
         if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
             outStore.rgb = mix(outStore.rgb, cellMean, cellW);
         }
-        imageStore(outputImage, pixelCoords, outStore);
+        historyStore = outStore;
+        imageStore(sceneRadianceImage, pixelCoords, outStore);
 #else
-        imageStore(outputImage, pixelCoords, vec4(outColor, 1.0));
+        imageStore(sceneRadianceImage, pixelCoords, vec4(outColor, 1.0));
+#endif
+        // The display-transform path consumes the persistent HDR history even when
+        // temporal accumulation is disabled (the default). Keep the history image
+        // synchronized with the current scene so the first HDR witness is not black.
+#ifdef VIXEN_SRS_CELL_RESOLVE
+        imageStore(sceneRadianceHistory, pixelCoords, historyStore);
+#else
+        imageStore(sceneRadianceHistory, pixelCoords, historyStore);
 #endif
     }
 

@@ -37,6 +37,7 @@
 #include "merged/RecipeInstanceBucketing-SDI.h" // Semantic-wiring S1: bucketing named binding/push constants
 #include "merged/DirectLighting-SDI.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
 #include "merged/SpatialReuseShade-SDI.h"
+#include "merged/ExposureTonemap-SDI.h"
 #include "merged/ProbeGather-SDI.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.h"
 #include "merged/ShadowRayTrace-SDI.h"
@@ -98,6 +99,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Data/Nodes/HitAccumParamsConfigNodeConfig.h"  // B2: hit-accumulate params upload ring
 #include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Data/Nodes/SceneRadianceNodeConfig.h"
 #include "Data/Nodes/WorldPosHistoryNodeConfig.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ReservoirConfigNodeConfig.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
@@ -146,6 +148,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Nodes/HitAccumParamsConfigNode.h"  // B2: hit-accumulate params upload ring
 #include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
+#include "Nodes/SceneRadianceNode.h"
 #include "Nodes/WorldPosHistoryNode.h"      // Sampled Lighting Inc3 M2: worldPos/depth companion history image (KI-023)
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/ReservoirConfigNode.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
@@ -387,6 +390,7 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 }  // namespace
 
 void VulkanGraphApplication::BuildRenderGraph() {
+    const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
     if (!renderGraph) {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
         return;
@@ -535,6 +539,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+
+    NodeHandle sceneRadianceNode = renderGraph->AddNode<SceneRadianceNodeType>("scene_radiance");
+    NodeHandle exposureShaderLib{};
+    NodeHandle exposureNode{};
+    if (hdrExposureEnabled) {
+        exposureShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("exposure_tonemap_shader_lib");
+        exposureNode = renderGraph->AddNode<ComputeStageNodeType>("exposure_tonemap");
+    }
 
     // Sampled Lighting Inc3 M5: array-hazard buffer-sync gatherers for the reservoir
     // ping-pong's genuine cross-dispatch hazard (see DirectLighting.comp's own file
@@ -2062,6 +2074,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
         registerLightingFamily(spatialReuseShaderLib,
                                makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"));
     }
+
+    auto exposureFamily = makeLightingFamily("ExposureTonemap.comp", "ExposureTonemap");
+    if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
+        ->RegisterShaderBuilder([this, exposureFamily](int vulkanVer, int spirvVer) {
+            auto builder = exposureFamily->MakeBuilder({});
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
 
     // W1a: the ProbeUpdate split's three compiled programs, each family-registered
     // (see the lighting-family block above). ProbeGather + ShadowRayTrace include
@@ -7686,6 +7713,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
                   accumulationHistoryNode, AccumulationHistoryNodeConfig::HEIGHT);
 
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  sceneRadianceNode, SceneRadianceNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  sceneRadianceNode, SceneRadianceNodeConfig::COMMAND_POOL)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::WIDTH_OUT,
+                  sceneRadianceNode, SceneRadianceNodeConfig::WIDTH)
+         .Connect(renderTargetNode, RenderTargetNodeConfig::HEIGHT_OUT,
+                  sceneRadianceNode, SceneRadianceNodeConfig::HEIGHT);
+
     // Sampled Lighting Inc3 M2 (KI-023): worldPos history image connections — identical
     // device/command-pool/extent-follow wiring as accumulationHistoryNode above.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -8018,6 +8054,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
     sceneProviders.Provide("idOutputImage", pickIdTargetNode,
                            PickIdTargetNodeConfig::ID_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("sceneRadianceImage", sceneRadianceNode,
+                           SceneRadianceNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("sceneRadianceHistory", accumulationHistoryNode,
+                           AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    // Legacy march interface remains registered for the flag-off/identity path;
+    // the HDR seam has a distinct name in SpatialReuseShade.
     sceneProviders.Provide("outputImage", renderTargetNode,
                            RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
@@ -8417,6 +8459,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sdiHazardCensus_, spatialReuseNode, sceneProviders, srsSdiFeatures,
         &sdiCensusExclusions);
 
+    if (hdrExposureEnabled) {
+    const auto exposureSynth = SynthesizeComputeStage<ShaderInterface::ExposureTonemap::Metadata,
+                                                       ShaderInterface::ExposureTonemap::MEMBERS>(
+        renderGraph, batch, "exposure_tonemap", exposureShaderLib, exposureNode,
+        lightingCommon, sceneProviders, {});
+    (void)exposureSynth;
+    auto* exposureStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(exposureNode));
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, 0u);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 0u);
+    exposureStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
+    }
+
     // SpatialReuse's own push-constant gatherer (synthesized above): SAME field sources as
     // DirectLighting's own gatherer (a third compiled program still needs its own reflected
     // push-constant ranges).
@@ -8522,6 +8577,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (moved from DirectLightingNode, M5 — SpatialReuseNode is the genuine outputImage writer now).
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   spatialReuseNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+    if (hdrExposureEnabled) {
+        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      exposureNode, ComputeStageNodeConfig::IMAGE_WRITE, SlotRoleModifier(SlotRole::Execute));
+    }
 
     // Sampled Lighting Inc4 M5: SpatialReuseNode's IMAGE_READ_ARRAY <-> probeApplyNode's
     // IMAGE_WRITE_ARRAY (wired further below; W1a moved the atlas writer from the retired
@@ -9019,8 +9078,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // groupId-order edge direction is correct (mirrors the sky-projection/UI ordering-edge
     // convention below). W-LEAN L3: SRS is the sole render-target writer again
     // (the composite is its own gated tail — no standalone resolve stage).
-    batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    if (hdrExposureEnabled) {
+        batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      exposureNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        batch.Connect(exposureNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    } else {
+        batch.Connect(spatialReuseNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      blitNode, BlitNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
 
     // P5b M3 (extended for Tiered ESVO Inc1 M3; Sampled Lighting Inc3 M1: chain now runs through
     // DirectLighting + BlitNode first): the march->DirectLighting->Blit->sky-projection->UI

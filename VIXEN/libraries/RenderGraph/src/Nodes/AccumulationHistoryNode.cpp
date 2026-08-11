@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Sampled Lighting Inc2 M1: persistent temporal-accumulation history image, allocated +
-// transitioned + wired, but not yet read/written by the shader (see AccumulationHistoryNode.h).
+// transitioned + wired for the scene-linear HDR accumulation seam.
 
 #include "Nodes/AccumulationHistoryNode.h"
 #include "Core/NodeRegistration.h"
@@ -95,7 +95,7 @@ void AccumulationHistoryNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      image_);
 
     NODE_LOG_INFO("[AccumulationHistoryNode] Outputs published (" + std::to_string(width_) + "x" +
-                  std::to_string(height_) + ", R8G8B8A8_UNORM storage image)");
+                  std::to_string(height_) + ", R16G16B16A16_SFLOAT storage image)");
 }
 
 void AccumulationHistoryNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -126,7 +126,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     VkPhysicalDeviceMemoryProperties memProps{};
     vkGetPhysicalDeviceMemoryProperties(physDev, &memProps);
 
-    // --- Create R8G8B8A8_UNORM storage image (matches outputImage's format) ---
+    // --- Create the scene-linear HDR storage image ---
     VkImageCreateInfo imgInfo{};
     imgInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imgInfo.imageType     = VK_IMAGE_TYPE_2D;
@@ -155,7 +155,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
         memProps,
         req.memoryTypeBits,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        "AccumulationHistoryNode R8G8B8A8_UNORM image"
+        "AccumulationHistoryNode R16G16B16A16_SFLOAT image"
     );
 
     if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory_) != VK_SUCCESS) {
@@ -182,7 +182,7 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     // this single transition makes the descriptor (always GENERAL) correct for every frame.
     TransitionToGeneral(commandPool);
 
-    NODE_LOG_INFO("[AccumulationHistoryNode] Created R8G8B8A8_UNORM storage image at " +
+    NODE_LOG_INFO("[AccumulationHistoryNode] Created R16G16B16A16_SFLOAT storage image at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +
                   " (transitioned UNDEFINED->GENERAL)");
 }

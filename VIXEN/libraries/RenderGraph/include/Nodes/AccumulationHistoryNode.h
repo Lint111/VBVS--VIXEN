@@ -88,7 +88,7 @@ private:
     uint32_t createdWidth_  = 0;
     uint32_t createdHeight_ = 0;
 
-    static constexpr VkFormat kFormat = VK_FORMAT_R8G8B8A8_UNORM;  // matches outputImage (RenderTargetNode default)
+    static constexpr VkFormat kFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 };
 
 } // namespace Vixen::RenderGraph
