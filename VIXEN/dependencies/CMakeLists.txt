@@ -133,12 +133,11 @@ FetchContent_Declare(
     # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
     # silently drifted. A pinned SHA is reproducible across every build dir/worktree
     # and cannot silently drift; bump it deliberately.
-    # Current: gaia-ecs main @ 0f4d5d3 (2026-07-18, GAIA_VERSION 0.9.3-dev) — 29 commits
-    # past the year-old v0.9.2 tag, incl. runtime relationship data / pair-payload /
-    # SoA-field-access fixes the E7 pair-materialize path depends on. Bumped from the
-    # stale v0.9.2 release tag (2293594) because building E7 infra on it means building
-    # on a >1yr-old base missing the runtime-relationship features we emit against.
-    GIT_TAG        0f4d5d367eb9cfe930ca9323dcd685fbd3bcb2f4  # gaia main @ 0.9.3-dev
+    # Current: gaia-ecs main @ 93718a6 (2026-08-09, GAIA_VERSION 0.9.3-dev) — 36 commits
+    # past the year-old v0.9.2 tag, including runtime schema tooling, optional JSON,
+    # the wasm32 layout fix, and the systems-disabled fix. Bumped deliberately from
+    # the previous pinned main SHA; this remains the 0.9.x-dev main line.
+    GIT_TAG        93718a6938627cde50264049c6dcc933b966d16c  # gaia main @ 0.9.3-dev
     # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
     GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
