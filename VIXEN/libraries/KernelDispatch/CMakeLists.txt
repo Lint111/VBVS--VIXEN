@@ -37,7 +37,9 @@ target_include_directories(KernelDispatch
 
 target_compile_features(KernelDispatch PUBLIC cxx_std_23)
 
-set_target_properties(KernelDispatch PROPERTIES FOLDER "Libraries")
+set_target_properties(KernelDispatch PROPERTIES
+    FOLDER "Libraries"
+    POSITION_INDEPENDENT_CODE ON)
 
 # TBB provides the task-wave parallelism (tbb::parallel_for_each + task_arena). Provisioned by
 # dependencies/CMakeLists.txt (find_package(TBB) or the oneTBB FetchContent) as TBB::tbb -- the same
