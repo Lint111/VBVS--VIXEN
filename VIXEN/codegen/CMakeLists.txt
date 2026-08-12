@@ -577,45 +577,6 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # Milestone 5's research; this is the first CMake-wired drift guard for the Undertow* Hud
     # schemas). A schema edit that isn't regenerated now fails the build, same as every other
     # generated artifact here.
-    set(_readmodel_undertowhud_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHud
-        --out-header "${_out_undertowhud_readmodel_run}")
-    add_custom_target(readmodel_undertowhud_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args} --check
-        COMMENT "[codegen] golden check: UndertowHud.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhud_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args}
-        COMMENT "[codegen] regenerate UndertowHud.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowhudfactions_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudFactions
-        --out-header "${_out_undertowhudfactions_readmodel_run}")
-    add_custom_target(readmodel_undertowhudfactions_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args} --check
-        COMMENT "[codegen] golden check: UndertowHudFactions.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhudfactions_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args}
-        COMMENT "[codegen] regenerate UndertowHudFactions.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowhudevents_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudEvents
-        --out-header "${_out_undertowhudevents_readmodel_run}")
-    add_custom_target(readmodel_undertowhudevents_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args} --check
-        COMMENT "[codegen] golden check: UndertowHudEvents.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhudevents_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args}
-        COMMENT "[codegen] regenerate UndertowHudEvents.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
     set(_readmodel_undertowhudinspect_args
         run --project "${_yk_tool_run}" -c Release --
         --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudInspect
@@ -703,16 +664,16 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_umbrella_undertowhud_args}
         COMMENT "[codegen] regenerate UndertowHudFamily.umbrella.g.h (Yeroket tool)"
         VERBATIM)
-    # Only the 4 Hud-family schemas have their own CMake _check targets today (Milestone 5's
-    # scope; UndertowBodies/UndertowRecipes have no CMake-wired --readmodel-cpp or other
+    # Only the remaining Hud-family schemas have their own CMake _check targets today (the
+    # legacy Hud/HudFactions targets were retired after their derived-query coverage moved to
+    # tools/check-view-derive.sh); UndertowBodies/UndertowRecipes have no CMake-wired --readmodel-cpp or other
     # per-schema check target at all -- confirmed by Milestone 6 Task 1's research, "no prior
     # CMake target existed for any Undertow* schema check before this milestone" -- so those
     # 2 have nothing to depend on here; the umbrella's own existence-probe still degrades
     # gracefully for them via --out-dir, it just can't order itself after a target that
     # doesn't exist).
     add_dependencies(readmodel_umbrella_undertowhud_check
-        readmodel_undertowhud_check readmodel_undertowhudfactions_check
-        readmodel_undertowhudevents_check readmodel_undertowhudinspect_check
+        readmodel_undertowhudinspect_check
         readmodel_undertowbuildingfacets_check readmodel_undertowbuildingpower_check
         readmodel_undertowbuildinglabor_check)
 else()
