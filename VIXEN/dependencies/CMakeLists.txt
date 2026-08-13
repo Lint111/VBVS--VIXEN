@@ -127,17 +127,23 @@ set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 
 FetchContent_Declare(
     gaia
-    GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
+    GIT_REPOSITORY https://github.com/Lint111/gaia-ecs.git
     # Pinned to a specific commit rather than a moving ref.
     # GIT_TAG main previously froze at whatever commit each build dir first fetched
     # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
     # silently drifted. A pinned SHA is reproducible across every build dir/worktree
     # and cannot silently drift; bump it deliberately.
-    # Current: gaia-ecs main @ 93718a6 (2026-08-09, GAIA_VERSION 0.9.3-dev) — 36 commits
-    # past the year-old v0.9.2 tag, including runtime schema tooling, optional JSON,
-    # the wasm32 layout fix, and the systems-disabled fix. Bumped deliberately from
-    # the previous pinned main SHA; this remains the 0.9.x-dev main line.
-    GIT_TAG        93718a6938627cde50264049c6dcc933b966d16c  # gaia main @ 0.9.3-dev
+    # Current: FORK-PIN (adm-s2 Shape A, 2026-08-13) — Lint111/gaia-ecs branch
+    # fix/parallel-observer-publication = upstream main @ 93718a69 (0.9.3-dev)
+    # + ONE commit: the parallel observer-publication race fix (submitted upstream
+    # as richardbiely/gaia-ecs#37; per-work-item deferred OnSet queues drained by
+    # the coordinator). Intake gate: the FETCHED tree must contain
+    # DeferOnSetSlotScope (fix-unique symbol) — never trust a green reconfigure,
+    # FetchContent caches _deps.
+    # REVERT/FORWARD RECIPE: when upstream merges #37, point GIT_REPOSITORY back
+    # to richardbiely/gaia-ecs and GIT_TAG to the upstream merge commit; to roll
+    # back to pre-fix upstream, restore 93718a6938627cde50264049c6dcc933b966d16c.
+    GIT_TAG        9c577be41332f3b0d172f6a4bdfec8c181265947  # fork: 93718a69 + observer-race fix (PR #37)
     # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
     GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
