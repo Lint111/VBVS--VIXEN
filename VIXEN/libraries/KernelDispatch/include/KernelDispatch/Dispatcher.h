@@ -345,4 +345,75 @@ inline Handle RunChainPerItem(const std::vector<Stage>& stages,
     return h;
 }
 
+// ---------------------------------------------------------------------------------------------------
+// terra-jobsim slice 3 -- access-DAG WAVES over a PRE-COMPUTED partition (NativeDispatchPlan.g.h).
+// ---------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Dispatch stages grouped into PRE-COMPUTED waves, running each wave's stages CONCURRENTLY and
+ *        waves themselves in sequence (a wave is a full barrier for the next wave's start).
+ *
+ * Unlike RunChain/RunChainPerItem, which DERIVE the wave partition from pairwise StagesConflict scans
+ * over the stage list, this takes a partition some upstream authority already proved disjoint --
+ * terra-jobsim slice 3's NativeDispatchPlanEntry rows, which combine the solved tick schedule with the
+ * field-level GaiaFieldAccessManifest. The caller is responsible for grouping `stages` into `waves`
+ * (each inner vector = one wave's stage indices into `stages`, in ascending wave order) using that
+ * proof; this function does NOT re-derive or re-verify disjointness -- it is the executor half of the
+ * design, not the planner half. Two stages in the SAME wave run concurrently; this function does not
+ * defend against a caller passing conflicting stages in one wave (the plan/manifest is the safety
+ * proof; a caller bypassing it gets whatever a data race gets).
+ *
+ * Each wave's stages run through the SAME Tier-A executor as RunPerElementStage (one VirtualTask per
+ * item, all stages' items pooled into ONE wave dispatch) so 1/2/N worker counts stay deterministic for
+ * the same reason RunPerElementStage is: every item owns a disjoint (stage,index) key, so no item's
+ * result depends on interleaving.
+ *
+ * @param stages      The stage list; `waves[i]` holds INDICES into this vector.
+ * @param waves       Wave groups, ascending order; stages within one wave may run concurrently.
+ * @param profile     Backend/output policy per stage (empty = each stage's default backend).
+ * @param workerCount TBB workers for the CpuTbb backend (>=1). Defaults to hardware concurrency.
+ */
+inline Handle RunSystemWaves(const std::vector<Stage>& stages,
+                             const std::vector<std::vector<size_t>>& waves,
+                             const DispatcherProfile& profile = {},
+                             int workerCount = DefaultWorkerCount()) {
+    Handle h;
+    bool ok = true;
+
+    for (const auto& waveStageIndices : waves) {
+        std::vector<VirtualTask> tasks;
+        std::vector<TaskId> waveIds;
+        // CpuInline forces the whole wave serial: if ANY member stage is routed CpuInline, 1 worker --
+        // matching RunChainPerItem's per-wave rule (a wave is the barrier granularity here too).
+        int waveWorkers = workerCount;
+        for (size_t si : waveStageIndices)
+            if (profile.BackendFor(stages[si].owner, stages[si].backend) == Backend::CpuInline) {
+                waveWorkers = 1;
+                break;
+            }
+
+        for (size_t si : waveStageIndices) {
+            const Stage& s = stages[si];
+            const uint64_t ownerId = std::hash<std::string>{}(s.owner);
+            for (uint32_t i = 0; i < s.itemCount; ++i) {
+                TaskId id{ownerId, i};
+                VirtualTask t;
+                t.id = id;
+                const auto& fn = s.perElement;
+                t.execute = [&fn, i] { if (fn) fn(i); };
+                tasks.push_back(std::move(t));
+                waveIds.push_back(id);
+            }
+        }
+        if (tasks.empty()) continue;
+
+        TaskExecutor executor;
+        ok = ok && executor.Run(tasks, {waveIds}, waveWorkers);
+    }
+
+    h.completed = true;
+    h.succeeded = ok;
+    return h;
+}
+
 }  // namespace Vixen::KernelDispatch
