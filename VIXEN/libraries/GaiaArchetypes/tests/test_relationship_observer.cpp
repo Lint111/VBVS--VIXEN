@@ -798,13 +798,19 @@ TEST_F(RelationshipObserverIntegrationTest, CompleteWorkflow) {
     // Track voxel count via callback
     observer->onRelationshipAdded(partOfTag, [&](const RelationshipObserver::RelationshipContext& ctx) {
         if (world.valid(ctx.target) && world.has<TestData>(ctx.target)) {
-            world.set<TestData>(ctx.target).value++;
+            // set<T>() returns a write-back-on-destruction proxy (SetWriteProxyTyped) -- it must
+            // be bound to a named BY-VALUE local so its destructor (which commits the mutation)
+            // runs at end of statement; binding a reference to it, or mutating the temporary
+            // in place, doesn't compile under gcc-13's stricter [-fpermissive] rvalue checks.
+            auto data = world.set<TestData>(ctx.target);
+            data.value++;
         }
     });
 
     observer->onRelationshipRemoved(partOfTag, [&](const RelationshipObserver::RelationshipContext& ctx) {
         if (world.valid(ctx.target) && world.has<TestData>(ctx.target)) {
-            world.set<TestData>(ctx.target).value--;
+            auto data = world.set<TestData>(ctx.target);
+            data.value--;
         }
     });
 
@@ -844,7 +850,7 @@ TEST_F(RelationshipObserverIntegrationTest, BatchWorkflow) {
     // Use batch callback
     observer->onBatchAdded(partOfTag, [&](const RelationshipObserver::BatchRelationshipContext& ctx) {
         if (world.valid(ctx.target) && world.has<TestData>(ctx.target)) {
-            auto& data = world.set<TestData>(ctx.target);
+            auto data = world.set<TestData>(ctx.target);   // by-value local, see comment above
             data.value += static_cast<int>(ctx.sources.size());
         }
     });

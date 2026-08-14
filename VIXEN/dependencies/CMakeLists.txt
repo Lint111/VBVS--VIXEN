@@ -393,6 +393,18 @@ unset(_vixen_build_testing_saved)
 foreach(_rml RmlCore RmlUi RmlDebugger rmlui_core)
     if(TARGET ${_rml})
         set_target_properties(${_rml} PROPERTIES FOLDER "Dependencies")
+        # Suppress warnings compiling RmlUi's OWN translation units (-Warray-bounds= et al,
+        # e.g. Context.cpp/ElementForm.cpp/WidgetDropDown.cpp/WidgetSlider.cpp via inlined
+        # libstdc++ char_traits through itlib::flat_map). A SYSTEM-include mark (the gaia
+        # pattern, perf/fedwarn-vixen1-report.md §2) only suppresses warnings for CONSUMERS
+        # including RmlUi's headers -- it does nothing here because these warnings fire while
+        # compiling rmlui_core's own .cpp files, not a downstream include. Matches the
+        # freetype PRIVATE -w treatment two blocks above -- same third-party exemption,
+        # target-scoped since this is the library's own build, not an include leak.
+        target_compile_options(${_rml} PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/W0>
+            $<$<CXX_COMPILER_ID:GNU>:-w>
+            $<$<CXX_COMPILER_ID:Clang>:-w>)
     endif()
 endforeach()
 message(STATUS "RmlUi + FreeType fetched - moddable UI available")
