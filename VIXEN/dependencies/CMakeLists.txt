@@ -176,6 +176,17 @@ if(TARGET gaia)
     # VIXEN's `#include <gaia.h>` consumers (VoxelComponents, GaiaVoxelWorld,
     # GaiaArchetypes) need single_include/ added explicitly.
     target_include_directories(gaia INTERFACE $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
+    # SYSTEM: the single_include/gaia.h amalgamation trips several first-party-visible warnings
+    # (-Wunused-variable et al, hundreds of them) that are gaia's problem, not ours. Upstream's own
+    # CMakeLists.txt (run by FetchContent_MakeAvailable, above) ALSO declares single_include as an
+    # INTERFACE include -- non-SYSTEM -- so a second target_include_directories(... SYSTEM ...) call
+    # here just appends a duplicate path entry rather than overriding upstream's; the compiler keeps
+    # the first (non-SYSTEM) occurrence and the warnings still leak through. The actual override
+    # mechanism is INTERFACE_SYSTEM_INCLUDE_DIRECTORIES, which retroactively marks an
+    # ALREADY-DECLARED include path as SYSTEM for every consumer, without re-adding it -- the
+    # standard third-party exemption mechanism (see perf/fedwarn-vixen1-report.md).
+    set_property(TARGET gaia APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+        $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
 endif()
 
 message(STATUS "Gaia ECS fetched - available to all libraries")
