@@ -133,17 +133,23 @@ FetchContent_Declare(
     # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
     # silently drifted. A pinned SHA is reproducible across every build dir/worktree
     # and cannot silently drift; bump it deliberately.
-    # Current: FORK-PIN (adm-s2 Shape A, 2026-08-13) — Lint111/gaia-ecs branch
-    # fix/parallel-observer-publication = upstream main @ 93718a69 (0.9.3-dev)
-    # + ONE commit: the parallel observer-publication race fix (submitted upstream
-    # as richardbiely/gaia-ecs#37; per-work-item deferred OnSet queues drained by
-    # the coordinator). Intake gate: the FETCHED tree must contain
+    # Current: FORK-PIN (adm-s2 Shape A, 2026-08-13; re-pointed 2026-08-14 after
+    # PR feedback) — Lint111/gaia-ecs branch PIN/parallel-observer-publication =
+    # upstream main @ 93718a69 (0.9.3-dev)
+    # + TWO commits: (1) the parallel observer-publication race fix (per-work-item
+    # deferred OnSet queues drained by the coordinator) and (2) a regeneration of
+    # single_include/gaia.h carrying that fix. WHY TWO BRANCHES: the maintainer asked
+    # (PR #37, 2026-08-14) that the PR omit single_include/gaia.h — it is generated and
+    # he regenerates it himself — so branch fix/... holds the reviewable sources ONLY,
+    # while branch pin/... adds the regenerated amalgamation. WE PIN pin/... because
+    # this build consumes single_include/gaia.h EXCLUSIVELY (target_include_directories
+    # below points at single_include/, and every e7 test does #include <gaia.h>). Intake gate: the FETCHED tree must contain
     # DeferOnSetSlotScope (fix-unique symbol) — never trust a green reconfigure,
     # FetchContent caches _deps.
     # REVERT/FORWARD RECIPE: when upstream merges #37, point GIT_REPOSITORY back
     # to richardbiely/gaia-ecs and GIT_TAG to the upstream merge commit; to roll
     # back to pre-fix upstream, restore 93718a6938627cde50264049c6dcc933b966d16c.
-    GIT_TAG        9c577be41332f3b0d172f6a4bdfec8c181265947  # fork: 93718a69 + observer-race fix (PR #37)
+    GIT_TAG        2b5b914  # fork pin/... = 93718a69 + fix + regenerated single header
     # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
     GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
