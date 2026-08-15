@@ -37,8 +37,9 @@ enum class ViewNounId : uint32_t {
     UndertowBuildingFacets_rows = 29,
     UndertowObserverDemand_rows = 30,
     UndertowOrbitalStructureFacet_rows = 31,
-    UndertowTransfer_rows = 32,
-    UndertowPlaceStock_rows = 33,
+    UndertowDeepFieldCells_rows = 32,
+    UndertowTransfer_rows = 33,
+    UndertowPlaceStock_rows = 34,
 };
 
 }  // namespace Vixen::AppFlow
