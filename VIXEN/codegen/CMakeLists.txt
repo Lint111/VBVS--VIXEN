@@ -207,18 +207,56 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
+    # Build the CodegenTool ONCE per build, then invoke the produced dll directly (task #29,
+    # mirroring vixen/codegen/CMakeLists.txt's undertow_codegen_tool pattern). `dotnet run
+    # --project` re-enters MSBuild to evaluate + up-to-date-check the tool project on EVERY
+    # invocation -- 17 check + 17 regen targets here each paid that toll independently, AND
+    # every concurrent pair raced on the SAME project's obj/bin (GenerateDepsFile IOException /
+    # MSB4018 on deps.json -- wave-46 composite finals, two failed runs). Building once and
+    # invoking the dll directly means these checks never re-enter MSBuild at all, so they can
+    # neither race each other nor undertow's own undertow_codegen_tool build.
+    if(_codegen_need_wsl_bridge)
+        add_custom_target(engine_codegen_tool
+            COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj" -c Release -nodeReuse:false
+            COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
+            JOB_POOL msbuild
+            VERBATIM)
+    else()
+        add_custom_target(engine_codegen_tool
+            COMMAND ${VIXEN_DOTNET} build "${_yk_tool}/CodegenTool.csproj" -c Release -nodeReuse:false
+            COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
+            JOB_POOL msbuild
+            VERBATIM)
+    endif()
+    # TFM read from the csproj (not hardcoded) so a kernel retarget doesn't silently point every
+    # emitter at a path that no longer exists -- same reasoning as undertow's identical read.
+    file(READ "${_yk_tool}/CodegenTool.csproj" _yk_csproj)
+    if(_yk_csproj MATCHES "<TargetFramework>([^<]+)</TargetFramework>")
+        set(_yk_tfm "${CMAKE_MATCH_1}")
+    else()
+        set(_yk_tfm "net8.0")
+    endif()
+    set(_yk_dll "${_yk_tool}/bin/Release/${_yk_tfm}/CodegenTool.dll")
+    if(_codegen_need_wsl_bridge)
+        _codegen_to_wsl_path("${_yk_dll}" _yk_dll_run)
+    else()
+        set(_yk_dll_run "${_yk_dll}")
+    endif()
+
     set(_oc_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct OctreeConfig
         --out-cpp  "${_out_octreeconfig_cpp_run}"
         --out-glsl "${_out_octreeconfig_glsl_run}")
     add_custom_target(octreeconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args} --check
         COMMENT "[codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(octreeconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- RecipeParams via --struct-precision (Recipe-Load-Tier-Contract M2, precision tier):
@@ -229,17 +267,19 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # WSL-bridge-vs-native, so a build without dotnet reachable degrades to WARNING like every
     # other target here, never a hard configure failure.
     set(_rp_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct-precision RecipeParams
         --out-cpp  "${_out_recipeparams_cpp_run}"
         --out-glsl "${_out_recipeparams_glsl_run}")
     add_custom_target(recipeparams_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_rp_args} --check
         COMMENT "[codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(recipeparams_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rp_args}
         COMMENT "[codegen] regenerate RecipeParams.g.h/.glsl (Yeroket tool, --struct-precision)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- LightingConfig via the same Yeroket tool (Sampled Lighting Inc0 M1: lights
@@ -248,68 +288,76 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # library — mirroring OctreeConfig's "config lives with its consuming library"
     # convention (SVO owns OctreeConfig because the octree is SVO's core data type).
     set(_lc_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct LightingConfig
         --out-cpp  "${_out_lightingconfig_cpp_run}"
         --out-glsl "${_out_lightingconfig_glsl_run}")
     add_custom_target(lightingconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args} --check
         COMMENT "[codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(lightingconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args}
         COMMENT "[codegen] regenerate LightingConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- ShadowConfig via the same Yeroket tool (Sampled Lighting Inc1 M4: shadow-pass
     # compute budget as drift-guarded data). Generated header lives beside RenderGraph,
     # mirroring LightingConfig's own "config lives with its consuming library" convention.
     set(_sc_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct ShadowConfig
         --out-cpp  "${_out_shadowconfig_cpp_run}"
         --out-glsl "${_out_shadowconfig_glsl_run}")
     add_custom_target(shadowconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_sc_args} --check
         COMMENT "[codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(shadowconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_sc_args}
         COMMENT "[codegen] regenerate ShadowConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- AccumulationConfig via the same Yeroket tool (Sampled Lighting Inc2 M1: temporal-
     # accumulation compute budget as drift-guarded data). Generated header lives beside
     # RenderGraph, mirroring ShadowConfig's own "config lives with its consuming library" convention.
     set(_ac_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct AccumulationConfig
         --out-cpp  "${_out_accumulationconfig_cpp_run}"
         --out-glsl "${_out_accumulationconfig_glsl_run}")
     add_custom_target(accumulationconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_ac_args} --check
         COMMENT "[codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(accumulationconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_ac_args}
         COMMENT "[codegen] regenerate AccumulationConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- PrevCameraConfig via the same Yeroket tool (Sampled Lighting Inc2 M3: prev-frame
     # camera matrix plumbing for M4's reprojection). Generated header lives beside RenderGraph,
     # mirroring AccumulationConfig's own "config lives with its consuming library" convention.
     set(_pcc_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct PrevCameraConfig
         --out-cpp  "${_out_prevcameraconfig_cpp_run}"
         --out-glsl "${_out_prevcameraconfig_glsl_run}")
     add_custom_target(prevcameraconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_pcc_args} --check
         COMMENT "[codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(prevcameraconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_pcc_args}
         COMMENT "[codegen] regenerate PrevCameraConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- ReservoirConfig via the same Yeroket tool (Sampled Lighting Inc3 M3: ReSTIR
@@ -319,17 +367,19 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # file header for the M3-scope note (reservoirEnabled + lightTreeCutThreshold are
     # the only fields consumed this milestone).
     set(_rc_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct ReservoirConfig
         --out-cpp  "${_out_reservoirconfig_cpp_run}"
         --out-glsl "${_out_reservoirconfig_glsl_run}")
     add_custom_target(reservoirconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_rc_args} --check
         COMMENT "[codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(reservoirconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rc_args}
         COMMENT "[codegen] regenerate ReservoirConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- ProbeGridConfig via the same Yeroket tool (Sampled Lighting Inc4 M2: DDGI
@@ -338,17 +388,19 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # consuming library" convention. Scaffolding for M3-M6 — see ProbeGridConfig.cs's
     # file header for the M2-scope note (no probe-update shader reads it yet).
     set(_pgc_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct ProbeGridConfig
         --out-cpp  "${_out_probegridconfig_cpp_run}"
         --out-glsl "${_out_probegridconfig_glsl_run}")
     add_custom_target(probegridconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_pgc_args} --check
         COMMENT "[codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(probegridconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_pgc_args}
         COMMENT "[codegen] regenerate ProbeGridConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- LightTreeBuffer via the same Yeroket tool (Sampled Lighting Inc3 M4: GPU-side
@@ -357,17 +409,19 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # validates against). Generated header lives beside RenderGraph, mirroring
     # ReservoirConfig's own "config lives with its consuming library" convention.
     set(_ltb_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct LightTreeBuffer
         --out-cpp  "${_out_lighttreebuffer_cpp_run}"
         --out-glsl "${_out_lighttreebuffer_glsl_run}")
     add_custom_target(lighttreebuffer_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_ltb_args} --check
         COMMENT "[codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(lighttreebuffer_regen
         COMMAND ${_CODEGEN_RUNNER} ${_ltb_args}
         COMMENT "[codegen] regenerate LightTreeBuffer.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- ReservoirRecord via the same Yeroket tool (Sampled Lighting Inc3 M4: per-pixel
@@ -375,33 +429,37 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # pixel). Generated header lives beside RenderGraph, mirroring LightTreeBuffer's own
     # "config lives with its consuming library" convention.
     set(_rr_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_config_run}" --struct ReservoirRecord
         --out-cpp  "${_out_reservoirrecord_cpp_run}"
         --out-glsl "${_out_reservoirrecord_glsl_run}")
     add_custom_target(reservoirrecord_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_rr_args} --check
         COMMENT "[codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(reservoirrecord_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rr_args}
         COMMENT "[codegen] regenerate ReservoirRecord.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- Hud [View] schema via the same Yeroket tool (View Contract Inc-2: renamed from EditorHud).
     # The generated header lives under application/main — it is a CONSUMER artifact (the native
     # HudView), not an engine one; the engine only sees the generic Ui/IView.h seam.
     set(_view_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view Hud
         --out-header "${_out_hud_header_run}")
     add_custom_target(view_hud_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_args} --check
         COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_args}
         COMMENT "[codegen] regenerate Hud.g.h (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- EditorLayers [View] schema (Inc-A2): the editor layer view's data-model, giving the
@@ -409,16 +467,18 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # 2026-07.md). Only --view is needed here (no markup/blob/writer sibling) — editor.rml is
     # hand-authored data-bound markup, not composed from a generated RML fragment like hud.rml.
     set(_view_editor_layers_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view EditorLayers
         --out-header "${_out_editor_layers_header_run}")
     add_custom_target(view_editor_layers_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args} --check
         COMMENT "[codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_editor_layers_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args}
         COMMENT "[codegen] regenerate EditorLayers.g.h (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- Hud RML data-binding partial (View Contract Inc-2, Task 8: RmlMarkupEmitter's --view-markup
@@ -427,33 +487,37 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # fragment itself against schema drift; the composed hud.rml is proven live by
     # test_hud_render_capture (the real-GPU byte-exact gate), not a second textual diff here.
     set(_view_markup_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view-markup Hud
         --out-rml "${_out_hud_rml_run}")
     add_custom_target(view_hud_markup_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args} --check
         COMMENT "[codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_markup_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args}
         COMMENT "[codegen] regenerate Hud.view.rml (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- Hud reflection blob (View Contract Inc-2b): --view-blob emits a constexpr C++ header
     # (the generic BlobView's compile-time delivery) AND a runtime .viewblob data file. Both are
     # committed + drift-guarded against the canonical [View] schema, like every other generated artifact.
     set(_view_blob_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view-blob Hud
         --out-header  "${_out_hud_blob_header_run}"
         --out-datafile "${_out_hud_blob_data_run}")
     add_custom_target(view_hud_blob_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args} --check
         COMMENT "[codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_blob_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args}
         COMMENT "[codegen] regenerate Hud.blob.g.h + hud.viewblob"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- Hud C# data-upload writer (View Contract Inc-3): --view-writer emits the typed
@@ -462,16 +526,18 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # Yeroket NUnit tests. The C++ round-trip proof (test_view_wire_roundtrip) consumes the same
     # UTVA wire this writer emits.
     set(_view_writer_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view-writer Hud
         --out-cs "${_out_hud_writer_cs_run}")
     add_custom_target(view_hud_writer_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args} --check
         COMMENT "[codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_writer_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args}
         COMMENT "[codegen] regenerate Hud.view.g.cs (Yeroket tool)"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
@@ -480,7 +546,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # AppFlow resolves [FlowDataTarget] names against the same complete ordered noun model as
     # ViewNounId: native [View] schemas, matching derived-query views, then runtime-state facets.
     set(_appflow_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_appflow_run}" --appflow
         --view-schema "${_schema_view_run}"
         --schema-json "${_schema_catalog_run}" --view-executor-consumer Undertow.View
@@ -489,17 +555,19 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(appflow_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
         COMMENT "[codegen] golden check: AppFlow.g.h matches canonical AppFlowReference schema"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(appflow_regen
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
         COMMENT "[codegen] regenerate AppFlow.g.h"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- ViewNounId enum: one full catalogue-derived noun space. Native [View] fields retain the
     # prefix in native schema order; every selected derived query and every runtime-state view facet
     # follows in catalogue declaration order. AppFlow above consumes this identical model.
     set(_view_noun_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --view-noun-enum --schema "${_schema_view_run}"
         --schema-json "${_schema_catalog_run}" --view-executor-consumer Undertow.View
         --exclude VectorProof
@@ -507,10 +575,12 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(view_noun_enum_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
         COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_noun_enum_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
         COMMENT "[codegen] regenerate ViewNounId.g.h"
+        JOB_POOL msbuild
         VERBATIM)
 
     # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every
@@ -519,17 +589,30 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # Same schema dir as appflow_check; the AppFlow model builder ignores AppFlowCallables.cs
     # (no [Flow*] attrs on it) so AppFlow.g.h stays byte-identical.
     set(_callables_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --schema "${_schema_callables_run}" --callable-cpp
         --out-header "${_out_callables_hdr_run}")
     add_custom_target(callables_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
         COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
+        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(callables_regen
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
         COMMENT "[codegen] regenerate AppFlowCallables.generated.g.hpp"
+        JOB_POOL msbuild
         VERBATIM)
+
+    # Every check/regen target above invokes ${_yk_dll_run}, so each needs engine_codegen_tool
+    # built first. Derived from this directory's own target list (undertow's identical pattern,
+    # vixen/codegen/CMakeLists.txt) rather than a hand-maintained name list — a new emitter
+    # target picks the dependency up for free.
+    get_property(_engine_codegen_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_t IN LISTS _engine_codegen_targets)
+        if(NOT _t STREQUAL "engine_codegen_tool")
+            add_dependencies(${_t} engine_codegen_tool)
+        endif()
+    endforeach()
 
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
