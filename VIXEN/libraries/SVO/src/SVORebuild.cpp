@@ -259,7 +259,6 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     // only changes behavior once a genuinely non-cube worldSize is passed in.
     int voxelsPerAxis = static_cast<int>(std::max({worldSize.x, worldSize.y, worldSize.z}));
     int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;
-    float brickWorldSize = static_cast<float>(voxelsPerAxis) / static_cast<float>(bricksPerAxis);
 
     m_octree->bricksPerAxis = bricksPerAxis;
     m_octree->brickSideLength = brickSideLength;
@@ -286,7 +285,6 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
     m_worldToLocal = glm::inverse(m_localToWorld);
 
-    float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
     float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
 
     // 5. PHASE 1: Collect populated bricks using DIRECT BINNING (O(N) approach)
@@ -344,17 +342,10 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     }
 
     // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
-
-    // Debug: Print first 10 populated brick coordinates
     // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] First 10 populated bricks:" << std::endl;
-    int printCount = 0;
-    for (const auto& [key, count] : brickCounts) {
-        if (printCount >= 10) break;
-        glm::ivec3 coord = fromBrickKey(key);
-        // TODO: Add ILoggable - std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
-        //       << ") with " << count << " voxels" << std::endl;
-        printCount++;
-    }
+    //   for each of the first 10 entries in brickCounts:
+    //     std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
+    //               << ") with " << count << " voxels" << std::endl;
 
     // Step 3: Convert hash map to brick list with Morton codes
     populatedBricks.reserve(brickCounts.size());
@@ -388,8 +379,6 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     // ========================================================================
     // Week 4 Phase A.2: Morton Code Sorting for Spatial Locality
     // ========================================================================
-    size_t bricksBeforeSort = populatedBricks.size();
-
     std::sort(populatedBricks.begin(), populatedBricks.end(),
         [](const BrickInfo& a, const BrickInfo& b) {
             return a.mortonCode < b.mortonCode;
@@ -406,7 +395,6 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         }
         avgMortonDelta /= std::min(populatedBricks.size() - 1, size_t(9));
 
-        constexpr size_t bytesPerBrick = 768;
         // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Neighbor metrics: avg Morton delta=" << avgMortonDelta
         //       << ", sequential brick distance=" << bytesPerBrick << " bytes" << std::endl;
         // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] (Before Morton sort: neighbors were ~49 KB apart on average)" << std::endl;
@@ -765,8 +753,6 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             }
         }
 
-        size_t colorBytes = numBricks * blocksPerBrick * sizeof(uint64_t);
-        size_t normalBytes = numBricks * blocksPerBrick * sizeof(OctreeBlock::CompressedNormalBlock);
         // TODO: Add ILoggable - std::cout << "[LaineKarrasOctree] Compression complete: "
         //       << colorBytes << " bytes colors, "
         //       << normalBytes << " bytes normals (geometric)" << std::endl;

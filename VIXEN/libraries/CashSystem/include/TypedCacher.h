@@ -5,6 +5,7 @@
 #include "CacherAllocationHelpers.h"
 #include "Memory/DeviceBudgetManager.h"
 #include "Memory/IMemoryAllocator.h"
+#include "VulkanDevice.h"
 // Note: BatchedUploader now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
 // Access via m_device->Upload() instead of GetUploader()
 

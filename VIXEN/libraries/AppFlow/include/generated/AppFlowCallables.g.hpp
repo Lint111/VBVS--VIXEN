@@ -10,7 +10,17 @@
 // same "consumer defines by hand" precedent as EditorLayersView's
 // BindEditorLayersModel_activeLayerCountOverride hook (VIXEN/application/editor) -- and forwards
 // everything else to the real generated header unchanged.
+// The generated header's own params (e.g. StrengthBandToByte's rowIndex) are unused by design --
+// tool output must match a fixed callable signature even when a specific body ignores an arg.
+// Scoped to just this one #include, not the whole TU -- consumer code stays fully checked.
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include "generated/AppFlowCallables.generated.g.hpp"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 #include <RmlUi/Core/Types.h>   // Rml::String
 
 namespace Vixen::AppFlow::Generated {

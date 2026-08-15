@@ -134,7 +134,6 @@ float ContourBuilder::evaluateOverestimation(
     // Compute thickness and position
     float thickness = (maxProj - minProj) / voxelSize;
     float position = ((minProj + maxProj) * 0.5f) / voxelSize;
-    float halfThickness = thickness * 0.5f;
 
     // Estimate overestimation as thickness (tighter = better)
     float overestimation = thickness;

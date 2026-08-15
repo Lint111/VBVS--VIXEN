@@ -13,7 +13,6 @@ glm::vec3 Contour::getNormal() const {
     // Decode 6-bit signed components to [-1, 1]
     auto decode = [](uint32_t bits, int numBits) -> float {
         const int maxVal = (1 << (numBits - 1)) - 1;
-        const int minVal = -(1 << (numBits - 1));
         int signed_val = static_cast<int>(bits);
         if (signed_val > maxVal) {
             signed_val = signed_val - (1 << numBits);

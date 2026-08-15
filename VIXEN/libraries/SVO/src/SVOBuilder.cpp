@@ -715,7 +715,6 @@ void SVOBuilder::subdivideNodeFromVoxels(
     // 4. Maximum total depth reached
 
     int octreeMaxDepth = m_params.maxLevels - m_params.brickDepthLevels; // Octree stops here
-    int brickSize = (m_params.brickDepthLevels > 0) ? (1 << m_params.brickDepthLevels) : 0; // 2^N
 
     bool reachedBrickLevel = (m_params.brickDepthLevels > 0 && node->level >= octreeMaxDepth);
     bool reachedMinSize = (gridSize <= 1);
