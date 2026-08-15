@@ -1,0 +1,11 @@
+# viewblob v1
+model undertowmapclaims
+version 0xAA1DE2BE
+elem UndertowMapClaimRow
+  body int
+  claimant u64
+  kind int
+  strengthBand int
+  confidence int
+  contested int
+field rows array UndertowMapClaimRow
