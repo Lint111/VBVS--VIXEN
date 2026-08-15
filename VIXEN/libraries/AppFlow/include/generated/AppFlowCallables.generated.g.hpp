@@ -16,15 +16,15 @@ inline int32_t BoolToByte(bool v) {
     return (v ? 1 : 0);
 }
 
-inline int32_t BoolToByte(int32_t a, int32_t b) {
+inline int32_t BoolToByte(int32_t a, [[maybe_unused]] int32_t b) {
     return (a != 0 ? 1 : 0);
 }
 
-inline int32_t StrengthBandToByte(int32_t strengthBand, int32_t rowIndex) {
+inline int32_t StrengthBandToByte(int32_t strengthBand, [[maybe_unused]] int32_t rowIndex) {
     return strengthBand;
 }
 
-inline int32_t ConfidenceToByte(int32_t confidence, int32_t rowIndex) {
+inline int32_t ConfidenceToByte(int32_t confidence, [[maybe_unused]] int32_t rowIndex) {
     return confidence;
 }
 
@@ -32,7 +32,7 @@ inline int32_t OrbitParentOrSentinel(bool hasOrbit, int32_t parentBodyIndex) {
     return (hasOrbit ? parentBodyIndex : -1);
 }
 
-inline int32_t IdentityInt(int32_t v, int32_t rowIndex) {
+inline int32_t IdentityInt(int32_t v, [[maybe_unused]] int32_t rowIndex) {
     return v;
 }
 
@@ -40,7 +40,7 @@ inline float IdentityFloat(float v) {
     return v;
 }
 
-inline float IdentityFloat(float v, int32_t rowIndex) {
+inline float IdentityFloat(float v, [[maybe_unused]] int32_t rowIndex) {
     return v;
 }
 
