@@ -19,13 +19,17 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glm)
 
-# Suppress warnings from glm
+# glm is header-only; mark its headers SYSTEM so glm's own warnings are suppressed
+# for consumers without silencing -Wall/-Wextra/-Werror in the consumer's own TUs.
+# (Do NOT use target_compile_options(glm INTERFACE -w) -- INTERFACE compile options
+# propagate into every consumer's compile command and defeat -Werror project-wide;
+# see the identical gaia INTERFACE_SYSTEM_INCLUDE_DIRECTORIES precedent below.)
 if(TARGET glm)
-    target_compile_options(glm INTERFACE
-        $<$<CXX_COMPILER_ID:MSVC>:/W0>
-        $<$<CXX_COMPILER_ID:GNU>:-w>
-        $<$<CXX_COMPILER_ID:Clang>:-w>
-    )
+    get_target_property(_glm_includes glm INTERFACE_INCLUDE_DIRECTORIES)
+    if(_glm_includes)
+        set_property(TARGET glm APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${_glm_includes})
+    endif()
+    unset(_glm_includes)
     set_target_properties(glm PROPERTIES FOLDER "Dependencies")
 endif()
 
@@ -57,13 +61,14 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(gli)
 
-# Suppress warnings from gli
+# gli is header-only; mark its headers SYSTEM (same rationale as glm above --
+# INTERFACE compile options leak -w into every consumer TU and defeat -Werror).
 if(TARGET gli)
-    target_compile_options(gli INTERFACE
-        $<$<CXX_COMPILER_ID:MSVC>:/W0>
-        $<$<CXX_COMPILER_ID:GNU>:-w>
-        $<$<CXX_COMPILER_ID:Clang>:-w>
-    )
+    get_target_property(_gli_includes gli INTERFACE_INCLUDE_DIRECTORIES)
+    if(_gli_includes)
+        set_property(TARGET gli APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${_gli_includes})
+    endif()
+    unset(_gli_includes)
     set_target_properties(gli PROPERTIES FOLDER "Dependencies")
 endif()
 
