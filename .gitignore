@@ -105,3 +105,6 @@ NUL
 # Windows-native capability bench rig: scripts tracked, outputs are not
 temp_bench/*
 !temp_bench/*.bat
+
+# runtime log whose filename literally contains a backslash (Windows path separator bug)
+*vulkan_app_log.txt
