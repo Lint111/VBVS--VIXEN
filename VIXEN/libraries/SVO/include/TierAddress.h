@@ -9,6 +9,21 @@
 // GPU-resident (§4: "a small CPU-side identity, cheap to store/compare/
 // serialize").
 //
+// ESVO Address Extraction, Slice V1 (2026-08-17, docs/superpowers/specs/
+// 2026-08-17-esvo-address-extraction-design.md, RULING B): storage moved to
+// the kernel-generated Vixen::SVO::EsvoAddress POD (Generated/EsvoAddress.g.h,
+// depth + 8 flattened hop fields, [GpuStruct]) — the SAME struct undertow's
+// Undertow.Substrate.EsvoAddress links via the C# face of the identical
+// schema, so both domains read one address vocabulary with no translation
+// layer. TierAddress itself stays the hand-authored C++ ergonomics wrapper
+// (PushHop/Depth/Hop/equality/ToString — RULING B: only the value MATH that
+// is genuinely shared cross-language crosses as a kernel-owned free function;
+// a single-struct mutator/accessor needs no kernel derivation, [GpuStruct]
+// already gives the byte-identical mirror struct for free). SharedPrefixLength
+// now delegates to the kernel-generated Vixen::SVO::SharedPrefixLength
+// (Generated/EsvoAddressMath.g.hpp) instead of a hand-written loop — same
+// algorithm, one fewer place it could drift from the C# face.
+//
 // Representation choice: fixed-capacity inline array, not std::vector.
 // The design doc's own §4 sketch used std::vector<uint32_t>, but estimates
 // "4-5 entries typical" (§4) and this increment's own tier math (see
@@ -27,32 +42,34 @@
 // dependency on ChildDescriptor, farBit, SVORebuild, or LaineKarrasOctree's
 // traversal code. Those are explicitly out of scope for this increment.
 
-#include <algorithm>
-#include <array>
 #include <cstdint>
 #include <string>
 
-// This header uses std::min. When included after <windows.h> (pulled in transitively on the
-// Windows build via Vulkan/GTest), the `min`/`max` function-like macros mangle unqualified
-// calls into a syntax error. NOMINMAX only helps before windows.h is seen, which a header
-// cannot guarantee, so drop the macros outright — no C++ code wants them. Same convention as
-// GpuTraversalMirror.h.
+#include "Generated/EsvoAddress.g.h"
+#include "Generated/EsvoAddressMath.g.hpp"
+
+// This header uses std::min-shaped comparisons. When included after <windows.h> (pulled in
+// transitively on the Windows build via Vulkan/GTest), the `min`/`max` function-like macros
+// mangle unqualified calls into a syntax error. NOMINMAX only helps before windows.h is seen,
+// which a header cannot guarantee, so drop the macros outright — no C++ code wants them. Same
+// convention as GpuTraversalMirror.h.
 #undef min
 #undef max
 
 namespace Vixen::SVO {
 
-// Upper bound on nested tiers this type can address. The tier math this
-// increment establishes (TierMath.h) uses 5 tiers (T0 planet, T1 region, T2
-// bedrock, system, galaxy); this is kept a couple of entries larger than
-// that concrete count so a future tier addition doesn't immediately force a
-// representation change, without over-provisioning into "arbitrary length"
-// territory (which is what would make std::vector the right choice instead).
+// Upper bound on nested tiers this type can address — matches the kernel-generated
+// EsvoAddress's own fixed field count (Depth + Hop0..Hop7). Kept as a named constant here
+// (rather than a bare "8" at every call site) exactly as before the extraction.
 inline constexpr std::size_t kMaxTierAddressDepth = 8;
 
 // A hop-chain identity: hops[i] = which child octant/TierRef was taken at
 // tier i, ordered from the root tier downward. depth == 0 means the root
 // itself (no hops taken yet — the address IS the root).
+//
+// Storage is the kernel-generated EsvoAddress POD (public Depth/Hop0..Hop7 fields, no methods —
+// [GpuStruct] emits data only). TierAddress wraps it with the ergonomic C++ API callers already
+// use; the wrapper adds no bytes beyond the POD itself (a single EsvoAddress member).
 class TierAddress {
 public:
     TierAddress() = default;
@@ -69,23 +86,27 @@ public:
     // kMaxTierAddressDepth; this is a defensive clamp, not a silent-failure
     // API a caller should rely on.
     void PushHop(uint32_t hop) {
-        if (depth_ < kMaxTierAddressDepth) {
-            hops_[depth_] = hop;
-            ++depth_;
+        if (addr_.Depth < kMaxTierAddressDepth) {
+            HopSlot(addr_.Depth) = hop;
+            ++addr_.Depth;
         }
     }
 
     // Number of hops actually stored (root = 0).
-    std::size_t Depth() const { return depth_; }
+    std::size_t Depth() const { return addr_.Depth; }
 
     // Hop at tier index i (0 = topmost/root-adjacent hop). Caller must
     // ensure i < Depth().
-    uint32_t Hop(std::size_t i) const { return hops_[i]; }
+    uint32_t Hop(std::size_t i) const { return HopSlot(i); }
+
+    // Read-only access to the underlying kernel-generated POD — the shared address vocabulary
+    // undertow's C# face and VIXEN's C++ face both read (spec §3.1).
+    const EsvoAddress& Raw() const { return addr_; }
 
     bool operator==(const TierAddress& other) const {
-        if (depth_ != other.depth_) return false;
-        for (std::size_t i = 0; i < depth_; ++i) {
-            if (hops_[i] != other.hops_[i]) return false;
+        if (addr_.Depth != other.addr_.Depth) return false;
+        for (std::size_t i = 0; i < addr_.Depth; ++i) {
+            if (HopSlot(i) != other.HopSlot(i)) return false;
         }
         return true;
     }
@@ -98,10 +119,10 @@ public:
     // and log, and so a later increment has an obvious, simple starting
     // point to replace rather than an awkward internal layout to unwind.
     std::string ToString() const {
-        std::string result = std::to_string(depth_) + ":";
-        for (std::size_t i = 0; i < depth_; ++i) {
+        std::string result = std::to_string(addr_.Depth) + ":";
+        for (std::size_t i = 0; i < addr_.Depth; ++i) {
             if (i > 0) result += ".";
-            result += std::to_string(hops_[i]);
+            result += std::to_string(HopSlot(i));
         }
         return result;
     }
@@ -112,19 +133,37 @@ public:
     // is a prefix of the other, and exactly Depth() for a self-comparison.
     // This is the primitive M2's direction/magnitude composition depends on:
     // only the hops *below* this shared prefix need to be composed, not the
-    // full address chain.
+    // full address chain. Delegates to the kernel-generated free function
+    // (Generated/EsvoAddressMath.g.hpp) — same algorithm as before the
+    // extraction, now shared with the C# face instead of hand-duplicated.
     static std::size_t SharedPrefixLength(const TierAddress& a, const TierAddress& b) {
-        const std::size_t limit = std::min(a.depth_, b.depth_);
-        std::size_t i = 0;
-        while (i < limit && a.hops_[i] == b.hops_[i]) {
-            ++i;
-        }
-        return i;
+        const EsvoAddress& x = a.addr_;
+        const EsvoAddress& y = b.addr_;
+        return static_cast<std::size_t>(Vixen::SVO::SharedPrefixLength(
+            static_cast<int32_t>(x.Depth), x.Hop0, x.Hop1, x.Hop2, x.Hop3, x.Hop4, x.Hop5, x.Hop6, x.Hop7,
+            static_cast<int32_t>(y.Depth), y.Hop0, y.Hop1, y.Hop2, y.Hop3, y.Hop4, y.Hop5, y.Hop6, y.Hop7));
     }
 
 private:
-    std::array<uint32_t, kMaxTierAddressDepth> hops_{};
-    std::size_t depth_ = 0;
+    // Indexed access into the generated POD's flattened Hop0..Hop7 fields (RULING B: the
+    // emitter gives no [i] operator — those stay hand-authored ergonomics).
+    uint32_t& HopSlot(std::size_t i) {
+        switch (i) {
+            case 0: return addr_.Hop0;
+            case 1: return addr_.Hop1;
+            case 2: return addr_.Hop2;
+            case 3: return addr_.Hop3;
+            case 4: return addr_.Hop4;
+            case 5: return addr_.Hop5;
+            case 6: return addr_.Hop6;
+            default: return addr_.Hop7;
+        }
+    }
+    uint32_t HopSlot(std::size_t i) const {
+        return const_cast<TierAddress*>(this)->HopSlot(i);
+    }
+
+    EsvoAddress addr_{};
 };
 
 }  // namespace Vixen::SVO

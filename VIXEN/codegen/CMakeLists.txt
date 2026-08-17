@@ -104,11 +104,21 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_tool}" _yk_tool_run)
         _codegen_to_wsl_path("${_cg}/config-schemas" _schema_config_run)
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
+        # ESVO Address Extraction Slice V1: its own schema dir, deliberately OUTSIDE the
+        # --callable-cpp sweep root (_schema_callables_run = the whole codegen/ dir below) --
+        # SharedPrefixLength's explicit CppNamespace="Vixen::SVO" would collide with that sweep's
+        # single committed "Vixen::AppFlow::Generated" namespace (Program.cs's
+        # BuildCallableCppHeader throws NotSupportedException on a namespace mismatch within one
+        # invocation) if it sat under config-schemas/ or view-schemas/. See svo-schemas/EsvoAddress.cs.
+        _codegen_to_wsl_path("${_cg}/svo-schemas" _schema_svo_run)
         # Undertow's schema catalogue exists only in the superproject layout. Engine-standalone
         # builds consume the committed AppFlow/ViewNounId headers when this tool is absent.
         _codegen_to_wsl_path("${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json" _schema_catalog_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/EsvoAddress.g.h" _out_esvoaddress_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/EsvoAddress.glsl" _out_esvoaddress_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/EsvoAddressMath.g.hpp" _out_esvoaddressmath_hdr_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl" _out_lightingconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h" _out_shadowconfig_cpp_run)
@@ -166,10 +176,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_yk_tool_run "${_yk_tool}")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
+        set(_schema_svo_run "${_cg}/svo-schemas")
         # See the WSL-bridge block's engine-standalone caveat above.
         set(_schema_catalog_run "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
         set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
+        set(_out_esvoaddress_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/EsvoAddress.g.h")
+        set(_out_esvoaddress_glsl_run "${VIXEN_ROOT}/shaders/Generated/EsvoAddress.glsl")
+        set(_out_esvoaddressmath_hdr_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/EsvoAddressMath.g.hpp")
         set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
         set(_out_lightingconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightingConfig.glsl")
         set(_out_shadowconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ShadowConfig.g.h")
@@ -256,6 +270,50 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(octreeconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
         COMMENT "[codegen] regenerate OctreeConfig.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- EsvoAddress (ESVO Address Extraction, Slice V1, 2026-08-17): the depth+8-hop [GpuStruct]
+    # POD, generated from svo-schemas/EsvoAddress.cs into libraries/SVO/include/Generated/. Kernel
+    # slice K1 (undertow 6f317426) proved this exact shape against a test fixture; this is the
+    # real schema, same "config lives with its consuming library" convention as OctreeConfig.
+    # No shader currently consumes EsvoAddress.glsl -- --out-glsl is a required flag for --struct
+    # regardless (Program.cs line ~3237), so it's emitted as a harmless sidecar, same as every
+    # other --struct target here.
+    set(_ea_args
+        "${_yk_dll_run}"
+        --schema "${_schema_svo_run}" --struct EsvoAddress
+        --out-cpp  "${_out_esvoaddress_cpp_run}"
+        --out-glsl "${_out_esvoaddress_glsl_run}")
+    add_custom_target(esvoaddress_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_ea_args} --check
+        COMMENT "[codegen] golden check: EsvoAddress.g.h/.glsl match canonical (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+    add_custom_target(esvoaddress_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_ea_args}
+        COMMENT "[codegen] regenerate EsvoAddress.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    # --- EsvoAddressMath (same slice): SharedPrefixLength's C++ face, via its OWN --callable-cpp
+    # invocation scoped to svo-schemas/ only -- NOT folded into the callables_check sweep below,
+    # which is committed to the default "Vixen::AppFlow::Generated" namespace and would throw
+    # NotSupportedException on EsvoAddressMath's explicit CppNamespace="Vixen::SVO" if it were
+    # swept from the same --schema root (Program.cs's BuildCallableCppHeader: one invocation, one
+    # namespace). See svo-schemas/EsvoAddress.cs's own header comment.
+    set(_eam_args
+        "${_yk_dll_run}"
+        --schema "${_schema_svo_run}" --callable-cpp
+        --out-header "${_out_esvoaddressmath_hdr_run}")
+    add_custom_target(esvoaddressmath_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_eam_args} --check
+        COMMENT "[codegen] golden check: EsvoAddressMath.g.hpp matches canonical [KernelCallable] schema"
+        JOB_POOL msbuild
+        VERBATIM)
+    add_custom_target(esvoaddressmath_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_eam_args}
+        COMMENT "[codegen] regenerate EsvoAddressMath.g.hpp"
         JOB_POOL msbuild
         VERBATIM)
 
@@ -616,7 +674,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
 
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
-        "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/AppFlow/ViewNounId golden DRIFT GUARDS DISABLED; the committed generated artifacts "
+        "OctreeConfig/EsvoAddress/EsvoAddressMath/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/AppFlow/ViewNounId golden DRIFT GUARDS DISABLED; the committed generated artifacts "
         "are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "

@@ -39,6 +39,7 @@
 #define NOMINMAX
 #include "pch.h"
 #include "LaineKarrasOctree.h"
+#include "TierAddress.h"
 #include "VoxelComponents.h"
 #include "ComponentData.h"
 #include <sstream>
@@ -119,28 +120,37 @@ bool LaineKarrasOctree::voxelExists(const glm::vec3& position, int scale) const 
     // Normalize position to [0,1]
     glm::vec3 normalizedPos = (position - m_worldMin) / (m_worldMax - m_worldMin);
 
-    // Traverse from root to target depth
+    // Traverse from root to target depth. ESVO Address Extraction Slice V1 (RULING B): the
+    // per-level child-index math now builds a TierAddress hop-by-hop (the kernel-owned address
+    // value, Generated/EsvoAddress.g.h) instead of an inline local — same descent, same result,
+    // now expressed in the shared address vocabulary. The loop still walks VIXEN's own
+    // ChildDescriptor node array directly; the kernel owns no node storage.
+    TierAddress address;
     const ChildDescriptor* currentNode = &m_octree->root->childDescriptors[0];
     glm::vec3 nodePos(0.0f);
     float nodeSize = 1.0f;
 
     for (int level = 0; level < scale; ++level) {
         nodeSize *= 0.5f;
-        int childIdx = 0;
+        int octantBits = 0;
         glm::vec3 childPos = nodePos;
 
         if (normalizedPos.x >= nodePos.x + nodeSize) {
-            childIdx |= 1;
+            octantBits |= 1;
             childPos.x += nodeSize;
         }
         if (normalizedPos.y >= nodePos.y + nodeSize) {
-            childIdx |= 2;
+            octantBits |= 2;
             childPos.y += nodeSize;
         }
         if (normalizedPos.z >= nodePos.z + nodeSize) {
-            childIdx |= 4;
+            octantBits |= 4;
             childPos.z += nodeSize;
         }
+        // The address IS the child index from here on — not a shadow copy. hasChild/isLeaf/the
+        // sibling-count loop below all read the hop back out of the shared address type.
+        address.PushHop(static_cast<uint32_t>(octantBits));
+        const int childIdx = static_cast<int>(address.Hop(static_cast<std::size_t>(level)));
 
         if (!currentNode->hasChild(childIdx)) {
             return false;
@@ -181,6 +191,9 @@ std::optional<ISVOStructure::VoxelData> LaineKarrasOctree::getVoxelData(const gl
 
     glm::vec3 normalizedPos = (position - m_worldMin) / (m_worldMax - m_worldMin);
 
+    // ESVO Address Extraction Slice V1 (RULING B): same TierAddress-building descent as
+    // voxelExists — kernel owns the address math, VIXEN keeps its own node-array loop.
+    TierAddress address;
     const ChildDescriptor* currentNode = &m_octree->root->childDescriptors[0];
     const AttributeLookup* attrLookup = nullptr;
     int finalChildIdx = 0;
@@ -190,21 +203,24 @@ std::optional<ISVOStructure::VoxelData> LaineKarrasOctree::getVoxelData(const gl
 
     for (int level = 0; level < scale; ++level) {
         nodeSize *= 0.5f;
-        int childIdx = 0;
+        int octantBits = 0;
         glm::vec3 childPos = nodePos;
 
         if (normalizedPos.x >= nodePos.x + nodeSize) {
-            childIdx |= 1;
+            octantBits |= 1;
             childPos.x += nodeSize;
         }
         if (normalizedPos.y >= nodePos.y + nodeSize) {
-            childIdx |= 2;
+            octantBits |= 2;
             childPos.y += nodeSize;
         }
         if (normalizedPos.z >= nodePos.z + nodeSize) {
-            childIdx |= 4;
+            octantBits |= 4;
             childPos.z += nodeSize;
         }
+        // The address IS the child index from here on — see voxelExists's identical comment.
+        address.PushHop(static_cast<uint32_t>(octantBits));
+        const int childIdx = static_cast<int>(address.Hop(static_cast<std::size_t>(level)));
 
         if (!currentNode->hasChild(childIdx)) {
             return std::nullopt;
@@ -268,27 +284,33 @@ uint8_t LaineKarrasOctree::getChildMask(const glm::vec3& position, int scale) co
 
     glm::vec3 normalizedPos = (position - m_worldMin) / (m_worldMax - m_worldMin);
 
+    // ESVO Address Extraction Slice V1 (RULING B): same TierAddress-building descent as
+    // voxelExists/getVoxelData.
+    TierAddress address;
     const ChildDescriptor* currentNode = &m_octree->root->childDescriptors[0];
     glm::vec3 nodePos(0.0f);
     float nodeSize = 1.0f;
 
     for (int level = 0; level < scale; ++level) {
         nodeSize *= 0.5f;
-        int childIdx = 0;
+        int octantBits = 0;
         glm::vec3 childPos = nodePos;
 
         if (normalizedPos.x >= nodePos.x + nodeSize) {
-            childIdx |= 1;
+            octantBits |= 1;
             childPos.x += nodeSize;
         }
         if (normalizedPos.y >= nodePos.y + nodeSize) {
-            childIdx |= 2;
+            octantBits |= 2;
             childPos.y += nodeSize;
         }
         if (normalizedPos.z >= nodePos.z + nodeSize) {
-            childIdx |= 4;
+            octantBits |= 4;
             childPos.z += nodeSize;
         }
+        // The address IS the child index from here on — see voxelExists's identical comment.
+        address.PushHop(static_cast<uint32_t>(octantBits));
+        const int childIdx = static_cast<int>(address.Hop(static_cast<std::size_t>(level)));
 
         if (!currentNode->hasChild(childIdx)) {
             return 0;

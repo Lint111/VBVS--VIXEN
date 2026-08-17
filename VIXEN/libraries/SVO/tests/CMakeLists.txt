@@ -1179,6 +1179,35 @@ endif()
 gtest_discover_tests(test_octree_queries)
 
 # ===========================================================================
+# ESVO Address Extraction Slice V1 parity (2026-08-17): voxelExists/getVoxelData/getChildMask now
+# build a TierAddress (backed by the kernel-generated EsvoAddress POD) during descent instead of
+# an inline local -- see test_esvo_address_parity.cpp for the fixture/rationale.
+# ===========================================================================
+
+add_executable(test_esvo_address_parity
+    test_esvo_address_parity.cpp
+)
+
+if(TARGET SVO)
+    target_link_libraries(test_esvo_address_parity PRIVATE GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents)
+else()
+    target_link_libraries(test_esvo_address_parity PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_esvo_address_parity PROPERTIES FOLDER "Tests/SVO Tests")
+
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_esvo_address_parity POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_esvo_address_parity>
+        COMMENT "Copying TBB DLL for test_esvo_address_parity"
+    )
+endif()
+
+gtest_discover_tests(test_esvo_address_parity)
+
+# ===========================================================================
 # BrickView Tests (Converted from Legacy BrickStorage)
 # ===========================================================================
 # Tests AttributeRegistry + BrickView integration:
