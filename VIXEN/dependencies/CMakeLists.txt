@@ -132,29 +132,28 @@ set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 
 FetchContent_Declare(
     gaia
-    GIT_REPOSITORY https://github.com/Lint111/gaia-ecs.git
+    GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
     # Pinned to a specific commit rather than a moving ref.
     # GIT_TAG main previously froze at whatever commit each build dir first fetched
     # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
     # silently drifted. A pinned SHA is reproducible across every build dir/worktree
     # and cannot silently drift; bump it deliberately.
-    # Current: FORK-PIN (adm-s2 Shape A, 2026-08-13; re-pointed 2026-08-14 after
-    # PR feedback) — Lint111/gaia-ecs branch PIN/parallel-observer-publication =
-    # upstream main @ 93718a69 (0.9.3-dev)
-    # + TWO commits: (1) the parallel observer-publication race fix (per-work-item
-    # deferred OnSet queues drained by the coordinator) and (2) a regeneration of
-    # single_include/gaia.h carrying that fix. WHY TWO BRANCHES: the maintainer asked
-    # (PR #37, 2026-08-14) that the PR omit single_include/gaia.h — it is generated and
-    # he regenerates it himself — so branch fix/... holds the reviewable sources ONLY,
-    # while branch pin/... adds the regenerated amalgamation. WE PIN pin/... because
-    # this build consumes single_include/gaia.h EXCLUSIVELY (target_include_directories
-    # below points at single_include/, and every e7 test does #include <gaia.h>). Intake gate: the FETCHED tree must contain
-    # DeferOnSetSlotScope (fix-unique symbol) — never trust a green reconfigure,
-    # FetchContent caches _deps.
-    # REVERT/FORWARD RECIPE: when upstream merges #37, point GIT_REPOSITORY back
-    # to richardbiely/gaia-ecs and GIT_TAG to the upstream merge commit; to roll
-    # back to pre-fix upstream, restore 93718a6938627cde50264049c6dcc933b966d16c.
-    GIT_TAG        2b5b914  # fork pin/... = 93718a69 + fix + regenerated single header
+    # Current: UPSTREAM-PIN (2026-08-17, PR #37 intake) — richardbiely/gaia-ecs main
+    # @ 0c2753d86388b9c30b80d0ff27e9daf61d3990cf. This is upstream's OWN merge of PR #37
+    # ("fix(ecs): dispatch OnSet observers off worker threads", merged 063a5873, 2026-08-14)
+    # plus the maintainer's own follow-up regeneration of single_include/gaia.h
+    # (0c2753d, "update amalgamated gaia.h after 063a587") — i.e. exactly what the prior
+    # FORK-PIN (Lint111/gaia-ecs pin/parallel-observer-publication @ 2b5b914) was manually
+    # carrying, now upstream and no longer needing our fork. WE consume single_include/gaia.h
+    # EXCLUSIVELY (target_include_directories below points at single_include/, and every e7
+    # test does #include <gaia.h>), so the pin MUST be at-or-after the amalgamation-refresh
+    # commit, not just the merge commit — the merge commit alone (063a5873) still had a STALE
+    # single_include/gaia.h missing the fix (verified: 0 hits for DeferredOnSet/m_deferOnSetDepth
+    # at 063a5873, 8 hits at 0c2753d). Intake gate: the FETCHED single_include/gaia.h must contain
+    # DeferredOnSet or m_deferOnSetDepth (upstream's own naming for the fix; NOT DeferOnSetSlotScope,
+    # which was our fork's name for its own independent implementation of the same fix) — never
+    # trust a green reconfigure, FetchContent caches _deps.
+    GIT_TAG        0c2753d86388b9c30b80d0ff27e9daf61d3990cf
     # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
     GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
