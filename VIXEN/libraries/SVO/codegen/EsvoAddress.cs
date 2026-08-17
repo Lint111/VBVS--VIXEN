@@ -7,14 +7,19 @@ using Yeroket.Util.KernelFramework;
 // (CodegenTool~/Tests/EsvoAddressTests.cs) — this file is the real one, in VIXEN's own codegen
 // tree, feeding VIXEN's own CMake regen/check targets (codegen/CMakeLists.txt).
 //
-// Isolated in its own svo-schemas/ directory, NOT config-schemas/ or view-schemas/: the existing
-// --callable-cpp sweep (CMakeLists.txt's _schema_callables_run = the whole codegen/ root) emits
-// ONE header committed to ONE namespace (Program.cs BuildCallableCppHeader throws
-// NotSupportedException on a namespace mismatch within one invocation) — AppFlow/view callables
-// use the default "Vixen::AppFlow::Generated" namespace, so SharedPrefixLength's explicit
-// "Vixen::SVO" would collide if it sat under that same sweep root. A dedicated --schema
-// svo-schemas --callable-cpp invocation (its own CMake target, its own --out-header) avoids the
-// collision entirely rather than threading an --exclude through the shared sweep.
+// Lives HERE (libraries/SVO/codegen/), physically OUTSIDE codegen/ entirely — not merely in a
+// sibling directory under it. The existing --callable-cpp sweep (codegen/CMakeLists.txt's
+// _schema_callables_run) reads --schema "${_cg}" (the whole codegen/ root) and walks it
+// RECURSIVELY, so a sibling dir under codegen/ (e.g. codegen/svo-schemas/, this file's original
+// location) is still found by that sweep. Program.cs's BuildCallableCppHeader commits one
+// invocation to ONE namespace and throws NotSupportedException on a mismatch — AppFlow/view
+// callables use the default "Vixen::AppFlow::Generated", so SharedPrefixLength's explicit
+// "Vixen::SVO" collided (caught at wave composite finals, not this slice's own gate, since local
+// SVO tests don't run callables_check). --schema is not repeatable on --callable-cpp (Program.cs
+// reads a single Flag, not RepeatedFlag), so physical exclusion — this file living outside
+// codegen/ — is the fix, not a CLI arg. Its own --struct/--callable-cpp CMake targets
+// (esvoaddress_check/regen, esvoaddressmath_check/regen, defined in codegen/CMakeLists.txt) point
+// --schema directly at this directory via that file's _schema_svo_run.
 //
 // GpuStruct field shape: uint Depth + uint Hop0..Hop7 (9 scalars, NOT a [GpuArray(8)] on one
 // field — GpuArrayAttribute's C# authoring shape is schema-metadata-only, so it cannot back real
