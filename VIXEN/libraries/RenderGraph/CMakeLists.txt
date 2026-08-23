@@ -409,10 +409,13 @@ set(RENDERGRAPH_EVENT_HEADERS
 # UI (RmlUi backend — data-driven, moddable RML/RCSS rendered through Vulkan)
 # ============================================================================
 
+file(GLOB RENDERGRAPH_GENERATED_HEADERS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/Generated/*.g.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/Ui/*.g.h")
+
 set(RENDERGRAPH_UI_HEADERS
     include/Ui/VixenRmlRenderInterface.h
     include/Ui/VixenRmlSystemInterface.h
-    include/Ui/UiShaderSpirv.h
     include/Ui/UiHitMask.h
     include/Ui/IView.h
     include/Ui/ViewBlob.h
@@ -565,6 +568,7 @@ endforeach()
 # RenderGraphNodes — facade over ALL per-node OBJECT libraries. Depends on Core.
 # ----------------------------------------------------------------------------
 add_library(RenderGraphNodes STATIC
+    ${RENDERGRAPH_GENERATED_HEADERS}
     ${RENDERGRAPH_DATA_NODE_CONFIGS}
     ${RENDERGRAPH_NODE_HEADERS}
     ${RENDERGRAPH_UI_HEADERS}

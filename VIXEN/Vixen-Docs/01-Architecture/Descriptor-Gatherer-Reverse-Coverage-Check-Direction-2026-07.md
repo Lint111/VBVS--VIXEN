@@ -53,7 +53,7 @@ gap.** A full SPIR-V reflection pipeline already runs live, in production, on ev
   `ReadShaderSourceWithTraceHooksGate` prepends a `#define` line before compilation), not a formalized
   system with predicates any node-connection logic could query.
 - A codegen tool (`SpirvInterfaceGenerator`) already parses reflection data and emits C++ binding
-  aliases (`generated/sdi/*Names.h`) on every build — but its own doc comment states its purpose is
+  aliases (`generated/sdi/*Names.g.h`) on every build — but its own doc comment states its purpose is
   IDE autocomplete/type-safety for code that CHOOSES to use the aliases, not an enforced manifest.
   `BuildRenderGraph.cpp` uses these aliases for SOME bindings and bare integer literals for others in
   the SAME wiring block (one binding is explicitly commented `"hardcoded; no SDI regen yet"`) — this
@@ -85,7 +85,7 @@ not new codegen.
   guarantee) vs. a loud warning/log (safer to introduce without risk of blocking unrelated work, weaker
   guarantee) — not decided.
 - **Should this consume the raw reflection struct (`descriptorLayout->bindings`, always live and
-  complete) or the generated SDI header (`generated/sdi/*Names.h`, optional/opt-in today)?** The
+  complete) or the generated SDI header (`generated/sdi/*Names.g.h`, optional/opt-in today)?** The
   research's own answer leans toward the raw reflection data, since it's the one already live inside
   the function that would need the check — but this wasn't fully explored as a design decision.
 - **Should `BuildRenderGraph.cpp`'s existing bare-integer-literal bindings be migrated to the generated

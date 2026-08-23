@@ -114,9 +114,9 @@ gtest_discover_tests(test_spirv_access WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # Merged-SDI drift gate (Semantic Shader Wiring S0) — regenerates every
 # feature-variant interface from the committed manifest and fails (exit 6)
-# when a committed generated/sdi/merged/*-SDI.h no longer matches. This is
+# when a committed generated/sdi/merged/*-SDI.g.h no longer matches. This is
 # the WIRED currency gate for those committed artifacts: without it they rot
-# silently (VoxelRayMarchNames.h sat stale from 2025-12 as proof).
+# silently (VoxelRayMarchNames.g.h sat stale from 2025-12 as proof).
 if(TARGET sdi_tool)
     # PROJECT_SOURCE_DIR here is the ShaderManagement library, so anchor the
     # engine root off this file's own location instead.

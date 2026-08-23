@@ -39,9 +39,9 @@ exposes, and dispatches **at load — no engine rebuild**.
 |---|---|---|
 | Source→SPIR-V at runtime | `ShaderManagement::ShaderCompiler` | glslang; `CompilationOptions::SourceLanguage::{GLSL,HLSL}` — HLSL via glslang's HLSL frontend |
 | Full reflection | `SpirvReflector::Reflect` | SPIRV-Reflect; `structDefinitions` carry per-member `offset`/`arrayStride`/`sizeInBytes`; descriptor sets, push constants, spec constants |
-| Typed interface emission | `SpirvInterfaceGenerator::Generate` | writes `<uuid>-SDI.h` with a per-struct `LAYOUT_HASH` |
-| Interface registry | `SdiRegistryManager` | `SDI_Registry.h`, namespace `Shaders`, UUID + friendly alias |
-| Discover + bind unknown types | `SdiDiscoveryScanner` → `UnknownTypeRegistry` | startup scan of `generated/sdi/*-SDI.h`; "register unknown types for runtime binding; notify for promote-to-compile-time" |
+| Typed interface emission | `SpirvInterfaceGenerator::Generate` | writes `<uuid>-SDI.g.h` with a per-struct `LAYOUT_HASH` |
+| Interface registry | `SdiRegistryManager` | `SDI_Registry.g.h`, namespace `Shaders`, UUID + friendly alias |
+| Discover + bind unknown types | `SdiDiscoveryScanner` → `UnknownTypeRegistry` | startup scan of `generated/sdi/*-SDI.g.h`; "register unknown types for runtime binding; notify for promote-to-compile-time" |
 | Graph integration | `ShaderLibraryNode` | "replaces manual shader loading", outputs `ShaderDataBundle`; **ctor still `MVP STUB`** — the first-class shader library is unfinished (matches the backlog's "promote runtime reflection to first-class") |
 | Content/opcode layer | Yeroket codegen + `RecipeRegistry` + recipe VM | opcode catalogue (`SdfOpCodes.g.h`, ~87 ops), recipe bytecode container (VRC1), runtime dispatch by the compiled VM |
 

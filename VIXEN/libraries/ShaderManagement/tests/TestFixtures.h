@@ -593,7 +593,7 @@ public:
         bundle->descriptorInterfaceHash = "dummy-hash-" + bundle->uuid;
 
         // Dummy SDI path (not actually generated)
-        bundle->sdiHeaderPath = "generated/sdi/" + bundle->uuid + "-SDI.h";
+        bundle->sdiHeaderPath = "generated/sdi/" + bundle->uuid + "-SDI.g.h";
         bundle->sdiNamespace = "TestNamespace::" + bundle->uuid;
 
         return bundle;

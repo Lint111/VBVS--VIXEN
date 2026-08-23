@@ -16,7 +16,7 @@ namespace ShaderManagement {
 struct SdiRegistryEntry {
     std::string uuid;                          // Shader UUID
     std::string programName;                   // Human-readable name
-    std::filesystem::path sdiHeaderPath;       // Path to {uuid}-SDI.h
+    std::filesystem::path sdiHeaderPath;       // Path to {uuid}-SDI.g.h
     std::string sdiNamespace;                  // Full namespace (e.g., "ShaderInterface::uuid")
     std::string aliasName;                     // Convenient alias (e.g., "PBRShader")
     bool isActive = true;                      // Is this shader currently registered?
@@ -28,7 +28,7 @@ struct SdiRegistryEntry {
 /**
  * @brief Central SDI registry manager
  *
- * Manages a central SDI_Registry.h header file that includes only
+ * Manages a central SDI_Registry.g.h header file that includes only
  * currently registered/active shader SDI headers.
  *
  * **Key Feature**: Dynamic registry that only includes active shaders,
@@ -36,12 +36,12 @@ struct SdiRegistryEntry {
  *
  * Generated registry format:
  * @code
- * // SDI_Registry.h (auto-generated)
+ * // SDI_Registry.g.h (auto-generated)
  * #pragma once
  *
  * // Include only active/registered shader SDI headers
- * #include "abc123-SDI.h"
- * #include "def456-SDI.h"
+ * #include "abc123-SDI.g.h"
+ * #include "def456-SDI.g.h"
  *
  * // Convenient namespace aliases
  * namespace Shaders {
@@ -53,7 +53,7 @@ struct SdiRegistryEntry {
  * Usage:
  * @code
  * // In your C++ code - single include for all shaders
- * #include "generated/sdi/SDI_Registry.h"
+ * #include "generated/sdi/SDI_Registry.g.h"
  *
  * // Use convenient aliases
  * using namespace Shaders;
@@ -68,7 +68,7 @@ public:
      */
     struct Config {
         std::filesystem::path sdiDirectory = "./generated/sdi";
-        std::filesystem::path registryHeaderPath = "./generated/sdi/SDI_Registry.h";
+        std::filesystem::path registryHeaderPath = "./generated/sdi/SDI_Registry.g.h";
         std::string registryNamespace = "Shaders";  // Namespace for aliases
         bool generateAliases = true;                // Create friendly namespace aliases
         bool generateComments = true;               // Include documentation
@@ -87,7 +87,7 @@ public:
     /**
      * @brief Register a shader SDI in the central registry
      *
-     * Adds the shader to the registry and regenerates SDI_Registry.h
+     * Adds the shader to the registry and regenerates SDI_Registry.g.h
      * to include this shader's header.
      *
      * @param entry Registry entry with shader information
@@ -98,7 +98,7 @@ public:
     /**
      * @brief Unregister a shader SDI from the central registry
      *
-     * Marks shader as inactive and regenerates SDI_Registry.h
+     * Marks shader as inactive and regenerates SDI_Registry.g.h
      * to exclude this shader's header (reduces compilation time).
      *
      * @param uuid Shader UUID to unregister
@@ -175,7 +175,7 @@ public:
     // ===== Registry Generation =====
 
     /**
-     * @brief Regenerate SDI_Registry.h header file
+     * @brief Regenerate SDI_Registry.g.h header file
      *
      * Creates a new registry header including only active shaders.
      * Called automatically when shaders are registered/unregistered
@@ -243,7 +243,7 @@ public:
     /**
      * @brief Get registry file path
      *
-     * @return Path to SDI_Registry.h
+     * @return Path to SDI_Registry.g.h
      */
     std::filesystem::path GetRegistryPath() const { return config_.registryHeaderPath; }
 

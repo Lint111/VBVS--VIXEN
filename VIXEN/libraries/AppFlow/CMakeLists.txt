@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.20...4.2)
 project(AppFlow VERSION 1.0.0 LANGUAGES CXX)
 
+file(GLOB APPFLOW_GENERATED_HEADERS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/generated/*.g.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/generated/*.generated.g.hpp")
+
 set(APPFLOW_HEADERS
-    include/generated/AppFlow.g.h
+    ${APPFLOW_GENERATED_HEADERS}
     include/AppFlowEvents.h
     include/AppFlowResults.h
     include/AppFlowLoader.h

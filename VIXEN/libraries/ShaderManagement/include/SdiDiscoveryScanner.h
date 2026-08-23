@@ -29,7 +29,7 @@ struct DiscoveredStructLayout {
  * Extracts LAYOUT_HASH constants from struct definitions.
  *
  * Flow:
- * 1. Scan all *-SDI.h files in generated/sdi directory
+ * 1. Scan all *-SDI.g.h files in generated/sdi directory
  * 2. Parse struct definitions to extract LAYOUT_HASH constants
  * 3. Compare hashes against known compile-time types
  * 4. Register unknown types in UnknownTypeRegistry
@@ -91,7 +91,7 @@ public:
     /**
      * @brief Extract UUID from SDI filename
      *
-     * Example: "7a57264d155fdf74-SDI.h" -> "7a57264d155fdf74"
+     * Example: "7a57264d155fdf74-SDI.g.h" -> "7a57264d155fdf74"
      *
      * @param filename SDI filename
      * @return UUID string, or empty if invalid format

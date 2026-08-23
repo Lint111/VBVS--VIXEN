@@ -2,7 +2,7 @@
   "descriptorInterfaceHash": "89d176cd6eac7adf",
   "pipelineType": 2,
   "programName": "VoxelRayMarch",
-  "sdiHeaderPath": "generated/sdi\\89d176cd6eac7adf-SDI.h",
+  "sdiHeaderPath": "generated/sdi\\89d176cd6eac7adf-SDI.g.h",
   "sdiNamespace": "ShaderInterface::89d176cd6eac7adf",
   "stages": [
     {

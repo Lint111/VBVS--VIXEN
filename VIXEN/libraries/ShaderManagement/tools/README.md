@@ -42,7 +42,7 @@ shader_tool compile shader.vert shader.frag \
 This will:
 1. Compile `shader.vert` and `shader.frag` to SPIRV
 2. Perform SPIRV reflection
-3. Generate SDI header `./generated/sdi/MyShader_SDI.h`
+3. Generate SDI header `./generated/sdi/MyShader_SDI.g.h`
 4. Save bundle to `./generated/MyShader.json`
 
 ### Compile Compute Shader
@@ -58,7 +58,7 @@ shader_tool compile-compute compute.comp \
 ```bash
 shader_tool build-registry \
     shader1.json shader2.json shader3.json \
-    --output ./generated/SDI_Registry.h
+    --output ./generated/SDI_Registry.g.h
 ```
 
 This generates a central registry header that includes only the registered shaders, reducing compilation time.
@@ -158,7 +158,7 @@ add_shader_bundle(Shader2_Bundle
 # Build central registry from all bundles
 add_shader_registry(ShaderRegistry
     BUNDLES Shader1_Bundle Shader2_Bundle
-    OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.h
+    OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.g.h
 )
 
 # Add registry dependency to your target
@@ -174,7 +174,7 @@ target_include_directories(MyApp PRIVATE
 Now in your C++ code:
 
 ```cpp
-#include <SDI_Registry.h>  // Includes all registered shader SDIs
+#include <SDI_Registry.g.h>  // Includes all registered shader SDIs
 
 // Type-safe descriptor access
 auto binding = SDI::Shader1::Descriptors::MainTexture;
@@ -261,9 +261,9 @@ MyProject/
         │   ├── ComputeShader.json
         │   └── ...
         └── sdi/
-            ├── BasicShader_SDI.h
-            ├── ComputeShader_SDI.h
-            └── SDI_Registry.h
+            ├── BasicShader_SDI.g.h
+            ├── ComputeShader_SDI.g.h
+            └── SDI_Registry.g.h
 ```
 
 ### CMakeLists.txt
@@ -316,7 +316,7 @@ target_link_libraries(MyApp PRIVATE ShaderManagement)
 
 ```cpp
 #include <ShaderManagement/ShaderLibrary.h>
-#include <SDI_Registry.h>
+#include <SDI_Registry.g.h>
 #include <iostream>
 
 int main() {
@@ -347,7 +347,7 @@ make
 #   Total time: 65ms
 # [2/5] Compiling shader bundle: ComputeShader
 #   ...
-# [3/5] Building shader registry: ./generated/SDI_Registry.h
+# [3/5] Building shader registry: ./generated/SDI_Registry.g.h
 #   Registered: BasicShader (UUID: ...)
 #   Registered: ComputeShader (UUID: ...)
 #   Total shaders registered: 2

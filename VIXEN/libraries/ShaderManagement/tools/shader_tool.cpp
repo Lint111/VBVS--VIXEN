@@ -238,7 +238,7 @@ Commands:
                     (sdi_tool merge-variants <manifest.json> [--check])
   build-registry    Build central SDI registry from bundles
   cleanup           Remove orphaned SPIRV files from output directory
-  cleanup-sdi       Remove orphaned SDI headers not referenced by any Names.h
+  cleanup-sdi       Remove orphaned SDI headers not referenced by any Names.g.h
   completion        Generate shell completion script (bash|zsh|fish|powershell)
 
 Options:
@@ -275,7 +275,7 @@ Examples:
   sdi_tool compute.comp --dry-run                      # Preview only
 
   # Build registry from existing bundles
-  sdi_tool build-registry shader1.json shader2.json -o SDI_Registry.h
+  sdi_tool build-registry shader1.json shader2.json -o SDI_Registry.g.h
 
   # Batch process from config
   sdi_tool batch shaders.json -d ./generated
@@ -304,7 +304,7 @@ Batch Config Format (JSON):
         "pipeline": "graphics"  // optional: graphics|compute|mesh|raytracing
       }
     ],
-    "buildRegistry": true  // optional: generate SDI_Registry.h
+    "buildRegistry": true  // optional: generate SDI_Registry.g.h
   }
 )" << std::endl;
 }
@@ -563,7 +563,7 @@ void CleanupOldSdiFiles(const std::string& oldUuid, const fs::path& sdiDir, bool
     SdiFileManager sdiManager(sdiDir);
     if (sdiManager.UnregisterSdi(oldUuid, true)) {
         if (verbose) {
-            std::cout << "Cleaning up old SDI: " << oldUuid << "-SDI.h\n";
+            std::cout << "Cleaning up old SDI: " << oldUuid << "-SDI.g.h\n";
         }
     }
 
@@ -863,7 +863,7 @@ int CommandBuildRegistry(const ToolOptions& options) {
     // Create registry config
     SdiRegistryManager::Config registryConfig;
     registryConfig.sdiDirectory = sdiConfig.outputDirectory;
-    registryConfig.registryHeaderPath = registryPath / "SDI_Registry.h";
+    registryConfig.registryHeaderPath = registryPath / "SDI_Registry.g.h";
     registryConfig.registryNamespace = sdiConfig.namespacePrefix;
 
     SdiRegistryManager registry(registryConfig);
@@ -1011,7 +1011,7 @@ int CommandBatch(const ToolOptions& options) {
     // Build registry if requested
     if (config.contains("buildRegistry") && config["buildRegistry"].get<bool>()) {
         if (options.shouldPrint()) {
-            std::cout << "[Registry] Building SDI_Registry.h... ";
+            std::cout << "[Registry] Building SDI_Registry.g.h... ";
             std::cout.flush();
         }
 
@@ -1090,19 +1090,18 @@ int CommandCleanupSdi(const ToolOptions& options) {
             if (!entry.is_regular_file()) continue;
             std::string filename = entry.path().filename().string();
 
-            if (filename.size() > 7 &&
-                filename.substr(filename.size() - 7) == "Names.h" &&
-                filename.find("-SDI.h") == std::string::npos) {
+            if (filename.ends_with("Names.g.h") &&
+                !filename.ends_with("-SDI.g.h")) {
 
                 std::ifstream file(entry.path());
                 if (file.is_open()) {
                     std::string line;
                     while (std::getline(file, line)) {
                         if (line.find("#include") != std::string::npos &&
-                            line.find("-SDI.h") != std::string::npos) {
+                            line.find("-SDI.g.h") != std::string::npos) {
                             std::string uuid = SdiFileManager::ExtractSdiUuidFromInclude(line);
                             if (!uuid.empty()) {
-                                std::cout << "  " << filename << " -> " << uuid << "-SDI.h\n";
+                                std::cout << "  " << filename << " -> " << uuid << "-SDI.g.h\n";
                             }
                         }
                     }
@@ -1119,7 +1118,7 @@ int CommandCleanupSdi(const ToolOptions& options) {
     for (const auto& entry : fs::directory_iterator(sdiDir)) {
         if (!entry.is_regular_file()) continue;
         std::string filename = entry.path().filename().string();
-        if (filename.size() > 7 && filename.substr(filename.size() - 7) == "-SDI.h") {
+        if (filename.ends_with("-SDI.g.h")) {
             ++totalSdis;
         }
     }
@@ -1143,7 +1142,7 @@ int CommandCleanupSdi(const ToolOptions& options) {
     // Summary
     std::cout << "SDI cleanup complete:\n";
     std::cout << "  Total SDI files: " << totalSdis << "\n";
-    std::cout << "  Referenced by Names.h: " << referencedUuidsOut.size() << "\n";
+    std::cout << "  Referenced by Names.g.h: " << referencedUuidsOut.size() << "\n";
     std::cout << "  Orphaned (deleted): " << removed << "\n";
 
     return 0;
@@ -1454,7 +1453,7 @@ Register-ArgumentCompleter -CommandName sdi_tool -Native -ScriptBlock {
  *
  * Compiles every enumerated feature variant of each program, reflects each,
  * merges them into ONE interface where every member carries its feature
- * predicate, and emits <sdiDir>/<Program>-SDI.h.
+ * predicate, and emits <sdiDir>/<Program>-SDI.g.h.
  *
  * Manifest JSON (all paths relative to the manifest file; sdiDir REQUIRED so
  * the gate never depends on the caller's cwd):
@@ -1591,7 +1590,7 @@ int CommandMergeVariants(const ToolOptions& options) {
             return ExitCode::IOError;
         }
 
-        const fs::path outPath = sdiDir / (name + "-SDI.h");
+        const fs::path outPath = sdiDir / (name + "-SDI.g.h");
         if (options.checkMode) {
             std::string committed;
             if (fs::exists(outPath)) {

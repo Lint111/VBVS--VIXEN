@@ -207,7 +207,7 @@ public:
      * @brief Enable central SDI registry integration
      *
      * When enabled, built shader bundles are automatically registered
-     * in the central SDI_Registry.h for convenient single-include access.
+     * in the central SDI_Registry.g.h for convenient single-include access.
      *
      * @param registry Pointer to registry manager
      * @param aliasName Optional friendly alias (defaults to program name)

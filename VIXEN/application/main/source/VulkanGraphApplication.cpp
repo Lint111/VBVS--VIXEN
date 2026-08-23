@@ -89,9 +89,9 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 #include <glm/gtx/norm.hpp>   // glm::distance2 (change-detection epsilon compares)
 
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
-// NOTE: "VoxelRayMarch_CompressedNames.h" was an orphaned include — that combined
+// NOTE: "VoxelRayMarch_CompressedNames.g.h" was an orphaned include — that combined
 // SDI header is no longer generated (the tool now emits per-stage headers such as
-// VoxelRayMarch_Compressed_ComputeNames.h) and no symbol from it is referenced here.
+// VoxelRayMarch_Compressed_ComputeNames.g.h) and no symbol from it is referenced here.
 #include "VulkanGlobalNames.h"  // Global Vulkan extension/layer name lists
 
 // ============================================================================

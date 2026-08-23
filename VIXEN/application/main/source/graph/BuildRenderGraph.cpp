@@ -29,13 +29,13 @@
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
 #include "MeshData.h"
-#include "merged/BodyInstanceRayMarch-SDI.h"   // Semantic-wiring S1: feature-tagged merged SDI (ShaderInterface::*)
-#include "merged/HiZDownsample-SDI.h"          // Semantic-wiring S1: B1 HiZ named binding/push constants
-#include "merged/InstanceOcclusionCull-SDI.h"  // Semantic-wiring S1: B1 cull named binding/push constants
-#include "merged/RecipeInstanceBucketing-SDI.h" // Semantic-wiring S1: bucketing named binding/push constants
-#include "merged/DirectLighting-SDI.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
-#include "merged/SpatialReuseShade-SDI.h"
-#include "merged/ProbeUpdate-SDI.h"
+#include "merged/BodyInstanceRayMarch-SDI.g.h"   // Semantic-wiring S1: feature-tagged merged SDI (ShaderInterface::*)
+#include "merged/HiZDownsample-SDI.g.h"          // Semantic-wiring S1: B1 HiZ named binding/push constants
+#include "merged/InstanceOcclusionCull-SDI.g.h"  // Semantic-wiring S1: B1 cull named binding/push constants
+#include "merged/RecipeInstanceBucketing-SDI.g.h" // Semantic-wiring S1: bucketing named binding/push constants
+#include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
+#include "merged/SpatialReuseShade-SDI.g.h"
+#include "merged/ProbeUpdate-SDI.g.h"
 
 // Semantic-wiring S1: short aliases for the merged-SDI namespaces used at many
 // Connect sites below (drift-gated by ctest sdi_merged_drift_check). The three
@@ -6090,7 +6090,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                       swapChainNode, frameSyncNode};
 
         // Semantic-wiring S1: slot indices come from the feature-tagged merged SDI
-        // (generated/sdi/merged/*-SDI.h) — names, not hand-written numbers. The
+        // (generated/sdi/merged/*-SDI.g.h) — names, not hand-written numbers. The
         // constants are drift-gated by ctest sdi_merged_drift_check.
         namespace HizSdi = ShaderInterface::HiZDownsample;
         namespace CullSdi = ShaderInterface::InstanceOcclusionCull;
@@ -6524,7 +6524,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Connect ray marching resources to the descriptor gatherer using the merged-SDI
-    // named constants (MarchSdi::Bind::*, generated/sdi/merged/BodyInstanceRayMarch-SDI.h).
+    // named constants (MarchSdi::Bind::*, generated/sdi/merged/BodyInstanceRayMarch-SDI.g.h).
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage — M4: now the offscreen render target's view, wired further down
     // (beside the rest of the M4 render-target connections) once renderTargetNode exists in scope.
