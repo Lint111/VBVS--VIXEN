@@ -1,9 +1,14 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 #include <glm/glm.hpp>
+#include "Recipe/LodSelection.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeStack.h"
 
@@ -107,6 +112,11 @@ public:
         // Recipe-Load-Tier-Contract-Direction-2026-07.md's Milestone Map M2 entry.
         float     precisionFootprintThreshold = 0.f;
 
+        // LOD Wave A: an empty ladder is normalized at registration to the
+        // implicit legacy one-band path (or derived legacy bands when the
+        // bound radius makes footprint-to-q conversion well-defined).
+        std::vector<LodBand> lodLadder;
+
         // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — coarse occupancy grid metadata.
         // Filled in by Recipe::DeriveOccupancyGrid (RecipeOccupancy.h) at the SAME
         // registration call site as boundCenter/boundRadius above (RegisterProceduralRecipe).
@@ -133,6 +143,13 @@ public:
         BadStepRelaxation, // stepRelaxation set (nonzero) but not in (0,1]
         BadGateFootprintThreshold, // gateFootprintThreshold set (nonzero) but not > 0
         BadPrecisionFootprintThreshold, // precisionFootprintThreshold set (nonzero) but not > 0
+        BadLodLadderCount,
+        BadLodBandThreshold,
+        BadLodLadderOrdering,
+        MissingInfiniteLodBand,
+        BadLodStrategy,
+        BadLodParamTier,
+        NonMonotoneLodUploads,
         UnknownCalleeRecipe,   // InvokeRecipe references a recipeId not yet Register()-ed
         RecursiveInvocation,   // InvokeRecipe graph contains a cycle (direct or indirect)
         NestingTooDeep,        // InvokeRecipe chain exceeds kMaxRecipeNestingDepth
@@ -151,8 +168,24 @@ public:
         if (entry.precisionFootprintThreshold != 0.f && !(entry.precisionFootprintThreshold > 0.f))
             return RegisterResult::BadPrecisionFootprintThreshold;
 
+        RecipeEntry normalizedEntry = entry;
+        if (normalizedEntry.lodLadder.empty())
+            normalizedEntry.lodLadder = BuildImplicitLodLadder(normalizedEntry);
+
+        switch (ValidateLodLadder(normalizedEntry.lodLadder)) {
+            case LodValidationError::None: break;
+            case LodValidationError::TooManyBands: return RegisterResult::BadLodLadderCount;
+            case LodValidationError::NegativeOrNaNThreshold: return RegisterResult::BadLodBandThreshold;
+            case LodValidationError::NonAscendingThresholds: return RegisterResult::BadLodLadderOrdering;
+            case LodValidationError::FinalBandMustBeInfinite: return RegisterResult::MissingInfiniteLodBand;
+            case LodValidationError::InvalidStrategy: return RegisterResult::BadLodStrategy;
+            case LodValidationError::InvalidParamTier: return RegisterResult::BadLodParamTier;
+            case LodValidationError::UploadSetNotMonotone: return RegisterResult::NonMonotoneLodUploads;
+            case LodValidationError::Empty: return RegisterResult::BadLodLadderCount;
+        }
+
         int sp = 0, psp = 0;
-        for (const auto& in : entry.bytecode) {
+        for (const auto& in : normalizedEntry.bytecode) {
             if (!IsValidSdfOpCode(in.opCode)) return RegisterResult::BadOpCode;
 
             // paramMask gate: ReadParam/ReadParamFloat3 (P4) REQUIRE an explicit non-zero marker
@@ -187,11 +220,11 @@ public:
         // already present in entries_ except for `entry` itself (about to be inserted as
         // `recipeId`). This walk therefore only needs to look at entries_ plus `entry`.
         {
-            RegisterResult guardResult = ValidateNestingGuard(recipeId, entry);
+            RegisterResult guardResult = ValidateNestingGuard(recipeId, normalizedEntry);
             if (guardResult != RegisterResult::Ok) return guardResult;
         }
 
-        entries_.emplace(recipeId, entry);
+        entries_.emplace(recipeId, std::move(normalizedEntry));
         return RegisterResult::Ok;
     }
 
@@ -213,6 +246,55 @@ public:
     }
 
 private:
+    static std::vector<LodBand> BuildImplicitLodLadder(const RecipeEntry& entry) {
+        LodBand base;
+        base.maxQ = std::numeric_limits<float>::infinity();
+        if (!(entry.boundRadius > 0.0f) || !IsFiniteFloat(entry.boundRadius))
+            return {base};
+
+        const float gateQ = entry.gateFootprintThreshold > 0.0f
+            ? entry.gateFootprintThreshold / (2.0f * entry.boundRadius)
+            : std::numeric_limits<float>::infinity();
+        const float precisionQ = entry.precisionFootprintThreshold > 0.0f
+            ? entry.precisionFootprintThreshold / (2.0f * entry.boundRadius)
+            : std::numeric_limits<float>::infinity();
+
+        std::vector<float> edges;
+        if (IsFiniteFloat(precisionQ) && precisionQ > 0.0f) edges.push_back(precisionQ);
+        if (IsFiniteFloat(gateQ) && gateQ > 0.0f) edges.push_back(gateQ);
+        std::sort(edges.begin(), edges.end());
+        edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+
+        std::vector<LodBand> ladder;
+        ladder.reserve(edges.size() + 1);
+        float lowerQ = 0.0f;
+        for (float edge : edges) {
+            LodBand band = base;
+            if (IsFiniteFloat(precisionQ) && lowerQ >= precisionQ)
+                band.paramTier = static_cast<uint8_t>(LodParamTier::Half);
+            if (IsFiniteFloat(gateQ) && lowerQ >= gateQ) {
+                band.strategy = static_cast<uint8_t>(LodStrategy::Skip);
+                band.uploadSet = 0;
+                band.blockMask = 0;
+            }
+            band.maxQ = edge;
+            ladder.push_back(band);
+            lowerQ = edge;
+        }
+
+        LodBand finalBand = base;
+        if (IsFiniteFloat(precisionQ))
+            finalBand.paramTier = static_cast<uint8_t>(LodParamTier::Half);
+        if (IsFiniteFloat(gateQ)) {
+            finalBand.strategy = static_cast<uint8_t>(LodStrategy::Skip);
+            finalBand.uploadSet = 0;
+            finalBand.blockMask = 0;
+        }
+        finalBand.maxQ = std::numeric_limits<float>::infinity();
+        ladder.push_back(finalBand);
+        return ladder;
+    }
+
     // Recipe-Nested-Invocation M1: walks `entry`'s InvokeRecipe callees (recursively, via
     // already-registered entries_) to reject a cycle (direct self-invocation or an indirect
     // cycle through other recipes) or a chain exceeding kMaxRecipeNestingDepth. `path` tracks
@@ -243,6 +325,25 @@ private:
             const RecipeEntry* callee = Get(calleeId);
             if (!callee) return RegisterResult::UnknownCalleeRecipe;
 
+            std::vector<uint32_t> nextPath = path;
+            nextPath.push_back(calleeId);
+            RegisterResult sub = WalkNestingGuard(calleeId, *callee, depth + 1, nextPath);
+            if (sub != RegisterResult::Ok) return sub;
+        }
+
+        // MarchVariant references are recipe dependencies too. Include them in
+        // the same cycle/depth walk as InvokeRecipe so a variant cannot bypass
+        // registration-time safety.
+        for (const LodBand& band : entry.lodLadder) {
+            if (static_cast<LodStrategy>(band.strategy) != LodStrategy::MarchVariant)
+                continue;
+            const uint32_t calleeId = band.variantId;
+            for (uint32_t seen : path) {
+                if (seen == calleeId) return RegisterResult::RecursiveInvocation;
+            }
+            if (depth + 1 > kMaxRecipeNestingDepth) return RegisterResult::NestingTooDeep;
+            const RecipeEntry* callee = Get(calleeId);
+            if (!callee) return RegisterResult::UnknownCalleeRecipe;
             std::vector<uint32_t> nextPath = path;
             nextPath.push_back(calleeId);
             RegisterResult sub = WalkNestingGuard(calleeId, *callee, depth + 1, nextPath);

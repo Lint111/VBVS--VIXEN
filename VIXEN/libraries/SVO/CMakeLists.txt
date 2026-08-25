@@ -17,6 +17,7 @@ add_library(SVO STATIC
     include/SVOBuilder.h
     include/LaineKarrasOctree.h
     include/SVOLOD.h  # Screen-space LOD parameters (Phase B.2)
+    include/Recipe/LodSelection.h  # Recipe LOD ladder and CPU transition contract (Wave A)
     include/SceneGenerator.h  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
     # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API
 
@@ -46,6 +47,7 @@ add_library(SVO STATIC
     # src/SVOFactory.cpp  # TODO: Implement
     src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
     src/Recipe/VoxelDocumentFlattener.cpp  # Voxel-Authoring Inc1 M3: VoxelDocument -> VRC1 recipe blob
+    src/Recipe/LodSelection.cpp  # Recipe LOD selection, hysteresis, and upload gating (Wave A)
 )
 
 # ------------------------------------------------------------------------------

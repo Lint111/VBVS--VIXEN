@@ -102,6 +102,17 @@ else()
 endif()
 gtest_discover_tests(test_sdf_recipes)
 
+add_executable(test_lod_ladder
+    test_lod_ladder.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_lod_ladder PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_lod_ladder PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_lod_ladder PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_lod_ladder)
+
 # ===========================================================================
 # SoA-SDF Serialize Tests  (Inc2 M2 — SoA-SDF brick + grid-lookup + descriptor)
 # ===========================================================================
