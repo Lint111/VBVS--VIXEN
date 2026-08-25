@@ -421,6 +421,7 @@ int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
 #include "CoordinateTransforms.glsl"
 #include "RayGeneration.glsl"
 #include "ESVOCoefficients.glsl"
+#include "FootprintRegime.glsl"
 #include "TraceRecording.glsl"
 #include "ESVOTraversal.glsl"
 #include "Lighting.glsl"
@@ -1880,4 +1881,3 @@ bool traverseOctreeInstancedAnyHit(vec3 rayOrigin, vec3 rayDir,
 }
 
 #include "TraceWorld.glsl"   // Sampled Lighting Inc1 M1: single traversal seam (pure extraction)
-

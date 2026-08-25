@@ -82,6 +82,25 @@ std::size_t SelectLodBand(std::span<const LodBand> ladder, float q) noexcept {
     return ladder.size() - 1;
 }
 
+std::size_t SelectLodBandForRegime(
+    std::span<const LodBand> ladder, float q, FootprintRegime regime) noexcept {
+    if (ladder.empty()) return 0;
+
+    const std::size_t qBand = SelectLodBand(ladder, q);
+    const std::size_t regimeFloor = std::min(
+        static_cast<std::size_t>(regime), ladder.size() - 1);
+    return std::max(qBand, regimeFloor);
+}
+
+std::size_t SelectLodBand(
+    std::span<const LodBand> ladder,
+    float q,
+    float cameraDistance,
+    float bodyRadius) noexcept {
+    return SelectLodBandForRegime(
+        ladder, q, ClassifyFootprintRegime(cameraDistance, bodyRadius));
+}
+
 float ComputeLodQ(float entryDistance, float boundRadius, const LODParameters& camera) noexcept {
     if (!(boundRadius > 0.0f) || !IsFiniteFloat(boundRadius)) return 0.0f;
     const float distance = std::max(0.0f, entryDistance);
@@ -110,6 +129,18 @@ LodBandSelection LodTransition::Update(
     if (ladder.empty()) return result;
 
     const std::size_t desiredBand = SelectLodBand(ladder, result.q);
+    return UpdateDesiredBand(ladder, result.q, desiredBand);
+}
+
+LodBandSelection LodTransition::UpdateDesiredBand(
+    std::span<const LodBand> ladder,
+    float q,
+    std::size_t desiredBand) noexcept {
+    LodBandSelection result{};
+    result.q = SafeQ(q);
+    if (ladder.empty()) return result;
+
+    desiredBand = std::min(desiredBand, ladder.size() - 1);
     if (!initialized_) {
         currentBand_ = desiredBand;
         pendingBand_ = desiredBand;
@@ -150,6 +181,36 @@ LodBandSelection LodTransition::Update(
     }
 
     result.bandIndex = currentBand_;
+    return result;
+}
+
+LodBandSelection LodTransition::Update(
+    std::span<const LodBand> ladder,
+    float q,
+    float cameraDistance,
+    float bodyRadius) noexcept {
+    LodBandSelection result{};
+    result.q = SafeQ(q);
+    if (ladder.empty()) return result;
+
+    const FootprintRegime regime = ClassifyFootprintRegime(cameraDistance, bodyRadius);
+    const std::size_t desiredBand = SelectLodBand(
+        ladder, result.q, cameraDistance, bodyRadius);
+
+    // A regime is an authority floor, not a visual-hysteresis suggestion.  If the
+    // camera jumps across a scale boundary, immediately retire any finer band before
+    // applying the ordinary q hysteresis to movement within the coarser regime.
+    const std::size_t regimeFloor = std::min(
+        static_cast<std::size_t>(regime), ladder.size() - 1);
+    const bool forcedCoarsening = initialized_ && currentBand_ < regimeFloor;
+    if (forcedCoarsening) {
+        currentBand_ = regimeFloor;
+        pendingBand_ = regimeFloor;
+        pendingFrames_ = 0;
+    }
+
+    result = UpdateDesiredBand(ladder, result.q, desiredBand);
+    result.changed = result.changed || forcedCoarsening;
     return result;
 }
 

@@ -798,13 +798,15 @@ TEST_F(RelationshipObserverIntegrationTest, CompleteWorkflow) {
     // Track voxel count via callback
     observer->onRelationshipAdded(partOfTag, [&](const RelationshipObserver::RelationshipContext& ctx) {
         if (world.valid(ctx.target) && world.has<TestData>(ctx.target)) {
-            world.set<TestData>(ctx.target).value++;
+            auto data = world.set<TestData>(ctx.target);
+            data.value++;
         }
     });
 
     observer->onRelationshipRemoved(partOfTag, [&](const RelationshipObserver::RelationshipContext& ctx) {
         if (world.valid(ctx.target) && world.has<TestData>(ctx.target)) {
-            world.set<TestData>(ctx.target).value--;
+            auto data = world.set<TestData>(ctx.target);
+            data.value--;
         }
     });
 
@@ -844,7 +846,7 @@ TEST_F(RelationshipObserverIntegrationTest, BatchWorkflow) {
     // Use batch callback
     observer->onBatchAdded(partOfTag, [&](const RelationshipObserver::BatchRelationshipContext& ctx) {
         if (world.valid(ctx.target) && world.has<TestData>(ctx.target)) {
-            auto& data = world.set<TestData>(ctx.target);
+            auto data = world.set<TestData>(ctx.target);
             data.value += static_cast<int>(ctx.sources.size());
         }
     });

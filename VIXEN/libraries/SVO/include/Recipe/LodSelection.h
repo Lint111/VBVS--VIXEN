@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 
+#include "Recipe/FootprintRegime.h"
 #include "SVOLOD.h"
 
 namespace Vixen::SVO {
@@ -73,6 +74,19 @@ enum class LodValidationError : uint8_t {
 [[nodiscard]] std::size_t SelectLodBand(
     std::span<const LodBand> ladder, float q) noexcept;
 
+// Regime-aware selection keeps the existing q result, then applies the regime's
+// conservative minimum band.  A four-band ladder can map one band to each regime;
+// shorter ladders clamp to their final band.  The legacy overload above remains
+// unchanged for byte-identical flag-off behavior.
+[[nodiscard]] std::size_t SelectLodBandForRegime(
+    std::span<const LodBand> ladder, float q, FootprintRegime regime) noexcept;
+
+[[nodiscard]] std::size_t SelectLodBand(
+    std::span<const LodBand> ladder,
+    float q,
+    float cameraDistance,
+    float bodyRadius) noexcept;
+
 // CPU q uses the same cone footprint as the ray path, evaluated at the
 // conservative lower-bound entry distance to avoid under-uploading.
 [[nodiscard]] float ComputeLodQ(
@@ -110,6 +124,12 @@ public:
     [[nodiscard]] LodBandSelection Update(
         std::span<const LodBand> ladder, float q) noexcept;
 
+    [[nodiscard]] LodBandSelection Update(
+        std::span<const LodBand> ladder,
+        float q,
+        float cameraDistance,
+        float bodyRadius) noexcept;
+
     void Reset() noexcept;
     void Reset(std::size_t bandIndex) noexcept;
 
@@ -117,6 +137,11 @@ public:
     [[nodiscard]] bool IsInitialized() const noexcept { return initialized_; }
 
 private:
+    [[nodiscard]] LodBandSelection UpdateDesiredBand(
+        std::span<const LodBand> ladder,
+        float q,
+        std::size_t desiredBand) noexcept;
+
     LodTransitionConfig config_;
     std::size_t currentBand_ = 0;
     std::size_t pendingBand_ = 0;

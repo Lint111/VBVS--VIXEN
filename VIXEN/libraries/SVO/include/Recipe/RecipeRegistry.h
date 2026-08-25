@@ -4,11 +4,13 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 #include <glm/glm.hpp>
 #include "Recipe/LodSelection.h"
+#include "Recipe/RecipeComposition.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeStack.h"
 
@@ -117,6 +119,11 @@ public:
         // bound radius makes footprint-to-q conversion well-defined).
         std::vector<LodBand> lodLadder;
 
+        // Wave B: ordered composition blocks. An empty list preserves the plain
+        // recipe path; blocks are selected at resolve time by the active band's
+        // blockMask and each block's bandMask.
+        std::vector<BlockRef> blocks;
+
         // Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — coarse occupancy grid metadata.
         // Filled in by Recipe::DeriveOccupancyGrid (RecipeOccupancy.h) at the SAME
         // registration call site as boundCenter/boundRadius above (RegisterProceduralRecipe).
@@ -150,6 +157,9 @@ public:
         BadLodStrategy,
         BadLodParamTier,
         NonMonotoneLodUploads,
+        BadCompositionBlockCount,
+        BadCompositionRole,
+        BadCompositionShellRadius,
         UnknownCalleeRecipe,   // InvokeRecipe references a recipeId not yet Register()-ed
         RecursiveInvocation,   // InvokeRecipe graph contains a cycle (direct or indirect)
         NestingTooDeep,        // InvokeRecipe chain exceeds kMaxRecipeNestingDepth
@@ -167,6 +177,13 @@ public:
             return RegisterResult::BadGateFootprintThreshold;
         if (entry.precisionFootprintThreshold != 0.f && !(entry.precisionFootprintThreshold > 0.f))
             return RegisterResult::BadPrecisionFootprintThreshold;
+        switch (ValidateComposition(entry)) {
+            case RegisterResult::Ok: break;
+            case RegisterResult::BadCompositionBlockCount: return RegisterResult::BadCompositionBlockCount;
+            case RegisterResult::BadCompositionRole: return RegisterResult::BadCompositionRole;
+            case RegisterResult::BadCompositionShellRadius: return RegisterResult::BadCompositionShellRadius;
+            default: break;
+        }
 
         RecipeEntry normalizedEntry = entry;
         if (normalizedEntry.lodLadder.empty())
@@ -233,6 +250,26 @@ public:
         return it == entries_.end() ? nullptr : &it->second;
     }
 
+    // Resolve the field recipe and active composition blocks for an already-selected
+    // LOD band. MarchVariant redirects the field to its registered variant; all other
+    // field strategies keep the parent recipe id. Skip has no field, but still returns
+    // a valid result so callers can inspect the band and its block participation.
+    [[nodiscard]] std::optional<ResolvedSdfComposite> ResolveSdfComposite(
+        uint32_t recipeId, std::size_t bandIndex) const;
+
+    // Convenience overload for callers that have the normalized footprint.
+    [[nodiscard]] std::optional<ResolvedSdfComposite> ResolveSdfCompositeAtQ(
+        uint32_t recipeId, float q) const {
+        const RecipeEntry* entry = Get(recipeId);
+        if (!entry) return std::nullopt;
+        return ResolveSdfComposite(recipeId, SelectLodBand(entry->lodLadder, q));
+    }
+
+    [[nodiscard]] std::optional<ResolvedSdfComposite> ResolveComposition(
+        uint32_t recipeId, std::size_t bandIndex) const {
+        return ResolveSdfComposite(recipeId, bandIndex);
+    }
+
     // Mutable access for the baker (I3) to stamp octreeSlot.
     RecipeEntry* GetMutable(uint32_t recipeId) {
         auto it = entries_.find(recipeId);
@@ -246,6 +283,22 @@ public:
     }
 
 private:
+    static RegisterResult ValidateComposition(const RecipeEntry& entry) {
+        if (entry.blocks.size() > kMaxCompositionBlocks)
+            return RegisterResult::BadCompositionBlockCount;
+
+        for (const BlockRef& block : entry.blocks) {
+            if (!IsValidSdfCompositeRole(block.role))
+                return RegisterResult::BadCompositionRole;
+            if (!IsFiniteFloat(block.shellRadius) || block.shellRadius < 0.0f)
+                return RegisterResult::BadCompositionShellRadius;
+            if (block.role != static_cast<uint8_t>(SdfCompositeRole::Interval) &&
+                block.shellRadius != 0.0f)
+                return RegisterResult::BadCompositionShellRadius;
+        }
+        return RegisterResult::Ok;
+    }
+
     static std::vector<LodBand> BuildImplicitLodLadder(const RecipeEntry& entry) {
         LodBand base;
         base.maxQ = std::numeric_limits<float>::infinity();
@@ -338,6 +391,22 @@ private:
             if (static_cast<LodStrategy>(band.strategy) != LodStrategy::MarchVariant)
                 continue;
             const uint32_t calleeId = band.variantId;
+            for (uint32_t seen : path) {
+                if (seen == calleeId) return RegisterResult::RecursiveInvocation;
+            }
+            if (depth + 1 > kMaxRecipeNestingDepth) return RegisterResult::NestingTooDeep;
+            const RecipeEntry* callee = Get(calleeId);
+            if (!callee) return RegisterResult::UnknownCalleeRecipe;
+            std::vector<uint32_t> nextPath = path;
+            nextPath.push_back(calleeId);
+            RegisterResult sub = WalkNestingGuard(calleeId, *callee, depth + 1, nextPath);
+            if (sub != RegisterResult::Ok) return sub;
+        }
+
+        // Composition blocks are registry dependencies too. Walking them here keeps
+        // block references from bypassing the existing cycle/depth guard.
+        for (const BlockRef& block : entry.blocks) {
+            const uint32_t calleeId = block.recipeId;
             for (uint32_t seen : path) {
                 if (seen == calleeId) return RegisterResult::RecursiveInvocation;
             }

@@ -114,6 +114,45 @@ set_target_properties(test_lod_ladder PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_lod_ladder)
 
 # ===========================================================================
+# FootprintRegime Tests — shared four-regime classifier and LOD integration
+# ===========================================================================
+add_executable(test_footprint_regime
+    test_footprint_regime.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_footprint_regime PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_footprint_regime PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_footprint_regime)
+
+# ===========================================================================
+# Multi-body Rendering Tests — registry, per-body LOD, skip handling, and draw order
+# ===========================================================================
+add_executable(test_multi_body_renderer
+    test_multi_body_renderer.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_multi_body_renderer PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_multi_body_renderer PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_multi_body_renderer PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_multi_body_renderer)
+
+add_executable(test_recipe_composition
+    test_recipe_composition.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_composition PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_composition PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_composition PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_composition)
+
+# ===========================================================================
 # SoA-SDF Serialize Tests  (Inc2 M2 — SoA-SDF brick + grid-lookup + descriptor)
 # ===========================================================================
 add_executable(test_soa_sdf_serialize test_soa_sdf_serialize.cpp)
