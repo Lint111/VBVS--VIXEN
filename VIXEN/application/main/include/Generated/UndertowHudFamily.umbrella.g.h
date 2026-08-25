@@ -5,37 +5,3 @@
 // listing the sibling generated files that actually exist on disk (a schema may not
 // yet have a .readmodel.g.h, for example) -- see ReadModelUmbrellaEmitter.cs.
 
-#include "Generated/UndertowHud.blob.g.h"
-#include "Generated/UndertowHud.typed.g.h"
-#include "Generated/UndertowHud.readmodel.g.h"
-
-#include "Generated/UndertowHudFactions.blob.g.h"
-#include "Generated/UndertowHudFactions.typed.g.h"
-#include "Generated/UndertowHudFactions.readmodel.g.h"
-
-#include "Generated/UndertowHudEvents.blob.g.h"
-#include "Generated/UndertowHudEvents.typed.g.h"
-#include "Generated/UndertowHudEvents.readmodel.g.h"
-
-#include "Generated/UndertowHudInspect.blob.g.h"
-#include "Generated/UndertowHudInspect.typed.g.h"
-#include "Generated/UndertowHudInspect.readmodel.g.h"
-
-#include "Generated/UndertowBodies.blob.g.h"
-#include "Generated/UndertowBodies.typed.g.h"
-
-#include "Generated/UndertowRecipes.blob.g.h"
-#include "Generated/UndertowRecipes.typed.g.h"
-
-#include "Generated/UndertowBuildingFacets.blob.g.h"
-#include "Generated/UndertowBuildingFacets.typed.g.h"
-#include "Generated/UndertowBuildingFacets.readmodel.g.h"
-
-#include "Generated/UndertowBuildingPower.blob.g.h"
-#include "Generated/UndertowBuildingPower.typed.g.h"
-#include "Generated/UndertowBuildingPower.readmodel.g.h"
-
-#include "Generated/UndertowBuildingLabor.blob.g.h"
-#include "Generated/UndertowBuildingLabor.typed.g.h"
-#include "Generated/UndertowBuildingLabor.readmodel.g.h"
-

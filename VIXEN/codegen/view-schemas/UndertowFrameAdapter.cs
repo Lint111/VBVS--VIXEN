@@ -1,10 +1,9 @@
 // Inc-5 Milestone 3 (Task 4): the hand-written adapter that populates the schema-driven
 // UndertowHud*ViewWriter types from a real undertow SimFrame, performing the SAME transforms
 // ViewSchema.cs's Source expressions declare. This is where gap #2's resolution lives:
-// ViewWireFormat's generated ToBuffer() never dispatches [Projected] (only the RmlUi C++ face
-// does), so this adapter calls the SAME UndertowViewCallables methods each transform column's
-// [Projected] attribute names, guaranteeing the two can never semantically drift apart even
-// though only THIS file's calls actually execute in the writer path.
+// The generated writer does not invoke callable metadata, so this adapter calls the relevant
+// UndertowViewCallables methods directly before serialization; only THIS file's calls execute in
+// the writer path.
 //
 // NOT itself codegen output -- hand-written, one-time proof-harness code, not committed to the
 // VIXEN build. Lives in codegen/view-schemas/ alongside the schemas it adapts for discoverability;

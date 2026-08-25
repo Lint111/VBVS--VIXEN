@@ -2,9 +2,8 @@
 // DataActionDrivesProviderMask / DataLegInertWithoutProvider don't already cover.
 //   1. the loader populates the DataTargetTable from the generated dataTargets() (the raw mapping);
 //   2. the seam is NOUN-AGNOSTIC: the same DispatchData/ReadData path services an undertow HUD
-//      noun (UndertowHud_bodyCount) through a test-double provider fed HUD-shaped data -- proving
-//      the mechanics don't model the editor's LayerMask specifically (the live host provider for
-//      that noun is a follow-on; the seam already accepts it);
+//      live view noun (EditorLayers_activeLayerCount) through a test-double provider -- proving
+//      the mechanics don't model the editor's LayerMask specifically;
 //   3. a provider that REJECTS the wired noun is fallible (read false, write a dropped no-op),
 //      never a crash.
 // The editor-noun end-to-end route (LayerControllerViewDataProvider) + the no-provider inert case
@@ -53,16 +52,14 @@ TEST(AppFlowDataSeam, LoaderPopulatesDataTargets) {
     EXPECT_EQ(AppFlowLoader::Load(AppFlowContainerView{}, fsm2, st2, b2, in2), LoadResult::Ok);
 }
 
-// Noun-agnosticism: rebind the Data action onto an undertow HUD noun and drive it through a
-// test-double provider fed HUD-shaped data. No editor concept is involved -- the identical
-// DispatchData/ReadData path services the undertow face. (The generated target is the editor's
-// layerMask; wiring undertow's OWN Data action live is the AppFlow-migration follow-on the spec
-// defers -- this proves the seam already accepts the undertow noun.)
-TEST(AppFlowDataSeam, UndertowHudNounRoundTripsThroughProvider) {
+// Noun-agnosticism: rebind the Data action onto a live view noun and drive it through a
+// test-double provider. No provider-specific concept is involved -- the identical
+// DispatchData/ReadData path services the selected view face.
+TEST(AppFlowDataSeam, LiveViewNounRoundTripsThroughProvider) {
     AppFlowRuntime rt(nullptr, /*sender*/1);
-    SingleNounProvider provider(ViewNounId::UndertowHud_bodyCount, /*value*/7);
+    SingleNounProvider provider(ViewNounId::EditorLayers_activeLayerCount, /*value*/7);
     ASSERT_EQ(rt.Load(&provider), LoadResult::Ok);
-    rt.BindDataTarget(FlowActionId::Data, ViewNounId::UndertowHud_bodyCount);
+    rt.BindDataTarget(FlowActionId::Data, ViewNounId::EditorLayers_activeLayerCount);
 
     uint32_t bodies = 0;
     ASSERT_TRUE(rt.ReadData(FlowActionId::Data, bodies));
@@ -73,14 +70,14 @@ TEST(AppFlowDataSeam, UndertowHudNounRoundTripsThroughProvider) {
 }
 
 // Fallible when the provider rejects the wired noun: a LayerController provider given the Data
-// action still bound to the undertow bodyCount noun reports absent on read, and the write is a
+    // action still bound to the unrelated activeLayerCount noun reports absent on read, and the write is a
 // dropped no-op -- never a crash, never a wrong-mask corruption.
 TEST(AppFlowDataSeam, ProviderRejectsMismatchedNounFallibly) {
     AppFlowRuntime rt(nullptr, /*sender*/1);
     LayerController layers; layers.SetLayerCount(4);   // mask 0b1111
     LayerControllerViewDataProvider provider(layers);  // serves EditorNouns_layerMask only
     ASSERT_EQ(rt.Load(&provider), LoadResult::Ok);
-    rt.BindDataTarget(FlowActionId::Data, ViewNounId::UndertowHud_bodyCount);  // mismatched noun
+    rt.BindDataTarget(FlowActionId::Data, ViewNounId::EditorLayers_activeLayerCount);  // mismatched noun
 
     uint32_t v = 123;
     EXPECT_FALSE(rt.ReadData(FlowActionId::Data, v));  // provider reports the noun absent

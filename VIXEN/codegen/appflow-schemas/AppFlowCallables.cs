@@ -14,8 +14,8 @@ namespace Vixen.AppFlow.Reference
 
         // Inc-Ovr: the model->view HALF of the mask<->checkboxes projection (design §5a). Reads bit
         // `index` of `mask` -- byte-identical to EditorLayersView::PopulateFromMask's hand-written
-        // `((mask >> i) & 1u) != 0u` (the loop this Projection mechanism re-derives, see the [View]
-        // schema's EditorLayerRow.isChecked [Projected] declaration). applyToggle above is the
+        // `((mask >> i) & 1u) != 0u` (the loop re-derived by the [View] schema's
+        // EditorLayerRow.isChecked projection declaration). applyToggle above is the
         // inverse (view->model, single-bit flip); bitAt is the forward direction this proof needed
         // authored fresh -- Milestone 1 found only the write half was already transplanted.
         // CAVEAT: index must be < 32, same shift-UB caveat as applyToggle.

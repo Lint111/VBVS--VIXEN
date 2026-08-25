@@ -153,26 +153,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # seam M2a: the typed ViewNounId enum, generated from every [View] field in view-schemas/
         # (struct-qualified members). #included by IViewDataProvider.h, replacing the Inc-A hand-stub.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h" _out_view_noun_hdr_run)
-        # --callable-cpp's tool-owned output moved to AppFlowCallables.generated.g.hpp (row-deltas
-        # link 2/step-7B): UndertowViewCallables.IdentityString is `string`-typed, and
-        # CppMappingTables has no string->C++ mapping (no bare C++ type for it, unlike
-        # int/float/bool/uint), so a transpiled `inline string IdentityString(string v)` never
-        # compiles -- a genuine tool gap, not fixable from the schema side alone without editing
-        # the kernel's CppMappingTables.cs. AppFlowCallables.g.hpp (the well-known path every
-        # UndertowHud*.typed.g.h #includes) is now a small, hand-authored, NOT-drift-checked shim
-        # (see the file itself) that #includes this tool-owned header and adds the one hand-written
-        # Rml::String overload the tool cannot express -- same "consumer defines by hand" precedent
-        # as EditorLayersView's activeLayerCountOverride hook.
-        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp" _out_callables_hdr_run)
-        # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHud.readmodel.g.h" _out_undertowhud_readmodel_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h" _out_undertowhudfactions_readmodel_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h" _out_undertowhudevents_readmodel_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h" _out_undertowhudinspect_readmodel_run)
-        # slice6 (relational vertical slice): the 3 building-relation --readmodel-cpp DTO headers.
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingFacets.readmodel.g.h" _out_undertowbuildingfacets_readmodel_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingPower.readmodel.g.h" _out_undertowbuildingpower_readmodel_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingLabor.readmodel.g.h" _out_undertowbuildinglabor_readmodel_run)
+        # --callable-cpp emits the callable face consumed by the regenerated EditorLayers view.
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.g.h" _out_callables_hdr_run)
         # View Read-Model Codegen Milestone 6: the umbrella include header for the whole
         # UndertowHud.cs [View] family -- --schema-file (a single .cs file, not the
         # directory-scoped --schema) + --out-dir (existence-probe root for each discovered
@@ -221,18 +203,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
         # seam M2a: the typed ViewNounId enum (native-path mirror of the WSL-bridge block above).
         set(_out_view_noun_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h")
-        # See the WSL-bridge branch's comment above: tool-owned output moved to
-        # AppFlowCallables.generated.g.hpp; AppFlowCallables.g.hpp is now a hand-authored shim.
-        set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.generated.g.hpp")
-        # View Read-Model Codegen Milestone 5: the 4 Hud-family --readmodel-cpp DTO headers.
-        set(_out_undertowhud_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHud.readmodel.g.h")
-        set(_out_undertowhudfactions_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudFactions.readmodel.g.h")
-        set(_out_undertowhudevents_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudEvents.readmodel.g.h")
-        set(_out_undertowhudinspect_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowHudInspect.readmodel.g.h")
-        # slice6 (relational vertical slice): the 3 building-relation --readmodel-cpp DTO headers.
-        set(_out_undertowbuildingfacets_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingFacets.readmodel.g.h")
-        set(_out_undertowbuildingpower_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingPower.readmodel.g.h")
-        set(_out_undertowbuildinglabor_readmodel_run "${VIXEN_ROOT}/application/main/include/Generated/UndertowBuildingLabor.readmodel.g.h")
+        set(_out_callables_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlowCallables.g.h")
         # View Read-Model Codegen Milestone 6: umbrella include header (native-path mirror
         # of the WSL-bridge block above).
         set(_schema_undertowhud_file_run "${_cg}/../../../../core/codegen/view-schemas/UndertowHud.cs")
@@ -562,115 +533,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-header "${_out_callables_hdr_run}")
     add_custom_target(callables_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
-        COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
+        COMMENT "[codegen] golden check: AppFlowCallables.g.h matches canonical [KernelCallable] schema"
         VERBATIM)
     add_custom_target(callables_regen
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}
-        COMMENT "[codegen] regenerate AppFlowCallables.generated.g.hpp"
-        VERBATIM)
-
-    # --- View Read-Model Codegen Milestone 5 (R6): --readmodel-cpp DTO headers for the 4
-    # undertow Hud-family [View] schemas (UndertowHud/HudFactions/HudEvents/HudInspect).
-    # Mirrors view_hud_check/view_hud_regen's pattern exactly -- these are the same undertow
-    # view-schemas dir (_schema_view_run) the existing UndertowHud*.typed.g.h accessors are
-    # generated from (that CLI invocation is currently run manually, not CMake-driven, per
-    # Milestone 5's research; this is the first CMake-wired drift guard for the Undertow* Hud
-    # schemas). A schema edit that isn't regenerated now fails the build, same as every other
-    # generated artifact here.
-    set(_readmodel_undertowhud_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHud
-        --out-header "${_out_undertowhud_readmodel_run}")
-    add_custom_target(readmodel_undertowhud_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args} --check
-        COMMENT "[codegen] golden check: UndertowHud.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhud_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhud_args}
-        COMMENT "[codegen] regenerate UndertowHud.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowhudfactions_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudFactions
-        --out-header "${_out_undertowhudfactions_readmodel_run}")
-    add_custom_target(readmodel_undertowhudfactions_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args} --check
-        COMMENT "[codegen] golden check: UndertowHudFactions.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhudfactions_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudfactions_args}
-        COMMENT "[codegen] regenerate UndertowHudFactions.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowhudevents_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudEvents
-        --out-header "${_out_undertowhudevents_readmodel_run}")
-    add_custom_target(readmodel_undertowhudevents_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args} --check
-        COMMENT "[codegen] golden check: UndertowHudEvents.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhudevents_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudevents_args}
-        COMMENT "[codegen] regenerate UndertowHudEvents.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowhudinspect_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowHudInspect
-        --out-header "${_out_undertowhudinspect_readmodel_run}")
-    add_custom_target(readmodel_undertowhudinspect_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args} --check
-        COMMENT "[codegen] golden check: UndertowHudInspect.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowhudinspect_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowhudinspect_args}
-        COMMENT "[codegen] regenerate UndertowHudInspect.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    # --- slice6 (relational vertical slice): the 3 building-relation [View] read-models.
-    # Same --readmodel-cpp drift-guard pattern as the Hud family above -- these decode the
-    # BuildingFacets/BuildingPower/BuildingLabor sections undertow's ViewSchema.cs writer emits
-    # (ids 6/7/8, FormatVersion 12). The umbrella (--schema-file) auto-discovers the [View] structs;
-    # these per-schema checks guard each committed .readmodel.g.h against the canonical schema.
-    set(_readmodel_undertowbuildingfacets_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowBuildingFacets
-        --out-header "${_out_undertowbuildingfacets_readmodel_run}")
-    add_custom_target(readmodel_undertowbuildingfacets_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingfacets_args} --check
-        COMMENT "[codegen] golden check: UndertowBuildingFacets.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowbuildingfacets_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingfacets_args}
-        COMMENT "[codegen] regenerate UndertowBuildingFacets.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowbuildingpower_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowBuildingPower
-        --out-header "${_out_undertowbuildingpower_readmodel_run}")
-    add_custom_target(readmodel_undertowbuildingpower_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingpower_args} --check
-        COMMENT "[codegen] golden check: UndertowBuildingPower.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowbuildingpower_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildingpower_args}
-        COMMENT "[codegen] regenerate UndertowBuildingPower.readmodel.g.h (Yeroket tool)"
-        VERBATIM)
-
-    set(_readmodel_undertowbuildinglabor_args
-        run --project "${_yk_tool_run}" -c Release --
-        --schema "${_schema_undertow_view_run}" --readmodel-cpp UndertowBuildingLabor
-        --out-header "${_out_undertowbuildinglabor_readmodel_run}")
-    add_custom_target(readmodel_undertowbuildinglabor_check ALL
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildinglabor_args} --check
-        COMMENT "[codegen] golden check: UndertowBuildingLabor.readmodel.g.h matches canonical [View] schema (Yeroket tool)"
-        VERBATIM)
-    add_custom_target(readmodel_undertowbuildinglabor_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_readmodel_undertowbuildinglabor_args}
-        COMMENT "[codegen] regenerate UndertowBuildingLabor.readmodel.g.h (Yeroket tool)"
+        COMMENT "[codegen] regenerate AppFlowCallables.g.h"
         VERBATIM)
 
     # --- View Read-Model Codegen Milestone 6: umbrella include header for the whole
@@ -703,22 +570,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_readmodel_umbrella_undertowhud_args}
         COMMENT "[codegen] regenerate UndertowHudFamily.umbrella.g.h (Yeroket tool)"
         VERBATIM)
-    # Only the 4 Hud-family schemas have their own CMake _check targets today (Milestone 5's
-    # scope; UndertowBodies/UndertowRecipes have no CMake-wired --readmodel-cpp or other
-    # per-schema check target at all -- confirmed by Milestone 6 Task 1's research, "no prior
-    # CMake target existed for any Undertow* schema check before this milestone" -- so those
-    # 2 have nothing to depend on here; the umbrella's own existence-probe still degrades
-    # gracefully for them via --out-dir, it just can't order itself after a target that
-    # doesn't exist).
-    add_dependencies(readmodel_umbrella_undertowhud_check
-        readmodel_undertowhud_check readmodel_undertowhudfactions_check
-        readmodel_undertowhudevents_check readmodel_undertowhudinspect_check
-        readmodel_undertowbuildingfacets_check readmodel_undertowbuildingpower_check
-        readmodel_undertowbuildinglabor_check)
 else()
     message(WARNING "[codegen] KI-015: Yeroket kernel-codegen tool not found at ${_yk_tool} — "
         "OctreeConfig/LightingConfig/ShadowConfig/AccumulationConfig/PrevCameraConfig/ReservoirConfig/ProbeGridConfig/LightTreeBuffer/ReservoirRecord/Hud/EditorLayers/UndertowHud-readmodel/UndertowHudFamily-umbrella golden DRIFT GUARDS DISABLED; the committed generated artifacts "
-        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, ProbeGridConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h, UndertowHud/HudFactions/HudEvents/HudInspect.readmodel.g.h, UndertowHudFamily.umbrella.g.h) are used as-is and will NOT be checked against "
+        "(OctreeConfig.g.h/.glsl, LightingConfig.g.h/.glsl, ShadowConfig.g.h/.glsl, AccumulationConfig.g.h/.glsl, PrevCameraConfig.g.h/.glsl, ReservoirConfig.g.h/.glsl, ProbeGridConfig.g.h/.glsl, LightTreeBuffer.g.h/.glsl, ReservoirRecord.g.h/.glsl, Hud.g.h, Hud.view.rml, Hud.blob.g.h, hud.viewblob, EditorLayers.g.h, UndertowHudFamily.umbrella.g.h) are used as-is and will NOT be checked against "
         "their canonical schemas this configure. The Yeroket repo is WSL-only on this machine, so a "
         "Windows-side configure cannot reach it — run the WSL-side configure, mount \\\\wsl$, or pass "
         "-DYEROKET_ROOT=<path> to enable the guard.")

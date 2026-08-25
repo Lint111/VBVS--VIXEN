@@ -1,8 +1,11 @@
 #include "Ui/ViewWireReaderSoa.h"
 #include "Ui/ViewStore.h"
-// Milestone 6 (View Read-Model Codegen): one generated umbrella header instead of hand-picking
-// each schema's .blob/.typed/.readmodel.g.h include -- see ReadModelUmbrellaEmitter.cs.
-#include "Generated/UndertowHudFamily.umbrella.g.h"
+// The legacy UndertowHud read-model family was retired when its [View] roots migrated to
+// schema-catalog queries. Keep this fixture focused on the surviving Bodies/Recipes wire faces.
+#include "Generated/UndertowBodies.blob.g.h"
+#include "Generated/UndertowBodies.typed.g.h"
+#include "Generated/UndertowRecipes.blob.g.h"
+#include "Generated/UndertowRecipes.typed.g.h"
 #include <gtest/gtest.h>
 #include <cstddef>
 #include <cstdint>
@@ -39,8 +42,8 @@ namespace {
 
 // The real UTVC container bytes produced by the actual C# writer path against the real seed-7
 // ProjectObserverFrame() SimFrame (slice6: 9 sections -- the 6 Milestone-0 sections plus the 3
-// building-relation sections BuildingFacets/BuildingPower/BuildingLabor, ids 6/7/8, each keyed by
-// Building.Id and carrying 16 rows = 4 building defs x 4 factions for seed 7).
+// now-retired building-relation sections). The captured fixture retains those bytes so the
+// surviving Bodies/Recipes section offsets remain unchanged; retired sections are not decoded.
 const uint8_t kRealUtvcBytes[] = {
     0x55, 0x54, 0x56, 0x43, 0x02, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x78, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x94, 0x00, 0x00, 0x00,
@@ -635,93 +638,9 @@ std::vector<std::vector<std::byte>> UnwrapUtvc(const uint8_t* buf, size_t len) {
 
 using namespace Vixen::RenderGraph;
 
-TEST(ViewContainerBuilder, RealSimFrameRoundTripsThroughUtvcAndAllNineSections) {
+TEST(ViewContainerBuilder, RealSimFrameRoundTripsThroughUtvcAndSurvivingSections) {
     auto sections = UnwrapUtvc(kRealUtvcBytes, sizeof(kRealUtvcBytes));
     ASSERT_EQ(sections.size(), 9u);
-
-    // --- Hud ---
-    {
-        ViewStore store(Vixen::Views::kUndertowHudBlob, Vixen::Views::kUndertowHudBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[0], store));
-        Vixen::Views::UndertowHudSection hud(store);
-        EXPECT_EQ(hud.tick(), 0);
-        EXPECT_EQ(hud.bodyCount(), 7);
-        EXPECT_EQ(hud.activeLens(), 0);
-        EXPECT_EQ(hud.activeLensCount(), 0);
-    }
-
-    // --- HudFactions (4 real factions) ---
-    {
-        ViewStore store(Vixen::Views::kUndertowHudFactionsBlob, Vixen::Views::kUndertowHudFactionsBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[1], store));
-        Vixen::Views::UndertowHudFactionsSection hf(store);
-        ASSERT_EQ(hf.count(), 4u);
-
-        EXPECT_EQ(hf.name(0), "The Empire");
-        EXPECT_FLOAT_EQ(hf.grievance(0), 0.0f);
-        EXPECT_EQ(hf.focused(0), 0);
-        EXPECT_EQ(hf.known(0), 1);
-        EXPECT_EQ(hf.inLens(0), 0);
-        EXPECT_EQ(hf.strengthBand(0), 3);
-        EXPECT_EQ(hf.confidence(0), 0);
-        EXPECT_EQ(hf.recentEventAge(0), 10);
-
-        EXPECT_EQ(hf.name(1), "Industrialists");
-        EXPECT_EQ(hf.strengthBand(1), 2);
-        EXPECT_EQ(hf.known(1), 1);
-
-        EXPECT_EQ(hf.name(2), "Traditionalists");
-        EXPECT_FLOAT_EQ(hf.grievance(2), 1.0f);
-        EXPECT_EQ(hf.strengthBand(2), 2);
-
-        EXPECT_EQ(hf.name(3), "Frontier Prospectors");
-        EXPECT_FLOAT_EQ(hf.grievance(3), 1.0f);
-        EXPECT_EQ(hf.strengthBand(3), 2);
-    }
-
-    // --- HudEvents (106 real events; assert first 2 + last 1, non-vacuous sampling) ---
-    // Row count/values re-captured here (row-deltas link 2/step-7B): ad1ac8e8 re-captured
-    // kRealUtvcBytes from a live seed-7 run (adding the rowId column) but the count/value
-    // assertions below were left at their PRE-recapture literals (38 rows, row1=="war") --
-    // stale relative to the fixture actually committed alongside them, not something this
-    // increment's U64/callables work changed. Values below are read directly off the wire
-    // bytes above (kRealUtvcBytes, HudEvents section) via a byte-for-byte decode matching
-    // ViewWireReaderSoa::Apply's own field order.
-    {
-        ViewStore store(Vixen::Views::kUndertowHudEventsBlob, Vixen::Views::kUndertowHudEventsBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[2], store));
-        Vixen::Views::UndertowHudEventsSection he(store);
-        ASSERT_EQ(he.count(), 106u);
-
-        EXPECT_EQ(he.kind(0), "alliance");
-        EXPECT_EQ(he.tick(0), -250);
-        EXPECT_EQ(he.perpName(0), "The Empire");
-        EXPECT_EQ(he.victimName(0), "Industrialists");
-
-        EXPECT_EQ(he.kind(1), "rivalry");
-        EXPECT_EQ(he.tick(1), -250);
-        EXPECT_EQ(he.perpName(1), "The Empire");
-        EXPECT_EQ(he.victimName(1), "Industrialists");
-
-        EXPECT_EQ(he.kind(105), "core:rebuilding");
-        EXPECT_EQ(he.tick(105), 0);
-        EXPECT_EQ(he.perpName(105), "");
-        EXPECT_EQ(he.victimName(105), "");
-    }
-
-    // --- HudInspect (nothing selected in this real frame -- zero/empty row) ---
-    {
-        ViewStore store(Vixen::Views::kUndertowHudInspectBlob, Vixen::Views::kUndertowHudInspectBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[3], store));
-        Vixen::Views::UndertowHudInspectSection hi(store);
-        EXPECT_EQ(hi.selected(), 0);
-        EXPECT_EQ(hi.name(), "");
-        EXPECT_FLOAT_EQ(hi.maxGrievance(), 0.0f);
-        EXPECT_FLOAT_EQ(hi.strength(), 0.0f);
-        EXPECT_EQ(hi.topRelName(), "");
-        EXPECT_FLOAT_EQ(hi.topRelSig(), 0.0f);
-        EXPECT_EQ(hi.cause(), "");
-    }
 
     // --- Bodies (7 real bodies; post-Milestone-0 columns: kind, mass, orbitParent, ownerInLens,
     // ownerRecentEventAge, recipeId, radiusAu, posX, posY, posZ -- recipeProvider MOVED to Recipes,
@@ -792,68 +711,4 @@ TEST(ViewContainerBuilder, RealSimFrameRoundTripsThroughUtvcAndAllNineSections) 
         EXPECT_FLOAT_EQ(rc.relCycles(1), 8.0f);
     }
 
-    // --- BuildingFacets (slice6, section id 6): 16 rows = 4 building defs x 4 factions. Each row is
-    // keyed by Building.Id (rowId, u64) and carries the facet bitset + owner faction + owner-viewer
-    // flag. Assert the first faction's 4 buildings (rowId 67-70), which cover producer/labor-host,
-    // labor-host, store, and a power consumer -- proving the effect-derived facet bitset round-trips
-    // through the generated read-model. flags is i32 on the wire (kernel [View] has no byte scalar).
-    {
-        ViewStore store(Vixen::Views::kUndertowBuildingFacetsBlob, Vixen::Views::kUndertowBuildingFacetsBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[6], store));
-        Vixen::Views::UndertowBuildingFacetsSection bf(store);
-        ASSERT_EQ(bf.count(), 16u);
-
-        EXPECT_EQ(bf.rowId(0), 67u);
-        EXPECT_EQ(bf.def(0), "core:power_plant");
-        EXPECT_EQ(bf.flags(0), 25);          // PowerProducer|PowerStore? -- effect-derived bitset
-        EXPECT_EQ(bf.owner(0), 9u);
-        EXPECT_EQ(bf.isOwnerViewer(0), 1);
-
-        EXPECT_EQ(bf.rowId(1), 68u);
-        EXPECT_EQ(bf.def(1), "core:habitat");
-        EXPECT_EQ(bf.flags(1), 24);
-
-        EXPECT_EQ(bf.rowId(2), 69u);
-        EXPECT_EQ(bf.def(2), "core:battery");
-        EXPECT_EQ(bf.flags(2), 28);
-
-        EXPECT_EQ(bf.rowId(3), 70u);
-        EXPECT_EQ(bf.def(3), "core:power_load");
-        EXPECT_EQ(bf.flags(3), 26);
-    }
-
-    // --- BuildingPower (slice6, section id 7): per-building power telemetry, same 16 rows keyed by
-    // Building.Id. Assert the seed-7 producer/consumer contrast: the power_load (rowId 70) draws
-    // demand=500; the place is grid-connected (net=3500 surplus at the home surface). ---
-    {
-        ViewStore store(Vixen::Views::kUndertowBuildingPowerBlob, Vixen::Views::kUndertowBuildingPowerBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[7], store));
-        Vixen::Views::UndertowBuildingPowerSection bp(store);
-        ASSERT_EQ(bp.count(), 16u);
-
-        EXPECT_EQ(bp.rowId(0), 67u);
-        EXPECT_FLOAT_EQ(bp.demand(0), 0.0f);
-        EXPECT_FLOAT_EQ(bp.generated(0), 4000.0f);
-        EXPECT_FLOAT_EQ(bp.net(0), 3500.0f);
-        EXPECT_EQ(bp.connected(0), 1);
-        EXPECT_EQ(bp.impact(0), 0);
-
-        EXPECT_EQ(bp.rowId(3), 70u);
-        EXPECT_FLOAT_EQ(bp.demand(3), 500.0f);   // the seeded power consumer draws 500/tick
-    }
-
-    // --- BuildingLabor (slice6, section id 8): per-building labor occupancy, same 16 rows. Seed-7's
-    // seeded buildings run no labor-consuming recipe, so supply/need are 0 and needMet is trivially
-    // true -- the assertion proves the section decodes, keyed by the same Building.Id. ---
-    {
-        ViewStore store(Vixen::Views::kUndertowBuildingLaborBlob, Vixen::Views::kUndertowBuildingLaborBlob.version);
-        ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[8], store));
-        Vixen::Views::UndertowBuildingLaborSection bl(store);
-        ASSERT_EQ(bl.count(), 16u);
-
-        EXPECT_EQ(bl.rowId(0), 67u);
-        EXPECT_FLOAT_EQ(bl.supply(0), 0.0f);
-        EXPECT_FLOAT_EQ(bl.need(0), 0.0f);
-        EXPECT_EQ(bl.needMet(0), 1);
-    }
 }
