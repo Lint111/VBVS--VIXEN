@@ -311,7 +311,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
                 bestCell = cell;
                 hitNormal = -gridDirN;
 #ifdef VIXEN_COMPOSITION_COUNTERS
-                // Inline exact FootprintRegime formula (the production helper
+                // Inline exact CellFootprintRegime formula (the production helper
                 // specified by the residency doc does not exist yet).
                 float compositionFootprint =
                     tCellEnter * pc.raySizeCoef + pc.raySizeBias;
@@ -495,7 +495,7 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
 #ifdef VIXEN_COMPOSITION_COUNTERS
         // A candidate AABB is a materialized destination evaluated by this
         // wave entry even when its SDF does not ultimately occlude the ray.
-        // FootprintRegime is not materialized in code yet, so keep the design
+        // CellFootprintRegime is not materialized in code yet, so keep the design
         // formula inline for this probe call site.
         float compositionCellWorldSize = (1.0 / float(bpa)) / dirLen;
         float compositionFootprint = tCellEnter * pc.raySizeCoef + pc.raySizeBias;

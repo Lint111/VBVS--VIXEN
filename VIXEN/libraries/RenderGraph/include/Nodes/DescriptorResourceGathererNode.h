@@ -73,7 +73,7 @@ public:
     ~DescriptorResourceGathererNode() override = default;
 
     /**
-     * @brief Pre-register variadic slots using shader metadata from Names.h
+     * @brief Pre-register variadic slots using shader metadata from Names.g.h
      *
      * Call this during graph construction to enable ConnectVariadic() before Setup phase.
      * Accepts variadic list of binding refs (e.g., ComputeTest::outputImage).

@@ -115,7 +115,7 @@ the star and transmittance determine scene radiance; exposure merely maps it to 
 
 ## Deep-field interaction
 
-The format change does not change `FootprintRegime`, the per-pixel policy stencil, or
+The format change does not change `CellFootprintRegime`, the per-pixel policy stencil, or
 wholesale admission. The stencil byte is still proposed in `HitRecord._pad0[2]` bits 8–15
 and needs writer preservation (`Deep-Field-Policy-Stencil-Grouping-2026-08.md:169-188`);
 HDR images are separate resources. Regime-2/3 must keep the mip pool ready as the wholesale

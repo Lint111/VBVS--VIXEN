@@ -82,7 +82,7 @@ content exists in test scenes yet**.
 
 ### 1.3 Footprint regime authority — prerequisite remains DESIGN-FUTURE
 
-There is no production `FootprintRegime` type or shared classifier. The E1 probe says its numeric
+There is no production `CellFootprintRegime` type or shared classifier. The E1 probe says its numeric
 values are local until that production symbol exists (`shaders/SceneBindings.glsl:494-496`), while
 stored-path classifications still repeat inline math (`shaders/TraceWorld.glsl:500-515` and
 `shaders/SceneBindings.glsl:2632-2642`).
@@ -161,7 +161,7 @@ does not establish a general multilayer solution.
 for MATERIALIZED, and bits 5-7 reserved. VIRTUAL and MATERIALIZED are independent flags so a mixed
 pixel can set both. The source semantics are the hit-candidate-participation semantics in §1.2.
 
-**DESIGN-FUTURE:** reserve regime values only after the shared `FootprintRegime` authority exists.
+**DESIGN-FUTURE:** reserve regime values only after the shared `CellFootprintRegime` authority exists.
 Surface, mip-hit, and cosmic are the only numeric values exercised by the E1 probe
 (`shaders/SceneBindings.glsl:494-504`); volumetric, translucent, and transparent have no shipped
 producer or consumer.
@@ -238,7 +238,7 @@ the conjunction implemented at `shaders/TraceWorld.glsl:571-586` and consumed at
 |---|---|---|
 | E1 composition census | **SHIPPED, MEASURED** | Probe implementation at `shaders/SceneBindings.glsl:494-521`; measured tables in E1 report lines 42-67. |
 | E2 group-scoped cull | **SHIPPED, MEASURED, ORCHESTRATOR-ACCEPTED** | Implementation at `shaders/TraceWorld.glsl:569-599`; accepted references and 28 rays/frame in E2 report lines 68-95 and 118-130. |
-| Shared `FootprintRegime` extraction/parity | **DESIGN-FUTURE prerequisite** | Current inline duplicates at `shaders/TraceWorld.glsl:500-515` and `shaders/SceneBindings.glsl:2632-2642` must be replaced by one authority. |
+| Shared `CellFootprintRegime` extraction/parity | **DESIGN-FUTURE prerequisite** | Current inline duplicates at `shaders/TraceWorld.glsl:500-515` and `shaders/SceneBindings.glsl:2632-2642` must be replaced by one authority. |
 | Stencil byte + shadow-word preservation | **DESIGN-FUTURE** | Preserve current shadow ownership at `shaders/HitRecord.glsl:46-57` and fix the erasing stores at `shaders/ShadowVisibilityWave.comp:133-146,197-203`. |
 | Tile reduction + evaluator skips | **DESIGN-FUTURE, unmeasured** | Must preserve the shipped 63×63 primary extent (`ComputeDispatchNode.cpp:423-431,489-490`); virtual/mixed acceptance scenes do not exist. |
 | Secondary-wave provenance/ABI/classification/compaction | **DESIGN-FUTURE, unmeasured** | Current request lacks policy state (`shaders/ShadowRayQueue.glsl:12-20`); current DDGI producer is probe-origin (`shaders/ProbeGather.comp:161-208`). |

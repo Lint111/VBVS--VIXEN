@@ -31,22 +31,22 @@
 #include "Connection/Modifiers/AccumulationSortConfig.h"  // SEL-P3: accumulation-connect sort key (provider fan-in)
 #include "Core/NodeRegistration.h"
 #include "MeshData.h"
-#include "merged/BodyInstanceRayMarch-SDI.h"   // Semantic-wiring S1: feature-tagged merged SDI (ShaderInterface::*)
-#include "merged/HiZDownsample-SDI.h"          // Semantic-wiring S1: B1 HiZ named binding/push constants
-#include "merged/InstanceOcclusionCull-SDI.h"  // Semantic-wiring S1: B1 cull named binding/push constants
-#include "merged/RecipeInstanceBucketing-SDI.h" // Semantic-wiring S1: bucketing named binding/push constants
-#include "merged/DirectLighting-SDI.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
-#include "merged/SpatialReuseShade-SDI.h"
+#include "merged/BodyInstanceRayMarch-SDI.g.h"   // Semantic-wiring S1: feature-tagged merged SDI (ShaderInterface::*)
+#include "merged/HiZDownsample-SDI.g.h"          // Semantic-wiring S1: B1 HiZ named binding/push constants
+#include "merged/InstanceOcclusionCull-SDI.g.h"  // Semantic-wiring S1: B1 cull named binding/push constants
+#include "merged/RecipeInstanceBucketing-SDI.g.h" // Semantic-wiring S1: bucketing named binding/push constants
+#include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
+#include "merged/SpatialReuseShade-SDI.g.h"
 #include "merged/ExposureTonemap-SDI.h"
 #include "merged/ExposureMeter-SDI.h"
-#include "merged/ProbeGather-SDI.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
-#include "merged/ProbeApply-SDI.h"
-#include "merged/ShadowRayTrace-SDI.h"
-#include "merged/ShadowVisibilityWave-SDI.h"    // W1b: the derived-request shadow wave
-#include "merged/SpatialReuseGather-SDI.h"      // W2a: the ReSTIR spatial fold (gather)
-#include "merged/HitAccumCellShade-SDI.h"       // W3c-2: per-cell shade over the accumulation table
-#include "merged/HitAccumulate-SDI.h"           // W-SPLIT: the re-split accumulate, standalone bindings
-#include "merged/HitAccumClear-SDI.h"           // B2 (batch-26): table-wide epoch clear, standalone bindings
+#include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
+#include "merged/ProbeApply-SDI.g.h"
+#include "merged/ShadowRayTrace-SDI.g.h"
+#include "merged/ShadowVisibilityWave-SDI.g.h"    // W1b: the derived-request shadow wave
+#include "merged/SpatialReuseGather-SDI.g.h"      // W2a: the ReSTIR spatial fold (gather)
+#include "merged/HitAccumCellShade-SDI.g.h"       // W3c-2: per-cell shade over the accumulation table
+#include "merged/HitAccumulate-SDI.g.h"           // W-SPLIT: the re-split accumulate, standalone bindings
+#include "merged/HitAccumClear-SDI.g.h"           // B2 (batch-26): table-wide epoch clear, standalone bindings
 // W-LEAN L3: HitAccumResolve-SDI.h RETIRED — the resolve is SpatialReuseShade's
 // own VIXEN_SRS_CELL_RESOLVE axis now (gated bindings 36-39 in ReuseSdi).
 

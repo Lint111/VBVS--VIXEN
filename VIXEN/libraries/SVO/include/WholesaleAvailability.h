@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FootprintRegime.h"
+#include "CellFootprintRegime.h"
 
 #include <cstdint>
 #include <array>
@@ -17,8 +17,8 @@ enum class WholesalePayload : uint32_t {
 };
 
 struct WholesaleAvailability {
-    FootprintRegime desiredRegime = FootprintRegime::MipHit;
-    FootprintRegime committedRegime = FootprintRegime::MipHit;
+    CellFootprintRegime desiredRegime = CellFootprintRegime::MipHit;
+    CellFootprintRegime committedRegime = CellFootprintRegime::MipHit;
     uint32_t generation = 0;
     uint32_t pendingMask = 0;
     uint32_t readyMask = 0;
@@ -61,17 +61,17 @@ inline void RetainWholesalePayload(WholesaleAvailability& state, uint32_t payloa
 // four consecutive non-Surface classifications demote. A transition clears readiness
 // before any payload is reused, so stale retained bytes are never shader-readable.
 inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
-                                         FootprintRegime classified,
+                                         CellFootprintRegime classified,
                                          uint32_t payloadMask) {
-    const bool surface = classified == FootprintRegime::Surface;
+    const bool surface = classified == CellFootprintRegime::Surface;
     state.surfaceFrames = surface ? state.surfaceFrames + 1u : 0u;
     state.nonSurfaceFrames = surface ? 0u : state.nonSurfaceFrames + 1u;
     state.desiredRegime = classified;
 
     bool changed = false;
-    if (state.committedRegime != FootprintRegime::Surface && state.surfaceFrames >= 2u) {
+    if (state.committedRegime != CellFootprintRegime::Surface && state.surfaceFrames >= 2u) {
         if ((payloadMask & WholesaleFinePayloadMask()) != WholesaleFinePayloadMask()) return false;
-        state.committedRegime = FootprintRegime::Surface;
+        state.committedRegime = CellFootprintRegime::Surface;
         state.pendingMask = payloadMask;
         state.readyMask = 0u;
         if ((state.retainedMask & payloadMask) == payloadMask) {
@@ -82,7 +82,7 @@ inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
         }
         ++state.generation;
         changed = true;
-    } else if (state.committedRegime == FootprintRegime::Surface && state.nonSurfaceFrames >= 4u) {
+    } else if (state.committedRegime == CellFootprintRegime::Surface && state.nonSurfaceFrames >= 4u) {
         state.committedRegime = classified;
         state.pendingMask = 0u;
         state.readyMask = 0u;

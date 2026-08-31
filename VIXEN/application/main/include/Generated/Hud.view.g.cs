@@ -31,42 +31,92 @@ namespace Vixen.Views
         public string inspectName;
         public string inspectCause;
 
-        private static void W32(System.Collections.Generic.List<byte> b, uint v) { b.Add((byte)v); b.Add((byte)(v>>8)); b.Add((byte)(v>>16)); b.Add((byte)(v>>24)); }
-        private static void WI32(System.Collections.Generic.List<byte> b, int v) => W32(b, unchecked((uint)v));
-        private static void WF32(System.Collections.Generic.List<byte> b, float v) { var t = System.BitConverter.GetBytes(v); if(!System.BitConverter.IsLittleEndian) System.Array.Reverse(t); b.AddRange(t); }
-        private static void WBool(System.Collections.Generic.List<byte> b, bool v) => b.Add(v ? (byte)1 : (byte)0);
-        private static void WStr(System.Collections.Generic.List<byte> b, string v) { var u = System.Text.Encoding.UTF8.GetBytes(v ?? string.Empty); W32(b, (uint)u.Length); b.AddRange(u); }
-        private static void WU8(System.Collections.Generic.List<byte> b, byte v) => b.Add(v);
-        private static void WU64(System.Collections.Generic.List<byte> b, ulong v) { for (int __i = 0; __i < 8; __i++) b.Add((byte)(v >> (8 * __i))); }
+        private static int Utf8Size(string v) => System.Text.Encoding.UTF8.GetByteCount(v ?? string.Empty);
+        private static int WStrSize(string v) => checked(4 + Utf8Size(v));
+        private static void W32(System.Span<byte> b, ref int at, uint v) { System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(at, 4), v); at += 4; }
+        private static void WI32(System.Span<byte> b, ref int at, int v) { System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(b.Slice(at, 4), v); at += 4; }
+        private static void WF32(System.Span<byte> b, ref int at, float v) { System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(b.Slice(at, 4), System.BitConverter.SingleToInt32Bits(v)); at += 4; }
+        private static void WBool(System.Span<byte> b, ref int at, bool v) => b[at++] = v ? (byte)1 : (byte)0;
+        private static void WStr(System.Span<byte> b, ref int at, string v) { v ??= string.Empty; int len = Utf8Size(v); W32(b, ref at, (uint)len); System.Text.Encoding.UTF8.GetBytes(v, b.Slice(at, len)); at += len; }
+        private static void WU8(System.Span<byte> b, ref int at, byte v) => b[at++] = v;
+        private static void WU64(System.Span<byte> b, ref int at, ulong v) { System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(at, 8), v); at += 8; }
+
+        public int GetByteCount()
+        {
+            int __size = 12;
+            __size = checked(__size + 4);
+            __size = checked(__size + 4);
+            __size = checked(__size + WStrSize(this.activeLensName));
+            __size = checked(__size + 4);
+            int __size_n_factions = this.factions.Count;
+            __size = checked(__size + 4);
+            for (int __i = 0; __i < __size_n_factions; __i++) {
+                __size = checked(__size + WStrSize(this.factions[__i].name));
+                __size = checked(__size + 4);
+                __size = checked(__size + 1);
+                __size = checked(__size + 1);
+                __size = checked(__size + 1);
+                __size = checked(__size + 1);
+            }
+            int __size_n_events = this.events.Count;
+            __size = checked(__size + 4);
+            for (int __i = 0; __i < __size_n_events; __i++) {
+                __size = checked(__size + WStrSize(this.events[__i].kind));
+                __size = checked(__size + 4);
+            }
+            __size = checked(__size + 4);
+            __size = checked(__size + WStrSize(this.inspectName));
+            __size = checked(__size + WStrSize(this.inspectCause));
+            return __size;
+        }
+
+        public int WriteTo(System.Span<byte> destination)
+        {
+            int __size = GetByteCount();
+            if (destination.Length < __size) throw new System.ArgumentException("destination is too small for this view", nameof(destination));
+            var b = destination.Slice(0, __size);
+            int at = 0;
+            b[at++] = (byte)'U'; b[at++] = (byte)'T'; b[at++] = (byte)'V'; b[at++] = (byte)'A';
+            W32(b, ref at, SchemaVersion);
+            W32(b, ref at, 9u);
+            WI32(b, ref at, this.tick);
+            WI32(b, ref at, this.bodyCount);
+            WStr(b, ref at, this.activeLensName);
+            WI32(b, ref at, this.activeLensCount);
+            W32(b, ref at, (uint)this.factions.Count);
+            foreach (var __r_factions in this.factions) {
+                WStr(b, ref at, __r_factions.name);
+                WF32(b, ref at, __r_factions.grievance);
+                WBool(b, ref at, __r_factions.focused);
+                WBool(b, ref at, __r_factions.known);
+                WBool(b, ref at, __r_factions.inLens);
+                WBool(b, ref at, __r_factions.recentChanged);
+            }
+            W32(b, ref at, (uint)this.events.Count);
+            foreach (var __r_events in this.events) {
+                WStr(b, ref at, __r_events.kind);
+                WI32(b, ref at, __r_events.tick);
+            }
+            WI32(b, ref at, this.inspectSelected);
+            WStr(b, ref at, this.inspectName);
+            WStr(b, ref at, this.inspectCause);
+            return __size;
+        }
+
+        public int WriteTo(System.Buffers.IBufferWriter<byte> output)
+        {
+            int __size = GetByteCount();
+            var destination = output.GetSpan(__size).Slice(0, __size);
+            WriteTo(destination);
+            output.Advance(__size);
+            return __size;
+        }
 
         public byte[] ToBuffer()
         {
-            var b = new System.Collections.Generic.List<byte>();
-            b.Add((byte)'U'); b.Add((byte)'T'); b.Add((byte)'V'); b.Add((byte)'A');
-            W32(b, SchemaVersion);
-            W32(b, 9u);
-            WI32(b, this.tick);
-            WI32(b, this.bodyCount);
-            WStr(b, this.activeLensName);
-            WI32(b, this.activeLensCount);
-            W32(b, (uint)this.factions.Count);
-            foreach (var __r_factions in this.factions) {
-                WStr(b, __r_factions.name);
-                WF32(b, __r_factions.grievance);
-                WBool(b, __r_factions.focused);
-                WBool(b, __r_factions.known);
-                WBool(b, __r_factions.inLens);
-                WBool(b, __r_factions.recentChanged);
-            }
-            W32(b, (uint)this.events.Count);
-            foreach (var __r_events in this.events) {
-                WStr(b, __r_events.kind);
-                WI32(b, __r_events.tick);
-            }
-            WI32(b, this.inspectSelected);
-            WStr(b, this.inspectName);
-            WStr(b, this.inspectCause);
-            return b.ToArray();
+            var result = new byte[GetByteCount()];
+            WriteTo(result);
+            return result;
         }
     }
 }

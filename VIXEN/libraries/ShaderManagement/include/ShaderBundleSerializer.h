@@ -49,7 +49,7 @@ struct BundleSerializerConfig {
  *   "programName": "MyShader",
  *   "pipelineType": 0,
  *   "descriptorInterfaceHash": "def456...",
- *   "sdiHeaderPath": "generated/sdi/abc123-SDI.h",
+ *   "sdiHeaderPath": "generated/sdi/abc123-SDI.g.h",
  *   "sdiNamespace": "SDI::MyShader",
  *   "stages": [
  *     {

@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <regex>
+#include <string_view>
 
 namespace ShaderManagement {
 
@@ -18,14 +19,14 @@ std::vector<DiscoveredStructLayout> SdiDiscoveryScanner::ScanAll() {
         return allLayouts;
     }
 
-    // Scan all *-SDI.h files
+    // Scan all *-SDI.g.h files
     for (const auto& entry : std::filesystem::directory_iterator(sdiDirectory_)) {
         if (!entry.is_regular_file()) {
             continue;
         }
 
         std::string filename = entry.path().filename().string();
-        if (filename.find("-SDI.h") == std::string::npos) {
+        if (!filename.ends_with("-SDI.g.h")) {
             continue;  // Not an SDI file
         }
 
@@ -121,13 +122,10 @@ std::string SdiDiscoveryScanner::ExtractStructName(const std::string& line) {
 }
 
 std::string SdiDiscoveryScanner::ExtractUuidFromFilename(const std::string& filename) {
-    // Extract UUID from "7a57264d155fdf74-SDI.h"
-    size_t dashPos = filename.find("-SDI.h");
-    if (dashPos != std::string::npos) {
-        return filename.substr(0, dashPos);
-    }
-
-    return "";
+    // Extract UUID from "7a57264d155fdf74-SDI.g.h"
+    constexpr std::string_view suffix = "-SDI.g.h";
+    if (!filename.ends_with(suffix)) return "";
+    return filename.substr(0, filename.size() - suffix.size());
 }
 
 } // namespace ShaderManagement

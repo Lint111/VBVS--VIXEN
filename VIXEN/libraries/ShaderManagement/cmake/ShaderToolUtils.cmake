@@ -130,7 +130,7 @@ function(add_shader_bundle TARGET_NAME)
 
     # Output files
     set(OUTPUT_BUNDLE "${OUTPUT_DIR}/${SHADER_PROGRAM_NAME}.json")
-    set(OUTPUT_SDI "${SDI_OUTPUT_DIR}/${SHADER_PROGRAM_NAME}_SDI.h")
+    set(OUTPUT_SDI "${SDI_OUTPUT_DIR}/${SHADER_PROGRAM_NAME}_SDI.g.h")
 
     # Build command
     set(COMMAND_ARGS
@@ -193,13 +193,13 @@ endfunction()
 #       [SDI_NAMESPACE <namespace>]
 #   )
 #
-# Creates a custom target that generates SDI_Registry.h from all
+# Creates a custom target that generates SDI_Registry.g.h from all
 # specified shader bundles.
 #
 # Example:
 #   add_shader_registry(ShaderRegistry
 #       BUNDLES Shader1_Bundle Shader2_Bundle Shader3_Bundle
-#       OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.h
+#       OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.g.h
 #   )
 #
 function(add_shader_registry TARGET_NAME)
@@ -232,7 +232,7 @@ function(add_shader_registry TARGET_NAME)
     if(REGISTRY_OUTPUT)
         set(OUTPUT_FILE "${REGISTRY_OUTPUT}")
     else()
-        set(OUTPUT_FILE "${SDI_OUTPUT_DIR}/SDI_Registry.h")
+        set(OUTPUT_FILE "${SDI_OUTPUT_DIR}/SDI_Registry.g.h")
     endif()
 
     get_filename_component(OUTPUT_DIR "${OUTPUT_FILE}" DIRECTORY)

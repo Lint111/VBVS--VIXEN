@@ -32,30 +32,6 @@ set_target_properties(test_gaia_voxel_world PROPERTIES FOLDER "Tests/GaiaVoxelWo
 gtest_discover_tests(test_gaia_voxel_world)
 
 # ===========================================================================
-# VoxelInjectionQueue Tests
-# ===========================================================================
-# Tests async voxel entity creation pipeline:
-# - Lock-free ring buffer enqueueing
-# - Worker thread pool processing
-# - Batch entity creation
-# - Entity access and statistics
-# - Thread safety and concurrency
-
-add_executable(test_voxel_injection_queue
-    test_voxel_injection_queue.cpp
-)
-
-target_link_libraries(test_voxel_injection_queue PRIVATE
-    GTest::gtest_main
-    GaiaVoxelWorld
-    VoxelData
-)
-
-set_target_properties(test_voxel_injection_queue PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
-
-gtest_discover_tests(test_voxel_injection_queue)
-
-# ===========================================================================
 # VoxelInjector Tests
 # ===========================================================================
 # Tests SVO spatial indexing of GaiaVoxelWorld entities:
@@ -106,6 +82,10 @@ target_link_libraries(test_gaia_voxel_world_coverage PRIVATE
 set_target_properties(test_gaia_voxel_world_coverage PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
 gtest_discover_tests(test_gaia_voxel_world_coverage)
+
+add_executable(benchmark_voxel_batch benchmark_voxel_batch.cpp)
+target_link_libraries(benchmark_voxel_batch PRIVATE GaiaVoxelWorld VoxelData)
+set_target_properties(benchmark_voxel_batch PROPERTIES FOLDER "Benchmarks/GaiaVoxelWorld")
 
 # ===========================================================================
 # VoxelData Integration Tests (Phase H Session 6)

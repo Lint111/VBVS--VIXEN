@@ -2,7 +2,7 @@
   "descriptorInterfaceHash": "2744040dfb644549",
   "pipelineType": 3,
   "programName": "VoxelRT",
-  "sdiHeaderPath": "generated/sdi\\2744040dfb644549-SDI.h",
+  "sdiHeaderPath": "generated/sdi\\2744040dfb644549-SDI.g.h",
   "sdiNamespace": "ShaderInterface::2744040dfb644549",
   "stages": [
     {

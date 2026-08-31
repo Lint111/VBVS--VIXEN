@@ -32,7 +32,7 @@ constexpr float kNear           = 0.1f;
 constexpr float kFar            = 5000.0f;  // wide enough that frustum far-plane never gates these tests
 constexpr float kBodyRadius     = 24.0f;    // matches BuildRenderGraph.cpp's shared body bounding radius
 // Test-only representative brick cell/cone values.  They keep the line-up
-// candidates in Surface while making the policy source the CPU FootprintRegime
+// candidates in Surface while making the policy source the CPU CellFootprintRegime
 // twin, not the legacy screen-space resolvability helper.
 constexpr float kFootprintCellWorldSize = 32.0f;
 constexpr float kFootprintRaySizeCoef   = 0.001f;

@@ -536,7 +536,7 @@ bool SpirvInterfaceGenerator::SdiExists(const std::string& uuid) const {
 }
 
 std::filesystem::path SpirvInterfaceGenerator::GetSdiPath(const std::string& uuid) const {
-    return config_.outputDirectory / (uuid + "-SDI.h");
+    return config_.outputDirectory / (uuid + "-SDI.g.h");
 }
 
 std::string SpirvInterfaceGenerator::GenerateNamesHeader(
@@ -558,7 +558,7 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
         code << "// This file provides shader-specific constexpr constants and type aliases\n";
         code << "// that map to the generic .si.h interface.\n";
         code << "//\n";
-        code << "// Usage: #include \"" << programName << "Names.h\"\n";
+        code << "// Usage: #include \"" << programName << "Names.g.h\"\n";
         code << "//\n";
         code << "// DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.\n";
         code << "//\n";
@@ -566,7 +566,7 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
         code << "\n";
         code << "#pragma once\n";
         code << "\n";
-        code << "#include \"" << uuid << "-SDI.h\"\n";
+        code << "#include \"" << uuid << "-SDI.g.h\"\n";
         code << "\n";
 
         // Namespace
@@ -666,7 +666,7 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
         code << "} // namespace " << sanitizedName << "\n";
 
         // Write to file
-        std::filesystem::path filePath = config_.outputDirectory / (programName + "Names.h");
+        std::filesystem::path filePath = config_.outputDirectory / (programName + "Names.g.h");
         std::ofstream file(filePath);
         if (!file.is_open()) {
             return "";
@@ -1111,7 +1111,7 @@ uint32_t SdiFileManager::CleanupOrphans() {
 }
 
 std::string SdiFileManager::ExtractSdiUuidFromInclude(const std::string& includeLine) {
-    // Look for pattern: #include "XXXXXXXXXXXXXXXX-SDI.h"
+    // Look for pattern: #include "XXXXXXXXXXXXXXXX-SDI.g.h"
     size_t startQuote = includeLine.find('"');
     if (startQuote == std::string::npos) return "";
 
@@ -1120,12 +1120,12 @@ std::string SdiFileManager::ExtractSdiUuidFromInclude(const std::string& include
 
     std::string filename = includeLine.substr(startQuote + 1, endQuote - startQuote - 1);
 
-    // Check if it ends with -SDI.h
-    const std::string suffix = "-SDI.h";
+    // Check if it ends with -SDI.g.h
+    const std::string suffix = "-SDI.g.h";
     if (filename.size() <= suffix.size()) return "";
     if (filename.substr(filename.size() - suffix.size()) != suffix) return "";
 
-    // Extract UUID (everything before -SDI.h)
+    // Extract UUID (everything before -SDI.g.h)
     return filename.substr(0, filename.size() - suffix.size());
 }
 
@@ -1136,24 +1136,23 @@ std::unordered_set<std::string> SdiFileManager::GetReferencedUuids() const {
         return referencedUuids;
     }
 
-    // Scan all naming files (*Names.h) and extract referenced UUIDs
+    // Scan all naming files (*Names.g.h) and extract referenced UUIDs
     for (const auto& entry : std::filesystem::directory_iterator(sdiDirectory_)) {
         if (!entry.is_regular_file()) continue;
 
         std::string filename = entry.path().filename().string();
 
-        // Check if it's a naming file (ends with Names.h but not -SDI.h)
-        if (filename.size() > 7 &&
-            filename.substr(filename.size() - 7) == "Names.h" &&
-            filename.find("-SDI.h") == std::string::npos) {
+        // Check if it's a naming file (ends with Names.g.h but not -SDI.g.h)
+        if (filename.ends_with("Names.g.h") &&
+            !filename.ends_with("-SDI.g.h")) {
 
-            // Read the file and find #include "*-SDI.h" lines
+            // Read the file and find #include "*-SDI.g.h" lines
             std::ifstream file(entry.path());
             if (file.is_open()) {
                 std::string line;
                 while (std::getline(file, line)) {
                     if (line.find("#include") != std::string::npos &&
-                        line.find("-SDI.h") != std::string::npos) {
+                        line.find("-SDI.g.h") != std::string::npos) {
                         std::string uuid = ExtractSdiUuidFromInclude(line);
                         if (!uuid.empty()) {
                             referencedUuids.insert(uuid);
@@ -1196,8 +1195,8 @@ uint32_t SdiFileManager::CleanupOrphanedSdis(
 
         std::string filename = entry.path().filename().string();
 
-        // Check if it's an SDI file (ends with -SDI.h)
-        const std::string suffix = "-SDI.h";
+        // Check if it's an SDI file (ends with -SDI.g.h)
+        const std::string suffix = "-SDI.g.h";
         if (filename.size() > suffix.size() &&
             filename.substr(filename.size() - suffix.size()) == suffix) {
 

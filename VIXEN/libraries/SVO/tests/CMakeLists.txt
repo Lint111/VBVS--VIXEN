@@ -63,6 +63,20 @@ endif()
 
 gtest_discover_tests(test_voxel_injection)
 
+add_executable(test_voxel_injection_queue
+    test_voxel_injection_queue.cpp
+)
+target_link_libraries(test_voxel_injection_queue PRIVATE GTest::gtest_main SVO GaiaVoxelWorld)
+set_target_properties(test_voxel_injection_queue PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_voxel_injection_queue POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_voxel_injection_queue>
+        COMMENT "Copying TBB DLL for test_voxel_injection_queue")
+endif()
+gtest_discover_tests(test_voxel_injection_queue)
+
 # ===========================================================================
 # Data Structures Tests
 # ===========================================================================
@@ -101,6 +115,56 @@ else()
     target_link_libraries(test_sdf_recipes PRIVATE GTest::gtest_main)
 endif()
 gtest_discover_tests(test_sdf_recipes)
+
+add_executable(test_lod_ladder
+    test_lod_ladder.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_lod_ladder PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_lod_ladder PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_lod_ladder PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_lod_ladder)
+
+# ===========================================================================
+# BodyFootprintRegime Tests — body-scale classifier and LOD integration
+# ===========================================================================
+add_executable(test_body_footprint_regime
+    test_body_footprint_regime.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_body_footprint_regime PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_body_footprint_regime PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_body_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_body_footprint_regime)
+
+# ===========================================================================
+# Multi-body Rendering Tests — registry, per-body LOD, skip handling, and draw order
+# ===========================================================================
+add_executable(test_multi_body_renderer
+    test_multi_body_renderer.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_multi_body_renderer PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_multi_body_renderer PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_multi_body_renderer PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_multi_body_renderer)
+
+add_executable(test_recipe_composition
+    test_recipe_composition.cpp
+)
+if(TARGET SVO)
+    target_link_libraries(test_recipe_composition PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_recipe_composition PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_recipe_composition PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_composition)
 
 # ===========================================================================
 # SoA-SDF Serialize Tests  (Inc2 M2 — SoA-SDF brick + grid-lookup + descriptor)
@@ -383,20 +447,20 @@ endif()
 gtest_discover_tests(test_resolvable_level)
 
 # ===========================================================================
-# FootprintRegime Tests  (E6-T1 — the shared FootprintRegime classifier: CPU
-# twin of shaders/SceneBindings.glsl's classifyFootprintRegime. Pure math, no
+# CellFootprintRegime Tests  (E6-T1 — the shared CellFootprintRegime classifier: CPU
+# twin of shaders/SceneBindings.glsl's classifyCellFootprintRegime. Pure math, no
 # octree/GPU needed: all three regimes, zero/negative coefficients, exact
 # thresholds, float boundary behavior)
 # ===========================================================================
-add_executable(test_footprint_regime test_footprint_regime.cpp)
+add_executable(test_cell_footprint_regime test_cell_footprint_regime.cpp)
 if(TARGET SVO)
-    target_link_libraries(test_footprint_regime PRIVATE
+    target_link_libraries(test_cell_footprint_regime PRIVATE
         GTest::gtest_main SVO)
 else()
-    target_link_libraries(test_footprint_regime PRIVATE GTest::gtest_main)
+    target_link_libraries(test_cell_footprint_regime PRIVATE GTest::gtest_main)
 endif()
-set_target_properties(test_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_footprint_regime)
+set_target_properties(test_cell_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_cell_footprint_regime)
 
 add_executable(test_wholesale_availability test_wholesale_availability.cpp)
 target_include_directories(test_wholesale_availability PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)

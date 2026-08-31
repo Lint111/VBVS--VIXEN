@@ -5,6 +5,8 @@
 #include <variant>
 #include <span>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace Vixen::GaiaVoxel {
 
@@ -71,6 +73,27 @@ struct VoxelCreationRequest {
     VoxelCreationRequest() = default;
     VoxelCreationRequest(const glm::vec3& pos, std::span<const ComponentQueryRequest> comps)
         : position(pos), components(comps) {}
+};
+
+/**
+ * Owning counterpart to VoxelCreationRequest.
+ *
+ * Use this at every asynchronous or deferred boundary.  VoxelCreationRequest is
+ * intentionally only a lightweight synchronous view and must never be stored.
+ */
+struct OwnedVoxelCreationRequest {
+    glm::vec3 position{};
+    std::vector<ComponentQueryRequest> components;
+
+    OwnedVoxelCreationRequest() = default;
+    OwnedVoxelCreationRequest(glm::vec3 pos, std::vector<ComponentQueryRequest> comps)
+        : position(pos), components(std::move(comps)) {}
+    explicit OwnedVoxelCreationRequest(const VoxelCreationRequest& request)
+        : position(request.position), components(request.components.begin(), request.components.end()) {}
+
+    [[nodiscard]] VoxelCreationRequest view() const {
+        return VoxelCreationRequest{position, components};
+    }
 };
 
 /**

@@ -176,7 +176,7 @@ cannot be subsumed into either.
 **Proposed design — one function, honest about its two real inputs:**
 
 ```
-Regime FootprintRegime(worldDist, cellWorldSize, raySizeCoef, raySizeBias, cosmicK)
+Regime CellFootprintRegime(worldDist, cellWorldSize, raySizeCoef, raySizeBias, cosmicK)
     footprint = worldDist * raySizeCoef + raySizeBias
     if raySizeCoef <= 0 || footprint < cellWorldSize/8:  return Regime::Surface   // regime 1
     if footprint < cosmicK * cellWorldSize:              return Regime::MipHit    // regime 2
@@ -187,15 +187,15 @@ This is exactly the shader's existing arithmetic (`SceneBindings.glsl:2609-2626`
 extracted to a pure function — the same "dependency-free function" pattern already used
 by `ResidencyTrigger.h`/`ResolvableLevel.h`/`ResidencyDefault.h` (no node/GPU types,
 unit-testable standalone). It would live in a new
-`libraries/SVO/include/FootprintRegime.h`, mirroring those three files' placement, and
+`libraries/SVO/include/CellFootprintRegime.h`, mirroring those three files' placement, and
 GLSL would need a hand-synced twin (as `SceneBindings.glsl` already is for other CPU-side
 formulas — this codebase has no C#→GLSL or C++→GLSL transpiler for this class of pure
 function; the sync discipline is the same manual md5-verified parity this epoch already
 practices, per `Deep-Field-Mip-Accessor-Policy-2026-08.md:200`).
 
-**The residency decision becomes a consumer of `FootprintRegime`, not a parallel
+**The residency decision becomes a consumer of `CellFootprintRegime`, not a parallel
 formula:** replace `InstanceWantsBrickResidency`'s `minResolvableLevel <= brickTierLevel`
-screen-space test with a call to `FootprintRegime(distance, cellWorldSize, ...) ==
+screen-space test with a call to `CellFootprintRegime(distance, cellWorldSize, ...) ==
 Regime::Surface` (regime 1 ⇒ bricks resident) evaluated CPU-side with the same
 `raySizeCoef`/`raySizeBias`/`cosmicK` push-constants the shader already receives per
 frame (`pc.raySizeCoef`, `pc.raySizeBias`, `pc.cosmicK` — already uniform, already
@@ -205,12 +205,12 @@ evictable/never-uploaded, matching the brief's stated goal exactly).
 **What does NOT unify:** `DeriveResidencyDefault`'s capability gate stays separate — it
 answers "can this tree be lazy at all" (a one-time content-shape question), not "should
 it be resident right now" (a per-frame distance question). Folding it into
-`FootprintRegime` would conflate a boot-time content precondition with a live-camera
+`CellFootprintRegime` would conflate a boot-time content precondition with a live-camera
 decision; keep them composed (`DeriveResidencyDefaultIfUnset` still runs first and only
 gates whether the per-frame regime check is allowed to go lazy at all), not merged.
 
 **Where it lives / who consumes it:**
-- **Definition:** `libraries/SVO/include/FootprintRegime.h` (new, header-only, pure
+- **Definition:** `libraries/SVO/include/CellFootprintRegime.h` (new, header-only, pure
   function — CPU C++ side).
 - **GLSL twin:** the existing block in `SceneBindings.glsl:2602-2626`, refactored to
   read as the same three-line comparison, hand-synced (no new mechanism — matches how
@@ -221,7 +221,7 @@ gates whether the per-frame regime check is allowed to go lazy at all), not merg
   extracted to name the shared function.
 - **Consumer 2 (new):** `InstanceWantsBrickResidency` (or its caller,
   `VulkanGraphApplication.cpp:4100`), replacing the screen-space `minResolvableLevel`
-  test with the world-space `FootprintRegime` test.
+  test with the world-space `CellFootprintRegime` test.
 - **One source of truth for the threshold constants** (`raySizeCoef`, `raySizeBias`,
   `cosmicK`, the `/8` brick-size divisor): today `kEntryBrickSize = 8.0` is a shader
   local (`SceneBindings.glsl:2608`) and `kResidencyLeafSizeM`/`kResidencyPxThreshold`
@@ -368,17 +368,17 @@ existing columns.
    ground truth).
 3. **B-extract (no behavior change):** factor `SceneBindings.glsl:2602-2626`'s
    arithmetic into a named, commented three-line block (or a GLSL function) matching the
-   proposed `FootprintRegime` shape, still inline, still identical output. Verify:
+   proposed `CellFootprintRegime` shape, still inline, still identical output. Verify:
    flag-off/on byte-exact bars from `Deep-Field-Mip-Accessor-Policy-2026-08.md:81-88`
    still hold (frame hash `87473180f7b4e603` unchanged, DDA census 414/420 unchanged).
-4. **B-CPU-twin (new file, no wiring yet):** write `FootprintRegime.h`
+4. **B-CPU-twin (new file, no wiring yet):** write `CellFootprintRegime.h`
    as a standalone header, unit-tested against the shader's known counter reconciliations
    (`mip=409500 march=9900` etc. from the design doc) using hand-computed world-space
    distances for the benchmark scene's known camera/instance positions. No production
    caller yet — pure function correctness only.
 5. **B-wire (residency consumer):** replace `InstanceWantsBrickResidency`'s
    `minResolvableLevel`-based test at `VulkanGraphApplication.cpp:4100` with
-   `FootprintRegime(...) == Regime::Surface`, using the same `pc.raySizeCoef`/
+   `CellFootprintRegime(...) == Regime::Surface`, using the same `pc.raySizeCoef`/
    `raySizeBias`/`cosmicK` the shader receives. Verify: `[ResidencyGateDemo]` log
    (`VulkanGraphApplication.cpp:4113-4120`, `VIXEN_RESIDENCY_GATE_DEMO`-gated) shows
    equivalent or better residency transitions vs the pre-change screen-space test on the
@@ -416,7 +416,7 @@ existing columns.
    figure measured? Should this doc's slice list include a frustum-visibility gate on
    `CreateOctreeBuffers` as a follow-on slice, or is that explicitly out of scope for
    B49-T2?
-2. **GLSL/C++ sync mechanism for `FootprintRegime`** (slice 3/4 above): this is the
+2. **GLSL/C++ sync mechanism for `CellFootprintRegime`** (slice 3/4 above): this is the
    first CPU/GPU pure-function pair in this family with no existing transpiler. Is
    hand-sync (matching this epoch's existing md5-verified-parity discipline) acceptable,
    or does this warrant a small script/test that diffs the two implementations'
@@ -424,7 +424,7 @@ existing columns.
 3. **Threshold-constant unification** (section B's last point): `kResidencyLeafSizeM`/
    `kResidencyPxThreshold` (CPU, screen-space) and `kEntryBrickSize`/`pc.cosmicK`
    (GPU, world-space) are independently tuned today. Once `InstanceWantsBrickResidency`
-   moves to `FootprintRegime`, the screen-space constants become dead — confirm no other
+   moves to `CellFootprintRegime`, the screen-space constants become dead — confirm no other
    caller depends on `minResolvableLevel`/`ResolvableLevel.h` before removal (not
    audited in this pass; `ResidencyTrigger.h`'s blast radius per codegraph shows 2
    callers total, both under `/tests/`, plus the one production caller named above —

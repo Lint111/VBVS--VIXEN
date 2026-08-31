@@ -564,7 +564,7 @@ void recordFarFieldTerminalPixel(uvec2 pixel) {
 #endif
 }
 
-// E6-T1: the shared FootprintRegime classifier (stencil doc's prerequisite +
+// E6-T1: the shared CellFootprintRegime classifier (stencil doc's prerequisite +
 // residency-unification design's step 1). ZERO behavior change: this is the
 // exact three-comparison arithmetic that was previously duplicated inline at
 // this file's entry dispatch and at TraceWorld.glsl's two composition-probe
@@ -575,7 +575,7 @@ void recordFarFieldTerminalPixel(uvec2 pixel) {
 // this composition probe has always used (matches SceneBindings.glsl's real
 // (non-probe) entry-dispatch gate's constant at this same file, and
 // TraceWorld.glsl's two former inline copies).
-uint classifyFootprintRegime(float worldDist, float cellWorldSize,
+uint classifyCellFootprintRegime(float worldDist, float cellWorldSize,
                               float raySizeCoef, float raySizeBias, float cosmicK) {
     float footprint = worldDist * raySizeCoef + raySizeBias;
     return (raySizeCoef <= 0.0 || footprint < cellWorldSize / 8.0)
@@ -648,7 +648,7 @@ void recordPolicyStencilReservoir(uint beforeWord, uint afterWord) {
 #endif
 
 // E1-T1 stencil slice 0 composition census, now consuming the shared production
-// FootprintRegime classifier: 1=Surface, 2=MipHit, 3=Cosmic; source bits
+// CellFootprintRegime classifier: 1=Surface, 2=MipHit, 3=Cosmic; source bits
 // 1=virtual, 2=materialized.
 #ifdef VIXEN_COMPOSITION_COUNTERS
 uint compositionSourceClass(uint sourceMask) {
@@ -1109,7 +1109,7 @@ uint g_mipSampleLevel = 0u; // last resolved mip level for readMipSample account
 bool g_lastHitWasFarField = false;
 
 // Shared call-boundary results consumed by the production policy stencil and
-// the optional composition census. FootprintRegime is classified once by the
+// the optional composition census. CellFootprintRegime is classified once by the
 // shared function above and carried with the winning WorldHit.
 uint g_lastFootprintRegime = 1u;
 uint g_lastShadowCompositionRegime = 1u;
@@ -1171,6 +1171,7 @@ int   g_shadowDbgHops     = 0;    // brick-hops taken before crossing
 #include "CoordinateTransforms.glsl"
 #include "RayGeneration.glsl"
 #include "ESVOCoefficients.glsl"
+#include "BodyFootprintRegime.glsl"
 #include "TraceRecording.glsl"
 #include "ESVOTraversal.glsl"
 #include "Lighting.glsl"
@@ -2801,14 +2802,14 @@ bool traverseCoarseGridInstancedSdf(vec3 rayOrigin, vec3 rayDir,
     float tBias = length(rayStartWorld - rayOrigin);
 
 #ifdef VIXEN_COMPOSITION_COUNTERS
-    // E6-T1: routed through the shared classifyFootprintRegime (SceneBindings.glsl,
+    // E6-T1: routed through the shared classifyCellFootprintRegime (SceneBindings.glsl,
     // defined above) instead of the former inline duplicate. Same formula, same inputs.
     float compositionEntryDirLen = length(rayDirLocal);
     if (compositionEntryDirLen >= 1e-12) {
         float compositionWorldDist = 0.5 * (tEnter + gridT.y) * instRenderScale;
         float compositionCellWorldSize =
             ((1.0 / bpaF) / compositionEntryDirLen) * instRenderScale;
-        g_lastFootprintRegime = classifyFootprintRegime(
+        g_lastFootprintRegime = classifyCellFootprintRegime(
             compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
     }
 #endif

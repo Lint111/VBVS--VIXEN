@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ShaderBundleBuilder.h"
+#include "SdiDiscoveryScanner.h"
 #include "SdiRegistryManager.h"
 #include <filesystem>
 #include <fstream>
@@ -116,6 +117,42 @@ void main() {
     std::filesystem::path sdiOutputDir;
     std::filesystem::path cacheDir;
 };
+
+TEST_F(SdiLifecycleTest, GeneratedCppFilesUseDotGInfix) {
+    SdiGeneratorConfig sdiConfig;
+    sdiConfig.outputDirectory = sdiOutputDir;
+    SpirvInterfaceGenerator generator(sdiConfig);
+
+    EXPECT_EQ(generator.GetSdiPath("shader_uuid").filename(), "shader_uuid-SDI.g.h");
+
+    SpirvReflectionData reflectionData;
+    const auto namesPath = generator.GenerateNamesHeader("SampleShader", "shader_uuid", reflectionData);
+    EXPECT_EQ(std::filesystem::path(namesPath).filename(), "SampleShaderNames.g.h");
+    std::ifstream namesFile(namesPath);
+    const std::string namesContent((std::istreambuf_iterator<char>(namesFile)),
+                                   std::istreambuf_iterator<char>());
+    EXPECT_NE(namesContent.find("#include \"shader_uuid-SDI.g.h\""), std::string::npos);
+
+    EXPECT_EQ(SdiFileManager::ExtractSdiUuidFromInclude("#include \"shader_uuid-SDI.g.h\""),
+              "shader_uuid");
+    EXPECT_TRUE(SdiFileManager::ExtractSdiUuidFromInclude("#include \"shader_uuid-SDI.h\"").empty());
+
+    std::ofstream(sdiOutputDir / "discovered-SDI.g.h")
+        << "struct Discovered {\n"
+           "    static constexpr uint64_t LAYOUT_HASH = 0x2aULL;\n"
+           "};\n";
+    std::ofstream(sdiOutputDir / "legacy-SDI.h")
+        << "struct Legacy {\n"
+           "    static constexpr uint64_t LAYOUT_HASH = 0x2bULL;\n"
+           "};\n";
+    const auto layouts = SdiDiscoveryScanner(sdiOutputDir).ScanAll();
+    ASSERT_EQ(layouts.size(), 1u);
+    EXPECT_EQ(layouts.front().shaderUuid, "discovered");
+    EXPECT_EQ(layouts.front().layoutHash, 0x2au);
+
+    const SdiRegistryManager::Config registryConfig;
+    EXPECT_EQ(registryConfig.registryHeaderPath.filename(), "SDI_Registry.g.h");
+}
 
 // ===== Phase 1: Build Complete Shader Bundle with SDI =====
 
@@ -241,7 +278,7 @@ TEST_F(SdiLifecycleTest, RegisterShaderInSDIRegistry) {
     // Create registry
     SdiRegistryManager::Config registryConfig;
     registryConfig.sdiDirectory = sdiOutputDir;
-    registryConfig.registryHeaderPath = sdiOutputDir / "SDI_Registry.h";
+    registryConfig.registryHeaderPath = sdiOutputDir / "SDI_Registry.g.h";
     SdiRegistryManager registry(registryConfig);
 
     // Build shader with registry integration

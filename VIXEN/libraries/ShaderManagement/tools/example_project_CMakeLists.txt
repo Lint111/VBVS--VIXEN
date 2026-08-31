@@ -50,7 +50,7 @@ add_shader_registry(ShaderRegistry_Individual
         BasicShader_Bundle
         ParticlesShader_Bundle
         MeshletShader_Bundle
-    OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.h
+    OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.g.h
     SDI_NAMESPACE "SDI"
     VERBOSE
 )
@@ -127,7 +127,7 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/generated/sdi/
 # In src/main.cpp:
 # ```cpp
 # #include <ShaderManagement/ShaderLibrary.h>
-# #include <SDI_Registry.h>
+# #include <SDI_Registry.g.h>
 #
 # int main() {
 #     // Type-safe descriptor access (compile-time validated)

@@ -19,7 +19,7 @@ Fixed duplicate struct definitions in generated SDI headers when same UBO used b
 **Files:** `SpirvInterfaceGenerator.h`, `SpirvInterfaceGenerator.cpp`, `shader_tool.cpp`
 
 Moved SDI cleanup logic from tool to `SdiFileManager` class:
-- `ExtractSdiUuidFromInclude()` - Parse `#include "*-SDI.h"` lines
+- `ExtractSdiUuidFromInclude()` - Parse `#include "*-SDI.g.h"` lines
 - `GetReferencedUuids()` - Scan naming files for referenced UUIDs
 - `CleanupOrphanedSdis()` - Delete unreferenced SDI files
 
@@ -113,7 +113,7 @@ After changes, verify with:
 ./build/bin/Debug/sdi_tool.exe cleanup-sdi generated/sdi --verbose
 
 # Verify no duplicate structs in generated SDI
-grep "struct OctreeConfigUBO" generated/sdi/*-SDI.h | wc -l  # Should be 1
+grep "struct OctreeConfigUBO" generated/sdi/*-SDI.g.h | wc -l  # Should be 1
 ```
 
 ## Files Changed This Session

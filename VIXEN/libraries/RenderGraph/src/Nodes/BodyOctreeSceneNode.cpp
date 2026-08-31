@@ -497,15 +497,15 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Inc1 M2: a residency request toggled since the last Execute is serviced here — the
     // same fence-waited safe point recipeDirty_ uses, never synchronously in the setter.
     const auto classifiedRegime = residencyRequested_
-        ? Vixen::SVO::FootprintRegime::Surface
-        : Vixen::SVO::FootprintRegime::MipHit;
+        ? Vixen::SVO::CellFootprintRegime::Surface
+        : Vixen::SVO::CellFootprintRegime::MipHit;
     const bool wholesaleTransition = wholesaleAdmissionEnabled_ &&
         Vixen::SVO::AdvanceWholesaleAvailability(
             wholesaleAvailability_, classifiedRegime,
             static_cast<uint32_t>(Vixen::SVO::WholesalePayload::ChannelPool) |
             static_cast<uint32_t>(Vixen::SVO::WholesalePayload::BrickLookup));
     if (wholesaleTransition && wholesaleAvailability_.committedRegime ==
-        Vixen::SVO::FootprintRegime::Surface) {
+        Vixen::SVO::CellFootprintRegime::Surface) {
         brickResidencyDirty_ = true;
         if (wholesaleAvailability_.reusablePopulatedBytes != 0u) {
             PublishWholesaleReuse();
@@ -984,7 +984,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         bricksBuffer_, bricksMemory_, "octree bricks SSBO");
     brickPoolUploaded_ = residencyRequested_ && !concatenated_.bricks.empty();
     if (brickPoolUploaded_) {
-        wholesaleAvailability_.committedRegime = Vixen::SVO::FootprintRegime::Surface;
+        wholesaleAvailability_.committedRegime = Vixen::SVO::CellFootprintRegime::Surface;
         wholesaleAvailability_.readyMask =
             static_cast<uint32_t>(Vixen::SVO::WholesalePayload::ChannelPool) |
             static_cast<uint32_t>(Vixen::SVO::WholesalePayload::BrickLookup);
@@ -1077,7 +1077,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // legacy compile-time wholesale path from the admission transfer; the
     // descriptor remains valid because the destination still has its full size.
     const bool suppressFineWholesale = wholesaleAdmissionEnabled_ &&
-        wholesaleAvailability_.committedRegime != Vixen::SVO::FootprintRegime::Surface;
+        wholesaleAvailability_.committedRegime != Vixen::SVO::CellFootprintRegime::Surface;
 
     CreateHostBuffer(device, sdfSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,

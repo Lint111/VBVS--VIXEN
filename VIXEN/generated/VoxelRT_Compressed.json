@@ -2,7 +2,7 @@
   "descriptorInterfaceHash": "4f3ab9145d1784fb",
   "pipelineType": 3,
   "programName": "VoxelRT_Compressed",
-  "sdiHeaderPath": "./generated/sdi\\4f3ab9145d1784fb-SDI.h",
+  "sdiHeaderPath": "./generated/sdi\\4f3ab9145d1784fb-SDI.g.h",
   "sdiNamespace": "ShaderInterface::4f3ab9145d1784fb",
   "stages": [
     {

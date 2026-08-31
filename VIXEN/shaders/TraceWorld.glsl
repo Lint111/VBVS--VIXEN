@@ -504,7 +504,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 
         g_lastFootprintRegime = 1u;
 #ifdef VIXEN_COMPOSITION_COUNTERS
-        // E6-T1: routed through the shared classifyFootprintRegime (SceneBindings.glsl)
+        // E6-T1: routed through the shared classifyCellFootprintRegime (SceneBindings.glsl)
         // instead of the former inline duplicate. Same formula, same inputs.
         float compositionDirLen = length(localRayDir);
         int compositionBpa = configs[oi].bricksPerAxis;
@@ -513,7 +513,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 0.5 * (max(gridT.x, 0.0) + gridT.y) * inst.renderScale;
             float compositionCellWorldSize =
                 ((1.0 / float(compositionBpa)) / compositionDirLen) * inst.renderScale;
-            g_lastFootprintRegime = classifyFootprintRegime(
+            g_lastFootprintRegime = classifyCellFootprintRegime(
                 compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
         }
 #endif
@@ -916,7 +916,7 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
 
 #ifdef VIXEN_COMPOSITION_COUNTERS
         uint instCompositionRegime = 1u;
-        // E6-T1: routed through the shared classifyFootprintRegime (SceneBindings.glsl)
+        // E6-T1: routed through the shared classifyCellFootprintRegime (SceneBindings.glsl)
         // instead of the former inline duplicate. Same formula, same inputs.
         float compositionDirLen = length(localRayDir);
         int compositionBpa = configs[oi].bricksPerAxis;
@@ -925,7 +925,7 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
                 0.5 * (max(gridT.x, 0.0) + gridT.y) * inst.renderScale;
             float compositionCellWorldSize =
                 ((1.0 / float(compositionBpa)) / compositionDirLen) * inst.renderScale;
-            instCompositionRegime = classifyFootprintRegime(
+            instCompositionRegime = classifyCellFootprintRegime(
                 compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
         }
         // Slice 0 counts destination wave ENTRIES, not only occluders. Reaching

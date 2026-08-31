@@ -41,6 +41,13 @@ set_target_properties(KernelDispatch PROPERTIES
     FOLDER "Libraries"
     POSITION_INDEPENDENT_CODE ON)
 
+# PIC is required, not cosmetic: undertow_stage_ffi is a SHARED library that links this static
+# archive, and a non-PIC .a cannot go into a .so. Without this the link dies on
+# "relocation R_X86_64_PC32 against symbol _ZTVN3tbb6detail2d113delegate_baseE ... final link
+# failed: bad value", which is what left libundertow_stage_ffi.so missing while the other two
+# shims built — check-shim-freshness.sh reported it as a half-finished build.
+set_target_properties(KernelDispatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # TBB provides the task-wave parallelism (tbb::parallel_for_each + task_arena). Provisioned by
 # dependencies/CMakeLists.txt (find_package(TBB) or the oneTBB FetchContent) as TBB::tbb -- the same
 # target RenderGraph/SVO link.

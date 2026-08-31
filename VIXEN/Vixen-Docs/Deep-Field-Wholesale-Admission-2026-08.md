@@ -60,8 +60,8 @@ the node re-emits the current slot each Execute (`BodyOctreeSceneNode.cpp:425-44
 
 For a monotonic generation:
 
-1. CPU classifies each active instance with `ClassifyFootprintRegime` from
-   `libraries/SVO/include/FootprintRegime.h:37-64`, using the exact frame parameters
+1. CPU classifies each active instance with `ClassifyCellFootprintRegime` from
+   `libraries/SVO/include/CellFootprintRegime.h:37-64`, using the exact frame parameters
    supplied to the shader. OR-reduce duplicate instances by octree index: admission
    is deterministic because the set is sorted by octree index, then payload kind.
 2. The CPU applies hysteresis: promote to Surface only after two consecutive Surface
@@ -83,7 +83,7 @@ For a monotonic generation:
 
 `DeriveResidencyDefault` remains a capability precondition, not a live regime
 decision (`Deep-Field-Residency-Unification-2026-08.md:205-210`). The CPU twin is
-already hand-synced to the GLSL classifier by contract (`FootprintRegime.h:5-35`);
+already hand-synced to the GLSL classifier by contract (`CellFootprintRegime.h:5-35`);
 slice 1 adds a table-driven parity test at thresholds and an MD5-normalized source
 constant check. The owner of any changed threshold is the VIXEN render-policy owner;
 without their sign-off the old constants remain authoritative.
@@ -159,7 +159,7 @@ signature and locality; L2/L1 hit rate is evidence, not an allocation guarantee.
 1. **S1 — one-buffer proof: channelPool + readiness bit, with its mandatory
    brickLookup companion retained as the existing compact-shell mapping.** Files:
    `libraries/RenderGraph/{include/Nodes/BodyOctreeSceneNode.h,src/Nodes/BodyOctreeSceneNode.cpp}`,
-   `libraries/SVO/include/FootprintRegime.h`, `application/main/source/VulkanGraphApplication.cpp`,
+   `libraries/SVO/include/CellFootprintRegime.h`, `application/main/source/VulkanGraphApplication.cpp`,
    `shaders/{SceneBindings.glsl,StoredSdf.glsl}`, `application/main/include/PerfCsvWriter.h`,
    and the CSV writer call site. Gate: flag-off byte identity; stored-control two-hash
    state-set discipline; N>=3; no OOB validation errors; pending and absent paths show

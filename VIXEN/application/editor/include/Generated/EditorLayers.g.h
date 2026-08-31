@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
-#include "generated/AppFlowCallables.g.hpp"
+#include "generated/AppFlowCallables.g.h"
 
 namespace Vixen::Views {
 

@@ -26,7 +26,7 @@ struct SdiGeneratorConfig {
  * @brief SPIRV Descriptor Interface (SDI) code generator
  *
  * Generates C++ header files containing strongly-typed shader interfaces.
- * Format: {UUID}-SDI.h
+ * Format: {UUID}-SDI.g.h
  *
  * Generated headers include:
  * - Struct definitions matching UBO/SSBO layouts
@@ -48,7 +48,7 @@ struct SdiGeneratorConfig {
  * auto reflectionData = reflector.Reflect(program);
  * std::string uuid = "abc123";  // From shader program
  * std::string filePath = generator.Generate(uuid, *reflectionData);
- * // Include generated file: #include "abc123-SDI.h"
+ * // Include generated file: #include "abc123-SDI.g.h"
  * @endcode
  */
 class SpirvInterfaceGenerator : public ILoggable {
@@ -59,7 +59,7 @@ public:
      * @brief Generate SDI header file from reflection data
      *
      * Creates a C++ header file with strongly-typed shader interface.
-     * File naming: {uuid}-SDI.h
+     * File naming: {uuid}-SDI.g.h
      *
      * @param uuid Unique identifier for the shader program
      * @param reflectionData Reflected SPIRV metadata
@@ -125,15 +125,15 @@ public:
     std::string GenerateMergedToString(const SdiMergedInterface& merged);
 
     /**
-     * @brief Generate shader-specific Names.h file
+     * @brief Generate shader-specific Names.g.h file
      *
-     * Creates {programName}Names.h with shader-specific constexpr constants
+     * Creates {programName}Names.g.h with shader-specific constexpr constants
      * and type aliases that map to the generic .si.h interface.
      *
      * @param programName Name of the shader program (e.g., "Draw_Shader")
      * @param uuid UUID of the shader (for namespace lookup)
      * @param reflectionData Reflected SPIRV metadata
-     * @return Path to generated Names.h file, or empty string on error
+     * @return Path to generated Names.g.h file, or empty string on error
      */
     std::string GenerateNamesHeader(
         const std::string& programName,
@@ -208,8 +208,8 @@ public:
     /**
      * @brief Clean up orphaned SDI files (naming-file-based)
      *
-     * Scans all *Names.h files in the directory, extracts the UUIDs they reference,
-     * and deletes any *-SDI.h files not referenced by any naming file.
+     * Scans all *Names.g.h files in the directory, extracts the UUIDs they reference,
+     * and deletes any *-SDI.g.h files not referenced by any naming file.
      * This is more robust than registry-based cleanup as it uses actual file references.
      *
      * @param verbose If true, populate referencedUuids and orphanedFiles output params
@@ -226,7 +226,7 @@ public:
     /**
      * @brief Extract UUID from an SDI include directive
      *
-     * Parses lines like: #include "2744040dfb644549-SDI.h"
+     * Parses lines like: #include "2744040dfb644549-SDI.g.h"
      *
      * @param includeLine The line containing the include directive
      * @return UUID string if found, empty string otherwise
@@ -236,7 +236,7 @@ public:
     /**
      * @brief Scan naming files and return referenced SDI UUIDs
      *
-     * @return Set of UUIDs referenced by *Names.h files
+     * @return Set of UUIDs referenced by *Names.g.h files
      */
     std::unordered_set<std::string> GetReferencedUuids() const;
 

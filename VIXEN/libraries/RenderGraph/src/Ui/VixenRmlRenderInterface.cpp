@@ -1,5 +1,5 @@
 #include "Ui/VixenRmlRenderInterface.h"
-#include "Ui/UiShaderSpirv.h"
+#include "Ui/UiShaderSpirv.g.h"
 
 #include <RmlUi/Core/Vertex.h>
 

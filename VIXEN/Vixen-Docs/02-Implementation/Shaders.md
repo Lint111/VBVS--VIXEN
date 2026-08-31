@@ -134,7 +134,7 @@ struct SpirvStructMember {
 
 Two header files per shader interface:
 
-**Generic Interface** (`{hash}-SDI.h`):
+**Generic Interface** (`{hash}-SDI.g.h`):
 ```cpp
 namespace ShaderInterface {
 namespace _2071dff093caf4b3 {  // Content hash
@@ -156,7 +156,7 @@ namespace _2071dff093caf4b3 {  // Content hash
 }}
 ```
 
-**Shader Names** (`{shader}_ShaderNames.h`):
+**Shader Names** (`{shader}_ShaderNames.g.h`):
 ```cpp
 namespace Draw_Shader {
     namespace SDI = ShaderInterface::_2071dff093caf4b3;

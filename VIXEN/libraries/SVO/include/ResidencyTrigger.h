@@ -14,7 +14,7 @@
 // always-false placeholder waiting to be wired later.
 
 #include "FrustumCull.h"
-#include "FootprintRegime.h"
+#include "CellFootprintRegime.h"
 #include "ResolvableLevel.h"
 
 #include <glm/glm.hpp>
@@ -78,9 +78,9 @@ inline bool InstanceWantsBrickResidencyByFootprint(
     if (!SphereIntersectsFrustum(frustum, instancePos, instanceRadius)) {
         return false;
     }
-    return ClassifyFootprintRegime(
+    return ClassifyCellFootprintRegime(
         glm::distance(instancePos, cameraPos), cellWorldSize,
-        raySizeCoef, raySizeBias, cosmicK) == FootprintRegime::Surface;
+        raySizeCoef, raySizeBias, cosmicK) == CellFootprintRegime::Surface;
 }
 
 }  // namespace Vixen::SVO

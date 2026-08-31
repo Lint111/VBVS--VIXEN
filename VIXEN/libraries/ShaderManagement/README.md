@@ -159,7 +159,7 @@ target_include_directories(MyApp PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 **main.cpp:**
 ```cpp
-#include <SDI_Registry.h>  // Auto-generated
+#include <SDI_Registry.g.h>  // Auto-generated
 
 // Type-safe descriptor access (compile-time validated!)
 auto texBinding = SDI::MyShader::Descriptors::MainTexture;
@@ -235,7 +235,7 @@ struct ShaderDataBundle {
 
 Auto-generated header providing type-safe shader descriptor access:
 
-**Generated Header (MyShader_SDI.h):**
+**Generated Header (MyShader_SDI.g.h):**
 ```cpp
 namespace SDI::MyShader {
     constexpr const char* UUID = "a1b2c3d4e5f6...";
@@ -288,7 +288,7 @@ namespace SDI::MyShader {
 
 **Usage:**
 ```cpp
-#include "MyShader_SDI.h"
+#include "MyShader_SDI.g.h"
 
 // Compile-time validated descriptor access
 VkDescriptorSetLayoutBinding binding{};
@@ -306,7 +306,7 @@ ubo.lightPosition = glm::vec4(light.position, 1.0f);
 The registry manager creates a single header including all active shaders:
 
 ```cpp
-#include <SDI_Registry.h>
+#include <SDI_Registry.g.h>
 
 // Access any registered shader's SDI
 auto shader1 = SDI::Shader1::Descriptors::MainTexture;
@@ -569,7 +569,7 @@ shader_tool compile shader.vert shader.frag --name MyShader --output-dir ./out
 
 **Build registry:**
 ```bash
-shader_tool build-registry shader1.json shader2.json --output SDI_Registry.h
+shader_tool build-registry shader1.json shader2.json --output SDI_Registry.g.h
 ```
 
 **Batch process:**

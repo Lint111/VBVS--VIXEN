@@ -97,7 +97,7 @@ struct ShaderDataBundle {
     /**
      * @brief Unique identifier for this shader bundle
      *
-     * Used as the filename prefix for SDI generation: {uuid}-SDI.h
+     * Used as the filename prefix for SDI generation: {uuid}-SDI.g.h
      * Typically a content-based hash or GUID.
      */
     std::string uuid;
@@ -105,7 +105,7 @@ struct ShaderDataBundle {
     /**
      * @brief Path to generated SDI header file
      *
-     * Absolute path to the {uuid}-SDI.h file.
+     * Absolute path to the {uuid}-SDI.g.h file.
      * Include this in C++ code for type-safe shader access.
      */
     std::filesystem::path sdiHeaderPath;
@@ -188,7 +188,7 @@ struct ShaderDataBundle {
      * @brief Get SDI include path for C++ code
      *
      * Returns a string suitable for #include directive.
-     * Example: "generated/sdi/abc123-SDI.h"
+     * Example: "generated/sdi/abc123-SDI.g.h"
      *
      * @return Relative or absolute path to SDI header
      */

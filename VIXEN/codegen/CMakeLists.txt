@@ -41,6 +41,20 @@ endif()
 
 set(_cg "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Engine worktrees live below vixen/engine/.claude-worktrees/<lane>, so the
+# historical four-parent relative path resolves to engine/core instead of the
+# undertow superproject's core directory. Probe both repository layouts without
+# tying generator discovery to a particular user's checkout path.
+set(_schema_catalog_source "")
+foreach(_schema_catalog_candidate IN ITEMS
+        "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
+        "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+    if(EXISTS "${_schema_catalog_candidate}")
+        set(_schema_catalog_source "${_schema_catalog_candidate}")
+        break()
+    endif()
+endforeach()
+
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
 # Resolve YEROKET_ROOT from the first home candidate that actually contains the repo,
 # so a Windows configure with USERPROFILE (or a mounted WSL home) still finds it.
@@ -106,7 +120,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_cg}/view-schemas" _schema_view_run)
         # Undertow's schema catalogue exists only in the superproject layout. Engine-standalone
         # builds consume the committed AppFlow/ViewNounId headers when this tool is absent.
-        _codegen_to_wsl_path("${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json" _schema_catalog_run)
+        _codegen_to_wsl_path("${_schema_catalog_source}" _schema_catalog_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h" _out_octreeconfig_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl" _out_octreeconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h" _out_lightingconfig_cpp_run)
@@ -167,7 +181,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_schema_config_run "${_cg}/config-schemas")
         set(_schema_view_run "${_cg}/view-schemas")
         # See the WSL-bridge block's engine-standalone caveat above.
-        set(_schema_catalog_run "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+        set(_schema_catalog_run "${_schema_catalog_source}")
         set(_out_octreeconfig_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Generated/OctreeConfig.g.h")
         set(_out_octreeconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/OctreeConfig.glsl")
         set(_out_lightingconfig_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightingConfig.g.h")
