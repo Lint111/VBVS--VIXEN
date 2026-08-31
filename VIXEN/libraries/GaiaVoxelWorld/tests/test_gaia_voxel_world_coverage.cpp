@@ -495,7 +495,7 @@ TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_SkipsAutoParent_ToExistingChu
     // GaiaVoxelWorld.cpp's createVoxelsBatch "Skip tryAutoParentToChunk() ...
     // for speed" comment) deliberately dropped chunk-parenting from the batch
     // path -- an O(chunks) per-voxel query that dominates bulk-load cost -- but
-    // never updated this test. Real production callers (VoxelInjectionQueue.cpp,
+    // never updated this test. Compatibility callers (SdfBake.h and
     // VoxelSceneCacher.cpp) rely on exactly this fast, no-parenting behavior, so
     // restoring auto-parenting inside createVoxelsBatch would regress them; the
     // header (GaiaVoxelWorld.h) documents no auto-parenting contract for the
@@ -734,4 +734,62 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_FullInvalidation) {
 
     EXPECT_TRUE(span1.empty());
     EXPECT_TRUE(span2.empty());
+}
+
+TEST(GaiaVoxelWorldCoverageTest, GroupedCopyNPreservesInputOrderAndComponentValues) {
+    GaiaVoxelWorld world;
+    std::vector<std::vector<ComponentQueryRequest>> storage;
+    std::vector<VoxelCreationRequest> requests;
+    storage.reserve(128);
+    requests.reserve(128);
+
+    for (int i = 0; i < 128; ++i) {
+        if ((i % 2) == 0) {
+            storage.push_back({Density{static_cast<float>(i)}, Material{static_cast<uint32_t>(i)}});
+        } else {
+            storage.push_back({Density{static_cast<float>(i)}, Color{glm::vec3(i, 2.0f, 3.0f)}});
+        }
+        requests.emplace_back(glm::vec3(i, i % 7, i % 11), storage.back());
+    }
+
+    const auto entities = world.createVoxelsBatch(
+        requests, GaiaVoxelWorld::BatchCreateStrategy::GroupedCopyN);
+    ASSERT_EQ(entities.size(), requests.size());
+    for (size_t i = 0; i < entities.size(); ++i) {
+        ASSERT_TRUE(world.exists(entities[i]));
+        EXPECT_FLOAT_EQ(world.getComponentValue<Density>(entities[i]).value(), static_cast<float>(i));
+        EXPECT_EQ(world.getPosition(entities[i]).value(), requests[i].position);
+        EXPECT_EQ(world.hasComponent<Material>(entities[i]), (i % 2) == 0);
+        EXPECT_EQ(world.hasComponent<Color>(entities[i]), (i % 2) != 0);
+    }
+}
+
+TEST(GaiaVoxelWorldCoverageTest, StructuralCommitDuringQueryUsesGaiaCommandBuffer) {
+    GaiaVoxelWorld world;
+    ComponentQueryRequest seedComponents[] = {Density{1.0f}};
+    world.createVoxel(VoxelCreationRequest{glm::vec3(0.0f), seedComponents});
+
+    const std::vector<OwnedVoxelCreationRequest> pending = {
+        {glm::vec3(10.0f, 11.0f, 12.0f), {Density{2.0f}, Material{7u}}},
+        {glm::vec3(13.0f, 14.0f, 15.0f), {Density{3.0f}, Material{8u}}},
+    };
+
+    GaiaVoxelWorld::DeferredVoxelBatch ticket;
+    auto query = world.getWorld().query().all<Density>();
+    query.each([&](gaia::ecs::Iter& it) {
+        ASSERT_TRUE(world.getWorld().locked());
+        EXPECT_THROW(world.createVoxelsBatch({}), std::logic_error);
+        ticket = world.deferVoxelsBatch(it.cmd_buffer_st(), pending);
+    });
+
+    ASSERT_FALSE(world.getWorld().locked());
+    GaiaVoxelWorld otherWorld;
+    EXPECT_THROW(otherWorld.finalizeDeferredVoxelsBatch(ticket), std::invalid_argument);
+    const auto entities = world.finalizeDeferredVoxelsBatch(ticket);
+    ASSERT_EQ(entities.size(), pending.size());
+    for (size_t i = 0; i < entities.size(); ++i) {
+        ASSERT_TRUE(world.exists(entities[i]));
+        EXPECT_EQ(world.getPosition(entities[i]).value(), pending[i].position);
+        EXPECT_FLOAT_EQ(world.getComponentValue<Density>(entities[i]).value(), 2.0f + static_cast<float>(i));
+    }
 }

@@ -63,6 +63,20 @@ endif()
 
 gtest_discover_tests(test_voxel_injection)
 
+add_executable(test_voxel_injection_queue
+    test_voxel_injection_queue.cpp
+)
+target_link_libraries(test_voxel_injection_queue PRIVATE GTest::gtest_main SVO GaiaVoxelWorld)
+set_target_properties(test_voxel_injection_queue PROPERTIES FOLDER "Tests/SVO Tests")
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_voxel_injection_queue POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_voxel_injection_queue>
+        COMMENT "Copying TBB DLL for test_voxel_injection_queue")
+endif()
+gtest_discover_tests(test_voxel_injection_queue)
+
 # ===========================================================================
 # Data Structures Tests
 # ===========================================================================

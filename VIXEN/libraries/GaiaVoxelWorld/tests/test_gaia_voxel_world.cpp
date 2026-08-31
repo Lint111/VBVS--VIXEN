@@ -104,12 +104,14 @@ TEST(GaiaVoxelWorldTest, ClearAllVoxels) {
 TEST(GaiaVoxelWorldTest, GetPosition) {
     GaiaVoxelWorld world;
 
-    glm::vec3 expectedPos(10.5f, 20.3f, -5.7f);
-    auto entity = world.createVoxel(expectedPos);
+    // MortonKey addresses integer voxel cells and intentionally floors input.
+    const glm::vec3 inputPos(10.5f, 20.3f, -5.7f);
+    const glm::vec3 expectedCell(10.0f, 20.0f, -6.0f);
+    auto entity = world.createVoxel(inputPos);
 
     auto pos = world.getPosition(entity);
     ASSERT_TRUE(pos.has_value());
-    EXPECT_EQ(pos.value(), expectedPos);
+    EXPECT_EQ(pos.value(), expectedCell);
 }
 
 TEST(GaiaVoxelWorldTest, GetDensity) {

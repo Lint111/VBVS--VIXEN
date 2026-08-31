@@ -3,7 +3,10 @@
 #include "MortonEncoding.h"
 #include <algorithm>
 #include <iostream>
+#include <limits>
+#include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace Vixen::GaiaVoxel::MortonKeyUtils; // For fromPosition(), toWorldPos(), etc.
 using Vixen::Core::MortonCode64;
@@ -25,6 +28,21 @@ struct GaiaVoxelWorld::Impl {
     std::unordered_map<uint64_t, gaia::ecs::Entity> mortonIndex;
 
     void Init() {
+        // Command buffers cannot register component types while a Gaia query
+        // holds the structural lock. Register the complete variant up front.
+        ComponentRegistry::visitAll([&](auto component) {
+            using T = std::decay_t<decltype(component)>;
+            (void)component;
+            (void)world.add<T>();
+        });
+    }
+
+    void rebuildMortonIndex() {
+        mortonIndex.clear();
+        auto query = world.query().all<MortonKey>();
+        query.each([&](gaia::ecs::Entity entity, const MortonKey& key) {
+            mortonIndex[key.code] = entity;
+        });
     }
 };
 
@@ -536,36 +554,22 @@ GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntitiesByWorldPos(
 // ============================================================================
 
 std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
-    std::span<const VoxelCreationRequest> requests) {
-
-    std::vector<EntityID> ids;
-    ids.reserve(requests.size());
+    std::span<const VoxelCreationRequest> requests,
+    BatchCreateStrategy strategy) {
 
     auto& world = m_impl->world;
+    if (world.locked()) {
+        throw std::logic_error(
+            "GaiaVoxelWorld::createVoxelsBatch cannot make structural changes during a query; "
+            "use deferVoxelsBatch with the query command buffer");
+    }
 
-    // FAST PATH: Bulk entity creation without per-entity overhead
-    // Skip chunk parenting and cache invalidation during bulk load
-    // (invalidate cache once at end instead of per-entity)
+    std::vector<EntityID> ids(requests.size());
+    if (requests.empty()) {
+        return ids;
+    }
 
-    size_t progressInterval = requests.size() / 10;  // Report every 10%
-    if (progressInterval == 0) progressInterval = 1;
-
-    for (size_t i = 0; i < requests.size(); ++i) {
-        const auto& request = requests[i];
-
-        // Progress reporting for long operations
-        if (i % progressInterval == 0) {
-            std::cout << "[GaiaVoxelWorld] Batch progress: " << (i * 100 / requests.size()) << "%" << std::endl;
-        }
-
-        // Create entity
-        auto entity = world.add();
-
-        // Add MortonKey
-        MortonKey key = fromPosition(request.position);
-        world.add<MortonKey>(entity, key);
-
-        // Add components using std::visit (compile-time dispatch)
+    auto addComponents = [&](EntityID entity, const VoxelCreationRequest& request) {
         for (const auto& compReq : request.components) {
             std::visit([&](auto&& component) {
                 using T = std::decay_t<decltype(component)>;
@@ -574,21 +578,146 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
                 }
             }, compReq.component);
         }
+    };
 
-        // Add to spatial index for O(1) lookup
+    auto overwriteComponents = [&](EntityID entity, const VoxelCreationRequest& request) {
+        for (const auto& compReq : request.components) {
+            std::visit([&](auto&& component) {
+                using T = std::decay_t<decltype(component)>;
+                if constexpr (!std::is_same_v<T, MortonKey> && !std::is_same_v<T, std::monostate>) {
+                    world.set<T>(entity) = component;
+                }
+            }, compReq.component);
+        }
+    };
+
+    auto createOne = [&](size_t requestIndex) {
+        const auto& request = requests[requestIndex];
+        const auto entity = world.add();
+        const MortonKey key = fromPosition(request.position);
+        world.add<MortonKey>(entity, key);
+        addComponents(entity, request);
+        ids[requestIndex] = entity;
         m_impl->mortonIndex[key.code] = entity;
+        return entity;
+    };
 
-        // NOTE: Skip tryAutoParentToChunk() and invalidateBlockCacheAt() for speed
-        // These are O(chunks) per voxel - too slow for bulk loading
+    if (strategy == BatchCreateStrategy::Serial) {
+        for (size_t i = 0; i < requests.size(); ++i) {
+            createOne(i);
+        }
+    } else {
+        static_assert(std::variant_size_v<ComponentVariant> <= 64);
+        std::unordered_map<uint64_t, std::vector<size_t>> groups;
+        groups.reserve(requests.size());
+        for (size_t i = 0; i < requests.size(); ++i) {
+            uint64_t signature = 0;
+            for (const auto& component : requests[i].components) {
+                signature |= uint64_t{1} << component.component.index();
+            }
+            groups[signature].push_back(i);
+        }
 
-        ids.push_back(entity);
+        for (const auto& [signature, indices] : groups) {
+            (void)signature;
+            const EntityID seed = createOne(indices.front());
+            size_t next = 1;
+            while (next < indices.size()) {
+                const size_t remaining = indices.size() - next;
+                const uint32_t copyCount = static_cast<uint32_t>(std::min<size_t>(
+                    remaining, std::numeric_limits<uint32_t>::max()));
+                world.copy_n(seed, copyCount, [&](EntityID entity) {
+                    const size_t requestIndex = indices[next++];
+                    const auto& request = requests[requestIndex];
+                    const MortonKey key = fromPosition(request.position);
+                    world.set<MortonKey>(entity) = key;
+                    overwriteComponents(entity, request);
+                    ids[requestIndex] = entity;
+                    m_impl->mortonIndex[key.code] = entity;
+                });
+            }
+        }
     }
-
-    std::cout << "[GaiaVoxelWorld] Batch complete: " << ids.size() << " entities" << std::endl;
 
     // Single cache invalidation at end (not per-entity)
     invalidateBlockCache();
 
+    return ids;
+}
+
+namespace {
+template <typename CommandBuffer>
+GaiaVoxelWorld::DeferredVoxelBatch deferVoxelsBatchImpl(
+    const GaiaVoxelWorld* owner,
+    CommandBuffer& commands,
+    std::span<const OwnedVoxelCreationRequest> requests) {
+    GaiaVoxelWorld::DeferredVoxelBatch batch;
+    batch.owner = owner;
+    batch.keys.reserve(requests.size());
+    std::unordered_set<uint64_t> uniqueKeys;
+    uniqueKeys.reserve(requests.size());
+    for (const auto& request : requests) {
+        const MortonKey key = fromPosition(request.position);
+        if (!uniqueKeys.insert(key.code).second) {
+            throw std::invalid_argument("deferred voxel batch contains duplicate Morton cells");
+        }
+        batch.keys.push_back(key);
+    }
+
+    for (size_t i = 0; i < requests.size(); ++i) {
+        const auto& request = requests[i];
+        const MortonKey key = batch.keys[i];
+        const gaia::ecs::Entity entity = commands.add();
+        commands.template add<MortonKey>(entity, MortonKey{key});
+        for (const auto& compReq : request.components) {
+            std::visit([&](auto&& component) {
+                using T = std::decay_t<decltype(component)>;
+                if constexpr (!std::is_same_v<T, MortonKey> && !std::is_same_v<T, std::monostate>) {
+                    commands.template add<T>(entity, T{component});
+                }
+            }, compReq.component);
+        }
+    }
+    return batch;
+}
+} // namespace
+
+GaiaVoxelWorld::DeferredVoxelBatch GaiaVoxelWorld::deferVoxelsBatch(
+    gaia::ecs::CommandBufferST& commands,
+    std::span<const OwnedVoxelCreationRequest> requests) {
+    return deferVoxelsBatchImpl(this, commands, requests);
+}
+
+GaiaVoxelWorld::DeferredVoxelBatch GaiaVoxelWorld::deferVoxelsBatch(
+    gaia::ecs::CommandBufferMT& commands,
+    std::span<const OwnedVoxelCreationRequest> requests) {
+    return deferVoxelsBatchImpl(this, commands, requests);
+}
+
+std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::finalizeDeferredVoxelsBatch(
+    const DeferredVoxelBatch& batch) {
+    if (m_impl->world.locked()) {
+        throw std::logic_error(
+            "GaiaVoxelWorld::finalizeDeferredVoxelsBatch must run after the query lock is released");
+    }
+    if (batch.keys.empty()) {
+        return {};
+    }
+    if (batch.owner != this) {
+        throw std::invalid_argument("deferred voxel batch belongs to another GaiaVoxelWorld");
+    }
+
+    m_impl->rebuildMortonIndex();
+    std::vector<EntityID> ids;
+    ids.reserve(batch.keys.size());
+    for (const MortonKey& key : batch.keys) {
+        const auto it = m_impl->mortonIndex.find(key.code);
+        if (it == m_impl->mortonIndex.end()) {
+            throw std::runtime_error("deferred voxel batch was not committed before finalization");
+        }
+        ids.push_back(it->second);
+    }
+    invalidateBlockCache();
     return ids;
 }
 

@@ -22,6 +22,7 @@ add_library(SVO STATIC
     include/Recipe/MultiBodyRenderer.h  # Multi-body placement, per-body LOD, and draw ordering
     include/Recipe/RecipeComposition.h  # Recipe composition blocks and LOD resolution (Wave B)
     include/SceneGenerator.h  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
+    include/BulkMaterialization.h
     # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API
 
     # Implementation
@@ -47,6 +48,7 @@ add_library(SVO STATIC
     # src/RayCaster.cpp  # TODO: Implement
     src/Serialization.cpp
     src/SceneGenerator.cpp  # Procedural voxel scene generation (relocated from RenderGraph — AR#3/#4 cycle break)
+    src/BulkMaterialization.cpp
     # src/SVOFactory.cpp  # TODO: Implement
     src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
     src/Recipe/VoxelDocumentFlattener.cpp  # Voxel-Authoring Inc1 M3: VoxelDocument -> VRC1 recipe blob

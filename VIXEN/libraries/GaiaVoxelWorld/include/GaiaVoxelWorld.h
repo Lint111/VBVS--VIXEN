@@ -16,10 +16,11 @@ namespace Vixen::GaiaVoxel {
 /**
  * Central ECS-based voxel data management.
  *
- * Single source of truth for all voxel data. AttributeRegistry, VoxelInjectionQueue,
- * and SVO trees all reference entities via EntityID instead of copying data.
+ * ECS compatibility/editor storage for voxel data. Runtime materialization uses
+ * owned SerializedOctree pages and does not mutate this world from assembly workers.
  *
- * Thread-safe: Gaia ECS handles concurrent entity access via lock-free SoA storage.
+ * Structural mutation is single-owner. During a Gaia query lock, callers must
+ * use the command-buffer batch API below.
  *
  * Example usage:
  *   GaiaVoxelWorld world;
@@ -33,6 +34,16 @@ namespace Vixen::GaiaVoxel {
 class GaiaVoxelWorld {
 public:
     using EntityID = gaia::ecs::Entity;
+
+    enum class BatchCreateStrategy {
+        Serial,
+        GroupedCopyN
+    };
+
+    struct DeferredVoxelBatch {
+        const GaiaVoxelWorld* owner = nullptr;
+        std::vector<MortonKey> keys;
+    };
 
     GaiaVoxelWorld();
     ~GaiaVoxelWorld();
@@ -101,7 +112,23 @@ public:
      *   };
      *   auto ids = world.createVoxelsBatch(reqs);
      */
-    std::vector<EntityID> createVoxelsBatch(std::span<const VoxelCreationRequest> requests);
+    std::vector<EntityID> createVoxelsBatch(
+        std::span<const VoxelCreationRequest> requests,
+        BatchCreateStrategy strategy = BatchCreateStrategy::GroupedCopyN);
+
+    /**
+     * Queue structural voxel creation while Gaia has a query lock.
+     * The caller owns the payload; this method copies all values into this
+     * world's Gaia command buffer. Call finalizeDeferredVoxelsBatch after the
+     * query returns. Duplicate Morton cells are rejected.
+     */
+    DeferredVoxelBatch deferVoxelsBatch(
+        gaia::ecs::CommandBufferST& commands,
+        std::span<const OwnedVoxelCreationRequest> requests);
+    DeferredVoxelBatch deferVoxelsBatch(
+        gaia::ecs::CommandBufferMT& commands,
+        std::span<const OwnedVoxelCreationRequest> requests);
+    std::vector<EntityID> finalizeDeferredVoxelsBatch(const DeferredVoxelBatch& batch);
 
     /**
      * Destroy voxel entity.
@@ -502,7 +529,7 @@ public:
     std::optional<EntityID> findVoxelEntity(const glm::vec3& position) const;
 
     // ========================================================================
-    // Batch Operations (for VoxelInjectionQueue)
+    // Batch Operations (single-owner compatibility/editor path)
     // ========================================================================
     // Note: createVoxelsBatch is defined above in Entity Creation section
 

@@ -15,11 +15,10 @@
 
 #include <gtest/gtest.h>
 #include "GaiaVoxelWorld.h"
-#include "VoxelInjectionQueue.h"
+#include "BulkMaterialization.h"
 #include "LaineKarrasOctree.h"
 #include "VoxelComponents.h"
 #include "AttributeRegistry.h"
-#include <chrono>
 
 using namespace Vixen::GaiaVoxel;
 using namespace Vixen::SVO;
@@ -154,85 +153,76 @@ TEST_F(VoxelInjectionNewAPITest, MultipleVoxelsSpread) {
 }
 
 // ===========================================================================
-// Async Voxel Injection Queue Tests (GaiaVoxelWorld Integration)
+// Materialized-delta path: owned recipe -> upload-ready ESVO page
 // ===========================================================================
 
-TEST(VoxelInjectionQueueTest, AsyncInjection100kVoxels) {
-    // Create GaiaVoxelWorld and injection queue
-    GaiaVoxelWorld world;
-    VoxelInjectionQueue queue(world, 100000);  // 100k capacity ring buffer
+TEST(BulkMaterializationIntegrationTest, CpuRecipeProducesUploadReadyEsvoPage) {
+    Recipe::SdfInstruction sphere{};
+    sphere.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::Sphere);
+    sphere.data[3] = 5.0f;
 
-    // Start background processing with single worker
-    std::cout << "\n[AsyncQueue] Starting background worker...\n";
-    queue.start(1);
-    EXPECT_TRUE(queue.isRunning());
+    BulkMaterializationRequest request{
+        .key = {.region = 12, .generation = 3},
+        .recipe = {sphere},
+        .parameters = {},
+        .center = glm::vec3(8.0f),
+        .resolution = 16,
+        .bandVoxels = 2.0f,
+        .brickDepth = 3,
+    };
+    BulkMaterializationQueue queue(1, 1);
+    ASSERT_EQ(queue.tryEnqueue(std::move(request)), EnqueueResult::Accepted);
 
-    // Enqueue 100,000 voxels
-    std::cout << "[AsyncQueue] Enqueuing 100,000 voxels...\n";
-    size_t enqueued = 0;
-    auto startTime = std::chrono::high_resolution_clock::now();
+    CpuRecipeMaterializer backend;
+    ASSERT_EQ(queue.process(backend, 2), ProcessResult::Processed);
+    auto result = queue.tryPop();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->status, MaterializationStatus::Completed) << result->error;
+    EXPECT_FALSE(result->page.nodes.empty());
+    EXPECT_FALSE(result->page.bricks.empty());
+    EXPECT_FALSE(result->page.channelPool.empty());
+    EXPECT_EQ(result->page.nodeCount,
+              result->page.nodes.size() / sizeof(ChildDescriptor));
+    EXPECT_EQ(result->page.brickCount,
+              result->page.bricks.size() / SerializedOctree::kBrickStrideBytes);
+    EXPECT_NE(result->canonicalHash, 0u);
+}
 
-    // Shared component definition (reused for all voxels)
-    ComponentQueryRequest components[] = {
-        Density{1.0f},
-        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
-        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+TEST(BulkMaterializationIntegrationTest, CpuRecipeOneVsNWorkerCanonicalHashParity) {
+    auto makeRequest = [](uint64_t region) {
+        Recipe::SdfInstruction sphere{};
+        sphere.opCode = static_cast<uint8_t>(Recipe::SdfOpCode::Sphere);
+        sphere.data[3] = 5.0f;
+        return BulkMaterializationRequest{
+            .key = {.region = region, .generation = 9},
+            .recipe = {sphere},
+            .parameters = {},
+            .center = glm::vec3(8.0f),
+            .resolution = 16,
+            .bandVoxels = 2.0f,
+            .brickDepth = 3,
+        };
     };
 
-    for (int i = 0; i < 100000; ++i) {
-        glm::vec3 pos(
-            (i % 100) * 0.1f,
-            ((i / 100) % 100) * 0.1f,
-            (i / 10000) * 0.1f
-        );
-
-        VoxelCreationRequest request{pos, components};
-        if (queue.enqueue(request)) {
-            enqueued++;
-        }
-
-        // Print progress every 10k voxels
-        if (i % 10000 == 0 && i > 0) {
-            auto stats = queue.getStats();
-            std::cout << "[AsyncQueue] Enqueued: " << i
-                      << " | Pending: " << stats.pendingCount
-                      << " | Processed: " << stats.processedCount
-                      << " | Entities: " << stats.entitiesCreated << "\n";
-        }
+    BulkMaterializationQueue serial(2, 2);
+    BulkMaterializationQueue parallel(2, 2);
+    for (uint64_t region = 0; region < 2; ++region) {
+        ASSERT_EQ(serial.tryEnqueue(makeRequest(region)), EnqueueResult::Accepted);
+        ASSERT_EQ(parallel.tryEnqueue(makeRequest(region)), EnqueueResult::Accepted);
     }
 
-    auto enqueueEnd = std::chrono::high_resolution_clock::now();
-    float enqueueMs = std::chrono::duration<float, std::milli>(enqueueEnd - startTime).count();
-
-    std::cout << "[AsyncQueue] Enqueue complete: " << enqueued << " voxels in "
-              << enqueueMs << "ms (" << (enqueued / enqueueMs * 1000.0f) << " voxels/sec)\n";
-
-    // Flush queue (blocks until all requests processed)
-    std::cout << "[AsyncQueue] Flushing queue...\n";
-    queue.flush();
-
-    auto processEnd = std::chrono::high_resolution_clock::now();
-    float totalMs = std::chrono::duration<float, std::milli>(processEnd - startTime).count();
-
-    // Get final stats
-    auto finalStats = queue.getStats();
-    std::cout << "\n[AsyncQueue] Final Statistics:\n";
-    std::cout << "  Enqueued: " << enqueued << "\n";
-    std::cout << "  Processed: " << finalStats.processedCount << "\n";
-    std::cout << "  Entities Created: " << finalStats.entitiesCreated << "\n";
-    std::cout << "  Failed: " << finalStats.failedCount << "\n";
-    std::cout << "  Total time: " << totalMs << "ms\n";
-    std::cout << "  Throughput: " << (finalStats.processedCount / totalMs * 1000.0f) << " voxels/sec\n";
-
-    // Stop queue
-    queue.stop();
-    EXPECT_FALSE(queue.isRunning());
-
-    // Verify results
-    EXPECT_GT(finalStats.processedCount, 0) << "Should process voxels";
-    EXPECT_EQ(finalStats.pendingCount, 0) << "Queue should be empty after flush";
-    EXPECT_EQ(finalStats.entitiesCreated, enqueued) << "All voxels should create entities";
-    EXPECT_EQ(finalStats.failedCount, 0) << "No entity creation failures";
-
-    std::cout << "[AsyncQueue] Test complete!\n";
+    CpuRecipeMaterializer backend;
+    ASSERT_EQ(serial.process(backend, 1), ProcessResult::Processed);
+    ASSERT_EQ(parallel.process(backend, 2), ProcessResult::Processed);
+    for (uint64_t region = 0; region < 2; ++region) {
+        auto oneWorker = serial.tryPop();
+        auto manyWorkers = parallel.tryPop();
+        ASSERT_TRUE(oneWorker.has_value());
+        ASSERT_TRUE(manyWorkers.has_value());
+        ASSERT_EQ(oneWorker->status, MaterializationStatus::Completed) << oneWorker->error;
+        ASSERT_EQ(manyWorkers->status, MaterializationStatus::Completed) << manyWorkers->error;
+        EXPECT_EQ(oneWorker->key.region, region);
+        EXPECT_EQ(manyWorkers->key.region, region);
+        EXPECT_EQ(oneWorker->canonicalHash, manyWorkers->canonicalHash);
+    }
 }

@@ -1,6 +1,6 @@
 # GaiaVoxelWorld - Central ECS-based voxel data management
 # Provides single source of truth for all voxel data across AttributeRegistry,
-# VoxelInjectionQueue, and SVO trees.
+# Gaia compatibility/editor voxel storage used by SVO authoring paths.
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -11,7 +11,6 @@ project(GaiaVoxelWorld VERSION 1.0.0 LANGUAGES CXX)
 # Library sources
 add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
-    src/VoxelInjectionQueue.cpp
     src/EntityBrickView.cpp
     src/VoxelInjector.cpp
 )
