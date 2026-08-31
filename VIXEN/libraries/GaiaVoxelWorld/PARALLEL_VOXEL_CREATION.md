@@ -1,5 +1,7 @@
 # Parallel Voxel Creation/Update with Gaia-ECS
 
+> **Superseded (2026-09).** Do not revive the queue or concurrent Gaia mutation proposed below. Runtime workers assemble owned ESVO pages on the sanctioned oneTBB lane; Gaia entity batching is a single-owner compatibility path. See `Vixen-Docs/01-Architecture/Voxel-Mutation-Replacement-2026-09.md`.
+
 **Created**: Nov 23, 2025
 **Status**: Design Document
 **Purpose**: Define parallel entity creation/update strategy for VoxelInjectionQueue and chunk operations

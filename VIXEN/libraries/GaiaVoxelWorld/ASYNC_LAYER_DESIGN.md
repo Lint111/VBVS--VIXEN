@@ -1,5 +1,7 @@
 # Async Layer Architecture - VoxelInjectionQueue in GaiaVoxelWorld
 
+> **Superseded (2026-09).** The worker-thread/ring design in this historical note is unsafe and has been retired. Runtime materialization now uses owned recipe snapshots, bounded oneTBB dispatch, and owned pre-ordered ESVO pages; see `Vixen-Docs/01-Architecture/Voxel-Mutation-Replacement-2026-09.md`.
+
 **Core Principle**: VoxelInjectionQueue is the async interface to GaiaVoxelWorld, not to SVO.
 
 ---

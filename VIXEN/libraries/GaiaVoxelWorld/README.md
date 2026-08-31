@@ -1,5 +1,7 @@
 # GaiaVoxelWorld - ECS-Backed Voxel Data Management
 
+> **Runtime-materialization update (2026-09):** `VoxelInjectionQueue` has been retired. GaiaVoxelWorld remains the compatibility/editor ECS path; materialized deltas are assembled as owned, pre-ordered ESVO pages through `BulkMaterializationQueue`. See `Vixen-Docs/01-Architecture/Voxel-Mutation-Replacement-2026-09.md`.
+
 **Status**: ✅ Implementation Complete | ⚠️ Build Blocked by MSVC PDB Lock | ✅ Test Suite Ready (121 tests)
 
 ECS-based voxel data backend using [Gaia ECS](https://github.com/richardbiely/gaia-ecs) for sparse, cache-friendly voxel storage.
