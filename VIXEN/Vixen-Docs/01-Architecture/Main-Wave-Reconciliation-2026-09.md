@@ -82,4 +82,3 @@ Nothing was selectively dropped. The entire attempted merge was aborted, as requ
 - Generated artifacts were not regenerated because the merged source-of-truth remains architecturally invalid.
 - No merged-tree configure, full build, or test suite was run; therefore no exact passing suite counts are available.
 - No merge commit was created and nothing was pushed.
-
