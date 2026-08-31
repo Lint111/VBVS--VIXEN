@@ -201,9 +201,9 @@ struct LaneSpanF32 {
 #endif // YK_SIMD4_RUNTIME_V2
 
 namespace Yeroket::Sdf::Generated {
-enum class RecipeExecutionClass : std::uint8_t { Elementwise, Masked, ScalarLaneFallback, ResolvedAtLowering, LoweredAway }; 
-enum class RecipeControlBehavior : std::uint8_t { None, RestorePosition, DeclarePosition, InvokeRecipe }; 
-struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; std::int8_t vpop, vpush, ppop, ppush; const char* name; }; 
+enum class RecipeExecutionClass : std::uint8_t { Elementwise, Masked, ScalarLaneFallback, ResolvedAtLowering, LoweredAway };
+enum class RecipeControlBehavior : std::uint8_t { None, RestorePosition, DeclarePosition, InvokeRecipe };
+struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; std::int8_t vpop, vpush, ppop, ppush; const char* name; };
 inline constexpr std::array<RecipeOpcodeMetadata, 91> RecipeOpcodeTable{{
     {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Sphere"},
     {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Box"},
@@ -1318,4 +1318,3 @@ inline bool FlattenVoxelDocument(const Yeroket::Sdf::Generated::VoxelDocumentVie
     return true;
 }
 } // namespace Vixen::SVO
-
