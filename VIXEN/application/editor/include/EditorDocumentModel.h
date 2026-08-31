@@ -13,7 +13,7 @@
 
 #include "Recipe/generated/VoxelDocument.g.h"
 #include "Recipe/generated/RecipeContainer.g.h"
-#include "Recipe/VoxelDocumentFlattener.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/RecipeRegistry.h"
 
 namespace Vixen::Editor {

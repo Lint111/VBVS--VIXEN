@@ -51,7 +51,6 @@ add_library(SVO STATIC
     src/BulkMaterialization.cpp
     # src/SVOFactory.cpp  # TODO: Implement
     src/RecipePackLoader.cpp  # I2.5: manifest+blobs→registry, fail-loud
-    src/Recipe/VoxelDocumentFlattener.cpp  # Voxel-Authoring Inc1 M3: VoxelDocument -> VRC1 recipe blob
     src/Recipe/LodSelection.cpp  # Recipe LOD selection, hysteresis, and upload gating (Wave A)
     src/Recipe/MultiBodyRenderer.cpp  # Multi-body render-list builder (R2)
     src/Recipe/RecipeComposition.cpp  # Recipe composition role validation and resolution (Wave B)
@@ -70,6 +69,18 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     else()
         target_compile_options(SVO PRIVATE -mavx2 -mfma -mf16c -ffast-math)
     endif()
+endif()
+
+# The materialization evaluator is a serialization boundary: any floating-point
+# contraction or reassociation can alter the canonical octree bytes.  Keep the
+# wider SVO target's historical policy, but pin this translation unit to strict,
+# non-contracting arithmetic so scalar and SIMD4 lanes execute the same sequence.
+if(MSVC)
+    set_source_files_properties(src/BulkMaterialization.cpp PROPERTIES
+        COMPILE_OPTIONS "/fp:strict")
+else()
+    set_source_files_properties(src/BulkMaterialization.cpp PROPERTIES
+        COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
 endif()
 
 # Enable parallel build

@@ -4,6 +4,15 @@ project(SVOTests)
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest)
 
+function(enable_recipe_strict_fp target_name)
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /fp:strict)
+    else()
+        target_compile_options(${target_name} PRIVATE
+            -fno-fast-math -ffp-contract=off)
+    endif()
+endfunction()
+
 # ===========================================================================
 # Basic SVO Builder Tests
 # ===========================================================================
@@ -48,6 +57,7 @@ if(TARGET SVO)
 else()
     target_link_libraries(test_voxel_injection PRIVATE GTest::gtest_main)
 endif()
+enable_recipe_strict_fp(test_voxel_injection)
 
 set_target_properties(test_voxel_injection PROPERTIES FOLDER "Tests/SVO Tests")
 
@@ -1042,6 +1052,21 @@ if(TARGET TBB::tbb)
         COMMENT "Copying TBB DLL for test_generation_cost_benchmark")
 endif()
 gtest_discover_tests(test_generation_cost_benchmark)
+
+add_executable(benchmark_materialization_simd benchmark_materialization_simd.cpp)
+target_link_libraries(benchmark_materialization_simd PRIVATE
+    SVO GaiaVoxelWorld VoxelComponents VoxelData)
+enable_recipe_strict_fp(benchmark_materialization_simd)
+set_target_properties(benchmark_materialization_simd PROPERTIES
+    FOLDER "Benchmarks/SVO")
+
+add_executable(test_recipe_simd_parity test_recipe_simd_parity.cpp)
+target_link_libraries(test_recipe_simd_parity PRIVATE
+    GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents VoxelData)
+enable_recipe_strict_fp(test_recipe_simd_parity)
+set_target_properties(test_recipe_simd_parity PROPERTIES
+    FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_recipe_simd_parity)
 
 add_executable(test_residency_default test_residency_default.cpp)
 if(TARGET SVO)

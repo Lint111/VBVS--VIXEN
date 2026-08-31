@@ -1,0 +1,5 @@
+# VIXEN-owned recipe opcodes outside the canonical graph-framework enum.
+# Name=ordinal|execution|lowering|vPop|vPush|pPop|pPush|control
+# Parsed and validated by the kernel compiler's RecipeLoweringModel.
+DeclarePosition=112|Elementwise|PositionStackControl|3|0|0|0|DeclarePosition
+InvokeRecipe=113|LoweredAway|Invocation|0|1|0|0|InvokeRecipe

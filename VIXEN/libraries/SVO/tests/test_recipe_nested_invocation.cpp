@@ -47,6 +47,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "ShaderCompiler.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -157,6 +158,49 @@ TEST(RecipeNestedInvocation, CpuInterpreterMatchesCpuComposedReference) {
 
         EXPECT_NEAR(actual, expected, 1e-5f)
             << "Mismatch at (" << p.x << ", " << p.y << ", " << p.z << ")";
+    }
+}
+
+TEST(RecipeNestedInvocation, CompilerOwnedUnrollMatchesRecursiveEvaluation) {
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry entryB{};
+    entryB.bytecode = MakeRecipeB();
+    ASSERT_EQ(registry.Register(kRecipeB, entryB), RecipeRegistry::RegisterResult::Ok);
+
+    constexpr uint32_t kRecipeA = 0;
+    RecipeRegistry::RecipeEntry entryA{};
+    entryA.bytecode = MakeRecipeA();
+    ASSERT_EQ(registry.Register(kRecipeA, entryA), RecipeRegistry::RegisterResult::Ok);
+
+    const auto nested = MakeRecipeA();
+    std::vector<SdfInstruction> closed;
+    std::string error;
+    Vixen::SVO::Recipe::LoweredRecipeProgram rejectedOpenProgram;
+    EXPECT_FALSE(rejectedOpenProgram.Lower(
+        nested.data(), static_cast<uint32_t>(nested.size()), {}, error));
+    EXPECT_NE(error.find("must be unrolled"), std::string::npos);
+
+    ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(
+        nested.data(), static_cast<uint32_t>(nested.size()), registry,
+        closed, error, kRecipeA)) << error;
+    ASSERT_EQ(closed.size(), 3u);
+    EXPECT_EQ(static_cast<SdfOpCode>(closed[0].opCode), SdfOpCode::Sphere);
+    EXPECT_EQ(static_cast<SdfOpCode>(closed[1].opCode), SdfOpCode::Box);
+    EXPECT_EQ(static_cast<SdfOpCode>(closed[2].opCode), SdfOpCode::SmoothUnion);
+    EXPECT_TRUE(std::none_of(closed.begin(), closed.end(), [](const SdfInstruction& in) {
+        return static_cast<SdfOpCode>(in.opCode) == SdfOpCode::InvokeRecipe;
+    }));
+
+    Vixen::SVO::Recipe::LoweredRecipeProgram loweredClosedProgram;
+    ASSERT_TRUE(loweredClosedProgram.Lower(
+        closed.data(), static_cast<uint32_t>(closed.size()), {}, error)) << error;
+
+    for (const glm::vec3& point : SamplePoints()) {
+        const float recursive = Vixen::SVO::Recipe::evalRecipe(
+            nested.data(), static_cast<uint32_t>(nested.size()), point, {}, nullptr, &registry);
+        const float unrolled = Vixen::SVO::Recipe::evalRecipe(
+            closed.data(), static_cast<uint32_t>(closed.size()), point);
+        EXPECT_FLOAT_EQ(recursive, unrolled);
     }
 }
 
