@@ -16,13 +16,37 @@
 #include <gtest/gtest.h>
 #include "GaiaVoxelWorld.h"
 #include "BulkMaterialization.h"
+#include "MipBake.h"
+#include "SdfBake.h"
 #include "LaineKarrasOctree.h"
 #include "VoxelComponents.h"
 #include "AttributeRegistry.h"
 
+#include <chrono>
+#include <thread>
+
 using namespace Vixen::GaiaVoxel;
 using namespace Vixen::SVO;
 using namespace Vixen::VoxelData;
+
+namespace {
+
+SerializedOctree materializeScalarReference(const BulkMaterializationRequest& request) {
+    auto baked = BakeRecipeInstructionsToSdfWorld(
+        request.recipe.data(), static_cast<uint32_t>(request.recipe.size()),
+        request.center, static_cast<int>(request.resolution), request.bandVoxels,
+        static_cast<int>(request.brickDepth), request.parameters);
+    auto body = BuildSdfBodyOctree(baked, static_cast<int>(request.brickDepth));
+    return SerializeSdfWithMips(body);
+}
+
+Recipe::SdfInstruction makeOpcode(Recipe::SdfOpCode opcode) {
+    Recipe::SdfInstruction instruction{};
+    instruction.opCode = static_cast<uint8_t>(opcode);
+    return instruction;
+}
+
+} // namespace
 
 // ===========================================================================
 // Helper: Create octree with voxels using NEW workflow
@@ -225,4 +249,83 @@ TEST(BulkMaterializationIntegrationTest, CpuRecipeOneVsNWorkerCanonicalHashParit
         EXPECT_EQ(manyWorkers->key.region, region);
         EXPECT_EQ(oneWorker->canonicalHash, manyWorkers->canonicalHash);
     }
+}
+
+TEST(BulkMaterializationIntegrationTest, ScalarVsSimdCanonicalHashParity) {
+    Recipe::SdfInstruction sphere = makeOpcode(Recipe::SdfOpCode::Sphere);
+    sphere.data[3] = 4.25f;
+    Recipe::SdfInstruction box = makeOpcode(Recipe::SdfOpCode::Box);
+    box.data[0] = 3.0f;
+    box.data[1] = 4.5f;
+    box.data[2] = 2.75f;
+    Recipe::SdfInstruction smoothUnion = makeOpcode(Recipe::SdfOpCode::SmoothUnion);
+    smoothUnion.data[2] = 0.625f;
+
+    Recipe::SdfInstruction parameter = makeOpcode(Recipe::SdfOpCode::ReadParam);
+    parameter.paramMask = 1;
+    parameter.data[0] = 0.0f;
+
+    std::vector<BulkMaterializationRequest> requests;
+    requests.push_back(BulkMaterializationRequest{
+        .key = {.region = 30, .generation = 1},
+        .recipe = {sphere, box, smoothUnion},
+        .parameters = {},
+        .center = glm::vec3(8.0f),
+        .resolution = 16,
+        .bandVoxels = 2.0f,
+        .brickDepth = 3,
+    });
+    requests.push_back(BulkMaterializationRequest{
+        .key = {.region = 31, .generation = 1},
+        .recipe = {sphere, parameter, makeOpcode(Recipe::SdfOpCode::MathSub)},
+        .parameters = {1.125f},
+        .center = glm::vec3(8.0f),
+        .resolution = 16,
+        .bandVoxels = 2.0f,
+        .brickDepth = 3,
+    });
+
+    CpuRecipeMaterializer realBackend;
+    for (const auto& request : requests) {
+        const SerializedOctree scalar = materializeScalarReference(request);
+        const SerializedOctree simd = realBackend.materialize(request, {});
+        EXPECT_EQ(canonicalHash(scalar), canonicalHash(simd))
+            << "scalar/SIMD byte identity failed for region " << request.key.region;
+    }
+}
+
+TEST(BulkMaterializationIntegrationTest, SimdBatchCancellationProducesTerminalResult) {
+    Recipe::SdfInstruction sphere = makeOpcode(Recipe::SdfOpCode::Sphere);
+    sphere.data[3] = 28.0f;
+    BulkMaterializationRequest request{
+        .key = {.region = 32, .generation = 1},
+        .recipe = {sphere},
+        .parameters = {},
+        .center = glm::vec3(64.0f),
+        .resolution = 128,
+        .bandVoxels = 2.0f,
+        .brickDepth = 3,
+    };
+
+    BulkMaterializationQueue queue(1, 1);
+    ASSERT_EQ(queue.tryEnqueue(std::move(request)), EnqueueResult::Accepted);
+    CpuRecipeMaterializer realBackend;
+    std::stop_source stop;
+    ProcessResult processResult = ProcessResult::NoWork;
+    std::jthread worker([&] {
+        processResult = queue.process(realBackend, 1, stop.get_token());
+    });
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (queue.stats().inFlight == 0 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    ASSERT_EQ(queue.stats().inFlight, 1u);
+    stop.request_stop();
+    worker.join();
+
+    EXPECT_EQ(processResult, ProcessResult::Processed);
+    auto result = queue.tryPop();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->status, MaterializationStatus::Cancelled);
+    EXPECT_EQ(queue.stats().cancelled, 1u);
 }

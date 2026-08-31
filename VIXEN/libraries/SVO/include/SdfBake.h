@@ -94,6 +94,17 @@ inline glm::vec3 DefaultBandColor(const glm::vec3& p) {
                                   + glm::vec3(0.0f, 2.094f, 4.188f));
 }
 
+template<class EvalFn>
+inline void EvalSdfBatch4(EvalFn& eval, const glm::vec3* points,
+                          std::size_t count, float* values) {
+    if constexpr (requires { eval.eval4(points, count, values); }) {
+        eval.eval4(points, count, values);
+    } else {
+        for (std::size_t lane = 0; lane < count; ++lane)
+            values[lane] = eval(points[lane]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // BakeSdfWorld — eval-callable core (P2.1 M1).
 //
@@ -166,11 +177,19 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
     std::vector<uint8_t> occupiedBrick(numBricks, 0u);
     for (int z = 0; z < bakeRegion.z; ++z)
       for (int y = 0; y < bakeRegion.y; ++y)
-        for (int x = 0; x < bakeRegion.x; ++x) {
-            const float sd = eval(
-                glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)));
-            if (sd <= bandVoxels)
-                occupiedBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)] = 1u;
+        for (int xBase = 0; xBase < bakeRegion.x; xBase += 4) {
+            const std::size_t count = static_cast<std::size_t>(std::min(4, bakeRegion.x - xBase));
+            glm::vec3 points[4]{};
+            float values[4]{};
+            for (std::size_t lane = 0; lane < count; ++lane)
+                points[lane] = glm::vec3(static_cast<float>(xBase + static_cast<int>(lane)),
+                                         static_cast<float>(y), static_cast<float>(z));
+            EvalSdfBatch4(eval, points, count, values);
+            for (std::size_t lane = 0; lane < count; ++lane) {
+                const int x = xBase + static_cast<int>(lane);
+                if (values[lane] <= bandVoxels)
+                    occupiedBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)] = 1u;
+            }
         }
 
     // Dilate the occupied set by ONE brick. The GPU trilinear stencil + gradient at an
@@ -240,29 +259,40 @@ inline SdfBakeResult BakeSdfWorld(EvalFn&& eval, const glm::vec3& center,
 
     for (int z = 0; z < bakeRegion.z; ++z)
       for (int y = 0; y < bakeRegion.y; ++y)
-        for (int x = 0; x < bakeRegion.x; ++x) {
-            if (!activeBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)])
-                continue;
-            const glm::vec3 p(static_cast<float>(x),
-                              static_cast<float>(y),
-                              static_cast<float>(z));
-            const float sd = eval(p);
-            // Per-voxel color from the caller's ColorFn (defaults to DefaultBandColor's
-            // smooth RGB bands; a scene wanting a flat authored tint passes its own).
-            const glm::vec3 col = colorFn(p);
-            // Roughness: striped along Y, clamped to [0,1]
-            const float rough = glm::clamp(
-                0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);
-            const float emission = emit(p);
-            auto& comps = compStorage.emplace_back(std::array<Vixen::GaiaVoxel::ComponentQueryRequest, 5>{
-                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Density{sd}},
-                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Color{col}},
-                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Roughness{rough}},
-                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Material{1u}},
-                Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::EmissionIntensity{emission}},
-            });
-            requests.emplace_back(p, std::span<const Vixen::GaiaVoxel::ComponentQueryRequest>(
-                comps.data(), comps.size()));
+        for (int xBase = 0; xBase < bakeRegion.x; xBase += 4) {
+            glm::vec3 points[4]{};
+            std::size_t count = 0;
+            for (int offset = 0; offset < 4 && xBase + offset < bakeRegion.x; ++offset) {
+                const int x = xBase + offset;
+                if (!activeBrick[brickIndex(x / brickSide, y / brickSide, z / brickSide)])
+                    continue;
+                points[count++] = glm::vec3(static_cast<float>(x),
+                                            static_cast<float>(y),
+                                            static_cast<float>(z));
+            }
+            if (count == 0) continue;
+            float values[4]{};
+            EvalSdfBatch4(eval, points, count, values);
+            for (std::size_t lane = 0; lane < count; ++lane) {
+                const glm::vec3& p = points[lane];
+                const float sd = values[lane];
+                // Per-voxel color from the caller's ColorFn (defaults to DefaultBandColor's
+                // smooth RGB bands; a scene wanting a flat authored tint passes its own).
+                const glm::vec3 col = colorFn(p);
+                // Roughness: striped along Y, clamped to [0,1]
+                const float rough = glm::clamp(
+                    0.2f + 0.6f * glm::fract(p.y * 0.0625f), 0.0f, 1.0f);
+                const float emission = emit(p);
+                auto& comps = compStorage.emplace_back(std::array<Vixen::GaiaVoxel::ComponentQueryRequest, 5>{
+                    Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Density{sd}},
+                    Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Color{col}},
+                    Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Roughness{rough}},
+                    Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::Material{1u}},
+                    Vixen::GaiaVoxel::ComponentQueryRequest{Vixen::GaiaVoxel::EmissionIntensity{emission}},
+                });
+                requests.emplace_back(p, std::span<const Vixen::GaiaVoxel::ComponentQueryRequest>(
+                    comps.data(), comps.size()));
+            }
         }
     r.world->createVoxelsBatch(requests);
 

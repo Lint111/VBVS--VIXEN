@@ -76,6 +76,10 @@ if(NOT DEFINED YEROKET_ROOT)
 endif()
 set(_yk_tool "${YEROKET_ROOT}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
+    # All drift guards invoke the same CodegenTool project. Parallel `dotnet run`
+    # processes race while MSBuild copies the shared output DLLs, so serialize
+    # check targets without constraining the native compile/link pool.
+    set_property(GLOBAL APPEND PROPERTY JOB_POOLS vixen_codegen=1)
     # KI-015 (execution half): the tool + dotnet resolved above can be a WSL-only clone
     # reached via a \\wsl$ mount — that lets CMake *see* the path on a Windows configure,
     # but ninja's cmd.exe cannot *execute* a Linux ELF at a UNC path. Bridge through
@@ -143,6 +147,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # render-param block, via the new --struct-precision emitter.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
+        _codegen_to_wsl_path("${YEROKET_ROOT}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
+        _codegen_to_wsl_path("${YEROKET_ROOT}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
+        _codegen_to_wsl_path("${_cg}/recipe-lowering.extensions" _recipe_extensions_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp" _out_recipe_simd_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -202,6 +210,10 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
+        set(_recipe_opcode_source_run "${YEROKET_ROOT}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
+        set(_recipe_kernel_source_run "${YEROKET_ROOT}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
+        set(_recipe_extensions_run "${_cg}/recipe-lowering.extensions")
+        set(_out_recipe_simd_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -227,6 +239,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_octreeconfig_cpp_run}"
         --out-glsl "${_out_octreeconfig_glsl_run}")
     add_custom_target(octreeconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args} --check
         COMMENT "[codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -248,12 +261,32 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_recipeparams_cpp_run}"
         --out-glsl "${_out_recipeparams_glsl_run}")
     add_custom_target(recipeparams_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_rp_args} --check
         COMMENT "[codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)"
         VERBATIM)
     add_custom_target(recipeparams_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rp_args}
         COMMENT "[codegen] regenerate RecipeParams.g.h/.glsl (Yeroket tool, --struct-precision)"
+        VERBATIM)
+
+    # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
+    # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
+    set(_recipe_simd_args
+        run --project "${_yk_tool_run}" -c Release --
+        --recipe-simd-cpp
+        --recipe-opcodes "${_recipe_opcode_source_run}"
+        --recipe-kernels "${_recipe_kernel_source_run}"
+        --recipe-extensions "${_recipe_extensions_run}"
+        --out-header "${_out_recipe_simd_run}")
+    add_custom_target(recipe_simd_check ALL
+        JOB_POOL vixen_codegen
+        COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
+        COMMENT "[codegen] golden check: RecipeSimd.g.hpp matches kernel lowering pipeline"
+        VERBATIM)
+    add_custom_target(recipe_simd_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
+        COMMENT "[codegen] regenerate RecipeSimd.g.hpp from kernel lowering pipeline"
         VERBATIM)
 
     # --- LightingConfig via the same Yeroket tool (Sampled Lighting Inc0 M1: lights
@@ -267,6 +300,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_lightingconfig_cpp_run}"
         --out-glsl "${_out_lightingconfig_glsl_run}")
     add_custom_target(lightingconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args} --check
         COMMENT "[codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -284,6 +318,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_shadowconfig_cpp_run}"
         --out-glsl "${_out_shadowconfig_glsl_run}")
     add_custom_target(shadowconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_sc_args} --check
         COMMENT "[codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -301,6 +336,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_accumulationconfig_cpp_run}"
         --out-glsl "${_out_accumulationconfig_glsl_run}")
     add_custom_target(accumulationconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_ac_args} --check
         COMMENT "[codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -318,6 +354,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_prevcameraconfig_cpp_run}"
         --out-glsl "${_out_prevcameraconfig_glsl_run}")
     add_custom_target(prevcameraconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_pcc_args} --check
         COMMENT "[codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -338,6 +375,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_reservoirconfig_cpp_run}"
         --out-glsl "${_out_reservoirconfig_glsl_run}")
     add_custom_target(reservoirconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_rc_args} --check
         COMMENT "[codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -357,6 +395,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_probegridconfig_cpp_run}"
         --out-glsl "${_out_probegridconfig_glsl_run}")
     add_custom_target(probegridconfig_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_pgc_args} --check
         COMMENT "[codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -376,6 +415,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_lighttreebuffer_cpp_run}"
         --out-glsl "${_out_lighttreebuffer_glsl_run}")
     add_custom_target(lighttreebuffer_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_ltb_args} --check
         COMMENT "[codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -394,6 +434,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-cpp  "${_out_reservoirrecord_cpp_run}"
         --out-glsl "${_out_reservoirrecord_glsl_run}")
     add_custom_target(reservoirrecord_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_rr_args} --check
         COMMENT "[codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)"
         VERBATIM)
@@ -410,6 +451,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_view_run}" --view Hud
         --out-header "${_out_hud_header_run}")
     add_custom_target(view_hud_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_view_args} --check
         COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
@@ -427,6 +469,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_view_run}" --view EditorLayers
         --out-header "${_out_editor_layers_header_run}")
     add_custom_target(view_editor_layers_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args} --check
         COMMENT "[codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
@@ -445,6 +488,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_view_run}" --view-markup Hud
         --out-rml "${_out_hud_rml_run}")
     add_custom_target(view_hud_markup_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args} --check
         COMMENT "[codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
@@ -462,6 +506,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-header  "${_out_hud_blob_header_run}"
         --out-datafile "${_out_hud_blob_data_run}")
     add_custom_target(view_hud_blob_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args} --check
         COMMENT "[codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema"
         VERBATIM)
@@ -480,6 +525,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_view_run}" --view-writer Hud
         --out-cs "${_out_hud_writer_cs_run}")
     add_custom_target(view_hud_writer_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args} --check
         COMMENT "[codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)"
         VERBATIM)
@@ -501,6 +547,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --exclude VectorProof
         --out-header "${_out_appflow_hdr_run}")
     add_custom_target(appflow_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
         COMMENT "[codegen] golden check: AppFlow.g.h matches canonical AppFlowReference schema"
         VERBATIM)
@@ -519,6 +566,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --exclude VectorProof
         --out-header "${_out_view_noun_hdr_run}")
     add_custom_target(view_noun_enum_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
         COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
         VERBATIM)
@@ -537,6 +585,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_callables_run}" --callable-cpp
         --out-header "${_out_callables_hdr_run}")
     add_custom_target(callables_check ALL
+        JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
         COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
         VERBATIM)

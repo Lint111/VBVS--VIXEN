@@ -46,7 +46,7 @@
 #include "Recipe/RecipeBaker.h"
 #include "Recipe/generated/VoxelDocument.g.h"
 #include "Recipe/generated/RecipeContainer.g.h"
-#include "Recipe/VoxelDocumentFlattener.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 

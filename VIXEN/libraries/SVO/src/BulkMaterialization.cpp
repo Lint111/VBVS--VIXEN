@@ -2,6 +2,7 @@
 
 #include "MipBake.h"
 #include "SdfBake.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -42,6 +43,31 @@ void hashTypedVector(uint64_t& hash, std::span<const T> values) {
     hashBytes(hash, values.data(), values.size_bytes());
 }
 
+class SimdRecipeBatchEvaluator {
+public:
+    SimdRecipeBatchEvaluator(const Recipe::LoweredRecipeProgram& program,
+                             const glm::vec3& center,
+                             std::stop_token stopToken)
+        : m_program(program), m_center(center), m_stopToken(stopToken) {}
+
+    void eval4(const glm::vec3* points, std::size_t count, float* values) const {
+        if (m_stopToken.stop_requested()) {
+            throw MaterializationCancelled{};
+        }
+        glm::vec3 local[4]{};
+        for (std::size_t lane = 0; lane < count; ++lane)
+            local[lane] = points[lane] - m_center;
+        for (std::size_t lane = count; lane < 4; ++lane)
+            local[lane] = local[count - 1];
+        m_program.Evaluate4(local, values);
+    }
+
+private:
+    const Recipe::LoweredRecipeProgram& m_program;
+    glm::vec3 m_center;
+    std::stop_token m_stopToken;
+};
+
 } // namespace
 
 SerializedOctree CpuRecipeMaterializer::materialize(
@@ -66,17 +92,15 @@ SerializedOctree CpuRecipeMaterializer::materialize(
         throw MaterializationCancelled{};
     }
 
+    Recipe::LoweredRecipeProgram lowered;
+    std::string loweringError;
+    if (!lowered.Lower(request.recipe.data(), static_cast<uint32_t>(request.recipe.size()),
+                       request.parameters, loweringError)) {
+        throw std::invalid_argument("CPU recipe SIMD lowering failed: " + loweringError);
+    }
+    SimdRecipeBatchEvaluator evaluator(lowered, request.center, stopToken);
     auto baked = BakeSdfWorld(
-        [&](const glm::vec3& p) {
-            if (stopToken.stop_requested()) {
-                throw MaterializationCancelled{};
-            }
-            return Recipe::evalRecipe(
-                request.recipe.data(),
-                static_cast<uint32_t>(request.recipe.size()),
-                p - request.center,
-                request.parameters);
-        },
+        evaluator,
         request.center,
         static_cast<int>(request.resolution),
         request.bandVoxels,

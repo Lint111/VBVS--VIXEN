@@ -8,7 +8,7 @@
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeStack.h"
 #include "Recipe/SdfRecipeEval.h"
-#include "Recipe/VoxelDocumentFlattener.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/VoxelDocument.g.h"
 #include <glm/glm.hpp>
