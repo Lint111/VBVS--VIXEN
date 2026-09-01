@@ -473,12 +473,14 @@ set_target_properties(test_cell_footprint_regime PROPERTIES FOLDER "Tests/SVO Te
 gtest_discover_tests(test_cell_footprint_regime)
 
 add_executable(test_wholesale_availability test_wholesale_availability.cpp)
+target_compile_features(test_wholesale_availability PRIVATE cxx_std_17)
 target_include_directories(test_wholesale_availability PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(test_wholesale_availability PRIVATE GTest::gtest_main)
 set_target_properties(test_wholesale_availability PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_wholesale_availability)
 
 add_executable(test_wholesale_capacity_arena test_wholesale_capacity_arena.cpp)
+target_compile_features(test_wholesale_capacity_arena PRIVATE cxx_std_17)
 target_include_directories(test_wholesale_capacity_arena PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(test_wholesale_capacity_arena PRIVATE GTest::gtest_main)
 set_target_properties(test_wholesale_capacity_arena PROPERTIES FOLDER "Tests/SVO Tests")
