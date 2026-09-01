@@ -1,5 +1,9 @@
 # Project Brief
 
+> **Current-status note (2026-09-01):** The January 2026 production-phase statement and roadmap
+> below are historical planning context. For current delivery status, use
+> `memory-bank/activeContext.md`, `memory-bank/progress.md`, and `Vixen-Docs/00-Index/Quick-Lookup.md`.
+
 ## Project Name
 VIXEN - Vulkan Interactive eXample Engine
 

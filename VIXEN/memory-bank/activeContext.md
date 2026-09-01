@@ -1,3 +1,16 @@
+> **✅ 2026-09-01 — Current engine status (reconciled on `wave/authoring-convergence`).**
+> Raster-proxy hybrid Slice A is landed; B1 shipped and is DEFAULT-ON after the 2026-08-03 native
+> gate (`b3c09d32`, 60% iteration cut; `14e835ee` default-on). B2 is the next rescope and remains
+> pending the controller's seam ruling; it is not claimed as shipped (`undertow-ctl/docs/in-progress.md:3378-3407`).
+> The shadow-mask word split is landed (`178b838b`; `VIXEN/shaders/SceneBindings.glsl:140-200`), so
+> camera-visibility cull bits no longer suppress shadow traversal.
+> Voxel authoring Inc1 is integrated in the current tree (`a72ffba2`; `VIXEN/application/editor/CMakeLists.txt:1-32`,
+> `VIXEN/application/editor/include/EditorDocumentModel.h:16-74`),
+> and compiler-emitted SIMD4 materialization is landed (`e37c9dab`; `VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp:1-3,1254-1268`).
+> The current direction records also include the data-movement audit and multicore dispatch-unification
+> direction (`cafa30dc`, `29f2feed`); multicore implementation still has eight owner decisions pending.
+> The banners below are retained as historical context.
+
 > **⚠️ 2026-08-03 — Raster-proxy hybrid SLICE A COMPLETE (not merged/pushed; live tree = undertow submodule).**
 > Shell derive now emits the raster-proxy artifact + the dirty path has a real producer. Built, TDD (red→green each):
 > (1) `ShellProxyAabb` (32B, template-local [0,1]³ = traceBounds convention) + `ShellDeriveResult::proxyAabbs`,

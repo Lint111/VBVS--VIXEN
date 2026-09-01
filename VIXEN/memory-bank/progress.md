@@ -1,5 +1,12 @@
 # Progress
 
+> **Current status (2026-09-01):** The January 2026 roadmap and sprint table below are a historical
+> snapshot, not the current delivery schedule. The current engine branch includes the reconciled
+> codegen/voxel materialization and raster-proxy B1 landings; current direction work is recorded in
+> `Vixen-Docs/01-Architecture/Data-Movement-Audit-2026-09.md` and
+> `Vixen-Docs/01-Architecture/Multicore-Dispatch-Unification-Direction-2026-09.md`.
+> Evidence: `e37c9dab`, `b3c09d32`, `cafa30dc`, `29f2feed`.
+
 ## Current State: PRODUCTION PHASE - 11 Sprint Roadmap (Jan 2026)
 
 **Last Updated**: January 1, 2026 (Production phase entered with comprehensive development roadmap)
