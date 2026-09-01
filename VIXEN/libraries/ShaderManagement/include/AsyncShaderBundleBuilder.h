@@ -3,11 +3,14 @@
 #include "ShaderBundleBuilder.h"
 #include "ShaderEvents.h"
 #include "MessageBus.h"
-#include "WorkerThreadBridge.h"
-#include <thread>
-#include <future>
-#include <unordered_map>
+#include "KernelDispatch/TaskExecutor.h"
 #include <atomic>
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <stop_token>
+#include <unordered_map>
+#include <vector>
 
 namespace ShaderManagement {
 
@@ -78,7 +81,8 @@ public:
      */
     struct AsyncBuildHandle {
         std::string uuid;
-        std::future<void> future;
+        Vixen::KernelDispatch::CompletionHandle completion;
+        std::stop_source stopSource;
         std::atomic<bool> completed;
         std::atomic<bool> cancelled;
 
@@ -198,7 +202,7 @@ public:
      * @brief Constructor
      *
      * @param messageBus EventBus for publishing events
-     * @param workerThreadCount Number of worker threads (0 = hardware concurrency)
+     * @param workerThreadCount Blocking-lane worker budget (0 = bounded default)
      */
     explicit AsyncShaderBundleBuilder(
         Vixen::EventBus::MessageBus* messageBus,
@@ -280,35 +284,17 @@ public:
 
 private:
     void SubmitBuildInternal(ShaderBundleBuilder builder, Vixen::EventBus::SenderID sender);
+    bool ExecuteBuild(ShaderBundleBuilder builder,
+                      Vixen::EventBus::SenderID sender,
+                      const std::shared_ptr<AsyncBuildHandle>& handle);
 
     Vixen::EventBus::MessageBus* messageBus_;
-    uint32_t workerThreadCount_;
-
-    // Thread pool for compilation with per-thread work queues (reduces contention)
-    std::vector<std::thread> workerThreads_;
-
-    // Per-thread work queues for better cache locality and reduced contention
-    struct ThreadLocalQueue {
-        std::queue<std::function<void()>> tasks;
-        std::mutex mutex;
-    };
-    std::vector<std::unique_ptr<ThreadLocalQueue>> perThreadQueues_;
-
-    // Round-robin counter for work distribution
-    std::atomic<uint32_t> nextQueueIndex_{0};
-
-    // Shared condition variable for waking idle workers
-    std::condition_variable workCV_;
-    std::mutex cvMutex_;
-    std::atomic<bool> running_;
+    Vixen::KernelDispatch::TaskExecutor taskExecutor_;
 
     // Active build tracking
     std::unordered_map<std::string, std::shared_ptr<AsyncBuildHandle>> activeBuilds_;
     mutable std::mutex buildsMutex_;
 
-    void WorkerThreadLoop(uint32_t threadIndex);
-    void ExecuteBuild(ShaderBundleBuilder builder, Vixen::EventBus::SenderID sender);
-    bool TryStealWork(uint32_t myIndex, std::function<void()>& outWork);
 };
 
 } // namespace ShaderManagement

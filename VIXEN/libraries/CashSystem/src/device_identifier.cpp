@@ -7,7 +7,6 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
-#include <future>
 #include <vector>
 #include <cstring>
 
@@ -102,30 +101,27 @@ bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
     manifest.close();
     LOG_INFO("Saved cacher manifest with " + std::to_string(m_deviceCachers.size()) + " entries");
 
-    // Launch parallel save for each cacher
-    std::vector<std::future<bool>> futures;
+    std::vector<std::function<bool()>> tasks;
 
     for (const auto& cacher : m_deviceCachers) {
         if (cacher) {
             auto cacheName = std::string(cacher->name());
             auto cacheFile = directory / (cacheName + ".cache");
-
-            futures.push_back(std::async(std::launch::async,
-                [&cacher, cacheFile]() {
-                    bool saved = cacher->SerializeToFile(cacheFile);
-                    return saved;
-                }
-            ));
+            CacherBase* cacherPtr = cacher.get();
+            tasks.emplace_back([cacherPtr, cacheFile]() {
+                return cacherPtr->SerializeToFile(cacheFile);
+            });
         }
     }
 
-    // Wait for all saves to complete
-    bool success = true;
-    for (auto& future : futures) {
-        success &= future.get();
+    if (!m_owner) {
+        // Standalone registries are synchronous-by-contract; MainCacher-owned registries use the
+        // shared blocking lane below.
+        bool success = true;
+        for (auto& task : tasks) success &= task();
+        return success;
     }
-
-    return success;
+    return m_owner->GetTaskExecutor().SubmitBlockingBatch(std::move(tasks)).get();
 }
 
 bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
@@ -174,33 +170,26 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
         LOG_INFO("No manifest found (legacy or first run)");
     }
 
-    // Launch parallel load for each cacher
-    std::vector<std::future<bool>> futures;
+    std::vector<std::function<bool()>> tasks;
 
     for (auto& cacher : m_deviceCachers) {
         if (cacher) {
             auto cacheFile = directory / (std::string(cacher->name()) + ".cache");
-
-            futures.push_back(std::async(std::launch::async,
-                [&cacher, cacheFile, this]() {
-                    if (std::filesystem::exists(cacheFile)) {
-                        bool loaded = cacher->DeserializeFromFile(cacheFile, m_device);
-                        return loaded;
-                    } else {
-                        return true;  // Not an error
-                    }
-                }
-            ));
+            CacherBase* cacherPtr = cacher.get();
+            auto* device = m_device;
+            tasks.emplace_back([cacherPtr, cacheFile, device]() {
+                return !std::filesystem::exists(cacheFile)
+                    || cacherPtr->DeserializeFromFile(cacheFile, device);
+            });
         }
     }
 
-    // Wait for all loads to complete
-    bool success = true;
-    for (auto& future : futures) {
-        success &= future.get();
+    if (!m_owner) {
+        bool success = true;
+        for (auto& task : tasks) success &= task();
+        return success;
     }
-
-    return success;
+    return m_owner->GetTaskExecutor().SubmitBlockingBatch(std::move(tasks)).get();
 }
 
 void DeviceRegistry::OnInitialize() {

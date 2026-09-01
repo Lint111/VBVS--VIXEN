@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20...4.2)
 
 project(KernelDispatch VERSION 1.0.0 LANGUAGES CXX)
 
+find_package(Threads REQUIRED)
+
 # ============================================================================
 # KernelDispatch Static Library
 # ============================================================================
@@ -51,7 +53,7 @@ set_target_properties(KernelDispatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # TBB provides the task-wave parallelism (tbb::parallel_for_each + task_arena). Provisioned by
 # dependencies/CMakeLists.txt (find_package(TBB) or the oneTBB FetchContent) as TBB::tbb -- the same
 # target RenderGraph/SVO link.
-target_link_libraries(KernelDispatch PUBLIC TBB::tbb)
+target_link_libraries(KernelDispatch PUBLIC TBB::tbb Threads::Threads)
 
 # ============================================================================
 # Precompiled Headers

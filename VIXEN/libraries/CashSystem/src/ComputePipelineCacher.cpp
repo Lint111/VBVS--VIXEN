@@ -86,7 +86,7 @@ void ComputePipelineCacher::Cleanup() {
 
     // Destroy all cached pipelines. Locked: m_entries/m_globalCache are mutated here while
     // DeviceRegistry can be running Serialize/DeserializeFromFile for this same cacher on
-    // another thread via std::async, and m_globalCache is read unlocked by
+    // another thread via the blocking lane, and m_globalCache is read unlocked by
     // CreateComputePipeline() on the pipeline-creation hot path (audit V-M9). Released before
     // Clear(), which takes its own unique_lock.
     {

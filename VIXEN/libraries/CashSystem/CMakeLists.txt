@@ -31,6 +31,7 @@ target_link_libraries(CashSystem PUBLIC
     Core::Core  # Common headers (Headers.h / VixenHash.h / MeshData.h) — AR#3/#4
     Logger
     EventBus  # For device invalidation event subscription
+    KernelDispatch  # Shared admission foundation for blocking cache I/O
     ShaderManagement  # For ShaderDataBundle and reflection data
     VulkanResources  # For Vulkan device and resource abstractions
     ResourceManagement  # For DeviceBudgetManager and IMemoryAllocator (Sprint 4 Phase D)

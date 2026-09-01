@@ -51,7 +51,7 @@ void PipelineCacher::Cleanup() {
 
     // Destroy all cached Vulkan resources. Locked: m_entries/m_globalCache are mutated here
     // while DeviceRegistry can be running SerializeToFile/DeserializeFromFile for this same
-    // cacher on another thread via std::async (audit V-M9). Released before Clear() below,
+    // cacher on another thread via the blocking lane (audit V-M9). Released before Clear() below,
     // which takes its own unique_lock.
     if (GetDevice()) {
         std::unique_lock wlock(m_lock);
@@ -369,7 +369,7 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
 
     // If we have a global cache, merge it with the new cache
     // This allows new pipelines to benefit from cached data. Locked read: m_globalCache can be
-    // set concurrently by DeserializeFromFile() via DeviceRegistry's std::async (audit V-M9).
+    // set concurrently by DeserializeFromFile() via the blocking lane (audit V-M9).
     {
         std::shared_lock rlock(m_lock);
         if (m_globalCache != VK_NULL_HANDLE) {
@@ -403,7 +403,7 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
     }
 
     // Collect all valid pipeline caches from entries. Locked: races DeviceRegistry-driven
-    // Cleanup()/GetOrCreate() for this cacher on other threads via std::async (audit V-M9).
+    // Cleanup()/GetOrCreate() for this cacher on other threads via the blocking lane (audit V-M9).
     std::vector<VkPipelineCache> caches;
     {
         std::shared_lock rlock(m_lock);

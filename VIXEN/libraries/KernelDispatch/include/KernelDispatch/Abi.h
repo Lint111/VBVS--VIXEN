@@ -55,6 +55,30 @@ enum class OutputPolicy : uint8_t {
 };
 
 /**
+ * @brief Admission lane for work that must not consume another lane's worker budget.
+ *
+ * FrameCompute is the existing bounded TBB wave executor. BlockingIO is a separately budgeted,
+ * lazy lane for shader compilation and cache/file I/O. A BlockingIO task never runs in the
+ * FrameCompute arena, and a FrameCompute wave never waits for a BlockingIO worker to become free.
+ */
+enum class TaskLane : uint8_t {
+    FrameCompute,
+    BlockingIO,
+};
+
+/**
+ * @brief Worker budget for one admission lane.
+ *
+ * `workerCount == 0` selects the implementation's bounded default (currently min(4, hardware
+ * concurrency) for BlockingIO). Callers that need an explicit budget (tests, hosts with a known
+ * I/O ceiling) set a positive count. Budgets are independent; work submitted to one lane never
+ * borrows workers from the other.
+ */
+struct LaneBudget {
+    uint32_t workerCount = 0;
+};
+
+/**
  * @brief Per-dispatch policy: which backend runs each stage + the output readback policy.
  *
  * The native counterpart of the kernel's `DispatcherProfile {Dictionary<string,Backend> Backends;
@@ -65,6 +89,14 @@ enum class OutputPolicy : uint8_t {
 struct DispatcherProfile {
     std::unordered_map<std::string, Backend> backends;  ///< stage owner-id -> backend (empty = default)
     OutputPolicy outputs = OutputPolicy::None;
+    LaneBudget frameCompute;
+    LaneBudget blockingIO;
+
+    /// Return the configured budget, or `fallback` when the profile requests its bounded default.
+    [[nodiscard]] uint32_t WorkerCount(TaskLane lane, uint32_t fallback) const noexcept {
+        const auto& budget = lane == TaskLane::BlockingIO ? blockingIO : frameCompute;
+        return budget.workerCount == 0 ? fallback : budget.workerCount;
+    }
 
     /// Backend chosen for `owner`, falling back to `fallback` when the profile has no override.
     [[nodiscard]] Backend BackendFor(const std::string& owner, Backend fallback) const {

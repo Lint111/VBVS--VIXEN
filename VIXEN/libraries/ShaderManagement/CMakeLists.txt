@@ -64,6 +64,9 @@ target_link_libraries(ShaderManagement PUBLIC nlohmann_json::nlohmann_json)
 # Link to EventBus for shader events
 target_link_libraries(ShaderManagement PUBLIC EventBus)
 
+# Shader compilation and shader-cache I/O use KernelDispatch's separately budgeted blocking lane.
+target_link_libraries(ShaderManagement PUBLIC KernelDispatch)
+
 # Link to Logger for ILoggable support
 target_link_libraries(ShaderManagement PUBLIC Logger)
 

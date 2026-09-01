@@ -26,6 +26,11 @@ add_subdirectory(AppFlow)
 # ResourceManagement library (RM<T> wrapper with state tracking)
 add_subdirectory(ResourceManagement)
 
+# KernelDispatch static library (E7 dispatch D1: renderer-independent dispatch — Tier-A scheduling
+# primitives extracted from RenderGraph, decoupled from render identity, + the data-only ABI. Only
+# depends on TBB; MUST NOT depend on RenderGraph's NodeInstance/Resource types.)
+add_subdirectory(KernelDispatch)
+
 # ShaderManagement library (device-agnostic shader compilation and hot reload)
 add_subdirectory(ShaderManagement)
 
@@ -34,11 +39,6 @@ add_subdirectory(VulkanResources)
 
 # CashSystem library (caching and resource management)
 add_subdirectory(CashSystem)
-
-# KernelDispatch static library (E7 dispatch D1: renderer-independent dispatch — Tier-A scheduling
-# primitives extracted from RenderGraph, decoupled from render identity, + the data-only ABI. Only
-# depends on TBB; MUST NOT depend on RenderGraph's NodeInstance/Resource types.)
-add_subdirectory(KernelDispatch)
 
 # RenderGraph static library (render graph system for managing Vulkan resources and execution).
 # KernelDispatch is configured first because RenderGraph lowers array-task work onto its Tier-A

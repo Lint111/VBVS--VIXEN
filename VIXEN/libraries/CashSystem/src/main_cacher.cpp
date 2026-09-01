@@ -34,6 +34,8 @@ void MainCacher::CleanupGlobalCaches() {
 }
 
 MainCacher::~MainCacher() {
+    m_taskExecutor.WaitForBlocking();
+
     // Cleanup global caches if not already done
     CleanupGlobalCaches();
 
