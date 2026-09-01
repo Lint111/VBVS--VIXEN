@@ -4,13 +4,14 @@
 
 #include "KernelDispatch/TaskExecutor.h"
 
-#include <oneapi/tbb/parallel_for_each.h>
+#include <oneapi/tbb/parallel_for.h>
 #include <oneapi/tbb/task_arena.h>
-#include <atomic>
+#include <algorithm>
 #include <exception>
-#include <mutex>
+#include <iterator>
+#include <optional>
 
-// Tier-A extraction (E7 dispatch D1): the wave-then-parallel_for_each shape is ported from
+// Tier-A extraction (E7 dispatch D1): the wave-then-parallel shape is ported from
 // RenderGraph/src/Core/TBBVirtualTaskExecutor.cpp (ExecutePhase/ExecuteLevel/ExecuteTask), with the
 // NodeInstance::GetExecutionTasks re-fetch removed -- the callable is taken straight from the
 // VirtualTask the caller supplied. A per-run tbb::task_arena caps concurrency so Run() is
@@ -24,68 +25,77 @@ VirtualTask* TaskExecutor::FindTask(std::vector<VirtualTask>& tasks, const TaskI
     return nullptr;
 }
 
-bool TaskExecutor::RunWave(std::vector<VirtualTask>& tasks, const std::vector<TaskId>& wave) {
+bool TaskExecutor::RunWave(std::vector<VirtualTask>& tasks,
+                           const std::vector<TaskId>& wave,
+                           std::stop_token stopToken) {
     if (wave.empty()) return true;
 
-    std::atomic<bool> anyFailed{false};
+    // Each worker writes only its own result slot. Errors are gathered after the wave and sorted by
+    // logical task index, so completion timing can never choose the primary error.
+    std::vector<std::optional<TaskError>> waveErrors(wave.size());
+    const auto runTask = [&](size_t waveIndex) {
+        if (stopToken.stop_requested()) return;
+
+        VirtualTask* task = FindTask(tasks, wave[waveIndex]);
+        if (!task) return;
+
+        task->state = VirtualTaskState::Running;
+        try {
+            if (task->execute) task->execute();
+            task->MarkCompleted();
+        } catch (const std::exception& e) {
+            task->MarkFailed(e.what());
+            waveErrors[waveIndex] = TaskError{task->id, e.what()};
+        } catch (...) {
+            task->MarkFailed("Unknown exception");
+            waveErrors[waveIndex] = TaskError{task->id, "Unknown exception"};
+        }
+    };
 
     // One task in the wave: run inline (matches the render original's single-task fast path).
     if (wave.size() == 1) {
-        if (VirtualTask* t = FindTask(tasks, wave[0])) {
-            try {
-                if (t->execute) t->execute();
-                t->MarkCompleted();
-            } catch (const std::exception& e) {
-                t->MarkFailed(e.what());
-                errors_.push_back({t->id, e.what()});
-                anyFailed = true;
-            } catch (...) {
-                t->MarkFailed("Unknown exception");
-                errors_.push_back({t->id, "Unknown exception"});
-                anyFailed = true;
-            }
-        }
-        return !anyFailed;
+        runTask(0);
+    } else {
+        tbb::parallel_for(size_t{0}, wave.size(), runTask);
     }
 
-    // Errors are appended from worker threads -- guard the vector. (Small, contended only on failure.)
-    // ponytail: a mutex is fine here; the error path is cold. Lock-free queue only if it ever gets hot.
-    std::mutex errMutex;
-    tbb::parallel_for_each(wave.begin(), wave.end(), [&](const TaskId& id) {
-        VirtualTask* t = FindTask(tasks, id);
-        if (!t) return;
-        try {
-            if (t->execute) t->execute();
-            t->MarkCompleted();
-        } catch (const std::exception& e) {
-            t->MarkFailed(e.what());
-            std::lock_guard<std::mutex> lk(errMutex);
-            errors_.push_back({t->id, e.what()});
-            anyFailed = true;
-        } catch (...) {
-            t->MarkFailed("Unknown exception");
-            std::lock_guard<std::mutex> lk(errMutex);
-            errors_.push_back({t->id, "Unknown exception"});
-            anyFailed = true;
+    std::vector<TaskError> orderedErrors;
+    orderedErrors.reserve(waveErrors.size());
+    for (auto& error : waveErrors) {
+        if (error) orderedErrors.push_back(std::move(*error));
+    }
+    std::sort(orderedErrors.begin(), orderedErrors.end(), [](const TaskError& lhs, const TaskError& rhs) {
+        if (lhs.task.taskIndex != rhs.task.taskIndex) {
+            return lhs.task.taskIndex < rhs.task.taskIndex;
         }
+        return lhs.task.owner < rhs.task.owner;
     });
+    errors_.insert(errors_.end(),
+                   std::make_move_iterator(orderedErrors.begin()),
+                   std::make_move_iterator(orderedErrors.end()));
 
-    return !anyFailed;
+    return orderedErrors.empty() && !stopToken.stop_requested();
 }
 
 bool TaskExecutor::Run(std::vector<VirtualTask>& tasks,
                        const std::vector<std::vector<TaskId>>& waves,
-                       int workerCount) {
+                       int workerCount,
+                       std::stop_token stopToken) {
     errors_.clear();
     if (workerCount < 1) workerCount = 1;
+    if (stopToken.stop_requested()) return false;
 
     // A per-run arena caps concurrency: workerCount==1 forces serial execution, N gives N workers.
     // This is the determinism knob the spec's 1/2/N gate exercises.
     tbb::task_arena arena(workerCount);
     bool success = true;
     arena.execute([&] {
-        for (const auto& wave : waves)
-            if (!RunWave(tasks, wave)) success = false;  // keep going to collect all errors
+        for (const auto& wave : waves) {
+            if (stopToken.stop_requested() || !RunWave(tasks, wave, stopToken)) {
+                success = false;
+                break;
+            }
+        }
     });
     return success;
 }

@@ -413,6 +413,8 @@ void RenderGraph::HandleWindowClose() {
 void RenderGraph::ExecuteCleanup() {
     GRAPH_LOG_INFO("[RenderGraph::ExecuteCleanup] Executing cleanup callbacks...");
 
+    InvalidateExecutionEpoch();
+
     // AR#16: from here the graph's resources are being destroyed. Mark the graph un-renderable so
     // RenderFrame() stops executing nodes (which would index freed per-image sync arrays and trip a
     // vector-out-of-range on shutdown). The render loop may run one more iteration after a
@@ -501,6 +503,7 @@ void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> ma
 
 void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Starting compilation...");
+    BeginExecutionEpoch();
 
     // Pre-allocate EventBus based on graph complexity (Sprint 5.5)
     PreAllocateEventBus();
@@ -666,6 +669,7 @@ bool RenderGraph::RecoverFromDeviceLoss() {
     }
 
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== DEVICE-LOSS RECOVERY: rebuilding the graph on a fresh device =====");
+    InvalidateExecutionEpoch();
 
     // Announce the reset (Reason::DriverReset, with the OLD/lost device handle) for observability and any
     // subscriber not torn down by the graph. The authoritative device-cache clear also happens in
@@ -701,6 +705,8 @@ bool RenderGraph::RecoverFromDeviceLoss() {
             node->Cleanup(CleanupReason::DeviceLost);
         }
 
+        BeginExecutionEpoch();
+
         // --- Pass 2: REBUILD in FORWARD execution order (device first, then its dependents) ---
         // DeviceNode::CompileImpl creates the new VulkanDevice and publishes it on VULKAN_DEVICE_OUT;
         // each downstream node re-reads the new VulkanDevice* via ctx.In on Setup/Compile and recreates
@@ -716,10 +722,12 @@ bool RenderGraph::RecoverFromDeviceLoss() {
             cleanupStack.ResetExecuted(node->GetHandle());
         }
     } catch (const std::exception& e) {
+        InvalidateExecutionEpoch();
         deviceLostUnrecoverable_ = true;
         GRAPH_LOG_ERROR(std::string("[RenderGraph::RecoverFromDeviceLoss] Rebuild failed — the device is unrecoverable: ") + e.what());
         return false;
     } catch (...) {
+        InvalidateExecutionEpoch();
         deviceLostUnrecoverable_ = true;
         GRAPH_LOG_ERROR("[RenderGraph::RecoverFromDeviceLoss] Rebuild failed with a non-std exception — the device is unrecoverable");
         return false;
@@ -732,6 +740,23 @@ bool RenderGraph::RecoverFromDeviceLoss() {
     executorNeedsRebuild_ = true;
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
     return true;
+}
+
+void RenderGraph::BeginExecutionEpoch() {
+    executionStopSource_.request_stop();
+    executionStopSource_ = std::stop_source{};
+    executionEpoch_.fetch_add(1, std::memory_order_release);
+}
+
+void RenderGraph::InvalidateExecutionEpoch() {
+    if (executionStopSource_.request_stop()) {
+        executionEpoch_.fetch_add(1, std::memory_order_release);
+    }
+}
+
+void RenderGraph::AbortCurrentFrame() {
+    frameAborted_ = true;
+    InvalidateExecutionEpoch();
 }
 
 VkResult RenderGraph::RenderFrame() {
@@ -839,6 +864,7 @@ VkResult RenderGraph::RenderFrame() {
 
     // Fresh frame: clear any abort latched by last frame's out-of-date acquire (AbortCurrentFrame).
     frameAborted_ = false;
+    BeginExecutionEpoch();
 
     // Execute all nodes
     // Sprint 6.4: Support both sequential and parallel execution modes
@@ -1643,6 +1669,10 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // All dirty nodes are still executing
     }
 
+    // This recompile owns a fresh epoch. Any token retained by work from the previous graph shape
+    // is stopped before cleanup begins; compile-time slot tasks below receive the new live token.
+    BeginExecutionEpoch();
+
     // Track if all nodes successfully recompiled
     bool allNodesSucceeded = true;
 
@@ -1753,6 +1783,7 @@ void RenderGraph::RecompileDirtyNodes() {
         isCompiled = true;
         GRAPH_LOG_INFO("[RenderGraph] All nodes successfully recompiled - graph is compiled");
     } else {
+        InvalidateExecutionEpoch();
         // Some nodes failed or new dirty nodes were added during recompilation
         isCompiled = false;
         if (!allNodesSucceeded) {

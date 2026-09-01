@@ -13,12 +13,21 @@
  */
 
 #include <gtest/gtest.h>
+#include "Core/NodeTypeRegistry.h"
+#include "Core/RenderGraph.h"
 #include "Core/SlotTask.h"
+#include "KernelDispatch/TaskExecutor.h"
 #include "Memory/ResourceBudgetManager.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <stdexcept>
+#include <stop_token>
+#include <string>
 #include <thread>
+#include <vector>
 
 using namespace Vixen::RenderGraph;
 using namespace ResourceManagement;
@@ -151,6 +160,196 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_RespectsMaxParallelism) {
 
     // Max concurrent should not exceed 4
     EXPECT_LE(maxConcurrent.load(), 4);
+}
+
+TEST_F(SlotTaskManagerTest, ExecuteParallel_IsResultInvariantAtOneTwoAndNWorkers) {
+    struct Snapshot {
+        uint32_t successCount = 0;
+        std::vector<uint64_t> outputs;
+        std::vector<uint8_t> statuses;
+        uint32_t completedTasks = 0;
+        uint32_t failedTasks = 0;
+        uint32_t skippedTasks = 0;
+        uint64_t totalEstimatedMemory = 0;
+
+        bool operator==(const Snapshot&) const = default;
+    };
+
+    constexpr uint64_t memoryPerTask = 64 * 1024;
+    constexpr uint64_t memoryBudget = 2 * memoryPerTask;
+    const uint32_t nWorkers = std::min(8u, std::max(3u, std::thread::hardware_concurrency()));
+    const std::vector<uint32_t> workerCounts{1u, 2u, nWorkers};
+
+    std::optional<Snapshot> reference;
+    for (uint32_t workerCount : workerCounts) {
+        auto tasks = CreateTasks(24, memoryPerTask);
+        std::vector<uint64_t> outputs(tasks.size(), 0);
+        std::atomic<uint64_t> inFlightMemory{0};
+        std::atomic<uint64_t> peakInFlightMemory{0};
+
+        ResourceBudgetManager budgetManager;
+        budgetManager.SetBudget(BudgetResourceType::HostMemory,
+            ResourceBudget(memoryBudget, memoryBudget, false));
+
+        const auto task = [&](SlotTaskContext& ctx) {
+            const uint64_t inFlight = inFlightMemory.fetch_add(memoryPerTask) + memoryPerTask;
+            uint64_t observedPeak = peakInFlightMemory.load();
+            while (inFlight > observedPeak &&
+                   !peakInFlightMemory.compare_exchange_weak(observedPeak, inFlight)) {}
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            outputs[ctx.taskIndex] = 0x9e3779b97f4a7c15ull ^
+                                     (static_cast<uint64_t>(ctx.taskIndex) * 0x100000001b3ull);
+            inFlightMemory.fetch_sub(memoryPerTask);
+            return (ctx.taskIndex % 5u) != 3u;
+        };
+
+        Snapshot snapshot;
+        snapshot.successCount = taskManager.ExecuteParallel(
+            tasks, task, &budgetManager, workerCount, {});
+        snapshot.outputs = outputs;
+        for (const auto& item : tasks) {
+            snapshot.statuses.push_back(static_cast<uint8_t>(item.status));
+        }
+        const auto stats = taskManager.GetLastExecutionStats();
+        snapshot.completedTasks = stats.completedTasks;
+        snapshot.failedTasks = stats.failedTasks;
+        snapshot.skippedTasks = stats.skippedTasks;
+        snapshot.totalEstimatedMemory = stats.totalEstimatedMemory;
+
+        EXPECT_LE(peakInFlightMemory.load(), memoryBudget)
+            << "workerCount=" << workerCount;
+        if (!reference) {
+            reference = snapshot;
+        } else {
+            EXPECT_EQ(snapshot, *reference) << "workerCount=" << workerCount;
+        }
+    }
+}
+
+TEST_F(SlotTaskManagerTest, ExecuteParallel_GraphEpochInvalidationStartsNoTasks) {
+    NodeTypeRegistry registry;
+    RenderGraph graph(&registry, nullptr, nullptr, nullptr);
+    const uint64_t epoch = graph.GetExecutionEpoch();
+    const std::stop_token token = graph.GetExecutionStopToken();
+
+    graph.AbortCurrentFrame();
+
+    ASSERT_TRUE(token.stop_requested());
+    EXPECT_GT(graph.GetExecutionEpoch(), epoch);
+
+    const uint32_t nWorkers = std::min(8u, std::max(3u, std::thread::hardware_concurrency()));
+    for (uint32_t workerCount : {1u, 2u, nWorkers}) {
+        auto tasks = CreateTasks(12);
+        std::atomic<uint32_t> started{0};
+        const uint32_t success = taskManager.ExecuteParallel(
+            tasks,
+            [&](SlotTaskContext&) {
+                ++started;
+                return true;
+            },
+            nullptr,
+            workerCount,
+            token);
+
+        EXPECT_EQ(success, 0u) << "workerCount=" << workerCount;
+        EXPECT_EQ(started.load(), 0u) << "workerCount=" << workerCount;
+        EXPECT_TRUE(std::all_of(tasks.begin(), tasks.end(), [](const SlotTaskContext& task) {
+            return task.status == TaskStatus::Skipped;
+        }));
+        EXPECT_EQ(taskManager.GetLastExecutionStats().skippedTasks, tasks.size());
+    }
+}
+
+TEST_F(SlotTaskManagerTest, RenderGraphCompileRotatesExecutionEpoch) {
+    NodeTypeRegistry registry;
+    RenderGraph graph(&registry, nullptr, nullptr, nullptr);
+    const uint64_t epoch = graph.GetExecutionEpoch();
+    const std::stop_token oldToken = graph.GetExecutionStopToken();
+
+    ASSERT_NO_THROW(graph.Compile());
+
+    EXPECT_TRUE(oldToken.stop_requested());
+    EXPECT_GT(graph.GetExecutionEpoch(), epoch);
+    EXPECT_FALSE(graph.GetExecutionStopToken().stop_requested());
+}
+
+TEST_F(SlotTaskManagerTest, ExecuteParallel_ExceptionStopsLaterBudgetBatches) {
+    auto tasks = CreateTasks(6);
+    const uint32_t success = taskManager.ExecuteParallel(
+        tasks,
+        [](SlotTaskContext& ctx) {
+            if (ctx.taskIndex == 1u) {
+                throw std::runtime_error("slot task 1 failed");
+            }
+            return true;
+        },
+        nullptr,
+        2,
+        {});
+
+    EXPECT_EQ(success, 1u);
+    EXPECT_EQ(tasks[0].status, TaskStatus::Completed);
+    EXPECT_EQ(tasks[1].status, TaskStatus::Failed);
+    ASSERT_TRUE(tasks[1].errorMessage.has_value());
+    EXPECT_EQ(*tasks[1].errorMessage, "slot task 1 failed");
+    for (size_t i = 2; i < tasks.size(); ++i) {
+        EXPECT_EQ(tasks[i].status, TaskStatus::Skipped) << "taskIndex=" << i;
+    }
+}
+
+TEST(KernelDispatchTaskExecutorTest, PrimaryErrorIsLowestTaskIndexAndLaterWavesDoNotRun) {
+    const uint32_t nWorkers = std::min(8u, std::max(3u, std::thread::hardware_concurrency()));
+    for (uint32_t workerCount : {1u, 2u, nWorkers}) {
+        std::atomic<uint32_t> laterWaveRuns{0};
+        std::vector<Vixen::KernelDispatch::VirtualTask> tasks;
+        tasks.push_back({Vixen::KernelDispatch::TaskId{41, 5}, [] { throw std::runtime_error("task 5"); }});
+        tasks.push_back({Vixen::KernelDispatch::TaskId{41, 1}, [] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            throw std::runtime_error("task 1");
+        }});
+        tasks.push_back({Vixen::KernelDispatch::TaskId{41, 3}, [] { throw std::runtime_error("task 3"); }});
+        tasks.push_back({Vixen::KernelDispatch::TaskId{41, 9}, [&] { ++laterWaveRuns; }});
+
+        const std::vector<std::vector<Vixen::KernelDispatch::TaskId>> waves{
+            {Vixen::KernelDispatch::TaskId{41, 5}, Vixen::KernelDispatch::TaskId{41, 1},
+             Vixen::KernelDispatch::TaskId{41, 3}},
+            {Vixen::KernelDispatch::TaskId{41, 9}}
+        };
+
+        Vixen::KernelDispatch::TaskExecutor executor;
+        EXPECT_FALSE(executor.Run(tasks, waves, static_cast<int>(workerCount), {}));
+        ASSERT_EQ(executor.GetErrors().size(), 3u);
+        EXPECT_EQ(executor.GetErrors()[0].task.taskIndex, 1u);
+        EXPECT_EQ(executor.GetErrors()[1].task.taskIndex, 3u);
+        EXPECT_EQ(executor.GetErrors()[2].task.taskIndex, 5u);
+        EXPECT_EQ(laterWaveRuns.load(), 0u);
+        EXPECT_EQ(tasks[3].state, Vixen::KernelDispatch::VirtualTaskState::Pending);
+    }
+}
+
+TEST(KernelDispatchTaskExecutorTest, StopTokenPreventsIssuingLaterWavesAtOneTwoAndNWorkers) {
+    const uint32_t nWorkers = std::min(8u, std::max(3u, std::thread::hardware_concurrency()));
+    for (uint32_t workerCount : {1u, 2u, nWorkers}) {
+        std::stop_source source;
+        std::atomic<uint32_t> laterWaveRuns{0};
+        std::vector<Vixen::KernelDispatch::VirtualTask> tasks;
+        tasks.push_back({Vixen::KernelDispatch::TaskId{72, 0}, [&] { source.request_stop(); }});
+        tasks.push_back({Vixen::KernelDispatch::TaskId{72, 1}, [&] { ++laterWaveRuns; }});
+
+        const std::vector<std::vector<Vixen::KernelDispatch::TaskId>> waves{
+            {Vixen::KernelDispatch::TaskId{72, 0}},
+            {Vixen::KernelDispatch::TaskId{72, 1}}
+        };
+
+        Vixen::KernelDispatch::TaskExecutor executor;
+        EXPECT_FALSE(executor.Run(
+            tasks, waves, static_cast<int>(workerCount), source.get_token()));
+        EXPECT_TRUE(source.stop_requested());
+        EXPECT_EQ(laterWaveRuns.load(), 0u);
+        EXPECT_EQ(tasks[0].state, Vixen::KernelDispatch::VirtualTaskState::Completed);
+        EXPECT_EQ(tasks[1].state, Vixen::KernelDispatch::VirtualTaskState::Pending);
+    }
 }
 
 // =============================================================================

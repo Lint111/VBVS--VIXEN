@@ -423,7 +423,10 @@ uint32_t NodeInstance::ExecuteTasks(
     if (forceSequential || !budget) {
         return taskManager.ExecuteSequential(tasks, taskFunction);
     } else {
-        return taskManager.ExecuteParallel(tasks, taskFunction, budget);
+        const std::stop_token stopToken = owningGraph
+            ? owningGraph->GetExecutionStopToken()
+            : std::stop_token{};
+        return taskManager.ExecuteParallel(tasks, taskFunction, budget, 0, stopToken);
     }
 }
 

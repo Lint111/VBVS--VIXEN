@@ -4,8 +4,9 @@
 #include "Lifetime/SharedResource.h"  // For ResourceScope and SlotScopeToResourceScope
 #include <cstdint>
 #include <functional>
-#include <vector>
 #include <optional>
+#include <stop_token>
+#include <vector>
 
 // Forward declaration from ResourceManagement namespace
 namespace ResourceManagement {
@@ -151,13 +152,15 @@ public:
      * @param taskFunction Function to execute per task
      * @param budgetManager Resource budget manager (optional)
      * @param maxParallelism Maximum concurrent tasks (0 = auto)
+     * @param stopToken Cooperative cancellation for the owning graph execution epoch
      * @return Number of successful tasks
      */
     uint32_t ExecuteParallel(
         std::vector<SlotTaskContext>& tasks,
         const SlotTaskFunction& taskFunction,
         ResourceBudgetManager* budgetManager = nullptr,
-        uint32_t maxParallelism = 0
+        uint32_t maxParallelism = 0,
+        std::stop_token stopToken = {}
     );
 
     /**

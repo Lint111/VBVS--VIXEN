@@ -674,6 +674,7 @@ target_link_libraries(RenderGraphCore
         CashSystem
         ShaderManagement
         SVO                    # Laine-Karras ESVO octrees
+        KernelDispatch         # Shared Tier-A DAG/executor for RenderGraph-lowered CPU work
         magic_enum::magic_enum
         TBB::tbb               # Sprint 6.4: Parallel execution
 )
