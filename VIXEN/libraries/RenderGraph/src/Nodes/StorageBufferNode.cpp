@@ -66,6 +66,7 @@ void StorageBufferNode::CompileImpl(TypedCompileContext& ctx) {
     uint32_t elementCountParam  = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_ELEMENT_COUNT, 0u);
     uint32_t elementStrideParam = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_ELEMENT_STRIDE, 0u);
     uint32_t bytesPerPixelParam = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 0u);
+    uint32_t frameRingSizeParam  = GetParameterValue<uint32_t>(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE, 0u);
 
     VkDeviceSize requested = 0;
 
@@ -91,30 +92,77 @@ void StorageBufferNode::CompileImpl(TypedCompileContext& ctx) {
                                  "(+bytesPerPixel), or set sizeBytes, or elementCount*elementStride");
     }
 
-    // Recreate only if the buffer does not exist or must GROW (e.g. resize to a larger extent).
-    if (buffer_ == VK_NULL_HANDLE || requested > sizeBytes_) {
+    if (frameRingSizeParam != 0u) {
+        // Row A: persistent per-flight storage buffers. The graph's FrameSync fence owns the
+        // selected slot, so PreTick can write it without map/unmap churn or a device-wide wait.
+        const bool ringShapeChanged = !perFrame_.IsInitialized() ||
+                                       perFrame_.GetFrameCount() != frameRingSizeParam;
+        const bool ringNeedsGrowth = perFrame_.IsInitialized() &&
+                                      perFrame_.GetFrameData(0).uniformBufferSize < requested;
         if (buffer_ != VK_NULL_HANDLE) {
-            NODE_LOG_INFO("[StorageBufferNode] Growing storage buffer from " +
-                          std::to_string(static_cast<uint64_t>(sizeBytes_)) + " to " +
-                          std::to_string(static_cast<uint64_t>(requested)) + " bytes");
             DestroyBuffer();
         }
-        CreateBuffer(GetDevice(), requested);
+        if (ringShapeChanged || ringNeedsGrowth) {
+            if (perFrame_.IsInitialized()) {
+                perFrame_.Cleanup();
+            }
+            perFrame_.Initialize(GetDevice(), frameRingSizeParam);
+            for (uint32_t i = 0; i < frameRingSizeParam; ++i) {
+                perFrame_.CreateStorageBuffer(i, requested);
+                std::memset(perFrame_.GetUniformBufferMapped(i), 0, static_cast<size_t>(requested));
+            }
+            NODE_LOG_INFO("[StorageBufferNode] Allocated persistent frame ring of " +
+                          std::to_string(frameRingSizeParam) + " storage buffers (" +
+                          std::to_string(static_cast<uint64_t>(requested)) + " bytes each)");
+        } else {
+            NODE_LOG_INFO("[StorageBufferNode] Reusing persistent frame ring (" +
+                          std::to_string(frameRingSizeParam) + " slots, " +
+                          std::to_string(static_cast<uint64_t>(perFrame_.GetFrameData(0).uniformBufferSize)) +
+                          " bytes each)");
+        }
+        sizeBytes_ = perFrame_.GetFrameData(0).uniformBufferSize;
     } else {
-        NODE_LOG_INFO("[StorageBufferNode] Reusing storage buffer (" +
-                      std::to_string(static_cast<uint64_t>(sizeBytes_)) + " bytes >= requested " +
-                      std::to_string(static_cast<uint64_t>(requested)) + ")");
+        // Original single-buffer behavior remains unchanged for every non-ring instance.
+        if (perFrame_.IsInitialized()) {
+            perFrame_.Cleanup();
+        }
+        if (buffer_ == VK_NULL_HANDLE || requested > sizeBytes_) {
+            if (buffer_ != VK_NULL_HANDLE) {
+                NODE_LOG_INFO("[StorageBufferNode] Growing storage buffer from " +
+                              std::to_string(static_cast<uint64_t>(sizeBytes_)) + " to " +
+                              std::to_string(static_cast<uint64_t>(requested)) + " bytes");
+                DestroyBuffer();
+            }
+            CreateBuffer(GetDevice(), requested);
+        } else {
+            NODE_LOG_INFO("[StorageBufferNode] Reusing storage buffer (" +
+                          std::to_string(static_cast<uint64_t>(sizeBytes_)) + " bytes >= requested " +
+                          std::to_string(static_cast<uint64_t>(requested)) + ")");
+        }
     }
 
-    ctx.Out(StorageBufferNodeConfig::STORAGE_BUFFER, buffer_);
+    ctx.Out(StorageBufferNodeConfig::STORAGE_BUFFER,
+            perFrame_.IsInitialized() ? perFrame_.GetUniformBuffer(0) : buffer_);
     ctx.Out(StorageBufferNodeConfig::BUFFER_SIZE, static_cast<uint32_t>(sizeBytes_));
+    ctx.Out(StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
+            perFrame_.IsInitialized() ? perFrame_.GetUniformBuffer(0) : buffer_);
 
     NODE_LOG_INFO("[StorageBufferNode] Outputs published (size=" +
                   std::to_string(static_cast<uint64_t>(sizeBytes_)) + " bytes)");
 }
 
 void StorageBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // Static buffer — produced/zeroed at compile time. Nothing to do per-frame.
+    const uint32_t frameRingSize = GetParameterValue<uint32_t>(
+        StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE, 0u);
+    if (frameRingSize != 0u && perFrame_.IsInitialized()) {
+        const uint32_t frameIndex = ctx.In(StorageBufferNodeConfig::CURRENT_FRAME_INDEX) % frameRingSize;
+        ctx.Out(StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
+                perFrame_.GetUniformBuffer(frameIndex));
+    } else {
+        // Static buffer — produced/zeroed at compile time. Keep the additive frame output valid
+        // for callers that inspect the generic node without enabling the ring.
+        ctx.Out(StorageBufferNodeConfig::FRAME_STORAGE_BUFFER, buffer_);
+    }
 }
 
 void StorageBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -128,6 +176,7 @@ void StorageBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     }
 
     NODE_LOG_INFO("[StorageBufferNode] Cleanup (final teardown) - destroying storage buffer");
+    perFrame_.Cleanup();
     DestroyBuffer();
 }
 
@@ -143,6 +192,18 @@ void* StorageBufferNode::MapForReadback(VulkanDevice* device) const {
 void StorageBufferNode::UnmapReadback(VulkanDevice* device) const {
     if (memory_ == VK_NULL_HANDLE || !device) return;
     vkUnmapMemory(device->device, memory_);
+}
+
+void* StorageBufferNode::MapCurrentForWrite(uint32_t frameIndex) const {
+    if (!perFrame_.IsInitialized()) return nullptr;
+    return perFrame_.GetUniformBufferMapped(frameIndex % perFrame_.GetFrameCount());
+}
+
+VkBuffer StorageBufferNode::GetBufferHandle(uint32_t frameIndex) const {
+    if (perFrame_.IsInitialized()) {
+        return perFrame_.GetUniformBuffer(frameIndex % perFrame_.GetFrameCount());
+    }
+    return buffer_;
 }
 
 void StorageBufferNode::CreateBuffer(VulkanDevice* device, VkDeviceSize sizeBytes) {

@@ -913,11 +913,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // descriptor in all four compiled shaders' reflected sets regardless of whether that shader's
     // own code ever calls isInstanceSkipped(), exactly like ddgiLeakGateDebugBuffer above already
     // gets wired into three separate gatherers (directLighting/probeUpdate/spatialReuse) for the
-    // same reason. One shared placeholder buffer, wired to all four gatherers below (the march's
-    // descriptorGatherer + the three synthesized lighting desc-gatherers) -- never populated with real
-    // skip data this milestone (M3's job), same 256-byte zeroed convention as this feature's own 11
-    // GTest harnesses (test_body_instance_raymarch_render.cpp et al.) use for their own default-case
-    // placeholder, so production and tests share one no-op convention instead of two.
+    // same reason. One shared buffer, wired to all four gatherers below (the march's
+    // descriptorGatherer + the three synthesized lighting desc-gatherers) -- its low six words
+    // are populated by the generation-keyed CPU publisher while B1 owns the high six words.
+    // The remaining 256-byte capacity preserves the existing table shape and test convention.
     NodeHandle instanceSkipMaskBuffer = renderGraph->AddNode<StorageBufferNodeType>("instance_skip_mask_buffer");
 
     // E11-T1: per-8x8-tile policy word buffer (VIXEN_POLICY_STENCIL_TILES). Fixed-size
@@ -1349,6 +1348,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // six are B1 camera visibility; the remaining zeroed words preserve the existing headroom.
     auto* instanceSkipMaskInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(instanceSkipMaskBuffer));
     instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 256u);
+    instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE,
+                                       FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
 
     // E11-T1: PolicyStencilTileBuffer (binding 41) -- fixed-size, not extent-driven
     // (same convention as instanceSkipMaskBuffer/ddgiLeakGateDebugBuffer above).
@@ -1372,6 +1373,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         boundSphereInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
             kRecipeBucketingMaxBuckets * 32u);  // RecipeBoundSphere: 32B (vec3+float+float+float+pad[2],
                                                 // Load-Tier Contract M1 added gateFootprintThreshold)
+        boundSphereInst->SetParameter(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE,
+                                       FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
 
         auto* bucketCountInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketCountBuffer));
         bucketCountInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES,
@@ -1415,6 +1418,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // own static_assert in the Inc2/3 test harnesses), one entry per recipeId.
         auto* bucketMetaInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(recipeBucketMetaBuffer));
         bucketMetaInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, kRecipeBucketingMaxBuckets * 32u);
+        bucketMetaInst->SetParameter(StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE,
+                                     FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
 
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] Recipe bucketing SSBOs sized: maxBuckets=" +
@@ -7295,16 +7300,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Recipe-Live-App-Bucketed-Dispatch Inc4 M3: bucketing pre-pass + specialized dispatch ---
     if (recipeBucketedDispatchEnabled) {
         // Semantic-wiring S2: providers once — every descriptor member resolved
-        // from the shader's own merged-SDI member table. All eleven bindings are
-        // persistent storage buffers (Dependency|Execute); the instance buffer
+        // from the shader's own merged-SDI member table. The table bindings use
+        // persistent frame rings where CPU-owned (Dependency|Execute); the instance buffer
         // reuses bodyOctreeSceneNode's own INSTANCE_BUFFER (the SAME buffer the
         // march reads), the 9-10 pair is Load-Tier Contract M2's precision tier.
         SdiProviderRegistry bucketingProviders;
         bucketingProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
                                    BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
                                    SlotRole::Dependency | SlotRole::Execute);
+        bucketingProviders.Provide("RecipeBoundSphereBuffer", recipeBoundSphereBuffer,
+                                   StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
+                                   SlotRole::Dependency | SlotRole::Execute);
         const struct { const char* name; NodeHandle node; } bucketingSsbos[] = {
-            {"RecipeBoundSphereBuffer",     recipeBoundSphereBuffer},
             {"BucketCountBuffer",           recipeBucketCountBuffer},
             {"BucketIndicesBuffer",         recipeBucketIndicesBuffer},
             {"BucketCoverageMinXBuffer",    recipeBucketCoverageMinXBuffer},
@@ -7476,11 +7483,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
              .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-        // instanceSkipMaskBuffer is populated with REAL content for the first time by PreTick
-        // (VulkanGraphApplication.cpp) when this flag is set -- no additional graph wiring is
-        // needed here since Inc4 M1's fix round already wired binding 35 into all 4 gatherers;
-        // only the buffer's CONTENT changes (via MapForReadback/UnmapReadback, same "de-facto
-        // upload" pattern the DDGI leak-gate debug buffer already uses).
+        // instanceSkipMaskBuffer is populated by PreTick (VulkanGraphApplication.cpp) through its
+        // persistent frame-indexed mapping. Its frame-selected output is explicitly wired into
+        // every consumer below; B1 retains ownership of the high mask words.
     }
 
     // --- Raster-proxy B1 M4: occlusion-probe chain connections (VIXEN_B1_OCCLUSION_CULL) ---
@@ -7555,7 +7560,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                             BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                             SlotRole::Dependency | SlotRole::Execute);
         b1Providers.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
-                            StorageBufferNodeConfig::STORAGE_BUFFER,
+                            StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
                             SlotRole::Dependency | SlotRole::Execute);
         b1Providers.Provide("prevViewProj", b1CullPrevViewProjConstant,
                             ConstantNodeConfig::OUTPUT, SlotRole::Execute);
@@ -7603,7 +7608,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       b1CullTileReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(b1CullTileReadGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
                       b1CullStage, ComputeStageNodeConfig::IMAGE_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
-        batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+        batch.Connect(instanceSkipMaskBuffer, StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
                       b1CullMaskWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(b1CullMaskWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                       b1CullStage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
@@ -7885,7 +7890,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // only, NO SWAPCHAIN_INFO connection (fixed PARAM_SIZE_BYTES sizing set above, same shape as
     // ddgiLeakGateDebugBuffer immediately above).
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  instanceSkipMaskBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+                  instanceSkipMaskBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  instanceSkipMaskBuffer, StorageBufferNodeConfig::CURRENT_FRAME_INDEX);
 
     // E11-T1: PolicyStencilTileBuffer — device only, same fixed-size (NO
     // SWAPCHAIN_INFO) shape as instanceSkipMaskBuffer immediately above.
@@ -7914,6 +7921,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (recipeBucketedDispatchEnabled) {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipeBoundSphereBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      recipeBoundSphereBuffer, StorageBufferNodeConfig::CURRENT_FRAME_INDEX)
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipeBucketCountBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -7933,7 +7942,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipePrecisionBucketIndicesBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                      recipeBucketMetaBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN);
+                      recipeBucketMetaBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      recipeBucketMetaBuffer, StorageBufferNodeConfig::CURRENT_FRAME_INDEX);
     }
 
     // Connect push constant fields to push constant gatherer using member extraction
@@ -8102,7 +8113,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     sceneProviders.Provide("outputImage", renderTargetNode,
                            RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
-                           StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+                           StorageBufferNodeConfig::FRAME_STORAGE_BUFFER, kSceneRoles);
     // E11-T1: written by BodyInstanceRayMarch (tile reduction), read by
     // ShadowVisibilityWave (evaluator-skip) -- same read-write-shared shape as
     // HitRecordBuffer below, gated by VIXEN_POLICY_STENCIL_TILES's feature set. This

@@ -48,6 +48,7 @@
 #include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
 #include "Recipe/RecipeOccupancy.h"           // Lazy-Procedural-Delta-Baseline Inc0 M6: DeriveOccupancyGrid
 #include "RecipeContentCacher.h"              // Recipe Pipeline Cache Inc1 Task 4: population call site
+#include "RecipeBucketDataCacher.h"           // Row A: generation-keyed bucket-table snapshots
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
 #include "Nodes/HitAccumParamsConfigNode.h"   // B2 (batch-23): ring-buffered hit_accum_params_buffer, MapCurrentForWrite
 #include "Nodes/FrameSyncNode.h"              // B2 (batch-23): GetCurrentFrameIndex() for the params ring's PreTick write
@@ -734,8 +735,15 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     // --- Step 1: pure-CPU grouping + hotness decision (no GPU readback needed) ---
     const std::vector<Vixen::SVO::BodyInstanceGpu>& instances = bodyScene->GetInstances();
     std::unordered_map<uint32_t, std::vector<uint32_t>> instancesByRecipe;
+    std::vector<uint32_t> instanceRecipeIds;
+    instanceRecipeIds.reserve(instances.size());
     for (uint32_t i = 0; i < instances.size(); ++i) {
+        instanceRecipeIds.push_back(instances[i].recipeId);
         instancesByRecipe[instances[i].recipeId].push_back(i);
+    }
+    if (recipeBucketInstanceGeneration_ == 0 || instanceRecipeIds != recipeBucketLastInstanceRecipes_) {
+        ++recipeBucketInstanceGeneration_;
+        recipeBucketLastInstanceRecipes_ = instanceRecipeIds;
     }
     std::vector<uint32_t> hotRecipeIds;
     for (const auto& [recipeId, memberIndices] : instancesByRecipe) {
@@ -745,94 +753,133 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     }
     std::sort(hotRecipeIds.begin(), hotRecipeIds.end());  // deterministic dispatch order
 
-    // --- Step 2: populate the LOW [0..5] words of instanceSkipMaskBuffer -- mark exactly the
-    // instances belonging to a HOT recipe, so tier-0's march excludes them (M1's mechanism,
-    // populated with real content for the first time). B1 owns the separate HIGH [6..11]
-    // camera-visibility words. Cold-recipe instances stay unmarked -- tier-0 still handles them. ---
-    if (auto* skipMaskNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("instance_skip_mask_buffer"))) {
-        if (void* mapped = skipMaskNode->MapForReadback(device)) {
-            auto* words = reinterpret_cast<uint32_t*>(mapped);
-            const VkDeviceSize sizeBytes = skipMaskNode->GetSizeBytes();
-            const size_t wordCount = static_cast<size_t>(sizeBytes / 4);
-            std::fill(words, words + wordCount, 0u);
-            for (uint32_t hotId : hotRecipeIds) {
-                for (uint32_t instIdx : instancesByRecipe[hotId]) {
-                    const size_t wordIdx = instIdx / 32u;
-                    if (wordIdx < wordCount) {
-                        words[wordIdx] |= (1u << (instIdx % 32u));
-                    }
-                }
+    // --- Step 2-4: build one canonical generation-keyed snapshot and publish only dirty ranges.
+    // The low six mask words are CPU-owned; B1 owns the high six words. Meta retains the old
+    // writer's stale entries for cold recipes, preserving the established GPU-visible contents.
+    auto* skipMaskNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("instance_skip_mask_buffer"));
+    auto* boundSphereNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bound_sphere_buffer"));
+    auto* bucketMetaNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_meta_buffer"));
+    if (!skipMaskNode || !boundSphereNode || !bucketMetaNode) return;
+
+    // A device recovery or an allocation growth creates new ring handles and zeroed memory. The
+    // canonical cacher survives that event, but each slot must be republished once into the new
+    // allocations; ordinary graph recompiles keep the handles and retain zero-write behavior.
+    const bool ringBuffersChanged =
+        recipeBucketLastSkipMaskBuffer_ != skipMaskNode->GetBufferHandle(0) ||
+        recipeBucketLastBoundSphereBuffer_ != boundSphereNode->GetBufferHandle(0) ||
+        recipeBucketLastMetaBuffer_ != bucketMetaNode->GetBufferHandle(0);
+    if (ringBuffersChanged) {
+        recipeBucketFrameSnapshots_.clear();
+        recipeBucketLastSkipMaskBuffer_ = skipMaskNode->GetBufferHandle(0);
+        recipeBucketLastBoundSphereBuffer_ = boundSphereNode->GetBufferHandle(0);
+        recipeBucketLastMetaBuffer_ = bucketMetaNode->GetBufferHandle(0);
+    }
+
+    CashSystem::RecipeBucketCacheCreateInfo cacheInfo;
+    cacheInfo.registryGeneration = proceduralRecipes_.GetGeneration();
+    cacheInfo.instanceGeneration = recipeBucketInstanceGeneration_;
+    if (recipeBucketLastSnapshot_) {
+        cacheInfo.bucketMeta = recipeBucketLastSnapshot_->bucketMeta;
+    }
+
+    // Load-Tier Contract M1/M2: zero remains the real "not opted in" value for both thresholds.
+    for (uint32_t recipeId : proceduralRecipes_.Ids()) {
+        if (recipeId >= cacheInfo.boundSpheres.size()) continue;
+        const auto* entry = proceduralRecipes_.Get(recipeId);
+        if (!entry) continue;
+        auto& sphere = cacheInfo.boundSpheres[recipeId];
+        sphere.center[0] = entry->boundCenter.x;
+        sphere.center[1] = entry->boundCenter.y;
+        sphere.center[2] = entry->boundCenter.z;
+        sphere.radius = entry->boundRadius > 0.0f ? entry->boundRadius : 1.0f;
+        sphere.relaxation = entry->stepRelaxation > 0.0f ? entry->stepRelaxation : 1.0f;
+        sphere.gateFootprintThreshold = entry->gateFootprintThreshold;
+        sphere.precisionFootprintThreshold = entry->precisionFootprintThreshold;
+    }
+
+    for (uint32_t hotId : hotRecipeIds) {
+        if (hotId >= cacheInfo.bucketMeta.size()) continue;
+        const auto* entry = proceduralRecipes_.Get(hotId);
+        auto& meta = cacheInfo.bucketMeta[hotId];
+        meta.memberCount = static_cast<uint32_t>(instancesByRecipe[hotId].size());
+        meta.rectMinX = 0;
+        meta.rectMinY = 0;
+        meta.boundRadius = entry && entry->boundRadius > 0.0f ? entry->boundRadius : 1.0f;
+        meta.stepRelaxation = entry && entry->stepRelaxation > 0.0f ? entry->stepRelaxation : 1.0f;
+    }
+
+    for (uint32_t hotId : hotRecipeIds) {
+        for (uint32_t instIdx : instancesByRecipe[hotId]) {
+            const size_t wordIdx = instIdx / 32u;
+            if (wordIdx < CashSystem::kRecipeBucketCpuMaskWordCount) {
+                cacheInfo.instanceSkipMask[wordIdx] |= (1u << (instIdx % 32u));
             }
-            skipMaskNode->UnmapReadback(device);
         }
     }
 
-    // --- Step 3: populate RecipeBoundSphereBuffer (bindings the bucketing shader reads by
-    // recipeId) from the registry -- every registered recipe, not just hot ones, since the
-    // bucketing shader buckets ALL recipeIds unconditionally (subject to maxBuckets). ---
-    if (auto* boundSphereNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bound_sphere_buffer"))) {
-        if (void* mapped = boundSphereNode->MapForReadback(device)) {
-            // Load-Tier Contract M1/M2: gateFootprintThreshold/precisionFootprintThreshold do
-            // NOT get a nonzero engine default like radius/relaxation below -- 0.0 IS the real
-            // "not opted in" value the shader's gating/precision checks test for
-            // (RecipeInstanceBucketing.comp), so both must pass through entry-> unmodified.
-            struct RecipeBoundSphereGpu { float center[3]; float radius; float relaxation; float gateFootprintThreshold; float precisionFootprintThreshold; float _pad; };
-            auto* entries = reinterpret_cast<RecipeBoundSphereGpu*>(mapped);
-            const size_t entryCount = static_cast<size_t>(boundSphereNode->GetSizeBytes() / sizeof(RecipeBoundSphereGpu));
-            std::fill(entries, entries + entryCount, RecipeBoundSphereGpu{});
-            for (uint32_t recipeId : proceduralRecipes_.Ids()) {
-                if (recipeId >= entryCount) continue;
-                const auto* entry = proceduralRecipes_.Get(recipeId);
-                if (!entry) continue;
-                entries[recipeId].center[0] = entry->boundCenter.x;
-                entries[recipeId].center[1] = entry->boundCenter.y;
-                entries[recipeId].center[2] = entry->boundCenter.z;
-                entries[recipeId].radius = (entry->boundRadius > 0.f) ? entry->boundRadius : 1.0f;
-                entries[recipeId].relaxation = (entry->stepRelaxation > 0.f) ? entry->stepRelaxation : 1.0f;
-                entries[recipeId].gateFootprintThreshold = entry->gateFootprintThreshold;
-                entries[recipeId].precisionFootprintThreshold = entry->precisionFootprintThreshold;
-            }
-            boundSphereNode->UnmapReadback(device);
-        }
+    auto& mainCacher = renderGraph->GetMainCacher();
+    const auto cacherType = std::type_index(typeid(CashSystem::RecipeBucketSnapshot));
+    if (!mainCacher.IsRegistered(cacherType)) {
+        mainCacher.RegisterCacher<
+            CashSystem::RecipeBucketDataCacher,
+            CashSystem::RecipeBucketSnapshot,
+            CashSystem::RecipeBucketCacheCreateInfo
+        >(cacherType, "RecipeBucketData", /*isDeviceDependent=*/false);
     }
+    auto* bucketCacher = mainCacher.GetCacher<
+        CashSystem::RecipeBucketDataCacher,
+        CashSystem::RecipeBucketSnapshot,
+        CashSystem::RecipeBucketCacheCreateInfo
+    >(cacherType);
+    if (!bucketCacher) return;
+    const auto snapshot = bucketCacher->GetOrCreate(cacheInfo);
+    if (!snapshot) return;
 
-    // --- Step 4: populate BucketMetaBuffer (specialized shader binding 3) for every HOT recipe
-    // -- memberCount/rectMinX/rectMinY/boundRadius/stepRelaxation, indexed by recipeId. The
-    // bucketing pre-pass (ComputeStageNode trio, wired in BuildRenderGraph.cpp, dispatched
-    // automatically every frame by RenderGraph::RenderFrame's own node walk -- no explicit call
-    // needed here) has ALREADY run by the time PreTick's readback below executes: PreTick runs
-    // BEFORE Update()/Render() for THIS frame, so this reads LAST FRAME's bucketing output --
-    // one frame of latency, acceptable for this milestone's gate (build+run without crashing,
-    // not exact per-frame correctness -- M4 is where correctness gets measured). Also reads
-    // BucketIndirectCommandBuffer for the indirect dispatch this frame will queue.
+    const auto* frameSyncInst = static_cast<FrameSyncNode*>(
+        renderGraph->GetInstanceByName("frame_sync"));
+    const uint32_t frameIndex = frameSyncInst
+        ? frameSyncInst->GetCurrentFrameIndex() % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
+        : 0u;
+    if (recipeBucketFrameSnapshots_.size() != FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT) {
+        recipeBucketFrameSnapshots_.assign(FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT, nullptr);
+    }
+    CashSystem::RecipeBucketSnapshot zeroSnapshot{};
+    const auto& previous = recipeBucketFrameSnapshots_[frameIndex]
+        ? *recipeBucketFrameSnapshots_[frameIndex] : zeroSnapshot;
+    const auto dirty = CashSystem::ComputeRecipeBucketDirtyRanges(previous, *snapshot);
+
+    auto publishRanges = [frameIndex](StorageBufferNode* node,
+                                       const std::vector<CashSystem::RecipeBucketByteRange>& ranges,
+                                       const void* source) {
+        void* mapped = node->MapCurrentForWrite(frameIndex);
+        if (!mapped) return false;
+        for (const auto& range : ranges) {
+            std::memcpy(static_cast<std::uint8_t*>(mapped) + range.offset,
+                        static_cast<const std::uint8_t*>(source) + range.offset,
+                        range.size);
+        }
+        node->UnmapCurrentForWrite();
+        return true;
+    };
+    const bool published =
+        publishRanges(skipMaskNode, dirty.instanceSkipMask, snapshot->instanceSkipMask.data()) &&
+        publishRanges(boundSphereNode, dirty.boundSpheres, snapshot->boundSpheres.data()) &&
+        publishRanges(bucketMetaNode, dirty.bucketMeta, snapshot->bucketMeta.data());
+    if (!published) return;
+    recipeBucketFrameSnapshots_[frameIndex] = snapshot;
+    recipeBucketLastSnapshot_ = snapshot;
+
+    // The bucketing pre-pass (ComputeStageNode trio, wired in BuildRenderGraph.cpp) has already
+    // run by the time this PreTick reads its previous-frame indirect output. One frame of latency
+    // remains intentional for the specialized-dispatch gate.
     if (hotRecipeIds.empty()) return;
 
-    auto* bucketMetaNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_meta_buffer"));
     auto* bucketCountNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_count_buffer"));
     auto* bucketIndirectNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_indirect_command_buffer"));
     auto* hitRecordNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("hit_record_buffer"));
     auto* bucketIndicesNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("recipe_bucket_indices_buffer"));
     auto* dispatchNode = static_cast<MultiDispatchNode*>(renderGraph->GetInstanceByName("recipe_specialized_dispatch"));
     if (!bucketMetaNode || !bucketCountNode || !bucketIndirectNode || !hitRecordNode || !bucketIndicesNode || !dispatchNode) return;
-
-    if (void* mapped = bucketMetaNode->MapForReadback(device)) {
-        struct BucketMetaGpu { uint32_t memberCount; uint32_t rectMinX; uint32_t rectMinY; float boundRadius; float stepRelaxation; uint32_t _pad[3]; };
-        auto* metaEntries = reinterpret_cast<BucketMetaGpu*>(mapped);
-        const size_t metaCount = static_cast<size_t>(bucketMetaNode->GetSizeBytes() / sizeof(BucketMetaGpu));
-        for (uint32_t recipeId : hotRecipeIds) {
-            if (recipeId >= metaCount) continue;
-            const auto* entry = proceduralRecipes_.Get(recipeId);
-            metaEntries[recipeId].memberCount = static_cast<uint32_t>(instancesByRecipe[recipeId].size());
-            metaEntries[recipeId].rectMinX = 0;   // coverage rect offset -- the specialized shader
-            metaEntries[recipeId].rectMinY = 0;   // dispatches over the FULL screen this milestone
-            // (matching an all-zero rect origin), not the bucketing pass's tighter coverage AABB --
-            // a scope-narrowing simplification vs. Inc2/3's own perf-oriented tight-rect dispatch,
-            // acceptable here since M3's gate is correctness/stability, not performance (M4's job).
-            metaEntries[recipeId].boundRadius = entry && entry->boundRadius > 0.f ? entry->boundRadius : 1.0f;
-            metaEntries[recipeId].stepRelaxation = entry && entry->stepRelaxation > 0.f ? entry->stepRelaxation : 1.0f;
-        }
-        bucketMetaNode->UnmapReadback(device);
-    }
 
     // BucketMembersBuffer (specialized shader binding 1) is the bucketing pass's OWN
     // recipe_bucket_indices_buffer output -- no separate CPU population needed, just wire it as
@@ -909,10 +956,12 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
 
             VkDescriptorSetLayout setLayout = CashSystem::BuildDescriptorSetLayoutFromReflection(device, *buildResult.bundle, 0);
             std::vector<VkPushConstantRange> pcRanges = CashSystem::ExtractPushConstantsFromReflection(*buildResult.bundle);
-            std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(*buildResult.bundle, 0, 1);
+            const uint32_t frameSetCount = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+            std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(
+                *buildResult.bundle, 0, frameSetCount);
 
             VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-            poolInfo.maxSets = 1;
+            poolInfo.maxSets = frameSetCount;
             poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
             poolInfo.pPoolSizes = poolSizes.data();
             VkDescriptorPool descPool = VK_NULL_HANDLE;
@@ -923,21 +972,20 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             }
             VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
             allocInfo.descriptorPool = descPool;
-            allocInfo.descriptorSetCount = 1;
-            allocInfo.pSetLayouts = &setLayout;
-            VkDescriptorSet descSet = VK_NULL_HANDLE;
-            if (vkAllocateDescriptorSets(device->device, &allocInfo, &descSet) != VK_SUCCESS) {
+            allocInfo.descriptorSetCount = frameSetCount;
+            std::vector<VkDescriptorSetLayout> setLayouts(frameSetCount, setLayout);
+            allocInfo.pSetLayouts = setLayouts.data();
+            std::vector<VkDescriptorSet> descriptorSets(frameSetCount, VK_NULL_HANDLE);
+            if (vkAllocateDescriptorSets(device->device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
                 if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] vkAllocateDescriptorSets failed for recipeId=" + std::to_string(recipeId));
                 vkDestroyDescriptorPool(device->device, descPool, nullptr);
                 vkDestroyShaderModule(device->device, shaderModule, nullptr);
                 continue;
             }
 
-            // Descriptor set bindings (0=BodyInstanceBuffer, 1=BucketMembersBuffer,
-            // 2=HitRecordBuffer, 3=BucketMetaBuffer) are written every frame below (after this
-            // first-promotion block), not here -- the buffer handles are identical on the very
-            // first frame this pipeline is used, so a separate first-time write would be
-            // redundant with that per-frame rewrite.
+            // Allocate one immutable descriptor set per frame slot. The ring handles are written
+            // once below after pipeline creation; subsequent dispatches select the set matching
+            // the FrameSync-predicted slot and never update an in-flight set.
 
             CashSystem::ComputePipelineCreateParams pipelineParams;
             pipelineParams.shaderModule = shaderModule;
@@ -978,39 +1026,42 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             cached.shaderModule = shaderModule;
             cached.descriptorSetLayout = setLayout;
             cached.descriptorPool = descPool;
-            cached.descriptorSet = descSet;
+            cached.descriptorSet = descriptorSets[0];
+            cached.descriptorSets = descriptorSets;
             cached.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
             cached.pipeline = pipelineWrapper->pipeline;
 
-            // Write this recipe's descriptor set's buffer bindings ONCE, here at first
-            // promotion, not every frame: every one of these 4 SSBOs (bodyScene's own instance
-            // ring slot 0, and the 3 single-instance bucketing StorageBufferNodes) is allocated
-            // once at graph-compile time and never reallocated/moved for the lifetime of this
-            // pipeline -- only their CONTENT changes frame to frame, not their VkBuffer handles.
+            // Write this recipe's descriptor-set ring ONCE, here at first promotion, not every
+            // frame. Body/meta use their persistent frame slots; bucket members and hit records
+            // remain static handles. None of these handles moves for the pipeline lifetime --
+            // only their CONTENT changes frame to frame.
             // Re-writing the SAME binding values into a descriptor set every frame was a real
             // bug (VUID-vkUpdateDescriptorSets-None-03047, found live during this milestone's
             // own gate run): vkUpdateDescriptorSets on a set still referenced by a PENDING
             // command buffer (this same set, from a prior frame's not-yet-completed dispatch)
             // is illegal without VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT, which this set's
             // layout does not opt into (BuildDescriptorSetLayoutFromReflection's own default).
-            VkBuffer bodyInstanceBuf = bodyScene->GetInstanceBufferHandle();
             VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
             VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-            VkBuffer bucketMetaBuf = bucketMetaNode->GetBufferHandle();
-            VkDescriptorBufferInfo bufInfos[4] = {
-                { bodyInstanceBuf, 0, VK_WHOLE_SIZE },
-                { bucketMembersBuf, 0, VK_WHOLE_SIZE },
-                { hitRecordBuf, 0, VK_WHOLE_SIZE },
-                { bucketMetaBuf, 0, VK_WHOLE_SIZE },
-            };
-            VkWriteDescriptorSet writes[4]{};
-            for (int b = 0; b < 4; ++b) {
-                writes[b].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writes[b].dstSet = descSet;
-                writes[b].dstBinding = static_cast<uint32_t>(b);
-                writes[b].descriptorCount = 1;
-                writes[b].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                writes[b].pBufferInfo = &bufInfos[b];
+            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 4u);
+            std::vector<VkWriteDescriptorSet> writes(frameSetCount * 4u);
+            for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
+                VkBuffer buffers[4] = {
+                    bodyScene->GetInstanceBufferHandle(frameSlot),
+                    bucketMembersBuf,
+                    hitRecordBuf,
+                    bucketMetaNode->GetBufferHandle(frameSlot),
+                };
+                for (uint32_t binding = 0; binding < 4u; ++binding) {
+                    const size_t writeIndex = static_cast<size_t>(frameSlot) * 4u + binding;
+                    bufInfos[writeIndex] = { buffers[binding], 0, VK_WHOLE_SIZE };
+                    writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[writeIndex].dstSet = descriptorSets[frameSlot];
+                    writes[writeIndex].dstBinding = binding;
+                    writes[writeIndex].descriptorCount = 1;
+                    writes[writeIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    writes[writeIndex].pBufferInfo = &bufInfos[writeIndex];
+                }
             }
             // A device-wide wait before this ONE-TIME (first-promotion only, not per-frame)
             // descriptor write -- found live (VUID-vkUpdateDescriptorSets-None-03047) that a
@@ -1020,7 +1071,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // recipeId's lifetime (guarded by the recipeSpecializedPipelineCache_ cache-miss
             // check above), not a per-frame cost.
             vkDeviceWaitIdle(device->device);
-            vkUpdateDescriptorSets(device->device, 4, writes, 0, nullptr);
+            vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()),
+                                   writes.data(), 0, nullptr);
 
             recipeSpecializedPipelineCache_[recipeId] = cached;
 
@@ -1037,7 +1089,7 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
         Vixen::RenderGraph::DispatchPass pass;
         pass.pipeline = cached.pipeline;
         pass.layout = cached.pipelineLayout;
-        pass.descriptorSets = { cached.descriptorSet };
+        pass.descriptorSets = { cached.DescriptorSetForFrame(frameIndex) };
         pass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
         pass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;  // 3x uint32 per bucket
         pass.debugName = "recipe_specialized_" + std::to_string(recipeId);
@@ -1138,19 +1190,22 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                         vkCreateShaderModule(device->device, &moduleInfo, nullptr, &shaderModule) == VK_SUCCESS) {
                         VkDescriptorSetLayout setLayout = CashSystem::BuildDescriptorSetLayoutFromReflection(device, *buildResult.bundle, 0);
                         std::vector<VkPushConstantRange> pcRanges = CashSystem::ExtractPushConstantsFromReflection(*buildResult.bundle);
-                        std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(*buildResult.bundle, 0, 1);
+                        const uint32_t frameSetCount = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+                        std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(
+                            *buildResult.bundle, 0, frameSetCount);
                         VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-                        poolInfo.maxSets = 1;
+                        poolInfo.maxSets = frameSetCount;
                         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
                         poolInfo.pPoolSizes = poolSizes.data();
                         VkDescriptorPool descPool = VK_NULL_HANDLE;
-                        VkDescriptorSet descSet = VK_NULL_HANDLE;
                         if (vkCreateDescriptorPool(device->device, &poolInfo, nullptr, &descPool) == VK_SUCCESS) {
                             VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
                             allocInfo.descriptorPool = descPool;
-                            allocInfo.descriptorSetCount = 1;
-                            allocInfo.pSetLayouts = &setLayout;
-                            if (vkAllocateDescriptorSets(device->device, &allocInfo, &descSet) == VK_SUCCESS) {
+                            allocInfo.descriptorSetCount = frameSetCount;
+                            std::vector<VkDescriptorSetLayout> setLayouts(frameSetCount, setLayout);
+                            allocInfo.pSetLayouts = setLayouts.data();
+                            std::vector<VkDescriptorSet> descriptorSets(frameSetCount, VK_NULL_HANDLE);
+                            if (vkAllocateDescriptorSets(device->device, &allocInfo, descriptorSets.data()) == VK_SUCCESS) {
                                 CashSystem::ComputePipelineCreateParams pipelineParams;
                                 pipelineParams.shaderModule = shaderModule;
                                 pipelineParams.entryPoint = "main";
@@ -1169,30 +1224,37 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                     typeid(CashSystem::ComputePipelineWrapper), device);
                                 auto pipelineWrapper = computeCacher ? computeCacher->GetOrCreate(pipelineParams) : nullptr;
                                 if (pipelineWrapper && pipelineWrapper->pipeline != VK_NULL_HANDLE) {
-                                    VkBuffer bufHandles[4] = {
-                                        bodyScene->GetInstanceBufferHandle(),
-                                        bucketIndicesNode->GetBufferHandle(),
-                                        hitRecordNode->GetBufferHandle(),
-                                        bucketMetaNode->GetBufferHandle(),
-                                    };
-                                    VkDescriptorBufferInfo bufInfos[4];
-                                    VkWriteDescriptorSet writes[4]{};
-                                    for (int b = 0; b < 4; ++b) {
-                                        bufInfos[b] = { bufHandles[b], 0, VK_WHOLE_SIZE };
-                                        writes[b].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                                        writes[b].dstSet = descSet;
-                                        writes[b].dstBinding = static_cast<uint32_t>(b);
-                                        writes[b].descriptorCount = 1;
-                                        writes[b].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                                        writes[b].pBufferInfo = &bufInfos[b];
+                                    const VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
+                                    const VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
+                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 4u);
+                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * 4u);
+                                    for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
+                                        const VkBuffer bufHandles[4] = {
+                                            bodyScene->GetInstanceBufferHandle(frameSlot),
+                                            bucketMembersBuf,
+                                            hitRecordBuf,
+                                            bucketMetaNode->GetBufferHandle(frameSlot),
+                                        };
+                                        for (uint32_t binding = 0; binding < 4u; ++binding) {
+                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * 4u + binding;
+                                            bufInfos[writeIndex] = { bufHandles[binding], 0, VK_WHOLE_SIZE };
+                                            writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                                            writes[writeIndex].dstSet = descriptorSets[frameSlot];
+                                            writes[writeIndex].dstBinding = binding;
+                                            writes[writeIndex].descriptorCount = 1;
+                                            writes[writeIndex].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                                            writes[writeIndex].pBufferInfo = &bufInfos[writeIndex];
+                                        }
                                     }
                                     vkDeviceWaitIdle(device->device);  // one-shot per recipeId (first promotion), same rationale as the march block
-                                    vkUpdateDescriptorSets(device->device, 4, writes, 0, nullptr);
+                                    vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()),
+                                                           writes.data(), 0, nullptr);
                                     SpecializedRecipePipeline cachedShade;
                                     cachedShade.shaderModule = shaderModule;
                                     cachedShade.descriptorSetLayout = setLayout;
                                     cachedShade.descriptorPool = descPool;
-                                    cachedShade.descriptorSet = descSet;
+                                    cachedShade.descriptorSet = descriptorSets[0];
+                                    cachedShade.descriptorSets = descriptorSets;
                                     cachedShade.pipelineLayout = pipelineWrapper->pipelineLayoutWrapper
                                         ? pipelineWrapper->pipelineLayoutWrapper->layout : VK_NULL_HANDLE;
                                     cachedShade.pipeline = pipelineWrapper->pipeline;
@@ -1251,7 +1313,7 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             Vixen::RenderGraph::DispatchPass shadePass;
             shadePass.pipeline = shade.pipeline;
             shadePass.layout = shade.pipelineLayout;
-            shadePass.descriptorSets = { shade.descriptorSet };
+            shadePass.descriptorSets = { shade.DescriptorSetForFrame(frameIndex) };
             shadePass.indirectBuffer = bucketIndirectNode->GetBufferHandle();
             shadePass.indirectBufferOffset = static_cast<VkDeviceSize>(recipeId) * 12u;
             shadePass.debugName = "recipe_shade_" + std::to_string(recipeId);
@@ -3582,7 +3644,7 @@ void VulkanGraphApplication::DeInitialize() {
     // comment for why), so nothing else in the graph's teardown chain destroys them; skipping
     // this was a real gap found live (VUID-vkDestroyDevice-device-05137, one per leaked
     // pool/set, during this milestone's own gate run).
-    if (!recipeSpecializedPipelineCache_.empty() && renderGraph) {
+    if ((!recipeSpecializedPipelineCache_.empty() || !bucketShadePipelineCache_.empty()) && renderGraph) {
         if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
             if (auto* device = deviceInst->GetVulkanDevice()) {
                 // Wait for every in-flight command buffer to finish before destroying these
@@ -3606,19 +3668,33 @@ void VulkanGraphApplication::DeInitialize() {
                         vkDestroyDescriptorSetLayout(device->device, cached.descriptorSetLayout, nullptr);
                     }
                 }
+                for (auto& [recipeId, cached] : bucketShadePipelineCache_) {
+                    if (cached.descriptorPool != VK_NULL_HANDLE) {
+                        vkDestroyDescriptorPool(device->device, cached.descriptorPool, nullptr);
+                    }
+                    if (cached.shaderModule != VK_NULL_HANDLE) {
+                        vkDestroyShaderModule(device->device, cached.shaderModule, nullptr);
+                    }
+                    if (cached.descriptorSetLayout != VK_NULL_HANDLE) {
+                        vkDestroyDescriptorSetLayout(device->device, cached.descriptorSetLayout, nullptr);
+                    }
+                }
                 if (mainLogger) mainLogger->Info("[DeInitialize] Destroyed " +
                     std::to_string(recipeSpecializedPipelineCache_.size()) +
-                    " specialized recipe pipeline(s) (shader modules + descriptor pools/layouts)");
+                    " specialized recipe pipeline(s) and " +
+                    std::to_string(bucketShadePipelineCache_.size()) +
+                    " bucket-shade pipeline(s) (shader modules + descriptor pools/layouts)");
             }
         }
         recipeSpecializedPipelineCache_.clear();
+        bucketShadePipelineCache_.clear();
     }
 
     // E11-T1: PolicyStencilTileBuffer readback — app-level (not a node's own
     // CleanupImpl) because the tile buffer and RayTraceBuffer's [PolicyStencil]
     // print (VoxelGridNode::CleanupImpl) are owned by different nodes with no
     // shared access; renderGraph->GetInstanceByName is still valid here, the
-    // same pattern RunRecipeBucketedDispatchPreTick's skipMaskNode readback
+    // same pattern RunRecipeBucketedDispatchPreTick's skipMaskNode CPU publication
     // uses (this file, ~line 750), and this is the last point before
     // engine_.reset() destroys every node (including this one).
     if (std::getenv("VIXEN_POLICY_STENCIL_TILES") && renderGraph) {
