@@ -74,26 +74,65 @@ public:
         return Vixen::SVO::FlattenVoxelDocument(view_, &ovr, outVrc1Blob, err);
     }
 
-    // Flattens + parses the VRC1 blob into a RecipeRegistry::RecipeEntry ready to
-    // Register()/bake. Bridges the VRC1 blob's header fields (bakeResolution/bandVoxels/
-    // brickDepth) and instruction span into the entry the existing RecipeRegistry/
-    // RecipeBaker path (test_recipe_pool_render.cpp's pattern) consumes unchanged.
+    // Flattens directly into a RecipeRegistry::RecipeEntry ready to Register()/bake. VRC1 remains
+    // the persistence/export format through Flatten(); this preview-only seam no longer allocates,
+    // serializes, parses, and copies a container round-trip.
     bool FlattenToRecipeEntry(uint32_t enabledMask, Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
                                std::string& err) const {
-        std::vector<uint8_t> blob;
-        if (!Flatten(enabledMask, blob, err)) return false;
+        using Yeroket::Sdf::Generated::SdfInstruction;
+        using Vixen::SVO::Recipe::SdfOpCode;
 
-        Yeroket::Sdf::Generated::RecipeContainerView rv{};
-        if (!Yeroket::Sdf::Generated::ReadRecipeContainer(blob.data(), blob.size(), rv)) {
-            err = "flattened blob failed ReadRecipeContainer";
+        err.clear();
+        std::vector<uint8_t> enabledOverride(view_.header.layerCount);
+        for (uint32_t i = 0; i < view_.header.layerCount; ++i)
+            enabledOverride[i] = (enabledMask >> i) & 1u;
+
+        std::vector<SdfInstruction> instructions;
+        int sp = 0;
+        int psp = 0;
+        bool haveBase = false;
+        for (uint32_t layerIndex = 0; layerIndex < view_.header.layerCount; ++layerIndex) {
+            if (enabledOverride[layerIndex] == 0) continue;
+            const auto& layer = view_.layers[layerIndex];
+            const uint32_t count = layer.header->instructionCount;
+            if (!Vixen::SVO::GeneratedRecipePipelineDetail::ValidateProgram(
+                    layer.instructions, count, sp, psp, err)) {
+                return false;
+            }
+            if (!haveBase) {
+                instructions.insert(instructions.end(), layer.instructions, layer.instructions + count);
+                haveBase = true;
+                continue;
+            }
+
+            SdfOpCode combineOpcode{};
+            if (!Vixen::SVO::GeneratedRecipePipelineDetail::LayerCombineOpcode(
+                    layer.header->op, combineOpcode)) {
+                err = "unknown layer op " + std::to_string(layer.header->op) +
+                      " on layer index " + std::to_string(layerIndex);
+                return false;
+            }
+            instructions.insert(instructions.end(), layer.instructions, layer.instructions + count);
+            SdfInstruction combine{};
+            combine.opCode = static_cast<uint8_t>(combineOpcode);
+            combine.inputMask = 3;
+            combine.data[2] = layer.header->blendRadius;
+            if (!Vixen::SVO::GeneratedRecipePipelineDetail::ValidateProgram(
+                    &combine, 1, sp, psp, err)) {
+                return false;
+            }
+            instructions.push_back(combine);
+        }
+        if (!haveBase) {
+            err = "zero enabled layers — nothing to render";
             return false;
         }
 
         outEntry = Vixen::SVO::RecipeRegistry::RecipeEntry{};
-        outEntry.bytecode.assign(rv.instructions, rv.instructions + rv.header.instructionCount);
-        outEntry.bakeResolution = rv.header.bakeResolution;
-        outEntry.bandVoxels     = rv.header.bandVoxels;
-        outEntry.brickDepth     = rv.header.brickDepth;
+        outEntry.bytecode = std::move(instructions);
+        outEntry.bakeResolution = 64u;
+        outEntry.bandVoxels = 2.5f;
+        outEntry.brickDepth = 3u;
         return true;
     }
 
