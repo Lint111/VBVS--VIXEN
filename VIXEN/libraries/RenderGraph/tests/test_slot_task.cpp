@@ -22,7 +22,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
@@ -350,6 +352,157 @@ TEST(KernelDispatchTaskExecutorTest, StopTokenPreventsIssuingLaterWavesAtOneTwoA
         EXPECT_EQ(tasks[0].state, Vixen::KernelDispatch::VirtualTaskState::Completed);
         EXPECT_EQ(tasks[1].state, Vixen::KernelDispatch::VirtualTaskState::Pending);
     }
+}
+
+TEST(KernelDispatchTaskExecutorTest, SaturatedBlockingLaneDoesNotDelayFrameComputeWave) {
+    Vixen::KernelDispatch::DispatcherProfile profile;
+    profile.blockingIO.workerCount = 1;
+    Vixen::KernelDispatch::TaskExecutor executor(profile);
+
+    std::mutex gateMutex;
+    std::condition_variable gateCondition;
+    bool blockingStarted = false;
+    bool releaseBlocking = false;
+    auto blockingHandle = executor.SubmitBlocking([&] {
+        {
+            std::lock_guard lock(gateMutex);
+            blockingStarted = true;
+        }
+        gateCondition.notify_one();
+
+        std::unique_lock lock(gateMutex);
+        gateCondition.wait(lock, [&] { return releaseBlocking; });
+        return true;
+    });
+
+    bool started = false;
+    {
+        std::unique_lock lock(gateMutex);
+        started = gateCondition.wait_for(lock, std::chrono::seconds(1), [&] {
+            return blockingStarted;
+        });
+    }
+    EXPECT_TRUE(started);
+    if (!started) {
+        {
+            std::lock_guard lock(gateMutex);
+            releaseBlocking = true;
+        }
+        gateCondition.notify_one();
+        (void)blockingHandle.Wait();
+        return;
+    }
+
+    std::atomic<uint32_t> frameRuns{0};
+    std::vector<Vixen::KernelDispatch::VirtualTask> frameTasks;
+    std::vector<Vixen::KernelDispatch::TaskId> frameWave;
+    for (uint32_t index = 0; index < 4; ++index) {
+        const Vixen::KernelDispatch::TaskId id{101, index};
+        frameTasks.push_back({id, [&] { ++frameRuns; }});
+        frameWave.push_back(id);
+    }
+
+    std::atomic<bool> frameDone{false};
+    bool frameSucceeded = false;
+    std::mutex frameMutex;
+    std::condition_variable frameCondition;
+    std::thread frameThread([&] {
+        frameSucceeded = executor.Run(frameTasks, {frameWave}, 1, {});
+        {
+            std::lock_guard lock(frameMutex);
+            frameDone = true;
+        }
+        frameCondition.notify_one();
+    });
+
+    {
+        std::unique_lock lock(frameMutex);
+        EXPECT_TRUE(frameCondition.wait_for(lock, std::chrono::milliseconds(500), [&] {
+            return frameDone.load();
+        }));
+    }
+
+    {
+        std::lock_guard lock(gateMutex);
+        releaseBlocking = true;
+    }
+    gateCondition.notify_one();
+    frameThread.join();
+
+    EXPECT_TRUE(frameSucceeded);
+    EXPECT_EQ(frameRuns.load(), 4u);
+    ASSERT_TRUE(blockingHandle.WaitFor(std::chrono::seconds(1)));
+    EXPECT_TRUE(blockingHandle.Result().Succeeded());
+}
+
+TEST(KernelDispatchTaskExecutorTest, QueuedBlockingIoHonorsStopToken) {
+    Vixen::KernelDispatch::DispatcherProfile profile;
+    profile.blockingIO.workerCount = 1;
+    Vixen::KernelDispatch::TaskExecutor executor(profile);
+
+    std::mutex gateMutex;
+    std::condition_variable gateCondition;
+    bool firstStarted = false;
+    bool releaseFirst = false;
+    auto first = executor.SubmitBlocking([&] {
+        {
+            std::lock_guard lock(gateMutex);
+            firstStarted = true;
+        }
+        gateCondition.notify_one();
+        std::unique_lock lock(gateMutex);
+        gateCondition.wait(lock, [&] { return releaseFirst; });
+        return true;
+    });
+
+    bool started = false;
+    {
+        std::unique_lock lock(gateMutex);
+        started = gateCondition.wait_for(lock, std::chrono::seconds(1), [&] {
+            return firstStarted;
+        });
+    }
+    EXPECT_TRUE(started);
+    if (!started) {
+        {
+            std::lock_guard lock(gateMutex);
+            releaseFirst = true;
+        }
+        gateCondition.notify_one();
+        (void)first.Wait();
+        return;
+    }
+
+    std::stop_source source;
+    std::atomic<bool> queuedRan{false};
+    auto queued = executor.SubmitBlocking([&] {
+        queuedRan = true;
+        return true;
+    }, source.get_token());
+    source.request_stop();
+
+    const bool queuedDone = queued.WaitFor(std::chrono::seconds(1));
+    EXPECT_TRUE(queuedDone);
+    if (!queuedDone) {
+        {
+            std::lock_guard lock(gateMutex);
+            releaseFirst = true;
+        }
+        gateCondition.notify_one();
+        (void)first.Wait();
+        return;
+    }
+    EXPECT_EQ(queued.Result().status, Vixen::KernelDispatch::CompletionStatus::Cancelled);
+    EXPECT_FALSE(queuedRan.load());
+    EXPECT_GT(queued.SubmissionOrder(), first.SubmissionOrder());
+
+    {
+        std::lock_guard lock(gateMutex);
+        releaseFirst = true;
+    }
+    gateCondition.notify_one();
+    ASSERT_TRUE(first.WaitFor(std::chrono::seconds(1)));
+    EXPECT_TRUE(first.Result().Succeeded());
 }
 
 // =============================================================================

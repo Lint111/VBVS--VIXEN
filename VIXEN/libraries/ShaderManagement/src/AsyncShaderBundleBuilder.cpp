@@ -1,8 +1,19 @@
 #include "AsyncShaderBundleBuilder.h"
 #include "Logger.h"
 #include <algorithm>
+#include <utility>
 
 namespace ShaderManagement {
+
+namespace {
+
+Vixen::KernelDispatch::DispatcherProfile MakeShaderDispatcherProfile(uint32_t workerCount) {
+    Vixen::KernelDispatch::DispatcherProfile profile;
+    profile.blockingIO.workerCount = workerCount;
+    return profile;
+}
+
+} // namespace
 
 // ===== AsyncShaderBundleBuilder Implementation =====
 
@@ -11,33 +22,15 @@ AsyncShaderBundleBuilder::AsyncShaderBundleBuilder(
     uint32_t workerThreadCount
 )
     : messageBus_(messageBus)
-    , workerThreadCount_(workerThreadCount == 0 ? std::thread::hardware_concurrency() : workerThreadCount)
-    , running_(true)
+    , taskExecutor_(MakeShaderDispatcherProfile(workerThreadCount))
 {
-    // Create per-thread work queues
-    for (uint32_t i = 0; i < workerThreadCount_; ++i) {
-        perThreadQueues_.push_back(std::make_unique<ThreadLocalQueue>());
-    }
-
-    // Create worker threads with thread indices
-    for (uint32_t i = 0; i < workerThreadCount_; ++i) {
-        workerThreads_.emplace_back(&AsyncShaderBundleBuilder::WorkerThreadLoop, this, i);
-    }
 }
 
 AsyncShaderBundleBuilder::~AsyncShaderBundleBuilder() {
-    // Signal shutdown
-    running_ = false;
-    workCV_.notify_all();
-
-    // Wait for all workers
-    for (auto& thread : workerThreads_) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
-
-    // Clean up active builds
+    // Wait before member destruction because queued callbacks publish through messageBus_ and
+    // retain active-build handles.
+    WaitForAll();
+    std::lock_guard<std::mutex> lock(buildsMutex_);
     activeBuilds_.clear();
 }
 
@@ -53,6 +46,7 @@ bool AsyncShaderBundleBuilder::CancelBuild(const std::string& uuid) {
     auto it = activeBuilds_.find(uuid);
     if (it != activeBuilds_.end()) {
         it->second->cancelled = true;
+        it->second->stopSource.request_stop();
         return true;
     }
 
@@ -64,7 +58,7 @@ bool AsyncShaderBundleBuilder::IsBuildComplete(const std::string& uuid) const {
 
     auto it = activeBuilds_.find(uuid);
     if (it != activeBuilds_.end()) {
-        return it->second->completed;
+        return it->second->completion.IsReady();
     }
 
     return true; // Not found = already completed/cleaned up
@@ -74,61 +68,46 @@ bool AsyncShaderBundleBuilder::WaitForBuild(
     const std::string& uuid,
     std::chrono::milliseconds timeout
 ) {
-    auto start = std::chrono::steady_clock::now();
-
-    while (true) {
-        {
-            std::lock_guard<std::mutex> lock(buildsMutex_);
-            auto it = activeBuilds_.find(uuid);
-            if (it == activeBuilds_.end() || it->second->completed) {
-                return true;
-            }
-        }
-
-        // Check timeout
-        if (timeout.count() > 0) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start);
-            if (elapsed >= timeout) {
-                return false;
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::shared_ptr<AsyncBuildHandle> handle;
+    {
+        std::lock_guard<std::mutex> lock(buildsMutex_);
+        auto it = activeBuilds_.find(uuid);
+        if (it == activeBuilds_.end()) return true;
+        handle = it->second;
     }
+
+    if (timeout.count() == 0) {
+        (void)handle->completion.Wait();
+        return true;
+    }
+    return handle->completion.WaitFor(timeout);
 }
 
 bool AsyncShaderBundleBuilder::WaitForAll(std::chrono::milliseconds timeout) {
-    auto start = std::chrono::steady_clock::now();
-
-    while (true) {
-        {
-            std::lock_guard<std::mutex> lock(buildsMutex_);
-            bool allComplete = std::all_of(activeBuilds_.begin(), activeBuilds_.end(),
-                [](const auto& pair) { return pair.second->completed.load(); });
-
-            if (allComplete) {
-                return true;
-            }
-        }
-
-        // Check timeout
-        if (timeout.count() > 0) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start);
-            if (elapsed >= timeout) {
-                return false;
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::vector<std::shared_ptr<AsyncBuildHandle>> handles;
+    {
+        std::lock_guard<std::mutex> lock(buildsMutex_);
+        handles.reserve(activeBuilds_.size());
+        for (const auto& entry : activeBuilds_) handles.push_back(entry.second);
     }
+
+    const auto start = std::chrono::steady_clock::now();
+    for (const auto& handle : handles) {
+        if (timeout.count() == 0) {
+            (void)handle->completion.Wait();
+            continue;
+        }
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start);
+        if (elapsed >= timeout || !handle->completion.WaitFor(timeout - elapsed)) return false;
+    }
+    return true;
 }
 
 size_t AsyncShaderBundleBuilder::GetActiveBuildCount() const {
     std::lock_guard<std::mutex> lock(buildsMutex_);
     return std::count_if(activeBuilds_.begin(), activeBuilds_.end(),
-        [](const auto& pair) { return !pair.second->completed.load(); });
+        [](const auto& pair) { return !pair.second->completion.IsReady(); });
 }
 
 std::vector<std::string> AsyncShaderBundleBuilder::GetActiveBuilds() const {
@@ -136,7 +115,7 @@ std::vector<std::string> AsyncShaderBundleBuilder::GetActiveBuilds() const {
 
     std::vector<std::string> uuids;
     for (const auto& [uuid, handle] : activeBuilds_) {
-        if (!handle->completed) {
+        if (!handle->completion.IsReady()) {
             uuids.push_back(uuid);
         }
     }
@@ -150,7 +129,7 @@ uint32_t AsyncShaderBundleBuilder::CleanupCompleted() {
     uint32_t count = 0;
     auto it = activeBuilds_.begin();
     while (it != activeBuilds_.end()) {
-        if (it->second->completed) {
+        if (it->second->completion.IsReady()) {
             it = activeBuilds_.erase(it);
             ++count;
         } else {
@@ -173,93 +152,19 @@ void AsyncShaderBundleBuilder::SubmitBuildInternal(
         activeBuilds_[handle->uuid] = handle;
     }
 
-    // Use round-robin to distribute work across threads (reduces contention)
-    uint32_t targetQueue = nextQueueIndex_.fetch_add(1, std::memory_order_relaxed) % workerThreadCount_;
-
-    // Submit work to selected thread's queue
-    // Use shared_ptr to make the lambda copyable (required by std::function)
     auto builderPtr = std::make_shared<ShaderBundleBuilder>(std::move(builder));
-    {
-        std::lock_guard<std::mutex> lock(perThreadQueues_[targetQueue]->mutex);
-        perThreadQueues_[targetQueue]->tasks.push([this, builderPtr, sender, handle]() mutable {
-            ExecuteBuild(std::move(*builderPtr), sender);
+    handle->completion = taskExecutor_.SubmitBlocking(
+        [this, builderPtr, sender, handle]() mutable {
+            const bool success = ExecuteBuild(std::move(*builderPtr), sender, handle);
             handle->completed = true;
-        });
-    }
-
-    // Wake one worker (they'll check their queue first, then steal if needed)
-    workCV_.notify_one();
+            return success;
+        }, handle->stopSource.get_token());
 }
 
-void AsyncShaderBundleBuilder::WorkerThreadLoop(uint32_t threadIndex) {
-    while (running_) {
-        std::function<void()> work;
-        bool gotWork = false;
-
-        // 1. Try to get work from own queue first (best cache locality)
-        {
-            std::unique_lock<std::mutex> lock(perThreadQueues_[threadIndex]->mutex);
-            if (!perThreadQueues_[threadIndex]->tasks.empty()) {
-                work = std::move(perThreadQueues_[threadIndex]->tasks.front());
-                perThreadQueues_[threadIndex]->tasks.pop();
-                gotWork = true;
-            }
-        }
-
-        // 2. If own queue empty, try to steal work from other threads
-        if (!gotWork) {
-            gotWork = TryStealWork(threadIndex, work);
-        }
-
-        // 3. If still no work, wait for notification
-        if (!gotWork) {
-            std::unique_lock<std::mutex> lock(cvMutex_);
-            workCV_.wait_for(lock, std::chrono::milliseconds(100), [this, threadIndex] {
-                if (!running_) return true;
-
-                // Check if any queue has work
-                for (const auto& queue : perThreadQueues_) {
-                    std::lock_guard<std::mutex> qLock(queue->mutex);
-                    if (!queue->tasks.empty()) return true;
-                }
-                return false;
-            });
-
-            if (!running_) {
-                break;
-            }
-
-            continue; // Loop back to try getting work again
-        }
-
-        // Execute work
-        if (work) {
-            work();
-        }
-    }
-}
-
-bool AsyncShaderBundleBuilder::TryStealWork(uint32_t myIndex, std::function<void()>& outWork) {
-    // Try to steal from other threads (work stealing for load balancing)
-    // Start from next thread (circular) to distribute stealing attempts
-    for (uint32_t offset = 1; offset < workerThreadCount_; ++offset) {
-        uint32_t targetIndex = (myIndex + offset) % workerThreadCount_;
-
-        std::unique_lock<std::mutex> lock(perThreadQueues_[targetIndex]->mutex, std::try_to_lock);
-        if (lock.owns_lock() && !perThreadQueues_[targetIndex]->tasks.empty()) {
-            // Successfully stole work!
-            outWork = std::move(perThreadQueues_[targetIndex]->tasks.front());
-            perThreadQueues_[targetIndex]->tasks.pop();
-            return true;
-        }
-    }
-
-    return false; // No work available to steal
-}
-
-void AsyncShaderBundleBuilder::ExecuteBuild(
+bool AsyncShaderBundleBuilder::ExecuteBuild(
     ShaderBundleBuilder builder,
-    Vixen::EventBus::SenderID sender
+    Vixen::EventBus::SenderID sender,
+    const std::shared_ptr<AsyncBuildHandle>& handle
 ) {
     auto startTime = std::chrono::steady_clock::now();
 
@@ -268,13 +173,7 @@ void AsyncShaderBundleBuilder::ExecuteBuild(
     uint32_t stageCount = static_cast<uint32_t>(builder.GetStageCount());
 
     // Check if cancelled
-    {
-        std::lock_guard<std::mutex> lock(buildsMutex_);
-        auto it = activeBuilds_.find(uuid);
-        if (it != activeBuilds_.end() && it->second->cancelled) {
-            return; // Silently abort
-        }
-    }
+    if (handle->cancelled) return false; // Silently abort
 
     // Publish: Compilation started
     auto startedMsg = std::make_unique<ShaderCompilationStartedMessage>(
@@ -315,6 +214,7 @@ void AsyncShaderBundleBuilder::ExecuteBuild(
             );
             messageBus_->Publish(std::move(sdiMsg));
         }
+        return true;
     } else {
         // Publish: Compilation failed
         auto failedMsg = std::make_unique<ShaderCompilationFailedMessage>(
@@ -325,6 +225,7 @@ void AsyncShaderBundleBuilder::ExecuteBuild(
         );
         failedMsg->warnings = result.warnings;
         messageBus_->Publish(std::move(failedMsg));
+        return false;
     }
 }
 

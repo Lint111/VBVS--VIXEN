@@ -7,6 +7,7 @@
 #include "TypedCacher.h"
 #include "DeviceIdentifier.h"
 #include "ILoggable.h"
+#include "KernelDispatch/TaskExecutor.h"
 
 #include <typeindex>
 #include <typeinfo>
@@ -22,7 +23,6 @@
 #include <fstream>
 #include <future>
 #include <optional>
-#include <future>
 
 // Forward declarations for type safety
 namespace Vixen::Vulkan::Resources {
@@ -68,6 +68,16 @@ public:
     ~MainCacher();
     MainCacher(const MainCacher&) = delete;
     MainCacher& operator=(const MainCacher&) = delete;
+
+    /**
+     * @brief Access the cacher-owned blocking/I/O admission lane.
+     *
+     * Device registries use this same executor; they do not create private async workers. The
+     * lane has its own profile budget and never consumes the frame-compute arena.
+     */
+    Vixen::KernelDispatch::TaskExecutor& GetTaskExecutor() const noexcept {
+        return m_taskExecutor;
+    }
 
     /**
      * @brief Initialize the MainCacher and subscribe to device invalidation events
@@ -408,43 +418,29 @@ public:
     /**
      * @brief Save all caches to disk asynchronously (non-blocking)
      * @return Future that resolves to true if all saves succeeded
-     * @note Launches parallel tasks for each device registry and global caches
+     * @note Submits device and global cache work to the cacher-owned blocking lane
      */
     std::future<bool> SaveAllAsync(const std::filesystem::path& directory) const {
-        return std::async(std::launch::async, [this, directory]() {
-            std::vector<std::future<bool>> futures;
-
-            // Launch parallel save tasks for each device registry
-            {
-                std::shared_lock deviceLock(m_deviceRegistriesMutex);
-                for (const auto& [deviceId, registry] : m_deviceRegistries) {
-                    auto deviceDir = directory / "devices" / deviceId.GetDescription();
-
-                    // Capture by value to avoid dangling references
-                    futures.push_back(std::async(std::launch::async,
-                        [deviceDir, &registry]() {
-                            std::filesystem::create_directories(deviceDir);
-                            return registry.SaveAll(deviceDir);
-                        }
-                    ));
-                }
+        std::vector<std::function<bool()>> tasks;
+        {
+            std::shared_lock deviceLock(m_deviceRegistriesMutex);
+            tasks.reserve(m_deviceRegistries.size() + 1);
+            for (const auto& [deviceId, registry] : m_deviceRegistries) {
+                auto deviceDir = directory / "devices" / deviceId.GetDescription();
+                auto* registryPtr = &registry;
+                tasks.emplace_back([deviceDir, registryPtr]() {
+                    std::filesystem::create_directories(deviceDir);
+                    return registryPtr->SaveAll(deviceDir);
+                });
             }
+        }
 
-            // Launch global cache save
-            futures.push_back(std::async(std::launch::async, [this, directory]() {
-                auto globalDir = directory / "global";
-                std::filesystem::create_directories(globalDir);
-                return SaveGlobalCaches(globalDir);
-            }));
-
-            // Wait for all saves to complete
-            bool success = true;
-            for (auto& future : futures) {
-                success &= future.get();
-            }
-
-            return success;
+        tasks.emplace_back([this, directory]() {
+            auto globalDir = directory / "global";
+            std::filesystem::create_directories(globalDir);
+            return SaveGlobalCaches(globalDir);
         });
+        return m_taskExecutor.SubmitBlockingBatch(std::move(tasks));
     }
 
     /**
@@ -482,55 +478,29 @@ public:
     /**
      * @brief Load all caches from disk asynchronously (non-blocking)
      * @return Future that resolves to true if all loads succeeded
-     * @note Launches parallel tasks for each device registry and global caches
+     * @note Submits device and global cache work to the cacher-owned blocking lane
      */
     std::future<bool> LoadAllAsync(const std::filesystem::path& directory) {
-        return std::async(std::launch::async, [this, directory]() {
-            std::vector<std::future<bool>> futures;
-
-            // Collect device directories to load
-            auto devicesDir = directory / "devices";
-            std::vector<std::pair<DeviceIdentifier, std::filesystem::path>> deviceDirs;
-
-            if (std::filesystem::exists(devicesDir)) {
-                for (const auto& entry : std::filesystem::directory_iterator(devicesDir)) {
-                    if (entry.is_directory()) {
-                        auto deviceDir = entry.path();
-                        auto deviceId = DeviceIdentifier::FromDirectoryName(deviceDir.filename().string());
-
-                        if (deviceId.IsValid()) {
-                            deviceDirs.emplace_back(deviceId, deviceDir);
-                        }
-                    }
-                }
+        std::vector<std::function<bool()>> tasks;
+        auto devicesDir = directory / "devices";
+        if (std::filesystem::exists(devicesDir)) {
+            for (const auto& entry : std::filesystem::directory_iterator(devicesDir)) {
+                if (!entry.is_directory()) continue;
+                auto deviceDir = entry.path();
+                auto deviceId = DeviceIdentifier::FromDirectoryName(deviceDir.filename().string());
+                if (!deviceId.IsValid()) continue;
+                tasks.emplace_back([this, deviceId, deviceDir]() {
+                    auto& registry = GetOrCreateDeviceRegistry(deviceId);
+                    return registry.LoadAll(deviceDir);
+                });
             }
+        }
 
-            // Launch parallel load tasks for each device registry
-            for (const auto& [deviceId, deviceDir] : deviceDirs) {
-                futures.push_back(std::async(std::launch::async,
-                    [this, deviceId, deviceDir]() {
-                        auto& registry = GetOrCreateDeviceRegistry(deviceId);
-                        return registry.LoadAll(deviceDir);
-                    }
-                ));
-            }
-
-            // Launch global cache load
-            auto globalDir = directory / "global";
-            if (std::filesystem::exists(globalDir)) {
-                futures.push_back(std::async(std::launch::async, [this, globalDir]() {
-                    return LoadGlobalCaches(globalDir);
-                }));
-            }
-
-            // Wait for all loads to complete
-            bool success = true;
-            for (auto& future : futures) {
-                success &= future.get();
-            }
-
-            return success;
-        });
+        auto globalDir = directory / "global";
+        if (std::filesystem::exists(globalDir)) {
+            tasks.emplace_back([this, globalDir]() { return LoadGlobalCaches(globalDir); });
+        }
+        return m_taskExecutor.SubmitBlockingBatch(std::move(tasks));
     }
 
     /**
@@ -642,6 +612,7 @@ private:
     // Event bus integration for device invalidation
     Vixen::EventBus::MessageBus* m_messageBus = nullptr;
     Vixen::EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
+    mutable Vixen::KernelDispatch::TaskExecutor m_taskExecutor;
 
     // Note: Budget manager is now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
     // Access via VulkanDevice::GetBudgetManager() instead of MainCacher
@@ -670,8 +641,7 @@ private:
         manifest.close();
         LOG_INFO("[MainCacher] Saved global cacher manifest with " + std::to_string(m_globalCachers.size()) + " entries");
 
-        // Launch parallel save for each global cacher
-        std::vector<std::future<bool>> futures;
+        std::vector<std::function<bool()>> tasks;
 
         for (const auto& [typeIndex, cacher] : m_globalCachers) {
             if (cacher) {
@@ -681,20 +651,16 @@ private:
                 // Capture raw pointer for thread safety (cacher is owned by m_globalCachers which is stable)
                 CacherBase* cacherPtr = cacher.get();
 
-                LOG_DEBUG("[MainCacher] Launching async save for " + cacheName);
-                futures.push_back(std::async(std::launch::async,
-                    [cacherPtr, cacheFile]() {
-                        return cacherPtr->SerializeToFile(cacheFile);
-                    }
-                ));
+                LOG_DEBUG("[MainCacher] Queueing blocking save for " + cacheName);
+                tasks.emplace_back([cacherPtr, cacheFile]() {
+                    return cacherPtr->SerializeToFile(cacheFile);
+                });
             }
         }
 
-        // Wait for all saves to complete
-        bool success = true;
-        for (auto& future : futures) {
-            success &= future.get();
-        }
+        // Wait for all saves to complete. The batch future preserves this method's synchronous
+        // contract while the actual file operations run only on the blocking lane.
+        bool success = m_taskExecutor.SubmitBlockingBatch(std::move(tasks)).get();
 
         LOG_INFO("[MainCacher] Global cache save " + std::string(success ? "succeeded" : "failed"));
         return success;
@@ -708,8 +674,7 @@ private:
             return true;  // Not an error
         }
 
-        // Launch parallel load for each global cacher
-        std::vector<std::future<bool>> futures;
+        std::vector<std::function<bool()>> tasks;
 
         std::shared_lock lock(m_globalRegistryMutex);
         for (const auto& [typeIndex, cacher] : m_globalCachers) {
@@ -721,21 +686,15 @@ private:
                     // Capture raw pointer for thread safety (cacher is owned by m_globalCachers which is stable)
                     CacherBase* cacherPtr = cacher.get();
 
-                    LOG_DEBUG("[MainCacher] Launching async load for " + cacheName);
-                    futures.push_back(std::async(std::launch::async,
-                        [cacherPtr, cacheFile]() {
-                            return cacherPtr->DeserializeFromFile(cacheFile, nullptr);
-                        }
-                    ));
+                    LOG_DEBUG("[MainCacher] Queueing blocking load for " + cacheName);
+                    tasks.emplace_back([cacherPtr, cacheFile]() {
+                        return cacherPtr->DeserializeFromFile(cacheFile, nullptr);
+                    });
                 }
             }
         }
 
-        // Wait for all loads to complete
-        bool success = true;
-        for (auto& future : futures) {
-            success &= future.get();
-        }
+        bool success = m_taskExecutor.SubmitBlockingBatch(std::move(tasks)).get();
 
         LOG_INFO("[MainCacher] Global cache load " + std::string(success ? "succeeded" : "failed"));
         return success;

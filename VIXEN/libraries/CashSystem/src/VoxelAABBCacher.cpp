@@ -69,7 +69,7 @@ void VoxelAABBCacher::Cleanup() {
 
     // Free all cached buffer allocations via FreeBufferTracked. Locked: m_entries is mutated
     // here while DeviceRegistry can be running Serialize/DeserializeFromFile for this same
-    // cacher on another thread via std::async (audit V-M9). Released before Clear(), which
+    // cacher on another thread via the blocking lane (audit V-M9). Released before Clear(), which
     // takes its own unique_lock.
     {
         std::unique_lock wlock(m_lock);

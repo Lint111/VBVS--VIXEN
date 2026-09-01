@@ -162,7 +162,7 @@ void VoxelSceneCacher::Cleanup() {
 
     // Cleanup all cached entries. Locked: m_entries is mutated here while DeviceRegistry can be
     // running SerializeToFile/DeserializeFromFile for this same cacher on another thread via
-    // std::async (audit V-M9). Released before Clear(), which takes its own unique_lock.
+    // the blocking lane (audit V-M9). Released before Clear(), which takes its own unique_lock.
     {
         std::unique_lock wlock(m_lock);
         for (auto& [key, entry] : m_entries) {
@@ -401,7 +401,7 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loaded " + std::to_string(entryCount) + " entries");
     return true;
 } catch (const std::exception& e) {
-    // Nothing may escape this boundary: LoadAll drives DeserializeFromFile via std::async, and an
+    // Nothing may escape this boundary: LoadAll drives DeserializeFromFile via the blocking lane, and an
     // uncaught exception there terminates the load of every other cache alongside this one.
     LOG_ERROR("[VoxelSceneCacher::DeserializeFromFile] Exception: " + std::string(e.what()));
     return false;

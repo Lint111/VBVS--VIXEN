@@ -81,6 +81,19 @@ set_target_properties(test_shader_family PROPERTIES FOLDER "Tests/ShaderManageme
 include(GoogleTest)
 gtest_discover_tests(test_shader_family WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+# Async shader compilation regression: uses the shared budgeted blocking lane.
+add_executable(test_async_shader_bundle_builder
+    test_async_shader_bundle_builder.cpp
+)
+target_link_libraries(test_async_shader_bundle_builder
+    PRIVATE
+        ShaderManagement
+        gtest
+        gtest_main
+)
+set_target_properties(test_async_shader_bundle_builder PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+gtest_discover_tests(test_async_shader_bundle_builder WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # Feature-tagged SDI variant merge (Semantic Shader Wiring S0) — separate
 # executable, pure data-level, no Vulkan device / no glslang compile.
 add_executable(test_sdi_variant_merge
