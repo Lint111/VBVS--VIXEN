@@ -130,7 +130,6 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/GraphTopology.h
     include/Core/IGraphCompilable.h
     include/Core/INodeWiring.h
-    include/Core/InstanceGroup.h
     include/Core/LoopManager.h
     include/Core/NodeInstance.h
     include/Core/NodeLogging.h
