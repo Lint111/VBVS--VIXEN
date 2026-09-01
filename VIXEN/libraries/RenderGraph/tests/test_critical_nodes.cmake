@@ -901,6 +901,19 @@ set_target_properties(test_hiz_downsample_mirror PROPERTIES FOLDER "Tests/Render
 gtest_discover_tests(test_hiz_downsample_mirror)
 message(STATUS "[RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)")
 
+# ---------------------------------------------------------------------------
+# Raster-proxy B2: compact union interval + ordered 192-bit candidate-mask
+# CPU mirror. Device-less and intentionally separate from the B1 mirrors so
+# its RED/GREEN gate remains focused on the new per-pixel contract.
+# ---------------------------------------------------------------------------
+add_executable(test_proxy_interval_prepass_mirror
+    Nodes/test_proxy_interval_prepass_mirror.cpp
+)
+target_link_libraries(test_proxy_interval_prepass_mirror PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+set_target_properties(test_proxy_interval_prepass_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_proxy_interval_prepass_mirror)
+message(STATUS "[RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)")
+
 # glslc-validate the mirrored shader at build time (same VIXEN_GLSLC resolved
 # above for the march SPV): building the mirror test proves the .comp compiles.
 if(VIXEN_GLSLC)
