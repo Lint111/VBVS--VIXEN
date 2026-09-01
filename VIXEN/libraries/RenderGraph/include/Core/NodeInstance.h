@@ -17,8 +17,7 @@
 #include <map>
 #include <variant>
 #include <memory>
-#include <functional>
-#include "VirtualTask.h"  // Sprint 6.5: For GetExecutionTasks return type
+#include <cstdint>
 #include "Logger.h"
 #include "MessageBus.h"
 
@@ -31,6 +30,19 @@ namespace Vixen::RenderGraph {
 class RenderGraph;
 class TaskProfileRegistry;
 // NodeHandle defined in CleanupStack.h
+
+/**
+ * @brief Lifecycle phases used to organize node task profiles.
+ *
+ * These phases describe profiling and budget-estimation data only. Execution
+ * remains owned by the node lifecycle and SlotTaskManager.
+ */
+enum class TaskProfilePhase : uint8_t {
+    Setup,
+    Compile,
+    Execute,
+    Cleanup
+};
 
 /**
  * @brief Connection point for graph edges
@@ -413,29 +425,23 @@ public:
     uint64_t GetLoopStepCount() const;
 
     // =========================================================================
-    // Task-Level Parallelism API (Sprint 6.5)
+    // Task profile API
     // =========================================================================
     //
-    // Unified API: Override GetExecutionTasks() to control parallelism.
-    // - Return 1 task: sequential execution (default)
-    // - Return N tasks: parallel execution (one per bundle)
-    //
-    // The executor runs whatever tasks you return. No opt-in flags needed.
     // =========================================================================
 
     /**
      * @brief Register a profile for a specific execution phase
      *
-     * Profiles attached to a phase will be:
-     * - Included in VirtualTasks returned by GetExecutionTasks()
-     * - Auto-timed via BeginProfiling()/EndProfiling() by the executor
+     * Profiles attached to a phase provide lifecycle-specific cost data for
+     * budget tracking and diagnostics.
      *
      * Multiple profiles per phase enable composable sub-task measurement.
      *
      * @param phase The execution phase
      * @param profile Non-owning pointer to profile (must outlive node)
      */
-    void RegisterPhaseProfile(VirtualTaskPhase phase, ITaskProfile* profile);
+    void RegisterPhaseProfile(TaskProfilePhase phase, ITaskProfile* profile);
 
     /**
      * @brief Get profiles registered for a phase
@@ -443,79 +449,17 @@ public:
      * @param phase The execution phase
      * @return Vector of profile pointers (may be empty)
      */
-    const std::vector<ITaskProfile*>& GetPhaseProfiles(VirtualTaskPhase phase) const;
+    const std::vector<ITaskProfile*>& GetPhaseProfiles(TaskProfilePhase phase) const;
 
     /**
      * @brief Clear all profiles for a phase
      */
-    void ClearPhaseProfiles(VirtualTaskPhase phase);
+    void ClearPhaseProfiles(TaskProfilePhase phase);
 
     /**
      * @brief Clear all registered phase profiles
      */
     void ClearAllPhaseProfiles();
-
-    /**
-     * @brief Helper to create parallel tasks for a phase
-     *
-     * Reduces boilerplate for nodes that execute multiple bundles in parallel.
-     * Creates one VirtualTask per bundle with profiles attached.
-     *
-     * Usage in GetExecutionTasks() override:
-     * @code
-     * std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
-     *     if (phase != VirtualTaskPhase::Execute)
-     *         return NodeInstance::GetExecutionTasks(phase);
-     *     return CreateParallelTasks(phase, [this](uint32_t i) { ExecuteBundle(i); });
-     * }
-     * @endcode
-     *
-     * @param phase The lifecycle phase (determines which profiles to attach)
-     * @param executeBundle Function called for each task with bundle index
-     * @return Vector of tasks (one per bundle from GetVirtualTaskCount())
-     */
-    std::vector<VirtualTask> CreateParallelTasks(
-        VirtualTaskPhase phase,
-        std::function<void(uint32_t)> executeBundle
-    );
-
-    /**
-     * @brief Get all execution tasks for a lifecycle phase
-     *
-     * Returns a vector of tasks to execute for this phase.
-     * This is the SINGLE method to override for task parallelism:
-     *
-     * - Return 1 task: Node executes sequentially (default)
-     * - Return N tasks: Node executes in parallel (one task per bundle)
-     *
-     * The executor calls this ONCE per phase and runs all returned tasks.
-     * Task dependencies are determined by VirtualResourceAccessTracker
-     * based on bundle resource access patterns.
-     *
-     * Default implementation: Returns 1 task that runs the whole phase.
-     *
-     * Example for parallel node:
-     * @code
-     * std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase) override {
-     *     if (phase != VirtualTaskPhase::Execute)
-     *         return NodeInstance::GetExecutionTasks(phase);
-     *
-     *     std::vector<VirtualTask> tasks;
-     *     for (uint32_t i = 0; i < DetermineTaskCount(); ++i) {
-     *         VirtualTask task;
-     *         task.id = {this, i};
-     *         task.execute = [this, i]() { ExecuteBundle(i); };
-     *         task.profiles = GetPhaseProfiles(phase);  // Cost from profiles
-     *         tasks.push_back(std::move(task));
-     *     }
-     *     return tasks;
-     * }
-     * @endcode
-     *
-     * @param phase The lifecycle phase (Setup, Compile, Execute, Cleanup)
-     * @return Vector of tasks to execute (never empty)
-     */
-    virtual std::vector<VirtualTask> GetExecutionTasks(VirtualTaskPhase phase);
 
     /**
      * @brief Estimate execution cost for a specific task
@@ -532,19 +476,6 @@ public:
      * @return Estimated cost in nanoseconds (0 = unknown)
      */
     virtual uint64_t EstimateTaskCost(uint32_t taskIndex) const;
-
-    /**
-     * @brief Get the number of virtual tasks for this node
-     *
-     * Returns the number of bundles, which determines how many
-     * VirtualTasks can be created for this node. Used by
-     * VirtualResourceAccessTracker for resource conflict detection.
-     *
-     * @return Number of tasks (at least 1)
-     */
-    uint32_t GetVirtualTaskCount() const {
-        return std::max(1u, static_cast<uint32_t>(bundles.size()));
-    }
 
     // Template method pattern - public final methods with automatic boilerplate
     /**
@@ -1146,7 +1077,7 @@ protected:
     size_t inputMemoryFootprint = 0;
 
     // Phase→Profile mapping for task-level profiling (Sprint 6.5)
-    std::map<VirtualTaskPhase, std::vector<ITaskProfile*>> phaseProfiles_;
+    std::map<TaskProfilePhase, std::vector<ITaskProfile*>> phaseProfiles_;
 
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;

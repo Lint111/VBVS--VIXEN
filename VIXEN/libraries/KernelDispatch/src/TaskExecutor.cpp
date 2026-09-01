@@ -11,11 +11,9 @@
 #include <iterator>
 #include <optional>
 
-// Tier-A extraction (E7 dispatch D1): the wave-then-parallel shape is ported from
-// RenderGraph/src/Core/TBBVirtualTaskExecutor.cpp (ExecutePhase/ExecuteLevel/ExecuteTask), with the
-// NodeInstance::GetExecutionTasks re-fetch removed -- the callable is taken straight from the
-// VirtualTask the caller supplied. A per-run tbb::task_arena caps concurrency so Run() is
-// deterministic across worker counts (spec :1387).
+// Tier-A extraction (E7 dispatch D1): the wave-then-parallel shape is the shared implementation for
+// domain-blind task execution. A per-run tbb::task_arena caps concurrency so Run() is deterministic
+// across worker counts (spec :1387).
 
 namespace Vixen::KernelDispatch {
 

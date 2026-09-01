@@ -464,31 +464,19 @@ else()
 endif()
 
 # ===========================================================================
-# RenderGraph Resource/Task Tracking + VirtualTask (PDB-consolidation Milestone 1, 2026-07)
+# RenderGraph Resource/Task Tracking (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
-# Merges 5 formerly-separate bare-link-surface targets into one executable.
-# test_tbb_virtual_task_executor and test_virtual_task_integration are NOT included
-# here — both have a POST_BUILD step copying TBB::tbb's DLL next to the binary, a
-# real build-semantics complication, so they stay standalone below.
+# Merges the resource-tracking and wave-scheduling coverage into one executable.
 #
 # - test_resource_access_tracker (Sprint 6.4 Phase 0): resource access conflict
 #   detection — read/write access tracking, conflict detection (write-write,
 #   write-read), multi-resource scenarios, GraphTopology integration.
 # - test_wave_scheduler (Sprint 6.4 Phase 1): WaveScheduler coverage.
-#   (test_tbb_graph_executor removed — functionality merged into TBBVirtualTaskExecutor.)
-# - test_virtual_task (Sprint 6.5 Phase 0 — Task-Level Parallelism): VirtualTask
-#   coverage.
-# - test_virtual_resource_access_tracker (Sprint 6.5 Phase 1): VirtualResourceAccessTracker
-#   coverage.
-# - test_task_dependency_graph (Sprint 6.5 Phase 2): TaskDependencyGraph coverage.
-
+#   (the former local executor coverage was retired with the duplicate executor.)
 if(TARGET GTest::gtest_main)
     add_executable(test_rendergraph_tracking
         test_resource_access_tracker.cpp
         test_wave_scheduler.cpp
-        test_virtual_task.cpp
-        test_virtual_resource_access_tracker.cpp
-        test_task_dependency_graph.cpp
     )
 
     target_link_libraries(test_rendergraph_tracking PRIVATE
@@ -500,59 +488,9 @@ if(TARGET GTest::gtest_main)
 
     gtest_discover_tests(test_rendergraph_tracking)
 
-    message(STATUS "✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/VirtualTask/VirtualResourceAccessTracker/TaskDependencyGraph)")
-
-    # TBBVirtualTaskExecutor Tests (Sprint 6.5 - Phase 4)
-    add_executable(test_tbb_virtual_task_executor
-        test_tbb_virtual_task_executor.cpp
-    )
-
-    target_link_libraries(test_tbb_virtual_task_executor PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    # Copy TBB DLL for test execution
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_tbb_virtual_task_executor POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_tbb_virtual_task_executor>
-        )
-    endif()
-
-    set_target_properties(test_tbb_virtual_task_executor PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_tbb_virtual_task_executor)
-
-    message(STATUS "✓ test_tbb_virtual_task_executor configured (Sprint 6.5 Phase 4)")
-
-    # VirtualTask Integration Tests (Sprint 6.5 - Phase 6)
-    add_executable(test_virtual_task_integration
-        test_virtual_task_integration.cpp
-    )
-
-    target_link_libraries(test_virtual_task_integration PRIVATE
-        GTest::gtest_main
-        RenderGraph
-    )
-
-    # Copy TBB DLL for test execution
-    if(TARGET TBB::tbb)
-        add_custom_command(TARGET test_virtual_task_integration POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_virtual_task_integration>
-        )
-    endif()
-
-    set_target_properties(test_virtual_task_integration PROPERTIES FOLDER "Tests/RenderGraph Tests")
-
-    gtest_discover_tests(test_virtual_task_integration)
-
-    message(STATUS "✓ test_virtual_task_integration configured (Sprint 6.5 Phase 6)")
+    message(STATUS "✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler)")
 else()
-    message(STATUS "⊗ test_rendergraph_tracking / TBB virtual-task tests skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_rendergraph_tracking skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================

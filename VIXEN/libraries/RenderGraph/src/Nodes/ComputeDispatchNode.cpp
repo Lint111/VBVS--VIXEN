@@ -155,7 +155,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     std::string profileId = GetInstanceName() + "_gpu_dispatch";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "compute");
     if (gpuProfile_) {
-        RegisterPhaseProfile(VirtualTaskPhase::Execute, gpuProfile_);
+        RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
         NODE_LOG_INFO("[ComputeDispatchNode] Registered GPU profile: " + profileId);
     }
 }

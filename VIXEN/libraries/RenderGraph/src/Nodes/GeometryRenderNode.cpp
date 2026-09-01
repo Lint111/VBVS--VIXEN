@@ -136,7 +136,7 @@ void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
     std::string profileId = GetInstanceName() + "_gpu_render";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "graphics");
     if (gpuProfile_) {
-        RegisterPhaseProfile(VirtualTaskPhase::Execute, gpuProfile_);
+        RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
         NODE_LOG_INFO("[GeometryRenderNode] Registered GPU profile: " + profileId);
     }
 }

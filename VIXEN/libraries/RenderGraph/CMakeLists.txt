@@ -151,10 +151,6 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/TaskQueue.h  # Sprint 6.2: Task #339 - Budget-aware task queue
     include/Core/TimelineCapacityTracker.h  # Sprint 6.3: Task #344 - Timeline capacity tracker
     include/Core/Timer.h
-    include/Core/VirtualTask.h  # Sprint 6.5: Task-level parallelism
-    include/Core/VirtualResourceAccessTracker.h  # Sprint 6.5: Per-task resource tracking
-    include/Core/TaskDependencyGraph.h  # Sprint 6.5: Task dependency resolution
-    include/Core/TBBVirtualTaskExecutor.h  # Sprint 6.5: Virtual task executor
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
@@ -192,9 +188,6 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/TaskProfileRegistry.cpp  # Sprint 6.5: Profile factory initialization
     src/Core/TaskQueue.cpp  # Sprint 6.2: Task #339 - Template instantiations
     src/Core/Timer.cpp
-    src/Core/VirtualResourceAccessTracker.cpp  # Sprint 6.5: Per-task resource tracking
-    src/Core/TaskDependencyGraph.cpp  # Sprint 6.5: Task dependency resolution
-    src/Core/TBBVirtualTaskExecutor.cpp  # Sprint 6.5: Virtual task executor
 )
 
 # ============================================================================
@@ -675,7 +668,6 @@ target_link_libraries(RenderGraphCore
         SVO                    # Laine-Karras ESVO octrees
         KernelDispatch         # Shared Tier-A DAG/executor for RenderGraph-lowered CPU work
         magic_enum::magic_enum
-        TBB::tbb               # Sprint 6.4: Parallel execution
 )
 
 # Nodes: depends on Core + the windowing deps the concrete nodes pull in. RmlUi/freetype/stb
@@ -736,12 +728,6 @@ if(USE_PRECOMPILED_HEADERS)
         "${CMAKE_CURRENT_SOURCE_DIR}/RenderGraphHeaders.h"
     )
     message(STATUS "RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)")
-
-    # TBB-based executor needs TBB headers not in PCH - skip PCH for this file
-    set_source_files_properties(
-        src/Core/TBBVirtualTaskExecutor.cpp
-        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
-    )
 
     # UiHitMask is intentionally dependency-light (pure math + header-only stb); skip the heavy PCH.
     set_source_files_properties(
