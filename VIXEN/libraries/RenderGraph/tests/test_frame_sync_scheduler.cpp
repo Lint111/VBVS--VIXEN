@@ -5,6 +5,7 @@
 #include "Core/ResourceAccessTracker.h"
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
+#include <cstdint>
 using namespace Vixen::RenderGraph;
 
 // ============================================================================
@@ -62,7 +63,9 @@ TEST(FrameSyncScheduleTypes, GroupBarrierDistinguishesImageVsBuffer) {
     EXPECT_EQ(b.dst.layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
-static const Resource* R(int i) { return reinterpret_cast<const Resource*>(0x1000 + i); }
+static const Resource* R(std::uintptr_t offset) {
+    return reinterpret_cast<const Resource*>(std::uintptr_t{0x1000u} + offset);
+}
 
 TEST(FrameSyncCore, ComputeWriteThenFragmentRead_ImageHandoff) {
     std::vector<ResourceTimeline> timelines = {{
