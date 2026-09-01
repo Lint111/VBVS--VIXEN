@@ -14,8 +14,8 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Compile-time slot counts (declared early for reuse)
 namespace StorageBufferNodeCounts {
-    static constexpr size_t INPUTS  = 2;  // VULKAN_DEVICE_IN, SWAPCHAIN_INFO (optional)
-    static constexpr size_t OUTPUTS = 2;  // STORAGE_BUFFER, BUFFER_SIZE
+    static constexpr size_t INPUTS  = 3;  // VULKAN_DEVICE_IN, SWAPCHAIN_INFO, CURRENT_FRAME_INDEX (optional)
+    static constexpr size_t OUTPUTS = 3;  // STORAGE_BUFFER, BUFFER_SIZE, FRAME_STORAGE_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -35,13 +35,15 @@ namespace StorageBufferNodeCounts {
  *   3. Else PARAM_ELEMENT_COUNT * PARAM_ELEMENT_STRIDE.
  * This keeps the node generic and reusable: the swapchain input is OPTIONAL.
  *
- * Inputs: 2
+ * Inputs: 3
  *   - VULKAN_DEVICE_IN (VulkanDevice*)    - Device for allocation
  *   - SWAPCHAIN_INFO   (IRenderTarget*)   - OPTIONAL; drives extent-based sizing
- * Outputs: 2
+ *   - CURRENT_FRAME_INDEX (uint32_t)      - OPTIONAL; selects a persistent ring slot
+ * Outputs: 3
  *   - STORAGE_BUFFER (VkBuffer)  - Zero-initialised storage buffer
  *   - BUFFER_SIZE    (uint32_t)  - Allocated size in bytes
- * Parameters: sizeBytes, elementCount, elementStride, bytesPerPixel
+ *   - FRAME_STORAGE_BUFFER (VkBuffer) - Current slot when frameRingSize is nonzero
+ * Parameters: sizeBytes, elementCount, elementStride, bytesPerPixel, frameRingSize
  */
 CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
                       StorageBufferNodeCounts::INPUTS,
@@ -53,6 +55,9 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
     static constexpr const char* PARAM_ELEMENT_COUNT   = "elementCount";   // number of elements
     static constexpr const char* PARAM_ELEMENT_STRIDE  = "elementStride";  // bytes per element
     static constexpr const char* PARAM_BYTES_PER_PIXEL = "bytesPerPixel";  // extent-driven: bytes per swapchain pixel
+    // Row A: optional persistent frame-indexed storage-buffer ring. Zero preserves the original
+    // single-buffer behavior for every existing consumer.
+    static constexpr const char* PARAM_FRAME_RING_SIZE = "frameRingSize";
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: additional VkBufferUsageFlags bits OR'd onto
     // the always-present VK_BUFFER_USAGE_STORAGE_BUFFER_BIT (e.g. VK_BUFFER_USAGE_INDIRECT_
     // BUFFER_BIT for a buffer a compute pass also reads via vkCmdDispatchIndirect). Defaults to
@@ -74,12 +79,26 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Optional so the existing single-buffer StorageBufferNode shape remains source-compatible.
+    // Ring-enabled instances connect this Execute input to FrameSyncNode::CURRENT_FRAME_INDEX.
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 2,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ----- Output slots -----
     OUTPUT_SLOT(STORAGE_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
     OUTPUT_SLOT(BUFFER_SIZE, uint32_t, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    // Transient output is emitted by ExecuteImpl and rotates through the persistent ring. Static
+    // consumers continue to use STORAGE_BUFFER, whose lifetime and handle remain unchanged.
+    OUTPUT_SLOT(FRAME_STORAGE_BUFFER, VkBuffer, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -93,6 +112,9 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
         HandleDescriptor swapchainDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainDesc);
 
+        HandleDescriptor frameIndexDesc{"uint32_t"};
+        INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, frameIndexDesc);
+
         // Output: storage buffer (persistent — survives recompile until size grows)
         BufferDescription storageBufDesc{};
         storageBufDesc.usage            = ResourceUsage::StorageBuffer;
@@ -105,6 +127,9 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
         BufferDescription sizeDesc{};
         INIT_OUTPUT_DESC(BUFFER_SIZE, "buffer_size",
             ResourceLifetime::Transient, sizeDesc);
+
+        INIT_OUTPUT_DESC(FRAME_STORAGE_BUFFER, "frame_storage_buffer",
+            ResourceLifetime::Transient, storageBufDesc);
     }
 
     // ----- Compile-time validation -----
@@ -112,6 +137,10 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE_IN must not be nullable");
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>,
                   "VULKAN_DEVICE_IN must be VulkanDevice*");
+
+    static_assert(CURRENT_FRAME_INDEX_Slot::index == 2, "CURRENT_FRAME_INDEX must be at index 2");
+    static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>,
+                  "CURRENT_FRAME_INDEX must be uint32_t");
 
     static_assert(STORAGE_BUFFER_Slot::index == 0, "STORAGE_BUFFER must be at index 0");
     static_assert(!STORAGE_BUFFER_Slot::nullable, "STORAGE_BUFFER must not be nullable");
@@ -121,6 +150,10 @@ CONSTEXPR_NODE_CONFIG(StorageBufferNodeConfig,
     static_assert(BUFFER_SIZE_Slot::index == 1, "BUFFER_SIZE must be at index 1");
     static_assert(std::is_same_v<BUFFER_SIZE_Slot::Type, uint32_t>,
                   "BUFFER_SIZE must be uint32_t");
+
+    static_assert(FRAME_STORAGE_BUFFER_Slot::index == 2, "FRAME_STORAGE_BUFFER must be at index 2");
+    static_assert(std::is_same_v<FRAME_STORAGE_BUFFER_Slot::Type, VkBuffer>,
+                  "FRAME_STORAGE_BUFFER must be VkBuffer");
 
     VALIDATE_NODE_CONFIG(StorageBufferNodeConfig, StorageBufferNodeCounts);
 };

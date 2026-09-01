@@ -16,12 +16,14 @@ static SdfInstruction sphere(float r) {
 
 TEST(RecipeRegistry, RegisterAndGetRoundTrips) {
     RecipeRegistry reg;
+    EXPECT_EQ(reg.GetGeneration(), 0u);
     RecipeRegistry::RecipeEntry e{};
     e.bytecode = { sphere(26.0f) };
     e.bakeResolution = 64; e.bandVoxels = 2.5f; e.brickDepth = 3;
     e.octreeSlot = RecipeRegistry::kUnbakedSlot;
 
     ASSERT_EQ(reg.Register(7u, e), RecipeRegistry::RegisterResult::Ok);
+    EXPECT_EQ(reg.GetGeneration(), 1u);
     const auto* got = reg.Get(7u);
     ASSERT_NE(got, nullptr);
     EXPECT_EQ(got->bytecode.size(), 1u);
@@ -46,7 +48,9 @@ TEST(RecipeRegistry, RejectsDuplicateAndEmptyAndBadOpcode) {
     RecipeRegistry reg;
     RecipeRegistry::RecipeEntry e{}; e.bytecode = { sphere(1.0f) };
     EXPECT_EQ(reg.Register(1u, e), RecipeRegistry::RegisterResult::Ok);
+    EXPECT_EQ(reg.GetGeneration(), 1u);
     EXPECT_EQ(reg.Register(1u, e), RecipeRegistry::RegisterResult::DuplicateId);
+    EXPECT_EQ(reg.GetGeneration(), 1u);
 
     RecipeRegistry::RecipeEntry empty{};
     EXPECT_EQ(reg.Register(2u, empty), RecipeRegistry::RegisterResult::EmptyProgram);

@@ -2,6 +2,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/PerFrameResources.h"
 #include "Data/Nodes/StorageBufferNodeConfig.h"
 #include <memory>
 
@@ -24,7 +25,8 @@ public:
  * arbitrary byte size. Reusable: the size is a parameter (explicit bytes, or
  * elementCount * elementStride), not tied to any particular payload shape.
  *
- * The buffer is host-visible/host-coherent, zero-filled once at compile time.
+ * The buffer is host-visible/host-coherent, zero-filled once at compile time. When
+ * PARAM_FRAME_RING_SIZE is set, FRAME_STORAGE_BUFFER selects a persistently mapped frame slot.
  *
  * Lifecycle: the buffer persists across graph recompile; it is recreated when
  * the requested size GROWS (e.g. swapchain resize to a larger extent), and is
@@ -52,13 +54,24 @@ public:
     VkDeviceSize GetSizeBytes() const { return sizeBytes_; }
 
     /**
+     * @brief Map a persistent frame slot for a CPU publisher.
+     *
+     * The caller must use the FrameSync-predicted slot for the frame being prepared. FrameSync's
+     * in-flight fence owns that slot; this method intentionally performs no extra synchronization.
+     */
+    void* MapCurrentForWrite(uint32_t frameIndex) const;
+    void  UnmapCurrentForWrite() const {}  // host-coherent persistent mapping; no flush/unmap
+
+    /**
      * @brief Recipe-Live-App-Bucketed-Dispatch Inc4 M3: the raw VkBuffer handle, for a
      * caller OUTSIDE the render graph's node-connection system that needs to reference
      * this buffer directly (e.g. building a VkDescriptorBufferInfo for a descriptor set
-     * assembled by hand). This buffer is single-instance (not a per-frame ring, unlike
-     * BodyOctreeSceneNode's own instance buffer), so there is no frame-index ambiguity.
+     * assembled by hand). Ring-enabled instances return the requested frame slot.
      */
-    VkBuffer GetBufferHandle() const { return buffer_; }
+    VkBuffer GetBufferHandle(uint32_t frameIndex = 0) const;
+
+    /** @brief True when this node owns a persistent frame-indexed storage-buffer ring. */
+    bool HasFrameRing() const { return perFrame_.IsInitialized(); }
 
 protected:
     void SetupImpl(TypedSetupContext&    ctx) override;
@@ -73,6 +86,7 @@ private:
     VkBuffer       buffer_   = VK_NULL_HANDLE;
     VkDeviceMemory memory_   = VK_NULL_HANDLE;
     VkDeviceSize   sizeBytes_ = 0;   // current allocated size
+    PerFrameResources perFrame_;
 };
 
 } // namespace Vixen::RenderGraph

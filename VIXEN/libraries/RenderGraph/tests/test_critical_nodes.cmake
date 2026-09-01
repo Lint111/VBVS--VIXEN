@@ -436,7 +436,27 @@ set_target_properties(test_rendergraph_criticalnodes_gpurender2 PROPERTIES FOLDE
 gtest_discover_tests(test_rendergraph_criticalnodes_gpurender2
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
-message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2 (merged: body_instance_occlusion_reject/editor_document_render/tier_crossing_lod_residency)")
+
+# Row B / 0eb.5: editor preview consumes the direct flattened RecipeEntry while the VRC1
+# serializer remains the export/persistence seam. Headless byte parity covers both all-layer and
+# enabled-mask paths without requiring a Vulkan device.
+add_executable(test_editor_document_model_preview
+    Nodes/test_editor_document_model_preview.cpp
+)
+target_compile_features(test_editor_document_model_preview PRIVATE cxx_std_23)
+target_link_libraries(test_editor_document_model_preview PRIVATE GTest::gtest_main glm::glm)
+if(TARGET SVO)
+    target_link_libraries(test_editor_document_model_preview PRIVATE SVO)
+endif()
+target_include_directories(test_editor_document_model_preview PRIVATE
+    ${CMAKE_SOURCE_DIR}/application/editor/include
+    ${CMAKE_SOURCE_DIR}/libraries/SVO/include
+)
+target_compile_definitions(test_editor_document_model_preview PRIVATE
+    VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
+set_target_properties(test_editor_document_model_preview PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_editor_document_model_preview)
+message(STATUS "[RenderGraph Tests] Added: test_editor_document_model_preview (direct flatten/VRC1 parity)")
 
 # ===========================================================================
 # Group 6b: test_rendergraph_criticalnodes_gpurender2b — RecipeAuthoringGate

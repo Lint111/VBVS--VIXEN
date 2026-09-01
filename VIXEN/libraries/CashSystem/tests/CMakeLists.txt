@@ -241,3 +241,16 @@ else()
 endif()
 set_target_properties(test_recipe_content_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
 gtest_discover_tests(test_recipe_content_cacher)
+
+# Generation-keyed recipe bucket table cacher and dirty-range publication tests (Row A / 0eb.3)
+add_executable(test_recipe_bucket_data_cacher
+    test_recipe_bucket_data_cacher.cpp
+)
+target_compile_features(test_recipe_bucket_data_cacher PRIVATE cxx_std_23)
+if(TARGET CashSystem)
+    target_link_libraries(test_recipe_bucket_data_cacher PRIVATE GTest::gtest_main CashSystem Logger VulkanResources)
+else()
+    target_link_libraries(test_recipe_bucket_data_cacher PRIVATE GTest::gtest_main Logger)
+endif()
+set_target_properties(test_recipe_bucket_data_cacher PROPERTIES FOLDER "Tests/CashSystem Tests")
+gtest_discover_tests(test_recipe_bucket_data_cacher)

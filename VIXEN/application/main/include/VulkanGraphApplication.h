@@ -15,6 +15,7 @@
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "ShaderCacheManager.h"  // Baked-perf-pipeline M2b: persistent disk cache for the 4 live shader builders (BuildRenderGraph.cpp)
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>  // Inc4 M3: recipeSpecializedPipelineCache_
@@ -33,6 +34,7 @@ namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse s
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
+namespace CashSystem { struct RecipeBucketSnapshot; }
 #include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
 // Real include (not forward-declared like the two lines above) -- RecipeEntry is a NESTED type of
 // RecipeRegistry, and RegisterProceduralRecipe below takes one by value; a forward-declared class
@@ -393,10 +395,27 @@ private:
         VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
         VkDescriptorPool      descriptorPool = VK_NULL_HANDLE;
         VkDescriptorSet       descriptorSet = VK_NULL_HANDLE;
+        std::vector<VkDescriptorSet> descriptorSets; // one immutable set per frame-in-flight slot
         VkPipelineLayout      pipelineLayout = VK_NULL_HANDLE;
         VkPipeline            pipeline = VK_NULL_HANDLE;
+
+        VkDescriptorSet DescriptorSetForFrame(uint32_t frameIndex) const {
+            if (!descriptorSets.empty()) return descriptorSets[frameIndex % descriptorSets.size()];
+            return descriptorSet;
+        }
     };
     std::unordered_map<uint32_t, SpecializedRecipePipeline> recipeSpecializedPipelineCache_;
+
+    // Row A: CashSystem's generation-keyed canonical snapshot plus one last-published snapshot per
+    // persistent frame slot. A slot reused with the same generation performs zero writes; a slot
+    // catching up after rotation receives only the ranges it missed.
+    std::shared_ptr<const CashSystem::RecipeBucketSnapshot> recipeBucketLastSnapshot_;
+    std::vector<std::shared_ptr<const CashSystem::RecipeBucketSnapshot>> recipeBucketFrameSnapshots_;
+    std::vector<uint32_t> recipeBucketLastInstanceRecipes_;
+    uint64_t recipeBucketInstanceGeneration_ = 0;
+    VkBuffer recipeBucketLastSkipMaskBuffer_ = VK_NULL_HANDLE;
+    VkBuffer recipeBucketLastBoundSphereBuffer_ = VK_NULL_HANDLE;
+    VkBuffer recipeBucketLastMetaBuffer_ = VK_NULL_HANDLE;
     // W2c (wavefront epoch, VIXEN_BUCKETED_SHADE opt-in, requires the bucketed-dispatch
     // flag): per-recipe MATERIAL (bucket-shade) kernels — the W2b identity skeleton
     // grown into the real traversal/shade split. The march kernels compile LEAN (no

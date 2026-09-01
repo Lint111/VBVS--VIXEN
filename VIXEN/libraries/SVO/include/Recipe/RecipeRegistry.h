@@ -242,8 +242,12 @@ public:
         }
 
         entries_.emplace(recipeId, std::move(normalizedEntry));
+        ++generation_;
         return RegisterResult::Ok;
     }
+
+    /// Monotonic generation for consumers that cache derived registry data.
+    [[nodiscard]] std::uint64_t GetGeneration() const noexcept { return generation_; }
 
     const RecipeEntry* Get(uint32_t recipeId) const {
         auto it = entries_.find(recipeId);
@@ -283,6 +287,8 @@ public:
     }
 
 private:
+    std::uint64_t generation_ = 0;
+
     static RegisterResult ValidateComposition(const RecipeEntry& entry) {
         if (entry.blocks.size() > kMaxCompositionBlocks)
             return RegisterResult::BadCompositionBlockCount;
