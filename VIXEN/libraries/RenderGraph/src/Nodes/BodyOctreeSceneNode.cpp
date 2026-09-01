@@ -1551,8 +1551,17 @@ void BodyOctreeSceneNode::PollBrickUploadCompletion() {
         const bool haveShellCache = !shellCache_[0].compact.configs.empty();
         std::vector<Vixen::SVO::OctreeConfig>* activeConfigs =
             Vixen::SVO::StampAndSelectActiveConfigs(concatenated_, shellCache_);
+        // mipfix (2026-09-01): with wholesale admission DISABLED nothing ever moves
+        // pendingMask off 0, so this stamp told StoredSdf.glsl:138 "no payload ready"
+        // and the march sentineled to 1e9 — the recorded-history-long MipFallback red.
+        // The classic path uploads payloads wholesale by construction: full mask.
+        // (The other disabled-path stamps already do this — see the reset path that
+        // writes WholesalePayloadMask() into every config.)
+        const uint32_t readinessMask = wholesaleAdmissionEnabled_
+            ? wholesaleAvailability_.pendingMask
+            : Vixen::SVO::WholesalePayloadMask();
         for (auto& cfg : *activeConfigs) {
-            cfg._tailPad[0] = wholesaleAvailability_.pendingMask;
+            cfg._tailPad[0] = readinessMask;
         }
 
         const VkDeviceSize configSize =
