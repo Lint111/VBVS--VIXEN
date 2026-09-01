@@ -25,8 +25,6 @@
 #include "Core/TimelineCapacityTracker.h"
 #include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
 #include "Core/FrameSyncScheduler.h"     // Auto-sync P2: frame sync schedule
-#include "Core/VirtualResourceAccessTracker.h"  // Sprint 6.5: Per-task tracking
-#include "Core/TBBVirtualTaskExecutor.h"        // Sprint 6.5: Virtual task execution
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
 #include <atomic>
 #include <memory>
@@ -51,23 +49,6 @@ using ResourceManagement::ResourceBudgetManager;
 using ResourceManagement::DeviceBudgetManager;
 
 // NodeHandle defined in CleanupStack.h (included transitively)
-
-// TBBExecutorStats and TBBExecutionMode kept for API compatibility
-struct TBBExecutorStats {
-    size_t nodeCount = 0;
-    size_t edgeCount = 0;
-    size_t executionsCompleted = 0;
-    size_t exceptionsThrown = 0;
-    double lastExecutionMs = 0.0;
-    double avgExecutionMs = 0.0;
-    size_t executeCount = 0;
-};
-
-enum class TBBExecutionMode {
-    Parallel,
-    Sequential,
-    Limited
-};
 
 /**
  * @brief Main Render Graph class
@@ -779,56 +760,6 @@ public:
      */
     void InitializeEventDrivenSystems();
 
-    // ====== Parallel Execution (Sprint 6.4) ======
-
-    /**
-     * @brief Enable or disable parallel node execution
-     *
-     * When enabled, nodes without resource conflicts execute concurrently
-     * using Intel TBB flow_graph. Requires graph recompilation to take effect.
-     *
-     * IMPORTANT: Parallel execution is experimental. Use only for graphs where:
-     * - Nodes have proper resource access tracking
-     * - No implicit ordering dependencies (only explicit connections)
-     * - All node Execute() methods are thread-safe
-     *
-     * @param enable true to enable parallel execution, false for sequential
-     */
-    void SetParallelExecutionEnabled(bool enable);
-
-    /**
-     * @brief Check if parallel execution is enabled
-     */
-    [[nodiscard]] bool IsParallelExecutionEnabled() const {
-        return parallelExecutionEnabled_;
-    }
-
-    /**
-     * @brief Set the execution mode for TBB executor
-     *
-     * @param mode Parallel, Sequential, or Limited
-     */
-    void SetExecutionMode(TBBExecutionMode mode);
-
-    /**
-     * @brief Get current execution mode
-     */
-    [[nodiscard]] TBBExecutionMode GetExecutionMode() const;
-
-    /**
-     * @brief Set maximum concurrency for parallel execution
-     *
-     * @param maxConcurrency Maximum concurrent nodes (0 = unlimited, hardware_concurrency)
-     */
-    void SetMaxConcurrency(size_t maxConcurrency);
-
-    /**
-     * @brief Get TBB executor statistics
-     *
-     * Useful for debugging and performance analysis.
-     */
-    [[nodiscard]] TBBExecutorStats GetExecutorStats() const;
-
     /**
      * @brief Get the resource access tracker (for debugging/analysis)
      */
@@ -844,44 +775,6 @@ public:
      */
     [[nodiscard]] const FrameSyncSchedule& GetFrameSyncSchedule() const {
         return frameSyncScheduler_.GetSchedule();
-    }
-
-    // ====== Virtual Task Parallelism (Sprint 6.5) ======
-
-    /**
-     * @brief Enable or disable virtual task-level parallelism
-     *
-     * When enabled, nodes that opt-in via SupportsTaskParallelism() have their
-     * individual bundles (tasks) scheduled in parallel across nodes.
-     *
-     * IMPORTANT: This is more aggressive than parallel node execution.
-     * Only enable when nodes properly declare their resource accesses.
-     *
-     * @param enable true to enable virtual task parallelism
-     */
-    void SetVirtualTaskParallelismEnabled(bool enable);
-
-    /**
-     * @brief Check if virtual task parallelism is enabled
-     *
-     * Virtual task parallelism is now unified with parallel execution.
-     */
-    [[nodiscard]] bool IsVirtualTaskParallelismEnabled() const {
-        return parallelExecutionEnabled_;
-    }
-
-    /**
-     * @brief Get virtual task executor statistics
-     */
-    [[nodiscard]] const VirtualTaskExecutorStats& GetVirtualTaskExecutorStats() const {
-        return virtualTaskExecutor_.GetStats();
-    }
-
-    /**
-     * @brief Get the virtual resource access tracker (for debugging/analysis)
-     */
-    [[nodiscard]] const VirtualResourceAccessTracker& GetVirtualResourceAccessTracker() const {
-        return virtualAccessTracker_;
     }
 
     // ====== Resource Dependency Tracking ======
@@ -1022,13 +915,9 @@ private:
     TimelineCapacityTracker capacityTracker_;
     bool autoPressureAdjustment_ = false;
 
-    // Sprint 6.4/6.5: Parallel execution with TBB virtual task executor
+    // Sprint 6.4: Node-level resource conflict analysis and frame synchronization
     ResourceAccessTracker resourceAccessTracker_;  // Node-level conflict detection
     FrameSyncScheduler frameSyncScheduler_;         // Auto-sync P2: per-frame sync schedule
-    VirtualResourceAccessTracker virtualAccessTracker_;  // Task-level conflict detection
-    TBBVirtualTaskExecutor virtualTaskExecutor_;
-    bool parallelExecutionEnabled_ = false;
-    bool executorNeedsRebuild_ = true;  // Rebuild executor after compilation
 
     // Sprint 4 Phase B: Lifetime scope management (optional, externally provided)
     LifetimeScopeManager* scopeManager_ = nullptr;

@@ -39,7 +39,7 @@ void TextureLoaderNode::SetupImpl(TypedSetupContext& ctx) {
     std::string profileId = GetInstanceName() + "_compile";
     compileProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "pipeline");
     if (compileProfile_) {
-        RegisterPhaseProfile(VirtualTaskPhase::Compile, compileProfile_);
+        RegisterPhaseProfile(TaskProfilePhase::Compile, compileProfile_);
         NODE_LOG_INFO("[TextureLoaderNode] Registered compile profile: " + profileId);
     }
 }

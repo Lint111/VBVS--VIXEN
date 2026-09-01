@@ -129,7 +129,7 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
     std::string profileId = GetInstanceName() + "_gpu_trace";
     gpuProfile_ = GetOrCreateProfile<SimpleTaskProfile>(profileId, profileId, "raytracing");
     if (gpuProfile_) {
-        RegisterPhaseProfile(VirtualTaskPhase::Execute, gpuProfile_);
+        RegisterPhaseProfile(TaskProfilePhase::Execute, gpuProfile_);
         NODE_LOG_INFO("[TraceRaysNode] Registered GPU profile: " + profileId);
     }
 

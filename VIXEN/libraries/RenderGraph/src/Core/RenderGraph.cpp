@@ -560,7 +560,6 @@ void RenderGraph::Compile() {
     // Sprint 6.4: Build resource access tracker for parallel execution
     GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildResourceAccessTracker...");
     resourceAccessTracker_.BuildFromTopology(topology);
-    executorNeedsRebuild_ = true;  // Force TBB graph rebuild on next frame
     GRAPH_LOG_INFO("[RenderGraph::Compile] ResourceAccessTracker built: " +
         std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
@@ -623,15 +622,6 @@ void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] FrameSyncSchedule built: " +
         std::to_string(GetFrameSyncSchedule().groups.size()) + " groups, " +
         std::to_string(GetFrameSyncSchedule().edges.size()) + " edges");
-
-    // Sprint 6.5: Build virtual resource access tracker for task-level parallelism
-    if (parallelExecutionEnabled_) {
-        GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: BuildVirtualResourceAccessTracker...");
-        virtualAccessTracker_.BuildFromTopology(topology);
-        GRAPH_LOG_INFO("[RenderGraph::Compile] VirtualResourceAccessTracker built: " +
-            std::to_string(virtualAccessTracker_.GetResourceCount()) + " resources, " +
-            std::to_string(virtualAccessTracker_.GetTaskCount()) + " tasks tracked");
-    }
 
     GRAPH_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
@@ -733,11 +723,9 @@ bool RenderGraph::RecoverFromDeviceLoss() {
         return false;
     }
 
-    // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt), and
-    // force the parallel virtual-task executor to rebuild against the freshly-compiled nodes.
+    // Rebuilt successfully. Clear the latch and any stale dirty work (everything was just rebuilt).
     deviceLost_ = false;
     dirtyNodes.clear();
-    executorNeedsRebuild_ = true;
     GRAPH_LOG_INFO("[RenderGraph::RecoverFromDeviceLoss] ===== RECOVERY COMPLETE: rendering resumes on the new device =====");
     return true;
 }
@@ -866,73 +854,9 @@ VkResult RenderGraph::RenderFrame() {
     frameAborted_ = false;
     BeginExecutionEpoch();
 
-    // Execute all nodes
-    // Sprint 6.4: Support both sequential and parallel execution modes
-    if (parallelExecutionEnabled_) {
-        // =====================================================================
-        // PARALLEL EXECUTION (Sprint 6.4)
-        // =====================================================================
-        // Rebuild virtual task executor if needed (after compilation or configuration change)
-        if (executorNeedsRebuild_) {
-            GRAPH_LOG_INFO("[RenderGraph] Building virtual task executor for parallel execution...");
-            virtualTaskExecutor_.Build(virtualAccessTracker_, executionOrder);
-            GRAPH_LOG_INFO("[RenderGraph] Virtual task executor built: " +
-                std::to_string(virtualTaskExecutor_.GetStats().totalTasks) + " tasks, " +
-                std::to_string(virtualTaskExecutor_.GetStats().totalNodes) + " nodes");
-
-            executorNeedsRebuild_ = false;
-        }
-
-        // Pre-execution: Set all nodes to Executing state
-        for (NodeInstance* node : executionOrder) {
-            if (node) {
-                NodeState state = node->GetState();
-                if (state == NodeState::Ready ||
-                    state == NodeState::Compiled ||
-                    state == NodeState::Complete) {
-                    node->SetState(NodeState::Executing);
-                }
-            }
-        }
-
-        // Execute nodes in parallel using virtual task executor
-        // The executor handles dependency ordering and task-level parallelism. Phase 2a: a task
-        // failure must not escape RenderFrame as an exception -- catch it and surface a status.
-        try {
-            virtualTaskExecutor_.ExecutePhase(VirtualTaskPhase::Execute);
-        } catch (const std::exception& e) {
-            GRAPH_LOG_ERROR(std::string("[RenderGraph::RenderFrame] Parallel execute phase failed: ") + e.what());
-            frameResult = VK_ERROR_UNKNOWN;
-        } catch (...) {
-            GRAPH_LOG_ERROR("[RenderGraph::RenderFrame] Parallel execute phase failed with a non-std exception");
-            frameResult = VK_ERROR_UNKNOWN;
-        }
-
-        // Post-execution: Set all nodes to Complete state
-        for (NodeInstance* node : executionOrder) {
-            if (node && node->GetState() == NodeState::Executing) {
-                node->SetState(NodeState::Complete);
-            }
-        }
-
-        // Process deferred recompiles after all nodes complete
-        for (NodeInstance* node : executionOrder) {
-            if (node->HasDeferredRecompile()) {
-                node->ClearDeferredRecompile();
-                for (size_t i = 0; i < instances.size(); ++i) {
-                    if (instances[i].get() == node) {
-                        MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
-                        break;
-                    }
-                }
-            }
-        }
-    } else {
-        // =====================================================================
-        // SEQUENTIAL EXECUTION (default)
-        // =====================================================================
-        // Nodes handle their own synchronization, command recording, and presentation
-        for (NodeInstance* node : executionOrder) {
+    // Execute nodes in dependency order. Nodes handle their own synchronization,
+    // command recording, and presentation.
+    for (NodeInstance* node : executionOrder) {
             // Frame aborted mid-execution (e.g. swapchain OUT_OF_DATE at acquire): stop before the
             // next node — per-image state is invalid until the resize recompile runs. See
             // AbortCurrentFrame(); the skipped nodes' per-node sentinel guards stay as backup.
@@ -993,7 +917,6 @@ VkResult RenderGraph::RenderFrame() {
                     }
                 }
             }
-        }
     }
 
     // ========================================================================
@@ -2116,73 +2039,6 @@ void RenderGraph::InitializeEventDrivenSystems() {
     }
 
     GRAPH_LOG_INFO("[RenderGraph] Event-driven systems initialized (Sprint 6.3 Phase 6)");
-}
-
-// =============================================================================
-// Parallel Execution (Sprint 6.4)
-// =============================================================================
-
-void RenderGraph::SetParallelExecutionEnabled(bool enable) {
-    if (parallelExecutionEnabled_ != enable) {
-        parallelExecutionEnabled_ = enable;
-        executorNeedsRebuild_ = true;  // Trigger rebuild on next frame
-
-        if (enable) {
-            GRAPH_LOG_INFO("[RenderGraph] Parallel execution ENABLED - will use TBB flow_graph");
-        } else {
-            GRAPH_LOG_INFO("[RenderGraph] Parallel execution DISABLED - using sequential execution");
-            virtualTaskExecutor_.Clear();
-        }
-    }
-}
-
-void RenderGraph::SetExecutionMode(TBBExecutionMode mode) {
-    // Map execution mode to virtual task executor enable/disable
-    if (mode == TBBExecutionMode::Sequential) {
-        virtualTaskExecutor_.SetEnabled(false);
-    } else {
-        virtualTaskExecutor_.SetEnabled(true);
-    }
-
-    const char* modeStr = (mode == TBBExecutionMode::Parallel) ? "Parallel" :
-                          (mode == TBBExecutionMode::Sequential) ? "Sequential" : "Limited";
-    GRAPH_LOG_INFO("[RenderGraph] Execution mode set to: " + std::string(modeStr));
-}
-
-TBBExecutionMode RenderGraph::GetExecutionMode() const {
-    return virtualTaskExecutor_.IsEnabled() ? TBBExecutionMode::Parallel : TBBExecutionMode::Sequential;
-}
-
-void RenderGraph::SetMaxConcurrency(size_t maxConcurrency) {
-    // Virtual task executor uses TBB's internal concurrency management
-    // Log for visibility but don't actually limit (TBB handles this)
-    GRAPH_LOG_INFO("[RenderGraph] Max concurrency hint: " +
-        (maxConcurrency == 0 ? "unlimited" : std::to_string(maxConcurrency)) +
-        " (managed by TBB)");
-}
-
-TBBExecutorStats RenderGraph::GetExecutorStats() const {
-    // Map virtual task executor stats to TBBExecutorStats for API compatibility
-    const auto& vStats = virtualTaskExecutor_.GetStats();
-    TBBExecutorStats stats;
-    stats.nodeCount = vStats.totalNodes;
-    stats.edgeCount = vStats.criticalPathLength;  // Approximation
-    stats.executionsCompleted = vStats.parallelTasks + vStats.sequentialTasks;
-    stats.exceptionsThrown = vStats.failedTasks;
-    stats.lastExecutionMs = vStats.executionTimeMs;
-    stats.avgExecutionMs = vStats.executionTimeMs;  // Single value, no averaging
-    stats.executeCount = 1;
-    return stats;
-}
-
-// =============================================================================
-// Virtual Task Parallelism (Sprint 6.5)
-// =============================================================================
-
-void RenderGraph::SetVirtualTaskParallelismEnabled(bool enable) {
-    // Virtual task parallelism is now unified with parallel execution
-    // This method exists for API compatibility
-    SetParallelExecutionEnabled(enable);
 }
 
 } // namespace Vixen::RenderGraph

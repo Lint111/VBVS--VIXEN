@@ -5,7 +5,6 @@
 #include "Core/NodeLogging.h"
 #include "VulkanDevice.h"
 #include <algorithm>
-#include <functional>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -353,44 +352,6 @@ uint64_t NodeInstance::GetLoopStepCount() const {
 }
 
 // ============================================================================
-// SPRINT 6.5: TASK-LEVEL PARALLELISM API (Unified)
-// ============================================================================
-
-std::vector<VirtualTask> NodeInstance::GetExecutionTasks(VirtualTaskPhase phase) {
-    // Default implementation: Returns 1 task that runs the whole phase.
-    // This provides backward compatibility - all existing nodes work unchanged.
-    //
-    // Parallel nodes override this to return N tasks (one per bundle).
-    // The executor runs whatever tasks are returned - no branching needed.
-
-    VirtualTask task;
-    task.id = {this, 0};
-
-    // Attach phase profiles for timing (cost comes from profiles)
-    task.profiles = GetPhaseProfiles(phase);
-
-    switch (phase) {
-        case VirtualTaskPhase::Setup:
-            task.execute = [this]() { this->Setup(); };
-            break;
-
-        case VirtualTaskPhase::Compile:
-            task.execute = [this]() { this->Compile(); };
-            break;
-
-        case VirtualTaskPhase::Execute:
-            task.execute = [this]() { this->Execute(); };
-            break;
-
-        case VirtualTaskPhase::Cleanup:
-            task.execute = [this]() { this->Cleanup(); };
-            break;
-    }
-
-    return {std::move(task)};
-}
-
-// ============================================================================
 // PHASE F: SLOT TASK SYSTEM IMPLEMENTATION
 // ============================================================================
 
@@ -500,7 +461,7 @@ ITaskProfile* NodeInstance::RegisterProfileIfAbsent(const std::string& taskId, s
 uint64_t NodeInstance::EstimateTaskCost(uint32_t /*taskIndex*/) const {
     // Default implementation: sum cost from Execute phase profiles.
     // All tasks are assumed to have equal cost unless derived class overrides.
-    const auto& profiles = GetPhaseProfiles(VirtualTaskPhase::Execute);
+    const auto& profiles = GetPhaseProfiles(TaskProfilePhase::Execute);
 
     uint64_t totalCost = 0;
     for (const ITaskProfile* profile : profiles) {
@@ -518,12 +479,12 @@ uint64_t NodeInstance::EstimateTaskCost(uint32_t /*taskIndex*/) const {
 // Static empty vector for GetPhaseProfiles when phase has no profiles
 static const std::vector<ITaskProfile*> emptyProfileVector;
 
-void NodeInstance::RegisterPhaseProfile(VirtualTaskPhase phase, ITaskProfile* profile) {
+void NodeInstance::RegisterPhaseProfile(TaskProfilePhase phase, ITaskProfile* profile) {
     if (!profile) return;
     phaseProfiles_[phase].push_back(profile);
 }
 
-const std::vector<ITaskProfile*>& NodeInstance::GetPhaseProfiles(VirtualTaskPhase phase) const {
+const std::vector<ITaskProfile*>& NodeInstance::GetPhaseProfiles(TaskProfilePhase phase) const {
     auto it = phaseProfiles_.find(phase);
     if (it != phaseProfiles_.end()) {
         return it->second;
@@ -531,32 +492,12 @@ const std::vector<ITaskProfile*>& NodeInstance::GetPhaseProfiles(VirtualTaskPhas
     return emptyProfileVector;
 }
 
-void NodeInstance::ClearPhaseProfiles(VirtualTaskPhase phase) {
+void NodeInstance::ClearPhaseProfiles(TaskProfilePhase phase) {
     phaseProfiles_.erase(phase);
 }
 
 void NodeInstance::ClearAllPhaseProfiles() {
     phaseProfiles_.clear();
-}
-
-std::vector<VirtualTask> NodeInstance::CreateParallelTasks(
-    VirtualTaskPhase phase,
-    std::function<void(uint32_t)> executeBundle
-) {
-    std::vector<VirtualTask> tasks;
-    const uint32_t taskCount = GetVirtualTaskCount();
-    const auto& profiles = GetPhaseProfiles(phase);
-
-    tasks.reserve(taskCount);
-    for (uint32_t i = 0; i < taskCount; ++i) {
-        VirtualTask task;
-        task.id = {this, i};
-        task.execute = [executeBundle, i]() { executeBundle(i); };
-        task.profiles = profiles;
-        tasks.push_back(std::move(task));
-    }
-
-    return tasks;
 }
 
 } // namespace Vixen::RenderGraph

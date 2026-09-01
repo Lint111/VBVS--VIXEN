@@ -7,13 +7,12 @@
  * @file TaskExecutor.h
  * @brief Renderer-independent task-wave executor and budgeted blocking lane.
  *
- * Extracted from RenderGraph's Core/TBBVirtualTaskExecutor.h (spec 14:1783-1786). The render
- * original's Build() pulled the whole render stack in: it took a VirtualResourceAccessTracker
- * (Tier-B hazard model) and re-fetched each task's callable via NodeInstance::GetExecutionTasks().
- * That coupling is REMOVED -- the caller hands in a `vector<VirtualTask>` and a wave layering
- * directly. What remains is the essence: `tbb::parallel_for_each` over each wave, exception
- * collection, and (D1's determinism gate, spec :1387) an explicit worker-count control so the same
- * input yields byte-identical output under 1 / 2 / N workers.
+ * The former RenderGraph-local executor coupled task execution to the render resource hazard model
+ * and node lifecycle. This shared executor keeps the domain-blind core: the caller hands in a
+ * `vector<VirtualTask>` and a wave layering directly. What remains is the essence:
+ * `tbb::parallel_for_each` over each wave, exception collection, and (D1's determinism gate,
+ * spec :1387) an explicit worker-count control so the same input yields byte-identical output under
+ * 1 / 2 / N workers.
  *
  * @see TaskDependencyGraph for producing the waves.
  * @see VirtualTask for the task shape.
