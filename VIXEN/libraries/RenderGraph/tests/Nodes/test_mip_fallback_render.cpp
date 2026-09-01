@@ -405,13 +405,90 @@ protected:
         vkUnmapMemory(logicalDevice_, mem);
     }
 
+    // Read the node's binding-5 config SSBO back through its externally visible VkBuffer.
+    // BodyOctreeSceneNode deliberately exposes the buffer, not its backing allocation, so
+    // this transfer is the only way to observe the GPU-visible residency stamp and active
+    // compact pool base. The source buffer has TRANSFER_SRC usage for this diagnostic.
+    void ReadbackOctreeConfigs(VkBuffer configBuf, uint32_t configCount,
+                               std::vector<Vixen::SVO::OctreeConfig>& configs) {
+        ASSERT_GT(configCount, 0u);
+        const VkDeviceSize bytes = VkDeviceSize(configCount) * sizeof(Vixen::SVO::OctreeConfig);
+        VkBuffer readback = VK_NULL_HANDLE;
+        VkDeviceMemory readbackMem = VK_NULL_HANDLE;
+        CreateHostBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, readback, readbackMem, false);
+
+        // Ensure uploads submitted on any device queue are complete before this independent
+        // readback submission. The in-submit barrier below supplies the copy visibility edge.
+        ASSERT_EQ(vkDeviceWaitIdle(logicalDevice_), VK_SUCCESS);
+        VkCommandBufferAllocateInfo cbai{};
+        cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbai.commandPool = commandPool_;
+        cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cbai.commandBufferCount = 1;
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &cbai, &cmd), VK_SUCCESS);
+
+        VkCommandBufferBeginInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        ASSERT_EQ(vkBeginCommandBuffer(cmd, &bi), VK_SUCCESS);
+
+        VkBufferMemoryBarrier sourceBarrier{};
+        sourceBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        sourceBarrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        sourceBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        sourceBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceBarrier.buffer = configBuf;
+        sourceBarrier.offset = 0;
+        sourceBarrier.size = bytes;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                             1, &sourceBarrier, 0, nullptr);
+
+        VkBufferCopy copy{};
+        copy.size = bytes;
+        vkCmdCopyBuffer(cmd, configBuf, readback, 1, &copy);
+
+        VkBufferMemoryBarrier readbackBarrier{};
+        readbackBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        readbackBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        readbackBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        readbackBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        readbackBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        readbackBarrier.buffer = readback;
+        readbackBarrier.offset = 0;
+        readbackBarrier.size = bytes;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr,
+                             1, &readbackBarrier, 0, nullptr);
+        ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
+
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &cmd;
+        ASSERT_EQ(vkQueueSubmit(queue_, 1, &submit, VK_NULL_HANDLE), VK_SUCCESS);
+        ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+
+        void* mapped = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, readbackMem, 0, bytes, 0, &mapped), VK_SUCCESS);
+        configs.resize(configCount);
+        std::memcpy(configs.data(), mapped, static_cast<size_t>(bytes));
+        vkUnmapMemory(logicalDevice_, readbackMem);
+
+        vkDestroyBuffer(logicalDevice_, readback, nullptr);
+        vkFreeMemory(logicalDevice_, readbackMem, nullptr);
+    }
+
     // Render using the real BodyInstanceRayMarch shader (bindings 0-5,9-22; binding 8 does
     // not exist in the reflected SPIR-V — see the descriptor-layout comment below).
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
                       VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms,
-                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr,
+                      uint32_t* outInstanceIterCount = nullptr) {
         ASSERT_TRUE(deviceConfirmed_);
         // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
         // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
@@ -594,6 +671,24 @@ protected:
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
 
+        // Binding 14 is a per-instance, non-atomic store. It is meaningful only for a
+        // single-pixel dispatch; never interpret it after the normal full-frame render,
+        // where all pixels race on instanceIterCount[0].
+        if (outInstanceIterCount != nullptr) {
+            VkBufferMemoryBarrier iterBarrier{};
+            iterBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            iterBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            iterBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            iterBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            iterBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            iterBarrier.buffer = dummyIter;
+            iterBarrier.offset = 0;
+            iterBarrier.size = sizeof(uint32_t);
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr,
+                                 1, &iterBarrier, 0, nullptr);
+        }
+
         // KI-032 fix: barrier the HitRecord SSBO (shader write -> host read) before the host
         // reads it below -- same pattern test_recipe_pool_render.cpp's identical fix uses.
         VkBufferMemoryBarrier hitRecordBarrier{}; hitRecordBarrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -636,6 +731,13 @@ protected:
             outHitRecords->assign(size_t(w) * h, HitRecordCpu{});
             std::memcpy(outHitRecords->data(), hrMapped, size_t(hitRecordBufSize));
             vkUnmapMemory(logicalDevice_, dHitRecordMem);
+        }
+
+        if (outInstanceIterCount != nullptr) {
+            void* iterMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, dIterMem, 0, sizeof(uint32_t), 0, &iterMapped), VK_SUCCESS);
+            std::memcpy(outInstanceIterCount, iterMapped, sizeof(uint32_t));
+            vkUnmapMemory(logicalDevice_, dIterMem);
         }
 
         vkDeviceWaitIdle(logicalDevice_);
@@ -758,10 +860,14 @@ protected:
         VkBuffer mats    = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
         VkBuffer cfgBuf  = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
         VkBuffer instBuf = buf(C::INSTANCE_BUFFER_Slot::index);
-        VkBuffer sdfBuf  = buf(C::OCTREE_SDF_BUFFER_Slot::index);
-        VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
+        // BuildRenderGraph wires the compact shell pair to shader bindings 11/12. The
+        // source pair remains a separate producer output and is not the active render payload
+        // after BodyOctreeSceneNode derives its shell cache.
+        VkBuffer shellDataBuf   = buf(C::SHELL_DATA_BUFFER_Slot::index);
+        VkBuffer shellLookupBuf = buf(C::SHELL_LOOKUP_BUFFER_Slot::index);
         VkBuffer mipBuf  = buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index);
         ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
+        ASSERT_NE(shellDataBuf, VK_NULL_HANDLE); ASSERT_NE(shellLookupBuf, VK_NULL_HANDLE);
         ASSERT_NE(mipBuf, VK_NULL_HANDLE);
 
         constexpr uint32_t kW=512, kH=512;
@@ -774,7 +880,8 @@ protected:
         std::vector<uint8_t> rgba; double ms = 0.0;
         std::vector<HitRecordCpu> hitRecords;
         ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                             sdfBuf, lookBuf, mipBuf, pc, kW, kH, rgba, ms, &hitRecords));
+                                             shellDataBuf, shellLookupBuf, mipBuf,
+                                             pc, kW, kH, rgba, ms, &hitRecords));
 
         // KI-032 fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not the
         // dead colorImg -- see this file's HitRecordCpu comment.
@@ -855,6 +962,8 @@ protected:
         if (octreeCount > 1u) {
             ASSERT_NE(pool.configs[0].poolBrickBase, pool.configs[1].poolBrickBase);
         }
+        const uint32_t sourcePoolBrickBase = pool.configs[targetOctreeIndex].poolBrickBase;
+        const uint32_t sourceBrickLookupBase = pool.configs[targetOctreeIndex].brickLookupBase;
 
         BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
         auto nodeBase = nodeType.CreateInstance("multi_octree_grant_test");
@@ -896,19 +1005,68 @@ protected:
         auto buf = [&](int slot) -> VkBuffer {
             return node->GetOutput(slot, 0)->GetHandle<VkBuffer>();
         };
+        const VkBuffer configBuf = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
+        const VkBuffer sourceSdfBuf = buf(C::OCTREE_SDF_BUFFER_Slot::index);
+        const VkBuffer sourceLookupBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
+        const VkBuffer shellDataBuf = buf(C::SHELL_DATA_BUFFER_Slot::index);
+        const VkBuffer shellLookupBuf = buf(C::SHELL_LOOKUP_BUFFER_Slot::index);
+        const VkBuffer mipBuf = buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index);
+        ASSERT_NE(configBuf, VK_NULL_HANDLE);
+        ASSERT_NE(sourceSdfBuf, VK_NULL_HANDLE); ASSERT_NE(sourceLookupBuf, VK_NULL_HANDLE);
+        ASSERT_NE(shellDataBuf, VK_NULL_HANDLE); ASSERT_NE(shellLookupBuf, VK_NULL_HANDLE);
+        ASSERT_NE(mipBuf, VK_NULL_HANDLE);
         constexpr uint32_t kW = 512, kH = 512;
         const float dist = 2.2f * kWorldGridSize * kRenderScale;
         const glm::vec3 eye = bodyCentre + glm::vec3(0.0f, 0.0f, dist);
         const PushConstants pc = MakeCamera(eye, bodyCentre, kW, kH, 1);
+
+        auto reportConfigState = [&](const char* stage) {
+            std::vector<Vixen::SVO::OctreeConfig> gpuConfigs;
+            ASSERT_NO_FATAL_FAILURE(ReadbackOctreeConfigs(configBuf, octreeCount, gpuConfigs));
+            ASSERT_EQ(gpuConfigs.size(), octreeCount);
+            const auto& cfg = gpuConfigs[targetOctreeIndex];
+            std::printf("[MULTI-OCTREE-GRANT] %s config index=%u brickResident=%u "
+                        "readinessMask=%u "
+                        "poolBrickBase=%u brickLookupBase=%u sourcePoolBrickBase=%u "
+                        "sourceBrickLookupBase=%u\n",
+                        stage, targetOctreeIndex, cfg.brickResident, cfg._tailPad[0],
+                        cfg.poolBrickBase, cfg.brickLookupBase, sourcePoolBrickBase,
+                        sourceBrickLookupBase);
+        };
+
+        // A one-pixel dispatch is the only valid binding-14 observation: the shader writes
+        // instanceIterCount[instIdx] non-atomically, so a full image would make every pixel
+        // a multi-writer race. Nonzero iterations prove the second-tree traversal entered;
+        // the HitRecord flag independently proves whether that traversal produced a hit.
+        auto probeTraversal = [&](const char* stage, VkBuffer channelPool, VkBuffer brickLookup) {
+            PushConstants probePc = pc;
+            probePc.debugTargetPixel = glm::ivec2(0, 0);
+            std::vector<uint8_t> probeRgba;
+            std::vector<HitRecordCpu> probeHits;
+            double probeMs = 0.0;
+            uint32_t iterCount = 0u;
+            ASSERT_NO_FATAL_FAILURE(RenderToRgba(
+                buf(C::OCTREE_NODES_BUFFER_Slot::index),
+                buf(C::OCTREE_BRICKS_BUFFER_Slot::index),
+                buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), configBuf,
+                buf(C::INSTANCE_BUFFER_Slot::index), channelPool, brickLookup, mipBuf,
+                probePc, 1u, 1u, probeRgba, probeMs, &probeHits, &iterCount));
+            ASSERT_EQ(probeHits.size(), 1u);
+            const bool hit = (probeHits[0].flags & kHitRecordFlagHit) != 0u;
+            std::printf("[MULTI-OCTREE-GRANT] %s binding14-1x1 iter=%u hit=%u hitT=%.5f\n",
+                        stage, iterCount, unsigned(hit), probeHits[0].hitT);
+        };
+
+        reportConfigState("boot");
+        probeTraversal("boot source-pair", sourceSdfBuf, sourceLookupBuf);
 
         auto measure = [&](const char* outPath, RenderStats& stats) {
             std::vector<uint8_t> rgba; double ms = 0.0;
             std::vector<HitRecordCpu> hitRecords;
             ASSERT_NO_FATAL_FAILURE(RenderToRgba(
                 buf(C::OCTREE_NODES_BUFFER_Slot::index), buf(C::OCTREE_BRICKS_BUFFER_Slot::index),
-                buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), buf(C::OCTREE_CONFIG_BUFFER_Slot::index),
-                buf(C::INSTANCE_BUFFER_Slot::index), buf(C::OCTREE_SDF_BUFFER_Slot::index),
-                buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
+                buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), configBuf,
+                buf(C::INSTANCE_BUFFER_Slot::index), shellDataBuf, shellLookupBuf, mipBuf,
                 pc, kW, kH, rgba, ms, &hitRecords));
             // KI-032 fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not
             // the dead colorImg -- see this file's HitRecordCpu comment.
@@ -1005,6 +1163,10 @@ protected:
                     configTicks,
                     std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - configPollStart).count());
+
+        reportConfigState("post-grant");
+        probeTraversal("post-grant source-pair", sourceSdfBuf, sourceLookupBuf);
+        probeTraversal("post-grant shell-pair", shellDataBuf, shellLookupBuf);
 
         measure("/tmp/multi_octree_grant_after.png", afterStats);
 
