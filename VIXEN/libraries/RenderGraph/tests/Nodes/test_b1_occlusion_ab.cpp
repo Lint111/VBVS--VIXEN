@@ -17,12 +17,13 @@
  *      (binding 36 depthDistanceImage populated). Read back per-instance
  *      iterCounts (binding 14) + RGBA.
  *   2. HiZDownsample.comp: reduce the depth image into a tile-max image.
- *   3. InstanceOcclusionCull.comp: per-instance HiZ cull, writing the skip
- *      mask (binding 35 for pass B).
+ *   3. InstanceOcclusionCull.comp: per-instance HiZ cull, writing the B1
+ *      camera-visibility region of the split skip mask (binding 35 for pass B).
  *   4. Pass B: march again with the cull-produced mask. Read back iterCounts
  *      + RGBA.
  *
- * Asserts: exclusion bits correct, skipped instances' pass-B iterCounts==0,
+ * Asserts: exclusion bits correct, camera-culled instances still cast a real
+ * shadow ray, skipped instances' pass-B iterCounts==0,
  * >=40% total-iteration reduction, byte-identical RGBA (static scene, so
  * culled instances contributed no visible pixels), and the produced mask
  * cross-checked against the CPU mirror (InstanceOcclusionCullMirror.h) fed
@@ -84,6 +85,9 @@ using Vixen::RenderGraph::Mirror::HiZTileCount;
 #ifndef INSTANCE_OCCLUSION_CULL_SPV
 #error "INSTANCE_OCCLUSION_CULL_SPV (path to compiled InstanceOcclusionCull.spv) must be defined by CMake"
 #endif
+#ifndef SHADOW_RAY_TRACE_SPV
+#error "SHADOW_RAY_TRACE_SPV (path to compiled ShadowRayTrace.spv) must be defined by CMake"
+#endif
 
 namespace {
 
@@ -120,6 +124,13 @@ struct CullPush {
 };
 static_assert(sizeof(CullPush) == 96, "CullPush must be 96 bytes");
 
+// Byte-identical to ShadowRayQueue.glsl's ShadowRayRequest.
+struct ShadowRayRequestCpu {
+    glm::vec3 origin; float tmin;
+    glm::vec3 dir;    float tmax;
+};
+static_assert(sizeof(ShadowRayRequestCpu) == 32, "ShadowRayRequestCpu must be 32 bytes");
+
 // M2c fix (see test_body_instance_raymarch_render.cpp's identical comment): the
 // march shader stopped writing colorImg/binding 0 once shading moved to
 // DirectLighting.comp — "same visible output" must be judged from HitRecordBuffer
@@ -147,7 +158,10 @@ std::vector<uint32_t> ReadSpirv(const char* path) {
     return code;
 }
 
-constexpr uint32_t kSkipMaskWords = 6;  // 192-instance cap / 32 (TraceWorld's cap)
+constexpr uint32_t kSkipMaskWords =
+    2u * Vixen::RenderGraph::Mirror::kInstanceMaskWordCount;
+constexpr uint32_t kCameraMaskWordBase =
+    Vixen::RenderGraph::Mirror::kCameraVisibilityMaskWordBase;
 
 }  // namespace
 
@@ -882,7 +896,7 @@ protected:
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &set, 0, nullptr);
         vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        vkCmdDispatch(cmd, 1, 1, 1);  // 64 threads >= kSkipMaskWords (6)
+        vkCmdDispatch(cmd, 1, 1, 1);  // 64 threads cover the six B1 camera words
 
         VkMemoryBarrier toHost{};
         toHost.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -899,6 +913,165 @@ protected:
         vkDestroyDescriptorPool(logicalDevice_, pool, nullptr);
         vkDestroyDescriptorSetLayout(logicalDevice_, dsl, nullptr);
         vkDestroyShaderModule(logicalDevice_, shader, nullptr);
+    }
+
+    // Dispatch one real ShadowRayTrace request against the same ESVO instance buffer and
+    // split skip-mask buffer used by the B1 chain. One request/one invocation keeps the
+    // regression deterministic and avoids the binding-14 multi-writer race documented by
+    // the per-pixel iteration readback below.
+    void DispatchShadowRay(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
+                           VkBuffer configBuf, VkBuffer instanceBuf,
+                           VkBuffer skipMaskBuf, VkDeviceSize skipMaskBufSize,
+                           const PushConstants& push, const ShadowRayRequestCpu& request,
+                           uint32_t& outVisible) {
+        auto code = ReadSpirv(SHADOW_RAY_TRACE_SPV);
+        ASSERT_FALSE(code.empty()) << "missing SPIR-V at " SHADOW_RAY_TRACE_SPV;
+        VkShaderModuleCreateInfo smci{};
+        smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        smci.codeSize = code.size() * sizeof(uint32_t); smci.pCode = code.data();
+        VkShaderModule shader = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shader), VK_SUCCESS);
+
+        VkBuffer rayTraceBuf = VK_NULL_HANDLE, channelPoolBuf = VK_NULL_HANDLE;
+        VkBuffer brickLookupBuf = VK_NULL_HANDLE, mipPoolBuf = VK_NULL_HANDLE;
+        VkBuffer tierRefBuf = VK_NULL_HANDLE, requestBuf = VK_NULL_HANDLE, resultBuf = VK_NULL_HANDLE;
+        VkDeviceMemory rayTraceMem = VK_NULL_HANDLE, channelPoolMem = VK_NULL_HANDLE;
+        VkDeviceMemory brickLookupMem = VK_NULL_HANDLE, mipPoolMem = VK_NULL_HANDLE;
+        VkDeviceMemory tierRefMem = VK_NULL_HANDLE, requestMem = VK_NULL_HANDLE, resultMem = VK_NULL_HANDLE;
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, rayTraceBuf, rayTraceMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, channelPoolBuf, channelPoolMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, brickLookupBuf, brickLookupMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, mipPoolBuf, mipPoolMem, true);
+        CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tierRefBuf, tierRefMem, true);
+        CreateHostBuffer(sizeof(request), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         requestBuf, requestMem, false);
+        CreateHostBuffer(sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         resultBuf, resultMem, true);
+        UploadBuffer(requestMem, &request, sizeof(request));
+
+        auto bind = [](uint32_t binding) {
+            VkDescriptorSetLayoutBinding out{};
+            out.binding = binding;
+            out.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            out.descriptorCount = 1;
+            out.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            return out;
+        };
+        const std::array<VkDescriptorSetLayoutBinding, 13> bindings = {{
+            bind(1), bind(2), bind(3), bind(4), bind(5), bind(10), bind(11),
+            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38),
+        }};
+        VkDescriptorSetLayoutCreateInfo dslci{};
+        dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        dslci.bindingCount = static_cast<uint32_t>(bindings.size());
+        dslci.pBindings = bindings.data();
+        VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
+
+        VkPushConstantRange pcr{};
+        pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        pcr.offset = 0; pcr.size = sizeof(PushConstants);
+        VkPipelineLayoutCreateInfo plci{};
+        plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        plci.setLayoutCount = 1; plci.pSetLayouts = &dsl;
+        plci.pushConstantRangeCount = 1; plci.pPushConstantRanges = &pcr;
+        VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &plci, nullptr, &pipelineLayout), VK_SUCCESS);
+
+        VkComputePipelineCreateInfo cpci{};
+        cpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        cpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        cpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        cpci.stage.module = shader; cpci.stage.pName = "main";
+        cpci.layout = pipelineLayout;
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci,
+                                           nullptr, &pipeline), VK_SUCCESS);
+
+        const std::array<VkDescriptorPoolSize, 1> poolSizes = {{
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<uint32_t>(bindings.size())},
+        }};
+        VkDescriptorPoolCreateInfo dpci{};
+        dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        dpci.maxSets = 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = poolSizes.data();
+        VkDescriptorPool pool = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &dpci, nullptr, &pool), VK_SUCCESS);
+        VkDescriptorSetAllocateInfo dsai{};
+        dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dsai.descriptorPool = pool; dsai.descriptorSetCount = 1; dsai.pSetLayouts = &dsl;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &set), VK_SUCCESS);
+
+        const std::array<VkDescriptorBufferInfo, 13> infos = {{
+            {nodesBuf, 0, VK_WHOLE_SIZE},
+            {bricksBuf, 0, VK_WHOLE_SIZE},
+            {materialsBuf, 0, VK_WHOLE_SIZE},
+            {rayTraceBuf, 0, VK_WHOLE_SIZE},
+            {configBuf, 0, VK_WHOLE_SIZE},
+            {instanceBuf, 0, VK_WHOLE_SIZE},
+            {channelPoolBuf, 0, VK_WHOLE_SIZE},
+            {brickLookupBuf, 0, VK_WHOLE_SIZE},
+            {mipPoolBuf, 0, VK_WHOLE_SIZE},
+            {tierRefBuf, 0, VK_WHOLE_SIZE},
+            {skipMaskBuf, 0, skipMaskBufSize},
+            {requestBuf, 0, VK_WHOLE_SIZE},
+            {resultBuf, 0, VK_WHOLE_SIZE},
+        }};
+        std::array<VkWriteDescriptorSet, 13> writes{};
+        for (size_t i = 0; i < writes.size(); ++i) {
+            writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet = set;
+            writes[i].dstBinding = bindings[i].binding;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[i].pBufferInfo = &infos[i];
+        }
+        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
+                               writes.data(), 0, nullptr);
+
+        VkCommandBuffer cmd = BeginOneShot();
+        VkMemoryBarrier requestReady{};
+        requestReady.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        requestReady.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        requestReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &requestReady,
+                             0, nullptr, 0, nullptr);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout,
+                                0, 1, &set, 0, nullptr);
+        vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, sizeof(push), &push);
+        vkCmdDispatch(cmd, 1, 1, 1);
+        VkMemoryBarrier resultReady{};
+        resultReady.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        resultReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        resultReady.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &resultReady,
+                             0, nullptr, 0, nullptr);
+        ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
+        ASSERT_NO_FATAL_FAILURE(SubmitAndWait(cmd));
+
+        uint32_t result = 0u;
+        void* mapped = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, resultMem, 0, sizeof(result), 0, &mapped), VK_SUCCESS);
+        std::memcpy(&result, mapped, sizeof(result));
+        vkUnmapMemory(logicalDevice_, resultMem);
+        outVisible = result;
+
+        vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
+        vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
+        vkDestroyDescriptorPool(logicalDevice_, pool, nullptr);
+        vkDestroyDescriptorSetLayout(logicalDevice_, dsl, nullptr);
+        vkDestroyShaderModule(logicalDevice_, shader, nullptr);
+        vkDestroyBuffer(logicalDevice_, rayTraceBuf, nullptr); vkFreeMemory(logicalDevice_, rayTraceMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, channelPoolBuf, nullptr); vkFreeMemory(logicalDevice_, channelPoolMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, brickLookupBuf, nullptr); vkFreeMemory(logicalDevice_, brickLookupMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, mipPoolBuf, nullptr); vkFreeMemory(logicalDevice_, mipPoolMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, tierRefBuf, nullptr); vkFreeMemory(logicalDevice_, tierRefMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, requestBuf, nullptr); vkFreeMemory(logicalDevice_, requestMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, resultBuf, nullptr); vkFreeMemory(logicalDevice_, resultMem, nullptr);
     }
 
     // Device->host readback of an arbitrary SSBO via vkCmdCopyBuffer (same pattern as
@@ -1303,18 +1476,41 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
         std::memcpy(producedMask, m, static_cast<size_t>(maskBufSize));
         vkUnmapMemory(logicalDevice_, maskMem);
     }
-    std::printf("[b1-ab] produced skip mask word0=0x%08x\n", producedMask[0]);
+    std::printf("[b1-ab] produced skip mask ownership0=0x%08x camera0=0x%08x\n",
+                producedMask[0], producedMask[kCameraMaskWordBase]);
 
     // (a) exclusion bits: occluded #1-3 must be marked skipped; the occluder and
     // control (indices resolved right after array construction above) must NOT be.
     auto bitSet = [&](uint32_t idx) {
-        return (producedMask[idx >> 5] & (1u << (idx & 31u))) != 0u;
+        return (producedMask[kCameraMaskWordBase + (idx >> 5)] & (1u << (idx & 31u))) != 0u;
     };
     EXPECT_TRUE(bitSet(idxOcc1)) << "occluded #1 (idx " << idxOcc1 << ") must be marked skipped";
     EXPECT_TRUE(bitSet(idxOcc2)) << "occluded #2 (idx " << idxOcc2 << ") must be marked skipped";
     EXPECT_TRUE(bitSet(idxOcc3)) << "occluded #3 (idx " << idxOcc3 << ") must be marked skipped";
     EXPECT_FALSE(bitSet(idxOccluder)) << "occluder itself must NOT be marked skipped";
     EXPECT_FALSE(bitSet(idxControl))  << "control must NOT be marked skipped";
+
+    // Hard rule regression: occ1 is camera-visibility culled above, but it is still
+    // in front of this independent shadow request. The request starts after the
+    // front occluder and reaches occ1 at world-ray t ~= 15, so the expected result
+    // is 0 (occluded). With the old single-word contract, cull bits landed in the
+    // shadow-visible region and this exact assertion returned 1.
+    ShadowRayRequestCpu shadowRequest{};
+    shadowRequest.origin = lineDir * 5.0f;
+    shadowRequest.tmin = 0.0f;
+    shadowRequest.dir = lineDir;
+    shadowRequest.tmax = 30.0f;
+    PushConstants shadowPc = pc;
+    shadowPc.raySizeCoef = 0.0f;
+    shadowPc.raySizeBias = 0.0f;
+    uint32_t shadowVisible = 1u;
+    ASSERT_NO_FATAL_FAILURE(DispatchShadowRay(
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        maskBuf, maskBufSize, shadowPc, shadowRequest, shadowVisible));
+    std::printf("[b1-shadow] camera-culled occ1 shadow result=%u (0=occluded)\n",
+                shadowVisible);
+    EXPECT_EQ(shadowVisible, 0u)
+        << "camera-visibility cull bits must never suppress a shadow-casting instance";
 
     // --- Pass B: cull-produced mask, depth image NOT re-cleared (already holds real
     // distances the cull step just consumed; production leaves it alone across A->B
@@ -1325,8 +1521,8 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
                                   pc, kW, kH, maxInstances, iterB, hitRecordsB));
     ASSERT_EQ(iterB.size(), 5u);
     // Race-free re-measurement (see measureSinglePixelIterCounts's own comment above) —
-    // pass B's maskBuf now holds the real cull-produced skip bits, so isInstanceSkipped
-    // still correctly zeroes occ1-3 in each single-pixel run.
+    // pass B's maskBuf now holds the real cull-produced camera bits, so the primary
+    // isInstanceSkippedForPrimary check still correctly zeroes occ1-3 in each run.
     iterB.assign(maxInstances, 0u);
     mergeIterCounts(iterB, measureSinglePixelIterCounts(lineDir, maskBuf, maskBufSize));
     mergeIterCounts(iterB, measureSinglePixelIterCounts(controlRayDir, maskBuf, maskBufSize));
@@ -1424,10 +1620,11 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     mirrorParams.prevCamPos = glm::vec3(cullPush.prevCamPos);
     mirrorParams.srcWidth = kW; mirrorParams.srcHeight = kH;
     mirrorParams.instanceCount = maxInstances;
-    const uint32_t mirrorWord0 = CullMaskWord(0u, mirrorInstances.data(), mirrorConfigs.data(),
-                                              tileMaxReadback.data(), mirrorParams, 0u);
-    std::printf("[b1-ab] mirror word0=0x%08x gpu word0=0x%08x\n", mirrorWord0, producedMask[0]);
-    EXPECT_EQ(mirrorWord0, producedMask[0])
+    const uint32_t mirrorCameraWord0 = CullMaskWord(0u, mirrorInstances.data(), mirrorConfigs.data(),
+                                                    tileMaxReadback.data(), mirrorParams, 0u);
+    std::printf("[b1-ab] mirror camera0=0x%08x gpu camera0=0x%08x\n",
+                mirrorCameraWord0, producedMask[kCameraMaskWordBase]);
+    EXPECT_EQ(mirrorCameraWord0, producedMask[kCameraMaskWordBase])
         << "GPU-produced skip mask must match the CPU mirror fed the identical real "
            "config/instances/tile-max inputs (end-to-end parity)";
 

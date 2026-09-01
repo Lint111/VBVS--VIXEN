@@ -16,8 +16,9 @@
 // (the all-zero convention fails max>min), any corner behind the near plane,
 // undilated rect fully offscreen, > kCullTileCap covered tiles, camera inside
 // the AABB, any covered miss tile (sentinel loses every compare).
-// Bit set = SKIP (isInstanceSkipped, SceneBindings.glsl); the word OR-composes
-// over existing content so the bucketed-dispatch CPU writer's bits survive.
+// B1 writes camera-visibility SKIP bits in the high word region [6..11]. The
+// bucketed-dispatch ownership words [0..5] are preserved independently; shadows
+// read only those low words.
 // Any fix here MUST be applied to the .comp and vice versa.
 
 #include "Nodes/HiZDownsampleMirror.h"  // kDepthMissSentinel, kHiZTileSize, HiZTileCount
@@ -31,6 +32,8 @@ namespace Vixen::RenderGraph::Mirror {
 
 inline constexpr uint32_t kCullTileCap = 64u;
 inline constexpr float kCullMinClipW = 1e-5f;
+inline constexpr uint32_t kInstanceMaskWordCount = 6u;
+inline constexpr uint32_t kCameraVisibilityMaskWordBase = kInstanceMaskWordCount;
 
 // The BodyInstance fields the cull reads (std430 record, SceneBindings.glsl).
 struct CullInstance {
@@ -136,8 +139,9 @@ inline bool InstanceOccluded(const CullInstance& inst, const CullOctreeConfig& c
     return true;
 }
 
-// One shader thread's work: compose skip-mask word `wordIdx` over its existing
-// content. Bit set = instance skipped; single writer per word ⇒ no atomics.
+// One shader thread's work: compute one B1 camera-visibility word. The caller
+// supplies only the existing camera-region word; bucket ownership lives in the
+// separate low region and is never mixed into this result.
 inline uint32_t CullMaskWord(uint32_t wordIdx, const CullInstance* instances,
                              const CullOctreeConfig* configs, const float* tileMax,
                              const CullParams& p, uint32_t existingWord) {

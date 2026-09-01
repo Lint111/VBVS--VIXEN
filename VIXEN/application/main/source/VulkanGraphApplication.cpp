@@ -664,8 +664,8 @@ void VulkanGraphApplication::PreTick() {
         }
 
         // Raster-proxy B1 M4: one-frame-delayed camera feed for the occlusion cull.
-        // Ordering note: runs AFTER RunRecipeBucketedDispatchPreTick's skip-mask CPU fill —
-        // the GPU cull pass OR-composes on top of whatever that fill wrote this frame.
+        // Ordering note: runs AFTER RunRecipeBucketedDispatchPreTick's LOW-region CPU fill —
+        // the GPU cull pass writes/OR-composes only its separate HIGH camera-visibility region.
         if (b1OcclusionCullEnabled_) {
             RunB1OcclusionCullPreTick();
         }
@@ -745,9 +745,10 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     }
     std::sort(hotRecipeIds.begin(), hotRecipeIds.end());  // deterministic dispatch order
 
-    // --- Step 2: populate instanceSkipMaskBuffer -- mark exactly the instances belonging to a
-    // HOT recipe, so tier-0's march excludes them (M1's mechanism, populated with real content
-    // for the first time). Cold-recipe instances stay unmarked -- tier-0 still handles them. ---
+    // --- Step 2: populate the LOW [0..5] words of instanceSkipMaskBuffer -- mark exactly the
+    // instances belonging to a HOT recipe, so tier-0's march excludes them (M1's mechanism,
+    // populated with real content for the first time). B1 owns the separate HIGH [6..11]
+    // camera-visibility words. Cold-recipe instances stay unmarked -- tier-0 still handles them. ---
     if (auto* skipMaskNode = static_cast<StorageBufferNode*>(renderGraph->GetInstanceByName("instance_skip_mask_buffer"))) {
         if (void* mapped = skipMaskNode->MapForReadback(device)) {
             auto* words = reinterpret_cast<uint32_t*>(mapped);

@@ -937,7 +937,7 @@ message(STATUS "[RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (
 
 # ---------------------------------------------------------------------------
 # Raster-proxy B1 M3 device gate: dispatch the SHIPPED InstanceOcclusionCull.comp
-# against synthetic buffers; skip-mask words must equal the CPU mirror's output
+# against synthetic buffers; B1 camera-region skip-mask words must equal the CPU mirror's output
 # on identical inputs. Same glslc/device-selection contract as
 # test_recipe_instance_bucketing above.
 # ---------------------------------------------------------------------------
@@ -956,6 +956,22 @@ if(VIXEN_GLSLC)
         COMMENT "Compiling InstanceOcclusionCull.comp -> SPIR-V (B1 M3)"
         VERBATIM)
     add_custom_target(instance_occlusion_cull_spv DEPENDS ${_cull_spv})
+
+    set(_shadow_ray_trace_src "${_brm_shader_dir}/ShadowRayTrace.comp")
+    set(_shadow_ray_trace_spv "${CMAKE_CURRENT_BINARY_DIR}/ShadowRayTrace.spv")
+    add_custom_command(
+        OUTPUT  ${_shadow_ray_trace_spv}
+        COMMAND ${VIXEN_GLSLC}
+                -fshader-stage=compute
+                -I ${_brm_shader_dir}
+                -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
+                --target-env=vulkan1.3
+                ${_shadow_ray_trace_src}
+                -o ${_shadow_ray_trace_spv}
+        DEPENDS ${_shadow_ray_trace_src} ${_brm_includes}
+        COMMENT "Compiling ShadowRayTrace.comp -> SPIR-V (B1 shadow-mask regression)"
+        VERBATIM)
+    add_custom_target(shadow_ray_trace_spv DEPENDS ${_shadow_ray_trace_spv})
 
     add_executable(test_instance_occlusion_cull_device
         Nodes/test_instance_occlusion_cull_device.cpp
@@ -994,7 +1010,8 @@ if(VIXEN_GLSLC)
     add_dependencies(test_b1_occlusion_ab
         body_instance_raymarch_spv_b1
         hiz_downsample_spv
-        instance_occlusion_cull_spv)
+        instance_occlusion_cull_spv
+        shadow_ray_trace_spv)
     target_link_libraries(test_b1_occlusion_ab PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
     if(TARGET SVO)
         target_link_libraries(test_b1_occlusion_ab PRIVATE SVO)
@@ -1002,7 +1019,8 @@ if(VIXEN_GLSLC)
     target_compile_definitions(test_b1_occlusion_ab PRIVATE
         GLSL_RAYMARCH_SPV="${_brm_spv_b1}"
         HIZ_DOWNSAMPLE_SPV="${_hiz_spv}"
-        INSTANCE_OCCLUSION_CULL_SPV="${_cull_spv}")
+        INSTANCE_OCCLUSION_CULL_SPV="${_cull_spv}"
+        SHADOW_RAY_TRACE_SPV="${_shadow_ray_trace_spv}")
     if(VIXEN_WSL_DZN_ICD)
         target_compile_definitions(test_b1_occlusion_ab PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
     endif()

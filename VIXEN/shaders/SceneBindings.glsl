@@ -137,12 +137,12 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 // ============================================================================
 // PER-INSTANCE SKIP BITMASK (Recipe-Live-App-Bucketed-Dispatch Inc4 M1 — binding 35)
 // ============================================================================
-// One bit per instance index (bit (instIdx & 31) of word instIdx>>5), read once at the
-// top of TraceWorld's and TraceWorldShadow's instance-loop body: a set bit means "some
-// OTHER pass already owns this instance this frame, skip it here" — an early-continue,
-// cheap enough to be unconditional. Only a CONSUMER of this mechanism (a future
-// bucketed-dispatch integration, not built in this milestone) ever sets a bit; this
-// milestone only builds the read side + the skip semantics.
+// The fixed binding is split into two logical six-word regions for the 192-instance
+// TraceWorld cap. Low words [0..5] are the bucketed-dispatch ownership mask: a set bit
+// means "some OTHER pass already owns this instance this frame, skip it here". High
+// words [6..11] are B1 camera-visibility cull bits. Camera visibility is legal for the
+// primary march's optimization, but MUST NOT feed TraceWorldShadow: an instance that
+// is off-screen/occluded for the camera can still cast a shadow.
 //
 // Bound as a 256-byte ZEROED placeholder in every scene/test that doesn't populate it
 // (both the production graph's own instance_skip_mask_buffer, BuildRenderGraph.cpp, and
@@ -175,16 +175,30 @@ layout(std430, binding = 15) readonly buffer TierRefTableBuffer { TierRef tierRe
 // SceneBindings.glsl includer; 35 is free everywhere as of this milestone.
 layout(std430, binding = 35) readonly buffer InstanceSkipMaskBuffer { uint skipMask[]; };
 
-// Returns true iff instIdx's bit is set in skipMask[] — false (never skip) whenever the
-// bound buffer is the 256-byte zeroed placeholder (every word reads 0, so no bit is ever
-// set) or instIdx's word is simply beyond whatever was actually populated, so a caller
-// that never populates this buffer at all gets byte-identical behavior to a build that
-// never had this mechanism.
-bool isInstanceSkipped(int instIdx) {
-    uint wordIdx = uint(instIdx) >> 5u;
+const uint kInstanceMaskWordCount = 6u;
+const uint kCameraVisibilityMaskWordBase = kInstanceMaskWordCount;
+
+bool isInstanceSkippedInRegion(int instIdx, uint wordBase) {
+    uint wordIdx = wordBase + (uint(instIdx) >> 5u);
     if (wordIdx >= skipMask.length()) return false;
     uint bitIdx = uint(instIdx) & 31u;
     return (skipMask[wordIdx] & (1u << bitIdx)) != 0u;
+}
+
+// Bucket ownership is the only skip reason that shadows honor. B1 camera bits use
+// isInstanceCameraVisibilitySkipped() and are intentionally excluded here.
+bool isInstanceSkipped(int instIdx) {
+    return isInstanceSkippedInRegion(instIdx, 0u);
+}
+
+bool isInstanceCameraVisibilitySkipped(int instIdx) {
+    return isInstanceSkippedInRegion(instIdx, kCameraVisibilityMaskWordBase);
+}
+
+// The primary march may use both producer regions. This preserves B1's primary-march
+// optimization while keeping the shadow loop on the bucket-ownership contract only.
+bool isInstanceSkippedForPrimary(int instIdx) {
+    return isInstanceSkipped(instIdx) || isInstanceCameraVisibilitySkipped(instIdx);
 }
 
 // E11-T1: per-8x8-tile policy word (VIXEN_POLICY_STENCIL_TILES; requires
@@ -271,7 +285,7 @@ void incrPolicyStencilTileSkip() {
 // loop (`for (int instIdx = 0; instIdx < numInstances; ++instIdx)`):
 //   1. The loop bound (numInstances = clamp(pc.instanceCount, ...)) comes from a push constant --
 //      frame-global, not per-pixel/per-ray.
-//   2. isInstanceSkipped(instIdx) takes ONLY instIdx and the skip-mask buffer's content as input --
+//   2. isInstanceSkippedForPrimary(instIdx) takes ONLY instIdx and the skip-mask buffer's content as input --
 //      no per-pixel/per-ray input reaches it anywhere.
 //   3. The loop body never `break`s or early-`return`s before reaching a later index (every branch
 //      is `continue` or falls through) -- so every pixel's invocation visits the SAME index range
@@ -289,9 +303,10 @@ void incrPolicyStencilTileSkip() {
 // instead -- re-derive from scratch, don't assume this function still applies unmodified.
 bool anyInstanceSkipped() {
     uint wordCount = skipMask.length();
-    // 3*64=192 instances / 32 bits-per-word = 6 words covers TraceWorld's own instance-count cap;
-    // clamp defensively in case a future caller ever binds a larger buffer.
-    uint scanWords = min(wordCount, 6u);
+    // 3*64=192 instances / 32 bits-per-word = 6 words per producer region; the
+    // split low+high contract therefore spans 12 words. Clamp defensively in
+    // case a future caller ever binds a larger buffer.
+    uint scanWords = min(wordCount, 2u * kInstanceMaskWordCount);
     for (uint w = 0u; w < scanWords; ++w) {
         if (skipMask[w] != 0u) return true;
     }

@@ -254,9 +254,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 
         // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: skip a caller-specified instance
         // subset (see InstanceSkipMaskBuffer's comment in SceneBindings.glsl). A no-op
-        // (isInstanceSkipped always false) whenever the skip mask is empty/unbound —
-        // the default, every-existing-scene case.
-        if (isInstanceSkipped(instIdx)) {
+        // whenever both producer regions are empty/unbound — the default,
+        // every-existing-scene case.
+        if (isInstanceSkippedForPrimary(instIdx)) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
             instanceIterCount[instIdx] = 0u;
 #endif
@@ -820,10 +820,9 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
     int numInstances = clamp(pc.instanceCount, 0, 3 * 64); // safety cap, matches TraceWorld
     for (int instIdx = 0; instIdx < numInstances; ++instIdx) {
 
-        // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: same skip mechanism as TraceWorld's
-        // instance loop above — see that loop's identical block and InstanceSkipMaskBuffer's
-        // comment in SceneBindings.glsl for the full rationale. No-op when the skip mask is
-        // empty/unbound.
+        // Shadow hard rule: only bucketed-dispatch ownership bits are legal here. B1's
+        // camera-visibility bits live in a separate word region and are intentionally
+        // ignored, so an instance occluded for the camera can still cast this shadow.
         if (isInstanceSkipped(instIdx)) {
             continue;
         }

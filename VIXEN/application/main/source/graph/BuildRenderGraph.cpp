@@ -1345,10 +1345,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Recipe-Live-App-Bucketed-Dispatch Inc4 M1 fix round: InstanceSkipMaskBuffer (binding 35) --
     // fixed 256-byte zeroed placeholder, not extent-driven (mirrors ddgiLeakGateDebugBuffer's own
-    // fixed-size convention just above). 256 bytes matches this feature's 11 GTest harnesses'
-    // default placeholder size exactly (see test_body_instance_raymarch_render.cpp's
-    // dummySkipMask), so isInstanceSkipped()'s skipMask.length()==64 (256B / 4B-per-uint) no-op
-    // path is identical in production and in every test.
+    // fixed-size convention just above). The first six words are bucket ownership and the next
+    // six are B1 camera visibility; the remaining zeroed words preserve the existing headroom.
     auto* instanceSkipMaskInst = static_cast<StorageBufferNode*>(renderGraph->GetInstance(instanceSkipMaskBuffer));
     instanceSkipMaskInst->SetParameter(StorageBufferNodeConfig::PARAM_SIZE_BYTES, 256u);
 
@@ -7487,8 +7485,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Raster-proxy B1 M4: occlusion-probe chain connections (VIXEN_B1_OCCLUSION_CULL) ---
     // Frame order baked by resource hazards alone: HiZ writes the tile image the cull reads
-    // (ImageSync pair) and the cull writes the skip-mask buffer every existing reader already
-    // has in its read arrays — so HiZ → cull → march/lighting without any hand-rolled edges.
+    // (ImageSync pair) and the cull writes the HIGH camera-visibility region of the split
+    // skip-mask buffer every existing reader already has in its read arrays — so HiZ → cull
+    // → march/lighting without any hand-rolled edges.
     // The depth ping-pong needs NO edges at all (distinct VkImage per parity slot).
     if (b1OcclusionCullEnabled) {
         // Depth ping-pong provider: extent follows the render target, parity follows FrameSync.
@@ -7594,7 +7593,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
             sdiHazardCensus_, b1CullStage, b1Providers, b1Features);
 
         // Ordering hazards: HiZ writes the tile image the cull reads (same-frame RAW), and
-        // the cull writes the skip-mask buffer the march + lighting passes already read.
+        // the cull writes the HIGH camera-visibility region of the skip-mask buffer the
+        // primary march + lighting passes already read; bucket ownership stays in LOW words.
         batch.Connect(b1HizTileImage, ProbeAtlasNodeConfig::PROBE_ATLAS,
                       b1HizTileWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(b1HizTileWriteGatherer, ImageSyncGathererNodeConfig::IMAGE_ARRAY,
@@ -8039,8 +8039,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // idOutputImage/historyImage/outputImage are per-frame re-emitted views
     // (Execute-only); outputImage is bound to the march SOLELY for
     // imageSize() (never imageStore'd post-split — PARAM_WRITES_NO_IMAGE).
-    // InstanceSkipMask is read unconditionally by isInstanceSkipped(); the
-    // zeroed placeholder makes it a true no-op until the cull fills it.
+    // InstanceSkipMask has low bucket-ownership words [0..5] and high B1
+    // camera-visibility words [6..11]. The primary march reads both regions;
+    // TraceWorldShadow reads only the low region. The zeroed placeholder makes
+    // both regions a true no-op until their producer fills them.
     // Binding 8 (ShaderCounters) is compiled out of the shader unconditionally
     // — no member, no wire (the original binding-8 lesson: wiring an
     // undeclared binding is a validation error).

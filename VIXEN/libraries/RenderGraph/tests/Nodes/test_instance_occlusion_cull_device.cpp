@@ -12,7 +12,8 @@
  *   inst1: same box at z in [2, 2.5], nearest 2.0 -> in FRONT of the wall (clear)
  *   inst2: inst0 shifted +x one tile           -> occluded (bit 2)
  * skipMask word 0 pre-seeded with bit 5 (the bucketed-dispatch CPU writer's
- * bit) — the shader must OR-compose, not overwrite.
+ * bit). B1 writes its camera-visibility result to the separate high region;
+ * the low ownership bit must survive untouched.
  *
  * DEVICE SELECTION: same contract as test_recipe_instance_bucketing.cpp — real
  * GPU preferred, lavapipe/Dozen fallback, some usable device hard-asserted.
@@ -68,7 +69,8 @@ std::vector<uint32_t> ReadSpirv(const char* path) {
 
 constexpr uint32_t kSrcW = 256, kSrcH = 256;  // depth extent the tile grid derives from
 constexpr uint32_t kTiles = 16;               // HiZTileCount(256)
-constexpr uint32_t kWords = 6;                // 192-instance cap / 32
+constexpr uint32_t kWords = 2 * Vixen::RenderGraph::Mirror::kInstanceMaskWordCount;
+constexpr uint32_t kCameraWordBase = Vixen::RenderGraph::Mirror::kCameraVisibilityMaskWordBase;
 
 }  // namespace
 
@@ -291,9 +293,9 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     mParams.srcWidth = kSrcW; mParams.srcHeight = kSrcH;
     mParams.instanceCount = 3u;
     std::vector<float> mTiles(kTiles * kTiles, 4.0f);
-    const uint32_t mirrorWord0 =
-        CullMaskWord(0u, mInsts, &mCfg, mTiles.data(), mParams, seededMask[0]);
-    ASSERT_EQ(mirrorWord0, (1u << 0) | (1u << 2) | (1u << 5))
+    const uint32_t mirrorCameraWord0 =
+        CullMaskWord(0u, mInsts, &mCfg, mTiles.data(), mParams, 0u);
+    ASSERT_EQ(mirrorCameraWord0, (1u << 0) | (1u << 2))
         << "mirror precondition drifted — fix the mirror suite first";
 
     // --- Device resources --------------------------------------------------
@@ -482,10 +484,12 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
         vkUnmapMemory(logicalDevice_, maskMem);
     }
 
-    // The parity proof: shader == mirror on identical inputs, and both == hand bits.
-    EXPECT_EQ(result[0], mirrorWord0);
-    EXPECT_EQ(result[0], (1u << 0) | (1u << 2) | (1u << 5));
+    // The parity proof: shader == mirror on identical inputs in the camera region;
+    // the independent low ownership region is preserved byte-for-byte.
+    EXPECT_EQ(result[0], seededMask[0]);
+    EXPECT_EQ(result[kCameraWordBase], mirrorCameraWord0);
     for (uint32_t w = 1; w < kWords; ++w) {
+        if (w == kCameraWordBase) continue;
         EXPECT_EQ(result[w], 0u) << "word " << w << " must stay untouched";
     }
 
