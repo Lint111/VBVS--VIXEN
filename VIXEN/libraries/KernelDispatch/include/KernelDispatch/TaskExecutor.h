@@ -21,6 +21,7 @@
 
 #include "TaskDependencyGraph.h"
 #include "VirtualTask.h"
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -50,11 +51,14 @@ public:
      * @param waves     Task-id waves from TaskDependencyGraph::GetParallelLevels(); each wave's
      *                  tasks run concurrently, waves run in order.
      * @param workerCount TBB arena concurrency for this run (>=1). 1 forces serial.
-     * @return true if every task's callable completed without throwing.
+     * @param stopToken Cooperative execution cancellation. A stopped token prevents new tasks and
+     *                  later waves from being issued; already-running tasks finish normally.
+     * @return true if every task completed without throwing and cancellation was not requested.
      */
     bool Run(std::vector<VirtualTask>& tasks,
              const std::vector<std::vector<TaskId>>& waves,
-             int workerCount);
+             int workerCount,
+             std::stop_token stopToken = {});
 
     [[nodiscard]] const std::vector<TaskError>& GetErrors() const { return errors_; }
     [[nodiscard]] bool HasErrors() const { return !errors_.empty(); }
@@ -63,7 +67,9 @@ private:
     std::vector<TaskError> errors_;
 
     VirtualTask* FindTask(std::vector<VirtualTask>& tasks, const TaskId& id) const;
-    bool RunWave(std::vector<VirtualTask>& tasks, const std::vector<TaskId>& wave);
+    bool RunWave(std::vector<VirtualTask>& tasks,
+                 const std::vector<TaskId>& wave,
+                 std::stop_token stopToken);
 };
 
 }  // namespace Vixen::KernelDispatch

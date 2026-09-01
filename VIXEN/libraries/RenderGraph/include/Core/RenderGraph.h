@@ -36,6 +36,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
+#include <stop_token>
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -477,10 +478,18 @@ public:
      * guard — six of ten consumers historically got that guard wrong (missing or after first
      * use). Per-node guards remain as second-layer defense. Cleared at the top of RenderFrame().
      */
-    void AbortCurrentFrame() { frameAborted_ = true; }
+    void AbortCurrentFrame();
 
     /** @brief True while the current frame's execution has been aborted (see AbortCurrentFrame). */
     bool IsFrameAborted() const { return frameAborted_; }
+
+    /** @brief Cancellation token for the graph-owned current execution epoch. */
+    std::stop_token GetExecutionStopToken() const { return executionStopSource_.get_token(); }
+
+    /** @brief Monotonic identity of the current graph execution epoch. */
+    uint64_t GetExecutionEpoch() const {
+        return executionEpoch_.load(std::memory_order_acquire);
+    }
 
     /**
      * @brief Rebuild the whole graph on a fresh GPU device after a latched device loss.
@@ -934,6 +943,11 @@ private:
     // Frame abort (see AbortCurrentFrame): set mid-frame by SwapChainNode's out-of-date skip path,
     // checked by the sequential execute loop, cleared at the top of every RenderFrame().
     bool frameAborted_ = false;
+    std::stop_source executionStopSource_;
+    std::atomic<uint64_t> executionEpoch_{0};
+
+    void BeginExecutionEpoch();
+    void InvalidateExecutionEpoch();
 
     // Device-loss recovery (AR#1 Error-Model Phase 3). Latched by NotifyDeviceLost() when a node sees
     // VK_ERROR_DEVICE_LOST; checked by RenderFrame() which then returns VK_ERROR_DEVICE_LOST distinctly

@@ -1,6 +1,8 @@
 #include "Headers.h"
 #include "Core/SlotTask.h"
 #include "Core/NodeInstance.h"
+#include "KernelDispatch/TaskDependencyGraph.h"
+#include "KernelDispatch/TaskExecutor.h"
 #include "Memory/ResourceBudgetManager.h"
 
 namespace Vixen::RenderGraph {
@@ -132,7 +134,8 @@ uint32_t SlotTaskManager::ExecuteParallel(
     std::vector<SlotTaskContext>& tasks,
     const SlotTaskFunction& taskFunction,
     ResourceBudgetManager* budgetManager,
-    uint32_t maxParallelism)
+    uint32_t maxParallelism,
+    std::stop_token stopToken)
 {
     if (!taskFunction || tasks.empty()) {
         return 0;
@@ -169,14 +172,28 @@ uint32_t SlotTaskManager::ExecuteParallel(
         lastStats_.totalEstimatedMemory += tasks[i].estimatedMemoryBytes;
     }
 
-    // Simple parallel execution using futures
-    std::vector<std::future<bool>> futures;
-    futures.reserve(parallelism);
-
     uint32_t successCount = 0;
     size_t taskIdx = 0;
 
-    while (taskIdx < tasks.size()) {
+    const auto skipPendingTasks = [&] {
+        for (auto& task : tasks) {
+            if (task.status == TaskStatus::Pending) {
+                task.status = TaskStatus::Skipped;
+                ++lastStats_.skippedTasks;
+            }
+        }
+    };
+
+    for (auto& task : tasks) {
+        task.status = TaskStatus::Pending;
+        task.errorMessage.reset();
+    }
+
+    if (stopToken.stop_requested()) {
+        skipPendingTasks();
+    }
+
+    while (taskIdx < tasks.size() && !stopToken.stop_requested()) {
         // Phase C.2: Dynamic budget check before each batch
         uint32_t batchParallelism = parallelism;
         if (budgetManager) {
@@ -214,38 +231,67 @@ uint32_t SlotTaskManager::ExecuteParallel(
             }
         }
 
-        // Launch up to 'batchParallelism' tasks concurrently
-        futures.clear();
+        const size_t batchStartIdx = taskIdx;
+        const size_t batchEndIdx = std::min(
+            taskIdx + static_cast<size_t>(batchParallelism), tasks.size());
+        // vector<bool> bit-packs adjacent results and would make disjoint worker writes race.
+        std::vector<uint8_t> taskResults(batchEndIdx - batchStartIdx, 0);
+        std::vector<KernelDispatch::VirtualTask> dispatchTasks;
+        dispatchTasks.reserve(batchEndIdx - batchStartIdx);
+        KernelDispatch::TaskDependencyGraph dependencyGraph;
 
-        for (uint32_t p = 0; p < batchParallelism && taskIdx < tasks.size(); ++p, ++taskIdx) {
-            auto& task = tasks[taskIdx];
-            task.status = TaskStatus::Running;
-
-            // Launch async task
-            futures.push_back(std::async(std::launch::async,
-                [&task, &taskFunction]() {
-                    return taskFunction(task);
-                }
-            ));
+        for (; taskIdx < batchEndIdx; ++taskIdx) {
+            SlotTaskContext* const slotTask = &tasks[taskIdx];
+            const size_t batchIndex = taskIdx - batchStartIdx;
+            const uint64_t owner = slotTask->node
+                ? slotTask->node->GetInstanceId()
+                : static_cast<uint64_t>(reinterpret_cast<uintptr_t>(this));
+            KernelDispatch::VirtualTask dispatchTask;
+            dispatchTask.id = {owner, slotTask->taskIndex};
+            dispatchTask.execute = [slotTask, &taskFunction, &taskResults, batchIndex] {
+                slotTask->status = TaskStatus::Running;
+                taskResults[batchIndex] = taskFunction(*slotTask);
+            };
+            dependencyGraph.AddTask(dispatchTask.id);
+            dispatchTasks.push_back(std::move(dispatchTask));
         }
 
-        // Wait for all launched tasks to complete
-        size_t completedBatch = futures.size();
-        size_t batchStartIdx = taskIdx - completedBatch;
+        KernelDispatch::TaskExecutor executor;
+        const bool batchCompleted = executor.Run(
+            dispatchTasks,
+            dependencyGraph.GetParallelLevels(),
+            static_cast<int>(batchParallelism),
+            stopToken);
 
-        for (size_t i = 0; i < futures.size(); ++i) {
-            bool success = futures[i].get();
-            auto& task = tasks[batchStartIdx + i];
-
-            if (success) {
-                task.status = TaskStatus::Completed;
+        for (size_t batchIndex = 0; batchIndex < dispatchTasks.size(); ++batchIndex) {
+            auto& slotTask = tasks[batchStartIdx + batchIndex];
+            const auto& dispatchTask = dispatchTasks[batchIndex];
+            if (dispatchTask.state == KernelDispatch::VirtualTaskState::Failed) {
+                slotTask.status = TaskStatus::Failed;
+                slotTask.errorMessage = dispatchTask.errorMessage;
+                ++lastStats_.failedTasks;
+            } else if (dispatchTask.state == KernelDispatch::VirtualTaskState::Completed &&
+                       taskResults[batchIndex]) {
+                slotTask.status = TaskStatus::Completed;
                 successCount++;
                 lastStats_.completedTasks++;
-            } else {
-                task.status = TaskStatus::Failed;
+            } else if (dispatchTask.state == KernelDispatch::VirtualTaskState::Completed) {
+                slotTask.status = TaskStatus::Failed;
                 lastStats_.failedTasks++;
+            } else {
+                slotTask.status = TaskStatus::Skipped;
+                ++lastStats_.skippedTasks;
             }
         }
+
+        if (!batchCompleted) {
+            skipPendingTasks();
+            break;
+        }
+    }
+
+    if (taskIdx < tasks.size()) {
+        skipPendingTasks();
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
