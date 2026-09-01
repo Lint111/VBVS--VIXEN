@@ -1,8 +1,8 @@
 # View Contract Codegen — Program Design + Increment 1
 
 **Status (reverified 2026-09-01):** ACTIVE — Inc1's data-side walking skeleton shipped in the
-current engine history (`b4838c4b`); the later faces are tracked by the renderer-agnostic program
-design. The rostered AppFlow "Inc-3" string-source param model is shelved (see §11). This doc
+current engine history (`058924a3`, `0c9f6c11`); the later faces are tracked by the renderer-agnostic
+program design. The rostered AppFlow "Inc-3" string-source param model is shelved (see §11). This doc
 specifies **Increment 1** (the data-side walking skeleton).
 
 **Goal (one sentence):** Make a UI view a first-class, single-source-generated artifact — a C# `[View]` schema source-generates the RmlUi data-model registration (and, in later increments, the RML markup + data→view projection + input→action binding) — so UI stops binding to stringly-typed selectors and gains typed, autocomplete-able, compile-checked data linkage.
