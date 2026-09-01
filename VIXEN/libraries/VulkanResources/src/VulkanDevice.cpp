@@ -205,6 +205,15 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);
 
+    // B2's preferred writer uses fragment-stage SSBO atomics. Support was queried once
+    // by QueryAvailableDeviceFeatures() and published into the capability graph above;
+    // enable the core feature from that central verdict. Unsupported devices keep the
+    // bit disabled and select B2's compute-writer twin instead.
+    if (capabilityGraph_.IsCapabilityAvailable(
+            "DeviceFeature:fragmentStoresAndAtomics")) {
+        deviceFeatures2.features.fragmentStoresAndAtomics = VK_TRUE;
+    }
+
     // Validate and enable device features
     // CRITICAL: shaderStorageImageWriteWithoutFormat is required for compute shaders
     if (!deviceFeatures.shaderStorageImageWriteWithoutFormat) {
@@ -545,6 +554,9 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     }
     if (vulkan13.synchronization2) {
         supported.emplace_back("synchronization2");
+    }
+    if (features2.features.fragmentStoresAndAtomics) {
+        supported.emplace_back("fragmentStoresAndAtomics");
     }
 
     return supported;
