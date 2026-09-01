@@ -5,9 +5,11 @@
 Welcome to the VIXEN documentation. This index organizes documentation by topic and difficulty
 level to help you find what you need.
 
-> **Status (2026-07):** VIXEN is evolving from a voxel ray-tracing research platform into a
+> **Status (2026-09):** VIXEN is evolving from a voxel ray-tracing research platform into a
 > reusable, moddable **game render engine** (consumed by the *Undertow* game), with an
-> **SDF/Recipe/CSG** procedural-content codegen system in active development. The research track
+> **SDF/Recipe/CSG** procedural-content codegen system in active development. Voxel authoring Inc1,
+> compiler-emitted SIMD4 materialization, and raster-proxy B1 are landed; data-movement and
+> multicore-dispatch direction work is current. The research track
 > is feature-complete. The **canonical** docs are the Obsidian vault at
 > [`VIXEN/Vixen-Docs/`](VIXEN/Vixen-Docs/); the `documentation/` links below are legacy reference,
 > partially superseded by the vault.
@@ -19,9 +21,9 @@ level to help you find what you need.
 **New to VIXEN? Start here:**
 
 1. **[README.md](README.md)** - Project overview, features, build instructions
-2. **[memory-bank/projectbrief.md](memory-bank/projectbrief.md)** - High-level goals and scope
-3. **[memory-bank/productContext.md](memory-bank/productContext.md)** - Why VIXEN exists, design philosophy
-4. **[documentation/GraphArchitecture/00-START-HERE.md](documentation/GraphArchitecture/00-START-HERE.md)** - Introduction to graph-based rendering
+2. **[memory-bank/projectbrief.md](VIXEN/memory-bank/projectbrief.md)** - High-level goals and scope
+3. **[memory-bank/productContext.md](VIXEN/memory-bank/productContext.md)** - Why VIXEN exists, design philosophy
+4. **[RenderGraph system](VIXEN/Vixen-Docs/01-Architecture/RenderGraph-System.md)** - Introduction to graph-based rendering
 
 ---
 
@@ -32,12 +34,12 @@ level to help you find what you need.
 
 | File | Description |
 |------|-------------|
-| [projectbrief.md](memory-bank/projectbrief.md) | Project goals, scope, success criteria |
-| [productContext.md](memory-bank/productContext.md) | Problem statement, research goals, design philosophy |
-| [systemPatterns.md](memory-bank/systemPatterns.md) | 16+ architecture patterns (Typed Node, Resource Variant, EventBus, etc.) |
-| [techContext.md](memory-bank/techContext.md) | Technology stack, build system, development environment |
-| [activeContext.md](memory-bank/activeContext.md) | Current focus (game-engine-library + SDF/Recipe system), recent changes |
-| [progress.md](memory-bank/progress.md) | Implementation status, completed systems, roadmap |
+| [projectbrief.md](VIXEN/memory-bank/projectbrief.md) | Project goals, scope, success criteria |
+| [productContext.md](VIXEN/memory-bank/productContext.md) | Problem statement, research goals, design philosophy |
+| [systemPatterns.md](VIXEN/memory-bank/systemPatterns.md) | 16+ architecture patterns (Typed Node, Resource Variant, EventBus, etc.) |
+| [techContext.md](VIXEN/memory-bank/techContext.md) | Technology stack, build system, development environment |
+| [activeContext.md](VIXEN/memory-bank/activeContext.md) | Current focus and recent changes |
+| [progress.md](VIXEN/memory-bank/progress.md) | Implementation status, completed systems, roadmap |
 
 ---
 
@@ -48,27 +50,15 @@ level to help you find what you need.
 
 | File | Description | Level |
 |------|-------------|-------|
-| [00-START-HERE.md](documentation/GraphArchitecture/00-START-HERE.md) | Introduction to graph architecture | Beginner |
-| [README.md](documentation/GraphArchitecture/README.md) | Graph system overview | Beginner |
-| [01-node-system.md](documentation/GraphArchitecture/01-node-system.md) | NodeInstance base class, lifecycle | Intermediate |
-| [02-graph-compilation.md](documentation/GraphArchitecture/02-graph-compilation.md) | Compilation phases, topology | Intermediate |
-| [03-multi-device.md](documentation/GraphArchitecture/03-multi-device.md) | Multi-GPU support | Advanced |
-| [04-caching.md](documentation/GraphArchitecture/04-caching.md) | Resource caching strategies | Intermediate |
-| [05-implementation.md](documentation/GraphArchitecture/05-implementation.md) | Implementation details | Advanced |
-| [06-examples.md](documentation/GraphArchitecture/06-examples.md) | Usage examples | Beginner |
-| [07-cache-aware-batching.md](documentation/GraphArchitecture/07-cache-aware-batching.md) | Batching optimizations | Advanced |
-| [08-per-frame-resources.md](documentation/GraphArchitecture/08-per-frame-resources.md) | Frame-in-flight resource management | Intermediate |
-| [09-loop-system.md](documentation/GraphArchitecture/09-loop-system.md) | Multi-rate update loops | Intermediate |
-| [TypedNodeExample.md](documentation/GraphArchitecture/TypedNodeExample.md) | Creating custom nodes | Beginner |
-| [ResourceConfig.md](documentation/GraphArchitecture/ResourceConfig.md) | Slot configuration API | Intermediate |
-| [NodeConfig-API-Improvements.md](documentation/GraphArchitecture/NodeConfig-API-Improvements.md) | Advanced config patterns | Advanced |
+| [RenderGraph system](VIXEN/Vixen-Docs/01-Architecture/RenderGraph-System.md) | Node graph, lifecycle, and compilation | Beginner–Advanced |
+| [RenderGraph library](VIXEN/Vixen-Docs/Libraries/RenderGraph.md) | Library overview and API surface | Beginner–Advanced |
+| [RenderGraph implementation](VIXEN/Vixen-Docs/02-Implementation/Overview.md) | Engine implementation notes | Advanced |
 
 ### Quick References
 | File | Description |
 |------|-------------|
-| [render-graph-quick-reference.md](documentation/GraphArchitecture/render-graph-quick-reference.md) | API quick reference |
-| [ResourceVariant-Quick-Reference.md](documentation/GraphArchitecture/ResourceVariant-Quick-Reference.md) | Resource variant system |
-| [QUICK-REFERENCE-Semaphore-Architecture.md](documentation/GraphArchitecture/QUICK-REFERENCE-Semaphore-Architecture.md) | Synchronization primitives |
+| [RenderGraph library](VIXEN/Vixen-Docs/Libraries/RenderGraph.md) | API quick reference |
+| [Vulkan resources](VIXEN/Vixen-Docs/Libraries/VulkanResources.md) | Resource and synchronization primitives |
 
 ---
 
@@ -79,11 +69,8 @@ level to help you find what you need.
 
 | File | Description | Level |
 |------|-------------|-------|
-| [README.md](documentation/ShaderManagement/README.md) | Shader system overview | Beginner |
-| [01-architecture.md](documentation/ShaderManagement/01-architecture.md) | SPIRV reflection architecture | Intermediate |
-| [ShaderManagement-Integration-Plan.md](documentation/ShaderManagement/ShaderManagement-Integration-Plan.md) | 6-phase integration roadmap | Intermediate |
-| [Shader-PreCompilation-Workflow.md](documentation/ShaderManagement/Shader-PreCompilation-Workflow.md) | Offline shader compilation | Intermediate |
-| [ShaderLibraryArchitecture.md](documentation/ShaderManagement/ShaderLibraryArchitecture.md) | Shader library node design | Advanced |
+| [Shader management library](VIXEN/Vixen-Docs/Libraries/ShaderManagement.md) | Shader system overview | Beginner–Advanced |
+| [Shader implementation](VIXEN/Vixen-Docs/02-Implementation/Shaders.md) | SPIR-V reflection and shader implementation | Intermediate |
 
 ---
 
@@ -94,11 +81,7 @@ level to help you find what you need.
 
 | File | Description | Level |
 |------|-------------|-------|
-| [README.md](documentation/CashSystem/README.md) | CashSystem overview | Beginner |
-| [01-architecture.md](documentation/CashSystem/01-architecture.md) | Cacher architecture | Intermediate |
-| [02-usage-guide.md](documentation/CashSystem/02-usage-guide.md) | Using cachers in code | Beginner |
-| [Phase-A-Cacher-Implementation-Plan.md](documentation/CashSystem/Phase-A-Cacher-Implementation-Plan.md) | Implementation roadmap | Advanced |
-| [CashSystem-Migration-Status.md](documentation/CashSystem/CashSystem-Migration-Status.md) | Migration tracking | Reference |
+| [CashSystem library](VIXEN/Vixen-Docs/Libraries/CashSystem.md) | Cache architecture and usage | Beginner–Advanced |
 
 ---
 
@@ -109,10 +92,7 @@ level to help you find what you need.
 
 | File | Description | Level |
 |------|-------------|-------|
-| [README.md](documentation/EventBus/README.md) | EventBus overview | Beginner |
-| [EventBusArchitecture.md](documentation/EventBus/EventBusArchitecture.md) | Architecture details | Intermediate |
-| [AutoMessageTypeSystem.md](documentation/EventBus/AutoMessageTypeSystem.md) | Auto-incrementing message types | Intermediate |
-| [EventBus-ResourceManagement-Integration.md](documentation/EventBus/EventBus-ResourceManagement-Integration.md) | RM integration | Advanced |
+| [EventBus library](VIXEN/Vixen-Docs/Libraries/EventBus.md) | Event-driven invalidation and messaging | Beginner–Advanced |
 
 ---
 
@@ -126,29 +106,28 @@ game-engine track.**
 ### Overview & Planning
 | File | Description | Level |
 |------|-------------|-------|
-| [ResearchPhases-ParallelTrack.md](documentation/ResearchPhases-ParallelTrack.md) | Research roadmap (Phases H-N) | Overview |
+| [Research overview](VIXEN/Vixen-Docs/03-Research/Overview.md) | Research roadmap and status | Overview |
 
 ### Pipeline Architectures
 | File | Description | Level |
 |------|-------------|-------|
-| [VoxelRayMarch-Integration-Guide.md](documentation/Shaders/VoxelRayMarch-Integration-Guide.md) | Compute shader ray marching (DDA) | Beginner |
-| [FragmentRayMarch-Integration-Guide.md](documentation/Shaders/FragmentRayMarch-Integration-Guide.md) | Fragment shader ray marching | Intermediate |
-| [HardwareRTDesign.md](documentation/RayTracing/HardwareRTDesign.md) | Hardware ray tracing (VK_KHR) | Advanced |
-| [HybridRTX-SurfaceSkin-Architecture.md](documentation/RayTracing/HybridRTX-SurfaceSkin-Architecture.md) | Hybrid RTX + ray marching (Phase N+1) | Advanced |
+| [Ray marching](VIXEN/Vixen-Docs/02-Implementation/Ray-Marching.md) | Compute shader ray marching | Beginner–Advanced |
+| [Hardware RT](VIXEN/Vixen-Docs/03-Research/Hardware-RT.md) | Hardware ray tracing (VK_KHR) | Advanced |
+| [Hybrid RTX](VIXEN/Vixen-Docs/03-Research/Hybrid-RTX-SurfaceSkin.md) | Hybrid RTX + ray marching | Advanced |
 
 ### Data Structures
 | File | Description | Level |
 |------|-------------|-------|
-| [OctreeDesign.md](documentation/VoxelStructures/OctreeDesign.md) | Sparse voxel octree (baseline) | Intermediate |
-| [ECS-Octree-Integration-Analysis.md](documentation/VoxelStructures/ECS-Octree-Integration-Analysis.md) | ECS-optimized octree (Phase N+1) | Advanced |
-| [GigaVoxels-CachingStrategy.md](documentation/VoxelStructures/GigaVoxels-CachingStrategy.md) | Streaming voxel architecture | Advanced |
+| [SVO system](VIXEN/Vixen-Docs/02-Implementation/SVO-System.md) | Sparse voxel octree and streaming | Intermediate–Advanced |
+| [ECS octree research](VIXEN/Vixen-Docs/03-Research/ECS-Octree-Integration.md) | ECS-optimized octree | Advanced |
+| [GigaVoxels research](VIXEN/Vixen-Docs/03-Research/GigaVoxels-Streaming.md) | Streaming voxel architecture | Advanced |
 
 ### Testing & Optimization
 | File | Description | Level |
 |------|-------------|-------|
-| [TestScenes.md](documentation/Testing/TestScenes.md) | Cornell Box, Cave, Urban Grid | Intermediate |
-| [PerformanceProfilerDesign.md](documentation/Profiling/PerformanceProfilerDesign.md) | Metrics collection, CSV export | Intermediate |
-| [BibliographyOptimizationTechniques.md](documentation/Optimizations/BibliographyOptimizationTechniques.md) | 24-paper literature review | Reference |
+| [Testing](VIXEN/Vixen-Docs/04-Development/Testing.md) | Test scenes and test workflow | Intermediate |
+| [Profiler library](VIXEN/Vixen-Docs/Libraries/Profiler.md) | Metrics collection and profiling | Intermediate |
+| [Optimization bibliography](VIXEN/Vixen-Docs/03-Research/Optimization-Bibliography.md) | Research literature review | Reference |
 
 ---
 
@@ -159,10 +138,9 @@ game-engine track.**
 
 | File | Description | Level |
 |------|-------------|-------|
-| [CMAKE_BUILD_OPTIMIZATION.md](documentation/BuildSystem/CMAKE_BUILD_OPTIMIZATION.md) | Build optimizations (Ccache, PCH, Ninja) | Intermediate |
-| [BuildingWithoutVulkanSDK.md](documentation/BuildSystem/BuildingWithoutVulkanSDK.md) | Trimmed build mode (headers only) | Advanced |
-| [TESTING_PROGRESS_SUMMARY.md](documentation/Testing/TESTING_PROGRESS_SUMMARY.md) | Test coverage status | Reference |
-| [COMPREHENSIVE_TEST_PLAN.md](documentation/RenderGraph/COMPREHENSIVE_TEST_PLAN.md) | RenderGraph test suite | Advanced |
+| [Build system](VIXEN/Vixen-Docs/04-Development/Build-System.md) | Build configuration and workflow | Intermediate |
+| [Testing](VIXEN/Vixen-Docs/04-Development/Testing.md) | Test workflow and coverage status | Reference |
+| [RenderGraph test plan](VIXEN/Vixen-Docs/04-Development/RenderGraph-Test-PDB-Consolidation-Plan-2026-07.md) | RenderGraph test suite | Advanced |
 
 ---
 
@@ -173,9 +151,7 @@ game-engine track.**
 
 | File | Description | Level |
 |------|-------------|-------|
-| [cpp-programming-guidelins.md](documentation/Standards/cpp-programming-guidelins.md) | C++23 coding standards | Essential |
-| [Communication Guidelines.md](documentation/Standards/Communication Guidelines.md) | Documentation style | Essential |
-| [smart-pointers-guide.md](documentation/Standards/smart-pointers-guide.md) | RAII and memory management | Beginner |
+| [Coding standards](VIXEN/Vixen-Docs/04-Development/Coding-Standards.md) | C++ coding standards and documentation style | Essential |
 
 ---
 
@@ -184,11 +160,10 @@ game-engine track.**
 ### Individual Subsystems
 | File | Description |
 |------|-------------|
-| [ApplicationArchitecture.md](documentation/GraphArchitecture/ApplicationArchitecture.md) | VulkanGraphApplication design |
-| [NodeBased_vs_Legacy_Rendering.md](documentation/GraphArchitecture/NodeBased_vs_Legacy_Rendering.md) | Migration from legacy code |
-| [Synchronization-Semaphore-Architecture.md](documentation/GraphArchitecture/Synchronization-Semaphore-Architecture.md) | Vulkan sync primitives |
-| [RenderGraph_Lifecycle_Schema.md](documentation/RenderGraph_Lifecycle_Schema.md) | Lifecycle hook system |
-| [GraphCompilable-Architecture.md](documentation/RenderGraph/GraphCompilable-Architecture.md) | Compilable interface |
+| [RenderGraph system](VIXEN/Vixen-Docs/01-Architecture/RenderGraph-System.md) | VulkanGraphApplication and lifecycle design |
+| [RenderGraph system](VIXEN/Vixen-Docs/01-Architecture/RenderGraph-System.md) | Node graph and synchronization design |
+| [Vulkan resources](VIXEN/Vixen-Docs/Libraries/VulkanResources.md) | Vulkan resource and synchronization primitives |
+| [RenderGraph system](VIXEN/Vixen-Docs/01-Architecture/RenderGraph-System.md) | Lifecycle and compilable-interface design |
 
 ---
 
@@ -312,8 +287,8 @@ When adding new documentation:
 
 ---
 
-**Last Updated**: July 2026 — game-engine-library track active; SDF/Recipe/CSG in development;
+**Last Updated**: September 2026 — game-engine-library track active; SDF/Recipe/CSG in development;
 voxel ray-tracing research feature-complete. Canonical docs: [`VIXEN/Vixen-Docs/`](VIXEN/Vixen-Docs/).
 
-> Note: the `documentation/` and `memory-bank/` links in this index are relative to the `VIXEN/`
-> engine directory. Browse them under [`VIXEN/`](VIXEN/) or use the canonical vault above.
+> Note: legacy `documentation/` and `memory-bank/` content is stored under `VIXEN/`; the links
+> above are rooted accordingly. Use the canonical vault above for current architecture/status.

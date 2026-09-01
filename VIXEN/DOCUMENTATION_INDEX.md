@@ -1,8 +1,9 @@
 # Documentation Index
 
-**Status (2026-07):** Game-engine-library track active (engine facade, render-target
-abstraction, recoverable error model) · SDF/Recipe/CSG content system in development · voxel
-ray-tracing research feature-complete, paper drafted.
+**Status (2026-09):** Game-engine-library track active (engine facade, render-target
+abstraction, recoverable error model) · SDF/Recipe/CSG content system in active development ·
+voxel authoring Inc1 and compiler-emitted SIMD4 materialization landed · raster-proxy B1 is
+DEFAULT-ON · voxel ray-tracing research feature-complete, paper drafted.
 
 The **canonical** documentation is the Obsidian vault at [`Vixen-Docs/`](Vixen-Docs/). The
 older [`documentation/`](documentation/) tree is retained for reference but partially superseded

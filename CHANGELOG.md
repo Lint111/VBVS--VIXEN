@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Raster-proxy hybrid, B1** — depth-image emission, Hi-Z reduction, and per-instance occlusion
+  culling are shipped and DEFAULT-ON after the 2026-08-03 native gate (`b3c09d32`, `14e835ee`;
+  `VIXEN/shaders/BodyInstanceRayMarch.comp:46-54,499-502`).
+- **Compiler-emitted SIMD4 recipe materialization** — generated request-time lowering and 4-lane
+  SoA `BakeSdfWorld` materialization replace the hand-written engine flattener (`e37c9dab`;
+  `VIXEN/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp:1-3,1254-1268`).
 - **Sparse-Mip ESVO LOD** (Inc1 + Inc2) — per-level filtered mip samples on the ESVO so a
   distant/non-resident subtree still shades correctly, plus partial/streamed brick-pool uploads
   gated by screen-space resolvability, frustum containment, and a CPU-side occlusion test against
@@ -196,6 +202,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gate-artifacts/inc5-m4-ab-measurement.txt`.
 
 ### Fixed
+- **Strict-FP materialization PCH mismatch** — the flag-divergent `BulkMaterialization.cpp` now
+  skips the target PCH while retaining strict floating-point options (`91ab47ad`;
+  `VIXEN/libraries/SVO/CMakeLists.txt:76-88`).
+- **Shadow traversal using camera cull bits** — binding 35 is split so shadow rays honor bucket
+  ownership words 0–5 and ignore camera-visibility words 6–11 (`178b838b`;
+  `VIXEN/shaders/SceneBindings.glsl:140-200`, `VIXEN/shaders/TraceWorld.glsl:823-826`).
+- **R6 voxel test expectations** — injector placeholder and component-registry assertions now
+  match the current contracts (`f6644eab`, `fe267ec0`).
 - **CameraNode silently overriding every scene's configured camera** — `ExecuteImpl` recomputed the
   camera position from stale orbit-mode defaults every frame, so every standalone body scene rendered
   with the camera aimed at the old Cornell-box pivot (body-less frames). The configured
@@ -238,6 +252,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `application/main/include/`; corrected to the bare path (the only straggler, verified repo-wide).
 
 ### Documentation
+- Added the engine data-movement audit and multicore dispatch-unification direction; multicore
+  implementation remains gated on eight owner decisions (`cafa30dc`, `29f2feed`).
 - Rewrote the repository `README.md` and `VIXEN/README.md` to reflect the pivot from voxel
   ray-tracing research platform to reusable, moddable game render engine (for *Undertow*) with the
   SDF/Recipe/CSG procedural-content codegen system. De-duplicated the two READMEs (root = overview,
