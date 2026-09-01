@@ -427,14 +427,15 @@ TEST(VoxelDataIntegrationTest, ComponentRegistry_VisitAll) {
         componentCount++;
     });
 
-    // Expect 12 components: Density, Material, EmissionIntensity, Color, Normal, Emission, MortonKey,
-    //                       Transform, VolumeTransform, AABB, Volume, VolumeGrid
-    EXPECT_EQ(componentCount, 12);
+    // Expect the complete registry: 9 value components + 5 reference components.
+    EXPECT_EQ(componentCount, 14);
 
     // Verify simple component names
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "density"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "material"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "emission_intensity"), componentNames.end());
+    EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "roughness"), componentNames.end());
+    EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "layer_mask"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "color"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "normal"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "emission"), componentNames.end());
