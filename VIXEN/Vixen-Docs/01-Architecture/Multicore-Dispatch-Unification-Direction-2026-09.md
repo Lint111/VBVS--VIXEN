@@ -1,0 +1,362 @@
+# Multicore Dispatch Unification Direction — September 2026
+
+**Status:** Direction proposal; audited on 2026-09-01; implementation is blocked on the owner-validation questions in §13.
+
+**Decision proposed:** Make `libraries/KernelDispatch` the one Tier-A task/DAG/executor foundation. Keep RenderGraph as the Tier-B owner of graph semantics, resource hazards, Vulkan synchronization, and node lifecycle. Express render-node work and the useful part of the dormant `InstanceGroup` idea as shared dispatcher stages/partitions instead of maintaining a second node-instance scheduler.
+
+## 1. Scope and prior contracts
+
+This document audits the engine-side concurrency mechanisms, resolves which mechanism is “parallel to the shared TDD solution,” and compares four ways to make VIXEN a multicore framework. It does not authorize implementation.
+
+It does not restate the contracts already established by:
+
+- [Kernel Physics Dispatch Contract Spec](Kernel-Physics-Dispatch-Contract-Spec-2026-07.md), which defines the domain-blind declaration/codegen vocabulary, field/residency extensions, DAG, backend profiles, deterministic CPU/GPU parity, and native VIXEN ownership.
+- [Recipe Bucketed-Dispatch Overhead plan](Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07.md) and [Recipe Live-App Bucketed Dispatch plan](Recipe-Live-App-Bucketed-Dispatch-Inc4-Plan-2026-07.md), which establish that grouping GPU dispatch calls is a GPU recording strategy, not a CPU task executor, and that unconditional regroup/readback work can add CPU cost without a clear GPU win.
+- [Undertow–VIXEN Federation](Undertow-VIXEN-Federation-2026-08.md), which keeps Undertow managed state authoritative, makes VIXEN a presentation consumer, and records that the installed VIXEN export currently omits `KernelDispatch`.
+
+Terminology used here:
+
+- **Tier A** is domain-blind task identity, dependency edges, wave construction, worker admission, execution, cancellation, and completion.
+- **Tier B** is domain-aware compilation: render topology, resource/access meaning, frame cadence, Vulkan barriers and ownership, residency, and lifecycle.
+- **Worker-count invariant** means the same observable result for worker counts 1, 2, and N. It does not require the same wall-clock completion order for independent work.
+- **Manual instances** are distinct semantic nodes explicitly created by the graph author. An **instance-group shard** is one partition of one logical workload. They are not interchangeable.
+
+## 2. Executive findings
+
+1. `InstanceGroup` is not barely used; it is declaration-only. Its only occurrences are its own header and examples. There is no `.cpp`, no `RenderGraph::CreateInstanceGroup`, no out-of-header method definition, and zero production or test consumers (`libraries/RenderGraph/include/Core/InstanceGroup.h:1-52,169-329`).
+2. VIXEN already contains two implementations of the same Tier-A shape. RenderGraph owns `VirtualTask`, `TaskDependencyGraph`, resource-derived waves, and `TBBVirtualTaskExecutor`; `KernelDispatch` owns opaque `VirtualTask`, `TaskDependencyGraph`, and `TaskExecutor`. The RenderGraph executor defaults off and has zero production activators (`libraries/RenderGraph/include/Core/RenderGraph.h:1011-1017`; `libraries/RenderGraph/src/Core/RenderGraph.cpp:2094-2154`).
+3. `KernelDispatch` is the intended shared TDD foundation, but it has zero consumers outside its own library and is omitted from `VIXEN_EXPORTED_TARGETS` (`libraries/KernelDispatch/include/KernelDispatch/Abi.h:7-20`; `cmake/VixenInstall.cmake:46-74`). It is a contract island today, not yet an engine foundation.
+4. The live frame is effectively single-core. `Tick()` calls update then render; `VulkanGraphApplication::Render()` calls one `RenderGraph::RenderFrame()`; and the default RenderGraph branch executes `executionOrder` one node at a time (`application/main/source/VulkanApplicationBase.cpp:139-179`; `application/main/source/VulkanGraphApplication.cpp:344-389`; `libraries/RenderGraph/src/Core/RenderGraph.cpp:737-970`).
+5. Existing concurrency is fragmented across two TBB DAG executors, two SVO TBB loops, one node-local `std::async` scheduler, cache-wide nested `std::async`, a scene-specific eight-future bake, an unused EventBus thread bridge, and an unused shader worker pool. These islands have different admission, shutdown, exception, ordering, and worker-count rules.
+6. Current Vulkan scheduling supports up to four frames in flight and per-node submit groups, but the device creates one queue and every submit/present is externally serialized through a per-queue mutex (`libraries/RenderGraph/include/Data/Nodes/FrameSyncNodeConfig.h:24-25,76`; `libraries/VulkanResources/src/VulkanDevice.cpp:228-233,364-365,388-395`). That is GPU/CPU overlap, not CPU node parallelism or multi-queue execution.
+7. The smallest safe bridge is already present conceptually: `NodeInstance` array tasks are render-node workloads and `KernelDispatch::Stage` is an indexed callable with declared access. Replacing `SlotTaskManager`'s raw `std::async` execution with the shared executor proves graph-work-through-TDD without touching concurrent Vulkan recording.
+
+## 3. Evidence method and counting rules
+
+The audit searched declaring constructs and direct `std::thread`, `std::jthread`, `std::async`, TBB, and oneTBB calls under `application/` and `libraries/`. A consumer is a non-comment declaration use, construction, activation, or call outside the mechanism's own implementation. Header examples do not count. Test-only constructions are reported separately and do not raise a production consumer count. Counts are syntactic call-site counts, not runtime multiplicities; conditional graph variants can make fewer sites live in one run.
+
+No `std::execution` use was found. Mutexes and atomics that only protect an object are not treated as executors, but queue-submit locking and thread-safe completion paths are included where they constrain the design.
+
+## 4. Concurrency inventory
+
+| Mechanism | Evidence and consumers | Threading model | Determinism contract | Duplication or disposition relative to shared TDD |
+|---|---|---|---|---|
+| `KernelDispatch` ABI and dispatcher. | `Abi.h` declares stages, access, profiles, backends, and handles; `Dispatcher.h` implements per-element, stage-chain, per-item-hazard, and precomputed-wave entry points (`libraries/KernelDispatch/include/KernelDispatch/Abi.h:7-20,33-189`; `Dispatcher.h:34-90,93-169,200-419`). There are **zero consumers outside `libraries/KernelDispatch`**. | `CpuInline` uses one worker and `CpuTbb` maps items/waves to a bounded TBB task arena; future GPU/transfer values are declared but not implemented. | The header explicitly requires per-element results to be invariant across worker counts (`Dispatcher.h:17-20,43-47`). Access-derived RAW/WAW/WAR edges order conflicting stages/items. | This is the foundation to extend. Its public dispatcher wrappers are still synchronous, `RunChain` executes independent stages in the same graph wave left-to-right (`Dispatcher.h:150-165`), and blocking/cancellation lanes are missing; those are extension work, not reasons to introduce another executor. |
+| `KernelDispatch::TaskDependencyGraph`, `VirtualTask`, and `TaskExecutor`. | The graph is an opaque-ID, domain-blind DAG and exposes parallel levels; the executor runs waves and caps workers (`libraries/KernelDispatch/include/KernelDispatch/TaskDependencyGraph.h:7-22,33-68`; `VirtualTask.h:26-75`; `TaskExecutor.h:7-16,35-67`; `src/TaskExecutor.cpp:27-90`). There are **zero external consumers**. | A single caller supplies tasks and waves; each wave uses `tbb::parallel_for_each` inside one `tbb::task_arena`, with a barrier between waves. | Determinism comes from declared edges and disjoint task writes. The graph/executor containers themselves are documented as single-caller, not concurrently mutable. | Keep and harden this Tier A. Add stable trace IDs, cancellation epochs, completion staging, task classes/lanes, and asynchronous submission without changing domain meaning. |
+| RenderGraph virtual-task DAG and `TBBVirtualTaskExecutor`. | RenderGraph owns one executor member and builds it from `VirtualResourceAccessTracker` plus execution order (`libraries/RenderGraph/src/Core/TBBVirtualTaskExecutor.cpp:58-96`). It runs dependency levels with TBB (`:137-200`). Parallel execution defaults `false`; the census found **zero production calls** to any enabling setter (`libraries/RenderGraph/include/Core/RenderGraph.h:1011-1017`; `src/Core/RenderGraph.cpp:2094-2154`). | When manually enabled, graph nodes/tasks in a level execute on TBB workers and levels form barriers. There is no effective concurrency cap: `SetMaxConcurrency` only logs (`RenderGraph.cpp:2126-2133`). | Resource-derived edges are conservative ordering evidence, but there is no stated 1/2/N result gate. Node state, callbacks, graph mutation, Vulkan allocators, and many node implementations were written for the default sequential path. | This is the direct duplicate “parallel to the shared TDD solution.” Replace its Tier-A task/DAG/executor types with a RenderGraph-to-`KernelDispatch` compiler adapter; preserve the RenderGraph access tracker as Tier-B input until its richer semantics are deliberately generalized. |
+| `InstanceGroup`. | The header distinguishes manual instances from auto-parallel shards, proposes device/workload/budget/memory scaling, `_0.._N` cloning, and distributed work (`libraries/RenderGraph/include/Core/InstanceGroup.h:5-52,70-148,150-227`). The census found **zero definitions and zero consumers** outside that header. | It is a planned node-cloning scheduler, not executable code. | The header calls indices stable within a frame but mutable across recompiles (`:164-167`) and leaves parameter distribution unresolved (`:37-49,433-484`). It defines no worker-count-invariance gate. | Do not complete it as a second scheduler. Preserve its useful partition-policy intent as `Stage` domain/partition metadata lowered to shared `VirtualTask`s. Deprecate and then remove the header after the replacement descriptor exists. |
+| Manual multi-instance graph construction. | The main `BuildRenderGraph.cpp` contains **149 `AddNode<T>` call sites**. Repeated semantic types include 24 storage buffers, 23 buffer-sync gatherers, 18 compute stages, 17 shader libraries, and 16 constants. These are compile-time variants, but they demonstrate extensive explicit graph authoring. | Each explicit node follows the graph's normal sequential/default or future wave execution. It is not auto-sharding. | Instance identity, parameters, connections, and ownership are explicit and therefore stable under graph compilation. | Keep. Manual semantic nodes must not be collapsed into workload shards. Only a node's internal indexed domain or an explicitly declared logical group should partition through Tier A. |
+| `ITaskProfile` and `TaskProfileRegistry`. | The profile API describes polymorphic pressure valves and names a `BatchDispatchProfile` that would change batch size (`libraries/RenderGraph/include/Core/ITaskProfile.h:7-22,97-106`). There are **11 production profile registrations**, all `SimpleTaskProfile`; no `BatchDispatchProfile` class exists. Registry pressure calls adjust work units (`TaskProfileRegistry.h:278-345`). | It is single-threaded admission/calibration state; it does not execute tasks. `SimpleTaskProfile::OnWorkUnitsChanged` has no workload-specific effect. | Priority selection is deterministic for the registry state, but all live pressure adjustments are behaviorally inert because no live profile connects work units to a real knob. | Move useful cost, priority, backend, and partition-pressure data into the shared dispatcher profile/admission contract. Do not preserve an inert parallel policy layer. A workload-specific valve is valid only when its stage implements the knob. |
+| `SlotTaskManager`. | `NodeInstance` owns one manager and has **one production call path** to `ExecuteParallel` (`libraries/RenderGraph/include/Core/NodeInstance.h:1152`; `src/Core/NodeInstance.cpp:400-426`). The implementation batches task contexts and launches one `std::async` per task (`src/Core/SlotTask.cpp:131-255`). | Each call creates futures/threads up to a computed or supplied parallelism, with a barrier after each budget-sized batch. | Results are stored by task index and the caller counts successes, but declared resource hazards, cancellation, and a formal worker-count gate are absent. Correctness relies on the node task function using disjoint state. | Migrate first. Preserve generation, budget, and result APIs; execute the generated indexed work as one shared stage. This deletes a raw-thread island and proves RenderGraph workload homomorphism at low Vulkan risk. |
+| `TaskQueue<DispatchPass>` and `MultiDispatchNode`. | `TaskQueue` is explicitly single-threaded, stable-priority, and not mutex-protected (`libraries/RenderGraph/include/Core/TaskQueue.h:3-24,42-47`). It has one instantiated production data type. The main graph creates **one** `MultiDispatchNode`; the application has **two** `QueueDispatch` call sites (`application/main/source/graph/BuildRenderGraph.cpp:1051`; `application/main/source/VulkanGraphApplication.cpp:1083,1265`). | One CPU thread records each group/pass serially into one command buffer, then one queue submission is made. | Stable priority/insertion ordering and ordered `std::map` groups make recording deterministic. Vulkan barriers enforce GPU hazards. | Keep its GPU batching semantics where useful, but do not confuse it with CPU parallelism. Admission should eventually use shared profiles, while command recording can later become shared executor work only after Vulkan ownership rules are met. |
+| `LoopManager` and `LoopBridgeNode`. | The application registers **two** loops, physics and simulation; the main graph creates **one** loop bridge (`application/main/source/VulkanGraphApplication.cpp:259-276`; `application/main/source/graph/BuildRenderGraph.cpp:1159`). `RenderFrame` updates all loops once per frame (`libraries/RenderGraph/src/Core/RenderGraph.cpp:770-781`). | A single caller iterates accumulator state; the bridge publishes a reference and `shouldExecute` value (`libraries/RenderGraph/src/Core/LoopManager.cpp:38-130`; `src/Nodes/LoopBridgeNode.cpp:53-70`). `MultipleSteps` currently triggers only once per update. | Fixed-step debt rules are explicit, but cadence depends on input frame delta. There is no task execution or cross-loop concurrency. | Keep as a Tier-B cadence/admission source. When a loop is due, lower its work into shared stages. Do not turn `LoopManager` into another executor. |
+| EventBus `WorkerThreadBridge<T>`. | The only occurrences outside its own declaration are documentation and an include from `AsyncShaderBundleBuilder`; there are **zero constructions/consumers** (`libraries/EventBus/include/WorkerThreadBridge.h:74-122`; `libraries/ShaderManagement/include/AsyncShaderBundleBuilder.h:6`). | Each constructed bridge would own one FIFO worker thread, execute serially, then publish results from that worker (`WorkerThreadBridge.h:102-119,145-209`). | FIFO work order is stable, but publication timing relative to main-thread message processing is not. Shutdown stops the loop and can leave queued work unprocessed if `running` becomes false before another iteration. | Delete if the zero-consumer census still holds at implementation time. Future async EventBus work should submit to the shared executor and publish completed results at a deterministic main-thread/frame boundary. |
+| `AsyncShaderBundleBuilder`. | The class and its examples are the only consumers; the census found **zero production or test constructions** (`libraries/ShaderManagement/include/AsyncShaderBundleBuilder.h:52-72,203-288`; `src/AsyncShaderBundleBuilder.cpp:9-44`). | It owns hardware-concurrency worker threads, per-thread FIFO queues, round-robin assignment, work stealing, cancellation flags, and polling waits (`src/AsyncShaderBundleBuilder.cpp:9-24,73-126,194-258`). | UUIDs identify requests, but work stealing makes completion order deliberately unstable. Publication is event-driven; no result-equivalence or stable commit-order rule is stated. A platform reporting zero hardware threads would create no workers. | Delete while unused, or migrate shader build stages to shared CPU/blocking lanes before accepting a consumer. Retaining an unused private work-stealing pool would institutionalize oversubscription. |
+| CashSystem async save/load. | `MainCacher` contains **eight** `std::async` launch statements and `DeviceRegistry` contains **two** more (`libraries/CashSystem/include/MainCacher.h:413-443,487-532,685,725`; `src/device_identifier.cpp:105-128,177-203`). RenderGraph makes **three** top-level calls: two saves and one load (`libraries/RenderGraph/src/Core/RenderGraph.cpp:335,388,1302`). | Outer asynchronous operations spawn nested per-device/per-cacher futures, then synchronously gather them. Blocking filesystem and Vulkan cache work can create an unbounded set of implementation-owned threads. | Each file/cacher has locking and boolean results are gathered in stable container order, but completion order is uncontrolled and there is no global task/teardown epoch. | Migrate to the shared foundation's dedicated blocking/I/O lane, not the finite compute arena. Preserve per-cacher locks and stage completion before graph teardown. |
+| Scene-specific parallel body bake. | One cache-miss block in `BuildRenderGraph.cpp` launches **eight** `std::async` tasks and gathers futures in canonical body order (`application/main/source/graph/BuildRenderGraph.cpp:5517-5595`). | Eight fresh asynchronous tasks compute independently, while a process-wide Gaia allocator mutex serializes the allocation-sensitive part. | Future gathering and downstream assignment are stable. The comments document a prior allocator corruption and identify unsynchronized logger globals, so correctness depends on the manually scoped global lock and avoiding worker logging. | Migrate after the first slice to shared CPU work with an explicit Gaia-allocator serial resource key. This is evidence that access declarations are needed: raw “independent bodies” reasoning missed hidden singleton state. |
+| `SVOBuilder` recursive octant TBB. | `SVOBuilder::subdivideNode` has one `tbb::parallel_for` over eight child slots (`libraries/SVO/src/SVOBuilder.cpp:210-258`). One non-test wrapper, `LaineKarrasBuilder`, constructs and calls it (`libraries/SVO/src/LaineKarrasBuilder.cpp:21,31`). | Recursive build work runs on the ambient TBB scheduler; children use fixed octant indices. | Fixed child slots support stable output topology, but no public worker-count gate covers recursion, progress callbacks, or shared allocators. | Migrate to shared nested-task submission only after preventing TBB arena nesting/oversubscription. Add 1/2/N serialized-octree parity before changing it. |
+| `BulkMaterializationQueue`. | `process()` creates a oneTBB arena and parallel-for over a batch (`libraries/SVO/src/BulkMaterialization.cpp:163-255`). The census found **zero production consumers** and test-only queue/process uses. | One caller owns acceptance order; items materialize in parallel into indexed result slots; results are pushed in batch order. | The implementation is structured for stable results and tests compare serial with parallel execution, including cancellation/backpressure paths. | Use as an early shared-executor conformance consumer after `SlotTask`, or remove it if still test-only. It must not retain a private TBB arena beside the shared executor. |
+| Main application/frame loop. | There is one serial tick chain and one `RenderFrame` call (`application/main/source/VulkanApplicationBase.cpp:139-179`; `VulkanGraphApplication.cpp:344-389`). `RenderGraph::BuildExecutionOrder` is a placeholder for future batching and parallel groups (`libraries/RenderGraph/src/Core/RenderGraph.cpp:1350-1356`). | Update, graph traversal, node CPU work, command recording, submits, and present are driven by the main thread. The dormant executor is the only alternate traversal. | Sequential node order, post-node callbacks, deferred recompiles, and present order are stable and currently form implicit correctness dependencies beyond declared graph edges. | Preserve a serial-eligibility default. The shared adapter must opt nodes in only when all effects and ownership are declared. Frame pipelining comes after node/wave parity, not before it. |
+| Frame-sync schedule, queue submission, fences, and present. | `FrameSyncScheduler` creates one submit group per execution-order node and derives timeline edges/barriers (`libraries/RenderGraph/src/Core/FrameSyncScheduler.cpp:57-145`; `include/Core/FrameSyncSchedule.h:32-56`). The device requests **one** queue and fetches one graphics/present queue (`libraries/VulkanResources/src/VulkanDevice.cpp:228-233,364-371`). The declaring `SubmitMutex` has 27 syntactic runtime call sites across upload/cache/node helpers and protects queue submit/present (`:388-395`; `libraries/RenderGraph/src/Nodes/PresentNode.cpp:67-145`). | GPU work can overlap across four frames in flight, but all queue operations target one externally synchronized queue. Compute-stage, compute-dispatch, blit, and multi-dispatch nodes each issue their own `vkQueueSubmit2`; present follows the graph. Main-graph present does not call `vkDeviceWaitIdle` (`application/main/source/graph/BuildRenderGraph.cpp:1515`). | Timeline semaphores, entry barriers, per-flight fences, and ordered queue operations define GPU visibility. CPU production order is still the sequential graph order. | Keep as Tier B. Parallel CPU recording must feed a single ordered submit lane. Actual async-compute/transfer overlap requires multiple queues plus ownership-transfer policy; a CPU executor alone cannot manufacture it. |
+| Test-only thread harnesses. | Direct test threads occur in GaiaArchetypes, GaiaVoxelWorld, ResourceManagement, CashSystem, SVO, and ShaderManagement tests; SVO also has one `std::jthread` cancellation test. They construct no production executor. | They stress shared components or drive queues concurrently. | Each test defines its own assertions; they are evidence about component safety, not an engine scheduling contract. | Retain relevant tests and route new executor tests through explicit 1/2/N profiles. Do not count test harness threads as production consumers. |
+
+## 5. Duplication verdict
+
+The owner's phrase “parallel to the shared TDD solution” resolves to two layers:
+
+1. **Direct duplicate:** RenderGraph's `VirtualTask` + `TaskDependencyGraph` + `TBBVirtualTaskExecutor` duplicates the opaque task, DAG/waves, and TBB execution now extracted into `KernelDispatch`. It should integrate onto `KernelDispatch` and then be decommissioned.
+2. **Planned duplicate:** `InstanceGroup` would create another policy-driven parallel scheduler by cloning nodes according to device/workload/frame budget. Its useful intent belongs in shared dispatcher partition/admission metadata; its node-cloning implementation should never be completed.
+
+The adjacent pieces are not all duplicates:
+
+- RenderGraph resource topology, `AccessKind`, frame-sync scheduling, node lifecycle, and manual instances are Tier-B semantics and must remain.
+- `LoopManager` is cadence state and should feed the dispatcher rather than disappear.
+- `TaskProfileRegistry` has reusable cost/priority concepts, but its live pressure valves do not control real workloads; those concepts should be folded into the shared profile contract.
+- `TaskQueue` and `MultiDispatchNode` express GPU pass ordering/budgeting, not CPU worker scheduling. They may consume shared admission later but are not replacement executors.
+- EventBus, shader, cache, bake, SVO, and slot-task mechanisms are concurrency islands. Their owned threads/arenas should be removed or made consumers of the shared foundation.
+
+The target is therefore **one Tier-A executor, multiple domain compilers and task classes**. “One foundation” does not mean forcing blocking file I/O, CPU compute, Vulkan recording, and queue submission through one indistinguishable worker pool.
+
+## 6. The two-way bridge and the homomorphism
+
+A render-node execute workload and a kernel-dispatch stage have the same executable shape:
+
+| RenderGraph concept | Shared dispatch concept | Required adapter behavior |
+|---|---|---|
+| A typed input/output slot. | A stable slot/access identity. | Resolve the typed resource, preserve access kind/scope, and emit stable access keys. |
+| A node or array-task execute body. | A stage callable over an indexed domain. | Bind one node execute body or one node-owned item function without transferring graph lifecycle ownership. |
+| Graph connections and resource hazards. | Explicit DAG edges plus recorded RAW/WAW/WAR access. | Compile existing topology conservatively into shared task edges. |
+| A manual semantic instance. | A stable task/stage owner identity. | Keep semantic identity; do not treat repeated node types as shards. |
+| An `InstanceGroup` workload. | A domain plus deterministic partition policy. | Produce logical index ranges/tasks, not cloned `_0.._N` node objects. |
+| Node setup/compile/cleanup. | Submission preparation and completion hooks. | Keep lifecycle on the graph owner and make only eligible execute work concurrent. |
+
+The bridge has two runtime directions:
+
+### 6.1 Kernel dispatch patterns as render-graph nodes
+
+A generated or native kernel package supplies a stage descriptor: stable identity, typed bindings, indexed domain, access declarations, backend/profile hints, and callable/artifact references. A `KernelStageNode` provider binds RenderGraph slots to that descriptor. A chain may materialize as one composite node initially and as a graph subgraph later. RenderGraph remains responsible for resource lifetime, residency realization, Vulkan barriers, and frame placement.
+
+This makes the kernel framework another node provider without making it the render-graph owner.
+
+### 6.2 Render-graph work through the shared TDD executor
+
+The RenderGraph compiler maps each eligible node execute body or item shard to `KernelDispatch::VirtualTask`. Existing topology and resource-access analysis supplies conservative edges. The shared executor schedules CPU work waves; completions are committed in stable task-ID order at a graph barrier. Serial-only nodes, queue submit, present, and undeclared side effects stay on a serial lane.
+
+The dormant `InstanceGroup` intent becomes a partition descriptor on this path. For a domain of N items, the admission/profile policy chooses stable ranges. Worker count can change execution placement but cannot change range-to-item mapping or observable commit order.
+
+### 6.3 Alternate reading that needs owner confirmation
+
+The owner's “framework file to VIXEN attach back and forth” may mean more than runtime adapters: one generated declarative artifact should be capable of lowering both to a kernel `DispatcherSpec` and to a VIXEN node provider. That artifact bridge is compatible with the runtime bridge and is recommended. The safe order is:
+
+1. Define one generated stage/binding descriptor and hash.
+2. Lower it to the native `KernelDispatch::Stage` contract.
+3. Generate or register the RenderGraph node-provider adapter from the same descriptor.
+4. Keep hand-authored RenderGraph nodes compatible through a runtime adapter even when no generated artifact exists.
+
+If the owner intended only artifact attachment, not execution through one native executor, that reading would not remove RenderGraph's duplicate Tier A and would not satisfy the multicore-framework goal. The recommendation is therefore **both artifact and runtime bridges**.
+
+## 7. Architecture options
+
+Scores use 1 (poor) to 5 (strong). “Cost” is scored higher when migration is cheaper.
+
+| Option | One-foundation integrity | Incremental safety | CPU multicore benefit | Vulkan fit | Determinism confidence | Cost | Total / 30 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| A. Adapter-first shared waves. | 5 | 5 | 4 | 5 | 5 | 4 | **28** |
+| B. In-node consumers only. | 3 | 5 | 2 | 5 | 4 | 5 | **24** |
+| C. KernelDispatch replaces graph compilation wholesale. | 5 | 1 | 5 | 2 | 3 | 1 | **17** |
+| D. Frame-pipeline-first coordinator. | 3 | 2 | 4 | 3 | 2 | 2 | **16** |
+
+### Option A — adapter-first shared waves — recommended
+
+RenderGraph keeps compiling topology and resource semantics. An adapter emits shared tasks and edges for eligible CPU work. The same executor first replaces `SlotTask` and direct CPU islands, then node-level waves, then optional parallel command recording. `KernelStageNode` supplies the reverse bridge.
+
+- **Node waves:** Existing graph topology and access tracking produce task edges; a serial eligibility trait defaults every node to serial until audited.
+- **Command recording:** Start with CPU derive/upload preparation only. Later allow per-node secondary or independent command-buffer recording with per-worker, per-frame pools and descriptor arenas. Submit order stays graph-owned.
+- **Frame pipeline:** Add immutable frame snapshots only after node-wave parity, allowing F+1 CPU preparation while F is submitted/rendering.
+- **Other consumers:** Event completion, residency/materialization, SVO derive, shader builds, cache I/O, and shell derive/upload use the same submission API with compute, blocking, serial-resource, and Vulkan-record lanes.
+- **Determinism:** Simulation-visible and resource-selection outputs remain worker-count invariant. Independent command recording may vary in CPU completion order, but ordered assembly/submit and rendered output remain invariant.
+- **Federation:** Managed code observes the same generated ABI/artifact hashes and frame outputs, never native worker topology. Native packaging eventually exports `KernelDispatch`.
+- **Main tradeoff:** The adapter temporarily carries two access vocabularies. Contain it with a single explicit mapping table and contract tests; generalize only semantics proven common.
+
+### Option B — shared executor only inside nodes
+
+Keep sequential graph traversal permanently. Nodes may submit their internal indexed workloads to `KernelDispatch` and wait before returning. `InstanceGroup` becomes an in-node partition policy.
+
+- **Node waves:** None; only item parallelism inside a node.
+- **Command recording:** A node may later record parts in parallel, but graph siblings cannot overlap.
+- **Frame pipeline:** Limited to explicit async nodes and current frames-in-flight behavior.
+- **Other consumers:** Most islands can still converge on the shared executor.
+- **Determinism and Vulkan:** This is easy to reason about because every node remains a barrier.
+- **Federation:** No managed change.
+- **Main tradeoff:** It removes raw threads but leaves RenderGraph's dormant task/DAG duplicate and cannot make the graph itself a multicore framework. It is a useful migration phase, not a sufficient destination.
+
+### Option C — KernelDispatch owns graph compilation wholesale
+
+Translate every RenderGraph node/resource/lifecycle phase into shared stages and delete the RenderGraph dependency and task compilers immediately.
+
+- **Node waves:** Maximum theoretical parallelism from one compiler.
+- **Command recording and frame pipeline:** Can be modeled as task classes and frame epochs from the start.
+- **Other consumers:** All work is forced into the new model.
+- **Determinism:** A single graph is attractive, but the change would simultaneously redefine node state, callbacks, dirty recompilation, device loss, frame sync, and resource lifetime.
+- **Vulkan:** `KernelDispatch` currently lacks image layout, queue ownership, swapchain, frame-flight, and node lifecycle semantics that RenderGraph already owns.
+- **Federation:** Artifact alignment is direct, but native runtime churn would be large.
+- **Main tradeoff:** This confuses domain-blind Tier A with renderer-specific Tier B and puts fundamental building blocks at once-through rewrite risk. Reject.
+
+### Option D — frame-pipeline-first coordinator
+
+Treat update/derive/record/submit/present for multiple frames as top-level dispatcher stages before unifying node execution.
+
+- **Node waves:** The graph may remain sequential within a frame while frames overlap.
+- **Command recording:** Parallelism comes from different frames first, with per-flight pools/snapshots.
+- **Frame pipeline:** Highest immediate emphasis; CPU F+1 overlaps GPU F and possibly recording F.
+- **Other consumers:** Streaming and events can be assigned to frame epochs.
+- **Determinism:** Stale-state, publication, rollback, and managed-authority boundaries become immediate problems.
+- **Vulkan:** Four flight slots help, but many nodes and caches still contain implicit cross-frame mutable state.
+- **Federation:** Managed snapshots and presentation lag policy would become externally observable sooner.
+- **Main tradeoff:** It attacks latency overlap before proving safe node effects and one task foundation. Defer until after Option A's node-wave gate.
+
+## 8. Recommended target architecture
+
+### 8.1 Ownership boundary
+
+RenderGraph remains authoritative for:
+
+- node identity, typed slots, connections, setup/compile/execute/cleanup lifecycle;
+- resource classes, access semantics, residency realization, image layouts, and frame-local allocation;
+- loop/frame cadence, graph recompilation, device-loss recovery, post-node callbacks, and present;
+- frame-sync schedules, queue ownership, barriers, semaphores, fences, and submit order.
+
+`KernelDispatch` becomes authoritative for:
+
+- stable task/stage identity and indexed domains;
+- dependency DAG representation and wave construction;
+- worker pools/arenas, worker-count profiles, priorities, budgets, and admission;
+- compute versus blocking/I/O versus serial-resource versus Vulkan-record task lanes;
+- cancellation/device epochs, exception capture, completion handles, trace events, and deterministic commit ordering.
+
+The boundary is compiled, not inferred at runtime: RenderGraph emits the task plan once per graph generation, then binds per-frame resources/snapshots.
+
+### 8.2 Task classes and Vulkan rules
+
+1. **Pure CPU/derive tasks** may execute freely when all reads/writes are declared and outputs are task-owned.
+2. **Blocking/I/O tasks** use a separately budgeted lane so cache or file waits cannot starve frame compute workers.
+3. **Serial-resource tasks** carry explicit keys such as the Gaia global chunk allocator or a non-thread-safe compiler/cache. Tasks with the same key are ordered without a hand-written global mutex at each call site.
+4. **Vulkan record tasks** require one command pool per worker per frame flight, one descriptor arena per worker/frame or an externally synchronized allocator, immutable pipeline/layout handles, and task-owned command buffers. Vulkan command pools and descriptor pools are externally synchronized objects.
+5. **Vulkan submit/present tasks** remain on one queue-owner lane. Current VIXEN has one queue, so parallel recording must assemble results in graph order and submit under the existing queue mutex.
+6. **Multi-queue tasks** are a later capability. They require separate compute/transfer queues, queue-family ownership transfers, timeline policy, and a profitability gate; they cannot be enabled merely because the CPU executor has workers.
+
+Secondary command buffers are useful for compatible render-pass/dynamic-rendering regions, but they are not the first target. Compute and transfer nodes may instead record task-owned primary command buffers if their submit grouping remains valid. The choice belongs to a later Vulkan recording design measured against driver overhead.
+
+### 8.3 Determinism gate
+
+The following remain strictly worker-count invariant:
+
+- managed- or simulation-visible outputs and all data later projected to Undertow;
+- resource/residency selection, logical instance/shard membership, and stable task IDs;
+- reductions, cache keys, artifact hashes, graph edge/order decisions, and completion publication;
+- exception selection when multiple tasks fail, using the lowest stable task ID as the primary error;
+- frame snapshot commit and node state transitions.
+
+Parallel work may relax byte-identical execution traces only for:
+
+- completion timing among independent background shader/cache requests, provided publication is keyed and committed at a deterministic boundary; and
+- command-buffer recording order among independent nodes, provided command assembly/submission follows the same graph order and rendered/readback outputs are equivalent.
+
+Reductions must use fixed partitions and a fixed merge tree. Dynamic work stealing may change which worker runs a task, never which items belong to a logical partition or the order in which results become authoritative.
+
+### 8.4 Frame pipelining
+
+After node-wave parity, introduce immutable `FrameSnapshot[F]` inputs and versioned task outputs. The allowed overlap is:
+
+1. GPU executes/submits frame F.
+2. CPU prepares pure render data for F+1 from an immutable managed/render snapshot.
+3. The graph commits F+1 outputs at a stable barrier only if their graph/device epoch still matches.
+
+Simulation update remains authoritative and ordered. Device loss, graph recompilation, or scene epoch changes cancel unpublished work. No worker writes live node state directly across frame epochs.
+
+### 8.5 Federation visibility
+
+The managed side should not observe worker count, TBB, queue choice, or native task completion order. It observes:
+
+- the same dispatcher schema/artifact hash and declared backend capabilities;
+- deterministic projected frame/simulation data;
+- explicit capability/failure status when a requested backend is unavailable.
+
+The generated descriptor can be shared by the managed `DispatcherSpec`/Burst lowering and native VIXEN node provider. The actual VIXEN worker plan remains native. Once the ABI and consumer exist, add `KernelDispatch` to the install/export surface with a package-level ABI/hash gate; do not export the current zero-consumer library prematurely as a stable SDK promise.
+
+## 9. Decommission order
+
+| Order | Mechanism | Action and exit condition |
+|---:|---|---|
+| 1 | `SlotTaskManager` raw `std::async`. | Preserve its API while routing work through shared stages. Delete the async launch after budget/result/1-2-N parity passes. |
+| 2 | RenderGraph `TBBVirtualTaskExecutor` Tier A. | Replace task IDs, DAG, waves, and TBB calls with the adapter. Delete only after sequential versus shared execution traces pass for the CPU-eligible set. |
+| 3 | Unused `WorkerThreadBridge` and `AsyncShaderBundleBuilder`. | Re-run the declaring-construct census; delete if still zero-consumer. If a new consumer appeared, migrate it before deletion. |
+| 4 | `BulkMaterializationQueue` private TBB arena. | Make it a shared-executor conformance consumer or remove the test-only production class. |
+| 5 | Scene-bake and CashSystem `std::async`. | Submit compute and blocking work to the correct lanes; model Gaia as a serial-resource key; preserve cache teardown barriers. |
+| 6 | `SVOBuilder` direct TBB recursion. | Migrate after serialized-octree 1/2/N parity and nested-executor behavior are proven. |
+| 7 | `InstanceGroup.h`. | Replace useful scaling/partition vocabulary with the shared domain descriptor, migrate documentation/examples, then remove the unimplemented node-cloning API. |
+| 8 | Inert RenderGraph pressure/profile layer. | Move live cost/priority/backend/partition knobs to shared profiles; retain renderer-specific measurement only where it drives an implemented action. |
+
+`LoopManager`, manual graph instances, RenderGraph access/frame-sync compilers, `TaskQueue`'s GPU ordering role, and the queue-submit mutex do not belong on the deletion list.
+
+## 10. Migration sequence
+
+### M0 — Freeze and witness the contract
+
+- Add no parallel production behavior.
+- Define stable task IDs, task classes, cancellation/device epochs, deterministic error choice, and completion trace format.
+- Record current sequential node order, post-node callback order, submissions, and observable outputs as the comparison oracle.
+- Add worker-count 1/2/N tests to `KernelDispatch`, including independent stages in one wave; close the current `RunChain` inter-stage parallelism gap without changing results.
+
+### M1 — First implementation slice: SlotTask shared-dispatch cutover
+
+Name: **RenderGraph array-task → shared TDD execution**.
+
+`NodeInstance` keeps generating `SlotTaskContext`s. An adapter exposes them as one `KernelDispatch::Stage` with a stable item domain and explicit node-owned access. `SlotTaskManager::ExecuteParallel` becomes a compatibility wrapper over the shared executor. No Vulkan recording or graph-sibling concurrency is enabled.
+
+The gate is:
+
+- identical task output/status and success counts for worker counts 1, 2, and N;
+- identical budget admission and stable task-index result order;
+- deterministic exception selection and no task running after cancellation/graph epoch invalidation;
+- current slot-task tests pass, plus a race-sanitized disjoint-output test where supported;
+- no `std::async` remains in `SlotTask.cpp`; and
+- the direct declaring-construct census demonstrates the first real consumer outside `KernelDispatch`.
+
+This is the smallest slice that both removes an island and proves a render-node workload can execute through the shared foundation.
+
+### M2 — CPU-only graph waves
+
+- Compile existing topology/access data into shared tasks for an allowlist of audited pure CPU nodes.
+- Keep every Vulkan-recording, submit, present, callback-sensitive, graph-mutating, and unknown node serial.
+- Run sequential and shared modes against the same frame snapshot; compare output hashes, node states, callbacks, errors, and submit trace.
+- Remove RenderGraph's duplicate Tier-A executor after the adapter is the only parallel path.
+
+### M3 — Concurrency-island migration
+
+- Move bulk materialization, scene bake, cache I/O, shader compilation if retained, EventBus completion, and SVO derive/upload to shared lanes.
+- Add explicit serial-resource keys for hidden singleton/global constraints.
+- Enforce one process-wide worker/admission budget to prevent nested TBB and `std::async` oversubscription.
+
+### M4 — Kernel-as-node provider
+
+- Land the shared generated descriptor and `KernelStageNode` binding adapter.
+- Prove one native/generated CPU kernel both as a headless dispatch and as a RenderGraph node with identical output and artifact hash.
+- Keep managed observation limited to the existing contract and results.
+
+### M5 — Parallel Vulkan recording
+
+- Add per-worker/per-frame command and descriptor ownership.
+- Enable only audited record-only nodes; queue submission and present remain serial and ordered.
+- Measure CPU frame time and driver overhead; retain the path only with a demonstrated win and clean validation-layer output.
+
+### M6 — Frame pipeline, then multi-queue
+
+- Add immutable versioned frame snapshots and F/F+1 overlap.
+- Only after that, evaluate separate compute/transfer queues, ownership transfers, and async-compute profitability.
+- Do not couple multi-queue enablement to CPU worker count or resurrect `InstanceGroup` device-queue cloning.
+
+## 11. Risks to fundamental building blocks
+
+| Risk | Why it is fundamental | Containment |
+|---|---|---|
+| Hidden node side effects. | Sequential traversal currently orders callbacks, logger access, dirty recompiles, node state, and globals even when resource slots do not show a dependency. | Default every node to serial; require an explicit execution-safety declaration; add debug access witnesses and stable completion commit. |
+| Incomplete access vocabulary. | Render resources include images, ranges, mips, descriptors, residency, indirect/append state, and queue ownership beyond simple slot IDs. | Keep RenderGraph Tier B conservative; map access explicitly; extend shared keys only from proven domain requirements in the kernel dispatch spec. |
+| Vulkan externally synchronized objects. | Sharing command/descriptor pools or queues across workers is invalid without ownership/locks. | Use per-worker/per-frame pools and arenas; keep a single queue-owner submit lane; run validation layers and ownership stress gates. |
+| Device loss or graph recompilation during work. | Tasks may hold pointers to destroyed nodes/resources or publish stale outputs. | Attach graph/device epoch tokens, cooperative cancellation, teardown joins, and commit-time epoch validation. |
+| Worker oversubscription and blocking starvation. | Existing TBB arenas, raw futures, recursive SVO tasks, shader threads, and file I/O can multiply threads and stall the frame. | One admission authority with separate bounded compute and blocking lanes; prohibit nested private arenas after migration. |
+| Worker-count-dependent results. | Managed authority, caches, hashes, and visual stability rely on repeatable data. | Fixed logical partitions, stable task IDs, ordered reductions/commits, and mandatory 1/2/N gates for authoritative outputs. |
+| Hidden third-party singletons. | The Gaia allocator corruption proves apparently independent worlds can share process-global mutable state. | Declare serial-resource keys, audit third-party allocation/compiler/logger state, and use sanitizer/live stress gates before eligibility. |
+| Frame-pipeline stale state. | Multiple frames can observe mutable cameras, residency, UI, or managed projections at different epochs. | Immutable frame snapshots, versioned outputs, explicit presentation latency, and cancellation on authoritative-state changes. |
+| Error-order drift. | Parallel failures can make user-visible diagnostics and recovery nondeterministic. | Collect all failures, choose the primary by stable task ID, and commit error/device-loss transitions on the graph thread. |
+| ABI/export drift. | The federation twins managed and native descriptors, while `KernelDispatch` is currently not installed. | One generated descriptor hash, native/managed conformance tests, and export only after a real external consumer and compatibility policy exist. |
+| Parallelism without benefit. | Recipe bucket work showed that more dispatch organization can add CPU cost without a statistically clear win. | Require measured CPU-frame improvement for each widened eligibility class; retain serial fallback and remove unprofitable complexity. |
+
+## 12. Recommendation
+
+Adopt **Option A, adapter-first shared waves**, with the following non-negotiable boundaries:
+
+1. `KernelDispatch` owns the only Tier-A task/DAG/executor implementation.
+2. RenderGraph retains Tier-B topology, resource/Vulkan semantics, lifecycle, and ordered submit/present.
+3. `InstanceGroup` node cloning is not implemented. Its partition/scaling intent becomes shared stage-domain policy; manual semantic instances remain untouched.
+4. The bridge is two-way: kernel descriptors can materialize as nodes, and eligible node/shard work executes through the shared executor.
+5. The first slice is the `SlotTask` cutover, not graph-wide parallel execution or Vulkan recording.
+6. Every authoritative workload is gated at worker counts 1, 2, and N; completion timing may vary, authoritative commit order may not.
+7. Blocking I/O, serial third-party state, Vulkan recording, and queue submission are separate task classes on one admission foundation, not one undifferentiated pool.
+
+This direction turns the existing contract into an actual second consumer, retires the parallel engine island instead of growing it, and preserves the render graph's fundamental responsibilities.
+
+## 13. Owner validation required to unlock implementation
+
+Implementation must not begin until the owner answers each question.
+
+1. **Should `KernelDispatch` become the sole Tier-A task/DAG/executor, while RenderGraph remains the Tier-B graph/Vulkan compiler?** Recommended answer: **Yes.**
+2. **Should the unimplemented `InstanceGroup` node-cloning API be retired in favor of stable stage-domain partition metadata, while manual semantic node instances remain unchanged?** Recommended answer: **Yes.**
+3. **Does the requested two-way bridge include both runtime execution adapters and one generated descriptor that can lower to managed `DispatcherSpec` and a VIXEN node provider?** Recommended answer: **Yes, both; descriptor first, adapters second.**
+4. **Is the first implementation slice approved as `SlotTaskManager` → shared `KernelDispatch` execution with no graph-sibling or Vulkan-recording parallelism?** Recommended answer: **Yes.**
+5. **Is the determinism boundary approved as strict 1/2/N invariance for authoritative data and ordered commits, with only independent completion/recording timing allowed to vary?** Recommended answer: **Yes.**
+6. **Should shader/cache I/O use separately budgeted blocking lanes under the same admission foundation rather than consuming finite frame-compute workers?** Recommended answer: **Yes.**
+7. **Should parallel command-buffer recording and frame pipelining remain later, separately measured milestones after CPU-only node-wave parity?** Recommended answer: **Yes.**
+8. **Should `KernelDispatch` remain absent from the installed SDK until the bridge has a real consumer and an ABI/hash compatibility gate?** Recommended answer: **Yes.**
+
+**Checkpoint:** Stop here. No implementation, preparatory refactor, recapture, or export change is authorized by this document.
