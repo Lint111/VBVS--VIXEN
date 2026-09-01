@@ -1,6 +1,7 @@
 ---
 title: View Contract Inc-4 — View→Action Face (AppFlow Convergence) — Design
-status: design (approved for planning)
+status: COMPLETE — the View→Action/AppFlow convergence shipped through R1–R6 in the current
+engine history (`5ed4f65f`; implementation close-out `0bfbf914`).
 created: 2026-07-07
 parent: Renderer-Agnostic-View-Contract-Design-2026-07.md (§7 — the face-4 trajectory this realizes)
 related:

@@ -1,6 +1,7 @@
 ---
 title: Config-Struct Codegen — Phase C Design (consume the generated OctreeConfig)
-status: DESIGN / awaiting review
+status: COMPLETE — Phase C migrated C++ and GLSL to the generated config artifacts (`52d4294c`,
+`1bdf8ac4`); the follow-on parallel-tool cleanup also landed (`1b075391`).
 date: 2026-07-02
 tags: [architecture, codegen, octreeconfig, migration, live-gate, D5]
 related:
@@ -25,7 +26,8 @@ related:
 - `CashSystem::OctreeConfig` (`VoxelSceneCacher.h:100`) — a **different** 256 B std140 struct (`_padding4[16]` + non-uploaded `worldGridSize`); the legacy VoxelGrid cacher.
 - `Vixen::RenderGraph::OctreeConfig` (`VoxelGridNode.cpp:35`) — the legacy voxel-grid node's file-local struct.
 - These share only a name; their `_padding2`/`_padding3` fields are their own. Dropping those field NAMES from the generated SVO struct is safe — no code references `Vixen::SVO::OctreeConfig._padding2`.
-- **Cleanup** (delete the parallel `Vixen.Codegen` from VIXEN) is the NEXT phase, not Phase C.
+- **Cleanup** (delete the parallel `Vixen.Codegen` from VIXEN) followed Phase C and is complete in
+  `1b075391`; it is no longer the next phase.
 
 ## Why both migrations are proven-clean drop-ins
 
@@ -61,7 +63,9 @@ Decision (user, 2026-07-02): **alias, no tool change.** The generated `OctreeCon
 
 ## Out of scope / deferred
 
-- **Cleanup phase (next):** delete `VIXEN/codegen/Vixen.Codegen` + `Vixen.Codegen.Tests` + `Vixen.Codegen.Attributes` + the P0 `schemas/SkeletonConfig.cs` + the P0 `codegen_check` gate (the parallel tool P0 shipped, now fully superseded by the Yeroket tool). Keep `codegen/config-schemas/` + the Yeroket-driven `octreeconfig_check`.
+- **Cleanup phase (complete):** the superseded `VIXEN/codegen/Vixen.Codegen*` parallel tool was
+  removed in `1b075391`; `codegen/config-schemas/` and the Yeroket-driven `octreeconfig_check`
+  remain.
 - The legacy `CashSystem::OctreeConfig` (256 B std140) + `VoxelGridNode` struct — a future canonicalization if desired, not now.
 - Full GLSL name↔offset drift map for `gridMin`/`gridMax` (still bracketed by matched neighbors + the size assert + the SPIR-V drift-guard).
 

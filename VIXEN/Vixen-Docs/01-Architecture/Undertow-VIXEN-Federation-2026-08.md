@@ -52,10 +52,11 @@ installed-SDK route remains incomplete: VIXEN builds 15 library directories, whi
 - `ViewWriterAdapter` is the allowed deterministic population seam. It is not a second wire schema.
 - Do not edit generated `*.g.cs` or `*.g.h` files. Change the schema/catalogue and regenerate.
 
-**Current gate:** `ViewSectionRegistry.g.cs` has 15 sections, but
-`vixen/render/Generated/ViewSectionEnum.g.h` has 13. `ObserverDemand` and `OrbitalStructureFacet` are
-missing from the C++ enum. Until the two codegen targets are reconciled and validated, those sections are
-not release-safe host inputs.
+**Current gate (reverified 2026-09-01):** the prior 13-vs-15 View-section drift is fixed. The
+reconciled `ViewSectionEnum.g.h` contains `ObserverDemand` and `OrbitalStructureFacet` at values 13
+and 14, and the generated C++ blob/typed/read-model faces are present (`c807e0cc`,
+`VIXEN/application/main/include/Generated/Undertow{ObserverDemand,OrbitalStructureFacet}.*`).
+Keep the C#/C++ drift gates green as the release-safety check.
 
 ## AppFlow
 
@@ -81,11 +82,15 @@ Undertow and VIXEN both invoke the kernel CodegenTool directly.
 
 ## Current Risks
 
-1. Repair and run the C#/C++ View-section drift gates before adding a host dependency on sections 13 or 14.
+1. Keep the C#/C++ View-section drift gates green; sections 13 and 14 are present in the current generated enum/faces (reverified 2026-09-01, `c807e0cc`, `7e258a64`).
 2. Complete the installed-SDK export surface or keep documenting the super-build as the supported route.
 3. Validate a player-facing toy with a stranger before treating renderer mechanism work as game progress.
 4. Keep VIXEN render-local state and future `GaiaVoxelWorld` data presentation-only; authority remains on
    Undertow's managed path until a native family passes its explicit cutover gates.
+
+> **Risk recheck 2026-09-01:** Risk 1 is corrected above. Risk 2 remains open: the standalone export
+> list still omits `AppFlow` and `KernelDispatch` (`VIXEN/cmake/VixenInstall.cmake:46-77`), while
+> Risks 3–4 remain unchanged.
 
 ## Source Pointers
 

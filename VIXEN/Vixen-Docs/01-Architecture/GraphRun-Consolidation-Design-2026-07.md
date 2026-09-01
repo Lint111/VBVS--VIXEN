@@ -1,6 +1,8 @@
 # graph.Run() Render-Loop Consolidation — Design
 
-**Status:** Design approved 2026-07-06. Increment of the AppFlow framework program (design §7d — the render-loop-lifecycle sibling of the app-flow-state consolidation). VIXEN-only.
+**Status (reverified 2026-09-01):** COMPLETE — `Run()`/`Tick()` consolidation shipped through M1–M3
+(`2ab4c534`). Increment of the AppFlow framework program (design §7d — the render-loop-lifecycle
+sibling of the app-flow-state consolidation). VIXEN-only.
 
 **Goal (one sentence):** Give VIXEN a canonical engine-owned `Run()` and host-owned `Tick()` on the application base class so the three dispatch entry points stop hand-rolling the render loop, without changing any rendering behavior.
 

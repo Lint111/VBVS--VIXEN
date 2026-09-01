@@ -1,7 +1,8 @@
 # AppFlow Framework — Increment 2b Design (windowed editor on AppFlowRuntime + live undo/redo)
 
 **Date:** 2026-07-05
-**Status:** Design (scope + verification user-locked; awaiting spec review → writing-plans)
+**Status (reverified 2026-09-01):** COMPLETE — windowed `EditorApplication` routing and live
+undo/redo shipped and merged (`eea9e1ff`, merge `79786a66`).
 **Program:** AppFlow app-flow/state/action framework — see `AppFlow-Framework-Design-2026-07.md`
 **Builds on:** Inc-2 (SHIPPED to local main `1a072c1c`) — `LayerController`, `ActionStack` snapshot engine, `AppFlowRuntime.ToggleLayer/Undo/Redo`, the `EditorDocumentModel` mask seam, and the M4 headless GPU toggle/undo gate.
 

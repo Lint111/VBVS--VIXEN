@@ -3,7 +3,7 @@ title: Node Self-Registration Portable Fix — Inc-1 Implementation Plan
 aliases: [Intrusive Node Registrar Inc-1]
 tags: [architecture, rendergraph, nodes, build, plan]
 created: 2026-07-12
-status: Planned — not started
+status: COMPLETE — shipped 2026-07-15 (`ed4000e1`, merge `c5e765a2`; close-out `e6a61317`).
 related:
   - "[[Node-Self-Registration-Portable-Fix-Direction-2026-07]]"
   - "[[RenderGraph-System]]"

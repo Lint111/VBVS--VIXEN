@@ -1,6 +1,7 @@
 ---
 title: Lazy-Procedural + Delta Baseline — Instructions-First Rendering, Materialization as Delta-Cache
-status: Design (user direction 2026-07-10) — not scheduled; Inc0/Inc1 candidates identified
+status: ACTIVE — Inc0 and Inc1 shipped 2026-07-10/11; Inc1b remains planned/not started
+(`4a25a0c2`, `b61f5dd6`, `7fce167a`).
 date: 2026-07-10
 tags: [architecture, svo, esvo, procedural, recipes, delta, streaming, lazy, baseline]
 aliases: [Instructions-First Rendering, Lazy Procedural Baseline, Delta Rendering Baseline]

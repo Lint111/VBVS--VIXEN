@@ -40,7 +40,7 @@ Execution via post-brainstorm-context-manager in worktree `.claude/worktrees/app
 - **Inc-2 note:** `AppFlowChangedEvent` carries filler `state`/`action` for kinds where they aren't meaningful (e.g. ActionUndone/Redone carry FlowActionId{}=ToggleLayer id 0, StateChanged carries a filler action). Inc-1 tests don't assert them; before Inc-2 wires real consumers, either populate the affected id or document that consumers must key off `kind`. [RESOLVED for Inc-1: documented at the `AppFlowRuntime::Publish` call sites, commit c5150e56.]
 - **Finish (Milestone 4 folded): ✅ DONE** — final Opus whole-diff review APPROVED (17/17 independently re-run; contract-coherent; generalization thesis holds; error model uniform; no blockers). Filler-field nit taken as a code comment (c5150e56, verified rebuild+test still green). KI-014 (ctest gap) recorded. Ready for branch integration.
 
-## ★ INC-1 COMPLETE ★ — walking skeleton SHIPPED (branch `worktree-appflow-inc1`, 22 code files / 964 LoC, 17/17 tests green via real VIXEN CMake build). Contract → BindingStore (undertow UI-action generalization) → ActionStack/FSM → AppFlowRuntime.DispatchBySelector spine, all offline-verified. Awaiting merge to main.
+## ★ INC-1 COMPLETE ★ — walking skeleton SHIPPED (branch `worktree-appflow-inc1`, 22 code files / 964 LoC, 17/17 tests green via real VIXEN CMake build). Contract → BindingStore (undertow UI-action generalization) → ActionStack/FSM → AppFlowRuntime.DispatchBySelector spine, all offline-verified. The historical worktree state was subsequently integrated into the engine history (`c5150e56` close-out).
 
 ## Increment roadmap (context; only Inc 1 is planned in detail below)
 

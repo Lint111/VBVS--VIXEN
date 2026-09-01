@@ -258,8 +258,9 @@ validator verdict.)
   count held at only 10. **Verdict: MIXED m_i (code-size/register-pressure) + k_i (instance-count/
   re-evaluation-count) correlation, N ruled out as an independent factor.** Full swept data,
   seed/methodology, and the decision-gate writeup are in Perf-Ledger.md's "Switch-cost isolation
-  (Inc3 M0...)" section. Per the plan doc's explicit scope, M1/M2 were NOT started — this finding
-  is handed to the controller/user: M1/M2 as currently framed (per-bucket dispatch-COUNT overhead)
+  (Inc3 M0...)" section. **At the M0 decision point, per the plan doc's explicit scope, M1/M2 were
+  not yet started; both were subsequently executed and recorded below.** This finding
+  was handed to the controller/user: M1/M2 as then framed (per-bucket dispatch-COUNT overhead)
   target a switch-case-count-shaped cost this measurement found is NOT what's driving tier-0's own
   N=100 knee; the knee is m_i/k_i-shaped, pointing more toward
   [[Recipe-Single-Dispatch-Unrolled-Selection-Direction-2026-07]]'s single-dispatch-no-switch

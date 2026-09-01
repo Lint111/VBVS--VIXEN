@@ -1,6 +1,7 @@
 ---
 title: Config-Struct Codegen — Phase B Design (real OctreeConfig on the Yeroket core)
-status: DESIGN / awaiting review
+status: COMPLETE — Phase B landed the canonical `OctreeConfig`/`ChannelDesc` artifacts and parity
+gate (`c63711db`, `cbfd1a25`; reconciled in `b919b3fb`).
 date: 2026-07-02
 tags: [architecture, codegen, octreeconfig, std430, D5, D8, yeroket-kernel-core]
 related:

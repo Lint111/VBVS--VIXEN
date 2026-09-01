@@ -1109,11 +1109,12 @@ Fable only on explicit user request. Escalation ladder per Ground rules.
   Decisive A/B: shadows OFF → baked/virtual = 1.00; shadows ON → 0.88 (baked floor loses
   27.4% direct light, virtual 0%); only positive-NdotL surfaces dim, Rwall/backwall untouched.
   RENDER-TIME (shadow trace over `marchBrickSdfAnyHit`, `StoredSdf.glsl:822`, `d<0.01` band
-  shell). Fix direction (Task 10.1, not yet impl): tighten the any-hit occlusion crossing to
+  shell). **Historical diagnosis state:** the then-next fix direction (Task 10.1) was to tighten
+  the any-hit occlusion crossing to
   the true surface / self-skip first band-thickness; shadow/probe-only, seam tie-break
   untouched. Left an env-gated `VIXEN_CORNELL_NORMAL_DUMP` diagnostic (+55 lines, off by
-  default) in VulkanGraphApplication.cpp for fix validation. Shaders/libraries unchanged;
-  seam epsilon still 1e-4. NEXT: dispatch Sonnet-medium implementer for Task 10.1.
+  default) in VulkanGraphApplication.cpp for fix validation. Shaders/libraries unchanged at
+  that diagnosis point; seam epsilon still 1e-4. Task 10.2 later shipped as `1964c134`.
 
 - M10 Task 10.1 (fix attempt): DONE but HONEST NEGATIVE — the proven mechanism did NOT
   close the gap · commit `3142047c` · Sonnet-medium · 2026-07-18. Tightened

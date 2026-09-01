@@ -1,6 +1,7 @@
 ---
 title: Config-Struct Codegen — PIVOT to the real kernel-codegen core
-status: DESIGN / awaiting review · SUPERSEDES the parallel-tool approach
+status: DELIVERED — the real kernel-codegen path landed in Phase A–C; the parallel-tool approach
+was superseded and removed (`1b075391`, close-out `b919b3fb`).
 date: 2026-07-02
 tags: [architecture, codegen, kernel-framework, D5, pivot, cross-repo]
 supersedes:
@@ -60,13 +61,16 @@ VIXEN's `codegen/CMakeLists.txt`: `find_program(dotnet)` AND a `VIXEN_YEROKET_DI
 | **A — extract core + tool (redo P0 on the real core)** | Yeroket | `[GpuStruct]`/`[GpuArray]`/`Float3`/`Mat4` in `Runtime/`; `GpuStructModel` + C++/GLSL emitters in the core (re-home P0 logic); the `CodegenTool~` console tool; a `SkeletonConfig` proof + emitter golden tests (`dotnet test`). |
 | **B — OctreeConfig canonical + parity (redo P1 on the real core)** | VIXEN | `codegen/schemas/OctreeConfig.cs` + `ChannelDesc` (`[GpuStruct]`, Option-C shapes); invoke the Yeroket tool → `OctreeConfig.g.h`/`.glsl`; CMake golden gate (dotnet+Yeroket gated); parity test vs today's `Vixen::SVO::OctreeConfig` (432 layout). |
 | **C — migrate + live gate** | VIXEN | `ShellOctreeGpu.h` `#include`s the generated C++ (drop-in); `BodyInstanceRayMarch.comp` `#include`s the generated GLSL; drift-guard on the migrated shader; **live lavapipe render no-regression**. |
-| **Cleanup** | VIXEN | remove the parallel `VIXEN/codegen/Vixen.Codegen*` (P0) once B supersedes it; retire the P0/P1 parallel-approach docs (mark superseded). |
+| **Cleanup** | VIXEN | completed: the parallel `VIXEN/codegen/Vixen.Codegen*` was removed after Phase B/C superseded it (`1b075391`). |
 
 ## Testing
 Yeroket: emitter golden tests (`dotnet test`) for scalar/Float3/Mat4/nested/array + C++ offset-driven pad + idiomatic GLSL. VIXEN: golden `--check` (dev-gated) + compile-time parity static_asserts vs the current struct + the reflection drift-guard on the migrated shader + the live render gate (authoritative).
 
 ## Disposition of shipped P0
-P0's parallel `Vixen.Codegen` is on `origin/main` (`70165c13`). It stays until Phase B produces the real-core equivalent, then Cleanup removes it (single commit). Its logic is re-homed in Phase A, not lost. The P1 branch (`feat/config-struct-codegen-p1`) is superseded (its Option-C design is carried into this doc).
+P0's parallel `Vixen.Codegen` landed its hardening in `70165c13`, then was superseded by the real
+kernel-core path and removed in the Cleanup commit `1b075391`. Its logic was re-homed in Phase A,
+not lost. The P1 branch (`feat/config-struct-codegen-p1`) is superseded (its Option-C design is
+carried into this doc).
 
 ## Open items for Phase A planning
 - Exact extraction boundary: which emitter classes move into a shared library vs stay in `SourceGenerator~` (the console tool + the analyzer both reference the core).

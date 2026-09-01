@@ -2,7 +2,8 @@
 title: Voxel Authoring App — Inc1 Design (VoxelDocument format + editor skeleton)
 tags: [architecture, authoring, voxel, sdf, blender, codegen]
 created: 2026-07-03
-status: ACTIVE
+status: COMPLETE — Inc1 landed in the current engine history (`a72ffba2`; implementation
+`4d9cb8c6`, close-out `6046cf6a`).
 ---
 
 # Voxel Authoring App — Inc1 Design (2026-07)

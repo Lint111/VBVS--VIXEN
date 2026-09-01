@@ -1,7 +1,9 @@
 # AppFlow Framework — Design
 
 **Date:** 2026-07-05
-**Status:** Design (approved via brainstorm; awaiting spec review → writing-plans)
+**Status (reverified 2026-09-01):** ACTIVE — Inc-1, Inc-2, Inc-2b, and GraphRun shipped in the
+engine history (`c5150e56`, `c20d507f`, `eea9e1ff`, `2ab4c534`); later View-Contract/AppFlow
+convergence work remains in the reframe documents.
 **Program:** App-flow / state-transition / systemic-action framework for VIXEN and its consumers
 **Relates to:** Kernel-codegen framework (Yeroket single-source contract), Config-Struct-Codegen, Recipe authoring→render pipeline, Runtime-Kernel-Pipeline direction
 
@@ -349,8 +351,8 @@ canonical tick, not another hand-wired branch in each app's `Update()`.
 **Why it belongs in this program:** AppFlow's whole thesis is "one seam owns app-flow lifecycle so
 entry points don't each reinvent it." `graph.Run()` is the *render-loop* half of that same thesis —
 the engine-lifecycle sibling of the app-flow-state consolidation. Kept as its own increment (it is a
-RenderGraph refactor touching the entry points, orthogonal to the state/action contract), planned
-after the Inc-1 walking skeleton proves the AppFlow spine.
+RenderGraph refactor touching the entry points, orthogonal to the state/action contract), delivered
+after the Inc-1 walking skeleton proved the AppFlow spine (`2ab4c534`).
 
 ## 8. Scope — V1 vs. deferred
 
@@ -369,8 +371,8 @@ after the Inc-1 walking skeleton proves the AppFlow spine.
 
 **Deferred (architect now, build later — append-only extension points reserved in V1):**
 - **Render-loop lifecycle consolidation — canonical `graph.Run()`/`Tick()`** (§7d): its own increment
-  (a RenderGraph refactor + entry-point dedup, orthogonal to the state/action contract), planned after
-  the Inc-1 walking skeleton. Previously scoped in Architecture-Review-Game-Renderer-2026-06-12.
+  (a RenderGraph refactor + entry-point dedup, orthogonal to the state/action contract), delivered
+  as GraphRun M1–M3 (`2ab4c534`). Previously scoped in Architecture-Review-Game-Renderer-2026-06-12.
 - **undertow migration** — retire `Undertow.Sim/UiActions/` into an authoring/serialization front-end
   over the AppFlow contract (undertow's `ui_binding` UTDL → an AppFlow-binding serialization). undertow
   becomes consumer #2; its cross-repo pin + C-ABI wiring make this its own increment (see roadmap Inc 3+).

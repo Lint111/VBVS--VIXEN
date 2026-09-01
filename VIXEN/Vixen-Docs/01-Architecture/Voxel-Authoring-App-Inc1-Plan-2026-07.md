@@ -2,7 +2,8 @@
 title: Voxel Authoring App — Inc1 Plan (milestones M1–M5)
 tags: [plan, authoring, voxel, sdf, blender, codegen]
 created: 2026-07-03
-status: ACTIVE
+status: COMPLETE — Inc1 landed in the current engine history (`a72ffba2`; implementation
+`4d9cb8c6`, close-out `6046cf6a`).
 ---
 
 # Voxel Authoring App — Inc1 Implementation Plan
@@ -304,7 +305,8 @@ gate test output pasted. **Commit** `feat(editor): vixen_editor app — document
 - Update `memory-bank/activeContext.md` (worktree copy): state, next steps (Inc2 = drawn layers/brush MVP +
   stored-view bake; Python field-eval visitor with Blender addon slice).
 - Append final `## Progress` summary here (all milestone entries, commit hashes both repos, test evidence).
-- Yeroket worktree: confirm clean status (no stray `.dll`), branch left unpushed. VIXEN branch left unpushed.
+- At close-out, the Yeroket and VIXEN worktrees were left unpushed; the VIXEN work was later
+  integrated into the current engine history (`a72ffba2`).
 - Controller then: session summary + memory update + offer HacknPlan logging (delegated, user-approved).
 
 ---

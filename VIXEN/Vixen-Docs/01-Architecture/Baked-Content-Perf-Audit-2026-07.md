@@ -1,6 +1,7 @@
 ---
 title: Baked-Content Perf Audit — Verified Findings + Research Patterns
-status: complete (audit); actions not yet implemented
+status: complete (audit); follow-up actions are tracked and partially landed in the
+`Baked-Perf-Fix-Pipeline` (`e92acf44`, `1964c134`).
 created: 2026-07-16
 ---
 

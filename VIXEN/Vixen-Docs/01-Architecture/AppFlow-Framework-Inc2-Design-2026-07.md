@@ -1,9 +1,10 @@
 # AppFlow Framework — Increment 2 Design (LayerController + snapshot-fallback + headless render-gate)
 
 **Date:** 2026-07-05
-**Status:** Design (approved via brainstorm; awaiting spec review → writing-plans)
+**Status (reverified 2026-09-01):** COMPLETE — shipped with the LayerController, snapshot-fallback
+undo path, and GPU render gate (`c20d507f`; close-out `1a072c1c`).
 **Program:** AppFlow app-flow/state/action framework — see `AppFlow-Framework-Design-2026-07.md`
-**Builds on:** Inc-1 walking skeleton (SHIPPED to main `d94c54bd`) — `VIXEN/libraries/AppFlow/` (generated mirror, FlowStateMachine, ActionStack, BindingStore, AppFlowLoader, AppFlowRuntime, DispatchBySelector spine).
+**Builds on:** Inc-1 walking skeleton (SHIPPED in the current engine history, close-out `c5150e56`) — `VIXEN/libraries/AppFlow/` (generated mirror, FlowStateMachine, ActionStack, BindingStore, AppFlowLoader, AppFlowRuntime, DispatchBySelector spine).
 
 ---
 

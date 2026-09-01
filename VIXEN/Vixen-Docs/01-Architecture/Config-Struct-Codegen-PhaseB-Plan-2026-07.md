@@ -4,6 +4,10 @@
 
 **Goal:** generate the real 432 B `OctreeConfig` as byte-identical C++ + GLSL from one canonical C# `[GpuStruct]` on the Yeroket kernel-codegen core, proven to match today's `Vixen::SVO::OctreeConfig` offset-for-offset.
 
+> **Current state (reverified 2026-09-01):** Phase B's historical `feat/config-codegen` worktree
+> state below was subsequently reconciled into the current engine history (`b919b3fb`); Phase C
+> and the parallel-tool cleanup are also complete (`52d4294c`, `1bdf8ac4`).
+
 **Architecture:** B1 (Yeroket) extends the merged kernel core's `GpuStructModel` + C++/GLSL emitters + tool loader from scalars to the non-scalar std430 shapes `OctreeConfig` needs (`Float3`/`Mat4`/nested-`[GpuStruct]`/`[GpuArray]`/explicit-pad) — a direct port of the proven P1a code. B2 (VIXEN) authors the canonical `OctreeConfig`/`ChannelDesc`, invokes the merged Yeroket tool to generate + commit the artifacts, gates them (dotnet golden `--check`), and adds a C++ parity gtest vs the current struct.
 
 **Tech Stack:** C# (Roslyn `Microsoft.CodeAnalysis.CSharp` 4.3.0, netstandard2.0 analyzer + net8.0 tool/tests, NUnit); C++23/glm (parity gtest); CMake (dotnet-gated golden gate); `~/.dotnet/dotnet`.

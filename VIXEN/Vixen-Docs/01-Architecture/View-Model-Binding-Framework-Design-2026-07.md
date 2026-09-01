@@ -1,6 +1,8 @@
 # View↔Model Binding Framework — Design Note (2026-07-10)
 
-**Status:** DESIGN (Phase 0 — written before building, per user 2026-07-10). This is the coherent
+**Status (reverified 2026-09-01):** ACTIVE — Inc-A, Inc-A2, Inc-Ovr, Inc-C, and Inc-D shipped in
+the current engine history; the framework design remains the record for the next increment
+(`224e393f`, `60672744`, `9babe538`, `8269546f`, `4f397deb`, `a97bc43d`). This is the coherent
 whole against which increments are cut. **Rev 2** (2026-07-10) folds in the `design-critic` adversarial
 review — see §12 for the resolved holes (override boundary, per-entity re-verify cost, undo-over-set
 snapshot, transient-hover vs committed-selection, frame-ordering, Inc-A rescope). It is the program-level design for goal **#2** ("view-management

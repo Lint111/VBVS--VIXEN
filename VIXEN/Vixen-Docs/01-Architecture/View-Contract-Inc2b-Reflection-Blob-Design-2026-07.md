@@ -10,7 +10,10 @@ related:
 
 # View Contract Inc-2b — Reflection Blob + Generic Dynamic Marshaler
 
-**Status:** Design approved 2026-07-07. Fourth increment of the View Contract program (Inc-1 data-side emitter + Inc-2 renderer-agnostic host both shipped; VIXEN side pushed to origin/main). This spec covers the **blob path (face-1 blob delivery)** — the crux increment of `Renderer-Agnostic-View-Contract-Design-2026-07.md` §5.
+**Status (reverified 2026-09-01):** COMPLETE — the reflection blob, generic dynamic marshaler,
+and committed `Hud` blob artifacts shipped in the current engine history (`cc7905a8`, `dd2b7f1f`,
+`883d2b8a`, `48301c7f`, `6f203a67`). This spec covers the **blob path (face-1 blob delivery)** —
+the crux increment of `Renderer-Agnostic-View-Contract-Design-2026-07.md` §5.
 
 **Goal (one sentence):** Make the renderer host *any* view from a runtime **description** (not just C++-compiled ones), so a consumer with **zero engine C++** can drive the HUD — proven in-tree against VIXEN's own HUD, rendering identically to Inc-2's native `HudView` path.
 

@@ -1,6 +1,8 @@
 # Sampled Lighting — Program Design (2026-07)
 
-**Status:** DRAFT design — program not scheduled; increments not planned in detail.
+**Status (reverified 2026-09-01):** ACTIVE — Inc1–Inc6 shipped through 2026-07-13 (`5e0b4f38`,
+`fb5dfda4`, `0528ff8a`, `ad17d45c`, `e6a3ec3c`, `ccf14b32`); Inc7 and the per-dispatch-overhead
+follow-up remain scoping work.
 **Grounding:** Two adversarially-verified deep-research passes (2026-07-10; 3-vote claim verification, ~24 confirmed claims each). Verified findings are cited; anything marked *synthesis* is design inference, not verified fact.
 **Siblings:** `RT-Core-Optional-Acceleration-Spec-2026-07.md` (the optional HW accelerator for this program's rays — the `TraceWorld` seam is shared infrastructure), `Lazy-Procedural-Delta-Baseline-Design-2026-07.md` (lighting rays see the resident set; probe hysteresis absorbs deltas).
 

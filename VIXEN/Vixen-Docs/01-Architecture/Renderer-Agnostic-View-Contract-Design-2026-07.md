@@ -1,6 +1,8 @@
 ---
 title: Renderer-Agnostic View Contract — Program Design
-status: design (approved for planning)
+status: ACTIVE — Inc1 through Inc5b implementation work is in the current engine history; Inc5b
+closed with known gaps, while the undertow consumer migration remains blocked at Inc5 Milestone 4
+(`5ed4f65f`, `1f651aa3`, `View-Contract-Inc5-Undertow-Migration-Plan-2026-07.md`).
 created: 2026-07-06
 supersedes: the Inc-2-only framing in View-Contract-Codegen-Design-2026-07.md §2 (Inc-2 line)
 tags: [view-contract, codegen, rmlui, ui, renderer-agnostic, appflow-convergence]

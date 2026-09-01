@@ -1,6 +1,7 @@
 ---
 title: Config-Struct Codegen — Standalone Shared Tool (OctreeConfig proof)
-status: DESIGN / awaiting review
+status: SUPERSEDED — the real kernel-codegen path delivered the config-struct pipeline in Phase A–C;
+the parallel VIXEN tool was removed in `1b075391` (close-out `b919b3fb`).
 date: 2026-07-02
 tags: [architecture, codegen, shader-management, sdi, kernel-codegen, D5, config-structs]
 related:

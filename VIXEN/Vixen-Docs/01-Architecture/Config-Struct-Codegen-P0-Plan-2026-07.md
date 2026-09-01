@@ -35,7 +35,9 @@ Run on branch `feat/config-struct-codegen` (main checkout, sequential milestones
     - **[C]** `StructModel` should add `!f.IsImplicitlyDeclared` when P1 adds properties (auto-prop backing fields). **[D]** `Program.Write` bare-filename guard (cosmetic). `CompilationLoader` should surface schema compile diagnostics. → all **P1**.
 - Milestone M2 (Tasks 6–7): DONE · commits `0bba1ec6` (SkeletonConfig canonical + generated C++/GLSL) / `aa3bbf73` (CMake golden gate + regen + wiring) · gate (controller-run): `codegen_check` rc 0, tamper rc 1 + `STALE:` (gate **bites**), C++ g++ + GLSL glslc compile-smokes OK, main-build configure rc 0 (new subdir doesn't break it) · artifacts verified (`SkeletonConfig.g.h` sizeof 8/version@0/payload@4; `.glsl` guard+struct) · CMake gate dotnet-gated (`return()` when absent — D8) · 2026-07-02
   - Deviation (doc-only): the preset runs from `VIXEN/` (CMakePresets.json location), not repo root — no code change.
-  - **★ P0 milestones (M1+M2) COMPLETE.** Remaining before finish: apply the [A]/[B] newline+fail-loud hardening (controller), then final whole-diff Opus review.
+  - **★ P0 milestones (M1+M2) COMPLETE.** The [A]/[B] newline+fail-loud hardening landed in
+    `70165c13`; the later kernel-core migration superseded and removed this parallel tool in
+    `1b075391`.
 
 ---
 

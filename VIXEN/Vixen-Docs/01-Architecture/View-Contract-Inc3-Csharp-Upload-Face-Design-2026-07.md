@@ -1,6 +1,8 @@
 ---
 title: View Contract Inc-3 — C# Data-Upload Face (Design)
-status: design (approved for planning)
+status: COMPLETE-WITH-KNOWN-GAPS — Inc3's C# upload face and C++ UTVA round-trip shipped in the
+current engine history (`06c9e31b`, `a9204e21`, `3b61efe2`, close-out `3ad08519`); the live gate
+remains deferred on the documented external engine-side blocker.
 created: 2026-07-07
 parent: Renderer-Agnostic-View-Contract-Design-2026-07.md
 tags: [view-contract, codegen, csharp, marshaling, soa, aos, undertow-subsume]

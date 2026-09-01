@@ -1,15 +1,14 @@
 ---
 title: GPU Recipe-Instance Bucketing — Design
-status: design (not yet plan-ready)
+status: IMPLEMENTED in follow-on increments (Inc2–Inc4, 2026-07-16/17; merges `7a27357f`,
+`71c6eeca`, `915fc5f6`); this document remains the design record for the shipped mechanism.
 created: 2026-07-15
 ---
 
 # GPU Recipe-Instance Bucketing — Design
 
-> **This is a design doc, not an implementation plan.** It exists to work out the architecture
-> before committing to milestones. Do not start implementation from this doc alone — it needs a
-> review pass and a follow-on milestone-mapped plan doc (mirroring
-> [[Recipe-Pipeline-Cache-Inc1-Plan-2026-07]]'s structure) before any code is written.
+> **This is the design record, not the implementation plan.** Its follow-on milestone-mapped
+> plans delivered Inc2–Inc4; the async/background-compile half remains outside those increments.
 
 ## 1. Why this exists — Increment 2 turned out to need real architecture, not a quick step
 
