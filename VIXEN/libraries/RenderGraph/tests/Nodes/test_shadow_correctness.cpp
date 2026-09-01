@@ -1,9 +1,10 @@
 /**
  * @file test_shadow_correctness.cpp
  * @brief Sampled Lighting Inc1 M4 gate: exercises the REAL TraceWorldShadow via a real
- *        dispatch of BodyInstanceRayMarch.comp against a known scene + known directional
- *        light, and asserts a pixel's occlusion state (as read from the shaded colour
- *        output) matches an independent CPU-traced reference shadow ray. This closes
+ *        dispatch of the BodyInstanceRayMarch.comp -> ShadowVisibilityWave.comp ->
+ *        SpatialReuseShade.comp chain against a known scene + known directional light, and
+ *        asserts a pixel's occlusion state (as read from the shaded colour output) matches
+ *        an independent CPU-traced reference shadow ray. This closes
  *        M2's deferred "GLSL traversal agrees with reference" gap: M2 only proved
  *        TraceWorldShadow returns SOME bool via a CPU mirror function; this test proves
  *        the GLSL shader itself (compiled, dispatched, real GPU/lavapipe) produces the
@@ -23,9 +24,8 @@
  * against the REAL shader's pixel output this time, not another CPU mirror.
  *
  * Reuses the real-shader dispatch pattern from test_body_instance_occlusion_reject.cpp /
- * test_hitrecord_readback.cpp, extended with bindings 16 (LightingConfig), 17 (HitRecord,
- * unused for assertions here but must be bound — the shader always writes it), and 18
- * (ShadowConfig).
+ * test_hitrecord_readback.cpp, extended with the production visibility-wave and shading
+ * bindings for LightingConfig, HitRecord, and ShadowConfig.
  *
  * Run: ./test_shadow_correctness
  */
@@ -38,7 +38,7 @@
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
-#include "ShaderBundleBuilder.h"  // SpatialReuseShade.comp compiled at test runtime, see below
+#include "ShaderBundleBuilder.h"  // shading and visibility-wave shaders compiled at test runtime
 
 #include <vulkan/vulkan.h>
 
@@ -61,23 +61,24 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 #endif
 
 #ifndef VIXEN_SHADER_SOURCE_DIR
-#error "VIXEN_SHADER_SOURCE_DIR (shaders/ tree, for SpatialReuseShade.comp's #includes) must be defined by CMake"
+#error "VIXEN_SHADER_SOURCE_DIR (shaders/ tree, for shading/wave #includes) must be defined by CMake"
 #endif
 
 // ---------------------------------------------------------------------------
-// ROOT CAUSE (2026-08-03): Sampled Lighting Inc3 M1 (KI-018, 784adff7) moved shading out of
+// ROOT CAUSE (2026-09-01): Sampled Lighting Inc3 M1 (KI-018, 784adff7) moved shading out of
 // BodyInstanceRayMarch.comp -- "no image writes (imageSize() call only)" per that shader's own
-// binding-0 comment -- and Inc3 M5 (747e156c) split the shading shader ITSELF into
-// DirectLighting.comp (pure buffer producer, no image writes either) and SpatialReuseShade.comp
-// (the actual outputImage writer). This test predates both splits and only ever dispatched
-// BodyInstanceRayMarch.comp -- reading back an image that shader has never written since M1,
-// regardless of shadows being on/off, hence the flat "target luma=0 | litControl luma=0"
-// regression. Fix: dispatch the REAL current production chain -- BodyInstanceRayMarch.comp
-// (writes HitRecordBuffer) then SpatialReuseShade.comp (reads HitRecordBuffer, shades, writes
-// outputImage) -- reading colour back from the SECOND dispatch. reservoirEnabled/probeGridEnabled
-// stay 0 (both shaders' own byte-identity escape hatches), so SpatialReuseShade.comp's shading
-// reduces to exactly computeLightingWithShadows(...) -- the same analytic term this test was
-// always meant to exercise, unwrapped from ReSTIR/DDGI it doesn't need.
+// binding-0 comment -- and Inc3 M5 (747e156c) split the shading shader into DirectLighting.comp
+// (pure reservoir-buffer producer, no image writes) and SpatialReuseShade.comp (the actual
+// outputImage writer). W1b (6a8500a2) then made ShadowVisibilityWave.comp the producer of the
+// analytic visibility bits consumed by SpatialReuseShade.comp. The test had been updated for
+// the M1/M5 output path but still dispatched only march -> shade, so march's zero-initialized
+// HitRecordBuffer._pad0[2] made every shadow-enabled light appear occluded: both target and
+// litControl became ambient-only (luma 11), while shadows-disabled bypassed the mask (luma 75).
+// Fix: dispatch the complete current production chain -- march -> ShadowVisibilityWave ->
+// SpatialReuseShade -- with barriers around the read/write HitRecordBuffer transitions.
+// reservoirEnabled/probeGridEnabled stay 0 (both shaders' own byte-identity escape hatches),
+// so SpatialReuseShade.comp's shading reduces to computeLightingWithShadows(...), the same
+// analytic term this test was always meant to exercise, unwrapped from ReSTIR/DDGI.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -525,14 +526,39 @@ protected:
         return spirv;
     }
 
-    // Dispatches the REAL current production shading chain: BodyInstanceRayMarch.comp (writes
-    // HitRecordBuffer, this test's existing dispatch pattern) immediately followed by
-    // SpatialReuseShade.comp (reads that SAME HitRecordBuffer, shades, writes outputImage) --
-    // the chain Sampled Lighting Inc3 M1/M5 (KI-018, 784adff7 / 747e156c) replaced the single
-    // march dispatch with. Binding set for SpatialReuseShade.comp mirrors BuildRenderGraph.cpp's
-    // spatialReuseGatherer wiring exactly: 0,1,2,3,5,10-13,15-27,31,32-35 (see that function's
-    // own comments for the citation on each binding's role/hazard). reservoir/probeGrid stay
-    // disabled (see the struct comments above) so shading reduces to computeLightingWithShadows.
+    // Compiles the W1b visibility producer used by the current production chain. It must run
+    // between BodyInstanceRayMarch.comp and SpatialReuseShade.comp: march initializes the
+    // HitRecordBuffer policy word, this pass fills its analytic shadow bits, and shade consumes
+    // those bits. Keeping this pass in the test is what makes its shadow-enabled path match the
+    // production march -> ShadowVisibilityWave -> SpatialReuseShade contract.
+    static const std::vector<uint32_t>& ShadowVisibilityWaveSpirv() {
+        static const std::vector<uint32_t> spirv = [] {
+            const std::filesystem::path shaderDir(VIXEN_SHADER_SOURCE_DIR);
+            ShaderManagement::ShaderBundleBuilder builder;
+            builder.SetProgramName("ShadowVisibilityWave")
+                   .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                   .AddIncludePath(shaderDir)
+                   .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
+                                     shaderDir / "ShadowVisibilityWave.comp", "main")
+                   .EnableSdiGeneration(false);
+            ShaderManagement::ShaderBundleBuilder::BuildResult result = builder.Build();
+            if (!result.success || !result.bundle) {
+                ADD_FAILURE() << "ShadowVisibilityWave.comp failed to build: " << result.errorMessage;
+                return std::vector<uint32_t>{};
+            }
+            return result.bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
+        }();
+        return spirv;
+    }
+
+    // Dispatches the REAL current production shading chain: BodyInstanceRayMarch.comp writes
+    // HitRecordBuffer, ShadowVisibilityWave.comp writes its analytic visibility bits, and
+    // SpatialReuseShade.comp reads that same HitRecordBuffer and writes outputImage. This is
+    // the chain introduced by Sampled Lighting Inc3 M1/M5 and W1b (784adff7 / 747e156c / 6a8500a2).
+    // Binding set for SpatialReuseShade.comp mirrors BuildRenderGraph.cpp's spatialReuseGatherer
+    // wiring exactly: 0,1,2,3,5,10-13,15-27,31,32-35. reservoir/probeGrid stay disabled (see
+    // the struct comments above), so shading reduces to computeLightingWithShadows after the
+    // wave has populated the hit-record visibility word.
     void RenderSceneShaded(const std::vector<Vixen::SVO::BodyInstanceGpu>& instances,
                            const LightingConfigCpu& lighting, const ShadowConfigCpu& shadow,
                            const PushConstants& pc, uint32_t w, uint32_t h,
@@ -541,6 +567,8 @@ protected:
 
         const std::vector<uint32_t>& shadeSpirv = SpatialReuseShadeSpirv();
         ASSERT_FALSE(shadeSpirv.empty()) << "SpatialReuseShade.comp SPIR-V is empty (build failed above)";
+        const std::vector<uint32_t>& waveSpirv = ShadowVisibilityWaveSpirv();
+        ASSERT_FALSE(waveSpirv.empty()) << "ShadowVisibilityWave.comp SPIR-V is empty (build failed above)";
 
         // --- Scene SSBOs shared by BOTH dispatches (read-only in both, same content). ---
         constexpr VkDeviceSize kRayTraceBufferSize = 16 + 256 * (16 + 64 * 48);
@@ -582,10 +610,9 @@ protected:
         VkBuffer dummySkipMask = VK_NULL_HANDLE; VkDeviceMemory dummySkipMaskMem = VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummySkipMask, dummySkipMaskMem, true);
 
-        // HitRecordBuffer: WRITTEN by the march dispatch below, READ by the shade dispatch --
-        // the genuine cross-dispatch hazard this whole pass split exists to correctly bake
-        // (see DirectLighting.comp's own file header). Both dispatches go through ONE command
-        // buffer with a buffer barrier between them (below), so no separate submit is needed.
+        // HitRecordBuffer: WRITTEN by march, then read/written by ShadowVisibilityWave, then
+        // READ by shade. All three dispatches go through ONE command buffer with barriers between
+        // the producer/consumer transitions below, so no separate submit is needed.
         const VkDeviceSize hitRecordSize = static_cast<VkDeviceSize>(w) * h * 64;
         VkBuffer hitRecordBuf = VK_NULL_HANDLE; VkDeviceMemory hitRecordMem = VK_NULL_HANDLE;
         CreateHostBuffer(hitRecordSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hitRecordBuf, hitRecordMem, true);
@@ -667,9 +694,8 @@ protected:
         VkImageView idView    = CreateView(idImg, kIdFmt);
         ASSERT_NE(colorView, VK_NULL_HANDLE); ASSERT_NE(idView, VK_NULL_HANDLE);
 
-        // --- Pass 1: BodyInstanceRayMarch.comp. Same shader/binding shape this file's own
-        // ROOT CAUSE comment (top of file) describes -- outputImage stays declared but unwritten
-        // by this pass; only HitRecordBuffer/idOutputImage are real outputs here. ---
+        // --- Pass 1: BodyInstanceRayMarch.comp. It initializes HitRecordBuffer and leaves
+        // outputImage declared but unwritten; only HitRecordBuffer/idOutputImage are outputs. ---
         const std::vector<uint32_t> marchSpirv = ReadSpirv(GLSL_RAYMARCH_SPV);
         ASSERT_FALSE(marchSpirv.empty()) << "Failed to read compiled SPIR-V at " << GLSL_RAYMARCH_SPV;
         VkShaderModuleCreateInfo marchSmci{};
@@ -683,6 +709,12 @@ protected:
         shadeSmci.codeSize = shadeSpirv.size() * sizeof(uint32_t); shadeSmci.pCode = shadeSpirv.data();
         VkShaderModule shadeModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &shadeSmci, nullptr, &shadeModule), VK_SUCCESS);
+
+        VkShaderModuleCreateInfo waveSmci{};
+        waveSmci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        waveSmci.codeSize = waveSpirv.size() * sizeof(uint32_t); waveSmci.pCode = waveSpirv.data();
+        VkShaderModule waveModule = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &waveSmci, nullptr, &waveModule), VK_SUCCESS);
 
         auto bind = [](uint32_t b, VkDescriptorType t) {
             VkDescriptorSetLayoutBinding lb{};
@@ -770,6 +802,31 @@ protected:
         VkDescriptorSetLayout shadeDsl = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &shadeDslci, nullptr, &shadeDsl), VK_SUCCESS);
 
+        // ShadowVisibilityWave.comp's reflected storage-buffer bindings. It reads scene/light
+        // inputs and the shadow config, and read/writes HitRecordBuffer at binding 17.
+        const std::array<VkDescriptorSetLayoutBinding, 15> waveBindings = {
+            bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        };
+        VkDescriptorSetLayoutCreateInfo waveDslci{};
+        waveDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        waveDslci.bindingCount = static_cast<uint32_t>(waveBindings.size()); waveDslci.pBindings = waveBindings.data();
+        VkDescriptorSetLayout waveDsl = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &waveDslci, nullptr, &waveDsl), VK_SUCCESS);
+
         VkPushConstantRange pcr{};
         pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0; pcr.size = sizeof(PushConstants);
 
@@ -786,6 +843,13 @@ protected:
         shadePlci.pushConstantRangeCount = 1; shadePlci.pPushConstantRanges = &pcr;
         VkPipelineLayout shadePipelineLayout = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &shadePlci, nullptr, &shadePipelineLayout), VK_SUCCESS);
+
+        VkPipelineLayoutCreateInfo wavePlci{};
+        wavePlci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        wavePlci.setLayoutCount = 1; wavePlci.pSetLayouts = &waveDsl;
+        wavePlci.pushConstantRangeCount = 1; wavePlci.pPushConstantRanges = &pcr;
+        VkPipelineLayout wavePipelineLayout = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &wavePlci, nullptr, &wavePipelineLayout), VK_SUCCESS);
 
         VkComputePipelineCreateInfo marchCpci{};
         marchCpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -804,6 +868,15 @@ protected:
         shadeCpci.layout = shadePipelineLayout;
         VkPipeline shadePipeline = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &shadeCpci, nullptr, &shadePipeline), VK_SUCCESS);
+
+        VkComputePipelineCreateInfo waveCpci{};
+        waveCpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        waveCpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        waveCpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        waveCpci.stage.module = waveModule; waveCpci.stage.pName = "main";
+        waveCpci.layout = wavePipelineLayout;
+        VkPipeline wavePipeline = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &waveCpci, nullptr, &wavePipeline), VK_SUCCESS);
 
         // DIAG (temporary, root-causing the anyHitCount=0 regression): separate pools per set,
         // matching the plain RenderScene's own exact single-pool-single-set shape, in case a
@@ -839,6 +912,19 @@ protected:
         shadeDsai.descriptorPool = shadeDescPool; shadeDsai.descriptorSetCount = 1; shadeDsai.pSetLayouts = &shadeDsl;
         VkDescriptorSet shadeDescSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &shadeDsai, &shadeDescSet), VK_SUCCESS);
+
+        const VkDescriptorPoolSize wavePoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15};
+        VkDescriptorPoolCreateInfo waveDpci{};
+        waveDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        waveDpci.maxSets = 1; waveDpci.poolSizeCount = 1; waveDpci.pPoolSizes = &wavePoolSize;
+        VkDescriptorPool waveDescPool = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &waveDpci, nullptr, &waveDescPool), VK_SUCCESS);
+
+        VkDescriptorSetAllocateInfo waveDsai{};
+        waveDsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        waveDsai.descriptorPool = waveDescPool; waveDsai.descriptorSetCount = 1; waveDsai.pSetLayouts = &waveDsl;
+        VkDescriptorSet waveDescSet = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &waveDsai, &waveDescSet), VK_SUCCESS);
 
         VkDescriptorImageInfo colorInfo{VK_NULL_HANDLE, colorView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo idInfo{VK_NULL_HANDLE, idView, VK_IMAGE_LAYOUT_GENERAL};
@@ -938,6 +1024,25 @@ protected:
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(shadeWrites.size()), shadeWrites.data(), 0, nullptr);
 
+        const std::array<VkWriteDescriptorSet, 15> waveWrites = {
+            wBuf(waveDescSet, 1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
+            wBuf(waveDescSet, 2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
+            wBuf(waveDescSet, 3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
+            wBuf(waveDescSet, 4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &traceInfo),
+            wBuf(waveDescSet, 5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &configInfo),
+            wBuf(waveDescSet, 10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instInfo),
+            wBuf(waveDescSet, 11, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
+            wBuf(waveDescSet, 12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lookupInfo),
+            wBuf(waveDescSet, 13, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &mipInfo),
+            wBuf(waveDescSet, 14, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &iterInfo),
+            wBuf(waveDescSet, 15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
+            wBuf(waveDescSet, 16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &lightInfo),
+            wBuf(waveDescSet, 17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
+            wBuf(waveDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),
+            wBuf(waveDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
+        };
+        vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(waveWrites.size()), waveWrites.data(), 0, nullptr);
+
         VkCommandBufferAllocateInfo cbai{};
         cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         cbai.commandPool = commandPool_; cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; cbai.commandBufferCount = 1;
@@ -972,21 +1077,31 @@ protected:
         vkCmdPushConstants(cmd, marchPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w + 7) / 8, (h + 7) / 8, 1);
 
-        // Buffer barrier: the genuine cross-dispatch hazard (HitRecordBuffer write -> read) --
-        // see DirectLighting.comp's own file header for the production citation of this exact
-        // hazard shape (there declared via BufferSyncGathererNode/array-hazard slots; here, a
-        // single command buffer, so a plain barrier suffices).
+        // Buffer barrier: march writes the record that the visibility wave will read and update.
         VkBufferMemoryBarrier hitRecordBarrier{};
         hitRecordBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
         hitRecordBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        hitRecordBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        hitRecordBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         hitRecordBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         hitRecordBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         hitRecordBarrier.buffer = hitRecordBuf; hitRecordBarrier.offset = 0; hitRecordBarrier.size = VK_WHOLE_SIZE;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              0, 0, nullptr, 1, &hitRecordBarrier, 0, nullptr);
 
-        // Pass 2: shade. Reads HitRecordBuffer, writes outputImage (colorImg).
+        // Pass 2: visibility wave. Reads scene/light inputs, traces the configured shadow rays,
+        // and writes analytic visibility bits into HitRecordBuffer._pad0[2].
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, wavePipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, wavePipelineLayout, 0, 1, &waveDescSet, 0, nullptr);
+        vkCmdPushConstants(cmd, wavePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
+        vkCmdDispatch(cmd, (w * h + 63) / 64, 1, 1);
+
+        // Visibility wave write -> shade read.
+        hitRecordBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        hitRecordBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, 0, nullptr, 1, &hitRecordBarrier, 0, nullptr);
+
+        // Pass 3: shade. Reads HitRecordBuffer, writes outputImage (colorImg).
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, shadePipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, shadePipelineLayout, 0, 1, &shadeDescSet, 0, nullptr);
         vkCmdPushConstants(cmd, shadePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
@@ -1029,14 +1144,19 @@ protected:
         vkDestroyBuffer(logicalDevice_, rgbaBuf, nullptr); vkFreeMemory(logicalDevice_, rgbaMem, nullptr);
         vkDestroyDescriptorPool(logicalDevice_, marchDescPool, nullptr);
         vkDestroyDescriptorPool(logicalDevice_, shadeDescPool, nullptr);
+        vkDestroyDescriptorPool(logicalDevice_, waveDescPool, nullptr);
         vkDestroyPipeline(logicalDevice_, marchPipeline, nullptr);
         vkDestroyPipeline(logicalDevice_, shadePipeline, nullptr);
+        vkDestroyPipeline(logicalDevice_, wavePipeline, nullptr);
         vkDestroyPipelineLayout(logicalDevice_, marchPipelineLayout, nullptr);
         vkDestroyPipelineLayout(logicalDevice_, shadePipelineLayout, nullptr);
+        vkDestroyPipelineLayout(logicalDevice_, wavePipelineLayout, nullptr);
         vkDestroyDescriptorSetLayout(logicalDevice_, marchDsl, nullptr);
         vkDestroyDescriptorSetLayout(logicalDevice_, shadeDsl, nullptr);
+        vkDestroyDescriptorSetLayout(logicalDevice_, waveDsl, nullptr);
         vkDestroyShaderModule(logicalDevice_, marchModule, nullptr);
         vkDestroyShaderModule(logicalDevice_, shadeModule, nullptr);
+        vkDestroyShaderModule(logicalDevice_, waveModule, nullptr);
         vkDestroyImageView(logicalDevice_, colorView, nullptr);
         vkDestroyImageView(logicalDevice_, idView, nullptr);
         vkDestroyImageView(logicalDevice_, historyView, nullptr);
@@ -1115,6 +1235,7 @@ ShadowConfigCpu MakeShadow(bool enabled) {
 // "litControl" sphere in the same frame must stay bright — proving the test isolates
 // real occlusion, not a global darkening.
 // ---------------------------------------------------------------------------
+// @last-pass: 2026-09-01
 TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
     std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
               << "' (software rasterizer confirmed)\n";
@@ -1218,8 +1339,9 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
 
     // --- Real shader dispatch: shadows ENABLED ---
     // RenderSceneShaded (not the plain RenderScene): the march alone no longer writes colour
-    // (see this file's ROOT CAUSE comment up top) — dispatch march -> SpatialReuseShade.comp,
-    // the real current production chain, and read colour back from the shade pass.
+    // (see this file's ROOT CAUSE comment up top) — dispatch march -> ShadowVisibilityWave.comp
+    // -> SpatialReuseShade.comp, the real current production chain, and read colour back from
+    // the shade pass.
     const ShadowConfigCpu shadowOn = MakeShadow(true);
     std::vector<uint8_t> rgbaTarget, rgbaLit;
     ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadowOn,
