@@ -1,9 +1,8 @@
 /**
  * @file test_b1_occlusion_ab.cpp
- * @brief Raster-proxy B1 M4 A/B gate: runs the FULL B1 chain (march A -> HiZ ->
- *        instance cull -> march B) on one synthetic scene and proves both the
- *        exclusion mechanism (occluded instances skip their ESVO traversal) AND
- *        the measured win (>=40% fewer total iterations, byte-identical pixels).
+ * @brief Raster-proxy B1/B2 A/B gate: runs baseline -> B1 -> B1+B2 on one
+ *        synthetic scene and proves exclusion, effective-iteration quality, and
+ *        byte-identical visible output.
  *
  * Scene: one large occluder body directly in front of the camera, >=3 small
  * bodies fully behind it (same screen-space footprint, farther along view),
@@ -50,6 +49,7 @@
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu, Vixen::SVO::OctreeConfig
 #include "Generated/OctreeConfig.g.h"          // Vixen::Gpu::OctreeConfig (432 B, static_asserted)
 #include "Nodes/InstanceOcclusionCullMirror.h" // CPU mirror under end-to-end parity check
+#include "Nodes/ProxyIntervalPrepassMirror.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -78,6 +78,9 @@ using Vixen::RenderGraph::Mirror::HiZTileCount;
 
 #ifndef GLSL_RAYMARCH_SPV
 #error "GLSL_RAYMARCH_SPV (path to compiled BodyInstanceRayMarch_b1.spv) must be defined by CMake"
+#endif
+#ifndef GLSL_RAYMARCH_B2_SPV
+#error "GLSL_RAYMARCH_B2_SPV (path to compiled BodyInstanceRayMarch_b2.spv) must be defined by CMake"
 #endif
 #ifndef HIZ_DOWNSAMPLE_SPV
 #error "HIZ_DOWNSAMPLE_SPV (path to compiled HiZDownsample.spv) must be defined by CMake"
@@ -108,6 +111,16 @@ struct PushConstants {
     uint32_t   _pad1 = 0u;
 };
 static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
+
+// VIXEN_B2_PROXY_PREPASS appends proxyAabbCount at byte 96. Pad the test-side
+// block to the next 16-byte boundary while keeping the shader-visible prefix
+// byte-identical to the production push gatherer.
+struct PushConstantsB2 {
+    PushConstants base;
+    uint32_t proxyAabbCount;
+    uint32_t _pad[3]{};
+};
+static_assert(sizeof(PushConstantsB2) == 112, "B2 PushConstants must be 112 bytes");
 
 // Byte-identical to HiZDownsample.comp's push_constant block.
 struct HiZPush {
@@ -417,8 +430,12 @@ protected:
               const PushConstants& pc, uint32_t w, uint32_t h,
               uint32_t maxInstances,
               std::vector<uint32_t>& outIterCounts,
-              std::vector<HitRecordCpu>& outHitRecords) {
+              std::vector<HitRecordCpu>& outHitRecords,
+              const char* spirvPath = GLSL_RAYMARCH_SPV,
+              VkBuffer proxyIntervalBuf = VK_NULL_HANDLE,
+              uint32_t proxyAabbCount = 0u) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
+        const bool b2Enabled = proxyIntervalBuf != VK_NULL_HANDLE;
 
         constexpr VkDeviceSize kRayTraceBufferSize = 16 + 256 * (16 + 64 * 48);
         VkBuffer traceBuf = VK_NULL_HANDLE, counterBuf = VK_NULL_HANDLE;
@@ -468,8 +485,8 @@ protected:
         ASSERT_NE(idView, VK_NULL_HANDLE);
         ASSERT_NE(historyView, VK_NULL_HANDLE);
 
-        const std::vector<uint32_t> spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
-        ASSERT_FALSE(spirv.empty()) << "Failed to read compiled SPIR-V at " << GLSL_RAYMARCH_SPV;
+        const std::vector<uint32_t> spirv = ReadSpirv(spirvPath);
+        ASSERT_FALSE(spirv.empty()) << "Failed to read compiled SPIR-V at " << spirvPath;
         VkShaderModuleCreateInfo smci{};
         smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         smci.codeSize = spirv.size() * sizeof(uint32_t); smci.pCode = spirv.data();
@@ -482,7 +499,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 23> bindings = {
+        std::vector<VkDescriptorSetLayoutBinding> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -507,6 +524,9 @@ protected:
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(36, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
+        if (b2Enabled) {
+            bindings.push_back(bind(42, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
+        }
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = static_cast<uint32_t>(bindings.size()); dslci.pBindings = bindings.data();
@@ -514,7 +534,8 @@ protected:
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
 
         VkPushConstantRange pcr{};
-        pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0; pcr.size = sizeof(PushConstants);
+        pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0;
+        pcr.size = b2Enabled ? sizeof(PushConstantsB2) : sizeof(PushConstants);
         VkPipelineLayoutCreateInfo plci{};
         plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         plci.setLayoutCount = 1; plci.pSetLayouts = &dsl;
@@ -533,7 +554,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  4},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, b2Enabled ? 20u : 19u},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -570,6 +591,7 @@ protected:
         VkDescriptorBufferInfo accumInfo{dummyAccum, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo prevCamInfo{dummyPrevCam, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo skipMaskInfo{skipMaskBuf, 0, skipMaskBufSize};
+        VkDescriptorBufferInfo proxyIntervalInfo{proxyIntervalBuf, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w2{};
@@ -585,7 +607,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 23> writes = {
+        std::vector<VkWriteDescriptorSet> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -610,6 +632,10 @@ protected:
             wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
             wImg(36, &depthInfo),
         };
+        if (b2Enabled) {
+            writes.push_back(wBuf(42, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                  &proxyIntervalInfo));
+        }
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
 
@@ -637,7 +663,16 @@ protected:
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descSet, 0, nullptr);
-        vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
+        if (b2Enabled) {
+            PushConstantsB2 b2Push{};
+            b2Push.base = pc;
+            b2Push.proxyAabbCount = proxyAabbCount;
+            vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(b2Push), &b2Push);
+        } else {
+            vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0, sizeof(pc), &pc);
+        }
         vkCmdDispatch(cmd, (w + 7) / 8, (h + 7) / 8, 1);
 
         // Barrier the iteration debug SSBO + HitRecord SSBO (shader write -> host read)
@@ -1366,7 +1401,10 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     // collision and are unaffected by this race.
     auto measureSinglePixelIterCounts = [&](const glm::vec3& targetDir,
                                             VkBuffer skipMaskForThisMeasurement,
-                                            VkDeviceSize skipMaskForThisMeasurementSize) {
+                                            VkDeviceSize skipMaskForThisMeasurementSize,
+                                            const char* spirvPath = GLSL_RAYMARCH_SPV,
+                                            VkBuffer proxyIntervalForThisMeasurement = VK_NULL_HANDLE,
+                                            uint32_t proxyAabbCountForThisMeasurement = 0u) {
         const glm::vec3 dirRight = glm::normalize(glm::cross(targetDir, worldUp));
         const glm::vec3 dirUp    = glm::normalize(glm::cross(dirRight, targetDir));
         PushConstants singlePc{};
@@ -1386,7 +1424,9 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
         March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
               skipMaskForThisMeasurement, skipMaskForThisMeasurementSize,
               scratchDepthImg, scratchDepthView, /*clearDepth=*/true,
-              singlePc, /*w=*/1, /*h=*/1, maxInstances, singleIter, singleHitRecords);
+              singlePc, /*w=*/1, /*h=*/1, maxInstances, singleIter, singleHitRecords,
+              spirvPath, proxyIntervalForThisMeasurement,
+              proxyAabbCountForThisMeasurement);
 
         vkDestroyImageView(logicalDevice_, scratchDepthView, nullptr);
         vkDestroyImage(logicalDevice_, scratchDepthImg, nullptr);
@@ -1554,6 +1594,65 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
         << "pass A and pass B HitRecords must be byte-identical (occlusion cull must not "
            "change visible output in this static scene)";
 
+    // --- B1+B2: same cull mask and scene, adding only the proxy interval/mask
+    // input. The two records are the conservative intervals for this fixture's
+    // two target rays: pixel 0 admits the collinear stack; pixel 1 admits only
+    // the off-axis control. The pre-pass device parity test independently proves
+    // both GPU writers produce this exact 32-byte representation.
+    using Vixen::RenderGraph::Mirror::AccumulateProxyInterval;
+    using Vixen::RenderGraph::Mirror::ClearProxyIntervalPixel;
+    using Vixen::RenderGraph::Mirror::ProxyIntervalPixel;
+    std::array<ProxyIntervalPixel, 2> proxyPixels = {
+        ClearProxyIntervalPixel(), ClearProxyIntervalPixel()};
+    for (uint32_t index : {idxOccluder, idxOcc1, idxOcc2, idxOcc3}) {
+        ASSERT_TRUE(AccumulateProxyInterval(proxyPixels[0], index, 0.0f, 1000.0f));
+    }
+    ASSERT_TRUE(AccumulateProxyInterval(proxyPixels[1], idxControl, 0.0f, 1000.0f));
+
+    VkBuffer proxyPixelsBuf = VK_NULL_HANDLE;
+    VkDeviceMemory proxyPixelsMem = VK_NULL_HANDLE;
+    const VkDeviceSize proxyPixelsSize = sizeof(proxyPixels);
+    CreateHostBuffer(proxyPixelsSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                     proxyPixelsBuf, proxyPixelsMem, /*zero=*/false);
+    UploadBuffer(proxyPixelsMem, proxyPixels.data(), sizeof(proxyPixels));
+
+    VkBuffer proxyLineBuf = VK_NULL_HANDLE, proxyControlBuf = VK_NULL_HANDLE;
+    VkDeviceMemory proxyLineMem = VK_NULL_HANDLE, proxyControlMem = VK_NULL_HANDLE;
+    CreateHostBuffer(sizeof(ProxyIntervalPixel), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                     proxyLineBuf, proxyLineMem, /*zero=*/false);
+    CreateHostBuffer(sizeof(ProxyIntervalPixel), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                     proxyControlBuf, proxyControlMem, /*zero=*/false);
+    UploadBuffer(proxyLineMem, &proxyPixels[0], sizeof(ProxyIntervalPixel));
+    UploadBuffer(proxyControlMem, &proxyPixels[1], sizeof(ProxyIntervalPixel));
+
+    std::vector<uint32_t> iterB2;
+    std::vector<HitRecordCpu> hitRecordsB2;
+    ASSERT_NO_FATAL_FAILURE(March(
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        maskBuf, maskBufSize, depthImg, depthView, /*clearDepth=*/false,
+        pc, kW, kH, maxInstances, iterB2, hitRecordsB2,
+        GLSL_RAYMARCH_B2_SPV, proxyPixelsBuf, /*proxyAabbCount=*/1u));
+    iterB2.assign(maxInstances, 0u);
+    mergeIterCounts(iterB2, measureSinglePixelIterCounts(
+        lineDir, maskBuf, maskBufSize, GLSL_RAYMARCH_B2_SPV,
+        proxyLineBuf, /*proxyAabbCount=*/1u));
+    mergeIterCounts(iterB2, measureSinglePixelIterCounts(
+        controlRayDir, maskBuf, maskBufSize, GLSL_RAYMARCH_B2_SPV,
+        proxyControlBuf, /*proxyAabbCount=*/1u));
+    uint32_t sumB2 = 0u;
+    for (uint32_t value : iterB2) sumB2 += value;
+    std::printf("[b2-ab] B1+B2 iterCounts: occluder=%u occ1=%u occ2=%u occ3=%u control=%u\n",
+                iterB2[idxOccluder], iterB2[idxOcc1], iterB2[idxOcc2],
+                iterB2[idxOcc3], iterB2[idxControl]);
+    std::cout << "[b2-ab] effective iters B1=" << sumB
+              << " B1+B2=" << sumB2 << "\n";
+    EXPECT_LE(sumB2, sumB)
+        << "B2 must beat or match B1 effective traversal iterations";
+    ASSERT_EQ(hitRecordsB.size(), hitRecordsB2.size());
+    EXPECT_EQ(std::memcmp(hitRecordsB.data(), hitRecordsB2.data(),
+                          hitRecordsB.size() * sizeof(HitRecordCpu)), 0)
+        << "B1 and B1+B2 HitRecords must be byte-identical";
+
     // (e) cross-check the produced mask against the CPU mirror fed from the REAL
     // config buffer read back off the device -- proves GPU chain == CPU mirror
     // end-to-end, not merely a hand-typed expectation.
@@ -1628,6 +1727,12 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
         << "GPU-produced skip mask must match the CPU mirror fed the identical real "
            "config/instances/tile-max inputs (end-to-end parity)";
 
+    vkDestroyBuffer(logicalDevice_, proxyControlBuf, nullptr);
+    vkFreeMemory(logicalDevice_, proxyControlMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, proxyLineBuf, nullptr);
+    vkFreeMemory(logicalDevice_, proxyLineMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, proxyPixelsBuf, nullptr);
+    vkFreeMemory(logicalDevice_, proxyPixelsMem, nullptr);
     vkDestroyBuffer(logicalDevice_, maskBuf, nullptr); vkFreeMemory(logicalDevice_, maskMem, nullptr);
     vkDestroyImageView(logicalDevice_, tileView, nullptr);
     vkDestroyImage(logicalDevice_, tileImg, nullptr); vkFreeMemory(logicalDevice_, tileMem, nullptr);

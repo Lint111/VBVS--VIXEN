@@ -52,6 +52,9 @@ inline constexpr ShaderFeature kFeaturePolicyStencil{"VIXEN_POLICY_STENCIL"};
 // Requires kFeaturePolicyStencil; env-gated, no capability requirement.
 inline constexpr ShaderFeature kFeaturePolicyStencilTiles{"VIXEN_POLICY_STENCIL_TILES"};
 inline constexpr ShaderFeature kFeatureB1OcclusionCull{"VIXEN_B1_OCCLUSION_CULL"};
+// Raster-proxy B2: same-frame graphics pre-pass emits a compact union interval
+// plus ordered 192-bit candidate mask consumed only by the primary march.
+inline constexpr ShaderFeature kFeatureB2ProxyPrepass{"VIXEN_B2_PROXY_PREPASS"};
 // Wavefront W2a: ShadowVisibilityWave's SECOND dispatch — the post-gather
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
 // reservoir). Same program, own compiled variant; no device requirement.

@@ -243,6 +243,27 @@ add_custom_command(
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv_b1 DEPENDS ${_brm_spv_b1})
 
+# Raster-proxy B2 measured path: B1 remains enabled and the compact proxy
+# interval/candidate buffer is added at binding 42.  The A/B fixture uses this
+# third variant for its baseline / B1 / B1+B2 single-variable gate.
+set(_brm_spv_b2 "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch_b2.spv")
+add_custom_command(
+    OUTPUT  ${_brm_spv_b2}
+    COMMAND ${VIXEN_GLSLC}
+            -fshader-stage=compute
+            -I ${_brm_shader_dir}
+            -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
+            --target-env=vulkan1.3
+            -DVIXEN_GPU_TRACE_HOOKS=1
+            -DVIXEN_B1_OCCLUSION_CULL=1
+            -DVIXEN_B2_PROXY_PREPASS=1
+            ${_brm_src}
+            -o ${_brm_spv_b2}
+    DEPENDS ${_brm_src} ${_brm_includes}
+    COMMENT "Compiling BodyInstanceRayMarch.comp -> SPIR-V (B1+B2 variant, binding 42 declared)"
+    VERBATIM)
+add_custom_target(body_instance_raymarch_spv_b2 DEPENDS ${_brm_spv_b2})
+
 # ===========================================================================
 # Group 5: test_rendergraph_criticalnodes_gpurender1 — real-shader GPU render
 # tests sharing body_instance_raymarch_spv, SVO + (conditional) stb, single
@@ -664,7 +685,7 @@ add_custom_command(
     COMMAND ${VIXEN_GLSLC}
             -fshader-stage=compute
             -I ${_brm_shader_dir}
-            --target-env=vulkan1.3
+            --target-env=vulkan1.2
             ${_shellderive_src}
             -o ${_shellderive_spv}
     DEPENDS ${_shellderive_src} ${_shellderive_includes}
@@ -970,6 +991,71 @@ if(VIXEN_GLSLC)
         VERBATIM)
     add_custom_target(instance_occlusion_cull_spv DEPENDS ${_cull_spv})
 
+    set(_proxy_interval_vert_src "${_brm_shader_dir}/ProxyIntervalPrepass.vert")
+    set(_proxy_interval_frag_src "${_brm_shader_dir}/ProxyIntervalPrepass.frag")
+    set(_proxy_interval_comp_src "${_brm_shader_dir}/ProxyIntervalPrepass.comp")
+    set(_proxy_interval_vert_spv "${CMAKE_CURRENT_BINARY_DIR}/ProxyIntervalPrepass.vert.spv")
+    set(_proxy_interval_frag_spv "${CMAKE_CURRENT_BINARY_DIR}/ProxyIntervalPrepass.frag.spv")
+    set(_proxy_interval_comp_spv "${CMAKE_CURRENT_BINARY_DIR}/ProxyIntervalPrepass.comp.spv")
+    add_custom_command(
+        OUTPUT ${_proxy_interval_vert_spv}
+        COMMAND ${VIXEN_GLSLC}
+                -fshader-stage=vertex
+                -I ${_brm_shader_dir}
+                --target-env=vulkan1.3
+                ${_proxy_interval_vert_src}
+                -o ${_proxy_interval_vert_spv}
+        DEPENDS ${_proxy_interval_vert_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl"
+        COMMENT "Compiling ProxyIntervalPrepass.vert -> SPIR-V (B2 device parity)"
+        VERBATIM)
+    add_custom_command(
+        OUTPUT ${_proxy_interval_frag_spv}
+        COMMAND ${VIXEN_GLSLC}
+                -fshader-stage=fragment
+                --target-env=vulkan1.3
+                ${_proxy_interval_frag_src}
+                -o ${_proxy_interval_frag_spv}
+        DEPENDS ${_proxy_interval_frag_src}
+        COMMENT "Compiling ProxyIntervalPrepass.frag -> SPIR-V (B2 device parity)"
+        VERBATIM)
+    add_custom_command(
+        OUTPUT ${_proxy_interval_comp_spv}
+        COMMAND ${VIXEN_GLSLC}
+                -fshader-stage=compute
+                -I ${_brm_shader_dir}
+                --target-env=vulkan1.3
+                ${_proxy_interval_comp_src}
+                -o ${_proxy_interval_comp_spv}
+        DEPENDS ${_proxy_interval_comp_src} "${_brm_shader_dir}/Generated/OctreeConfig.glsl"
+        COMMENT "Compiling ProxyIntervalPrepass.comp -> SPIR-V (B2 compute-writer parity)"
+        VERBATIM)
+    add_custom_target(proxy_interval_prepass_spv
+        DEPENDS ${_proxy_interval_vert_spv} ${_proxy_interval_frag_spv}
+                ${_proxy_interval_comp_spv})
+
+    add_executable(test_proxy_interval_prepass_device
+        Nodes/test_proxy_interval_prepass_device.cpp
+    )
+    add_dependencies(test_proxy_interval_prepass_device proxy_interval_prepass_spv)
+    target_link_libraries(test_proxy_interval_prepass_device PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
+    if(TARGET SVO)
+        target_link_libraries(test_proxy_interval_prepass_device PRIVATE SVO)
+    endif()
+    target_compile_definitions(test_proxy_interval_prepass_device PRIVATE
+        PROXY_INTERVAL_VERTEX_SPV="${_proxy_interval_vert_spv}"
+        PROXY_INTERVAL_FRAGMENT_SPV="${_proxy_interval_frag_spv}"
+        PROXY_INTERVAL_COMPUTE_SPV="${_proxy_interval_comp_spv}")
+    if(VIXEN_WSL_DZN_ICD)
+        target_compile_definitions(test_proxy_interval_prepass_device PRIVATE
+            VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
+    endif()
+    set_target_properties(test_proxy_interval_prepass_device
+        PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_proxy_interval_prepass_device
+        DISCOVERY_MODE PRE_TEST
+        DISCOVERY_TIMEOUT 120)
+    message(STATUS "[RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)")
+
     set(_shadow_ray_trace_src "${_brm_shader_dir}/ShadowRayTrace.comp")
     set(_shadow_ray_trace_spv "${CMAKE_CURRENT_BINARY_DIR}/ShadowRayTrace.spv")
     add_custom_command(
@@ -1022,6 +1108,7 @@ if(VIXEN_GLSLC)
     )
     add_dependencies(test_b1_occlusion_ab
         body_instance_raymarch_spv_b1
+        body_instance_raymarch_spv_b2
         hiz_downsample_spv
         instance_occlusion_cull_spv
         shadow_ray_trace_spv)
@@ -1031,6 +1118,7 @@ if(VIXEN_GLSLC)
     endif()
     target_compile_definitions(test_b1_occlusion_ab PRIVATE
         GLSL_RAYMARCH_SPV="${_brm_spv_b1}"
+        GLSL_RAYMARCH_B2_SPV="${_brm_spv_b2}"
         HIZ_DOWNSAMPLE_SPV="${_hiz_spv}"
         INSTANCE_OCCLUSION_CULL_SPV="${_cull_spv}"
         SHADOW_RAY_TRACE_SPV="${_shadow_ray_trace_spv}")

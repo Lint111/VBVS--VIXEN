@@ -181,8 +181,10 @@ public:
      * slot + re-upload of that slot only (no full Rematerialize, no barrier vs the
      * render reading the other slot). Membership-changing edits (a brick entering or
      * leaving the shell set) are NOT detected here; per the §C increment-1 contract
-     * those go through SetBakeRecipe/SetRecipePool (full re-derive). Proxy AABBs are
-     * invariant under value edits (grid boxes don't move), so no proxy work is queued.
+     * those go through SetBakeRecipe/SetRecipePool (full re-derive). Proxy AABB values
+     * are invariant under value edits (grid boxes don't move), but the WRITE slot's
+     * proxy buffer is still refreshed with the shell upload so its publication remains
+     * ping-pong-slot coherent.
      *
      * @return false (nothing written, nothing marked) if the pool/brick/SDF channel is
      *         invalid or sdf512 holds fewer than kVoxelsPerBrick values.
@@ -201,6 +203,11 @@ public:
         return shellCache_[i & 1u];
     }
     [[nodiscard]] uint32_t ShellDilation() const { return shellDilation_; }
+    [[nodiscard]] uint64_t ShellFullDeriveCount() const { return shellFullDeriveCount_; }
+    [[nodiscard]] uint64_t ShellRevalidateCount() const { return shellRevalidateCount_; }
+    [[nodiscard]] uint64_t ProxyAabbUploadCount(uint32_t slot) const {
+        return proxyAabbUploadCount_[slot & 1u];
+    }
 
     /// Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: current residency state (CPU-observable,
     /// no GPU needed) — reflects the capability-derived default once EnsureOctreesBuilt has run,
@@ -466,12 +473,15 @@ private:
     VkDeviceMemory proxyAabbMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
     VkDeviceSize   proxyAabbCapacity_[2] = { 0, 0 };
     uint32_t       proxyAabbCount_[2]    = { 0, 0 };
+    uint64_t       proxyAabbUploadCount_[2] = { 0, 0 };
 
     // CPU double-buffer (source of truth; also what the tests inspect). Each slot
     // holds the multi-octree compact ShellPool (drop-in ConcatenatedOctrees +
     // per-octree ShellDeriveResults for the dirty-revalidate path).
     Vixen::SVO::ShellPool         shellCache_[2];
     uint32_t                      shellDilation_ = 1u;   // [1,3]; sound 26-neighbour default
+    uint64_t                      shellFullDeriveCount_ = 0;
+    uint64_t                      shellRevalidateCount_ = 0;
     // CPU-owned dirty source-brick list (§C). A value edit pushes the affected
     // brick range here; ExecuteImpl revalidates only those bricks in the write slot.
     std::vector<uint32_t>         dirtyBricks_;

@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: BodyInstanceRayMarch
-// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_RTQUERY_TRAVERSAL
+// Feature axis: VIXEN_B1_OCCLUSION_CULL VIXEN_B2_PROXY_PREPASS VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_RTQUERY_TRAVERSAL
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -829,6 +829,26 @@ struct PolicyStencilTileBuffer {
 
 };
 
+/**
+ * @brief ProxyIntervalBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x46ebb2164ca2ab88 (for runtime discovery)
+ */
+struct ProxyIntervalBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x46ebb2164ca2ab88ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "uint32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
 namespace Set0 {
 
     /**
@@ -1194,6 +1214,23 @@ namespace Set0 {
         using DataType = PolicyStencilTileBuffer;
     };
 
+    /**
+     * @brief ProxyIntervalBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_B2_PROXY_PREPASS
+     */
+    struct Binding42 {
+        static constexpr const char* NAME = "ProxyIntervalBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 42;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_B2_PROXY_PREPASS"};
+        using DataType = ProxyIntervalBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -1222,11 +1259,12 @@ using InstanceSkipMaskBuffer = Set0::Binding35;
 using depthDistanceImage = Set0::Binding36;
 using rtQueryTlas = Set0::Binding40;
 using PolicyStencilTileBuffer = Set0::Binding41;
+using ProxyIntervalBuffer = Set0::Binding42;
 } // namespace Bind
 
 namespace Push {
 
-    static constexpr uint32_t SIZE = 96;
+    static constexpr uint32_t SIZE = 112;
 
     struct cameraPos {
         static constexpr const char* NAME = "cameraPos";
@@ -1340,6 +1378,15 @@ namespace Push {
         static constexpr uint32_t FEATURE_COUNT = 0;
     };
 
+    struct proxyAabbCount {
+        static constexpr const char* NAME = "proxyAabbCount";
+        static constexpr uint32_t INDEX = 14;
+        static constexpr uint32_t OFFSET = 96;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_B2_PROXY_PREPASS"};
+    };
+
 } // namespace Push
 
 // ============================================================================
@@ -1361,6 +1408,8 @@ inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRAC
 inline constexpr const char* const kFeatures_Set0_Binding36[] = {"VIXEN_B1_OCCLUSION_CULL"};
 inline constexpr const char* const kFeatures_Set0_Binding40[] = {"VIXEN_RTQUERY_TRAVERSAL"};
 inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
+inline constexpr const char* const kFeatures_Set0_Binding42[] = {"VIXEN_B2_PROXY_PREPASS"};
+inline constexpr const char* const kFeatures_Push_proxyAabbCount[] = {"VIXEN_B2_PROXY_PREPASS"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"outputImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
@@ -1387,6 +1436,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"depthDistanceImage", false, 0, 36, 0, Access::WriteOnly, 1, kFeatures_Set0_Binding36},
     {"rtQueryTlas", false, 0, 40, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding40},
     {"PolicyStencilTileBuffer", false, 0, 41, 0, Access::ReadWrite, 2, kFeatures_Set0_Binding41},
+    {"ProxyIntervalBuffer", false, 0, 42, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding42},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1401,6 +1451,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"debugTargetPixel", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
     {"accumFrameCount", true, 0, 0, 88, Access::ReadOnly, 0, nullptr},
     {"cosmicK", true, 0, 0, 92, Access::ReadOnly, 0, nullptr},
+    {"proxyAabbCount", true, 0, 0, 96, Access::ReadOnly, 1, kFeatures_Push_proxyAabbCount},
 };
 
 /**
@@ -1422,8 +1473,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "BodyInstanceRayMarch";
-    static constexpr uint32_t NUM_MEMBERS = 38;
-    static constexpr uint32_t NUM_FEATURES = 5;
+    static constexpr uint32_t NUM_MEMBERS = 40;
+    static constexpr uint32_t NUM_FEATURES = 6;
 };
 
 } // namespace BodyInstanceRayMarch

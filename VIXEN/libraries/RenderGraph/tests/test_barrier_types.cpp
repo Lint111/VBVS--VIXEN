@@ -18,6 +18,16 @@ TEST(BarrierTypes, FragmentSampledReadMapsToReadOnlyOptimal) {
     EXPECT_EQ(i.layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
+TEST(BarrierTypes, ShaderStorageWriteCoversFragmentAndComputeWriters) {
+    const AccessInfo i = ResolveAccess(AccessKind::ShaderStorageWrite);
+    EXPECT_EQ(i.stage,  VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+    EXPECT_EQ(i.access, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+    EXPECT_EQ(i.layout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_TRUE(AccessWrites(AccessKind::ShaderStorageWrite));
+    EXPECT_FALSE(AccessReads(AccessKind::ShaderStorageWrite));
+}
+
 TEST(BarrierTypes, ColorAttachmentWriteMapsToColorOptimal) {
     const AccessInfo i = ResolveAccess(AccessKind::ColorAttachmentWrite);
     EXPECT_EQ(i.stage,  VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);

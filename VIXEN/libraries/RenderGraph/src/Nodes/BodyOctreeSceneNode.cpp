@@ -562,6 +562,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         const uint32_t rewritten = Vixen::SVO::RevalidateShellBricks(
             concatenated_, /*octreeIdx=*/0u, r0, dirtyBricks_, ws.compact.channelPool);
         UploadShellSlot(device, writeSlot);
+        ++shellRevalidateCount_;
         NODE_LOG_INFO("[BodyOctreeSceneNode] Shell revalidate: " +
                       std::to_string(rewritten) + " shell slots updated from " +
                       std::to_string(dirtyBricks_.size()) + " dirty bricks (write slot " +
@@ -1292,6 +1293,7 @@ void BodyOctreeSceneNode::DeriveShellCache() {
             Vixen::SVO::DeriveShellPool(concatenated_, params);
         shellCache_[0] = derived;             // slot 0 (copy)
         shellCache_[1] = std::move(derived);  // slot 1 (byte-identical bootstrap)
+        ++shellFullDeriveCount_;
 
         const Vixen::SVO::ShellPool& s = shellCache_[0];
         NODE_LOG_INFO("[BodyOctreeSceneNode] Shell pool derived (dilation=" +
@@ -1373,6 +1375,7 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
     ensure(proxyAabbBuffer_[slot], proxyAabbMemory_[slot], proxyAabbCapacity_[slot],
            proxySize, flatProxies.empty() ? nullptr : flatProxies.data(),
            flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), "shell proxy AABB SSBO");
+    ++proxyAabbUploadCount_[slot];
 }
 
 void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
