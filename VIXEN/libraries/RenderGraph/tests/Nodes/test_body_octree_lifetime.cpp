@@ -924,6 +924,13 @@ TEST_F(BodyOctreeLifetimeTest, DeviceDestroyReportsNoLeakedObjects) {
 // concretely proves the render reads the COMPACT shell, not the full pool, by
 // confirming the shell buffer size differs from the full pool for a large body.
 // ---------------------------------------------------------------------------
+/**
+ * @test BodyOctreeLifetimeTest.ShellCachePopulatedThroughNodeCompile
+ * @coverage BodyOctreeSceneNode::CompileImpl, BodyOctreeSceneNode::UploadShellSlot
+ * @category integration
+ * @owner RenderGraph
+ * @modified 2026-09-01
+ */
 TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     std::cout << "[ device ] shell-cache device: '" << selectedDeviceName_ << "'\n";
     using C = BodyOctreeSceneNodeConfig;
@@ -977,6 +984,13 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     // The compact pool is the render's actual data source (binding 11) and is
     // STRICTLY SMALLER than the full pool → render never touches the full dataset.
     const auto& sp0 = node->ShellPoolSlot(0);
+    const auto proxyCountFor = [](const Vixen::SVO::ShellPool& shellPool) {
+        size_t count = 0;
+        for (const auto& derived : shellPool.perOctree) {
+            count += derived.proxyAabbs.size();
+        }
+        return static_cast<uint32_t>(count);
+    };
     const size_t shellPoolBytes = sp0.compact.channelPool.size();
     EXPECT_LT(shellPoolBytes, fullPoolBytes)
         << "compact shell pool must be smaller than the full pool "
@@ -994,6 +1008,19 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
                              node->ShellPoolSlot(1).compact.channelPool.data(),
                              shellPoolBytes));
 
+    // B2 binder seam: allocation capacity is grow-only, so the graph must publish
+    // the exact live element count beside the proxy SSBO. Consumers must never infer
+    // a draw count from VkBuffer capacity or they will process stale tail records after
+    // a later, smaller re-derive.
+    Resource* proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
+    Resource* proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);
+    ASSERT_NE(proxyBufferOut, nullptr);
+    ASSERT_NE(proxyCountOut, nullptr);
+    EXPECT_NE(proxyBufferOut->GetHandle<VkBuffer>(), VK_NULL_HANDLE);
+    const uint32_t dilation1ProxyCount = proxyCountFor(sp0);
+    EXPECT_GT(dilation1ProxyCount, 0u);
+    EXPECT_EQ(proxyCountOut->GetHandle<uint32_t>(), dilation1ProxyCount);
+
     // Dilation 2 must re-derive a superset on the next compile.
     node->SetShellThickness(2u);
     EXPECT_EQ(node->ShellDilation(), 2u);
@@ -1006,6 +1033,14 @@ TEST_F(BodyOctreeLifetimeTest, ShellCachePopulatedThroughNodeCompile) {
     ExpectNoValidationErrors("shellcache recompile (dilation 2)");
     EXPECT_GE(node->ShellCacheSlot(0).shellBrickCount, s0.shellBrickCount)
         << "dilation 2 must be a superset of dilation 1";
+    const uint32_t dilation2ProxyCount = proxyCountFor(node->ShellPoolSlot(0));
+    EXPECT_GE(dilation2ProxyCount, dilation1ProxyCount);
+    proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
+    proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);
+    ASSERT_NE(proxyBufferOut, nullptr);
+    ASSERT_NE(proxyCountOut, nullptr);
+    EXPECT_NE(proxyBufferOut->GetHandle<VkBuffer>(), VK_NULL_HANDLE);
+    EXPECT_EQ(proxyCountOut->GetHandle<uint32_t>(), dilation2ProxyCount);
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);

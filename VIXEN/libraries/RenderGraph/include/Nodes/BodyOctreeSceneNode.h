@@ -460,11 +460,12 @@ private:
     // Raster-proxy artifact (hybrid slice A): per-shell-brick template-local AABBs
     // (ShellProxyAabb, 32B), flattened across octree templates, on the SAME
     // two-distinct-VkBuffer double-buffer pattern as shellData/shellLookup (the
-    // FrameSyncScheduler hazard-keys by Resource/pointer identity). No graph output
-    // slot yet — the proxy raster pre-pass (slice B2) is its first binder.
+    // FrameSyncScheduler hazard-keys by Resource/pointer identity). Slice B2
+    // publishes the current read slot together with its exact live record count.
     VkBuffer       proxyAabbBuffer_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
     VkDeviceMemory proxyAabbMemory_[2]   = { VK_NULL_HANDLE, VK_NULL_HANDLE };
     VkDeviceSize   proxyAabbCapacity_[2] = { 0, 0 };
+    uint32_t       proxyAabbCount_[2]    = { 0, 0 };
 
     // CPU double-buffer (source of truth; also what the tests inspect). Each slot
     // holds the multi-octree compact ShellPool (drop-in ConcatenatedOctrees +

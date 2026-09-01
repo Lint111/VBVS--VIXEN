@@ -474,6 +474,10 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // W-RTQUERY Slice A: compile-time placeholder — VK_NULL_HANDLE until
     // EnsureRtQueryTlasBuilt runs (ExecuteImpl, once instances_ is known); re-emitted there.
     ctx.Out(BodyOctreeSceneNodeConfig::RTQUERY_TLAS,                rtQueryTlas_);
+    // Raster-proxy B2 binder: allocation capacity is grow-only, so publish the
+    // exact live count from the same shell read slot as the buffer handle.
+    ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,            proxyAabbBuffer_[0]);
+    ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,             proxyAabbCount_[0]);
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] Outputs published (octrees=" +
                   std::to_string(concatenated_.count) + ", instances=" +
@@ -568,6 +572,8 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     if (shellDataBuffer_[readSlot] != VK_NULL_HANDLE) {
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,   shellDataBuffer_[readSlot]);
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER, shellLookupBuffer_[readSlot]);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,   proxyAabbBuffer_[readSlot]);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,    proxyAabbCount_[readSlot]);
     }
 
     // Build the packed byte representation of the current instance list.
@@ -630,6 +636,8 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // CreateOctreeBuffers; re-emit slot 0 so the render re-binds the fresh cache.
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER,         shellDataBuffer_[0]);
         ctx.Out(BodyOctreeSceneNodeConfig::SHELL_LOOKUP_BUFFER,       shellLookupBuffer_[0]);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,         proxyAabbBuffer_[0]);
+        ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,          proxyAabbCount_[0]);
     }
 
     // W-RTQUERY Slice A: (re)build the per-brick-AABB TLAS once octree buffers AND the
@@ -1361,6 +1369,7 @@ void BodyOctreeSceneNode::UploadShellSlot(VulkanDevice* device, uint32_t slot) {
     }
     const VkDeviceSize proxySize = std::max<VkDeviceSize>(
         flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), 1);
+    proxyAabbCount_[slot] = static_cast<uint32_t>(flatProxies.size());
     ensure(proxyAabbBuffer_[slot], proxyAabbMemory_[slot], proxyAabbCapacity_[slot],
            proxySize, flatProxies.empty() ? nullptr : flatProxies.data(),
            flatProxies.size() * sizeof(Vixen::SVO::ShellProxyAabb), "shell proxy AABB SSBO");
@@ -1595,6 +1604,7 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
         shellDataCapacity_[i]   = 0;
         shellLookupCapacity_[i] = 0;
         proxyAabbCapacity_[i]   = 0;
+        proxyAabbCount_[i]      = 0;
     }
     destroy(mipPoolBuffer_,       mipPoolMemory_);      // Inc1 M3
     destroy(tierRefTableBuffer_,  tierRefTableMemory_); // Tiered-ESVO Inc2 M3
