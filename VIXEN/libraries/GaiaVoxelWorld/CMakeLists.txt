@@ -43,7 +43,9 @@ target_compile_features(GaiaVoxelWorld PUBLIC cxx_std_23)
 
 # Compiler warnings and MSVC parallel build fix
 if(MSVC)
-    target_compile_options(GaiaVoxelWorld PRIVATE /W4 /FS)
+    # GaiaVoxelWorld.cpp instantiates enough ECS templates to exceed COFF's
+    # default section limit under MSVC. Keep /bigobj scoped to this target.
+    target_compile_options(GaiaVoxelWorld PRIVATE /W4 /FS /bigobj)
 else()
     target_compile_options(GaiaVoxelWorld PRIVATE -Wall -Wextra -Wpedantic)
 endif()

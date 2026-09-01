@@ -110,7 +110,12 @@ uint32_t encodeNormal(const glm::vec3& n) {
     }
 
     // Project to cube face and encode coordinates
-    float u, v;
+    // axis is assigned by the exhaustive X/Y/Z selection above, but MSVC's
+    // definite-assignment analysis does not carry that invariant through a
+    // switch without a default arm.  Zero-initialize the temporaries so /WX
+    // does not report C4701; every reachable case still overwrites both.
+    float u = 0.0f;
+    float v = 0.0f;
     switch (axis) {
         case 0: // X face
             u = n.y / absN.x;

@@ -193,7 +193,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHi
     float tEntry) const
 {
     uint8_t brickDepth = brickView.getDepth();
-    size_t brickSideLength = 1u << brickDepth;
+    size_t brickSideLength = size_t{1} << brickDepth;
     constexpr float brickVoxelSize = 1.0f;
 
     // Compute brick bounds directly from LOCAL gridOrigin

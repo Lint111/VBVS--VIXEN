@@ -17,7 +17,7 @@ EntityBrickView::EntityBrickView(
     , m_rootPositionInWorldSpace(glm::vec3(0))
     , m_gridOrigin(glm::ivec3(0))
     , m_depth(depth)
-    , m_brickSize(1u << depth)  // 2^depth
+    , m_brickSize(size_t{1} << depth)  // 2^depth
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)  // brickSize³
     , m_brickMortonBase(MortonCode64::fromWorldPos(glm::ivec3(0)))  // Precompute Morton base
     , m_queryMode(QueryMode::EntitySpan) {
@@ -33,7 +33,7 @@ EntityBrickView::EntityBrickView(
     , m_rootPositionInWorldSpace(rootPositionInWorldSpace)
     , m_gridOrigin(glm::ivec3(0))
     , m_depth(depth)
-    , m_brickSize(1u << depth)
+    , m_brickSize(size_t{1} << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(voxelSize)
     , m_brickMortonBase(MortonCode64::fromWorldPos(rootPositionInWorldSpace))  // Precompute Morton base
@@ -49,7 +49,7 @@ EntityBrickView::EntityBrickView(
     , m_rootPositionInWorldSpace(glm::vec3(gridOrigin))  // For getWorldMin() compatibility
     , m_gridOrigin(gridOrigin)
     , m_depth(depth)
-    , m_brickSize(1u << depth)
+    , m_brickSize(size_t{1} << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
     , m_brickMortonBase(MortonCode64::fromWorldPos(gridOrigin))  // Precompute Morton base
@@ -67,7 +67,7 @@ EntityBrickView::EntityBrickView(
     , m_rootPositionInWorldSpace(volumeWorldMin + glm::vec3(localGridOrigin))  // World position for getWorldMin()
     , m_gridOrigin(localGridOrigin)  // LOCAL grid origin (0,0,0), (8,0,0), etc.
     , m_depth(depth)
-    , m_brickSize(1u << depth)
+    , m_brickSize(size_t{1} << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
     // For LocalGrid: compute world position of brick minimum corner
