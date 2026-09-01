@@ -78,10 +78,14 @@ endif()
 # non-contracting arithmetic so scalar and SIMD4 lanes execute the same sequence.
 if(MSVC)
     set_source_files_properties(src/BulkMaterialization.cpp PROPERTIES
-        COMPILE_OPTIONS "/fp:strict")
+        COMPILE_OPTIONS "/fp:strict"
+        SKIP_PRECOMPILE_HEADERS ON)
 else()
+    # The strict-FP options differ from the target's flags, so this TU cannot share the
+    # target-level PCH (gcc rejects the mismatch as -Werror=invalid-pch). Build it PCH-free.
     set_source_files_properties(src/BulkMaterialization.cpp PROPERTIES
-        COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+        COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off"
+        SKIP_PRECOMPILE_HEADERS ON)
 endif()
 
 # Enable parallel build
