@@ -1,0 +1,131 @@
+#version 460
+
+// Capability-free B2 writer twin. One invocation handles one pixel/body pair,
+// intersects that body's matching proxy AABBs, and atomically accumulates the
+// exact same 32-byte interval+mask record as ProxyIntervalPrepass.frag.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct ShellProxyAabb {
+    vec3 minLocal;
+    uint brickId;
+    vec3 maxLocal;
+    uint octreeIndex;
+};
+layout(std430, binding = 0) readonly buffer ProxyAabbBuffer {
+    ShellProxyAabb proxyAabbs[];
+};
+
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
+};
+layout(std430, binding = 1) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+
+#include "Generated/OctreeConfig.glsl"
+layout(std430, binding = 2) readonly buffer OctreeConfigsSSBO {
+    OctreeConfig configs[];
+};
+
+layout(std430, binding = 3) coherent buffer ProxyIntervalBuffer {
+    uint proxyIntervalWords[];
+};
+
+layout(push_constant) uniform ProxyRasterPushConstants {
+    mat4 viewProj;
+    vec4 cameraPosFov;
+    vec4 cameraDirAspect;
+    vec4 cameraUpWidth;
+    vec4 cameraRightHeight;
+} pc;
+
+bool intersectAxis(float origin, float direction, float boundMin, float boundMax,
+                   inout float tEnter, inout float tExit) {
+    if (abs(direction) < 1.0e-8) {
+        return origin >= boundMin && origin <= boundMax;
+    }
+    float t0 = (boundMin - origin) / direction;
+    float t1 = (boundMax - origin) / direction;
+    if (t0 > t1) {
+        float swapValue = t0;
+        t0 = t1;
+        t1 = swapValue;
+    }
+    tEnter = max(tEnter, t0);
+    tExit = min(tExit, t1);
+    return tEnter <= tExit;
+}
+
+vec3 pixelRayDirection(vec2 uv) {
+    const float tanHalfFov = tan(radians(pc.cameraPosFov.w * 0.5));
+    vec2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    return normalize(pc.cameraDirAspect.xyz +
+                     pc.cameraRightHeight.xyz * ndc.x * tanHalfFov * pc.cameraDirAspect.w +
+                     pc.cameraUpWidth.xyz * ndc.y * tanHalfFov);
+}
+
+uvec2 renderDimensions() {
+    const uint packed = floatBitsToUint(pc.cameraRightHeight.w);
+    return uvec2(packed & 0xffffu, packed >> 16u);
+}
+
+void main() {
+    const uvec2 dims = renderDimensions();
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    const uint bodyIndex = gl_WorkGroupID.z;
+    if (any(greaterThanEqual(pixel, dims)) || bodyIndex >= 192u) return;
+
+    const uint proxyCount = uint(pc.cameraUpWidth.w + 0.5);
+    const BodyInstance instance = bodyInstances[bodyIndex];
+    if (instance.providerKind != 0u) return;
+
+    const OctreeConfig config = configs[instance.octreeIndex];
+    const mat3 linear = mat3(config.localToWorld);
+    const vec2 uv = (vec2(pixel) + 0.5) / vec2(dims);
+    const vec3 rayOrigin = pc.cameraPosFov.xyz;
+    const vec3 rayDirection = pixelRayDirection(uv);
+    const uint pixelBase = (pixel.y * dims.x + pixel.x) * 8u;
+
+    for (uint proxyIndex = 0u; proxyIndex < proxyCount; ++proxyIndex) {
+        const ShellProxyAabb proxy = proxyAabbs[proxyIndex];
+        if (proxy.octreeIndex != instance.octreeIndex) continue;
+
+        const vec3 localCenter = 0.5 * (proxy.minLocal + proxy.maxLocal);
+        const vec3 localExtents = 0.5 * (proxy.maxLocal - proxy.minLocal);
+        const vec3 baseCenter = (config.localToWorld * vec4(localCenter, 1.0)).xyz;
+        const vec3 baseExtents = abs(linear[0]) * localExtents.x +
+                                 abs(linear[1]) * localExtents.y +
+                                 abs(linear[2]) * localExtents.z;
+        const vec3 worldCenter = instance.worldPos + instance.renderScale * baseCenter;
+        const vec3 worldExtents = abs(instance.renderScale) * baseExtents;
+        const vec3 proxyWorldMin = worldCenter - worldExtents;
+        const vec3 proxyWorldMax = worldCenter + worldExtents;
+
+        float tEnter = -3.402823466e+38;
+        float tExit = 3.402823466e+38;
+        if (!intersectAxis(rayOrigin.x, rayDirection.x,
+                           proxyWorldMin.x, proxyWorldMax.x, tEnter, tExit) ||
+            !intersectAxis(rayOrigin.y, rayDirection.y,
+                           proxyWorldMin.y, proxyWorldMax.y, tEnter, tExit) ||
+            !intersectAxis(rayOrigin.z, rayDirection.z,
+                           proxyWorldMin.z, proxyWorldMax.z, tEnter, tExit) ||
+            tExit < 0.0 || isnan(tEnter) || isnan(tExit) || isinf(tExit)) {
+            continue;
+        }
+
+        tEnter = max(tEnter, 0.0);
+        atomicMax(proxyIntervalWords[pixelBase],
+                  0xffffffffu - floatBitsToUint(tEnter));
+        atomicMax(proxyIntervalWords[pixelBase + 1u], floatBitsToUint(tExit));
+        atomicOr(proxyIntervalWords[pixelBase + 2u + (bodyIndex >> 5u)],
+                 1u << (bodyIndex & 31u));
+    }
+}

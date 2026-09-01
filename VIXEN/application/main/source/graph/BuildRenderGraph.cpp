@@ -94,6 +94,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Data/Nodes/PushConstantGathererNodeConfig.h"
 #include "Data/Nodes/RaySizeCoefNodeConfig.h"  // M4: live LOD ray-cone recompute
 #include "Data/Nodes/RenderPassNodeConfig.h"
+#include "Data/Nodes/ProxyRasterStageNodeConfig.h"  // Raster-proxy B2 intermediate graphics submit
 #include "Data/Nodes/RenderTargetNodeConfig.h"  // M4: render-scale decoupling offscreen target
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
@@ -164,6 +165,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Nodes/PushConstantGathererNode.h"
 #include "Nodes/RaySizeCoefNode.h"  // M4: live LOD ray-cone recompute
 #include "Nodes/RenderPassNode.h"
+#include "Nodes/ProxyRasterStageNode.h"  // Raster-proxy B2 intermediate graphics submit
 #include "Nodes/RenderTargetNode.h"  // M4: render-scale decoupling offscreen target
 #include "Nodes/SelectionCoordinatorNode.h"
 #include "Nodes/ShaderLibraryNode.h"
@@ -1119,6 +1121,44 @@ void VulkanGraphApplication::BuildRenderGraph() {
         b1CullDimsConstant_         = b1CullDimsConstant;
     }
 
+    // --- Raster-proxy B2: same-frame interval/order pre-pass (default OFF) ---
+    // Owner ruling 0dw: proxies accelerate, geometry occludes. This graphics
+    // pass writes only the compact candidate SSBO; B1's marched-depth HiZ stays
+    // the sole cull source and is deliberately not rewired here.
+    const char* b2ProxyPrepassEnv = std::getenv("VIXEN_B2_PROXY_PREPASS");
+    const bool b2ProxyPrepassEnabled =
+        b2ProxyPrepassEnv && std::string_view(b2ProxyPrepassEnv) != "0" &&
+        std::string_view(b2ProxyPrepassEnv) != "off";
+    const char* b2ComputeWriterEnv = std::getenv("VIXEN_B2_PROXY_PREPASS_COMPUTE");
+    const bool b2ForceComputeWriter =
+        b2ComputeWriterEnv && std::string_view(b2ComputeWriterEnv) != "0" &&
+        std::string_view(b2ComputeWriterEnv) != "off";
+    NodeHandle b2CandidateBuffer{}, b2ShaderLib{}, b2DescGatherer{};
+    NodeHandle b2DescriptorSet{}, b2RenderPass{}, b2Framebuffer{};
+    NodeHandle b2Pipeline{}, b2Stage{}, b2WriteGatherer{}, b2ReadGatherer{};
+    NodeHandle b2ComputeShaderLib{}, b2ComputeDescGatherer{};
+    NodeHandle b2ComputeDescriptorSet{}, b2ComputePipeline{};
+    if (b2ProxyPrepassEnabled) {
+        b2CandidateBuffer = renderGraph->AddNode<StorageBufferNodeType>("b2_proxy_interval_buffer");
+        b2ShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("b2_proxy_shader_lib");
+        b2DescGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("b2_proxy_desc_gatherer");
+        b2DescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("b2_proxy_descriptors");
+        b2RenderPass = renderGraph->AddNode<RenderPassNodeType>("b2_proxy_render_pass");
+        b2Framebuffer = renderGraph->AddNode<FramebufferNodeType>("b2_proxy_framebuffer");
+        b2Pipeline = renderGraph->AddNode<GraphicsPipelineNodeType>("b2_proxy_pipeline");
+        b2Stage = renderGraph->AddNode<ProxyRasterStageNodeType>("b2_proxy_raster_stage");
+        b2WriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("b2_proxy_write_gatherer");
+        b2ReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("b2_proxy_read_gatherer");
+        b2ComputeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>(
+            "b2_proxy_compute_shader_lib");
+        b2ComputeDescGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>(
+            "b2_proxy_compute_desc_gatherer");
+        b2ComputeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>(
+            "b2_proxy_compute_descriptors");
+        b2ComputePipeline = renderGraph->AddNode<ComputePipelineNodeType>(
+            "b2_proxy_compute_pipeline");
+    }
+
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
@@ -1274,8 +1314,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
     // STORAGE for the compute imageStore; TRANSFER_SRC for the blit-to-swapchain source.
+    // B2 additionally rasterizes proxy boxes into this same ring before the march.
+    VkImageUsageFlags renderTargetUsage =
+        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    if (b2ProxyPrepassEnabled) renderTargetUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
-        static_cast<uint32_t>(VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
+                               static_cast<uint32_t>(renderTargetUsage));
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
@@ -1507,6 +1551,52 @@ void VulkanGraphApplication::BuildRenderGraph() {
                              std::to_string(b1SrcW) + "x" + std::to_string(b1SrcH) +
                              " ping-pong, HiZ tiles " + std::to_string(b1TilesX) + "x" +
                              std::to_string(b1TilesY));
+        }
+    }
+
+    if (b2ProxyPrepassEnabled) {
+        // One 32-byte compact record per render pixel. TransferDst is required
+        // for the stage's single all-zero vkCmdFillBuffer clear.
+        auto* candidate = static_cast<StorageBufferNode*>(
+            renderGraph->GetInstance(b2CandidateBuffer));
+        candidate->SetParameter(StorageBufferNodeConfig::PARAM_BYTES_PER_PIXEL, 32u);
+        candidate->SetParameter(StorageBufferNodeConfig::PARAM_EXTRA_USAGE_FLAGS,
+                                static_cast<uint32_t>(VK_BUFFER_USAGE_TRANSFER_DST_BIT));
+
+        auto* pass = static_cast<RenderPassNode*>(renderGraph->GetInstance(b2RenderPass));
+        pass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::DontCare);
+        pass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::DontCare);
+        pass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
+        pass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::General);
+        pass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+
+        static_cast<FramebufferNode*>(renderGraph->GetInstance(b2Framebuffer))
+            ->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+
+        auto* pipeline = static_cast<GraphicsPipelineNode*>(renderGraph->GetInstance(b2Pipeline));
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, false);
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, false);
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, false);
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::CULL_MODE, std::string("None"));
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::POLYGON_MODE, std::string("Fill"));
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::FRONT_FACE,
+                               std::string("CounterClockwise"));
+        pipeline->SetParameter(GraphicsPipelineNodeConfig::REQUIRED_DEVICE_CAPABILITY,
+                               std::string("DeviceFeature:fragmentStoresAndAtomics"));
+
+        auto* stage = static_cast<ProxyRasterStageNode*>(renderGraph->GetInstance(b2Stage));
+        stage->SetParameter(ProxyRasterStageNodeConfig::PARAM_FORCE_COMPUTE_WRITER,
+                            b2ForceComputeWriter);
+        if (auto logger = stage->GetLogger()) {
+            logger->SetEnabled(true);
+            logger->SetTerminalOutput(true);
+        }
+
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info(
+                std::string("[BuildRenderGraph] B2 proxy pre-pass enabled: 32 B/pixel union interval + 192-bit candidate mask; writer=") +
+                (b2ForceComputeWriter ? "compute (forced)" : "CapabilityGraph-selected"));
         }
     }
 
@@ -1816,6 +1906,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (b1OcclusionCullEnabled) {  // one source of truth — the default-on gate above
         marchShaderFeatures.push_back(kFeatureB1OcclusionCull.define);
+    }
+    if (b2ProxyPrepassEnabled) {
+        marchShaderFeatures.push_back(kFeatureB2ProxyPrepass.define);
     }
     if (envFlagEnabled("VIXEN_BRICKMAP_TRAVERSAL")) {  // W-BRICKMAP Slice 2 A/B gate
         marchShaderFeatures.push_back(kFeatureBrickmapTraversal.define);
@@ -2342,6 +2435,85 @@ void VulkanGraphApplication::BuildRenderGraph() {
         registerFamily(b1CullShaderLib, makeB1Family("InstanceOcclusionCull.comp", "InstanceOcclusionCull"));
     }
 
+    if (b2ProxyPrepassEnabled) {
+        auto* shaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(b2ShaderLib));
+        shaderLib->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+            std::filesystem::path vertexPath;
+            std::filesystem::path fragmentPath;
+            const std::vector<std::filesystem::path> roots = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                VIXEN_SHADER_SOURCE_DIR,
+#endif
+                "shaders", "../shaders"
+            };
+            for (const auto& root : roots) {
+                const auto candidateVertex = root / "ProxyIntervalPrepass.vert";
+                const auto candidateFragment = root / "ProxyIntervalPrepass.frag";
+                if (std::filesystem::exists(candidateVertex) &&
+                    std::filesystem::exists(candidateFragment)) {
+                    vertexPath = candidateVertex;
+                    fragmentPath = candidateFragment;
+                    break;
+                }
+            }
+            if (vertexPath.empty()) {
+                throw std::runtime_error("B2 proxy raster shaders not found - check shader search paths");
+            }
+
+            ShaderManagement::ShaderBundleBuilder builder;
+            builder.SetProgramName("ProxyIntervalPrepass")
+                   .SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_)
+                   .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertexPath, "main")
+                   .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragmentPath, "main");
+            return builder;
+        });
+
+        auto* computeShaderLib = static_cast<ShaderLibraryNode*>(
+            renderGraph->GetInstance(b2ComputeShaderLib));
+        computeShaderLib->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
+            std::filesystem::path computePath;
+            const std::vector<std::filesystem::path> roots = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                VIXEN_SHADER_SOURCE_DIR,
+#endif
+                "shaders", "../shaders"
+            };
+            for (const auto& root : roots) {
+                const auto candidate = root / "ProxyIntervalPrepass.comp";
+                if (std::filesystem::exists(candidate)) {
+                    computePath = candidate;
+                    break;
+                }
+            }
+            if (computePath.empty()) {
+                throw std::runtime_error(
+                    "B2 proxy compute shader not found - check shader search paths");
+            }
+
+            ShaderManagement::ShaderBundleBuilder builder;
+            builder.SetProgramName("ProxyIntervalPrepassCompute")
+                   .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+                   .SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_)
+                   .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
+                                     computePath, "main");
+            return builder;
+        });
+    }
+
     // DirectLightingNode: NOT swapchain-adjacent (isConsumer=false — no WSI, no fence, no
     // PRESENT_SRC). Sampled Lighting Inc3 M5: this pass no longer owns IMAGE_WRITE (moved to
     // SpatialReuseNode below — DirectLighting.comp is now a pure buffer producer, see that
@@ -2580,6 +2752,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
         static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(b1HizTileWriteGatherer))->PreRegisterImageSlots(1);
         static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(b1CullTileReadGatherer))->PreRegisterImageSlots(1);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(b1CullMaskWriteGatherer))->PreRegisterBufferSlots(1);
+    }
+    if (b2ProxyPrepassEnabled) {
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(b2WriteGatherer))
+            ->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(b2ReadGatherer))
+            ->PreRegisterBufferSlots(1);
     }
 
     // Sampled Lighting Inc4 M3: ProbeUpdateNode dispatch — ONE WORKGROUP PER PROBE
@@ -7614,6 +7792,165 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       b1CullStage, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
     }
 
+    if (b2ProxyPrepassEnabled) {
+        // Extent-sized 32 B/pixel candidate buffer.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2CandidateBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      b2CandidateBuffer, StorageBufferNodeConfig::SWAPCHAIN_INFO);
+
+        // Reflection-driven graphics descriptors: live proxy pool/count owner,
+        // front-to-back instances, octree transforms, and compact output.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2ShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2ShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      b2DescGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,
+                      b2DescGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                      b2DescGatherer, 1,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                      b2DescGatherer, 2,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b2CandidateBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      b2DescGatherer, 3,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2DescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2ShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      b2DescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(b2DescGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                      b2DescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      b2DescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                      b2DescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      b2DescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+
+        // Compute-writer twin: identical four logical resources, reflected for
+        // compute-stage visibility in its own descriptor layout.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2ComputeShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2ComputeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      b2ComputeDescGatherer,
+                      DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER,
+                      b2ComputeDescGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                      b2ComputeDescGatherer, 1,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
+                      b2ComputeDescGatherer, 2,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b2CandidateBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      b2ComputeDescGatherer, 3,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2ComputeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(b2ComputeDescGatherer,
+                      DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+
+        // Offscreen render pass/framebuffer. No depth: every intersected proxy
+        // contributes to the mask; proxy depth is never an occlusion source.
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2RenderPass, RenderPassNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      b2RenderPass, RenderPassNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2Framebuffer, FramebufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2RenderPass, RenderPassNodeConfig::RENDER_PASS,
+                      b2Framebuffer, FramebufferNodeConfig::RENDER_PASS)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      b2Framebuffer, FramebufferNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2Pipeline, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2ShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      b2Pipeline, GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(b2RenderPass, RenderPassNodeConfig::RENDER_PASS,
+                      b2Pipeline, GraphicsPipelineNodeConfig::RENDER_PASS)
+             .Connect(b2DescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                      b2Pipeline, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2ComputePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(b2ComputeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                      b2ComputePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+             .Connect(b2ComputeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                      b2ComputePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+        batch.Connect(b2RenderPass, RenderPassNodeConfig::RENDER_PASS,
+                      b2Stage, ProxyRasterStageNodeConfig::RENDER_PASS)
+             .Connect(b2Framebuffer, FramebufferNodeConfig::FRAMEBUFFERS,
+                      b2Stage, ProxyRasterStageNodeConfig::FRAMEBUFFERS)
+             .Connect(b2Pipeline, GraphicsPipelineNodeConfig::PIPELINE,
+                      b2Stage, ProxyRasterStageNodeConfig::PIPELINE)
+             .Connect(b2Pipeline, GraphicsPipelineNodeConfig::PIPELINE_LAYOUT,
+                      b2Stage, ProxyRasterStageNodeConfig::PIPELINE_LAYOUT)
+             .Connect(b2DescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                      b2Stage, ProxyRasterStageNodeConfig::DESCRIPTOR_SETS)
+             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                      b2Stage, ProxyRasterStageNodeConfig::COLOR_TARGET,
+                      SlotRoleModifier(SlotRole::Execute))
+             .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                      b2Stage, ProxyRasterStageNodeConfig::COMMAND_POOL)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      b2Stage, ProxyRasterStageNodeConfig::VULKAN_DEVICE)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      b2Stage, ProxyRasterStageNodeConfig::CURRENT_FRAME_INDEX)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
+                      b2Stage, ProxyRasterStageNodeConfig::TIMELINE_SEMAPHORE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
+                      b2Stage, ProxyRasterStageNodeConfig::TIMELINE_FRAME_BASE_IN)
+             .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                      b2Stage, ProxyRasterStageNodeConfig::CAMERA_DATA,
+                      SlotRoleModifier(SlotRole::Execute))
+             .Connect(cameraNode, CameraNodeConfig::CURRENT_VIEW_PROJ,
+                      b2Stage, ProxyRasterStageNodeConfig::CURRENT_VIEW_PROJ,
+                      SlotRoleModifier(SlotRole::Execute))
+             .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,
+                      b2Stage, ProxyRasterStageNodeConfig::PROXY_AABB_COUNT,
+                      SlotRoleModifier(SlotRole::Execute))
+             .Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_COUNT,
+                      b2Stage, ProxyRasterStageNodeConfig::INSTANCE_COUNT,
+                      SlotRoleModifier(SlotRole::Execute))
+             .Connect(b2ComputePipeline, ComputePipelineNodeConfig::PIPELINE,
+                      b2Stage, ProxyRasterStageNodeConfig::COMPUTE_PIPELINE)
+             .Connect(b2ComputePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                      b2Stage, ProxyRasterStageNodeConfig::COMPUTE_PIPELINE_LAYOUT)
+             .Connect(b2ComputeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                      b2Stage, ProxyRasterStageNodeConfig::COMPUTE_DESCRIPTOR_SETS);
+
+        // Same buffer on both gatherers establishes the real shader-write ->
+        // compute-read hazard. BUFFER_OUT adds the topological producer order.
+        batch.Connect(b2CandidateBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      b2WriteGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b2WriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      b2Stage, ProxyRasterStageNodeConfig::BUFFER_WRITE_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(b2CandidateBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      b2ReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(b2ReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      computeDispatch, ComputeDispatchNodeConfig::BUFFER_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(b2Stage, ProxyRasterStageNodeConfig::BUFFER_OUT,
+                      computeDispatch, ComputeDispatchNodeConfig::ORDERING_WAIT_BUFFER);
+    }
+
     // --- Ray Marching Resource Connections ---
     // Camera node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -8024,6 +8361,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(regime3KConstant, ConstantNodeConfig::OUTPUT,
                           pushConstantGatherer, MarchSdi::Push::cosmicK::INDEX,  // push constant field 13: float cosmicK
                           SlotRoleModifier(SlotRole::Execute));
+    if (b2ProxyPrepassEnabled) {
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,
+                      pushConstantGatherer, MarchSdi::Push::proxyAabbCount::INDEX,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    }
 
     // Connect ray marching resources to the descriptor gatherer using the merged-SDI
     // named constants (MarchSdi::Bind::*, generated/sdi/merged/BodyInstanceRayMarch-SDI.h).
@@ -8114,6 +8456,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("InstanceSkipMaskBuffer", instanceSkipMaskBuffer,
                            StorageBufferNodeConfig::FRAME_STORAGE_BUFFER, kSceneRoles);
+    if (b2ProxyPrepassEnabled) {
+        sceneProviders.Provide("ProxyIntervalBuffer", b2CandidateBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER, kSceneRoles);
+    }
     // E11-T1: written by BodyInstanceRayMarch (tile reduction), read by
     // ShadowVisibilityWave (evaluator-skip) -- same read-write-shared shape as
     // HitRecordBuffer below, gated by VIXEN_POLICY_STENCIL_TILES's feature set. This
@@ -8145,6 +8491,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sceneProviders.Provide("depthDistanceImage", b1DepthTarget,
                                DepthTargetNodeConfig::DEPTH_WRITE_VIEW,
                                SlotRole::Execute);
+    }
+    if (b2ProxyPrepassEnabled) {
+        marchFeatures.Enable(kFeatureB2ProxyPrepass);
     }
     // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
     // B1's depthDistanceImage gates binding 36 above -- the merged-SDI MEMBERS table

@@ -136,14 +136,9 @@ bool getOctreeTraceBounds(uint octreeIdx, out vec3 boundsMin, out vec3 boundsMax
 // ============================================================================
 // TraceWorld - nearest-hit across all body instances (procedural + ESVO)
 // ============================================================================
-// origin/dir: world-space ray. tmin/tmax: currently unused by the moved body
-// (the pre-extraction code had no incoming t-span parameter — every instance
-// re-derives its own AABB entry via rayAABBIntersection internally, and the
-// nearest-hit accumulator itself starts at bestT = 1e30) but are accepted for
-// the seam's general signature per the Inc1 plan; VERBATIM behavior means
-// they are not threaded into the moved logic in M1.
-// Returns true if any instance was hit (nearer than tmax is NOT enforced here,
-// matching pre-extraction behavior exactly — tmax is unused).
+// origin/dir: world-space ray. With B2, tmin/tmax are the conservative
+// proxy-union interval; without B2 they retain the caller's full ray range.
+// Returns true if any instance was hit; B2 enforces the proxy-union tmax.
 bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit) {
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
@@ -264,6 +259,24 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         }
 
         BodyInstance inst = bodyInstances[instIdx];
+
+#ifdef VIXEN_B2_PROXY_PREPASS
+        // Proxy AABBs exist for stored/octree bodies. Procedural providers keep
+        // their analytic path unconditionally: proxies accelerate, geometry
+        // decides visibility, and an absent proxy can never suppress a caster.
+        if (pc.proxyAabbCount > 0u && inst.providerKind != PROVIDER_PROCEDURAL) {
+            const uint candidateIndex = uint(instIdx);
+            const bool candidate = candidateIndex < 192u &&
+                (g_b2CandidateMask[candidateIndex >> 5u] &
+                 (1u << (candidateIndex & 31u))) != 0u;
+            if (!candidate) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
+                instanceIterCount[instIdx] = 0u;
+#endif
+                continue;
+            }
+        }
+#endif
 
         // --- Procedural provider: analytic SDF sphere-trace (no octree) ---
         // Lazy-Procedural-Delta-Baseline Inc0 M5/M6 Task 11/12/13: recipeId < 2 stays on
@@ -446,7 +459,14 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // dir reproduces z=−27; unit dir gives the correct z=6 surface hit.
         // Normalizing is a strict no-op for renderScale==1 (instDir already unit).
         // ------------------------------------------------------------------
-        vec3  instOrigin = (rayOrigin - inst.worldPos) / inst.renderScale;
+        float proxyOriginOffset = 0.0;
+#ifdef VIXEN_B2_PROXY_PREPASS
+        if (pc.proxyAabbCount > 0u && g_b2HasCandidates) {
+            proxyOriginOffset = tmin;
+        }
+#endif
+        vec3  instanceRayOrigin = rayOrigin + rayDir * proxyOriginOffset;
+        vec3  instOrigin = (instanceRayOrigin - inst.worldPos) / inst.renderScale;
         vec3  instDir    = normalize(rayDir);   // UNIT — see the M5b note above
 
         // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
@@ -493,6 +513,22 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
             continue;  // ray misses this instance's allocated-brick AABB entirely
         }
+#ifdef VIXEN_B2_PROXY_PREPASS
+        // Reuse the in-register exact instance AABB interval. The raster union
+        // bounds the useful segment after the origin shift; no traversal can
+        // contribute once the intervals cease to overlap.
+        if (pc.proxyAabbCount > 0u && g_b2HasCandidates) {
+            const float segmentEnter = max(tightRejectT.x, 0.0) * inst.renderScale;
+            const float segmentExit = tightRejectT.y * inst.renderScale;
+            const float unionRemainingExit = tmax - proxyOriginOffset;
+            if (segmentExit < 0.0 || segmentEnter > unionRemainingExit) {
+#ifdef VIXEN_GPU_TRACE_HOOKS
+                instanceIterCount[instIdx] = 0u;
+#endif
+                continue;
+            }
+        }
+#endif
         vec2 gridT = rayAABBIntersection(localRayOrigin, localRayDir, vec3(0.0), vec3(1.0));
 
         if (gridT.y < 0.0) {
@@ -561,7 +597,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
             vec3 entryPointWorldInstSpace =
                 (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
-            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale;
+            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale +
+                                proxyOriginOffset;
             // M6b Task 6b.0: use the SAME relative tie-band as isCloserHit's winner
             // compare, not a raw `>`. Without this, an instance whose entry point sits
             // within the tie-band of bestT (a seam neighbor) could be entry-rejected here
@@ -692,6 +729,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         g_lastRegime3ResidualT = 1.0;
 #endif
         hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see comment above)
+        hitT += proxyOriginOffset; // B2 shifts only stored-instance traversal origin; 0 otherwise
+#ifdef VIXEN_B2_PROXY_PREPASS
+        if (pc.proxyAabbCount > 0u && g_b2HasCandidates && hitT > tmax) {
+            instHit = false;  // proxy union exit is a conservative hard bound
+        }
+#endif
         if (instHit) sourceMask |= 2u;
 #ifdef VIXEN_GPU_TRACE_HOOKS
         instanceIterCount[instIdx] = dbg.iterationCount;  // Inc1 M4b occlusion-reject test hook

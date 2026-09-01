@@ -70,6 +70,21 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
+    const std::string requiredCapability = GetParameterValue<std::string>(
+        GraphicsPipelineNodeConfig::REQUIRED_DEVICE_CAPABILITY, "");
+    if (!requiredCapability.empty() && !devicePtr->HasCapability(requiredCapability)) {
+        pipeline = VK_NULL_HANDLE;
+        pipelineLayout = VK_NULL_HANDLE;
+        pipelineCache = VK_NULL_HANDLE;
+        NODE_LOG_INFO("GraphicsPipelineNode: capability unavailable, pipeline omitted: " +
+                      requiredCapability);
+        ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+        ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+        ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+        ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, devicePtr);
+        return;
+    }
+
     // Get parameters using typed config constants
     enableDepthTest = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
     enableDepthWrite = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);

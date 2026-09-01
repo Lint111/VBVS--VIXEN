@@ -410,7 +410,12 @@ if(MSVC)
             set(_vixen_max_parallel_links 1)
         endif()
     endif()
-    set_property(GLOBAL PROPERTY JOB_POOLS "link_pool=${_vixen_max_parallel_links}")
+    # APPEND, not replace: a bare set_property(GLOBAL PROPERTY JOB_POOLS ...) REPLACES the
+    # whole pool list and silently clobbered the msbuild pool declared at the top of this
+    # file (ninja: "unknown pool name 'msbuild'" on every MSVC configure — the WSL/gcc path
+    # never enters this block, which is why only Windows builds died). Exactly the trap the
+    # msbuild-pool comment above warns about.
+    set_property(GLOBAL APPEND PROPERTY JOB_POOLS "link_pool=${_vixen_max_parallel_links}")
     set(CMAKE_JOB_POOL_LINK "link_pool")
     message(STATUS "Capping concurrent link jobs at ${_vixen_max_parallel_links} (override with VIXEN_MAX_PARALLEL_LINKS)")
 

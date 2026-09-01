@@ -303,7 +303,8 @@ void ShellRevalidateNode::EnsureShellFlagsBuffer(uint32_t brickCount) {
     if (shellFlagsBuffer_ != VK_NULL_HANDLE) { vkDestroyBuffer(vulkanDevice_->device, shellFlagsBuffer_, nullptr); shellFlagsBuffer_ = VK_NULL_HANDLE; }
     if (shellFlagsMemory_ != VK_NULL_HANDLE) { vkFreeMemory(vulkanDevice_->device, shellFlagsMemory_, nullptr); shellFlagsMemory_ = VK_NULL_HANDLE; }
     std::vector<uint8_t> zeros(static_cast<size_t>(needed), 0);
-    CreateHostBuffer(vulkanDevice_, needed, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    CreateHostBuffer(vulkanDevice_, needed,
+                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                       zeros.data(), shellFlagsBuffer_, shellFlagsMemory_, "shell flags SSBO");
     shellFlagsCapacity_ = needed;
 }

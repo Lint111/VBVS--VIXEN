@@ -14,7 +14,8 @@ namespace BodyOctreeSceneNodeCounts {
     // + 2 shell buffers (Surface-Shell ESVO cache, main) + tier-ref table buffer (Tiered-ESVO Inc2 M3)
     // + occupancy grid buffer (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13) — merge of parallel features.
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
-    static constexpr size_t OUTPUTS = 14;
+    // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
+    static constexpr size_t OUTPUTS = 16;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -29,13 +30,11 @@ namespace BodyOctreeSceneNodeCounts {
  * VoxelGridNode's (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER,
  * OCTREE_MATERIALS_BUFFER, OCTREE_CONFIG_BUFFER — all VkBuffer) so Task 8 can wire
  * this node where VoxelGridNode was, with no shader/descriptor changes. The new
- * INSTANCE_BUFFER (VkBuffer) + INSTANCE_COUNT (uint32_t) feed the instanced draw.
+ * INSTANCE_BUFFER (VkBuffer) + INSTANCE_COUNT (int32_t) feed the instanced draw.
  *
  * Inputs: 3 (VULKAN_DEVICE_IN, COMMAND_POOL, CURRENT_FRAME_INDEX)
- * Outputs: 11 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER,
- *              OCTREE_CONFIG_BUFFER, INSTANCE_BUFFER, INSTANCE_COUNT, OCTREE_SDF_BUFFER,
- *              OCTREE_BRICKLOOKUP_BUFFER, OCTREE_MIPPOOL_BUFFER, SHELL_DATA_BUFFER,
- *              SHELL_LOOKUP_BUFFER)
+ * Outputs: 16 (the octree, instance, SDF, shell, tier-ref, occupancy, and RT-query
+ *              outputs above, followed by PROXY_AABB_BUFFER + PROXY_AABB_COUNT).
  */
 CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
                       BodyOctreeSceneNodeCounts::INPUTS,
@@ -62,7 +61,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (8) =====
+    // ===== OUTPUTS (16) =====
     // Same names/types as VoxelGridNode's octree slots (so Task 8 can swap nodes).
     OUTPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 0,
         SlotNullability::Required,
@@ -156,6 +155,17 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Raster-proxy Slice B2: current shell read-slot's flattened proxy AABBs and
+    // exact live record count. The SSBO allocation is grow-only, so consumers
+    // must use PROXY_AABB_COUNT rather than infer a count from buffer capacity.
+    OUTPUT_SLOT(PROXY_AABB_BUFFER, VkBuffer, 14,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(PROXY_AABB_COUNT, uint32_t, 15,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
@@ -237,6 +247,13 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         // convention as VULKAN_DEVICE_IN above; not a buffer-usage resource).
         HandleDescriptor rtQueryTlasDesc{"VkAccelerationStructureKHR"};
         INIT_OUTPUT_DESC(RTQUERY_TLAS, "rtquery_tlas", ResourceLifetime::Persistent, rtQueryTlasDesc);
+
+        BufferDescriptor proxyAabbDesc{};
+        proxyAabbDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(PROXY_AABB_BUFFER, "proxy_aabb_buffer", ResourceLifetime::Persistent, proxyAabbDesc);
+
+        BufferDescriptor proxyAabbCountDesc{};
+        INIT_OUTPUT_DESC(PROXY_AABB_COUNT, "proxy_aabb_count", ResourceLifetime::Transient, proxyAabbCountDesc);
     }
 
     // Automated config validation
@@ -263,6 +280,8 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(OCTREE_TIERREFTABLE_BUFFER_Slot::index == 11, "OCTREE_TIERREFTABLE_BUFFER must be at index 11");
     static_assert(OCTREE_OCCUPANCYGRID_BUFFER_Slot::index == 12, "OCTREE_OCCUPANCYGRID_BUFFER must be at index 12");
     static_assert(RTQUERY_TLAS_Slot::index == 13, "RTQUERY_TLAS must be at index 13");
+    static_assert(PROXY_AABB_BUFFER_Slot::index == 14, "PROXY_AABB_BUFFER must be at index 14");
+    static_assert(PROXY_AABB_COUNT_Slot::index == 15, "PROXY_AABB_COUNT must be at index 15");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -281,6 +300,8 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<OCTREE_TIERREFTABLE_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_OCCUPANCYGRID_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<RTQUERY_TLAS_Slot::Type, VkAccelerationStructureKHR>);
+    static_assert(std::is_same_v<PROXY_AABB_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<PROXY_AABB_COUNT_Slot::Type, uint32_t>);
 };
 
 } // namespace Vixen::RenderGraph

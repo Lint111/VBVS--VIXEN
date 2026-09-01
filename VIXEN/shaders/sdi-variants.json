@@ -21,6 +21,22 @@
           "VIXEN_B1_OCCLUSION_CULL"
         ],
         [
+          "VIXEN_B2_PROXY_PREPASS"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_B2_PROXY_PREPASS"
+        ],
+        [
+          "VIXEN_B1_OCCLUSION_CULL",
+          "VIXEN_B2_PROXY_PREPASS"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_B1_OCCLUSION_CULL",
+          "VIXEN_B2_PROXY_PREPASS"
+        ],
+        [
           "VIXEN_RTQUERY_TRAVERSAL"
         ],
         [

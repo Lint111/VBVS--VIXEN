@@ -37,6 +37,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * - TOPOLOGY (string) - Primitive topology: "TriangleList", "TriangleStrip", etc. (default: "TriangleList")
  * - FRONT_FACE (string) - Front face: "Clockwise", "CounterClockwise" (default: "CounterClockwise")
  * - BLEND_MODE (string) - Color blend: "None", "Alpha", "PremultipliedAlpha", "Additive", "Multiply" (default: "None")
+ * - REQUIRED_DEVICE_CAPABILITY (string) - optional CapabilityGraph key; unavailable means no pipeline
  *
  * Note: Pipelines are swapchain-independent. Viewport/scissor are set dynamically at execute-time.
  */
@@ -60,6 +61,9 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static constexpr const char* TOPOLOGY = "topology";
     static constexpr const char* FRONT_FACE = "frontFace";
     static constexpr const char* BLEND_MODE = "blendMode";
+    // Optional CapabilityGraph key. When unavailable, the node publishes null
+    // pipeline handles so a capability-selecting submit node can use its fallback.
+    static constexpr const char* REQUIRED_DEVICE_CAPABILITY = "requiredDeviceCapability";
 
     // ===== INPUTS (4) =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
@@ -152,4 +156,3 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
 };
 
 } // namespace Vixen::RenderGraph
-

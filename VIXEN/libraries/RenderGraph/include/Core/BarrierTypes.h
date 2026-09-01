@@ -23,6 +23,7 @@ enum class AccessKind : uint8_t {
     ComputeSampledRead,
     FragmentSampledRead,
     FragmentStorageRead,
+    ShaderStorageWrite,
     VertexStorageRead,
     ColorAttachmentWrite,
     /// Color attachment that reads+writes an image kept in VK_IMAGE_LAYOUT_GENERAL. Used by the live
@@ -61,6 +62,10 @@ enum class AccessKind : uint8_t {
     case AccessKind::FragmentStorageRead:
         return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                 VK_IMAGE_LAYOUT_UNDEFINED};
+    case AccessKind::ShaderStorageWrite:
+        return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_IMAGE_LAYOUT_UNDEFINED};
     case AccessKind::VertexStorageRead:
         return {VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                 VK_IMAGE_LAYOUT_UNDEFINED};
@@ -97,6 +102,7 @@ enum class AccessKind : uint8_t {
     switch (k) {
     case AccessKind::ComputeStorageWrite:
     case AccessKind::ComputeStorageReadWrite:
+    case AccessKind::ShaderStorageWrite:
     case AccessKind::ColorAttachmentWrite:
     case AccessKind::ColorAttachmentWriteGeneral:
     case AccessKind::DepthAttachmentReadWrite:

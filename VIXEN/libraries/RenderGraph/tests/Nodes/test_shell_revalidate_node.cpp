@@ -2,7 +2,7 @@
  * @file test_shell_revalidate_node.cpp
  * @brief Surface-Shell ESVO cache — GPU dispatch live-gate + zero-barrier proof.
  *
- * Two things this test proves, on a REAL device:
+ * Three things this test proves, on a REAL device:
  *
  *  (a) GPU-vs-CPU classification parity: bakes a sphere into a Stored-SDF octree,
  *      derives the CPU oracle (Vixen::SVO::DeriveShell), then dispatches the SHIPPED
@@ -20,6 +20,10 @@
  *      passes touch disjoint Resource objects (the FrameSyncScheduler hazard-tracks by
  *      Resource* pointer identity, not by binding number).
  *
+ *  (c) Dirty-brick slot coherence: a value edit rewrites only the pending shell slot,
+ *      refreshes that same slot's proxy AABB upload, and publishes its buffer + exact
+ *      live count when the ping-pong read index advances -- without a full shell derive.
+ *
  * DEVICE SELECTION: identical contract to test_body_octree_lifetime.cpp / test_recipe_
  * pool_render.cpp — via VixenSelectWslGpuIcd(), a real discrete/integrated GPU is
  * PREFERRED, with software (lavapipe/llvmpipe) or Dozen used only as a fallback when no
@@ -30,6 +34,8 @@
 
 #include "Nodes/ShellRevalidateNode.h"
 #include "Data/Nodes/ShellRevalidateNodeConfig.h"
+#include "Nodes/BodyOctreeSceneNode.h"
+#include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
 #include "Nodes/PassGroupNode.h"
 #include "Data/PassStep.h"
 #include "Core/PassGroupSchedule.h"   // BuildPassGroupSchedule
@@ -549,6 +555,111 @@ TEST_F(ShellRevalidateNodeTest, DoubleBufferedShellPassesGetZeroBarriers) {
     vkDestroyBuffer(logicalDevice_, sourcePoolBuf, nullptr); vkFreeMemory(logicalDevice_, sourcePoolMem, nullptr);
     vkDestroyBuffer(logicalDevice_, brickLookupBuf, nullptr); vkFreeMemory(logicalDevice_, brickLookupMem, nullptr);
     vkDestroyBuffer(logicalDevice_, configBuf, nullptr); vkFreeMemory(logicalDevice_, configMem, nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// (c) Dirty-brick revalidation refreshes shell data AND the slot-coherent proxy
+// publication without taking the full-derive path.
+// ---------------------------------------------------------------------------
+TEST_F(ShellRevalidateNodeTest, DirtyBrickRefreshesShellAndProxyWriteSlotWithoutFullDerive) {
+    std::printf("[ device ] %s\n", selectedDeviceName_.c_str());
+
+    using namespace Vixen::SVO;
+    using C = BodyOctreeSceneNodeConfig;
+
+    const int n = 64;
+    const glm::vec3 center{32.0f, 32.0f, 32.0f};
+    RecipeParams rp{24.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    SdfBakeResult baked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, rp, n, 2.0f);
+    SdfBodyOctree body = BuildSdfBodyOctree(baked, 3);
+    std::vector<const SdfBodyOctree*> octrees{&body};
+    ConcatenatedOctrees pool = ConcatenateSdf(octrees);
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("dirty_shell_proxy_slot_test");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes; SetHandleVal<uint32_t>(frameRes, 0u);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index, 0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index, 0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+    node->SetRecipePool(pool);
+    node->RequestBrickResidency(true);
+
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    ASSERT_EQ(node->ShellFullDeriveCount(), 1u);
+    ASSERT_EQ(node->ProxyAabbUploadCount(0), 1u);
+    ASSERT_EQ(node->ProxyAabbUploadCount(1), 1u);
+
+    const ShellDeriveResult& writeShellBefore = node->ShellCacheSlot(1);
+    ASSERT_FALSE(writeShellBefore.shellLookup.empty());
+    const uint32_t dirtyBrick = writeShellBefore.shellLookup.front();
+    ASSERT_LT(dirtyBrick, writeShellBefore.sourceToShellSlot.size());
+    const uint32_t shellSlot = writeShellBefore.sourceToShellSlot[dirtyBrick];
+    ASSERT_NE(shellSlot, UINT32_MAX);
+
+    const uint32_t stride = pool.configs[0].brickStrideFloats;
+    ASSERT_GT(stride, 0u);
+    const size_t byteOffset = static_cast<size_t>(shellSlot) * stride * sizeof(float);
+    const size_t byteCount = static_cast<size_t>(stride) * sizeof(float);
+    ASSERT_LE(byteOffset + byteCount, node->ShellPoolSlot(1).compact.channelPool.size());
+    std::vector<uint8_t> shellBytesBefore(byteCount);
+    std::memcpy(shellBytesBefore.data(),
+                node->ShellPoolSlot(1).compact.channelPool.data() + byteOffset,
+                byteCount);
+    const auto proxiesBefore = writeShellBefore.proxyAabbs;
+
+    // Publish slot 1 once before the edit so the test can pin its stable buffer handle.
+    SetHandleVal<uint32_t>(frameRes, 1u);
+    ASSERT_NO_THROW(node->Execute());
+    Resource* proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
+    Resource* proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);
+    ASSERT_NE(proxyBufferOut, nullptr);
+    ASSERT_NE(proxyCountOut, nullptr);
+    const VkBuffer slot1ProxyBuffer = proxyBufferOut->GetHandle<VkBuffer>();
+    ASSERT_NE(slot1ProxyBuffer, VK_NULL_HANDLE);
+    ASSERT_EQ(proxyCountOut->GetHandle<uint32_t>(), proxiesBefore.size());
+
+    std::vector<float> editedSdf(SerializedOctree::kVoxelsPerBrick, 37.0f);
+    ASSERT_TRUE(node->EditSourceBrickSdf(dirtyBrick, editedSdf));
+
+    // Frame 0 renders slot 0 while the dirty path rewrites slot 1.
+    SetHandleVal<uint32_t>(frameRes, 0u);
+    ASSERT_NO_THROW(node->Execute());
+    EXPECT_EQ(node->ShellFullDeriveCount(), 1u)
+        << "an SDF value edit must not rebuild shell membership";
+    EXPECT_EQ(node->ShellRevalidateCount(), 1u);
+    EXPECT_EQ(node->ProxyAabbUploadCount(0), 1u);
+    EXPECT_EQ(node->ProxyAabbUploadCount(1), 2u)
+        << "the proxy upload must advance with the rewritten shell slot";
+
+    const auto& shellPoolAfter = node->ShellPoolSlot(1).compact.channelPool;
+    EXPECT_NE(0, std::memcmp(shellBytesBefore.data(), shellPoolAfter.data() + byteOffset, byteCount))
+        << "the dirty shell brick payload was not refreshed";
+    const auto& proxiesAfter = node->ShellCacheSlot(1).proxyAabbs;
+    ASSERT_EQ(proxiesAfter.size(), proxiesBefore.size());
+    EXPECT_EQ(0, std::memcmp(proxiesAfter.data(), proxiesBefore.data(),
+                             proxiesBefore.size() * sizeof(ShellProxyAabb)))
+        << "an SDF-only edit refreshes, but must not geometrically move, proxy boxes";
+
+    // Advancing the read index must publish the refreshed proxy buffer and its LIVE
+    // element count from the same slot; grow-only allocation capacity is never a count.
+    SetHandleVal<uint32_t>(frameRes, 1u);
+    ASSERT_NO_THROW(node->Execute());
+    proxyBufferOut = node->GetOutput(C::PROXY_AABB_BUFFER_Slot::index, 0);
+    proxyCountOut = node->GetOutput(C::PROXY_AABB_COUNT_Slot::index, 0);
+    ASSERT_NE(proxyBufferOut, nullptr);
+    ASSERT_NE(proxyCountOut, nullptr);
+    EXPECT_EQ(proxyBufferOut->GetHandle<VkBuffer>(), slot1ProxyBuffer);
+    EXPECT_EQ(proxyCountOut->GetHandle<uint32_t>(), proxiesBefore.size());
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
 }
 
 }  // namespace

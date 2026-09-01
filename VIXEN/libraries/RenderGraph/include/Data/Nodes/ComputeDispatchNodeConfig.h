@@ -25,7 +25,7 @@ using IDebugCapture = Debug::IDebugCapture;
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 20;  // +TIMELINE_SEMAPHORE_IN, +TIMELINE_FRAME_BASE_IN (P5b M1), +RENDER_TARGET_INFO (M4), +BUFFER_WRITE (Sampled Lighting Inc3 M1), +BUFFER_WRITE_ARRAY (KI-052 fix, E12-T1)
+    static constexpr size_t INPUTS = 22;  // +B2 BUFFER_READ_ARRAY/ORDERING_WAIT_BUFFER appended at 20/21
     static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -311,6 +311,29 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotScope::NodeLevel,
         ::Vixen::RenderGraph::AccessKind::ComputeStorageWrite);
 
+    /**
+     * Storage buffers this dispatch READS across submit boundaries. B2 uses
+     * this for the proxy interval/mask buffer written by ProxyRasterStageNode;
+     * the shared constituent Resource* bakes the graphics->compute timeline edge.
+     */
+    INPUT_SLOT_SYNC(BUFFER_READ_ARRAY, std::vector<VkBuffer>, 20,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel,
+        ::Vixen::RenderGraph::AccessKind::ComputeStorageRead);
+
+    /**
+     * Ordering-only value from an intermediate producer. The handle is inert;
+     * the graph connection forces producer-before-dispatch topology before the
+     * shared-resource hazard is converted into a directed timeline edge.
+     */
+    INPUT_SLOT(ORDERING_WAIT_BUFFER, VkBuffer, 21,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (4) =====
 
     /**
@@ -409,6 +432,8 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         // handle whose identity persists across recompiles).
         HandleDescriptor bufferWriteArrayDesc{"std::vector<VkBuffer>"};
         INIT_INPUT_DESC(BUFFER_WRITE_ARRAY, "buffer_write_array", ResourceLifetime::Transient, bufferWriteArrayDesc);
+        INIT_INPUT_DESC(BUFFER_READ_ARRAY, "buffer_read_array", ResourceLifetime::Transient, bufferWriteArrayDesc);
+        INIT_INPUT_DESC(ORDERING_WAIT_BUFFER, "ordering_wait_buffer", ResourceLifetime::Transient, bufferWriteDesc);
 
         // Initialize output descriptors
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};

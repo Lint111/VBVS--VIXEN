@@ -1,10 +1,19 @@
 #include <gtest/gtest.h>
 
-// Placeholder test - VulkanResources require full Vulkan initialization
-// which is complex for unit testing. These tests pass to allow build.
+#include "CapabilityGraph.h"
 
-TEST(VulkanResources_Basic, PlaceholderPasses) {
-    EXPECT_TRUE(true);
+TEST(VulkanResources_CapabilityGraph, FragmentStoresAndAtomicsUsesDeviceFeatureSet) {
+    Vixen::CapabilityGraph graph;
+    graph.BuildStandardCapabilities();
+
+    ASSERT_NE(graph.GetCapability("DeviceFeature:fragmentStoresAndAtomics"), nullptr);
+    EXPECT_FALSE(graph.IsCapabilityAvailable(
+        "DeviceFeature:fragmentStoresAndAtomics"));
+
+    graph.SetAvailableDeviceFeatures({"fragmentStoresAndAtomics"});
+    graph.InvalidateAll();
+    EXPECT_TRUE(graph.IsCapabilityAvailable(
+        "DeviceFeature:fragmentStoresAndAtomics"));
 }
 
 int main(int argc, char** argv) {

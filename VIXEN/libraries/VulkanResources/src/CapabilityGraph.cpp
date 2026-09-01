@@ -207,6 +207,12 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto synchronization2 = CreateCapability<DeviceFeatureCapability>(
         "DeviceFeature:synchronization2", "synchronization2");
 
+    // fragmentStoresAndAtomics (core Vulkan 1.0). B2's preferred proxy writer uses
+    // fragment-shader SSBO atomics. The compute-writer twin is the capability-free
+    // fallback, so this remains optional and is selected at runtime through the graph.
+    auto fragmentStoresAndAtomics = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:fragmentStoresAndAtomics", "fragmentStoresAndAtomics");
+
     //==========================================================================
     // Instance Extensions
     //==========================================================================

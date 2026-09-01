@@ -53,6 +53,18 @@ layout(binding = 9) uniform writeonly uimage2D idOutputImage;
 layout(r32f, binding = 36) uniform writeonly image2D depthDistanceImage;
 #endif
 
+// Raster-proxy B2: 8 uints/pixel = reversed-min entry key, max exit bits,
+// then six candidate-mask words indexing the front-to-back instance array.
+#ifdef VIXEN_B2_PROXY_PREPASS
+layout(std430, binding = 42) readonly buffer ProxyIntervalBuffer {
+    uint proxyIntervalWords[];
+};
+uint  g_b2CandidateMask[6];
+bool  g_b2HasCandidates;
+float g_b2UnionEnter;
+float g_b2UnionExit;
+#endif
+
 // ============================================================================
 // PROCEDURAL RECIPE OCCUPANCY GRID (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 — binding 16)
 // ============================================================================
@@ -226,6 +238,29 @@ void main() {
     vec3 rayOrigin = pc.cameraPos;
     vec3 rayDir    = getRayDir(uv);
 
+    float traceMin = 0.0;
+    float traceMax = 1e30;
+#ifdef VIXEN_B2_PROXY_PREPASS
+    g_b2HasCandidates = false;
+    g_b2UnionEnter = 0.0;
+    g_b2UnionExit = 1e30;
+    for (uint word = 0u; word < 6u; ++word) g_b2CandidateMask[word] = 0u;
+    if (pc.proxyAabbCount > 0u) {
+        const uint pixelBase = (uint(pixelCoords.y) * uint(imgSize.x) +
+                                uint(pixelCoords.x)) * 8u;
+        for (uint word = 0u; word < 6u; ++word) {
+            g_b2CandidateMask[word] = proxyIntervalWords[pixelBase + 2u + word];
+            g_b2HasCandidates = g_b2HasCandidates || g_b2CandidateMask[word] != 0u;
+        }
+        if (g_b2HasCandidates) {
+            g_b2UnionEnter = uintBitsToFloat(0xffffffffu - proxyIntervalWords[pixelBase]);
+            g_b2UnionExit = uintBitsToFloat(proxyIntervalWords[pixelBase + 1u]);
+            traceMin = g_b2UnionEnter;
+            traceMax = g_b2UnionExit;
+        }
+    }
+#endif
+
     // -----------------------------------------------------------------------
     // Record metrics once for the dominant hit
     // -----------------------------------------------------------------------
@@ -236,7 +271,7 @@ void main() {
     // instance loop, nearest-hit across all body instances.
     // -----------------------------------------------------------------------
     WorldHit worldHit;
-    bool anyHit = TraceWorld(rayOrigin, rayDir, 0.0, 1e30, worldHit);
+    bool anyHit = TraceWorld(rayOrigin, rayDir, traceMin, traceMax, worldHit);
     if (anyHit) {
         recordCompositionPixel(worldHit.footprintRegime, worldHit.sourceMask);
     }
