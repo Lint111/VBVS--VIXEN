@@ -1,0 +1,18 @@
+# viewblob v1
+model undertowdeepfieldcells
+version 0xA1AF7B91
+elem UndertowDeepFieldCellRow
+  cellX int
+  cellY int
+  recipe string
+  presence float
+  wM float
+  wK float
+  wG float
+  wF float
+  wA float
+  wB float
+  wO float
+  wWhiteDwarf float
+  wNeutronStar float
+field rows array UndertowDeepFieldCellRow

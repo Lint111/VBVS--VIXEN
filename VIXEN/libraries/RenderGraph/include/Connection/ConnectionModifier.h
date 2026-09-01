@@ -185,7 +185,7 @@ public:
      * @param ctx Connection context (may be modified)
      * @return Success to continue, Error to reject connection
      */
-    [[nodiscard]] virtual ConnectionResult PreValidation(ConnectionContext& ctx) {
+    [[nodiscard]] virtual ConnectionResult PreValidation(ConnectionContext& /*ctx*/) {
         return ConnectionResult::Success();
     }
 
@@ -198,7 +198,7 @@ public:
      * @param ctx Connection context (may be modified)
      * @return Success to continue, Error to abort
      */
-    virtual ConnectionResult PreResolve(ConnectionContext& ctx) {
+    virtual ConnectionResult PreResolve(ConnectionContext& /*ctx*/) {
         return ConnectionResult::Success();
     }
 
@@ -211,7 +211,7 @@ public:
      * @param ctx Connection context (final state)
      * @return Success to finalize, Error to report failure
      */
-    virtual ConnectionResult PostResolve(ConnectionContext& ctx) {
+    virtual ConnectionResult PostResolve(ConnectionContext& /*ctx*/) {
         return ConnectionResult::Success();
     }
 

@@ -10,6 +10,9 @@
 // same "consumer defines by hand" precedent as EditorLayersView's
 // BindEditorLayersModel_activeLayerCountOverride hook (VIXEN/application/editor) -- and forwards
 // everything else to the real generated header unchanged.
+// The generated header's own by-design-unused params (e.g. StrengthBandToByte's rowIndex --
+// tool output must match a fixed callable signature even when a specific body ignores an arg)
+// are emitted [[maybe_unused]] by --callable-cpp itself, so no diagnostic exemption is needed.
 #include "generated/AppFlowCallables.generated.g.hpp"
 #include <RmlUi/Core/Types.h>   // Rml::String
 

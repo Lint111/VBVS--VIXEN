@@ -476,7 +476,6 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
 
         // 6. Query entity at voxel position via EntityBrickView
         gaia::ecs::Entity entity = brickView.getEntity(currentVoxel.x, currentVoxel.y, currentVoxel.z);
-        glm::vec3 voxelWorldPos = brickWorldMin + glm::vec3(currentVoxel) * brickVoxelSize;
 
         bool voxelOccupied = false;
         if (m_voxelWorld != nullptr) {

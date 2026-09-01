@@ -3,7 +3,7 @@
 # Graph-Based Rendering Environment
 #
 
-cmake_minimum_required(VERSION 3.11..4.2 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.15..4.2 FATAL_ERROR)  # 3.15: add_custom_target(... JOB_POOL) (task #29)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
@@ -339,6 +339,35 @@ endif()
 # PROJECT_VERSION*, which feeds both the generated <VixenVersion.h> (cmake/VixenVersion.h.in)
 # and the find_package(VIXEN) package-version file (cmake/VixenInstall.cmake).
 project(${Recipe_Name} VERSION 0.1.0)
+
+# ============================================================================
+# msbuild ninja job pool (task #29): no two MSBuild-entering custom commands may
+# ============================================================================
+# run concurrently anywhere in the composite graph. Every engine codegen check/regen
+# (engine/VIXEN/codegen/CMakeLists.txt) and undertow's own codegen check/regen +
+# undertow_codegen_tool build (vixen/codegen/CMakeLists.txt) invoke `dotnet build`/
+# `dotnet run --project` against the SAME Yeroket CodegenTool project. Two concurrent
+# MSBuild invocations race on that project's obj/bin (GenerateDepsFile IOException on
+# deps.json, MSB4018) — proven live in wave-46's composite finals (two failed runs).
+# A single capacity=1 ninja pool serializes every such command process-wide.
+#
+# This file runs both standalone (VIXEN as the top-level project) and as a subdirectory
+# of the undertow super-build (vixen/CMakeLists.txt's add_subdirectory(engine/VIXEN)),
+# and undertow's OWN vixen/codegen/CMakeLists.txt also needs this same pool for its own
+# dotnet-invoking targets. set_property(GLOBAL PROPERTY JOB_POOLS ...) REPLACES the
+# whole list (not additive) unless APPEND is used, and even APPEND errors ninja on an
+# exact-duplicate pool name ("duplicate pool 'msbuild'") if declared twice — so this is
+# a function + a global marker property, callable from any configure path, safe to call
+# more than once.
+function(vixen_ensure_msbuild_job_pool)
+    get_property(_vixen_msbuild_pool_done GLOBAL PROPERTY VIXEN_MSBUILD_JOB_POOL_DEFINED)
+    if(_vixen_msbuild_pool_done)
+        return()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY JOB_POOLS msbuild=1)
+    set_property(GLOBAL PROPERTY VIXEN_MSBUILD_JOB_POOL_DEFINED TRUE)
+endfunction()
+vixen_ensure_msbuild_job_pool()
 
 # MSVC parallel build PDB fix (must be right after project())
 if(MSVC)

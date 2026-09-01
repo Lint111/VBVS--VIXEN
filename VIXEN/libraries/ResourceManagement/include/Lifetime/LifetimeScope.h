@@ -454,13 +454,13 @@ public:
         subscriptions_.SetBus(messageBus);
 
         subscriptions_.Subscribe<Vixen::EventBus::FrameStartEvent>(
-            [this](const Vixen::EventBus::FrameStartEvent& e) {
+            [this](const Vixen::EventBus::FrameStartEvent&) {
                 BeginFrame();
             }
         );
 
         subscriptions_.Subscribe<Vixen::EventBus::FrameEndEvent>(
-            [this](const Vixen::EventBus::FrameEndEvent& e) {
+            [this](const Vixen::EventBus::FrameEndEvent&) {
                 EndFrame();
             }
         );

@@ -33,7 +33,7 @@ public:
 
     // Identity and metadata
     const std::string& GetTypeName() const { return typeName; }
-    const NodeTypeId GetTypeId() const { return typeId; }
+    NodeTypeId GetTypeId() const { return typeId; }
     const std::string& GetDescription() const { return description; }
     void SetDescription(const std::string& desc) { description = desc; }
 

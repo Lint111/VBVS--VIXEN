@@ -601,7 +601,7 @@ public:
         // Subscribe to BudgetOverrunEvent (type-safe, clean syntax)
         // Uses deferred execution to avoid deadlock during event dispatch
         subscriptions_.Subscribe<EventBus::BudgetOverrunEvent>(
-            [this](const EventBus::BudgetOverrunEvent& e) {
+            [this](const EventBus::BudgetOverrunEvent&) {
                 // Over budget: queue workload reduction (deferred to avoid deadlock)
                 pendingDecrease_ = true;
             }
@@ -610,7 +610,7 @@ public:
         // Subscribe to BudgetAvailableEvent
         // Uses deferred execution to avoid deadlock during event dispatch
         subscriptions_.Subscribe<EventBus::BudgetAvailableEvent>(
-            [this](const EventBus::BudgetAvailableEvent& e) {
+            [this](const EventBus::BudgetAvailableEvent&) {
                 // Under threshold: queue workload increase (deferred to avoid deadlock)
                 pendingIncrease_ = true;
             }

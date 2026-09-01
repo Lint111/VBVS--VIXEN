@@ -722,12 +722,19 @@ private:
         return NodeInstance::GetOutputCount(SlotType::index);
     }
 
+    // The typed template overloads below share names with NodeInstance's uint32_t-indexed
+    // virtuals; without these using-declarations the templates HIDE the base overloads
+    // (-Woverloaded-virtual under -Werror, and base-form calls silently fail to resolve
+    // on TypedNode-typed receivers).
+    using NodeInstance::GetInput;
+    using NodeInstance::SetOutput;
+
     /**
      * @brief Get input resource at specific array index
-     * 
+     *
      * AUTOMATIC TYPE DEDUCTION from slot definition!
      * The slot's SlotType::Type tells us exactly what to extract from the variant.
-     * 
+     *
      * Usage:
      * for (size_t i = 0; i < GetInputCount(Config::DEVICE); i++) {
      *     auto dev = GetInput(Config::DEVICE, i);  // Type auto-deduced from slot!

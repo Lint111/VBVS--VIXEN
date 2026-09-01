@@ -1096,7 +1096,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayGpuMirror(
                         // --- marchBrickInstanced (reads EntityBrickView occupancy) ---
                         glm::ivec3 cur = glm::clamp(glm::ivec3(glm::floor(posInBrick)), glm::ivec3(0), glm::ivec3(brickSize - 1));
                         glm::ivec3 step = glm::ivec3(glm::sign(rayDir));
-                        if (step.x == 0) step.x = 1; if (step.y == 0) step.y = 1; if (step.z == 0) step.z = 1;
+                        if (step.x == 0) step.x = 1;
+                        if (step.y == 0) step.y = 1;
+                        if (step.z == 0) step.z = 1;
                         const float bs = static_cast<float>(brickSize);
                         const bool exitFace =
                             (posInBrick.x <= 0.001f && rayDir.x < 0.0f) || (posInBrick.x >= bs - 0.001f && rayDir.x > 0.0f) ||

@@ -796,9 +796,9 @@ void CityscapeSceneGenerator::AddBuildingDetails(
     for (uint32_t y = origin.y + 2; y < origin.y + height; y += 4) {
         // Front/back faces
         for (int x = origin.x + 2; x < origin.x + size.x; x += 4) {
-            if (x >= 0 && y >= 0 &&
+            if (x >= 0 &&
                 x < static_cast<int>(grid.GetResolution()) &&
-                y < static_cast<int>(grid.GetResolution())) {
+                y < grid.GetResolution()) {
                 grid.Set(x, y, origin.z, 61);  // Material ID 61 = glass (front)
                 grid.Set(x, y, origin.z + size.z - 1, 61);  // Back
             }
@@ -806,9 +806,9 @@ void CityscapeSceneGenerator::AddBuildingDetails(
 
         // Left/right faces
         for (int z = origin.z + 2; z < origin.z + size.z; z += 4) {
-            if (z >= 0 && y >= 0 &&
+            if (z >= 0 &&
                 z < static_cast<int>(grid.GetResolution()) &&
-                y < static_cast<int>(grid.GetResolution())) {
+                y < grid.GetResolution()) {
                 grid.Set(origin.x, y, z, 61);  // Left
                 grid.Set(origin.x + size.x - 1, y, z, 61);  // Right
             }

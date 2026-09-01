@@ -735,7 +735,7 @@ protected:
      *
      * @param ctx Setup context with phase-specific capabilities
      */
-    virtual void SetupImpl(SetupContext& ctx) {
+    virtual void SetupImpl(SetupContext& /*ctx*/) {
         // Default: no-op (many nodes don't need setup)
     }
 
@@ -766,7 +766,7 @@ protected:
      * NOTE: TypedNode overrides this with TypedCompileContext variant.
      * Default: no-op (TypedNode provides implementation).
      */
-    virtual void CompileImpl(CompileContext& ctx) {
+    virtual void CompileImpl(CompileContext& /*ctx*/) {
         // Default: no-op (TypedNode hierarchy provides override)
     }
 
@@ -801,7 +801,7 @@ protected:
      * NOTE: TypedNode overrides this with TypedExecuteContext variant.
      * Default: no-op (TypedNode provides implementation).
      */
-    virtual void ExecuteImpl(ExecuteContext& ctx) {
+    virtual void ExecuteImpl(ExecuteContext& /*ctx*/) {
         // Default: no-op (TypedNode hierarchy provides override)
     }
 
@@ -832,7 +832,7 @@ protected:
      * Default: no-op (some nodes don't allocate resources).
      * Always null out VulkanDevice pointers and handles after destroying resources.
      */
-    virtual void CleanupImpl(CleanupContext& ctx) {
+    virtual void CleanupImpl(CleanupContext& /*ctx*/) {
         // Default: no-op (some nodes don't allocate resources)
     }
 
