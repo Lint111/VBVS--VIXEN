@@ -22,7 +22,10 @@ namespace Vixen::RenderGraph {
 class CameraNodeType : public TypedNodeType<CameraNodeConfig> {
 public:
     CameraNodeType(const std::string& typeName = "Camera")
-        : TypedNodeType<CameraNodeConfig>(typeName) {}
+        : TypedNodeType<CameraNodeConfig>(typeName) {
+        // ExecuteImpl derives CPU camera state and publishes graph data; it records no Vulkan work.
+        graphExecutionKind = GraphExecutionKind::Cpu;
+    }
     virtual ~CameraNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

@@ -14,6 +14,15 @@
 
 namespace Vixen::KernelDispatch {
 
+namespace {
+
+bool TaskIdLess(const TaskId& lhs, const TaskId& rhs) {
+    if (lhs.owner != rhs.owner) return lhs.owner < rhs.owner;
+    return lhs.taskIndex < rhs.taskIndex;
+}
+
+} // namespace
+
 void TaskDependencyGraph::AddTask(const TaskId& task) {
     if (allTasks_.insert(task).second) {
         adjacencyList_[task];  // ensure empty lists exist
@@ -24,6 +33,7 @@ void TaskDependencyGraph::AddTask(const TaskId& task) {
 void TaskDependencyGraph::AddEdge(const TaskId& from, const TaskId& to) {
     AddTask(from);
     AddTask(to);
+    if (HasDependency(from, to)) return;
     adjacencyList_[from].push_back(to);
     dependencies_[to].push_back(from);
     ++edgeCount_;
@@ -65,18 +75,25 @@ std::vector<TaskId> TaskDependencyGraph::TopologicalSort() const {
     std::unordered_map<TaskId, size_t, TaskIdHash> inDegree;
     for (const auto& task : allTasks_) inDegree[task] = GetDependencyCount(task);
 
-    std::queue<TaskId> ready;
+    std::vector<TaskId> initialReady;
     for (const auto& [task, degree] : inDegree)
-        if (degree == 0) ready.push(task);
+        if (degree == 0) initialReady.push_back(task);
+    std::sort(initialReady.begin(), initialReady.end(), TaskIdLess);
+    std::queue<TaskId> ready;
+    for (const auto& task : initialReady) ready.push(task);
 
     while (!ready.empty()) {
         TaskId current = ready.front();
         ready.pop();
         result.push_back(current);
         auto it = adjacencyList_.find(current);
-        if (it != adjacencyList_.end())
+        if (it != adjacencyList_.end()) {
+            std::vector<TaskId> newlyReady;
             for (const auto& dep : it->second)
-                if (--inDegree[dep] == 0) ready.push(dep);
+                if (--inDegree[dep] == 0) newlyReady.push_back(dep);
+            std::sort(newlyReady.begin(), newlyReady.end(), TaskIdLess);
+            for (const auto& dep : newlyReady) ready.push(dep);
+        }
     }
     return result;  // shorter than allTasks_ ==> a cycle
 }
@@ -88,9 +105,12 @@ std::vector<std::vector<TaskId>> TaskDependencyGraph::GetParallelLevels() const 
     std::unordered_set<TaskId, TaskIdHash> processed;
     for (const auto& task : allTasks_) inDegree[task] = GetDependencyCount(task);
 
+    std::vector<TaskId> orderedTasks(allTasks_.begin(), allTasks_.end());
+    std::sort(orderedTasks.begin(), orderedTasks.end(), TaskIdLess);
+
     while (processed.size() < allTasks_.size()) {
         std::vector<TaskId> currentLevel;
-        for (const auto& task : allTasks_)
+        for (const auto& task : orderedTasks)
             if (processed.count(task) == 0 && inDegree[task] == 0)
                 currentLevel.push_back(task);
 

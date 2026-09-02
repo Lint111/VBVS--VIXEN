@@ -88,6 +88,7 @@ public:
     // performance hints (for graph compilation/scheduling)
     const WorkloadMetrics& GetWorkloadMetrics() const { return workloadMetrics; }
     bool GetAllowInputArrays() const { return allowInputArrays; }
+    GraphExecutionKind GetGraphExecutionKind() const { return graphExecutionKind; }
 
 
     // Validation
@@ -116,6 +117,10 @@ protected:
 
     // Performance hints
     WorkloadMetrics workloadMetrics;
+
+    // Lowered graph execution safety. Serial is the compatibility default; concrete node types
+    // opt into Cpu only after auditing ExecuteImpl for thread-safe/disjoint effects.
+    GraphExecutionKind graphExecutionKind = GraphExecutionKind::Serial;
 
     // Node-level flag: allow array-shaped inputs (IA<I>) for nodes that can process arrays
     bool allowInputArrays = false;

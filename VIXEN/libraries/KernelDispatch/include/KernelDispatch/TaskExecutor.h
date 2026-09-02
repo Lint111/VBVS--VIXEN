@@ -26,6 +26,7 @@
 #include <deque>
 #include <atomic>
 #include <future>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <stop_token>
@@ -129,12 +130,18 @@ public:
      *                    the profile's frame-compute budget.
      * @param stopToken Cooperative execution cancellation. A stopped token prevents new tasks and
      *                  later waves from being issued; already-running tasks finish normally.
+     * @param onWaveComplete Optional graph-thread callback invoked after each issued wave reaches
+     *                       its barrier, including a wave that reports task errors. The callback
+     *                       can commit domain effects before dependent waves are issued.
      * @return true if every task completed without throwing and cancellation was not requested.
      */
+    using WaveCompletionCallback = std::function<void(const std::vector<TaskId>&)>;
+
     bool Run(std::vector<VirtualTask>& tasks,
              const std::vector<std::vector<TaskId>>& waves,
              int workerCount,
-             std::stop_token stopToken = {});
+             std::stop_token stopToken = {},
+             WaveCompletionCallback onWaveComplete = {});
 
     /**
      * @brief Submit one blocking/I/O task to the separately budgeted lane.
