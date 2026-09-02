@@ -105,6 +105,87 @@ inline f32x3 operator*(f32x3 a, f32 b) { return {a.yk_col0*b, a.yk_col1*b, a.yk_
 inline f32x3 operator*(f32 a, f32x3 b) { return b*a; }
 inline f32x3 operator-(f32x3 a) { return {-a.yk_col0, -a.yk_col1, -a.yk_col2}; }
 
+struct dual {
+    f32 value, gx, gy, gz;
+    dual() : value(0.0f), gx(0.0f), gy(0.0f), gz(0.0f) {}
+    // explicit: an implicit f32->dual conversion makes `f32 * float` ambiguous
+    // against yk::simd4's own operators (caught by the Simd4 bit-parity gate);
+    // the mixed dual/float operator overloads below carry the ergonomics instead.
+    explicit dual(float v) : value(v), gx(0.0f), gy(0.0f), gz(0.0f) {}
+    explicit dual(f32 v) : value(v), gx(0.0f), gy(0.0f), gz(0.0f) {}
+    dual(f32 v, f32 x, f32 y, f32 z) : value(v), gx(x), gy(y), gz(z) {}
+};
+inline dual operator+(dual a, dual b) { return {a.value+b.value,a.gx+b.gx,a.gy+b.gy,a.gz+b.gz}; }
+inline dual operator-(dual a, dual b) { return {a.value-b.value,a.gx-b.gx,a.gy-b.gy,a.gz-b.gz}; }
+inline dual operator*(dual a, dual b) { return {a.value*b.value,a.gx*b.value+a.value*b.gx,a.gy*b.value+a.value*b.gy,a.gz*b.value+a.value*b.gz}; }
+inline dual operator/(dual a, dual b) { dual r; r.value=a.value/b.value; r.gx=(a.gx*b.value-a.value*b.gx)/(b.value*b.value); r.gy=(a.gy*b.value-a.value*b.gy)/(b.value*b.value); r.gz=(a.gz*b.value-a.value*b.gz)/(b.value*b.value); return r; }
+inline dual operator-(dual a) { return {-a.value,-a.gx,-a.gy,-a.gz}; }
+inline mask operator<(dual a, dual b) { return a.value < b.value; }
+inline mask operator>(dual a, dual b) { return a.value > b.value; }
+inline mask operator<=(dual a, dual b) { return a.value <= b.value; }
+inline mask operator>=(dual a, dual b) { return a.value >= b.value; }
+inline mask operator==(dual a, dual b) { return a.value == b.value; }
+inline mask operator!=(dual a, dual b) { return a.value != b.value; }
+inline dual operator+(dual a, float b) { return a + dual(b); }
+inline dual operator+(float a, dual b) { return dual(a) + b; }
+inline dual operator-(dual a, float b) { return a - dual(b); }
+inline dual operator-(float a, dual b) { return dual(a) - b; }
+inline dual operator*(dual a, float b) { return a * dual(b); }
+inline dual operator*(float a, dual b) { return dual(a) * b; }
+inline dual operator/(dual a, float b) { return a / dual(b); }
+inline dual operator/(float a, dual b) { return dual(a) / b; }
+template<class F, class D> inline dual unary(dual x, F valueFn, D derivativeFn) {
+    alignas(16) float v[4],xg[4],yg[4],zg[4],out[4],gx[4],gy[4],gz[4];
+    x.value.store_unaligned(v); x.gx.store_unaligned(xg); x.gy.store_unaligned(yg); x.gz.store_unaligned(zg);
+    for (int i=0;i<4;++i) { out[i]=valueFn(v[i]); float d=derivativeFn(v[i]); gx[i]=d*xg[i]; gy[i]=d*yg[i]; gz[i]=d*zg[i]; }
+    return {f32::from_lanes(out),f32::from_lanes(gx),f32::from_lanes(gy),f32::from_lanes(gz)};
+}
+inline dual sqrt_lanes(dual x) { return unary(x, [](float v){return std::sqrt(v);}, [](float v){return v>0.0f ? 0.5f/std::sqrt(v) : 0.0f;}); }
+inline dual rsqrt_lanes(dual x) { return unary(x, [](float v){return v>0.0f ? 1.0f/std::sqrt(v) : 0.0f;}, [](float v){return v>0.0f ? -0.5f/(v*std::sqrt(v)) : 0.0f;}); }
+inline dual sin(dual x) { return unary(x, [](float v){return std::sin(v);}, [](float v){return std::cos(v);}); }
+inline dual cos(dual x) { return unary(x, [](float v){return std::cos(v);}, [](float v){return -std::sin(v);}); }
+inline dual exp(dual x) { return unary(x, [](float v){return std::exp(v);}, [](float v){return std::exp(v);}); }
+inline dual log(dual x) { return unary(x, [](float v){return std::log(std::max(v,1e-30f));}, [](float v){return v>1e-30f ? 1.0f/v : 0.0f;}); }
+inline dual log2(dual x) { return unary(x, [](float v){return std::log2(std::max(v,1e-30f));}, [](float v){return v>1e-30f ? 1.44269504089f/v : 0.0f;}); }
+inline dual pow(dual x, float p) { return unary(x, [p](float v){return std::pow(v,p);}, [p](float v){return p*std::pow(v,p-1.0f);}); }
+inline dual pow(dual x, dual p) { alignas(16) float xv[4],pv[4],xgx[4],xgy[4],xgz[4],pgx[4],pgy[4],pgz[4],out[4],gx[4],gy[4],gz[4]; x.value.store_unaligned(xv); p.value.store_unaligned(pv); x.gx.store_unaligned(xgx); x.gy.store_unaligned(xgy); x.gz.store_unaligned(xgz); p.gx.store_unaligned(pgx); p.gy.store_unaligned(pgy); p.gz.store_unaligned(pgz); for (int i=0;i<4;++i) { out[i]=std::pow(xv[i],pv[i]); float inv=xv[i]!=0.0f?pv[i]/xv[i]:0.0f, lp=xv[i]>0.0f?std::log(xv[i]):0.0f; gx[i]=out[i]*(inv*xgx[i]+lp*pgx[i]); gy[i]=out[i]*(inv*xgy[i]+lp*pgy[i]); gz[i]=out[i]*(inv*xgz[i]+lp*pgz[i]); } return {f32::from_lanes(out),f32::from_lanes(gx),f32::from_lanes(gy),f32::from_lanes(gz)}; }
+inline dual floor(dual x) { return unary(x, [](float v){return std::floor(v);}, [](float){return 0.0f;}); }
+inline dual round_lanes(dual x) { return unary(x, [](float v){return std::round(v);}, [](float){return 0.0f;}); }
+inline dual frac(dual x) { return x - floor(x); }
+inline dual mod(dual x, dual y) { return x - y * floor(x/y); }
+inline dual abs(dual x) { return unary(x, [](float v){return std::fabs(v);}, [](float v){return v>0.0f?1.0f:v<0.0f?-1.0f:0.0f;}); }
+inline dual select(dual whenFalse, dual whenTrue, mask condition);
+inline dual min(dual a, dual b) { return select(a,b,b.value<a.value); }
+inline dual max(dual a, dual b) { return select(a,b,a.value<b.value); }
+inline dual clamp(dual x, dual lo, dual hi) { return min(max(x,lo),hi); }
+inline dual saturate(dual x) { return clamp(x,dual(0.0f),dual(1.0f)); }
+inline dual lerp(dual a, dual b, dual t) { return a*(dual(1.0f)-t)+b*t; }
+inline dual step(dual edge, dual x) { return select(dual(1.0f),dual(0.0f),x.value<edge.value); }
+inline dual sign(dual x) { return select(select(dual(0.0f),dual(-1.0f),x.value<f32(0.0f)),dual(1.0f),x.value>f32(0.0f)); }
+inline dual smoothstep(dual edge0, dual edge1, dual x) { dual t=saturate((x-edge0)/(edge1-edge0)); return t*t*(dual(3.0f)-dual(2.0f)*t); }
+inline dual select(dual whenFalse, dual whenTrue, mask condition) { return {select(whenFalse.value,whenTrue.value,condition),select(whenFalse.gx,whenTrue.gx,condition),select(whenFalse.gy,whenTrue.gy,condition),select(whenFalse.gz,whenTrue.gz,condition)}; }
+
+struct dual2 { dual x,y; dual2()=default; dual2(dual a,dual b):x(a),y(b){} dual2(float a,float b):x(a),y(b){} };
+struct dual3 { dual x,y,z; dual3()=default; dual3(dual a,dual b,dual c):x(a),y(b),z(c){} dual3(float a,float b,float c):x(a),y(b),z(c){} };
+inline dual2 operator+(dual2 a,dual2 b){return {a.x+b.x,a.y+b.y};} inline dual2 operator-(dual2 a,dual2 b){return {a.x-b.x,a.y-b.y};}
+inline dual2 operator*(dual2 a,dual2 b){return {a.x*b.x,a.y*b.y};} inline dual2 operator*(dual2 a,dual b){return {a.x*b,a.y*b};} inline dual2 operator*(dual a,dual2 b){return b*a;}
+inline dual2 operator/(dual2 a,dual2 b){return {a.x/b.x,a.y/b.y};} inline dual2 operator/(dual2 a,dual b){return {a.x/b,a.y/b};} inline dual2 operator-(dual2 a){return {-a.x,-a.y};}
+inline dual3 operator+(dual3 a,dual3 b){return {a.x+b.x,a.y+b.y,a.z+b.z};} inline dual3 operator-(dual3 a,dual3 b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
+inline dual3 operator*(dual3 a,dual3 b){return {a.x*b.x,a.y*b.y,a.z*b.z};} inline dual3 operator*(dual3 a,dual b){return {a.x*b,a.y*b,a.z*b};} inline dual3 operator*(dual a,dual3 b){return b*a;} inline dual3 operator-(dual3 a){return {-a.x,-a.y,-a.z};}
+inline dual3 operator/(dual3 a,dual3 b){return {a.x/b.x,a.y/b.y,a.z/b.z};} inline dual3 operator/(dual3 a,dual b){return {a.x/b,a.y/b,a.z/b};}
+inline dual2 mod(dual2 a,dual2 b){return {mod(a.x,b.x),mod(a.y,b.y)};} inline dual3 mod(dual3 a,dual3 b){return {mod(a.x,b.x),mod(a.y,b.y),mod(a.z,b.z)};}
+inline dual2 round_lanes(dual2 a){return {round_lanes(a.x),round_lanes(a.y)};} inline dual3 round_lanes(dual3 a){return {round_lanes(a.x),round_lanes(a.y),round_lanes(a.z)};}
+inline dual2 min(dual2 a,dual2 b){return {min(a.x,b.x),min(a.y,b.y)};} inline dual2 min(dual2 a,dual b){return {min(a.x,b),min(a.y,b)};} inline dual2 min(dual a,dual2 b){return {min(a,b.x),min(a,b.y)};}
+inline dual2 max(dual2 a,dual2 b){return {max(a.x,b.x),max(a.y,b.y)};} inline dual2 max(dual2 a,dual b){return {max(a.x,b),max(a.y,b)};} inline dual2 max(dual a,dual2 b){return {max(a,b.x),max(a,b.y)};}
+inline dual3 min(dual3 a,dual3 b){return {min(a.x,b.x),min(a.y,b.y),min(a.z,b.z)};} inline dual3 min(dual3 a,dual b){return {min(a.x,b),min(a.y,b),min(a.z,b)};} inline dual3 min(dual a,dual3 b){return {min(a,b.x),min(a,b.y),min(a,b.z)};}
+inline dual3 max(dual3 a,dual3 b){return {max(a.x,b.x),max(a.y,b.y),max(a.z,b.z)};} inline dual3 max(dual3 a,dual b){return {max(a.x,b),max(a.y,b),max(a.z,b)};} inline dual3 max(dual a,dual3 b){return {max(a,b.x),max(a,b.y),max(a,b.z)};}
+inline dual2 abs(dual2 a){return {abs(a.x),abs(a.y)};} inline dual3 abs(dual3 a){return {abs(a.x),abs(a.y),abs(a.z)};}
+inline dual2 clamp(dual2 x,dual2 lo,dual2 hi){return min(max(x,lo),hi);} inline dual2 clamp(dual2 x,dual lo,dual hi){return min(max(x,lo),hi);}
+inline dual3 clamp(dual3 x,dual3 lo,dual3 hi){return min(max(x,lo),hi);} inline dual3 clamp(dual3 x,dual lo,dual hi){return min(max(x,lo),hi);}
+inline dual dot(dual2 a,dual2 b){return a.x*b.x+a.y*b.y;} inline dual dot(dual3 a,dual3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+inline dual3 cross(dual3 a,dual3 b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
+inline dual length(dual2 a){return sqrt_lanes(a.x*a.x+a.y*a.y);} inline dual length(dual3 a){return sqrt_lanes(a.x*a.x+a.y*a.y+a.z*a.z);}
+inline dual3 normalize(dual3 a){dual inv=rsqrt_lanes(a.x*a.x+a.y*a.y+a.z*a.z); return a*inv;}
 inline f32 min(f32 a, f32 b) { return select(a, b, b < a); }
 inline f32 max(f32 a, f32 b) { return select(a, b, a < b); }
 inline f32 abs(f32 x) { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=std::fabs(v[i]); return f32::from_lanes(v); }
@@ -116,6 +197,15 @@ inline f32 sign(f32 x) { return select(select(f32(0.0f), f32(-1.0f), x < f32(0.0
 inline f32 smoothstep(f32 edge0, f32 edge1, f32 x) { f32 t = saturate((x-edge0)/(edge1-edge0)); return t*t*(f32(3.0f)-f32(2.0f)*t); }
 inline f32 floor(f32 x) { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=std::floor(v[i]); return f32::from_lanes(v); }
 inline f32 sqrt_lanes(f32 x) { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=std::sqrt(v[i]); return f32::from_lanes(v); }
+inline f32 rsqrt_lanes(f32 x) { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=v[i] > 0.0f ? 1.0f/std::sqrt(v[i]) : 0.0f; return f32::from_lanes(v); }
+template<class F> inline f32 unary_f32(f32 x, F fn) { alignas(16) float v[4]; x.store_unaligned(v); for (int i=0;i<4;++i) v[i]=fn(v[i]); return f32::from_lanes(v); }
+inline f32 sin(f32 x) { return unary_f32(x, [](float v){return std::sin(v);}); }
+inline f32 cos(f32 x) { return unary_f32(x, [](float v){return std::cos(v);}); }
+inline f32 exp(f32 x) { return unary_f32(x, [](float v){return std::exp(v);}); }
+inline f32 log(f32 x) { return unary_f32(x, [](float v){return std::log(std::max(v,1e-30f));}); }
+inline f32 log2(f32 x) { return unary_f32(x, [](float v){return std::log2(std::max(v,1e-30f));}); }
+inline f32 pow(f32 x, f32 p) { alignas(16) float xv[4],pv[4]; x.store_unaligned(xv); p.store_unaligned(pv); for (int i=0;i<4;++i) xv[i]=std::pow(xv[i],pv[i]); return f32::from_lanes(xv); }
+inline f32 round_lanes(f32 x) { return unary_f32(x, [](float v){return std::round(v);}); }
 inline f32 frac(f32 x) { return x - floor(x); }
 inline f32 mod(f32 x, f32 y) { return x - y * floor(x / y); }
 inline f32 select(f32 whenFalse, f32 whenTrue, f32 condition) { return select(whenFalse, whenTrue, condition != f32(0.0f)); }
@@ -203,99 +293,102 @@ struct LaneSpanF32 {
 namespace Yeroket::Sdf::Generated {
 enum class RecipeExecutionClass : std::uint8_t { Elementwise, Masked, ScalarLaneFallback, ResolvedAtLowering, LoweredAway };
 enum class RecipeControlBehavior : std::uint8_t { None, RestorePosition, DeclarePosition, InvokeRecipe };
-struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; std::int8_t vpop, vpush, ppop, ppush; const char* name; };
+enum class RecipeGradientHazard : std::uint8_t { Smooth, Piecewise, Discontinuous, NonDifferentiable };
+enum class RecipeGradientCost : std::uint8_t { Same, Bounded, High, Fallback };
+enum class RecipeDerivativeRule : std::uint8_t { Body, Zero, Identity, Alias, Position, RestorePosition, Reject };
+struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; const char* name; };
 inline constexpr std::array<RecipeOpcodeMetadata, 91> RecipeOpcodeTable{{
-    {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Sphere"},
-    {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Box"},
-    {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "BoxRounded"},
-    {3, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Capsule"},
-    {4, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Cylinder"},
-    {5, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 1, 0, 0, "Plane"},
-    {6, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Torus"},
-    {7, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Ellipsoid"},
-    {8, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "HollowCylinder"},
-    {9, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "TaperedCylinder"},
-    {10, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Panel"},
-    {11, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Plank"},
-    {12, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "RoundedBox"},
-    {14, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "CappedTorus"},
-    {15, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Cone"},
-    {16, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "RoundCone"},
-    {17, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "FakeRoundCone"},
-    {18, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Segment"},
-    {20, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 0, 1, 0, 0, "TriangularPrism"},
-    {21, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Pyramid"},
-    {22, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "HexPrism"},
-    {23, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "Link"},
-    {24, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "Union"},
-    {25, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothUnion"},
-    {26, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "Subtract"},
-    {27, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothSubtract"},
-    {28, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "Intersect"},
-    {29, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothIntersect"},
-    {30, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "Xor"},
-    {31, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothMax"},
-    {32, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothUnionCubic"},
-    {33, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothSubtractCubic"},
-    {34, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "SmoothIntersectCubic"},
-    {35, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 1, 1, 0, 0, "Round"},
-    {36, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 1, 1, 0, 0, "Onion"},
-    {37, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 0, 0, 1, "Transform"},
-    {38, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 0, 0, 0, 1, "Elongate"},
-    {39, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 0, 0, 1, "Twist"},
-    {40, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 0, 0, 1, "Bend"},
-    {41, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 0, 0, 1, "MirrorX"},
-    {42, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 0, 0, 1, "MirrorY"},
-    {43, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 0, 0, 1, "MirrorZ"},
-    {44, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 0, 0, 1, "RepeatInfinite"},
-    {45, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 0, 0, 1, "RepeatLimited"},
-    {46, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 0, 0, 1, "Revolution"},
-    {56, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathSin"},
-    {57, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathCos"},
-    {58, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 1, 1, 0, 0, "MathSmoothstep"},
-    {59, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 1, 1, 0, 0, "MathRemap"},
-    {60, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 2, 1, 0, 0, "MathAdd"},
-    {61, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 2, 1, 0, 0, "MathSub"},
-    {62, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 2, 1, 0, 0, "MathMul"},
-    {63, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "MathDiv"},
-    {64, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "MathMin"},
-    {65, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 2, 1, 0, 0, "MathMax"},
-    {66, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 1, 1, 0, 0, "MathClamp"},
-    {67, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 1, 1, 0, 0, "MathAbs"},
-    {68, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 1, 1, 0, 0, "MathFrac"},
-    {69, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathPow"},
-    {70, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathSqrt"},
-    {71, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 3, 1, 0, 0, "MathLerp"},
-    {72, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 1, 1, 0, 0, "MathNegate"},
-    {73, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 0, 1, 0, 0, "PositionChannel"},
-    {74, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 2, 1, 0, 0, "Displacement"},
-    {75, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 1, 1, 0, 0, "MathStep"},
-    {76, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 1, 1, 0, 0, "MathSign"},
-    {77, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 1, 1, 0, 0, "MathSaturate"},
-    {78, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathExp"},
-    {79, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathLog"},
-    {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 1, 1, 0, 0, "MathLog2"},
-    {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 3, 1, 0, 0, "Select"},
-    {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 0, 1, 0, 0, "DistanceTo"},
-    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, 0, 0, 0, 0, "Output"},
-    {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, 0, 1, 0, 0, "PushParam"},
-    {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, 0, 1, 0, 0, "ReadParam"},
-    {97, RecipeExecutionClass::Elementwise, RecipeControlBehavior::RestorePosition, 1, 1, 1, 0, "RestorePos"},
-    {98, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, 0, 3, 0, 0, "PushFloat3"},
-    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, 0, 0, 0, 0, "ComposeFloat3"},
-    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, 1, 1, 0, 0, "Passthrough"},
-    {101, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 3, 1, 0, 0, "DecomposeFloat3"},
-    {102, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 6, 3, 0, 0, "Float3Add"},
-    {103, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 6, 3, 0, 0, "Float3Sub"},
-    {104, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 6, 3, 0, 0, "Float3MulComponentWise"},
-    {105, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 6, 3, 0, 0, "Float3Min"},
-    {106, RecipeExecutionClass::Masked, RecipeControlBehavior::None, 6, 3, 0, 0, "Float3Max"},
-    {107, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 4, 3, 0, 0, "Float3ScalarMul"},
-    {108, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, 6, 1, 0, 0, "Float3Dot"},
-    {109, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, 3, 3, 0, 0, "Float3Normalize"},
-    {111, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, 0, 3, 0, 0, "ReadParamFloat3"},
-    {112, RecipeExecutionClass::Elementwise, RecipeControlBehavior::DeclarePosition, 3, 0, 0, 0, "DeclarePosition"},
-    {113, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::InvokeRecipe, 0, 1, 0, 0, "InvokeRecipe"},
+    {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Sphere"},
+    {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Box"},
+    {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "BoxRounded"},
+    {3, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Capsule"},
+    {4, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Cylinder"},
+    {5, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Plane"},
+    {6, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Torus"},
+    {7, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Ellipsoid"},
+    {8, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "HollowCylinder"},
+    {9, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "TaperedCylinder"},
+    {10, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, "Panel"},
+    {11, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, "Plank"},
+    {12, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, "RoundedBox"},
+    {14, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "CappedTorus"},
+    {15, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Cone"},
+    {16, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "RoundCone"},
+    {17, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "FakeRoundCone"},
+    {18, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Segment"},
+    {20, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "TriangularPrism"},
+    {21, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Pyramid"},
+    {22, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "HexPrism"},
+    {23, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Link"},
+    {24, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Union"},
+    {25, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothUnion"},
+    {26, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Subtract"},
+    {27, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothSubtract"},
+    {28, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Intersect"},
+    {29, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothIntersect"},
+    {30, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Xor"},
+    {31, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothMax"},
+    {32, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothUnionCubic"},
+    {33, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothSubtractCubic"},
+    {34, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothIntersectCubic"},
+    {35, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "Round"},
+    {36, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "Onion"},
+    {37, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Transform"},
+    {38, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Elongate"},
+    {39, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Twist"},
+    {40, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Bend"},
+    {41, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "MirrorX"},
+    {42, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "MirrorY"},
+    {43, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "MirrorZ"},
+    {44, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "RepeatInfinite"},
+    {45, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "RepeatLimited"},
+    {46, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Revolution"},
+    {56, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSin"},
+    {57, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathCos"},
+    {58, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSmoothstep"},
+    {59, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathRemap"},
+    {60, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathAdd"},
+    {61, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathSub"},
+    {62, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathMul"},
+    {63, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathDiv"},
+    {64, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathMin"},
+    {65, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathMax"},
+    {66, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathClamp"},
+    {67, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathAbs"},
+    {68, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathFrac"},
+    {69, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathPow"},
+    {70, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSqrt"},
+    {71, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, "MathLerp"},
+    {72, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathNegate"},
+    {73, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, "PositionChannel"},
+    {74, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Displacement"},
+    {75, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathStep"},
+    {76, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSign"},
+    {77, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSaturate"},
+    {78, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathExp"},
+    {79, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathLog"},
+    {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathLog2"},
+    {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, "Select"},
+    {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, "DistanceTo"},
+    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, "Output"},
+    {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, "PushParam"},
+    {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, "ReadParam"},
+    {97, RecipeExecutionClass::Elementwise, RecipeControlBehavior::RestorePosition, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::RestorePosition, true, false, 1, 1, 1, 0, "RestorePos"},
+    {98, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, "PushFloat3"},
+    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, "ComposeFloat3"},
+    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 1, 1, 0, 0, "Passthrough"},
+    {101, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 3, 1, 0, 0, "DecomposeFloat3"},
+    {102, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Add"},
+    {103, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Sub"},
+    {104, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3MulComponentWise"},
+    {105, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Min"},
+    {106, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Max"},
+    {107, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 4, 3, 0, 0, "Float3ScalarMul"},
+    {108, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 1, 0, 0, "Float3Dot"},
+    {109, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 3, 3, 0, 0, "Float3Normalize"},
+    {111, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, "ReadParamFloat3"},
+    {112, RecipeExecutionClass::Elementwise, RecipeControlBehavior::DeclarePosition, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 3, 0, 0, 0, "DeclarePosition"},
+    {113, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::InvokeRecipe, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, "InvokeRecipe"},
 }};
 
 inline yk::simd4::f32 SdfCore_SphereSimd4(yk::simd4::f32x3 p, glm::vec3 center, float radius) {
@@ -308,6 +401,10 @@ inline yk::simd4::f32 SdfCore_SphereSimd4(yk::simd4::f32x3 p, glm::vec3 center, 
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_SphereGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 center, yk::simd4::dual radius) {
+    return ((yk::simd4::sqrt_lanes((((yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col0 * yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col0) + (yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col1 * yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col1)) + (yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col2 * yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z)).yk_col2))) - radius));
+}
+
 inline yk::simd4::f32 SdfCore_BoxSimd4(yk::simd4::f32x3 p, glm::vec3 b) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -316,6 +413,11 @@ inline yk::simd4::f32 SdfCore_BoxSimd4(yk::simd4::f32x3 p, glm::vec3 b) {
         out[lane] = SdfCore_Box(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), b);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_BoxGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 b) {
+    yk::simd4::dual3 q = yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - b.x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - b.y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - b.z));
+    return ((yk::simd4::sqrt_lanes((((yk::simd4::max(q, 0.0f).yk_col0 * yk::simd4::max(q, 0.0f).yk_col0) + (yk::simd4::max(q, 0.0f).yk_col1 * yk::simd4::max(q, 0.0f).yk_col1)) + (yk::simd4::max(q, 0.0f).yk_col2 * yk::simd4::max(q, 0.0f).yk_col2))) + yk::simd4::min(yk::simd4::max(q.yk_col0, yk::simd4::max(q.yk_col1, q.yk_col2)), 0.0f)));
 }
 
 inline yk::simd4::f32 SdfCore_BoxRoundedSimd4(yk::simd4::f32x3 p, glm::vec3 halfExtents, float roundRadius) {
@@ -328,6 +430,11 @@ inline yk::simd4::f32 SdfCore_BoxRoundedSimd4(yk::simd4::f32x3 p, glm::vec3 half
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_BoxRoundedGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 halfExtents, yk::simd4::dual roundRadius) {
+    yk::simd4::dual3 q = yk::simd4::dual3((yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - halfExtents.x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - halfExtents.y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - halfExtents.z)).yk_col0 + roundRadius), (yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - halfExtents.x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - halfExtents.y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - halfExtents.z)).yk_col1 + roundRadius), (yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 - halfExtents.x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 - halfExtents.y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 - halfExtents.z)).yk_col2 + roundRadius));
+    return ((((yk::simd4::sqrt_lanes((((yk::simd4::max(q, 0.0f).yk_col0 * yk::simd4::max(q, 0.0f).yk_col0) + (yk::simd4::max(q, 0.0f).yk_col1 * yk::simd4::max(q, 0.0f).yk_col1)) + (yk::simd4::max(q, 0.0f).yk_col2 * yk::simd4::max(q, 0.0f).yk_col2))) + yk::simd4::min(yk::simd4::max(q.yk_col0, yk::simd4::max(q.yk_col1, q.yk_col2)), 0.0f))) - roundRadius));
+}
+
 inline yk::simd4::f32 SdfCore_CapsuleSimd4(yk::simd4::f32x3 p, float height, float radius) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -336,6 +443,12 @@ inline yk::simd4::f32 SdfCore_CapsuleSimd4(yk::simd4::f32x3 p, float height, flo
         out[lane] = SdfCore_Capsule(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), height, radius);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_CapsuleGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual height, yk::simd4::dual radius) {
+    yk::simd4::dual3 localP = p;
+    localP.yk_col1 -= yk::simd4::clamp(localP.yk_col1, -height, height);
+    return ((yk::simd4::sqrt_lanes((((localP.yk_col0 * localP.yk_col0) + (localP.yk_col1 * localP.yk_col1)) + (localP.yk_col2 * localP.yk_col2))) - radius));
 }
 
 inline yk::simd4::f32 SdfCore_CylinderSimd4(yk::simd4::f32x3 p, float height, float radius) {
@@ -348,7 +461,16 @@ inline yk::simd4::f32 SdfCore_CylinderSimd4(yk::simd4::f32x3 p, float height, fl
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_CylinderGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual height, yk::simd4::dual radius) {
+    yk::simd4::dual2 d = yk::simd4::dual2((math.length(yk::simd4::dual2(p.x, p.z)) - radius), (math.abs(p.y) - height));
+    return ((yk::simd4::min(yk::simd4::max(d.x, d.y), 0.0f) + yk::simd4::length(yk::simd4::max(d, 0.0f))));
+}
+
 inline yk::simd4::f32 SdfCore_PlaneSimd4(yk::simd4::f32x3 p, glm::vec3 normal, float distance) {
+    return ((((((p.yk_col0 * normal.x) + (p.yk_col1 * normal.y)) + (p.yk_col2 * normal.z))) + distance));
+}
+
+inline yk::simd4::dual SdfCore_PlaneGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 normal, yk::simd4::dual distance) {
     return ((((((p.yk_col0 * normal.x) + (p.yk_col1 * normal.y)) + (p.yk_col2 * normal.z))) + distance));
 }
 
@@ -362,6 +484,11 @@ inline yk::simd4::f32 SdfCore_TorusSimd4(yk::simd4::f32x3 p, float majorRadius, 
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_TorusGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual majorRadius, yk::simd4::dual minorRadius) {
+    yk::simd4::dual2 q = yk::simd4::dual2((math.length(yk::simd4::dual2(p.x, p.z)) - majorRadius), p.y);
+    return ((yk::simd4::length(q) - minorRadius));
+}
+
 inline yk::simd4::f32 SdfCore_EllipsoidSimd4(yk::simd4::f32x3 p, glm::vec3 radii) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -370,6 +497,13 @@ inline yk::simd4::f32 SdfCore_EllipsoidSimd4(yk::simd4::f32x3 p, glm::vec3 radii
         out[lane] = SdfCore_Ellipsoid(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), radii);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_EllipsoidGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 radii) {
+    yk::simd4::dual3 safeRadii = yk::simd4::max(radii, 0.0001f);
+    yk::simd4::dual k0 = yk::simd4::sqrt_lanes((((yk::simd4::dual3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col0 * yk::simd4::dual3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col0) + (yk::simd4::dual3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col1 * yk::simd4::dual3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col1)) + (yk::simd4::dual3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col2 * yk::simd4::dual3((p.yk_col0 / safeRadii.yk_col0), (p.yk_col1 / safeRadii.yk_col1), (p.yk_col2 / safeRadii.yk_col2)).yk_col2)));
+    yk::simd4::dual k1 = yk::simd4::sqrt_lanes((((yk::simd4::dual3((p.yk_col0 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col0 * yk::simd4::dual3((p.yk_col0 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col0) + (yk::simd4::dual3((p.yk_col0 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col1 * yk::simd4::dual3((p.yk_col0 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col1)) + (yk::simd4::dual3((p.yk_col0 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col2 * yk::simd4::dual3((p.yk_col0 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col0), (p.yk_col1 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col1), (p.yk_col2 / (yk::simd4::dual3((safeRadii.yk_col0 * safeRadii.yk_col0), (safeRadii.yk_col1 * safeRadii.yk_col1), (safeRadii.yk_col2 * safeRadii.yk_col2))).yk_col2)).yk_col2)));
+    return ((((k0 * (((k0 - 1.0f))))) / yk::simd4::max(k1, 0.0001f)));
 }
 
 inline yk::simd4::f32 SdfCore_HollowCylinderSimd4(yk::simd4::f32x3 p, float halfLen, float outerR, float wall) {
@@ -382,6 +516,12 @@ inline yk::simd4::f32 SdfCore_HollowCylinderSimd4(yk::simd4::f32x3 p, float half
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_HollowCylinderGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual halfLen, yk::simd4::dual outerR, yk::simd4::dual wall) {
+    yk::simd4::dual2 d = yk::simd4::dual2((math.length(yk::simd4::dual2(p.x, p.z)) - outerR), (math.abs(p.y) - halfLen));
+    yk::simd4::dual cyl = ((yk::simd4::min(yk::simd4::max(d.x, d.y), 0.0f) + yk::simd4::length(yk::simd4::max(d, 0.0f))));
+    return ((yk::simd4::abs(cyl) - wall));
+}
+
 inline yk::simd4::f32 SdfCore_TaperedCylinderSimd4(yk::simd4::f32x3 p, float height, float r1, float r2) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -390,6 +530,16 @@ inline yk::simd4::f32 SdfCore_TaperedCylinderSimd4(yk::simd4::f32x3 p, float hei
         out[lane] = SdfCore_TaperedCylinder(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), height, r1, r2);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_TaperedCylinderGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual height, yk::simd4::dual r1, yk::simd4::dual r2) {
+    yk::simd4::dual2 q = yk::simd4::dual2(math.length(yk::simd4::dual2(p.x, p.z)), p.y);
+    yk::simd4::dual2 k1 = yk::simd4::dual2(r2, height);
+    yk::simd4::dual2 k2 = yk::simd4::dual2((r2 - r1), (2.0f * height));
+    yk::simd4::dual2 ca = yk::simd4::dual2((q.x - math.min(q.x, yk::simd4::select(r2,r1,((q.y < 0.0f))))), (math.abs(q.y) - height));
+    yk::simd4::dual2 cb = ((((q - k1)) + ((k2 * yk::simd4::saturate(((yk::simd4::dot(((k1 - q)), k2) / yk::simd4::dot(k2, k2))))))));
+    yk::simd4::dual s = yk::simd4::select(1.0f, -1.0f, (((((cb.x < 0.0f)) & ((ca.y < 0.0f))))));
+    return ((s * yk::simd4::sqrt_lanes(yk::simd4::min(yk::simd4::dot(ca, ca), yk::simd4::dot(cb, cb)))));
 }
 
 inline yk::simd4::f32 SdfCore_CappedTorusSimd4(yk::simd4::f32x3 p, glm::vec2 sc, float majorRadius, float minorRadius) {
@@ -402,6 +552,13 @@ inline yk::simd4::f32 SdfCore_CappedTorusSimd4(yk::simd4::f32x3 p, glm::vec2 sc,
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_CappedTorusGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual2 sc, yk::simd4::dual majorRadius, yk::simd4::dual minorRadius) {
+    yk::simd4::dual3 localP = p;
+    localP.yk_col0 = yk::simd4::abs(localP.yk_col0);
+    yk::simd4::dual k = yk::simd4::select(yk::simd4::length(yk::simd4::dual2(localP.x, localP.z)), yk::simd4::dot(yk::simd4::dual2(localP.x, localP.z), sc), (((((sc.y * localP.yk_col0)) > ((sc.x * localP.yk_col2))))));
+    return ((yk::simd4::sqrt_lanes(((((((((localP.yk_col0 * localP.yk_col0) + (localP.yk_col1 * localP.yk_col1)) + (localP.yk_col2 * localP.yk_col2))) + ((majorRadius * majorRadius)))) - ((((2.0f * majorRadius)) * k))))) - minorRadius));
+}
+
 inline yk::simd4::f32 SdfCore_ConeSimd4(yk::simd4::f32x3 p, glm::vec2 angle, float height) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -410,6 +567,17 @@ inline yk::simd4::f32 SdfCore_ConeSimd4(yk::simd4::f32x3 p, glm::vec2 angle, flo
         out[lane] = SdfCore_Cone(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), angle, height);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_ConeGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual2 angle, yk::simd4::dual height) {
+    yk::simd4::dual2 q = ((height * yk::simd4::dual2((angle.x / angle.y), -1.0f)));
+    yk::simd4::dual2 w = yk::simd4::dual2(math.length(yk::simd4::dual2(p.x, p.z)), p.y);
+    yk::simd4::dual2 a = ((w - ((q * yk::simd4::saturate(((yk::simd4::dot(w, q) / yk::simd4::dot(q, q))))))));
+    yk::simd4::dual2 b = ((w - ((q * yk::simd4::dual2(math.saturate((w.x / q.x)), 1.0f)))));
+    yk::simd4::dual k = yk::simd4::sign(q.y);
+    yk::simd4::dual d = yk::simd4::min(yk::simd4::dot(a, a), yk::simd4::dot(b, b));
+    yk::simd4::dual s = yk::simd4::max(((k * (((((w.x * q.y)) - ((w.y * q.x))))))), ((k * (((w.y - q.y))))));
+    return ((yk::simd4::sqrt_lanes(d) * yk::simd4::sign(s)));
 }
 
 inline yk::simd4::f32 SdfCore_RoundConeSimd4(yk::simd4::f32x3 p, float r1, float r2, float height) {
@@ -422,6 +590,19 @@ inline yk::simd4::f32 SdfCore_RoundConeSimd4(yk::simd4::f32x3 p, float r1, float
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_RoundConeGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual r1, yk::simd4::dual r2, yk::simd4::dual height) {
+    yk::simd4::dual2 q = yk::simd4::dual2(math.length(yk::simd4::dual2(p.x, p.z)), p.y);
+    yk::simd4::dual b = (((((r1 - r2))) / height));
+    yk::simd4::dual a = yk::simd4::sqrt_lanes(((1.0f - ((b * b)))));
+    yk::simd4::dual k = yk::simd4::dot(q, yk::simd4::dual2(-b, a));
+    yk::simd4::dual regionA = ((yk::simd4::length(q) - r1));
+    yk::simd4::dual regionB = ((yk::simd4::length(((q - yk::simd4::dual2(0.0f, height)))) - r2));
+    yk::simd4::dual regionC = ((yk::simd4::dot(q, yk::simd4::dual2(a, b)) - r1));
+    yk::simd4::dual d = yk::simd4::select(regionC, regionA, (((k < 0.0f))));
+    d = yk::simd4::select(d, regionB, (((k > ((a * height))))));
+    return d;
+}
+
 inline yk::simd4::f32 SdfCore_FakeRoundConeSimd4(yk::simd4::f32x3 p, float r1, float r2, float height) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -430,6 +611,13 @@ inline yk::simd4::f32 SdfCore_FakeRoundConeSimd4(yk::simd4::f32x3 p, float r1, f
         out[lane] = SdfCore_FakeRoundCone(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), r1, r2, height);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_FakeRoundConeGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual r1, yk::simd4::dual r2, yk::simd4::dual height) {
+    yk::simd4::dual2 q = yk::simd4::dual2(math.length(yk::simd4::dual2(p.x, p.z)), p.y);
+    yk::simd4::dual h = yk::simd4::saturate(((q.y / height)));
+    yk::simd4::dual r = yk::simd4::lerp(r1, r2, h);
+    return ((yk::simd4::length(yk::simd4::dual2(q.x, (q.y - (height * h)))) - r));
 }
 
 inline yk::simd4::f32 SdfCore_SegmentSimd4(yk::simd4::f32x3 p, glm::vec3 a, glm::vec3 b, float radius) {
@@ -442,8 +630,20 @@ inline yk::simd4::f32 SdfCore_SegmentSimd4(yk::simd4::f32x3 p, glm::vec3 a, glm:
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_SegmentGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 a, yk::simd4::dual3 b, yk::simd4::dual radius) {
+    yk::simd4::dual3 pa = yk::simd4::dual3((p.yk_col0 - a.x), (p.yk_col1 - a.y), (p.yk_col2 - a.z));
+    yk::simd4::dual3 ba = ((b - a));
+    yk::simd4::dual h = yk::simd4::saturate(((((((pa.yk_col0 * ba.yk_col0) + (pa.yk_col1 * ba.yk_col1)) + (pa.yk_col2 * ba.yk_col2))) / ((((ba.yk_col0 * ba.yk_col0) + (ba.yk_col1 * ba.yk_col1)) + (ba.yk_col2 * ba.yk_col2))))));
+    return ((yk::simd4::sqrt_lanes((((yk::simd4::dual3((pa.yk_col0 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col0 * yk::simd4::dual3((pa.yk_col0 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col0) + (yk::simd4::dual3((pa.yk_col0 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col1 * yk::simd4::dual3((pa.yk_col0 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col1)) + (yk::simd4::dual3((pa.yk_col0 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col2 * yk::simd4::dual3((pa.yk_col0 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col0), (pa.yk_col1 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col1), (pa.yk_col2 - yk::simd4::dual3((ba.yk_col0 * h), (ba.yk_col1 * h), (ba.yk_col2 * h)).yk_col2)).yk_col2))) - radius));
+}
+
 inline yk::simd4::f32 SdfCore_TriangularPrismSimd4(yk::simd4::f32x3 p, glm::vec2 h) {
     yk::simd4::f32x3 q = yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2));
+    return yk::simd4::max(((q.yk_col2 - h.y)), ((yk::simd4::max(((((q.yk_col0 * 0.866025f)) + ((p.yk_col1 * 0.5f)))), -p.yk_col1) - ((h.x * 0.5f)))));
+}
+
+inline yk::simd4::dual SdfCore_TriangularPrismGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual2 h) {
+    yk::simd4::dual3 q = yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2));
     return yk::simd4::max(((q.yk_col2 - h.y)), ((yk::simd4::max(((((q.yk_col0 * 0.866025f)) + ((p.yk_col1 * 0.5f)))), -p.yk_col1) - ((h.x * 0.5f)))));
 }
 
@@ -457,6 +657,21 @@ inline yk::simd4::f32 SdfCore_PyramidSimd4(yk::simd4::f32x3 p, float height) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_PyramidGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual height) {
+    yk::simd4::dual m2 = ((((height * height)) + 0.25f));
+    yk::simd4::dual3 q = yk::simd4::dual3(yk::simd4::abs(p.yk_col0), p.yk_col1, yk::simd4::abs(p.yk_col2));
+     = yk::simd4::select(q, yk::simd4::dual3(q.yk_col2, q.yk_col1, q.yk_col0), (((q.yk_col2 > q.yk_col0))));
+    q.yk_col0 -= 0.5f;
+    q.yk_col2 -= 0.5f;
+    yk::simd4::dual3 a = yk::simd4::dual3(q.yk_col2, ((((height * q.yk_col1)) - ((0.5f * q.yk_col0)))), ((((height * q.yk_col0)) + ((0.5f * q.yk_col1)))));
+    yk::simd4::dual s = yk::simd4::max(-a.yk_col0, 0.0f);
+    yk::simd4::dual t = yk::simd4::saturate((((((a.yk_col1 - ((0.5f * q.yk_col2))))) / (((m2 + 0.25f))))));
+    yk::simd4::dual da = ((((((m2 * (((a.yk_col0 + s))))) * (((a.yk_col0 + s))))) + ((a.yk_col1 * a.yk_col1))));
+    yk::simd4::dual db = ((((((m2 * (((a.yk_col0 + ((0.5f * t))))))) * (((a.yk_col0 + ((0.5f * t))))))) + (((((a.yk_col1 - ((m2 * t))))) * (((a.yk_col1 - ((m2 * t)))))))));
+    yk::simd4::dual d2 = yk::simd4::select(yk::simd4::min(da, db), 0.0f, (((yk::simd4::min(a.yk_col1, ((((-a.yk_col0 * m2)) - ((a.yk_col1 * 0.5f))))) > 0.0f))));
+    return ((yk::simd4::sqrt_lanes((((((d2 + ((a.yk_col2 * a.yk_col2))))) / m2))) * yk::simd4::sign(yk::simd4::max(a.yk_col2, -q.yk_col1))));
+}
+
 inline yk::simd4::f32 SdfCore_HexPrismSimd4(yk::simd4::f32x3 p, glm::vec2 h) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -465,6 +680,17 @@ inline yk::simd4::f32 SdfCore_HexPrismSimd4(yk::simd4::f32x3 p, glm::vec2 h) {
         out[lane] = SdfCore_HexPrism(glm::vec3(p_x[lane], p_y[lane], p_z[lane]), h);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_HexPrismGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual2 h) {
+    yk::simd4::dual k0 = 0.8660254f;
+    yk::simd4::dual kz = 0.57735f;
+    yk::simd4::dual3 q = yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2));
+    yk::simd4::dual dotVal = yk::simd4::min(yk::simd4::dot(yk::simd4::dual2(-k0, 0.5f), yk::simd4::dual2(q.x, q.z)), 0.0f);
+    q.yk_col0 -= ((((2.0f * dotVal)) * (-k0)));
+    q.yk_col2 -= ((((2.0f * dotVal)) * 0.5f));
+    yk::simd4::dual2 d = yk::simd4::dual2((math.length((yk::simd4::dual2(q.x, q.z) - yk::simd4::dual2(math.clamp(q.x, (-kz * h.x), (kz * h.x)), h.x))) * math.sign((q.z - h.x))), (q.y - h.y));
+    return ((yk::simd4::min(yk::simd4::max(d.x, d.y), 0.0f) + yk::simd4::length(yk::simd4::max(d, 0.0f))));
 }
 
 inline yk::simd4::f32 SdfCore_LinkSimd4(yk::simd4::f32x3 p, float halfLength, float majorRadius, float minorRadius) {
@@ -477,7 +703,16 @@ inline yk::simd4::f32 SdfCore_LinkSimd4(yk::simd4::f32x3 p, float halfLength, fl
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_LinkGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual halfLength, yk::simd4::dual majorRadius, yk::simd4::dual minorRadius) {
+    yk::simd4::dual3 q = yk::simd4::dual3(p.yk_col0, yk::simd4::max(((yk::simd4::abs(p.yk_col1) - halfLength)), 0.0f), p.yk_col2);
+    return ((yk::simd4::length(yk::simd4::dual2((math.length(yk::simd4::dual2(q.x, q.y)) - majorRadius), q.z)) - minorRadius));
+}
+
 inline yk::simd4::f32 SdfCore_UnionSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return yk::simd4::min(a, b);
+}
+
+inline yk::simd4::dual SdfCore_UnionGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return yk::simd4::min(a, b);
 }
 
@@ -486,7 +721,16 @@ inline yk::simd4::f32 SdfCore_SmoothUnionSimd4(yk::simd4::f32 a, yk::simd4::f32 
     return ((yk::simd4::lerp(b, a, h) - ((((k * h)) * (((1.0f - h)))))));
 }
 
+inline yk::simd4::dual SdfCore_SmoothUnionGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = yk::simd4::saturate(((0.5f + ((((0.5f * (((b - a))))) / k)))));
+    return ((yk::simd4::lerp(b, a, h) - ((((k * h)) * (((1.0f - h)))))));
+}
+
 inline yk::simd4::f32 SdfCore_SubtractSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return yk::simd4::max(a, -b);
+}
+
+inline yk::simd4::dual SdfCore_SubtractGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return yk::simd4::max(a, -b);
 }
 
@@ -495,7 +739,16 @@ inline yk::simd4::f32 SdfCore_SmoothSubtractSimd4(yk::simd4::f32 a, yk::simd4::f
     return ((yk::simd4::lerp(a, -b, h) + ((((k * h)) * (((1.0f - h)))))));
 }
 
+inline yk::simd4::dual SdfCore_SmoothSubtractGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = yk::simd4::saturate(((0.5f - ((((0.5f * (((b + a))))) / k)))));
+    return ((yk::simd4::lerp(a, -b, h) + ((((k * h)) * (((1.0f - h)))))));
+}
+
 inline yk::simd4::f32 SdfCore_IntersectSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return yk::simd4::max(a, b);
+}
+
+inline yk::simd4::dual SdfCore_IntersectGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return yk::simd4::max(a, b);
 }
 
@@ -504,7 +757,16 @@ inline yk::simd4::f32 SdfCore_SmoothIntersectSimd4(yk::simd4::f32 a, yk::simd4::
     return ((yk::simd4::lerp(b, a, h) + ((((k * h)) * (((1.0f - h)))))));
 }
 
+inline yk::simd4::dual SdfCore_SmoothIntersectGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = yk::simd4::saturate(((0.5f - ((((0.5f * (((b - a))))) / k)))));
+    return ((yk::simd4::lerp(b, a, h) + ((((k * h)) * (((1.0f - h)))))));
+}
+
 inline yk::simd4::f32 SdfCore_XorSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return yk::simd4::max(yk::simd4::min(a, b), -yk::simd4::max(a, b));
+}
+
+inline yk::simd4::dual SdfCore_XorGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return yk::simd4::max(yk::simd4::min(a, b), -yk::simd4::max(a, b));
 }
 
@@ -513,8 +775,18 @@ inline yk::simd4::f32 SdfCore_SmoothMaxSimd4(yk::simd4::f32 a, yk::simd4::f32 b,
     return ((yk::simd4::max(a, b) + ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
 }
 
+inline yk::simd4::dual SdfCore_SmoothMaxGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = ((yk::simd4::max(((k - yk::simd4::abs(((a - b))))), 0.0f) / k));
+    return ((yk::simd4::max(a, b) + ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
+}
+
 inline yk::simd4::f32 SdfCore_SmoothUnionCubicSimd4(yk::simd4::f32 a, yk::simd4::f32 b, float k) {
     yk::simd4::f32 h = ((yk::simd4::max(((k - yk::simd4::abs(((a - b))))), 0.0f) / k));
+    return ((yk::simd4::min(a, b) - ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
+}
+
+inline yk::simd4::dual SdfCore_SmoothUnionCubicGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = ((yk::simd4::max(((k - yk::simd4::abs(((a - b))))), 0.0f) / k));
     return ((yk::simd4::min(a, b) - ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
 }
 
@@ -523,8 +795,18 @@ inline yk::simd4::f32 SdfCore_SmoothSubtractCubicSimd4(yk::simd4::f32 a, yk::sim
     return ((yk::simd4::max(a, -b) + ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
 }
 
+inline yk::simd4::dual SdfCore_SmoothSubtractCubicGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = ((yk::simd4::max(((k - yk::simd4::abs(((-b - a))))), 0.0f) / k));
+    return ((yk::simd4::max(a, -b) + ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
+}
+
 inline yk::simd4::f32 SdfCore_SmoothIntersectCubicSimd4(yk::simd4::f32 a, yk::simd4::f32 b, float k) {
     yk::simd4::f32 h = ((yk::simd4::max(((k - yk::simd4::abs(((a - b))))), 0.0f) / k));
+    return ((yk::simd4::max(a, b) + ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
+}
+
+inline yk::simd4::dual SdfCore_SmoothIntersectCubicGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual k) {
+    yk::simd4::dual h = ((yk::simd4::max(((k - yk::simd4::abs(((a - b))))), 0.0f) / k));
     return ((yk::simd4::max(a, b) + ((((((((h * h)) * h)) * k)) * (((1.0f / 6.0f)))))));
 }
 
@@ -532,7 +814,15 @@ inline yk::simd4::f32 SdfCore_RoundSimd4(yk::simd4::f32 d, float r) {
     return ((d - r));
 }
 
+inline yk::simd4::dual SdfCore_RoundGradientSimd4(yk::simd4::dual d, yk::simd4::dual r) {
+    return ((d - r));
+}
+
 inline yk::simd4::f32 SdfCore_OnionSimd4(yk::simd4::f32 d, float r) {
+    return ((yk::simd4::abs(d) - r));
+}
+
+inline yk::simd4::dual SdfCore_OnionGradientSimd4(yk::simd4::dual d, yk::simd4::dual r) {
     return ((yk::simd4::abs(d) - r));
 }
 
@@ -545,8 +835,21 @@ inline yk::simd4::f32x3 SdfCore_TransformSimd4(yk::simd4::f32x3 p, glm::vec3 tra
     return yk::simd4::f32x3((rotated.yk_col0 * invScale.x), (rotated.yk_col1 * invScale.y), (rotated.yk_col2 * invScale.z));
 }
 
+inline yk::simd4::dual3 SdfCore_TransformGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 translation, glm::vec4 invRotXYZW, yk::simd4::dual3 invScale) {
+    yk::simd4::dual3 v = yk::simd4::dual3((p.yk_col0 - translation.x), (p.yk_col1 - translation.y), (p.yk_col2 - translation.z));
+    yk::simd4::dual3 qv = yk::simd4::dual3(invRotXYZW.x, invRotXYZW.y, invRotXYZW.z);
+    yk::simd4::dual qw = invRotXYZW.w;
+    yk::simd4::dual3 t = yk::simd4::dual3((2.0f * yk::simd4::dual3(((qv.yk_col1 * v.yk_col2) - (qv.yk_col2 * v.yk_col1)), ((qv.yk_col2 * v.yk_col0) - (qv.yk_col0 * v.yk_col2)), ((qv.yk_col0 * v.yk_col1) - (qv.yk_col1 * v.yk_col0))).yk_col0), (2.0f * yk::simd4::dual3(((qv.yk_col1 * v.yk_col2) - (qv.yk_col2 * v.yk_col1)), ((qv.yk_col2 * v.yk_col0) - (qv.yk_col0 * v.yk_col2)), ((qv.yk_col0 * v.yk_col1) - (qv.yk_col1 * v.yk_col0))).yk_col1), (2.0f * yk::simd4::dual3(((qv.yk_col1 * v.yk_col2) - (qv.yk_col2 * v.yk_col1)), ((qv.yk_col2 * v.yk_col0) - (qv.yk_col0 * v.yk_col2)), ((qv.yk_col0 * v.yk_col1) - (qv.yk_col1 * v.yk_col0))).yk_col2));
+    yk::simd4::dual3 rotated = yk::simd4::dual3((yk::simd4::dual3((v.yk_col0 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col0), (v.yk_col1 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col1), (v.yk_col2 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col2)).yk_col0 + yk::simd4::dual3(((qv.yk_col1 * t.yk_col2) - (qv.yk_col2 * t.yk_col1)), ((qv.yk_col2 * t.yk_col0) - (qv.yk_col0 * t.yk_col2)), ((qv.yk_col0 * t.yk_col1) - (qv.yk_col1 * t.yk_col0))).yk_col0), (yk::simd4::dual3((v.yk_col0 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col0), (v.yk_col1 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col1), (v.yk_col2 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col2)).yk_col1 + yk::simd4::dual3(((qv.yk_col1 * t.yk_col2) - (qv.yk_col2 * t.yk_col1)), ((qv.yk_col2 * t.yk_col0) - (qv.yk_col0 * t.yk_col2)), ((qv.yk_col0 * t.yk_col1) - (qv.yk_col1 * t.yk_col0))).yk_col1), (yk::simd4::dual3((v.yk_col0 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col0), (v.yk_col1 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col1), (v.yk_col2 + yk::simd4::dual3((qw * t.yk_col0), (qw * t.yk_col1), (qw * t.yk_col2)).yk_col2)).yk_col2 + yk::simd4::dual3(((qv.yk_col1 * t.yk_col2) - (qv.yk_col2 * t.yk_col1)), ((qv.yk_col2 * t.yk_col0) - (qv.yk_col0 * t.yk_col2)), ((qv.yk_col0 * t.yk_col1) - (qv.yk_col1 * t.yk_col0))).yk_col2));
+    return yk::simd4::dual3((rotated.yk_col0 * invScale.x), (rotated.yk_col1 * invScale.y), (rotated.yk_col2 * invScale.z));
+}
+
 inline yk::simd4::f32x3 SdfCore_ElongateSimd4(yk::simd4::f32x3 p, glm::vec3 h) {
     return yk::simd4::f32x3((p.yk_col0 - yk::simd4::f32x3(yk::simd4::clamp(p.yk_col0, -h.x, h.x), yk::simd4::clamp(p.yk_col1, -h.y, h.y), yk::simd4::clamp(p.yk_col2, -h.z, h.z)).yk_col0), (p.yk_col1 - yk::simd4::f32x3(yk::simd4::clamp(p.yk_col0, -h.x, h.x), yk::simd4::clamp(p.yk_col1, -h.y, h.y), yk::simd4::clamp(p.yk_col2, -h.z, h.z)).yk_col1), (p.yk_col2 - yk::simd4::f32x3(yk::simd4::clamp(p.yk_col0, -h.x, h.x), yk::simd4::clamp(p.yk_col1, -h.y, h.y), yk::simd4::clamp(p.yk_col2, -h.z, h.z)).yk_col2));
+}
+
+inline yk::simd4::dual3 SdfCore_ElongateGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 h) {
+    return yk::simd4::dual3((p.yk_col0 - yk::simd4::dual3(yk::simd4::clamp(p.yk_col0, -h.x, h.x), yk::simd4::clamp(p.yk_col1, -h.y, h.y), yk::simd4::clamp(p.yk_col2, -h.z, h.z)).yk_col0), (p.yk_col1 - yk::simd4::dual3(yk::simd4::clamp(p.yk_col0, -h.x, h.x), yk::simd4::clamp(p.yk_col1, -h.y, h.y), yk::simd4::clamp(p.yk_col2, -h.z, h.z)).yk_col1), (p.yk_col2 - yk::simd4::dual3(yk::simd4::clamp(p.yk_col0, -h.x, h.x), yk::simd4::clamp(p.yk_col1, -h.y, h.y), yk::simd4::clamp(p.yk_col2, -h.z, h.z)).yk_col2));
 }
 
 inline yk::simd4::f32x3 SdfCore_TwistSimd4(yk::simd4::f32x3 p, float k) {
@@ -560,6 +863,13 @@ inline yk::simd4::f32x3 SdfCore_TwistSimd4(yk::simd4::f32x3 p, float k) {
     return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
 }
 
+inline yk::simd4::dual3 SdfCore_TwistGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual k) {
+    yk::simd4::dual c = yk::simd4::cos(((k * p.yk_col1)));
+    yk::simd4::dual s = yk::simd4::sin(((k * p.yk_col1)));
+    yk::simd4::dual2 q = yk::simd4::dual2(((c * p.x) - (s * p.z)), ((s * p.x) + (c * p.z)));
+    return yk::simd4::dual3(q.x, p.yk_col1, q.y);
+}
+
 inline yk::simd4::f32x3 SdfCore_BendSimd4(yk::simd4::f32x3 p, float k) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -571,20 +881,43 @@ inline yk::simd4::f32x3 SdfCore_BendSimd4(yk::simd4::f32x3 p, float k) {
     return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
 }
 
+inline yk::simd4::dual3 SdfCore_BendGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual k) {
+    yk::simd4::dual c = yk::simd4::cos(((k * p.yk_col0)));
+    yk::simd4::dual s = yk::simd4::sin(((k * p.yk_col0)));
+    yk::simd4::dual2 q = yk::simd4::dual2(((c * p.x) - (s * p.y)), ((s * p.x) + (c * p.y)));
+    return yk::simd4::dual3(q.x, q.y, p.yk_col2);
+}
+
 inline yk::simd4::f32x3 SdfCore_MirrorXSimd4(yk::simd4::f32x3 p) {
     return yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), p.yk_col1, p.yk_col2);
+}
+
+inline yk::simd4::dual3 SdfCore_MirrorXGradientSimd4(yk::simd4::dual3 p) {
+    return yk::simd4::dual3(yk::simd4::abs(p.yk_col0), p.yk_col1, p.yk_col2);
 }
 
 inline yk::simd4::f32x3 SdfCore_MirrorYSimd4(yk::simd4::f32x3 p) {
     return yk::simd4::f32x3(p.yk_col0, yk::simd4::abs(p.yk_col1), p.yk_col2);
 }
 
+inline yk::simd4::dual3 SdfCore_MirrorYGradientSimd4(yk::simd4::dual3 p) {
+    return yk::simd4::dual3(p.yk_col0, yk::simd4::abs(p.yk_col1), p.yk_col2);
+}
+
 inline yk::simd4::f32x3 SdfCore_MirrorZSimd4(yk::simd4::f32x3 p) {
     return yk::simd4::f32x3(p.yk_col0, p.yk_col1, yk::simd4::abs(p.yk_col2));
 }
 
+inline yk::simd4::dual3 SdfCore_MirrorZGradientSimd4(yk::simd4::dual3 p) {
+    return yk::simd4::dual3(p.yk_col0, p.yk_col1, yk::simd4::abs(p.yk_col2));
+}
+
 inline yk::simd4::f32x3 SdfCore_RepeatInfiniteSimd4(yk::simd4::f32x3 p, glm::vec3 spacing) {
     return yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col0, spacing.x), yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col1, spacing.y), yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col2, spacing.z)).yk_col0 - ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col0, spacing.x), yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col1, spacing.y), yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col2, spacing.z)).yk_col1 - ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col0, spacing.x), yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col1, spacing.y), yk::simd4::mod(yk::simd4::f32x3((yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::f32x3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col2, spacing.z)).yk_col2 - ((spacing * 0.5f)).z));
+}
+
+inline yk::simd4::dual3 SdfCore_RepeatInfiniteGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 spacing) {
+    return yk::simd4::dual3((yk::simd4::dual3(yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col0, spacing.x), yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col1, spacing.y), yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col2, spacing.z)).yk_col0 - ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col0, spacing.x), yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col1, spacing.y), yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col2, spacing.z)).yk_col1 - ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col0, spacing.x), yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col1, spacing.y), yk::simd4::mod(yk::simd4::dual3((yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col0 + ((spacing * 0.5f)).x), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col1 + ((spacing * 0.5f)).y), (yk::simd4::dual3(yk::simd4::abs(p.yk_col0), yk::simd4::abs(p.yk_col1), yk::simd4::abs(p.yk_col2)).yk_col2 + ((spacing * 0.5f)).z)).yk_col2, spacing.z)).yk_col2 - ((spacing * 0.5f)).z));
 }
 
 inline yk::simd4::f32x3 SdfCore_RepeatLimitedSimd4(yk::simd4::f32x3 p, float spacing, glm::vec3 limit) {
@@ -598,6 +931,10 @@ inline yk::simd4::f32x3 SdfCore_RepeatLimitedSimd4(yk::simd4::f32x3 p, float spa
     return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
 }
 
+inline yk::simd4::dual3 SdfCore_RepeatLimitedGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual spacing, yk::simd4::dual3 limit) {
+    return yk::simd4::dual3((p.yk_col0 - ((spacing * yk::simd4::clamp(yk::simd4::round_lanes(yk::simd4::dual3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing))), -limit, limit)))), (p.yk_col1 - ((spacing * yk::simd4::clamp(yk::simd4::round_lanes(yk::simd4::dual3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing))), -limit, limit)))), (p.yk_col2 - ((spacing * yk::simd4::clamp(yk::simd4::round_lanes(yk::simd4::dual3((p.yk_col0 / spacing), (p.yk_col1 / spacing), (p.yk_col2 / spacing))), -limit, limit)))));
+}
+
 inline yk::simd4::f32x3 SdfCore_RevolutionSimd4(yk::simd4::f32x3 p, glm::vec3 center, float offset) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
     p.yk_col0.store_unaligned(p_x); p.yk_col1.store_unaligned(p_y); p.yk_col2.store_unaligned(p_z);
@@ -609,6 +946,12 @@ inline yk::simd4::f32x3 SdfCore_RevolutionSimd4(yk::simd4::f32x3 p, glm::vec3 ce
     return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
 }
 
+inline yk::simd4::dual3 SdfCore_RevolutionGradientSimd4(yk::simd4::dual3 p, yk::simd4::dual3 center, yk::simd4::dual offset) {
+    yk::simd4::dual3 pp = yk::simd4::dual3((p.yk_col0 - center.x), (p.yk_col1 - center.y), (p.yk_col2 - center.z));
+    yk::simd4::dual2 q = yk::simd4::dual2((math.length(yk::simd4::dual2(pp.x, pp.z)) - offset), pp.y);
+    return yk::simd4::dual3((yk::simd4::dual3(q.x, q.y, 0).yk_col0 + center.x), (yk::simd4::dual3(q.x, q.y, 0).yk_col1 + center.y), (yk::simd4::dual3(q.x, q.y, 0).yk_col2 + center.z));
+}
+
 inline yk::simd4::f32 SdfCore_MathSinSimd4(yk::simd4::f32 x, float frequency, float phase, float amplitude) {
     alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
     alignas(16) float out[4];
@@ -616,6 +959,10 @@ inline yk::simd4::f32 SdfCore_MathSinSimd4(yk::simd4::f32 x, float frequency, fl
         out[lane] = SdfCore_MathSin(x_lane[lane], frequency, phase, amplitude);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_MathSinGradientSimd4(yk::simd4::dual x, yk::simd4::dual frequency, yk::simd4::dual phase, yk::simd4::dual amplitude) {
+    return ((yk::simd4::sin(((((x * frequency)) + phase))) * amplitude));
 }
 
 inline yk::simd4::f32 SdfCore_MathCosSimd4(yk::simd4::f32 x, float frequency, float phase, float amplitude) {
@@ -627,7 +974,15 @@ inline yk::simd4::f32 SdfCore_MathCosSimd4(yk::simd4::f32 x, float frequency, fl
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_MathCosGradientSimd4(yk::simd4::dual x, yk::simd4::dual frequency, yk::simd4::dual phase, yk::simd4::dual amplitude) {
+    return ((yk::simd4::cos(((((x * frequency)) + phase))) * amplitude));
+}
+
 inline yk::simd4::f32 SdfCore_MathSmoothstepSimd4(yk::simd4::f32 x, float edge0, float edge1) {
+    return yk::simd4::smoothstep(edge0, edge1, x);
+}
+
+inline yk::simd4::dual SdfCore_MathSmoothstepGradientSimd4(yk::simd4::dual x, yk::simd4::dual edge0, yk::simd4::dual edge1) {
     return yk::simd4::smoothstep(edge0, edge1, x);
 }
 
@@ -635,7 +990,15 @@ inline yk::simd4::f32 SdfCore_MathRemapSimd4(yk::simd4::f32 x, float inMin, floa
     return ((outMin + (((((((x - inMin))) / yk::simd4::max(((inMax - inMin)), 1e-8f))) * (((outMax - outMin)))))));
 }
 
+inline yk::simd4::dual SdfCore_MathRemapGradientSimd4(yk::simd4::dual x, yk::simd4::dual inMin, yk::simd4::dual inMax, yk::simd4::dual outMin, yk::simd4::dual outMax) {
+    return ((outMin + (((((((x - inMin))) / yk::simd4::max(((inMax - inMin)), 1e-8f))) * (((outMax - outMin)))))));
+}
+
 inline yk::simd4::f32 SdfCore_MathAddSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return ((a + b));
+}
+
+inline yk::simd4::dual SdfCore_MathAddGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return ((a + b));
 }
 
@@ -643,7 +1006,15 @@ inline yk::simd4::f32 SdfCore_MathSubSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
     return ((a - b));
 }
 
+inline yk::simd4::dual SdfCore_MathSubGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
+    return ((a - b));
+}
+
 inline yk::simd4::f32 SdfCore_MathMulSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return ((a * b));
+}
+
+inline yk::simd4::dual SdfCore_MathMulGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return ((a * b));
 }
 
@@ -651,7 +1022,15 @@ inline yk::simd4::f32 SdfCore_MathDivSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
     return yk::simd4::select(0.0f, ((a / b)), ((b != 0.0f)));
 }
 
+inline yk::simd4::dual SdfCore_MathDivGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
+    return yk::simd4::select(0.0f, ((a / b)), ((b != 0.0f)));
+}
+
 inline yk::simd4::f32 SdfCore_MathMinSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    return yk::simd4::min(a, b);
+}
+
+inline yk::simd4::dual SdfCore_MathMinGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
     return yk::simd4::min(a, b);
 }
 
@@ -659,7 +1038,15 @@ inline yk::simd4::f32 SdfCore_MathMaxSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
     return yk::simd4::max(a, b);
 }
 
+inline yk::simd4::dual SdfCore_MathMaxGradientSimd4(yk::simd4::dual a, yk::simd4::dual b) {
+    return yk::simd4::max(a, b);
+}
+
 inline yk::simd4::f32 SdfCore_MathClampSimd4(yk::simd4::f32 x, float lo, float hi) {
+    return yk::simd4::clamp(x, lo, hi);
+}
+
+inline yk::simd4::dual SdfCore_MathClampGradientSimd4(yk::simd4::dual x, yk::simd4::dual lo, yk::simd4::dual hi) {
     return yk::simd4::clamp(x, lo, hi);
 }
 
@@ -667,7 +1054,15 @@ inline yk::simd4::f32 SdfCore_MathAbsSimd4(yk::simd4::f32 x) {
     return yk::simd4::abs(x);
 }
 
+inline yk::simd4::dual SdfCore_MathAbsGradientSimd4(yk::simd4::dual x) {
+    return yk::simd4::abs(x);
+}
+
 inline yk::simd4::f32 SdfCore_MathFracSimd4(yk::simd4::f32 x) {
+    return yk::simd4::frac(x);
+}
+
+inline yk::simd4::dual SdfCore_MathFracGradientSimd4(yk::simd4::dual x) {
     return yk::simd4::frac(x);
 }
 
@@ -680,6 +1075,10 @@ inline yk::simd4::f32 SdfCore_MathPowSimd4(yk::simd4::f32 x, float power) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_MathPowGradientSimd4(yk::simd4::dual x, yk::simd4::dual power) {
+    return ((yk::simd4::pow(yk::simd4::abs(x), power) * yk::simd4::sign(x)));
+}
+
 inline yk::simd4::f32 SdfCore_MathSqrtSimd4(yk::simd4::f32 x) {
     alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
     alignas(16) float out[4];
@@ -689,7 +1088,15 @@ inline yk::simd4::f32 SdfCore_MathSqrtSimd4(yk::simd4::f32 x) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_MathSqrtGradientSimd4(yk::simd4::dual x) {
+    return yk::simd4::sqrt_lanes(yk::simd4::abs(x));
+}
+
 inline yk::simd4::f32 SdfCore_MathLerpSimd4(yk::simd4::f32 a, yk::simd4::f32 b, yk::simd4::f32 t) {
+    return yk::simd4::lerp(a, b, t);
+}
+
+inline yk::simd4::dual SdfCore_MathLerpGradientSimd4(yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual t) {
     return yk::simd4::lerp(a, b, t);
 }
 
@@ -697,7 +1104,15 @@ inline yk::simd4::f32 SdfCore_MathNegateSimd4(yk::simd4::f32 x) {
     return -x;
 }
 
+inline yk::simd4::dual SdfCore_MathNegateGradientSimd4(yk::simd4::dual x) {
+    return -x;
+}
+
 inline yk::simd4::f32 SdfCore_DisplacementSimd4(yk::simd4::f32 sdf, yk::simd4::f32 disp, float scale) {
+    return ((sdf + ((disp * scale))));
+}
+
+inline yk::simd4::dual SdfCore_DisplacementGradientSimd4(yk::simd4::dual sdf, yk::simd4::dual disp, yk::simd4::dual scale) {
     return ((sdf + ((disp * scale))));
 }
 
@@ -705,11 +1120,23 @@ inline yk::simd4::f32 SdfCore_MathStepSimd4(yk::simd4::f32 x, float edge) {
     return yk::simd4::step(edge, x);
 }
 
+inline yk::simd4::dual SdfCore_MathStepGradientSimd4(yk::simd4::dual x, yk::simd4::dual edge) {
+    return yk::simd4::step(edge, x);
+}
+
 inline yk::simd4::f32 SdfCore_MathSignSimd4(yk::simd4::f32 x) {
     return yk::simd4::sign(x);
 }
 
+inline yk::simd4::dual SdfCore_MathSignGradientSimd4(yk::simd4::dual x) {
+    return yk::simd4::sign(x);
+}
+
 inline yk::simd4::f32 SdfCore_MathSaturateSimd4(yk::simd4::f32 x) {
+    return yk::simd4::saturate(x);
+}
+
+inline yk::simd4::dual SdfCore_MathSaturateGradientSimd4(yk::simd4::dual x) {
     return yk::simd4::saturate(x);
 }
 
@@ -722,6 +1149,10 @@ inline yk::simd4::f32 SdfCore_MathExpSimd4(yk::simd4::f32 x) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_MathExpGradientSimd4(yk::simd4::dual x) {
+    return yk::simd4::exp(x);
+}
+
 inline yk::simd4::f32 SdfCore_MathLogSimd4(yk::simd4::f32 x) {
     alignas(16) float x_lane[4]; x.store_unaligned(x_lane);
     alignas(16) float out[4];
@@ -729,6 +1160,10 @@ inline yk::simd4::f32 SdfCore_MathLogSimd4(yk::simd4::f32 x) {
         out[lane] = SdfCore_MathLog(x_lane[lane]);
     }
     return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::dual SdfCore_MathLogGradientSimd4(yk::simd4::dual x) {
+    return yk::simd4::log(yk::simd4::max(x, 1e-30f));
 }
 
 inline yk::simd4::f32 SdfCore_MathLog2Simd4(yk::simd4::f32 x) {
@@ -740,7 +1175,15 @@ inline yk::simd4::f32 SdfCore_MathLog2Simd4(yk::simd4::f32 x) {
     return yk::simd4::f32::from_lanes(out);
 }
 
+inline yk::simd4::dual SdfCore_MathLog2GradientSimd4(yk::simd4::dual x) {
+    return yk::simd4::log2(yk::simd4::max(x, 1e-30f));
+}
+
 inline yk::simd4::f32 SdfCore_SelectSimd4(yk::simd4::f32 cond, yk::simd4::f32 a, yk::simd4::f32 b, float thr) {
+    return yk::simd4::select(b, a, ((cond > thr)));
+}
+
+inline yk::simd4::dual SdfCore_SelectGradientSimd4(yk::simd4::dual cond, yk::simd4::dual a, yk::simd4::dual b, yk::simd4::dual thr) {
     return yk::simd4::select(b, a, ((cond > thr)));
 }
 
@@ -748,27 +1191,55 @@ inline yk::simd4::f32x3 SdfCore_Float3AddSimd4(yk::simd4::f32x3 a, yk::simd4::f3
     return yk::simd4::f32x3((a.yk_col0 + b.yk_col0), (a.yk_col1 + b.yk_col1), (a.yk_col2 + b.yk_col2));
 }
 
+inline yk::simd4::dual3 SdfCore_Float3AddGradientSimd4(yk::simd4::dual3 a, yk::simd4::dual3 b) {
+    return yk::simd4::dual3((a.yk_col0 + b.yk_col0), (a.yk_col1 + b.yk_col1), (a.yk_col2 + b.yk_col2));
+}
+
 inline yk::simd4::f32x3 SdfCore_Float3SubSimd4(yk::simd4::f32x3 a, yk::simd4::f32x3 b) {
     return yk::simd4::f32x3((a.yk_col0 - b.yk_col0), (a.yk_col1 - b.yk_col1), (a.yk_col2 - b.yk_col2));
+}
+
+inline yk::simd4::dual3 SdfCore_Float3SubGradientSimd4(yk::simd4::dual3 a, yk::simd4::dual3 b) {
+    return yk::simd4::dual3((a.yk_col0 - b.yk_col0), (a.yk_col1 - b.yk_col1), (a.yk_col2 - b.yk_col2));
 }
 
 inline yk::simd4::f32x3 SdfCore_Float3MulComponentWiseSimd4(yk::simd4::f32x3 a, yk::simd4::f32x3 b) {
     return yk::simd4::f32x3((a.yk_col0 * b.yk_col0), (a.yk_col1 * b.yk_col1), (a.yk_col2 * b.yk_col2));
 }
 
+inline yk::simd4::dual3 SdfCore_Float3MulComponentWiseGradientSimd4(yk::simd4::dual3 a, yk::simd4::dual3 b) {
+    return yk::simd4::dual3((a.yk_col0 * b.yk_col0), (a.yk_col1 * b.yk_col1), (a.yk_col2 * b.yk_col2));
+}
+
 inline yk::simd4::f32x3 SdfCore_Float3MinSimd4(yk::simd4::f32x3 a, yk::simd4::f32x3 b) {
     return yk::simd4::f32x3(yk::simd4::min(a.yk_col0, b.yk_col0), yk::simd4::min(a.yk_col1, b.yk_col1), yk::simd4::min(a.yk_col2, b.yk_col2));
+}
+
+inline yk::simd4::dual3 SdfCore_Float3MinGradientSimd4(yk::simd4::dual3 a, yk::simd4::dual3 b) {
+    return yk::simd4::dual3(yk::simd4::min(a.yk_col0, b.yk_col0), yk::simd4::min(a.yk_col1, b.yk_col1), yk::simd4::min(a.yk_col2, b.yk_col2));
 }
 
 inline yk::simd4::f32x3 SdfCore_Float3MaxSimd4(yk::simd4::f32x3 a, yk::simd4::f32x3 b) {
     return yk::simd4::f32x3(yk::simd4::max(a.yk_col0, b.yk_col0), yk::simd4::max(a.yk_col1, b.yk_col1), yk::simd4::max(a.yk_col2, b.yk_col2));
 }
 
+inline yk::simd4::dual3 SdfCore_Float3MaxGradientSimd4(yk::simd4::dual3 a, yk::simd4::dual3 b) {
+    return yk::simd4::dual3(yk::simd4::max(a.yk_col0, b.yk_col0), yk::simd4::max(a.yk_col1, b.yk_col1), yk::simd4::max(a.yk_col2, b.yk_col2));
+}
+
 inline yk::simd4::f32x3 SdfCore_Float3ScalarMulSimd4(yk::simd4::f32x3 v, yk::simd4::f32 s) {
     return yk::simd4::f32x3((v.yk_col0 * s), (v.yk_col1 * s), (v.yk_col2 * s));
 }
 
+inline yk::simd4::dual3 SdfCore_Float3ScalarMulGradientSimd4(yk::simd4::dual3 v, yk::simd4::dual s) {
+    return yk::simd4::dual3((v.yk_col0 * s), (v.yk_col1 * s), (v.yk_col2 * s));
+}
+
 inline yk::simd4::f32 SdfCore_Float3DotSimd4(yk::simd4::f32x3 a, yk::simd4::f32x3 b) {
+    return ((((a.yk_col0 * b.yk_col0) + (a.yk_col1 * b.yk_col1)) + (a.yk_col2 * b.yk_col2)));
+}
+
+inline yk::simd4::dual SdfCore_Float3DotGradientSimd4(yk::simd4::dual3 a, yk::simd4::dual3 b) {
     return ((((a.yk_col0 * b.yk_col0) + (a.yk_col1 * b.yk_col1)) + (a.yk_col2 * b.yk_col2)));
 }
 
@@ -783,12 +1254,26 @@ inline yk::simd4::f32x3 SdfCore_Float3NormalizeSimd4(yk::simd4::f32x3 v) {
     return {yk::simd4::f32::from_lanes(out_x), yk::simd4::f32::from_lanes(out_y), yk::simd4::f32::from_lanes(out_z)};
 }
 
+inline yk::simd4::dual3 SdfCore_Float3NormalizeGradientSimd4(yk::simd4::dual3 v) {
+    yk::simd4::dual lenSq = ((((((v.yk_col0 * v.yk_col0)) + ((v.yk_col1 * v.yk_col1)))) + ((v.yk_col2 * v.yk_col2))));
+    yk::simd4::dual invLen = yk::simd4::select(((1.0f / yk::simd4::sqrt_lanes(lenSq))), 0.0f, ((lenSq < 1e-14f)));
+    return yk::simd4::dual3((v.yk_col0 * invLen), (v.yk_col1 * invLen), (v.yk_col2 * invLen));
+}
+
 } // namespace Yeroket::Sdf::Generated
 
 namespace Vixen::SVO::Recipe {
 using Yeroket::Sdf::Generated::SdfInstruction;
 using yk::simd4::f32;
 using yk::simd4::f32x3;
+using yk::simd4::dual;
+using yk::simd4::dual2;
+using yk::simd4::dual3;
+
+// Output slots are selected on one recipe DAG. The gradient is an automatic slot derived from
+// the distance terminal; emission and typed material channels can add bits without minting a
+// second recipe identity once the engine-side slot ABI is complete.
+enum class RecipeOutputSlot : std::uint8_t { Distance = 1u, Gradient = 2u, Emission = 4u, Material = 8u };
 
 struct LoweredRecipeInstruction;
 struct RecipeSimdState {
@@ -802,8 +1287,22 @@ struct RecipeSimdState {
 };
 using RecipeExecutor = void (*)(RecipeSimdState&, const LoweredRecipeInstruction&);
 
+using RecipeGradientScalar = yk::simd4::dual;
+using RecipeGradientVector = yk::simd4::dual3;
+struct RecipeGradientState {
+    RecipeGradientScalar stack[64];
+    int sp = 0;
+    RecipeGradientVector position{};
+    RecipeGradientVector positionStack[64];
+    float distanceScaleStack[64]{};
+    int psp = 0;
+    RecipeGradientVector declaredPosition{};
+};
+using RecipeGradientExecutor = void (*)(RecipeGradientState&, const LoweredRecipeInstruction&);
+
 struct LoweredRecipeInstruction {
     RecipeExecutor execute = nullptr;
+    RecipeGradientExecutor gradientExecute = nullptr;
     std::uint8_t valueBase = 0;
     std::uint8_t positionBase = 0;
     float data[16]{};
@@ -823,6 +1322,18 @@ inline void RecipePush3(RecipeSimdState& state, f32x3 value) {
 }
 inline f32x3 RecipeOffset(f32x3 value, const float* data, int first) {
     return value - RecipeConst3(data, first);
+}
+inline dual3 RecipeOffset(dual3 value, const float* data, int first) {
+    return value - dual3(dual(data[first]), dual(data[first + 1]), dual(data[first + 2]));
+}
+inline dual3 RecipePop3(RecipeGradientState& state) {
+    dual z = state.stack[--state.sp], y = state.stack[--state.sp], x = state.stack[--state.sp];
+    return {x, y, z};
+}
+inline void RecipePush3(RecipeGradientState& state, dual3 value) {
+    state.stack[state.sp++] = value.x;
+    state.stack[state.sp++] = value.y;
+    state.stack[state.sp++] = value.z;
 }
 
 template<SdfOpCode Op>
@@ -977,6 +1488,317 @@ inline void ExecuteRecipeOpcode(RecipeSimdState& s, const LoweredRecipeInstructi
     }
 }
 
+template<SdfOpCode Op>
+inline void ExecuteGradientOpcode(RecipeGradientState& s, const LoweredRecipeInstruction& in) {
+    using namespace Yeroket::Sdf::Generated;
+    if constexpr (Op == SdfOpCode::Sphere) {
+        s.stack[s.sp++]=SdfCore_SphereGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::Box) {
+        s.stack[s.sp++]=SdfCore_BoxGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]));
+    }
+    else if constexpr (Op == SdfOpCode::BoxRounded) {
+        s.stack[s.sp++]=SdfCore_BoxRoundedGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::Capsule) {
+        s.stack[s.sp++]=SdfCore_CapsuleGradientSimd4(s.position,in.data[0],in.data[1]);
+    }
+    else if constexpr (Op == SdfOpCode::Cylinder) {
+        s.stack[s.sp++]=SdfCore_CylinderGradientSimd4(s.position,in.data[0],in.data[1]);
+    }
+    else if constexpr (Op == SdfOpCode::Plane) {
+        s.stack[s.sp++]=SdfCore_PlaneGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::Torus) {
+        s.stack[s.sp++]=SdfCore_TorusGradientSimd4(s.position,in.data[0],in.data[1]);
+    }
+    else if constexpr (Op == SdfOpCode::Ellipsoid) {
+        s.stack[s.sp++]=SdfCore_EllipsoidGradientSimd4(RecipeOffset(s.position,in.data,4),dual3(in.data[0],in.data[1],in.data[2]));
+    }
+    else if constexpr (Op == SdfOpCode::HollowCylinder) {
+        s.stack[s.sp++]=SdfCore_HollowCylinderGradientSimd4(RecipeOffset(s.position,in.data,4),in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::TaperedCylinder) {
+        s.stack[s.sp++]=SdfCore_TaperedCylinderGradientSimd4(RecipeOffset(s.position,in.data,4),in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Panel) {
+        s.stack[s.sp++]=SdfCore_BoxRoundedGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::Plank) {
+        s.stack[s.sp++]=SdfCore_BoxRoundedGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::RoundedBox) {
+        s.stack[s.sp++]=SdfCore_BoxRoundedGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::CappedTorus) {
+        s.stack[s.sp++]=SdfCore_CappedTorusGradientSimd4(RecipeOffset(s.position,in.data,4),dual2(in.data[0],in.data[1]),in.data[2],in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::Cone) {
+        s.stack[s.sp++]=SdfCore_ConeGradientSimd4(RecipeOffset(s.position,in.data,4),dual2(in.data[0],in.data[1]),in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::RoundCone) {
+        s.stack[s.sp++]=SdfCore_RoundConeGradientSimd4(RecipeOffset(s.position,in.data,4),in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::FakeRoundCone) {
+        s.stack[s.sp++]=SdfCore_FakeRoundConeGradientSimd4(RecipeOffset(s.position,in.data,4),in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Segment) {
+        s.stack[s.sp++]=SdfCore_SegmentGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),dual3(in.data[4],in.data[5],in.data[6]),in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::TriangularPrism) {
+        s.stack[s.sp++]=SdfCore_TriangularPrismGradientSimd4(RecipeOffset(s.position,in.data,4),dual2(in.data[0],in.data[1]));
+    }
+    else if constexpr (Op == SdfOpCode::Pyramid) {
+        s.stack[s.sp++]=SdfCore_PyramidGradientSimd4(RecipeOffset(s.position,in.data,4),in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::HexPrism) {
+        s.stack[s.sp++]=SdfCore_HexPrismGradientSimd4(RecipeOffset(s.position,in.data,4),dual2(in.data[0],in.data[1]));
+    }
+    else if constexpr (Op == SdfOpCode::Link) {
+        s.stack[s.sp++]=SdfCore_LinkGradientSimd4(RecipeOffset(s.position,in.data,4),in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Union) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_UnionGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothUnion) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothUnionGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Subtract) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SubtractGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothSubtract) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothSubtractGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Intersect) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_IntersectGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothIntersect) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothIntersectGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Xor) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_XorGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothMax) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothMaxGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothUnionCubic) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothUnionCubicGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothSubtractCubic) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothSubtractCubicGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::SmoothIntersectCubic) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SmoothIntersectCubicGradientSimd4(a,b,in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::Round) {
+        s.stack[s.sp-1]=SdfCore_RoundGradientSimd4(s.stack[s.sp-1],in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::Onion) {
+        s.stack[s.sp-1]=SdfCore_OnionGradientSimd4(s.stack[s.sp-1],in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::Transform) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_TransformGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]),glm::vec4(in.data[4],in.data[5],in.data[6],in.data[7]),dual3(in.data[8],in.data[9],in.data[10]));
+    }
+    else if constexpr (Op == SdfOpCode::Elongate) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_ElongateGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]));
+    }
+    else if constexpr (Op == SdfOpCode::Twist) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_TwistGradientSimd4(s.position,in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::Bend) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_BendGradientSimd4(s.position,in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::MirrorX) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_MirrorXGradientSimd4(s.position);
+    }
+    else if constexpr (Op == SdfOpCode::MirrorY) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_MirrorYGradientSimd4(s.position);
+    }
+    else if constexpr (Op == SdfOpCode::MirrorZ) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_MirrorZGradientSimd4(s.position);
+    }
+    else if constexpr (Op == SdfOpCode::RepeatInfinite) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_RepeatInfiniteGradientSimd4(s.position,dual3(in.data[0],in.data[1],in.data[2]));
+    }
+    else if constexpr (Op == SdfOpCode::RepeatLimited) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_RepeatLimitedGradientSimd4(s.position,in.data[0],dual3(in.data[1],in.data[2],in.data[3]));
+    }
+    else if constexpr (Op == SdfOpCode::Revolution) {
+        s.positionStack[s.psp]=s.position;
+        s.distanceScaleStack[s.psp]=Op==SdfOpCode::Transform?in.data[11]:1.0f; ++s.psp;
+        s.position=SdfCore_RevolutionGradientSimd4(s.position,dual3(in.data[4],in.data[5],in.data[6]),in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::MathSin) {
+        s.stack[s.sp-1]=SdfCore_MathSinGradientSimd4(s.stack[s.sp-1],in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::MathCos) {
+        s.stack[s.sp-1]=SdfCore_MathCosGradientSimd4(s.stack[s.sp-1],in.data[0],in.data[1],in.data[2]);
+    }
+    else if constexpr (Op == SdfOpCode::MathSmoothstep) {
+        s.stack[s.sp-1]=SdfCore_MathSmoothstepGradientSimd4(s.stack[s.sp-1],in.data[0],in.data[1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathRemap) {
+        s.stack[s.sp-1]=SdfCore_MathRemapGradientSimd4(s.stack[s.sp-1],in.data[0],in.data[1],in.data[2],in.data[3]);
+    }
+    else if constexpr (Op == SdfOpCode::MathAdd) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_MathAddGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::MathSub) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_MathSubGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::MathMul) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_MathMulGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::MathDiv) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_MathDivGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::MathMin) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_MathMinGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::MathMax) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_MathMaxGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::MathClamp) {
+        s.stack[s.sp-1]=SdfCore_MathClampGradientSimd4(s.stack[s.sp-1],in.data[0],in.data[1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathAbs) {
+        s.stack[s.sp-1]=SdfCore_MathAbsGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathFrac) {
+        s.stack[s.sp-1]=SdfCore_MathFracGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathPow) {
+        s.stack[s.sp-1]=SdfCore_MathPowGradientSimd4(s.stack[s.sp-1],in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::MathSqrt) {
+        s.stack[s.sp-1]=SdfCore_MathSqrtGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathLerp) {
+        dual t=s.stack[--s.sp], b=s.stack[--s.sp];
+        s.stack[s.sp-1]=SdfCore_MathLerpGradientSimd4(s.stack[s.sp-1],b,t);
+    }
+    else if constexpr (Op == SdfOpCode::MathNegate) {
+        s.stack[s.sp-1]=SdfCore_MathNegateGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::PositionChannel) {
+        int channel=static_cast<int>(in.data[0]); s.stack[s.sp++]=channel==0?s.position.x:channel==1?s.position.y:channel==2?s.position.z:yk::simd4::length(yk::simd4::dual2(s.position.x,s.position.z));
+    }
+    else if constexpr (Op == SdfOpCode::Displacement) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_DisplacementGradientSimd4(a,b,in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::MathStep) {
+        s.stack[s.sp-1]=SdfCore_MathStepGradientSimd4(s.stack[s.sp-1],in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::MathSign) {
+        s.stack[s.sp-1]=SdfCore_MathSignGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathSaturate) {
+        s.stack[s.sp-1]=SdfCore_MathSaturateGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathExp) {
+        s.stack[s.sp-1]=SdfCore_MathExpGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathLog) {
+        s.stack[s.sp-1]=SdfCore_MathLogGradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::MathLog2) {
+        s.stack[s.sp-1]=SdfCore_MathLog2GradientSimd4(s.stack[s.sp-1]);
+    }
+    else if constexpr (Op == SdfOpCode::Select) {
+        dual b=s.stack[--s.sp], a=s.stack[--s.sp], cond=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_SelectGradientSimd4(cond,a,b,in.data[0]);
+    }
+    else if constexpr (Op == SdfOpCode::DistanceTo) {
+        dual3 delta=s.position-dual3(in.data[0],in.data[1],in.data[2]); s.stack[s.sp++]=yk::simd4::length(delta);
+    }
+    else if constexpr (Op == SdfOpCode::PushParam) {
+        s.stack[s.sp++] = dual(0.0f);
+    }
+    else if constexpr (Op == SdfOpCode::ReadParam) {
+        s.stack[s.sp++] = dual(0.0f);
+    }
+    else if constexpr (Op == SdfOpCode::RestorePos) {
+        --s.psp; s.position=s.positionStack[s.psp]; dual scale=dual(s.distanceScaleStack[s.psp]); s.stack[s.sp-1]=s.stack[s.sp-1]*scale;
+    }
+    else if constexpr (Op == SdfOpCode::PushFloat3) {
+        RecipePush3(s, {dual(0.0f), dual(0.0f), dual(0.0f)});
+    }
+    else if constexpr (Op == SdfOpCode::DecomposeFloat3) {
+        dual3 value=RecipePop3(s); int channel=static_cast<int>(in.data[0]); s.stack[s.sp++]=channel==0?value.x:channel==1?value.y:value.z;
+    }
+    else if constexpr (Op == SdfOpCode::Float3Add) {
+        dual3 b=RecipePop3(s), a=RecipePop3(s);
+        RecipePush3(s,SdfCore_Float3AddGradientSimd4(a,b));
+    }
+    else if constexpr (Op == SdfOpCode::Float3Sub) {
+        dual3 b=RecipePop3(s), a=RecipePop3(s);
+        RecipePush3(s,SdfCore_Float3SubGradientSimd4(a,b));
+    }
+    else if constexpr (Op == SdfOpCode::Float3MulComponentWise) {
+        dual3 b=RecipePop3(s), a=RecipePop3(s);
+        RecipePush3(s,SdfCore_Float3MulComponentWiseGradientSimd4(a,b));
+    }
+    else if constexpr (Op == SdfOpCode::Float3Min) {
+        dual3 b=RecipePop3(s), a=RecipePop3(s);
+        RecipePush3(s,SdfCore_Float3MinGradientSimd4(a,b));
+    }
+    else if constexpr (Op == SdfOpCode::Float3Max) {
+        dual3 b=RecipePop3(s), a=RecipePop3(s);
+        RecipePush3(s,SdfCore_Float3MaxGradientSimd4(a,b));
+    }
+    else if constexpr (Op == SdfOpCode::Float3ScalarMul) {
+        dual scalar=s.stack[--s.sp]; dual3 value=RecipePop3(s);
+        RecipePush3(s,SdfCore_Float3ScalarMulGradientSimd4(value,scalar));
+    }
+    else if constexpr (Op == SdfOpCode::Float3Dot) {
+        dual3 b=RecipePop3(s), a=RecipePop3(s);
+        s.stack[s.sp++]=SdfCore_Float3DotGradientSimd4(a,b);
+    }
+    else if constexpr (Op == SdfOpCode::Float3Normalize) {
+        RecipePush3(s,SdfCore_Float3NormalizeGradientSimd4(RecipePop3(s))); 
+    }
+    else if constexpr (Op == SdfOpCode::ReadParamFloat3) {
+        RecipePush3(s, {dual(0.0f), dual(0.0f), dual(0.0f)});
+    }
+}
+
+
 
 inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
     switch (static_cast<Recipe::SdfOpCode>(opcode)) {
@@ -1070,6 +1892,97 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         default: return nullptr;
     }
 }
+inline RecipeGradientExecutor ResolveRecipeGradientExecutor(std::uint8_t opcode) {
+    switch (static_cast<Recipe::SdfOpCode>(opcode)) {
+        case Recipe::SdfOpCode::Sphere: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Sphere>;
+        case Recipe::SdfOpCode::Box: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Box>;
+        case Recipe::SdfOpCode::BoxRounded: return &ExecuteGradientOpcode<Recipe::SdfOpCode::BoxRounded>;
+        case Recipe::SdfOpCode::Capsule: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Capsule>;
+        case Recipe::SdfOpCode::Cylinder: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Cylinder>;
+        case Recipe::SdfOpCode::Plane: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Plane>;
+        case Recipe::SdfOpCode::Torus: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Torus>;
+        case Recipe::SdfOpCode::Ellipsoid: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Ellipsoid>;
+        case Recipe::SdfOpCode::HollowCylinder: return &ExecuteGradientOpcode<Recipe::SdfOpCode::HollowCylinder>;
+        case Recipe::SdfOpCode::TaperedCylinder: return &ExecuteGradientOpcode<Recipe::SdfOpCode::TaperedCylinder>;
+        case Recipe::SdfOpCode::Panel: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Panel>;
+        case Recipe::SdfOpCode::Plank: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Plank>;
+        case Recipe::SdfOpCode::RoundedBox: return &ExecuteGradientOpcode<Recipe::SdfOpCode::RoundedBox>;
+        case Recipe::SdfOpCode::CappedTorus: return &ExecuteGradientOpcode<Recipe::SdfOpCode::CappedTorus>;
+        case Recipe::SdfOpCode::Cone: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Cone>;
+        case Recipe::SdfOpCode::RoundCone: return &ExecuteGradientOpcode<Recipe::SdfOpCode::RoundCone>;
+        case Recipe::SdfOpCode::FakeRoundCone: return &ExecuteGradientOpcode<Recipe::SdfOpCode::FakeRoundCone>;
+        case Recipe::SdfOpCode::Segment: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Segment>;
+        case Recipe::SdfOpCode::TriangularPrism: return &ExecuteGradientOpcode<Recipe::SdfOpCode::TriangularPrism>;
+        case Recipe::SdfOpCode::Pyramid: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Pyramid>;
+        case Recipe::SdfOpCode::HexPrism: return &ExecuteGradientOpcode<Recipe::SdfOpCode::HexPrism>;
+        case Recipe::SdfOpCode::Link: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Link>;
+        case Recipe::SdfOpCode::Union: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Union>;
+        case Recipe::SdfOpCode::SmoothUnion: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothUnion>;
+        case Recipe::SdfOpCode::Subtract: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Subtract>;
+        case Recipe::SdfOpCode::SmoothSubtract: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothSubtract>;
+        case Recipe::SdfOpCode::Intersect: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Intersect>;
+        case Recipe::SdfOpCode::SmoothIntersect: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothIntersect>;
+        case Recipe::SdfOpCode::Xor: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Xor>;
+        case Recipe::SdfOpCode::SmoothMax: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothMax>;
+        case Recipe::SdfOpCode::SmoothUnionCubic: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothUnionCubic>;
+        case Recipe::SdfOpCode::SmoothSubtractCubic: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothSubtractCubic>;
+        case Recipe::SdfOpCode::SmoothIntersectCubic: return &ExecuteGradientOpcode<Recipe::SdfOpCode::SmoothIntersectCubic>;
+        case Recipe::SdfOpCode::Round: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Round>;
+        case Recipe::SdfOpCode::Onion: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Onion>;
+        case Recipe::SdfOpCode::Transform: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Transform>;
+        case Recipe::SdfOpCode::Elongate: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Elongate>;
+        case Recipe::SdfOpCode::Twist: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Twist>;
+        case Recipe::SdfOpCode::Bend: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Bend>;
+        case Recipe::SdfOpCode::MirrorX: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MirrorX>;
+        case Recipe::SdfOpCode::MirrorY: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MirrorY>;
+        case Recipe::SdfOpCode::MirrorZ: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MirrorZ>;
+        case Recipe::SdfOpCode::RepeatInfinite: return &ExecuteGradientOpcode<Recipe::SdfOpCode::RepeatInfinite>;
+        case Recipe::SdfOpCode::RepeatLimited: return &ExecuteGradientOpcode<Recipe::SdfOpCode::RepeatLimited>;
+        case Recipe::SdfOpCode::Revolution: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Revolution>;
+        case Recipe::SdfOpCode::MathSin: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathSin>;
+        case Recipe::SdfOpCode::MathCos: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathCos>;
+        case Recipe::SdfOpCode::MathSmoothstep: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathSmoothstep>;
+        case Recipe::SdfOpCode::MathRemap: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathRemap>;
+        case Recipe::SdfOpCode::MathAdd: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathAdd>;
+        case Recipe::SdfOpCode::MathSub: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathSub>;
+        case Recipe::SdfOpCode::MathMul: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathMul>;
+        case Recipe::SdfOpCode::MathDiv: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathDiv>;
+        case Recipe::SdfOpCode::MathMin: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathMin>;
+        case Recipe::SdfOpCode::MathMax: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathMax>;
+        case Recipe::SdfOpCode::MathClamp: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathClamp>;
+        case Recipe::SdfOpCode::MathAbs: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathAbs>;
+        case Recipe::SdfOpCode::MathFrac: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathFrac>;
+        case Recipe::SdfOpCode::MathPow: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathPow>;
+        case Recipe::SdfOpCode::MathSqrt: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathSqrt>;
+        case Recipe::SdfOpCode::MathLerp: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathLerp>;
+        case Recipe::SdfOpCode::MathNegate: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathNegate>;
+        case Recipe::SdfOpCode::PositionChannel: return &ExecuteGradientOpcode<Recipe::SdfOpCode::PositionChannel>;
+        case Recipe::SdfOpCode::Displacement: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Displacement>;
+        case Recipe::SdfOpCode::MathStep: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathStep>;
+        case Recipe::SdfOpCode::MathSign: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathSign>;
+        case Recipe::SdfOpCode::MathSaturate: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathSaturate>;
+        case Recipe::SdfOpCode::MathExp: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathExp>;
+        case Recipe::SdfOpCode::MathLog: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathLog>;
+        case Recipe::SdfOpCode::MathLog2: return &ExecuteGradientOpcode<Recipe::SdfOpCode::MathLog2>;
+        case Recipe::SdfOpCode::Select: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Select>;
+        case Recipe::SdfOpCode::DistanceTo: return &ExecuteGradientOpcode<Recipe::SdfOpCode::DistanceTo>;
+        case Recipe::SdfOpCode::PushParam: return &ExecuteGradientOpcode<Recipe::SdfOpCode::PushParam>;
+        case Recipe::SdfOpCode::ReadParam: return &ExecuteGradientOpcode<Recipe::SdfOpCode::ReadParam>;
+        case Recipe::SdfOpCode::RestorePos: return &ExecuteGradientOpcode<Recipe::SdfOpCode::RestorePos>;
+        case Recipe::SdfOpCode::PushFloat3: return &ExecuteGradientOpcode<Recipe::SdfOpCode::PushFloat3>;
+        case Recipe::SdfOpCode::DecomposeFloat3: return &ExecuteGradientOpcode<Recipe::SdfOpCode::DecomposeFloat3>;
+        case Recipe::SdfOpCode::Float3Add: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3Add>;
+        case Recipe::SdfOpCode::Float3Sub: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3Sub>;
+        case Recipe::SdfOpCode::Float3MulComponentWise: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3MulComponentWise>;
+        case Recipe::SdfOpCode::Float3Min: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3Min>;
+        case Recipe::SdfOpCode::Float3Max: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3Max>;
+        case Recipe::SdfOpCode::Float3ScalarMul: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3ScalarMul>;
+        case Recipe::SdfOpCode::Float3Dot: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3Dot>;
+        case Recipe::SdfOpCode::Float3Normalize: return &ExecuteGradientOpcode<Recipe::SdfOpCode::Float3Normalize>;
+        case Recipe::SdfOpCode::ReadParamFloat3: return &ExecuteGradientOpcode<Recipe::SdfOpCode::ReadParamFloat3>;
+        default: return nullptr;
+    }
+}
 class LoweredRecipeProgram {
 public:
     bool Lower(const SdfInstruction* program, std::uint32_t count,
@@ -1111,6 +2024,7 @@ public:
                 lowered.data[2]=base+2<parameters.size()?parameters[base+2]:0.0f;
             }
             lowered.execute=ResolveRecipeExecutor(source.opCode);
+            lowered.gradientExecute=ResolveRecipeGradientExecutor(source.opCode);
             if (lowered.execute==nullptr) {
                 error="opcode has no SIMD executor: "+std::to_string(source.opCode);
                 instructions_.clear();
@@ -1144,6 +2058,50 @@ public:
             state.declaredPosition.yk_col2.store_unaligned(z);
             for (int lane=0;lane<4;++lane) declaredPositions[lane]=glm::vec3(x[lane],y[lane],z[lane]);
         }
+    }
+
+    // Forward-mode AD over the same lowered instruction stream. This fills the Distance and
+    // Gradient output slots together. A null gradient executor is an
+    // intentional capability result: the primal remains executable, while the caller can select
+    // its finite-difference or other honest fallback for an opcode outside the measured subset.
+    bool EvaluateGradient4(const glm::vec3* positions, float* output, glm::vec3* gradients,
+                           std::string* error=nullptr) const {
+        if (positions==nullptr || output==nullptr || gradients==nullptr) {
+            if (error!=nullptr) *error="gradient evaluation requires positions, output, and gradients";
+            return false;
+        }
+        alignas(16) float x[4],y[4],z[4];
+        for (int lane=0;lane<4;++lane) {
+            x[lane]=positions[lane].x; y[lane]=positions[lane].y; z[lane]=positions[lane].z;
+        }
+        RecipeGradientState state{};
+        state.position.x={f32::from_lanes(x),f32(1.0f),f32(0.0f),f32(0.0f)};
+        state.position.y={f32::from_lanes(y),f32(0.0f),f32(1.0f),f32(0.0f)};
+        state.position.z={f32::from_lanes(z),f32(0.0f),f32(0.0f),f32(1.0f)};
+        for (const LoweredRecipeInstruction& instruction:instructions_) {
+            if (instruction.gradientExecute==nullptr) {
+                if (error!=nullptr)
+                    *error="gradient fallback required for opcode at lowered value base " +
+                        std::to_string(instruction.valueBase);
+                return false;
+            }
+            state.sp=instruction.valueBase;
+            state.psp=instruction.positionBase;
+            instruction.gradientExecute(state,instruction);
+        }
+        if (state.sp!=1 || state.psp!=0) {
+            if (error!=nullptr) *error="gradient evaluator finished with an invalid stack shape";
+            return false;
+        }
+        alignas(16) float value[4],gx[4],gy[4],gz[4];
+        state.stack[0].value.store_unaligned(value);
+        state.stack[0].gx.store_unaligned(gx);
+        state.stack[0].gy.store_unaligned(gy);
+        state.stack[0].gz.store_unaligned(gz);
+        for (int lane=0;lane<4;++lane)
+            output[lane]=value[lane], gradients[lane]=glm::vec3(gx[lane],gy[lane],gz[lane]);
+        if (error!=nullptr) error->clear();
+        return true;
     }
 
     std::size_t InstructionCount() const { return instructions_.size(); }
@@ -1196,7 +2154,7 @@ inline bool UnrollInto(const SdfInstruction* program, std::uint32_t count,
                        std::string& error) {
     for (std::uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& instruction = program[i];
-        if (static_cast<SdfOpCode>(instruction.opCode) != SdfOpCode::InvokeRecipe) {
+        if (static_cast<SdfOpCode>(instruction.opCode) != Recipe::SdfOpCode::InvokeRecipe) {
             output.push_back(instruction);
             continue;
         }
