@@ -1089,7 +1089,7 @@ struct ShellProxyAabb {
     vec3 maxLocal;
     uint octreeIndex;
 };
-layout(std430, set = 0, binding = 43) readonly buffer RtQueryProxyAabbBuffer {
+layout(std430, set = 0, binding = 43) readonly buffer rtQueryProxyAabbs {
     ShellProxyAabb rtQueryProxyAabbs[];
 };
 #endif
