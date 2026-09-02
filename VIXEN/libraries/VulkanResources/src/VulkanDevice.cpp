@@ -540,9 +540,20 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     vulkan12.pNext = &vulkan13;
 
+    VkPhysicalDeviceSubgroupProperties subgroup{};
+    subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+
     VkPhysicalDeviceFeatures2 features2{};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.pNext = &vulkan12;
+
+    // Subgroup properties are returned through VkPhysicalDeviceProperties2, not the features
+    // chain. Publish only the compute operations the shader variants may rely on; consumers then
+    // consult CapabilityGraph rather than re-querying Vulkan.
+    VkPhysicalDeviceProperties2 properties2{};
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &subgroup;
+    vkGetPhysicalDeviceProperties2(*gpu, &properties2);
 
     vkGetPhysicalDeviceFeatures2(*gpu, &features2);
 
@@ -557,6 +568,15 @@ std::vector<std::string> VulkanDevice::QueryAvailableDeviceFeatures() const {
     }
     if (features2.features.fragmentStoresAndAtomics) {
         supported.emplace_back("fragmentStoresAndAtomics");
+    }
+    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0) {
+        supported.emplace_back("subgroupComputeBallot");
+    }
+    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0) {
+        supported.emplace_back("subgroupComputeArithmetic");
+    }
+    if ((subgroup.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0) {
+        supported.emplace_back("subgroupComputeShuffle");
     }
 
     return supported;

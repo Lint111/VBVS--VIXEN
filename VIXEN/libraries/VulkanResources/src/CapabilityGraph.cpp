@@ -213,6 +213,16 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto fragmentStoresAndAtomics = CreateCapability<DeviceFeatureCapability>(
         "DeviceFeature:fragmentStoresAndAtomics", "fragmentStoresAndAtomics");
 
+    // Subgroup properties are reported by VkPhysicalDeviceSubgroupProperties rather than
+    // VkPhysicalDeviceFeatures2. They still belong in the same availability set so consumers
+    // have one graph-owned answer for optional device behavior (rtperf S0/e2).
+    auto subgroupComputeBallot = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:subgroupComputeBallot", "subgroupComputeBallot");
+    auto subgroupComputeArithmetic = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:subgroupComputeArithmetic", "subgroupComputeArithmetic");
+    auto subgroupComputeShuffle = CreateCapability<DeviceFeatureCapability>(
+        "DeviceFeature:subgroupComputeShuffle", "subgroupComputeShuffle");
+
     //==========================================================================
     // Instance Extensions
     //==========================================================================
@@ -260,6 +270,20 @@ void CapabilityGraph::BuildStandardCapabilities() {
     rtxSupport->AddDependency(deferredHostOps);
     rtxSupport->AddDependency(bufferDeviceAddress);
     RegisterCapability(rtxSupport);
+
+    // Tier-1 lighting ray queries intentionally do not depend on the RT-pipeline extension.
+    // RTXSupport above remains the existing Tier-2 pipeline capability.
+    auto rayQueryLighting = std::make_shared<CompositeCapability>("RayQueryLighting");
+    rayQueryLighting->AddDependency(accelerationStructure);
+    rayQueryLighting->AddDependency(rayQuery);
+    rayQueryLighting->AddDependency(bufferDeviceAddress);
+    RegisterCapability(rayQueryLighting);
+
+    auto subgroupCoopTraversal = std::make_shared<CompositeCapability>("SubgroupCoopTraversal");
+    subgroupCoopTraversal->AddDependency(subgroupComputeBallot);
+    subgroupCoopTraversal->AddDependency(subgroupComputeArithmetic);
+    subgroupCoopTraversal->AddDependency(subgroupComputeShuffle);
+    RegisterCapability(subgroupCoopTraversal);
 
     // SwapchainMaintenance1 - the VK_EXT_swapchain_maintenance1 extension for present fences
     // Note: This is VK_EXT_swapchain_maintenance1, NOT VK_KHR_maintenance1
