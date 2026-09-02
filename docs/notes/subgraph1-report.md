@@ -79,6 +79,6 @@ interval polling. No raw build or test command was used.
 ## Not delivered vs brief — Run 2
 
 The I1/I2 implementation, tests, and required report update are delivered in the worktree. The
-required post-correction build, per-binary tests, full build/codegen check, and commit remain
-blocked by the shared build/test queue. No push, merge, branch switch, or other worktree access
-was performed.
+required post-correction build, per-binary tests, and full build/codegen check remain blocked
+by the shared build/test queue. The implementation was committed as `555272b2`; no push, merge,
+branch switch, or other worktree access was performed.
