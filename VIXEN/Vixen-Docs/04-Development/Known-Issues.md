@@ -554,7 +554,7 @@ own investigation session, not scoped to the baked-perf sync-hygiene milestone t
 
 ---
 
-## KI-038 — `test_baked_vs_virtual_parity`'s `readparam_sphere` corpus entry applies its `ReadParam` snapshot in the WRONG coordinate space on the baked path, producing a genuine (not KI-032) IoU failure
+## KI-038 — `test_baked_vs_virtual_parity`'s `readparam_sphere` corpus entry applied its `ReadParam` snapshot in the WRONG coordinate space on the baked path, producing a genuine (not KI-032) IoU failure — RESOLVED
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2d's warm-up A
 (pattern-copying the KI-032 `HitRecordBuffer` readback fix into `test_baked_vs_virtual_parity.cpp`).
@@ -569,55 +569,39 @@ smaller than the virtual one.
 **Root cause:** the corpus entry (`test_baked_vs_virtual_parity.cpp` `BuildCorpus()`, recipe (4))
 authors two bytecode programs meant to describe the SAME shape in two coordinate spaces —
 `worldSpaceProgram` (world units, radius 2.0) and `localSpaceProgram` (bake-grid units, radius
-`2.0*6.0=12.0`, matching recipe (1)'s established 18/3=6x world-to-bake-grid ratio) — but reuses
-the IDENTICAL `readParamSnapshot={0.5}` value for the `ReadParam`+`MathSub` radius-offset op on
-BOTH programs, unscaled. `ReadParam` (`SdfRecipeEval.h:476-479`) is a raw, space-agnostic
-`stack[sp++] = params[idx]` — it has no notion of "world" vs "bake-grid" units; whatever value is
-in `params[]` is subtracted directly from whatever coordinate space the calling program's sphere
-radius happens to be authored in. Every other primitive/constant in `localSpaceProgram` (the
-sphere's own radius, `kBaseRadius*6.0f`) is correctly pre-scaled by the test author for bake-grid
-space, but the `ReadParam` snapshot passed to `BakeRecipeInstructionsToSdfWorld`'s `params` arg
-(`test_baked_vs_virtual_parity.cpp:925-927`) is the SAME unscaled `kParamValue=0.5` — i.e. baked
-effective radius = `(12.0 - 0.5)/6.0 ≈ 1.9167` world units vs. virtual effective radius =
-`2.0 - 0.5 = 1.5` world units. (Note: this specific arithmetic predicts the BAKED sphere should
-render slightly LARGER, not smaller as measured — the measured direction is opposite to this
-naive scale-mismatch hypothesis, so a second, uninvestigated factor is also in play; not fully
-root-caused, see below.)
+`2.0*6.0=12.0`, matching recipe (1)'s established 18/3=6x world-to-bake-grid ratio) — but reused
+the IDENTICAL `readParamSnapshot={0.5}` value for the `ReadParam`+`MathSub` operation on BOTH
+programs, unscaled. `ReadParam` (`SdfRecipeEval.h`, ReadParam case) is a raw, space-agnostic
+`stack[sp++] = params[idx]` — it has no notion of "world" vs. "bake-grid" units; the value is
+subtracted directly in the calling program's coordinate space. Because `MathSub` evaluates
+`sphereSD - param`, the unfixed baked radius was `(12.0 + 0.5)/6.0 ≈ 2.0833` world units while
+the virtual radius was `2.0 + 0.5 = 2.5` world units. The virtual path therefore over-rendered.
 
-**NOT investigated further this session (out of M2d's scope — M2d fixes the KI-032 readback
-mechanism, not Recipe-Parameterization math):** the measured direction (baked SMALLER than
-virtual) contradicts the simple unscaled-ReadParam hypothesis above, which predicts baked should
-be LARGER. A second effect — possibly in how `ApplyRecipeBoundsDefaults`/occupancy-grid derivation
-interacts with a non-whitelisted `ReadParam`/`MathSub` program (this recipe already sets
-`expectOccupancyGrid=false` for exactly this reason), or a narrow-band SDF clipping effect from
-`bandVoxels=2.5` at the shrunken effective radius, or an error in the `*6.0f` scale-consistency
-assumption itself — has not been isolated. A future session should NOT assume the "scale the
-ReadParam snapshot by 6x" fix is sufficient without re-measuring; the sign mismatch here means the
-bug is not fully understood yet.
+**Resolution (2026-09-02):** the parity corpus now carries explicit `worldParamSnapshot` and
+`bakeParamSnapshot` values. `readparam_sphere` passes `0.5` to the virtual world-space program
+and `0.5*6.0 = 3.0` to the baked local-space program, matching the local program's scale. The
+GPU evaluator and GLSL code were unchanged; a focused corpus test asserts both values and prevents
+the two coordinate-space contracts from being collapsed into one snapshot again. No tolerance or
+per-recipe exemption was added.
 
-**Impact:** `test_baked_vs_virtual_parity.cpp`'s `VirtualRendersGeometricallyEquivalentToBaked`
-gate now fails on exactly 1 of 4 corpus recipes (`readparam_sphere`) — a REAL geometry mismatch,
-not KI-032's dead-buffer vacuous failure. The other 3 recipes (covering plain-sphere, CSG
-composite, and domain-modifier/Twist classes) pass with healthy IoU, so the KI-032 readback fix
-itself (this milestone's actual deliverable) is confirmed working. Recipe-Parameterization M4
-Task 11's own corpus entry — the ONLY consumer of this specific bake-time-snapshot-vs-runtime-read
-parity claim — is not currently provable via this harness.
+**Impact before resolution:** `test_baked_vs_virtual_parity.cpp`'s
+`VirtualRendersGeometricallyEquivalentToBaked` gate failed on exactly 1 of 4 corpus recipes
+(`readparam_sphere`) — a REAL geometry mismatch, not KI-032's dead-buffer vacuous failure. The
+other 3 recipes (covering plain-sphere, CSG composite, and domain-modifier/Twist classes) passed
+with healthy IoU, so the KI-032 readback fix itself was confirmed working. Recipe-Parameterization
+M4 Task 11's own corpus entry — the ONLY consumer of this specific bake-time-snapshot-vs-runtime-read
+parity claim — was not provable via the unfixed harness.
 
-**Fix options:** (a) scale `readParamSnapshot` (or a bake-grid-space copy of it) by the same 6x
-factor used for `localSpaceProgram`'s sphere radius, then re-measure to confirm the sign/magnitude
-of the remaining gap closes — do NOT assume this alone fixes it, given the direction mismatch
-noted above; (b) restructure the recipe so `ReadParam`'s value is applied in a space-invariant way
-(e.g. express the offset as a fraction of radius rather than an absolute unit value, so no scale
-factor is needed on either program); (c) drop this corpus entry's `expectOccupancyGrid=false`/
-authored-bound-radius margin re-derivation and re-verify `ApplyRecipeBoundsDefaults` isn't
-truncating the baked march before ruling out (a)/(b). A dedicated Recipe-Parameterization session
-should own this, not a drive-by inside M2d.
+**Verification:** the post-fix parity runs and regression-family results are recorded in the
+T-083 lane report. The original pre-fix measurements above remain as the historical failure
+record; the status is now resolved because the coordinate-space mechanism has been corrected and
+the full four-recipe gate has been rerun.
 
 **Severity:** Low-Medium (isolated to one corpus entry in one test; does not affect production
 recipe-parameterization code, which M4's own KI-032 entry already noted was "provably correct" up
 to the bake/splice/dispatch wiring — this is specifically the corpus AUTHORING, i.e. test data, not
-`RecipeStack.h`/`SdfRecipeEval.h`/`SdfRecipeCodegenGlsl.h` themselves) · **Status:** OPEN, filed
-2026-07-16 during M2d, not fixed (out of scope — M2d's mandate is the KI-032 readback mechanism).
+`RecipeStack.h`/`SdfRecipeEval.h`/`SdfRecipeCodegenGlsl.h` themselves) · **Status:** RESOLVED,
+filed 2026-07-16 during M2d; resolved 2026-09-02 in the T-083 parityfix lane.
 
 ---
 

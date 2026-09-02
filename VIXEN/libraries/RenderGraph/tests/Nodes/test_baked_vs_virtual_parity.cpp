@@ -40,11 +40,13 @@
  * functions via a call counter threaded through this test file only (BakeRecipeInstructionsToSdfWorld
  * is wrapped so the counter can be observed) — see kVirtualBakeCallCount below.
  *
- * CORPUS: 3 recipes — (1) plain sphere (occupancy-grid-eligible), (2) sphere+box SmoothUnion
+ * CORPUS: 4 recipes — (1) plain sphere (occupancy-grid-eligible), (2) sphere+box SmoothUnion
  * CSG (occupancy-grid-eligible, exercises Task 13's grid on a composite field), (3) a
  * Twist-modified sphere (NOT occupancy-grid-eligible — RecipeOccupancy.h's Lipschitz
  * whitelist excludes domain warps — the class most likely to break step-relaxation, per this
- * milestone's explicit scope note; proves the parity gate still holds with NO grid fast-path).
+ * milestone's explicit scope note; proves the parity gate still holds with NO grid fast-path),
+ * and (4) a ReadParam-driven sphere whose bake and virtual parameter snapshots intentionally
+ * use the coordinate space of their respective programs.
  *
  * RESOLVED (KI-LPD-003, twist-frame reconciliation): recipe 3's two programs used to author
  * SdfCore_Twist at DIFFERENT absolute p.y — SdfCore_Twist twists (x,z) about the CURRENT
@@ -270,11 +272,11 @@ struct ParityRecipe {
     // "entry.boundCenter = center" comment in BuildRenderGraph.cpp for the same requirement.
     glm::vec3 authoredBoundCenter = glm::vec3(0.0f);
     float     authoredBoundRadius = 0.0f;  // 0 = not authored
-    // Recipe-Parameterization M4 Task 11: a ReadParam corpus entry's bake-time-snapshot /
-    // render-time recipeParams[] value — IDENTICAL on both paths, proving CPU bake-time-
-    // snapshot eval and GPU per-frame-dynamic-read eval agree for the same effective
-    // parameter value. Empty (default) for every non-ReadParam corpus entry.
-    std::vector<float> readParamSnapshot;
+    // Recipe-Parameterization M4 Task 11: ReadParam values in the coordinate space of each
+    // program. The semantic value is the same, but localSpaceProgram is authored in bake-grid
+    // units while worldSpaceProgram is authored in world units. Empty for non-ReadParam entries.
+    std::vector<float> worldParamSnapshot;  // values passed to the virtual world-space program
+    std::vector<float> bakeParamSnapshot;   // values passed to the baked local-space program
 };
 
 using Vixen::SVO::Recipe::SdfOpCode;
@@ -454,11 +456,10 @@ std::vector<ParityRecipe> BuildCorpus() {
     // ReadParamValueSweepNeverMarksNodeNeedsRecompile gtest): { sphere(center, baseRadius),
     // ReadParam(0), MathSub }. MathSub is non-commutative a-b (RecipeStack push order:
     // [sphereSD, params[0]] -> a=sphereSD, b=params[0]), so sd = sphereSD - params[0] i.e. a
-    // pure radius offset: rendered radius = baseRadius + readParamSnapshot[0]. Baked with a
+    // pure radius offset: rendered radius = baseRadius + worldParamSnapshot[0]. Baked with a
     // SPECIFIC snapshotted param value (M1/M3 Task 10's params argument to
     // BakeRecipeInstructionsToSdfWorld) and rendered virtual with recipeParams[] set to the
-    // IDENTICAL value — proves CPU bake-time-snapshot eval and GPU per-frame-dynamic-read
-    // eval agree for the same effective parameter value. ReadParam/MathSub are outside both
+    // equivalent value in world units. ReadParam/MathSub are outside both
     // DeriveConservativeBounds' and RecipeOccupancy.h's Lipschitz whitelists (same as Twist
     // above) -> occupancy grid not expected, bound authored explicitly and MUST cover the
     // full baseRadius+snapshot extent, mirroring BuildRenderGraph.cpp's own margin comment.
@@ -468,18 +469,20 @@ std::vector<ParityRecipe> BuildCorpus() {
         r.bakeCenter  = glm::vec3(32.0f, 32.0f, 32.0f);
         r.worldTarget = bodyCentre;
         constexpr float kBaseRadius = 2.0f;      // world-unit base radius (bake-grid: *6, matching recipe (1)'s 18/3 ratio)
-        constexpr float kParamValue = 0.5f;      // the SAME snapshot value baked AND rendered virtual
+        constexpr float kParamValue = 0.5f;      // world-unit semantic parameter value
+        constexpr float kBakeUnitsPerWorldUnit = 6.0f;
         r.worldSpaceProgram = {
             sphereAt(r.worldTarget, kBaseRadius),
             readParam(0),
             mathSub(),
         };
         r.localSpaceProgram = {
-            sphereAt(glm::vec3(0.0f), kBaseRadius * 6.0f),
+            sphereAt(glm::vec3(0.0f), kBaseRadius * kBakeUnitsPerWorldUnit),
             readParam(0),
             mathSub(),
         };
-        r.readParamSnapshot = { kParamValue };
+        r.worldParamSnapshot = { kParamValue };
+        r.bakeParamSnapshot = { kParamValue * kBakeUnitsPerWorldUnit };
         r.authoredBoundCenter = r.worldTarget;
         r.authoredBoundRadius = kBaseRadius + kParamValue + 1.0f;  // margin, mirrors BuildRenderGraph.cpp's demo
         r.expectOccupancyGrid = false;
@@ -981,7 +984,7 @@ protected:
 
         auto baked = CountedBake(r.localSpaceProgram.data(), uint32_t(r.localSpaceProgram.size()),
                                   r.bakeCenter, /*n=*/64, /*bandVoxels=*/2.5f, /*brickDepth=*/3,
-                                  std::span<const float>(r.readParamSnapshot));
+                                  std::span<const float>(r.bakeParamSnapshot));
         Vixen::SVO::SdfBodyOctree body = Vixen::SVO::BuildSdfBodyOctree(baked, 3);
         std::vector<const Vixen::SVO::SdfBodyOctree*> ptrs{&body};
         Vixen::SVO::ConcatenatedOctrees pool = Vixen::SVO::ConcatenateSdfWithMips(ptrs);
@@ -1095,11 +1098,10 @@ protected:
         inst.providerKind=1u;  // PROVIDER_PROCEDURAL
         inst.recipeId=kRecipeId;
         inst.color[0]=1.0f; inst.color[1]=1.0f; inst.color[2]=1.0f;
-        // Recipe-Parameterization M4 Task 11: recipeParams[] set to the IDENTICAL value the
-        // baked path snapshotted (r.readParamSnapshot) — the whole point of this corpus entry
-        // is proving both paths agree on the SAME effective parameter value.
-        for (size_t i = 0; i < r.readParamSnapshot.size() && i < 6; ++i)
-            inst.recipeParams[i] = r.readParamSnapshot[i];
+        // Recipe-Parameterization M4 Task 11: recipeParams[] uses the world-space value for
+        // worldSpaceProgram. The baked path receives the equivalent bake-grid value above.
+        for (size_t i = 0; i < r.worldParamSnapshot.size() && i < 6; ++i)
+            inst.recipeParams[i] = r.worldParamSnapshot[i];
         node->SetInstances({inst});
         node->Setup();
         ASSERT_NO_THROW(node->Compile());
@@ -1221,6 +1223,23 @@ TEST_F(BakedVsVirtualParityTest, VirtualRendersGeometricallyEquivalentToBaked) {
 
     EXPECT_TRUE(sawDomainModifierRecipe)
         << "corpus must include at least one domain-modifier (non-occupancy-grid-eligible) recipe";
+}
+
+TEST(ParityCorpusTest, ReadParamSnapshotsFollowProgramCoordinateSpaces) {
+    const auto corpus = BuildCorpus();
+    const ParityRecipe* readParamRecipe = nullptr;
+    for (const auto& recipe : corpus) {
+        if (recipe.name == "readparam_sphere") {
+            readParamRecipe = &recipe;
+            break;
+        }
+    }
+
+    ASSERT_NE(readParamRecipe, nullptr);
+    ASSERT_EQ(readParamRecipe->worldParamSnapshot.size(), 1u);
+    ASSERT_EQ(readParamRecipe->bakeParamSnapshot.size(), 1u);
+    EXPECT_FLOAT_EQ(readParamRecipe->worldParamSnapshot[0], 0.5f);
+    EXPECT_FLOAT_EQ(readParamRecipe->bakeParamSnapshot[0], 3.0f);
 }
 
 int main(int argc, char** argv) {
