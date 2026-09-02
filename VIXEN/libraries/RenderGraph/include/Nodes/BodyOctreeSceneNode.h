@@ -12,6 +12,7 @@
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "WholesaleAvailability.h"
 #include "Memory/BatchedUploader.h"  // ResourceManagement::UploadHandle/InvalidUploadHandle (Inc1 M4c)
+#include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
 
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -307,13 +308,12 @@ private:
     void RecordBrickPoolUpload(uint64_t bytes);
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query traversal backend ---
-    // Built (VIXEN_RTQUERY_TRAVERSAL + RTXCapabilities.rayQuery only) once octree buffers
-    // AND the demo's per-octree instance list are both known. Hand-rolled (not via
+    // Built (RayQueryLighting capability + policy) once octree buffers AND the demo's
+    // per-octree instance list are both known. Hand-rolled (not via
     // CashSystem::AccelerationStructureCacher — that cacher is single-instance/single-AABB-
     // blob shaped; this needs one BLAS per octree's per-brick AABBs plus one TLAS instance
     // per BodyOctreeSceneNode instance with its own local-to-world transform and
-    // instanceCustomIndex = octree index). Rebuilt whenever the instance/octree identity
-    // that produced it changes (see rtQueryTlasBuiltForInstanceCount_/OctreeCount_ below).
+    // proxy-base metadata). Rebuilt whenever the source or instance epoch changes.
     void EnsureRtQueryTlasBuilt(Vixen::Vulkan::Resources::VulkanDevice* device);
     void DestroyRtQueryTlas();
 
@@ -491,30 +491,29 @@ private:
     VkDeviceSize      instanceRingCapacity_ = 0;  // bytes per ring slot (grow-only)
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS (VIXEN_RTQUERY_TRAVERSAL) ---
-    // One BLAS per octree (per-brick AABBs, octree-LOCAL [0,1]^3 space) + one shared TLAS
-    // with one instance per BodyOctreeSceneNode instance (instanceCustomIndex = octree
-    // index, transform = that instance's local-to-world). Rebuilt when the (instance count,
-    // octree count) pair that produced it changes — cheap identity check, not a hash of
-    // the actual data (this is a slice-scoped feasibility build, not a steady-state cacher).
+    // One BLAS per octree (the compact ShellProxyAabb records in octree-local [0,1]^3
+    // space) + one shared TLAS with one instance per BodyOctreeSceneNode instance.
+    // Rebuilt when the geometry or instance epoch changes.
     struct RtQueryBlas {
         VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
-        VkBuffer       asBuffer   = VK_NULL_HANDLE;
-        VkDeviceMemory asMemory   = VK_NULL_HANDLE;
-        VkBuffer       aabbBuffer = VK_NULL_HANDLE;
-        VkDeviceMemory aabbMemory = VK_NULL_HANDLE;
+        ResourceManagement::BufferAllocation asAllocation{};
+        ResourceManagement::BufferAllocation aabbAllocation{};
         VkDeviceAddress deviceAddress = 0;
+        uint32_t proxyBase = 0;
+        uint32_t proxyCount = 0;
     };
     std::vector<RtQueryBlas>    rtQueryBlas_;           // one per octree (concatenated_.count)
     VkAccelerationStructureKHR  rtQueryTlas_        = VK_NULL_HANDLE;
-    VkBuffer                    rtQueryTlasBuffer_  = VK_NULL_HANDLE;
-    VkDeviceMemory               rtQueryTlasMemory_  = VK_NULL_HANDLE;
-    VkBuffer                    rtQueryScratchBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory               rtQueryScratchMemory_ = VK_NULL_HANDLE;
-    VkBuffer                    rtQueryInstanceBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory               rtQueryInstanceMemory_ = VK_NULL_HANDLE;
+    ResourceManagement::BufferAllocation rtQueryTlasAllocation_{};
+    ResourceManagement::BufferAllocation rtQueryScratchAllocation_{};
+    ResourceManagement::BufferAllocation rtQueryInstanceAllocation_{};
     bool                         rtQueryTlasBuilt_    = false;
     int32_t                      rtQueryTlasBuiltForInstanceCount_ = -1;
     uint32_t                     rtQueryTlasBuiltForOctreeCount_   = 0;
+    uint64_t                     rtQueryGeometryEpoch_ = 1;
+    uint64_t                     rtQueryInstanceEpoch_ = 1;
+    uint64_t                     rtQueryTlasBuiltForGeometryEpoch_ = 0;
+    uint64_t                     rtQueryTlasBuiltForInstanceEpoch_ = 0;
 };
 
 } // namespace Vixen::RenderGraph

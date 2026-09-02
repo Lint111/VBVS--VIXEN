@@ -276,6 +276,21 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
             "no legacy vkCmdPipelineBarrier/vkQueueSubmit fallback path.");
     }
 
+    // Resolve the optional ray-query lighting AS entry points on this logical device. A
+    // non-RT device is expected to leave these null; BodyOctreeSceneNode then follows the
+    // permanent composed-DDA twin selected by CapabilityGraph. Keeping the dispatch table here
+    // also makes device-loss recreation safe: no AS call site caches a process-global function.
+    fpCreateAccelerationStructure = reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(
+        vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR"));
+    fpDestroyAccelerationStructure = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
+        vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR"));
+    fpGetAccelerationStructureBuildSizes = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
+        vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR"));
+    fpCmdBuildAccelerationStructures = reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
+        vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR"));
+    fpGetAccelerationStructureDeviceAddress = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
+        vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR"));
+
     // The capability graph was built before device creation (so feature enablement could be
     // gated through it). Now record the device extensions that were actually enabled, then
     // invalidate cached results so subsequent queries see the populated extension set.
@@ -312,8 +327,14 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
 void VulkanDevice::DestroyDevice()
 {
-    if (device == VK_NULL_HANDLE)
+    if (device == VK_NULL_HANDLE) {
+        fpCreateAccelerationStructure = nullptr;
+        fpDestroyAccelerationStructure = nullptr;
+        fpGetAccelerationStructureBuildSizes = nullptr;
+        fpCmdBuildAccelerationStructures = nullptr;
+        fpGetAccelerationStructureDeviceAddress = nullptr;
         return;
+    }
 
     // Release device-owned subsystems (staging buffers, upload command buffers, the upload
     // timeline semaphore, and the budget allocator's buffers) BEFORE destroying the device.
@@ -332,6 +353,11 @@ void VulkanDevice::DestroyDevice()
 
     vkDestroyDevice(device, nullptr);
     device = VK_NULL_HANDLE;
+    fpCreateAccelerationStructure = nullptr;
+    fpDestroyAccelerationStructure = nullptr;
+    fpGetAccelerationStructureBuildSizes = nullptr;
+    fpCmdBuildAccelerationStructures = nullptr;
+    fpGetAccelerationStructureDeviceAddress = nullptr;
 }
 
 VulkanResult<uint32_t> VulkanDevice::MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask)
@@ -429,6 +455,17 @@ std::vector<const char*> VulkanDevice::GetRTXExtensions() {
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
         VK_KHR_SPIRV_1_4_EXTENSION_NAME,
         VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME  // Required by SPIRV 1.4
+    };
+}
+
+std::vector<const char*> VulkanDevice::GetRayQueryLightingExtensions() {
+    return {
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME  // Required by SPIR-V 1.4
     };
 }
 

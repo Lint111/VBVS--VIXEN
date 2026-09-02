@@ -73,6 +73,15 @@ public:
     PFN_vkCmdPipelineBarrier2KHR fpCmdPipelineBarrier2 = nullptr;
     PFN_vkQueueSubmit2KHR fpQueueSubmit2 = nullptr;
 
+    // Optional ray-query lighting entry points. These are resolved per logical device so an
+    // AS lifecycle cannot accidentally dispatch through another device after device recreation.
+    // A null set is valid on non-RT hardware; the CapabilityGraph selects the composed-DDA twin.
+    PFN_vkCreateAccelerationStructureKHR fpCreateAccelerationStructure = nullptr;
+    PFN_vkDestroyAccelerationStructureKHR fpDestroyAccelerationStructure = nullptr;
+    PFN_vkGetAccelerationStructureBuildSizesKHR fpGetAccelerationStructureBuildSizes = nullptr;
+    PFN_vkCmdBuildAccelerationStructuresKHR fpCmdBuildAccelerationStructures = nullptr;
+    PFN_vkGetAccelerationStructureDeviceAddressKHR fpGetAccelerationStructureDeviceAddress = nullptr;
+
     // VIXEN_PIPELINE_STATS: resolved only when VK_KHR_pipeline_executable_properties was enabled
     // (see IsPipelineStatsEnabled), same per-device resolution rationale as the pair above.
     PFN_vkGetPipelineExecutablePropertiesKHR fpGetPipelineExecutableProperties = nullptr;
@@ -138,6 +147,15 @@ public:
      * @return Vector of extension names to enable
      */
     static std::vector<const char*> GetRTXExtensions();
+
+    /**
+     * @brief Get the minimal extension bundle required by the ray-query lighting tier.
+     *
+     * This intentionally excludes VK_KHR_ray_tracing_pipeline. RTXSupport remains the
+     * full pipeline capability; RayQueryLighting only needs acceleration structures,
+     * ray queries, device addresses, and their SPIR-V/host-operation dependencies.
+     */
+    static std::vector<const char*> GetRayQueryLightingExtensions();
 
     /**
      * @brief Check if RTX was enabled during device creation
