@@ -64,6 +64,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -228,6 +229,12 @@ protected:
     }
 
     void SetUp() override {
+        // 0ew: this render-smoke suite intentionally supports lavapipe; make that software path
+        // explicit. The parity precedent remains real-GPU-only via IsRealGpu in
+        // test_recipe_glsl_numerical_parity.cpp.
+#if defined(__linux__)
+        ::setenv("VIXEN_ALLOW_SOFTWARE_VULKAN", "1", /*overwrite=*/1);
+#endif
         VixenSelectWslGpuIcd();
         VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         ai.pApplicationName = "test_editor_document_render"; ai.apiVersion = VK_API_VERSION_1_3;

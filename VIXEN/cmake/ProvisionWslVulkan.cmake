@@ -1,10 +1,13 @@
 # ProvisionWslVulkan.cmake
 #
 # Auto-provision Mesa Dozen (Vulkan-over-D3D12) so VIXEN renders on the GPU under WSL2.
-# No-op off WSL (no /dev/dxg) or when disabled. Non-fatal: failure -> software Vulkan fallback.
+# No-op off WSL (no /dev/dxg) or when disabled. Provisioning failure is non-fatal, but the runtime
+# selector remains strict: use an explicit VK_ICD_FILENAMES or VIXEN_ALLOW_SOFTWARE_VULKAN=1 for
+# software Vulkan.
 #
 # Knobs:
-#   -DVIXEN_AUTO_PROVISION_WSL_VULKAN=OFF   skip Dozen provisioning (accept software Vulkan)
+#   -DVIXEN_AUTO_PROVISION_WSL_VULKAN=OFF   skip Dozen provisioning (requires an explicit runtime
+#                                          ICD choice or software opt-in on WSL)
 
 include_guard(GLOBAL)
 
@@ -34,8 +37,9 @@ if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
             message(STATUS "[ProvisionWslVulkan] Dozen ready: ${_dzn_icd}")
             set(VIXEN_WSL_DZN_ICD "${_dzn_icd}" CACHE INTERNAL "" FORCE)
         else()
-            message(WARNING "[ProvisionWslVulkan] Dozen provision failed (rc=${_dzn_rc}); VIXEN will "
-                            "use software Vulkan. Re-run configure to retry, or set "
+            message(WARNING "[ProvisionWslVulkan] Dozen provision failed (rc=${_dzn_rc}); the "
+                            "runtime selector will require VK_ICD_FILENAMES or "
+                            "VIXEN_ALLOW_SOFTWARE_VULKAN=1. Re-run configure to retry, or set "
                             "VIXEN_AUTO_PROVISION_WSL_VULKAN=OFF.")
         endif()
     endif()
