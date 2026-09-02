@@ -103,13 +103,20 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     // Load extensions and create surface
     LoadExtensionsAndCreateSurface(instance, window);
 
-    // Get graphics queue and setup formats/capabilities
-    auto graphicsQueueIndex = GetDevice()->GetGraphicsQueueHandle();
+    // Negotiate presentation against the REAL surface created just above (0ep.3/0ej): query
+    // vkGetPhysicalDeviceSurfaceSupportKHR per queue family and select a family proven to support
+    // BOTH graphics and present. Previously this called GetGraphicsQueueHandle(), which only found
+    // the first graphics family and never queried present support at all -- so the error message
+    // below claimed a presentation check that never happened.
+    auto graphicsQueueIndex = GetDevice()->NegotiatePresentQueue(swapChainWrapper->scPublicVars.surface);
     if (!graphicsQueueIndex.has_value()) {
-        std::string errorMsg = "SwapChainNode: No queue family supports both graphics and presentation";
+        std::string errorMsg = "SwapChainNode: presentation negotiation failed: "
+                             + graphicsQueueIndex.error().toString();
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+    NODE_LOG_INFO("[SwapChainNode] Presentation negotiated on queue family "
+                  + std::to_string(graphicsQueueIndex.value()));
     SetupFormatsAndCapabilities(graphicsQueueIndex.value());
 
     // Create swapchain and image views

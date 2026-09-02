@@ -286,7 +286,14 @@ void DeviceNode::CreateLogicalDevice() {
         return false;
     };
 
-    // Validate base device extensions - only enable those that are available
+    // Validate base device extensions - only enable those that are available.
+    //
+    // 0ej / 0ep.3: presentation is NOT an optional nicety. VK_KHR_swapchain silently skipped here
+    // produces a device whose vkGetDeviceProcAddr("vkCreateSwapchainKHR") returns null, which then
+    // surfaces far away as an unexplained "Failed to load device function" at swapchain compile.
+    // When presentation is REQUESTED (the extension is in the requested list) but the driver does
+    // not advertise it, fail LOUDLY here, naming the gap. Every other requested extension stays
+    // best-effort, exactly as before.
     std::vector<const char*> allExtensions;
     allExtensions.reserve(deviceExtensions.size());
 
@@ -294,6 +301,16 @@ void DeviceNode::CreateLogicalDevice() {
         if (hasExt(requestedExt)) {
             allExtensions.push_back(requestedExt);
             NODE_LOG_DEBUG("[DeviceNode]   ✓ " + std::string(requestedExt) + " (available)");
+        } else if (strcmp(requestedExt, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(selectedGPU, &props);
+            const std::string errorMsg =
+                std::string("[DeviceNode] GPU '") + props.deviceName + "' does not advertise " +
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME + ", but presentation was requested. This device "
+                "cannot present; it advertises " + std::to_string(extCount) + " device extensions. "
+                "Refusing to create a logical device that would silently lack vkCreateSwapchainKHR.";
+            NODE_LOG_ERROR(errorMsg);
+            throw std::runtime_error(errorMsg);
         } else {
             NODE_LOG_WARNING("[DeviceNode]   ✗ " + std::string(requestedExt) + " (NOT AVAILABLE - skipping)");
         }

@@ -388,12 +388,68 @@ VulkanResult<uint32_t> VulkanDevice::GetGraphicsQueueHandle() {
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
         if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             graphicsQueueIndex = i;
-            // Assume graphics queue supports present (verified during swapchain creation)
-            graphicsQueueWithPresentIndex = i;
+            // Presentation is NOT asserted here. It is negotiated against a real surface by
+            // NegotiatePresentQueue(); until then graphicsQueueWithPresentIndex stays
+            // kPresentQueueNotNegotiated so HasPresentSupport() cannot report a fabricated true.
             return i;
         }
     }
     return std::unexpected(VulkanError{VK_ERROR_FEATURE_NOT_PRESENT, "No graphics queue family found"});
+}
+
+VulkanResult<uint32_t> VulkanDevice::NegotiatePresentQueue(VkSurfaceKHR surface) {
+    if (surface == VK_NULL_HANDLE) {
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED,
+            "NegotiatePresentQueue: surface is VK_NULL_HANDLE - presentation cannot be negotiated "
+            "without a surface to query against"});
+    }
+    if (queueFamilyCount == 0) {
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED,
+            "NegotiatePresentQueue: queue families not enumerated - call "
+            "GetPhysicalDeviceQueuesAndProperties() first"});
+    }
+
+    // vkGetPhysicalDeviceSurfaceSupportKHR is a VK_KHR_surface (instance-level) entry point, so it
+    // is callable here -- before the logical device exists. That is precisely why the negotiation
+    // can inform device creation rather than being discovered after it.
+    uint32_t graphicsFamilies = 0;
+    uint32_t presentFamilies = 0;
+    uint32_t selected = kPresentQueueNotNegotiated;
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        const bool isGraphics = (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+        VkBool32 supportsPresent = VK_FALSE;
+        const VkResult r = vkGetPhysicalDeviceSurfaceSupportKHR(*gpu, i, surface, &supportsPresent);
+        if (r != VK_SUCCESS) {
+            return std::unexpected(VulkanError{r,
+                "NegotiatePresentQueue: vkGetPhysicalDeviceSurfaceSupportKHR failed for queue family "
+                + std::to_string(i)});
+        }
+        if (isGraphics) graphicsFamilies++;
+        if (supportsPresent) presentFamilies++;
+        if (isGraphics && supportsPresent && selected == kPresentQueueNotNegotiated) {
+            selected = i;
+        }
+    }
+
+    if (selected == kPresentQueueNotNegotiated) {
+        // 0ej: name the gap precisely rather than degrading silently. The two counts distinguish
+        // "this GPU cannot present to this surface at all" from "it can present, but only on a
+        // family without graphics" -- different problems with different fixes.
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(*gpu, &props);
+        return std::unexpected(VulkanError{VK_ERROR_FEATURE_NOT_PRESENT,
+            std::string("GPU '") + props.deviceName + "' has no queue family that supports BOTH "
+            "graphics and presentation to this surface (" + std::to_string(queueFamilyCount) +
+            " families: " + std::to_string(graphicsFamilies) + " graphics-capable, " +
+            std::to_string(presentFamilies) + " present-capable)"});
+    }
+
+    graphicsQueueWithPresentIndex = selected;
+    // The rendering queue must be the one that can present: a swapchain acquired and presented on
+    // a family that cannot present is exactly the late, obscure failure this negotiation exists to
+    // prevent. Keep graphicsQueueIndex in sync with the proven family.
+    graphicsQueueIndex = selected;
+    return selected;
 }
 
 void VulkanDevice::GetDeviceQueue() {
@@ -401,9 +457,8 @@ void VulkanDevice::GetDeviceQueue() {
 }
 
 bool VulkanDevice::HasPresentSupport() const {
-    // Present support is determined during queue family selection
-    // graphicsQueueWithPresentIndex == graphicsQueueIndex means present is supported
-    return (graphicsQueueWithPresentIndex == graphicsQueueIndex);
+    // True only once NegotiatePresentQueue() proved it against a real surface.
+    return graphicsQueueWithPresentIndex != kPresentQueueNotNegotiated;
 }
 
 bool VulkanDevice::RequiresFullImageTransfers() const {
