@@ -138,6 +138,12 @@ else()
 endif()
 
 # TBB for parallel processing (provided by dependencies/CMakeLists.txt)
+if(TARGET KernelDispatch)
+    target_link_libraries(SVO PUBLIC KernelDispatch)
+else()
+    message(FATAL_ERROR "KernelDispatch target not found - ensure libraries/KernelDispatch is built before SVO")
+endif()
+
 if(TARGET TBB::tbb)
     target_link_libraries(SVO PRIVATE TBB::tbb)
     message(STATUS "SVO: TBB linked for parallel processing")

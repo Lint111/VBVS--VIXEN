@@ -49,6 +49,7 @@
 
 #include "MipAnisoPool.h"
 #include "MipSample.h"
+#include "ShellDerive.h"
 #include "ShellOctreeGpu.h"
 #include "SVOBuilder.h"
 #include "SVOTypes.h"
@@ -154,6 +155,148 @@ inline MipSample ReduceBrickToMipSample(const SerializedOctree& serialized,
     }
 
     return FilterMipSample(kind, octantGroups);
+}
+
+}  // namespace detail
+
+struct NormalMipSample {
+    float x = 0.0f;
+    float y = 1.0f;
+    float z = 0.0f;
+    float coverage = 0.0f;
+};
+static_assert(sizeof(NormalMipSample) == 4u * sizeof(float));
+
+namespace detail {
+
+inline NormalMipSample ReduceBrickToNormalMipSample(const SerializedOctree& serialized,
+                                                    uint32_t brickIndex,
+                                                    uint32_t sdfBase) {
+    const uint32_t bpa = static_cast<uint32_t>(serialized.config.bricksPerAxis);
+    const uint32_t brickSide = serialized.config.brickSize > 0
+        ? static_cast<uint32_t>(serialized.config.brickSize) : 8u;
+    const float* pool = reinterpret_cast<const float*>(serialized.channelPool.data());
+    const size_t poolCount = serialized.channelPool.size() / sizeof(float);
+    const uint32_t* lookup = reinterpret_cast<const uint32_t*>(serialized.brickGridLookup.data());
+    const size_t lookupCount = serialized.brickGridLookup.size() / sizeof(uint32_t);
+
+    // SerializeSdf's leaf brick order has a direct local grid lookup.  Resolve
+    // the brick coordinate once, then use the same sentinel-aware finite
+    // differences as the level-0 shell bake for every occupied voxel.
+    uint32_t packedGrid = 0xFFFFFFFFu;
+    for (uint32_t flat = 0; flat < bpa * bpa * bpa; ++flat) {
+        if (flat >= lookupCount || lookup[flat] != brickIndex) continue;
+        const uint32_t gx = flat % bpa;
+        const uint32_t gy = (flat / bpa) % bpa;
+        const uint32_t gz = flat / (bpa * bpa);
+        packedGrid = gx | (gy << 10u) | (gz << 20u);
+        break;
+    }
+    if (packedGrid == 0xFFFFFFFFu) return {};
+
+    const uint32_t gx = packedGrid & 0x3ffu;
+    const uint32_t gy = (packedGrid >> 10u) & 0x3ffu;
+    const uint32_t gz = (packedGrid >> 20u) & 0x3ffu;
+    const uint32_t* materials = reinterpret_cast<const uint32_t*>(serialized.bricks.data()) +
+                                static_cast<size_t>(brickIndex) * SerializedOctree::kVoxelsPerBrick;
+    glm::vec3 sum(0.0f);
+    uint32_t occupied = 0u;
+    for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; ++voxel) {
+        if (materials[voxel] == 0u) continue;
+        const uint32_t lx = voxel & 7u;
+        const uint32_t ly = (voxel >> 3u) & 7u;
+        const uint32_t lz = voxel >> 6u;
+        const glm::vec3 p(static_cast<float>(gx * brickSide + lx),
+                          static_cast<float>(gy * brickSide + ly),
+                          static_cast<float>(gz * brickSide + lz));
+        sum += DeriveNormalAtVoxel(pool, poolCount, serialized.config.poolBrickBase,
+                                   serialized.brickStrideFloats, sdfBase, bpa, brickSide,
+                                   0u, lookup, lookupCount, p);
+        ++occupied;
+    }
+    if (occupied == 0u) return {};
+    const float length = glm::length(sum);
+    const glm::vec3 normal = length > 1.0e-6f ? sum / length : glm::vec3(0.0f, 1.0f, 0.0f);
+    return {normal.x, normal.y, normal.z,
+            static_cast<float>(occupied) / static_cast<float>(SerializedOctree::kVoxelsPerBrick)};
+}
+
+inline std::vector<uint8_t> BakeNormalMipPool(const Octree& oct,
+                                              const SerializedOctree& serialized) {
+    std::vector<NormalMipSample> samples(serialized.nodeCount);
+    if (!oct.root || serialized.nodeCount == 0u || serialized.brickCount == 0u) return {};
+
+    uint32_t sdfBase = 0u;
+    bool hasSdf = false;
+    for (uint32_t ch = 0; ch < serialized.channelCount && ch < kMaxChannels; ++ch) {
+        if (serialized.channels[ch].semanticId == static_cast<uint32_t>(SEM_SDF)) {
+            sdfBase = serialized.channels[ch].channelBaseFloats;
+            hasSdf = true;
+            break;
+        }
+    }
+    if (!hasSdf) return {};
+
+    const auto& nodes = oct.root->childDescriptors;
+    const auto& leafToBrickView = oct.root->leafToBrickView;
+    auto addChild = [&](glm::vec3& sum, float& coverage, const NormalMipSample& child) {
+        if (child.coverage <= 0.0f) return;
+        sum += glm::vec3(child.x, child.y, child.z) * child.coverage;
+        coverage += child.coverage;
+    };
+
+    for (uint32_t nodePlusOne = serialized.nodeCount; nodePlusOne > 0u; --nodePlusOne) {
+        const uint32_t nodeIdx = nodePlusOne - 1u;
+        if (nodeIdx >= nodes.size()) continue;
+        const auto& desc = nodes[nodeIdx];
+        glm::vec3 sum(0.0f);
+        float coverage = 0.0f;
+        for (int octant = 0; octant < 8; ++octant) {
+            if (!desc.hasChild(octant)) continue;
+            if (desc.isLeaf(octant)) {
+                const uint64_t key = (static_cast<uint64_t>(nodeIdx) << 3u) |
+                                     static_cast<uint64_t>(octant);
+                const auto it = leafToBrickView.find(key);
+                if (it != leafToBrickView.end()) {
+                    addChild(sum, coverage,
+                             detail::ReduceBrickToNormalMipSample(serialized, it->second, sdfBase));
+                }
+            } else {
+                uint32_t nonLeafPosition = 0u;
+                for (int prior = 0; prior < octant; ++prior)
+                    if (desc.hasChild(prior) && !desc.isLeaf(prior)) ++nonLeafPosition;
+                const uint32_t childIdx = desc.childPointer + nonLeafPosition;
+                if (childIdx < samples.size()) addChild(sum, coverage, samples[childIdx]);
+            }
+        }
+        if (coverage > 0.0f) {
+            const float length = glm::length(sum);
+            const glm::vec3 normal = length > 1.0e-6f ? sum / length : glm::vec3(0.0f, 1.0f, 0.0f);
+            samples[nodeIdx] = {normal.x, normal.y, normal.z, coverage / 8.0f};
+        }
+    }
+
+    // A leaf's own node ordinal is also queried directly by the renderer on a
+    // residency miss, so stamp it with the same brick filter used by parents.
+    for (uint32_t nodeIdx = 0; nodeIdx < serialized.nodeCount && nodeIdx < nodes.size(); ++nodeIdx) {
+        const auto& desc = nodes[nodeIdx];
+        const uint32_t totalNonLeaf = static_cast<uint32_t>(
+            std::popcount(static_cast<uint8_t>(desc.validMask & ~desc.leafMask)));
+        uint32_t leafPosition = 0u;
+        for (int octant = 0; octant < 8; ++octant) {
+            if (!desc.hasChild(octant) || !desc.isLeaf(octant)) continue;
+            const uint64_t key = (static_cast<uint64_t>(nodeIdx) << 3u) |
+                                 static_cast<uint64_t>(octant);
+            const auto it = leafToBrickView.find(key);
+            const uint32_t leafIdx = desc.childPointer + totalNonLeaf + leafPosition++;
+            if (it != leafToBrickView.end() && leafIdx < samples.size())
+                samples[leafIdx] = detail::ReduceBrickToNormalMipSample(serialized, it->second, sdfBase);
+        }
+    }
+
+    std::vector<uint8_t> bytes(samples.size() * sizeof(NormalMipSample));
+    if (!bytes.empty()) std::memcpy(bytes.data(), samples.data(), bytes.size());
+    return bytes;
 }
 
 }  // namespace detail
@@ -341,11 +484,18 @@ inline void BakeAndAttachMipPool(const Octree& oct, SerializedOctree& serialized
 // to build its light-tree cut BEFORE the concat pass runs) can hand that
 // already-computed result to ConcatenateSdfWithMips below instead of paying
 // for a second SerializeSdf + BakeMipPool pass over the same octree.
-inline SerializedOctree SerializeSdfWithMips(const SdfBodyOctree& body) {
+inline SerializedOctree SerializeSdfWithMips(const SdfBodyOctree& body,
+                                             bool bakeNormalMips = false) {
     SerializedOctree s = SerializeSdf(body);
     const Octree* oct = body.octree->getOctree();
     if (oct != nullptr) {
         BakeAndAttachMipPool(*oct, s);
+        if (bakeNormalMips) {
+            s.normalMipPool = detail::BakeNormalMipPool(*oct, s);
+            setNormalMipPoolDescriptor(s.config,
+                                       static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample)),
+                                       !s.normalMipPool.empty());
+        }
     }
     return s;
 }
@@ -357,7 +507,8 @@ inline SerializedOctree SerializeSdfWithMips(const SdfBodyOctree& body) {
 // existing caller (this parameter is purely additive).
 inline ConcatenatedOctrees ConcatenateSdfWithMips(
         const std::vector<const SdfBodyOctree*>& octrees,
-        const std::unordered_map<size_t, SerializedOctree>& precomputed = {}) {
+        const std::unordered_map<size_t, SerializedOctree>& precomputed = {},
+        bool bakeNormalMips = false) {
     ConcatenatedOctrees cat;
     cat.count = static_cast<uint32_t>(octrees.size());
     cat.configs.resize(octrees.size());
@@ -380,12 +531,30 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
         auto precomputedIt = precomputed.find(k);
         SerializedOctree s = (precomputedIt != precomputed.end())
             ? precomputedIt->second
-            : SerializeSdfWithMips(*octrees[k]);
+            : SerializeSdfWithMips(*octrees[k], bakeNormalMips);
+
+        if (bakeNormalMips && s.normalMipPool.empty()) {
+            const Octree* oct = octrees[k]->octree->getOctree();
+            if (oct != nullptr) {
+                s.normalMipPool = detail::BakeNormalMipPool(*oct, s);
+                setNormalMipPoolDescriptor(s.config,
+                                           static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample)),
+                                           !s.normalMipPool.empty());
+            }
+        }
 
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);
         setMipPoolBase(s.config, mipPoolBase);
+        if (!s.normalMipPool.empty()) {
+            setNormalMipPoolDescriptor(
+                s.config,
+                mipPoolBase + static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample)),
+                true);
+        } else {
+            setNormalMipPoolDescriptor(s.config, 0u, false);
+        }
         setTierRefTableBase(s.config, tierRefBase);
         // brickLookupBase: exact prefix sum over each octree's own bpa^3 — see
         // ShellOctreeGpu.h::ConcatenateSdf (same formula, mirrored here per this
@@ -405,6 +574,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
         cat.brickGridLookup.insert(cat.brickGridLookup.end(),
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
         cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+        cat.mipPool.insert(cat.mipPool.end(), s.normalMipPool.begin(), s.normalMipPool.end());
         cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
 
         if (cat.materials.empty()) {
@@ -414,7 +584,8 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
         nodeBase  += s.nodeCount;
         brickBase += s.brickCount;
         poolBase  += s.brickCount * s.brickStrideFloats;
-        mipPoolBase += s.nodeCount * s.channelCount;
+        mipPoolBase += static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample));
+        mipPoolBase += static_cast<uint32_t>(s.normalMipPool.size() / sizeof(MipSample));
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
         brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));
     }
@@ -434,8 +605,9 @@ inline ConcatenatedOctrees ConcatenateSdfWithMips(
 
 // Bake + attach both mipPool and mipAnisoPool (default threshold level —
 // see MipAnisoPool.h::DefaultAnisoThresholdLevel) for one octree body.
-inline SerializedOctree SerializeSdfWithAniso(const SdfBodyOctree& body) {
-    SerializedOctree s = SerializeSdfWithMips(body);
+inline SerializedOctree SerializeSdfWithAniso(const SdfBodyOctree& body,
+                                              bool bakeNormalMips = false) {
+    SerializedOctree s = SerializeSdfWithMips(body, bakeNormalMips);
     const Octree* oct = body.octree->getOctree();
     if (oct != nullptr) {
         MipAnisoPool anisoPool = BakeMipAnisoPool(*oct, s);
@@ -450,7 +622,8 @@ inline SerializedOctree SerializeSdfWithAniso(const SdfBodyOctree& body) {
 // same convention as mipPoolBase).
 inline ConcatenatedOctrees ConcatenateSdfWithAniso(
         const std::vector<const SdfBodyOctree*>& octrees,
-        const std::unordered_map<size_t, SerializedOctree>& precomputed = {}) {
+        const std::unordered_map<size_t, SerializedOctree>& precomputed = {},
+        bool bakeNormalMips = false) {
     ConcatenatedOctrees cat;
     cat.count = static_cast<uint32_t>(octrees.size());
     cat.configs.resize(octrees.size());
@@ -475,12 +648,30 @@ inline ConcatenatedOctrees ConcatenateSdfWithAniso(
         auto precomputedIt = precomputed.find(k);
         SerializedOctree s = (precomputedIt != precomputed.end())
             ? precomputedIt->second
-            : SerializeSdfWithAniso(*octrees[k]);
+            : SerializeSdfWithAniso(*octrees[k], bakeNormalMips);
+
+        if (bakeNormalMips && s.normalMipPool.empty()) {
+            const Octree* oct = octrees[k]->octree->getOctree();
+            if (oct != nullptr) {
+                s.normalMipPool = detail::BakeNormalMipPool(*oct, s);
+                setNormalMipPoolDescriptor(s.config,
+                                           static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample)),
+                                           !s.normalMipPool.empty());
+            }
+        }
 
         s.config.nodeArrayBase  = static_cast<int32_t>(nodeBase);
         s.config.brickArrayBase = static_cast<int32_t>(brickBase);
         setSdfBrickArrayBase(s.config, poolBase);
         setMipPoolBase(s.config, mipPoolBase);
+        if (!s.normalMipPool.empty()) {
+            setNormalMipPoolDescriptor(
+                s.config,
+                mipPoolBase + static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample)),
+                true);
+        } else {
+            setNormalMipPoolDescriptor(s.config, 0u, false);
+        }
         setTierRefTableBase(s.config, tierRefBase);
         setBrickLookupBase(s.config, brickLookupBase);
 
@@ -498,6 +689,7 @@ inline ConcatenatedOctrees ConcatenateSdfWithAniso(
         cat.brickGridLookup.insert(cat.brickGridLookup.end(),
                                    s.brickGridLookup.begin(), s.brickGridLookup.end());
         cat.mipPool.insert(cat.mipPool.end(), s.mipPool.begin(), s.mipPool.end());
+        cat.mipPool.insert(cat.mipPool.end(), s.normalMipPool.begin(), s.normalMipPool.end());
         cat.mipAnisoPool.insert(cat.mipAnisoPool.end(),
                                 s.mipAnisoPool.begin(), s.mipAnisoPool.end());
         cat.tierRefTable.insert(cat.tierRefTable.end(), s.tierRefs.begin(), s.tierRefs.end());
@@ -509,7 +701,8 @@ inline ConcatenatedOctrees ConcatenateSdfWithAniso(
         nodeBase  += s.nodeCount;
         brickBase += s.brickCount;
         poolBase  += s.brickCount * s.brickStrideFloats;
-        mipPoolBase += s.nodeCount * s.channelCount;
+        mipPoolBase += static_cast<uint32_t>(s.mipPool.size() / sizeof(MipSample));
+        mipPoolBase += static_cast<uint32_t>(s.normalMipPool.size() / sizeof(MipSample));
         mipAnisoBase += static_cast<uint32_t>(s.mipAnisoPool.size() / sizeof(MipAnisoSample));
         tierRefBase += static_cast<uint32_t>(s.tierRefs.size());
         brickLookupBase += static_cast<uint32_t>(s.brickGridLookup.size() / sizeof(uint32_t));

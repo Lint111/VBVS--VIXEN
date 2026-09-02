@@ -1800,6 +1800,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
             }
 
+            // Stored-shell normals are an interface-invariant shader feature:
+            // the compact oct8 payload reuses the existing channelPool binding.
+            // Keep the define in the canonical family source so the analytic
+            // gradient remains the exact flag-off twin.
+            if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
+                const size_t firstNewlineNormals = splicedSource.find('\n');
+                const std::string normalsDefine = "#define VIXEN_SHELL_NORMALS 1\n";
+                if (firstNewlineNormals == std::string::npos) {
+                    splicedSource += "\n" + normalsDefine;
+                } else {
+                    splicedSource.insert(firstNewlineNormals + 1, normalsDefine);
+                }
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("[BuildRenderGraph] VIXEN_SHELL_NORMALS: compact stored-shell normal payload ENGAGED");
+                }
+            }
+
             // Batch-29 (deep-field mip-accessor policy, regime-2 level ladder):
             // VIXEN_MIP_POLICY=1 env -> shader define, same textual-#define-
             // after-#version splice as VIXEN_DISPATCH_IS_PRIMARY_MARCH just
@@ -1928,6 +1945,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (b2ProxyPrepassEnabled) {
         marchShaderFeatures.push_back(kFeatureB2ProxyPrepass.define);
+    }
+    if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
+        marchShaderFeatures.push_back(kFeatureShellNormals.define);
     }
     if (envFlagEnabled("VIXEN_BRICKMAP_TRAVERSAL")) {  // W-BRICKMAP Slice 2 A/B gate
         marchShaderFeatures.push_back(kFeatureBrickmapTraversal.define);
@@ -8569,6 +8589,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     if (b2ProxyPrepassEnabled) {
         marchFeatures.Enable(kFeatureB2ProxyPrepass);
+    }
+    if (envFlagEnabled("VIXEN_SHELL_NORMALS")) {
+        marchFeatures.Enable(kFeatureShellNormals);
     }
     // W-RTQUERY Slice A: gate the rtQueryTlas member (binding 40) the SAME way
     // B1's depthDistanceImage gates binding 36 above -- the merged-SDI MEMBERS table

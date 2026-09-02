@@ -900,7 +900,8 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
         // ConcatenateSdfWithMips only, no mipAnisoPool attached, identity
         // hash unmoved.
         if (envFlagEnabled("VIXEN_MIP_ANISO_BAKE")) {
-            concatenated_ = Vixen::SVO::ConcatenateSdfWithAniso(sdfPtrs);
+            concatenated_ = Vixen::SVO::ConcatenateSdfWithAniso(
+                sdfPtrs, {}, envFlagEnabled("VIXEN_SHELL_NORMALS"));
             // Batch-32 JOB 2a: the [MipAnisoPool] print RecipeBaker.h emits
             // lives off this runtime path (BodyOctreeSceneNode's Stored-SDF
             // demo boot never calls into RecipeBaker) -- reuses the pool
@@ -910,7 +911,8 @@ void BodyOctreeSceneNode::EnsureOctreesBuilt() {
             std::printf("[MipAnisoPool] bodies=%zu totalPoolBytes=%zu source=BodyOctreeSceneNode runtime pool-load\n",
                         sdfPtrs.size(), concatenated_.mipAnisoPool.size());
         } else {
-            concatenated_ = Vixen::SVO::ConcatenateSdfWithMips(sdfPtrs);
+            concatenated_ = Vixen::SVO::ConcatenateSdfWithMips(
+                sdfPtrs, {}, envFlagEnabled("VIXEN_SHELL_NORMALS"));
         }
         octreesBuilt_ = true;
 
@@ -1284,6 +1286,10 @@ void BodyOctreeSceneNode::DeriveShellCache() {
     }
     Vixen::SVO::ShellDeriveParams params;
     params.shellDilation = shellDilation_;
+    params.bakeNormals = envFlagEnabled("VIXEN_SHELL_NORMALS");
+    if (params.bakeNormals) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_SHELL_NORMALS: baking oct16 normals into shell brick tails");
+    }
     try {
         Vixen::SVO::ShellPool derived =
             Vixen::SVO::DeriveShellPool(concatenated_, params);

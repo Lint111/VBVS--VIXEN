@@ -1,5 +1,6 @@
 #include "CapabilityGraph.h"
 #include <algorithm>
+#include <limits>
 #include <cstring>
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
@@ -68,6 +69,10 @@ bool DeviceFeatureCapability::CheckAvailability() const {
     return graph_ && graph_->IsDeviceFeatureAvailable(featureName_);
 }
 
+bool BackgroundGpuCapability::CheckAvailability() const {
+    return graph_ && graph_->HasBackgroundGpu();
+}
+
 //==============================================================================
 // CapabilityGraph
 //==============================================================================
@@ -123,6 +128,82 @@ bool CapabilityGraph::IsDeviceExtensionAvailable(const std::string& name) const 
 
 bool CapabilityGraph::IsDeviceFeatureAvailable(const std::string& name) const {
     return Contains(availableDeviceFeatures_, name);
+}
+
+PhysicalDeviceClass CapabilityGraph::ClassifyPhysicalDevice(VkPhysicalDeviceType type) noexcept {
+    switch (type) {
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return PhysicalDeviceClass::Integrated;
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:   return PhysicalDeviceClass::Discrete;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU:
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER:         return PhysicalDeviceClass::Other;
+        default:                                     return PhysicalDeviceClass::Unknown;
+    }
+}
+
+std::optional<BackgroundGpuSelection> CapabilityGraph::SelectBackgroundGpu(
+    const std::vector<PhysicalDeviceInfo>& devices) {
+    const PhysicalDeviceInfo* best = nullptr;
+    auto rank = [](PhysicalDeviceClass c) {
+        // Integrated first: shell data is host-resident, so a unified-memory
+        // adapter avoids a second copy across the PCIe boundary. Discrete is
+        // the fallback when no integrated candidate is visible.
+        switch (c) {
+            case PhysicalDeviceClass::Integrated: return 0;
+            case PhysicalDeviceClass::Discrete:   return 1;
+            case PhysicalDeviceClass::Other:      return 2;
+            default:                              return 3;
+        }
+    };
+    for (const auto& device : devices) {
+        if (device.classification == PhysicalDeviceClass::Unknown) continue;
+        if (best == nullptr || rank(device.classification) < rank(best->classification) ||
+            (rank(device.classification) == rank(best->classification) &&
+             (device.deviceLocalBytes < best->deviceLocalBytes ||
+              (device.deviceLocalBytes == best->deviceLocalBytes && device.index < best->index)))) {
+            best = &device;
+        }
+    }
+    if (best == nullptr) return std::nullopt;
+    return BackgroundGpuSelection{best->index, best->classification};
+}
+
+void CapabilityGraph::EnumeratePhysicalDevices(VkInstance instance, VkPhysicalDevice primary) {
+    physicalDevices_.clear();
+    backgroundGpuSelection_.reset();
+    if (instance == VK_NULL_HANDLE) {
+        InvalidateAll();
+        return;
+    }
+
+    uint32_t count = 0;
+    if (vkEnumeratePhysicalDevices(instance, &count, nullptr) != VK_SUCCESS || count == 0u) {
+        InvalidateAll();
+        return;
+    }
+    std::vector<VkPhysicalDevice> handles(count);
+    if (vkEnumeratePhysicalDevices(instance, &count, handles.data()) != VK_SUCCESS) {
+        InvalidateAll();
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        if (primary != VK_NULL_HANDLE && handles[i] == primary) continue;
+        VkPhysicalDeviceProperties properties{};
+        VkPhysicalDeviceMemoryProperties memory{};
+        vkGetPhysicalDeviceProperties(handles[i], &properties);
+        vkGetPhysicalDeviceMemoryProperties(handles[i], &memory);
+        uint64_t localBytes = 0;
+        for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap) {
+            if ((memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0u)
+                localBytes += memory.memoryHeaps[heap].size;
+        }
+        physicalDevices_.push_back(PhysicalDeviceInfo{
+            i, handles[i], properties.deviceType, ClassifyPhysicalDevice(properties.deviceType),
+            localBytes, properties.deviceName});
+    }
+    backgroundGpuSelection_ = SelectBackgroundGpu(physicalDevices_);
+    InvalidateAll();
 }
 
 void CapabilityGraph::BuildStandardCapabilities() {
@@ -334,6 +415,11 @@ void CapabilityGraph::BuildStandardCapabilities() {
     validationSupport->AddDependency(validationLayer);
     validationSupport->AddDependency(debugUtils);
     RegisterCapability(validationSupport);
+
+    // General BackgroundGpu lane capability. Selection is populated after the
+    // instance and primary device are known; registration is deliberately
+    // behavior-free until a later consumer opts in.
+    RegisterCapability(std::make_shared<BackgroundGpuCapability>());
 }
 
 } // namespace Vixen
