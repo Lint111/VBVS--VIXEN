@@ -1551,7 +1551,7 @@ void VulkanGraphApplication::RunPhotonCellDiagReadback(uint64_t sampleFrame) {
         renderGraph->GetInstanceByName("main_device"));
     if (!tableNode || !paramsNode || !hitRecordNode || !deviceNode) return;
     tableNode->RunDiagnostic(*hitRecordNode, *paramsNode,
-                             deviceNode->GetVulkanDevice(), mainLogger,
+                             deviceNode->GetVulkanDevice(), mainLogger.get(),
                              sampleFrame);
 }
 
