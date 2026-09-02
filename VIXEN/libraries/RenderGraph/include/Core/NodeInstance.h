@@ -563,6 +563,18 @@ public:
     }
 
     /**
+     * @brief Execute one lowered graph task with the node's transient state transition.
+     *
+     * RenderGraph's sequential oracle performs this state transition around Execute(). The shared
+     * task adapter uses this entry point so a worker owns only its node's state; graph callbacks and
+     * completion publication remain on the graph thread after the wave barrier.
+     */
+    void ExecuteAsGraphTask() {
+        state = NodeState::Executing;
+        Execute();
+    }
+
+    /**
      * @brief Cleanup method with double-cleanup protection
      *
      * This is the public interface for cleanup. It ensures CleanupImpl()

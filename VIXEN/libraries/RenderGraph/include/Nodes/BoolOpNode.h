@@ -16,7 +16,9 @@ namespace Vixen::RenderGraph {
 class BoolOpNodeType : public TypedNodeType<BoolOpNodeConfig> {
 public:
     BoolOpNodeType(const std::string& typeName = "BoolOp")
-        : TypedNodeType<BoolOpNodeConfig>(typeName) {}
+        : TypedNodeType<BoolOpNodeConfig>(typeName) {
+        graphExecutionKind = GraphExecutionKind::Cpu;
+    }
     virtual ~BoolOpNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

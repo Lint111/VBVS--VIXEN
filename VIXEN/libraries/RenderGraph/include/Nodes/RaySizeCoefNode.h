@@ -12,7 +12,10 @@ namespace Vixen::RenderGraph {
 class RaySizeCoefNodeType : public TypedNodeType<RaySizeCoefNodeConfig> {
 public:
     RaySizeCoefNodeType(const std::string& typeName = "RaySizeCoef")
-        : TypedNodeType<RaySizeCoefNodeConfig>(typeName) {}
+        : TypedNodeType<RaySizeCoefNodeConfig>(typeName) {
+        // ExecuteImpl only re-emits a compile-derived scalar; no GPU or external state is touched.
+        graphExecutionKind = GraphExecutionKind::Cpu;
+    }
     virtual ~RaySizeCoefNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;

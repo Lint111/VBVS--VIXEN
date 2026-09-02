@@ -19,6 +19,8 @@ public:
         ConstantNodeConfig config;
         inputSchema = config.GetInputVector();
         outputSchema = config.GetOutputVector();
+        // ExecuteImpl only exposes an already-retained CPU constant; it does not touch Vulkan.
+        graphExecutionKind = GraphExecutionKind::Cpu;
     }
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
@@ -39,6 +41,8 @@ public:
         ConstantNodeConfig config;
         inputSchema = config.GetInputVector();
         outputSchema = config.GetOutputVector();
+        // ExecuteImpl only exposes an already-retained CPU constant; it does not touch Vulkan.
+        graphExecutionKind = GraphExecutionKind::Cpu;
     }
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
