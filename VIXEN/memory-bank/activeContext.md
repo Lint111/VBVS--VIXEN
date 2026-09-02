@@ -1,3 +1,10 @@
+> **✅ 2026-09-02 — T-083 ReadParam baked/virtual parity repaired in the parityfix lane.**
+> `readparam_sphere` now uses a world-space snapshot of `0.5` for virtual evaluation and a bake-grid
+> snapshot of `3.0` for the local program's 6x scale. Baseline reproduced `5816/9580/0.6071`; three
+> post-fix Dozen runs were byte-identical at `8420/9580/0.8789`. The full parity corpus, CSG-subtract
+> and shadow gates, and all four mip-fallback tests passed. See `Vixen-Docs/04-Development/Known-Issues.md`
+> KI-038 for the resolved mechanism and the lane report for the complete gate transcript.
+
 > **✅ 2026-09-01 — Current engine status (reconciled on `wave/authoring-convergence`).**
 > Raster-proxy hybrid Slice A is landed; B1 shipped and is DEFAULT-ON after the 2026-08-03 native
 > gate (`b3c09d32`, 60% iteration cut; `14e835ee` default-on). B2 is the next rescope and remains
