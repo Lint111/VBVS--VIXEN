@@ -1001,6 +1001,21 @@ set_target_properties(test_node_self_registration PROPERTIES FOLDER "Tests/Rende
 gtest_discover_tests(test_node_self_registration)
 
 # ===========================================================================
+# Photon cell node pluggability witness (C0/C1)
+# ===========================================================================
+# The test instantiates every photon node type without VulkanGraphApplication
+# or BuildRenderGraph.cpp.  This is the node-discipline contract: a different
+# graph can compose the resource/config/pass nodes through their public APIs.
+add_executable(test_photon_cell_nodes test_photon_cell_nodes.cpp)
+if(TARGET RenderGraph)
+    target_link_libraries(test_photon_cell_nodes PRIVATE GTest::gtest_main RenderGraph)
+else()
+    target_link_libraries(test_photon_cell_nodes PRIVATE GTest::gtest_main)
+endif()
+set_target_properties(test_photon_cell_nodes PROPERTIES FOLDER "Tests/RenderGraph Tests")
+gtest_discover_tests(test_photon_cell_nodes)
+
+# ===========================================================================
 # PassGroupNode Smoke Test (auto-sync P4 M3)
 # ===========================================================================
 # No GPU required: (1) registry lookup by type, (2) AddComputePass/AddRenderPass

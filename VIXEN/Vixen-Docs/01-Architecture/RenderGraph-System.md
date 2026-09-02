@@ -160,6 +160,11 @@ class NodeInstance {
 | `VoxelGridNode` | Voxel scene generation |
 | `LoopBridgeNode` | Multi-rate update loops |
 | `ConstantNode` | Static value injection |
+| `PhotonCellTableNode` | Fixed-size, zero-initialised photon world-cell SSBO |
+| `PhotonCellParamsConfigNode` | Persistent per-frame photon generation/config ring |
+| `PhotonCellDepositNode` | March-side exitant-diffuse cell deposit pass |
+| `PhotonCellFoldNode` | Fixed-point-to-EWMA photon-cell fold pass |
+| `PhotonCellClearNode` | Explicit photon-cell table reset pass |
 
 ### 4.6 Core Infrastructure (Non-Node Components)
 
@@ -178,6 +183,22 @@ class NodeInstance {
 - Zero-cost tasks bypass budget checks (backward compatibility)
 
 See [[../Libraries/RenderGraph/TaskQueue|TaskQueue Documentation]] for API reference.
+
+### 4.7 Photon world-cell cache (C0/C1)
+
+The opt-in PhotonCell cache is composed entirely from the nodes above.  The
+application graph instantiates and wires the nodes; table allocation, params
+defaults/generation publication, shader registration, dispatch configuration,
+and diagnostics remain node-owned.  With `VIXEN_PHOTON_CELLS` unset, no photon
+nodes or buffers are created.  The cache is render-only: it has no ECS or
+simulation side effects and introduces no shader/codegen schema vocabulary.
+
+`PhotonCellDepositNode` is the delivered march-side writer and consumes the
+existing post-shadow-wave `HitRecord` visibility bits.  The staged-march/proxy
+writer is a later composition of the same cell claim/deposit shader contract.
+`PhotonCellClearNode` consumes an explicit reset request as one table-wide
+dispatch at graph start, then disables its steady-state dispatch; it is not an
+every-frame clear.
 
 ---
 

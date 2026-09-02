@@ -4,6 +4,18 @@
 > post-fix Dozen runs were byte-identical at `8420/9580/0.8789`. The full parity corpus, CSG-subtract
 > and shadow gates, and all four mip-fallback tests passed. See `Vixen-Docs/04-Development/Known-Issues.md`
 > KI-038 for the resolved mechanism and the lane report for the complete gate transcript.
+> **✅ 2026-09-02 — Photon world-cell cache C0/C1 implemented in `lane-photon1` (not merged/pushed).**
+> Photon behavior is node-owned: `PhotonCellTableNode` owns the fixed 131072×64B SSBO and
+> diagnostics, `PhotonCellParamsConfigNode` owns the persistent 4-slot/48B params ring and
+> generation/config emission, and `PhotonCellDepositNode`/`PhotonCellFoldNode`/`PhotonCellClearNode`
+> own shader registration, metadata, dispatch, and clear passes. `BuildRenderGraph.cpp` and
+> `VulkanGraphApplication.cpp` retain composition-only instantiation/wiring and optional hooks.
+> The CPU/GLSL twin follows `docs/design/2026-09-02-photon-cells.md`: level-0 size 0.5wu, keyLo
+> witness `0xC3EFFC3E`, fixed-point scale 1024, clamp 256, EWMA α=0.25, 20-bit generations,
+> max age 1024, six zeroed SH reservation words, and default-off `VIXEN_PHOTON_CELLS`. Writer #1
+> deposits post-shadow-wave exitant diffuse radiance from existing HitRecord/lighting/shadow data;
+> writer #2 (staged/proxy) remains the documented later seam. Dedicated node targets passed; the
+> witness build and full regression/codegen gates were queued for fresh verification at handoff.
 
 > **✅ 2026-09-01 — Current engine status (reconciled on `wave/authoring-convergence`).**
 > Raster-proxy hybrid Slice A is landed; B1 shipped and is DEFAULT-ON after the 2026-08-03 native

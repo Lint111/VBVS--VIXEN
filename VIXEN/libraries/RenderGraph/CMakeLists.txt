@@ -84,6 +84,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/TraceRaysNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
     include/Data/Nodes/BodyOctreeSceneNodeConfig.h
+    include/Data/Nodes/PhotonCellParamsConfigNodeConfig.h  # C0/C1: photon-cell params ring
     include/Data/Nodes/SkyProjectionNodeConfig.h
     include/Data/Nodes/SkySphereNodeConfig.h  # Deep-Field Mip-Accessor Policy batch 29 stream C: sky-sphere cache scaffold (UNWIRED)
 )
@@ -240,6 +241,9 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
     include/Nodes/BodyOctreeSceneNode.h
+    include/Nodes/PhotonCellParamsConfigNode.h  # C0/C1: photon-cell params ring
+    include/Nodes/PhotonCellTableNode.h         # C0/C1: fixed photon-cell table resource
+    include/Nodes/PhotonCellPassNodes.h         # C1: pluggable deposit/fold/clear passes
     include/Nodes/SkySphereNode.h  # Deep-Field Mip-Accessor Policy batch 29 stream C: sky-sphere cache scaffold (UNWIRED)
 )
 
@@ -307,6 +311,11 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
     src/Nodes/BodyOctreeSceneNode.cpp
+    src/Nodes/PhotonCellParamsConfigNode.cpp  # C0/C1: photon-cell params ring
+    src/Nodes/PhotonCellTableNode.cpp         # C0/C1: fixed photon-cell table resource
+    src/Nodes/PhotonCellDepositNode.cpp       # C1: march-side writer
+    src/Nodes/PhotonCellFoldNode.cpp          # C1: temporal cell fold
+    src/Nodes/PhotonCellClearNode.cpp         # C0: explicit/on-demand reset
     src/Nodes/ShellRevalidateNode.cpp
     src/Nodes/SkyProjectionNode.cpp  # Tiered ESVO Inc1 M3: address-derived sky-point composite pass
     src/Nodes/UIRenderNode.cpp  # Inc-1 M4: moved out of RENDERGRAPH_UI_SOURCES so it gets its own
@@ -709,6 +718,18 @@ target_compile_definitions(RenderGraphNode_UIRenderNode PRIVATE
 # just got missed). Apply to the actual compiling target instead of the empty facade.
 target_compile_definitions(RenderGraphNode_SkyProjectionNode PRIVATE
     VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
+
+# Photon pass nodes register their standalone shader builders in the RenderGraph
+# library, so they need the same CWD-independent source-root fallback as the
+# application-side shader builders.  This keeps the nodes composable by a graph
+# that has no VulkanGraphApplication translation unit.
+foreach(_photon_node_target
+        RenderGraphNode_PhotonCellDepositNode
+        RenderGraphNode_PhotonCellFoldNode
+        RenderGraphNode_PhotonCellClearNode)
+    target_compile_definitions(${_photon_node_target} PRIVATE
+        VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}")
+endforeach()
 
 # ============================================================================
 # Install and Properties (both static libs)

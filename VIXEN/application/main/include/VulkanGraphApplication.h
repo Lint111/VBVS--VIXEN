@@ -32,6 +32,8 @@ namespace Vixen::RenderGraph { class UIRenderNode; }  // composite HUD node; rea
 namespace Vixen::RenderGraph { class UISelectionProviderNode; }  // UI hit-test provider; real include only in the .cpp
 namespace Vixen::RenderGraph { class BodyOctreeSceneNode; }  // M-wire: sparse shell octree upload node; real include in .cpp
 namespace Vixen::RenderGraph { class CameraNode; }  // Sparse-Mip ESVO LOD Inc1 M4c: live camera-state readback for the residency trigger
+namespace Vixen::RenderGraph { class PhotonCellTableNode; }
+namespace Vixen::RenderGraph { class PhotonCellParamsConfigNode; }
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
 namespace CashSystem { struct RecipeBucketSnapshot; }
@@ -470,6 +472,14 @@ private:
     // alone doesn't order writes from frames still in flight at the sample point).
     uint32_t diagSampledEpoch_ = 0;
     NodeHandle hitAccumTableBuffer_{};     // mapped by the VIXEN_HIT_ACCUM_PROBE_LOG diag readback
+
+    // C0/C1: photon behavior is owned by RenderGraph photon nodes.  The app
+    // retains only composition handles so its lifecycle hooks can invoke the
+    // node-owned frame publisher and optional diagnostic readback.
+    NodeHandle photonCellParamsBuffer_{};
+    NodeHandle photonCellTableBuffer_{};
+    void RunPhotonCellDiagReadback(uint64_t sampleFrame = 0);
+
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
