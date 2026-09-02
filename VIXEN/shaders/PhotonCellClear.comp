@@ -1,0 +1,16 @@
+// PhotonCellClear.comp — explicit/on-demand cache reset.  The owning node
+// dispatches this once for a reset request, then disables its steady-state work.
+
+#version 460
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "PhotonCellsCommon.glsl"
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= photonCells.length()) return;
+    photonCells[slot].keyLo = 0u;
+    photonCells[slot].keyHi = 0u;
+    PhotonCellZeroPayload(slot);
+}

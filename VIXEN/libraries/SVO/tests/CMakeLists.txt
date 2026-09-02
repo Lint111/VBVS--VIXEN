@@ -436,6 +436,24 @@ set_target_properties(test_hit_accumulation_mirror PROPERTIES FOLDER "Tests/SVO 
 gtest_discover_tests(test_hit_accumulation_mirror)
 
 # ===========================================================================
+# Photon world-cell cache witness (C0/C1) — headless mirror of the
+# world-anchored key, fixed-point deposit/fold, and epoch reset contract.
+# ===========================================================================
+add_executable(test_photon_cells_mirror test_photon_cells_mirror.cpp)
+# PhotonCells.h is a header-only CPU twin.  Keep this witness independent of
+# the heavy SVO archive so generated recipe/SIMD implementation failures in an
+# unrelated target cannot make the cache arithmetic gate vacuous.
+target_link_libraries(test_photon_cells_mirror PRIVATE GTest::gtest_main)
+target_include_directories(test_photon_cells_mirror PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+if(TARGET glm::glm)
+    target_link_libraries(test_photon_cells_mirror PRIVATE glm::glm)
+endif()
+enable_recipe_strict_fp(test_photon_cells_mirror)
+set_target_properties(test_photon_cells_mirror PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_photon_cells_mirror)
+
+# ===========================================================================
 # Resolvable-Level Formula Tests  (Sparse-Mip ESVO LOD Inc1 M4a Task 10 part 1
 # — pure math, no octree/GPU needed: minResolvableLevel(distance, fovRadians,
 # screenHeightPx, leafSize_m, pxThreshold), both distance- and FOV-driven axes)

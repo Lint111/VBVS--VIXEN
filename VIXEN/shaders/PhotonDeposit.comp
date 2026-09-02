@@ -1,0 +1,31 @@
+// PhotonDeposit.comp — C1 march-side writer.
+// Runs after ShadowVisibilityWave so HitRecord visibility bits are final.
+// No traversal, scene lookup, HitRecord extension, or simulation side effect.
+
+#version 460
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "PhotonCellsCommon.glsl"
+
+void main() {
+    uint recordIndex = gl_GlobalInvocationID.x;
+    if (recordIndex >= hitRecords.length()) return;
+
+    HitRecord rec = hitRecords[recordIndex];
+    if ((rec.flags & HITRECORD_FLAG_HIT) == 0u ||
+        (rec.flags & HITRECORD_FLAG_FAR_FIELD) != 0u) return;
+
+    float footprint = rec.hitT * photonCellParams.primaryCoef + photonCellParams.primaryBias;
+    uint level = PhotonCellSelectLevel(footprint, photonCellParams.cellSize0);
+    float cellSize = PhotonCellSize(level, photonCellParams.cellSize0);
+    ivec3 cell = PhotonCellCoord(rec.worldPos, cellSize);
+    uint slot = PhotonCellClaim(cell, level, PhotonCellGeneration());
+    if (slot == ~0u) return;
+
+    vec3 flux = PhotonCellClampedDiffuseFlux(rec);
+    atomicAdd(photonCells[slot].sumFluxR, PhotonCellQuantize(flux.r));
+    atomicAdd(photonCells[slot].sumFluxG, PhotonCellQuantize(flux.g));
+    atomicAdd(photonCells[slot].sumFluxB, PhotonCellQuantize(flux.b));
+    atomicAdd(photonCells[slot].count, 1u);
+}

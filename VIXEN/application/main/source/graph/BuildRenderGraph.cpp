@@ -100,6 +100,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Data/Nodes/SelectionCoordinatorNodeConfig.h"
 #include "Data/Nodes/ShadowConfigNodeConfig.h"  // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Data/Nodes/HitAccumParamsConfigNodeConfig.h"  // B2: hit-accumulate params upload ring
+#include "Data/Nodes/PhotonCellParamsConfigNodeConfig.h"  // C0/C1: photon-cell params upload ring
 #include "Data/Nodes/AccumulationConfigNodeConfig.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Data/Nodes/AccumulationHistoryNodeConfig.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Data/Nodes/SceneRadianceNodeConfig.h"
@@ -149,6 +150,9 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Nodes/LightingConfigNode.h"  // Sampled Lighting Inc0 M3: LightingConfig upload ring
 #include "Nodes/ShadowConfigNode.h"    // Sampled Lighting Inc1 M4: ShadowConfig upload ring
 #include "Nodes/HitAccumParamsConfigNode.h"  // B2: hit-accumulate params upload ring
+#include "Nodes/PhotonCellParamsConfigNode.h"  // C0/C1: photon-cell params upload ring
+#include "Nodes/PhotonCellTableNode.h"  // C0/C1: photon-cell table resource
+#include "Nodes/PhotonCellPassNodes.h"  // C1: pluggable deposit/fold/clear passes
 #include "Nodes/AccumulationConfigNode.h"   // Sampled Lighting Inc2 M1: AccumulationConfig upload ring
 #include "Nodes/AccumulationHistoryNode.h"  // Sampled Lighting Inc2 M1: persistent history image
 #include "Nodes/SceneRadianceNode.h"
@@ -878,6 +882,56 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     hitAccumParamsBuffer_ = hitAccumParamsBuffer;
     hitAccumTableBuffer_ = hitAccumTableBuffer;
+
+    // C0/C1: march-side photon writer.  This is a sibling cache, not a
+    // modification of HitAccum and not a HitRecord extension.  The table is
+    // allocated only when explicitly enabled; its zero-initialized storage
+    // survives ordinary graph recompiles.  Writer #2 (staged march/proxy)
+    // remains an intentional v2 seam.
+    const auto photonCellConfiguration = PhotonCellParamsConfigNode::ReadConfiguration();
+    const bool photonCellsEnabled = PhotonCellParamsConfigNode::FeatureEnabled();
+    const bool photonCellsClearEnabled =
+        photonCellsEnabled && photonCellConfiguration.clearRequested;
+    NodeHandle photonCellTableBuffer{};
+    NodeHandle photonCellParamsBuffer{};
+    NodeHandle photonCellDepositShaderLib{}, photonCellDepositNode{};
+    NodeHandle photonCellDepositReadGatherer{}, photonCellDepositWriteGatherer{};
+    NodeHandle photonCellFoldShaderLib{}, photonCellFoldNode{};
+    NodeHandle photonCellFoldReadGatherer{}, photonCellFoldWriteGatherer{};
+    NodeHandle photonCellClearShaderLib{}, photonCellClearNode{};
+    NodeHandle photonCellClearWriteGatherer{};
+    if (photonCellsEnabled) {
+        photonCellTableBuffer = renderGraph->AddNode<PhotonCellTableNodeType>(
+            "photon_cell_table_buffer");
+        photonCellParamsBuffer = renderGraph->AddNode<PhotonCellParamsConfigNodeType>(
+            "photon_cell_params_buffer");
+        photonCellDepositShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>(
+            "photon_cell_deposit_shader_lib");
+        photonCellDepositNode = renderGraph->AddNode<PhotonCellDepositNodeType>(
+            "photon_cell_deposit");
+        photonCellDepositReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>(
+            "photon_cell_deposit_read_gatherer");
+        photonCellDepositWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>(
+            "photon_cell_deposit_write_gatherer");
+        photonCellFoldShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>(
+            "photon_cell_fold_shader_lib");
+        photonCellFoldNode = renderGraph->AddNode<PhotonCellFoldNodeType>(
+            "photon_cell_fold");
+        photonCellFoldReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>(
+            "photon_cell_fold_read_gatherer");
+        photonCellFoldWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>(
+            "photon_cell_fold_write_gatherer");
+        if (photonCellsClearEnabled) {
+            photonCellClearShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>(
+                "photon_cell_clear_shader_lib");
+            photonCellClearNode = renderGraph->AddNode<PhotonCellClearNodeType>(
+                "photon_cell_clear");
+            photonCellClearWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>(
+                "photon_cell_clear_write_gatherer");
+        }
+    }
+    photonCellTableBuffer_ = photonCellTableBuffer;
+    photonCellParamsBuffer_ = photonCellParamsBuffer;
 
     // W3c-2 (wavefront epoch): the resolve — per-CELL shade over the table +
     // the per-pixel composite AFTER SpatialReuseShade, BEFORE the blit. The
@@ -2310,6 +2364,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
         registerLightingFamily(hitAccumAccumulateShaderLib,
                                makeLightingFamily("HitAccumulate.comp", "HitAccumulate"));
     }
+    if (photonCellsEnabled) {
+        static_cast<PhotonCellDepositNode*>(
+            renderGraph->GetInstance(photonCellDepositNode))->RegisterShader(
+                *static_cast<ShaderLibraryNode*>(
+                    renderGraph->GetInstance(photonCellDepositShaderLib)),
+                &shaderCacheManager_);
+        static_cast<PhotonCellFoldNode*>(
+            renderGraph->GetInstance(photonCellFoldNode))->RegisterShader(
+                *static_cast<ShaderLibraryNode*>(
+                    renderGraph->GetInstance(photonCellFoldShaderLib)),
+                &shaderCacheManager_);
+        if (photonCellsClearEnabled) {
+            static_cast<PhotonCellClearNode*>(
+                renderGraph->GetInstance(photonCellClearNode))->RegisterShader(
+                    *static_cast<ShaderLibraryNode*>(
+                        renderGraph->GetInstance(photonCellClearShaderLib)),
+                    &shaderCacheManager_);
+        }
+    }
     // W3c-2: the resolve pair. The cell shade is a SceneBindings consumer AND
     // an analytic-field consumer — its family source gets the SAME uber-recipe
     // splice the march's does (its marker precedes SceneBindings, the shader's
@@ -2727,6 +2800,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                     kHitAccumTableCapacity * kHitAccumEntryBytes);
         }
 
+        // C0/C1: fixed 131072-entry photon table and 1D deposit/fold dispatches.
+        // Deposit walks the same hit-record extent as the shadow wave; fold
+        // walks the table.  Both are FrameCompute work, not BlockingIO or a
+        // background budget, and the clear is explicitly on-demand only.
+        if (photonCellsEnabled) {
+            static_cast<PhotonCellDepositNode*>(
+                renderGraph->GetInstance(photonCellDepositNode))->ConfigureForRecordCount(
+                    wavePixelsX * wavePixelsY);
+        }
+
         // W3c-2 / W-LEAN L3: cell radiance (vec4/slot) + the cell-shade
         // dispatch — 1D over the FULL table (capacity/64 exact — cheaper than
         // compaction+indirect at 64Ki slots, per the Dozen readout's
@@ -2790,6 +2873,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hitAccumEnabled) {
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumAccumulateReadGatherer))->PreRegisterBufferSlots(1);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumAccumulateWriteGatherer))->PreRegisterBufferSlots(2);
+    }
+    if (photonCellsEnabled) {
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(photonCellDepositReadGatherer))->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(photonCellDepositWriteGatherer))->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(photonCellFoldReadGatherer))->PreRegisterBufferSlots(1);
+        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(photonCellFoldWriteGatherer))->PreRegisterBufferSlots(1);
+        if (photonCellsClearEnabled) {
+            static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(photonCellClearWriteGatherer))->PreRegisterBufferSlots(1);
+        }
     }
     // W3c-2 / W-LEAN L3: cell shade reads {table}, writes {cellRadiance};
     // the shade's fold reads {cellRadiance, table} via SRS's first buffer
@@ -8129,6 +8221,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   shadowConfigNode, ShadowConfigNodeConfig::CURRENT_FRAME_INDEX);
 
+    // C0/C1: photon table is a fixed zeroed SSBO; its params are a persistent
+    // frame ring written by PreTick.  These connections do not exist when the
+    // feature is off, preserving the default graph census and byte path.
+    if (photonCellsEnabled) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      photonCellTableBuffer, StorageBufferNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      photonCellParamsBuffer, PhotonCellParamsConfigNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      photonCellParamsBuffer, PhotonCellParamsConfigNodeConfig::CURRENT_FRAME_INDEX);
+    }
+
     // Sampled Lighting Inc2 M1/M2: accumulation config node connections (same ring pattern as
     // shadowConfigNode above). CAMERA_DATA (M2) feeds the node's own reset-on-motion frame
     // counter — see AccumulationConfigNode.h's file header for why the counter lives here
@@ -8919,6 +9023,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sceneProviders.Provide("HitAccumParamsSSBO", hitAccumParamsBuffer,
                                HitAccumParamsConfigNodeConfig::HIT_ACCUM_PARAMS_BUFFER, SlotRole::Execute);
     }
+    if (photonCellsEnabled) {
+        sceneProviders.Provide("PhotonCellTable", photonCellTableBuffer,
+                               StorageBufferNodeConfig::STORAGE_BUFFER,
+                               SlotRole::Dependency | SlotRole::Execute);
+        sceneProviders.Provide("PhotonCellParamsSSBO", photonCellParamsBuffer,
+                               PhotonCellParamsConfigNodeConfig::PHOTON_CELL_PARAMS_BUFFER,
+                               SlotRole::Dependency | SlotRole::Execute);
+    }
     if (hitAccumResolveEnabled) {
         srsSdiFeatures.Enable(kFeatureSrsCellResolve);
         sceneProviders.Provide("HitAccumCellRadiance", hitAccumCellRadianceBuffer,
@@ -9205,6 +9317,41 @@ void VulkanGraphApplication::BuildRenderGraph() {
             sdiHazardCensus_, hitAccumAccumulateNode, sceneProviders, sdiNoFeatures,
             &sdiCensusExclusions);
     }
+
+    // C0/C1: standalone photon family.  Each node owns its engine-side
+    // manifest (no schema/codegen change); descriptor resources still flow
+    // through the same provider registry and synthesis helper as every other
+    // compute family.  Deposit is the only writer delivered in this lane.
+    if (photonCellsEnabled) {
+        const auto depositSynth = SynthesizeComputeStage<PhotonCellDepositNode::Metadata,
+                                                         PhotonCellDepositNode::MEMBERS>(
+            renderGraph, batch, "photon_cell_deposit", photonCellDepositShaderLib,
+            photonCellDepositNode, lightingCommon, sceneProviders, {});
+        (void)depositSynth;
+        CensusStageFromSdi<PhotonCellDepositNode::Metadata, PhotonCellDepositNode::MEMBERS>(
+            sdiHazardCensus_, photonCellDepositNode, sceneProviders, sdiNoFeatures,
+            &sdiCensusExclusions);
+
+        const auto foldSynth = SynthesizeComputeStage<PhotonCellFoldNode::Metadata,
+                                                       PhotonCellFoldNode::MEMBERS>(
+            renderGraph, batch, "photon_cell_fold", photonCellFoldShaderLib,
+            photonCellFoldNode, lightingCommon, sceneProviders, {});
+        (void)foldSynth;
+        CensusStageFromSdi<PhotonCellFoldNode::Metadata, PhotonCellFoldNode::MEMBERS>(
+            sdiHazardCensus_, photonCellFoldNode, sceneProviders, sdiNoFeatures,
+            &sdiCensusExclusions);
+
+        if (photonCellsClearEnabled) {
+            const auto clearSynth = SynthesizeComputeStage<PhotonCellClearNode::Metadata,
+                                                           PhotonCellClearNode::MEMBERS>(
+                renderGraph, batch, "photon_cell_clear", photonCellClearShaderLib,
+                photonCellClearNode, lightingCommon, sceneProviders, {});
+            (void)clearSynth;
+            CensusStageFromSdi<PhotonCellClearNode::Metadata, PhotonCellClearNode::MEMBERS>(
+                sdiHazardCensus_, photonCellClearNode, sceneProviders, sdiNoFeatures,
+                &sdiCensusExclusions);
+        }
+    }
     // W1b: the shadow wave — every one of its members (the scene set via
     // SceneBindings, LightingConfigSSBO/HitRecordBuffer/ShadowConfigSSBO)
     // already has a registry provider; DescriptorsOnly because its
@@ -9490,6 +9637,66 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // input was otherwise unused.
         batch.Connect(hitAccumAccumulateNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                       shadowVisibilityWaveNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
+
+    // C1: march-side deposit consumes final visibility bits from the wave and
+    // writes only the photon table.  Fold reads/RMWs that table afterward.
+    // Explicit ordering is retained alongside the buffer declarations because
+    // the shared Resource* gatherers declare hazards but do not by themselves
+    // order two independent ComputeStage submits.
+    if (photonCellsEnabled) {
+        batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      photonCellDepositReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(photonCellDepositReadGatherer,
+                      BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      photonCellDepositNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(photonCellTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      photonCellDepositWriteGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(photonCellDepositWriteGatherer,
+                      BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      photonCellDepositNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        batch.Connect(photonCellTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      photonCellFoldReadGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(photonCellFoldReadGatherer,
+                      BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      photonCellFoldNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+        batch.Connect(photonCellTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                      photonCellFoldWriteGatherer, 0,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(photonCellFoldWriteGatherer,
+                      BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                      photonCellFoldNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                      SlotRoleModifier(SlotRole::Execute));
+
+        batch.Connect(shadowVisibilityWaveNode,
+                      ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      photonCellDepositNode,
+                      ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        batch.Connect(photonCellDepositNode,
+                      ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      photonCellFoldNode,
+                      ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+
+        if (photonCellsClearEnabled) {
+            batch.Connect(photonCellTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
+                          photonCellClearWriteGatherer, 0,
+                          SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+            batch.Connect(photonCellClearWriteGatherer,
+                          BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                          photonCellClearNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY,
+                          SlotRoleModifier(SlotRole::Execute));
+            batch.Connect(photonCellClearNode,
+                          ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                          photonCellDepositNode,
+                          ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+        }
     }
 
     // W1b cross-dispatch hazards: the shadow wave read-modify-writes the

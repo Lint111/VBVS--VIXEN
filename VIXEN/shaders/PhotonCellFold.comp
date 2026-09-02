@@ -1,0 +1,40 @@
+// PhotonCellFold.comp — C1 per-frame fold into the temporal EWMA history.
+
+#version 460
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "PhotonCellsCommon.glsl"
+
+void main() {
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= photonCells.length()) return;
+    uint currentGeneration = PhotonCellGeneration();
+    uint storedHi = photonCells[slot].keyHi;
+    if ((photonCells[slot].keyLo & kPhotonCellKeyTagBit) == 0u ||
+        (storedHi & kPhotonCellGenerationMask) != currentGeneration ||
+        (storedHi & kPhotonCellGenerationMask) == kPhotonCellTransientGeneration) return;
+
+    uint count = photonCells[slot].count;
+    if (count == 0u) return; // preserve history across a frame with no deposit
+    float invCount = 1.0 / float(count);
+    vec3 mean = vec3(float(photonCells[slot].sumFluxR),
+                     float(photonCells[slot].sumFluxG),
+                     float(photonCells[slot].sumFluxB)) * invCount / kPhotonCellFluxScale;
+    float alpha = clamp(photonCellParams.misc0.x, 0.0, 1.0);
+    if (photonCells[slot].historyW == 0.0) {
+        photonCells[slot].historyR = mean.r;
+        photonCells[slot].historyG = mean.g;
+        photonCells[slot].historyB = mean.b;
+    } else {
+        photonCells[slot].historyR = mix(photonCells[slot].historyR, mean.r, alpha);
+        photonCells[slot].historyG = mix(photonCells[slot].historyG, mean.g, alpha);
+        photonCells[slot].historyB = mix(photonCells[slot].historyB, mean.b, alpha);
+    }
+    photonCells[slot].historyW = min(photonCells[slot].historyW + 1.0,
+                                     kPhotonCellHistoryWeightCap);
+    photonCells[slot].count = 0u;
+    photonCells[slot].sumFluxR = 0;
+    photonCells[slot].sumFluxG = 0;
+    photonCells[slot].sumFluxB = 0;
+}

@@ -51,6 +51,8 @@
 #include "RecipeBucketDataCacher.h"           // Row A: generation-keyed bucket-table snapshots
 #include "Nodes/StorageBufferNode.h"          // Sampled Lighting Inc3 M4: reservoirRecordsA/B readback for the ReSTIR gate
 #include "Nodes/HitAccumParamsConfigNode.h"   // B2 (batch-23): ring-buffered hit_accum_params_buffer, MapCurrentForWrite
+#include "Nodes/PhotonCellParamsConfigNode.h" // C0/C1: node-owned photon params/generation
+#include "Nodes/PhotonCellTableNode.h"         // C0/C1: node-owned photon table/readback
 #include "Nodes/FrameSyncNode.h"              // B2 (batch-23): GetCurrentFrameIndex() for the params ring's PreTick write
 #include "Nodes/ReservoirConfigNode.h"        // Sampled Lighting Inc3 M4: GetLastFrameParity() for the readback's buffer selector
 #include "Nodes/LightTreeBufferNode.h"        // Sampled Lighting Inc4 M6: SetLightTreeCut() downcast target for the edit-loop demo's live content flip
@@ -660,6 +662,24 @@ void VulkanGraphApplication::PreTick() {
                         p->camForward = glm::vec4(haCam.cameraDir, hitAccumLeanEnabled_ ? 1.0f : 0.0f);
                         paramsNode->UnmapCurrentForWrite();
                     }
+                }
+            }
+        }
+
+        // C0/C1: the node owns generation/config emission; the application
+        // supplies only the frame slot, camera-derived primary cone, and frame
+        // number needed by the optional witness hook.
+        if (photonCellParamsBuffer_.IsValid()) {
+            auto* paramsNode = static_cast<PhotonCellParamsConfigNode*>(
+                renderGraph->GetInstance(photonCellParamsBuffer_));
+            if (paramsNode) {
+                auto* frameSyncInst = static_cast<FrameSyncNode*>(
+                    renderGraph->GetInstanceByName("frame_sync"));
+                if (frameSyncInst) {
+                    const float primaryCoef = 2.0f * std::tan(
+                        (glm::radians(45.0f) / static_cast<float>(height)) * 0.5f);
+                    paramsNode->PrepareFrame(frameSyncInst->GetCurrentFrameIndex(),
+                                             primaryCoef, frameCounter_ + 1);
                 }
             }
         }
@@ -1516,6 +1536,25 @@ void VulkanGraphApplication::RunHitAccumDiagReadback(uint64_t sampleFrame) {
         }
 }
 
+void VulkanGraphApplication::RunPhotonCellDiagReadback(uint64_t sampleFrame) {
+    // Composition-level hook only: the table node owns all readback and
+    // HitRecord-to-cell comparison logic.
+    if (!renderGraph) return;
+    if (!photonCellTableBuffer_.IsValid() || !photonCellParamsBuffer_.IsValid()) return;
+    auto* tableNode = static_cast<PhotonCellTableNode*>(
+        renderGraph->GetInstance(photonCellTableBuffer_));
+    auto* paramsNode = static_cast<PhotonCellParamsConfigNode*>(
+        renderGraph->GetInstance(photonCellParamsBuffer_));
+    auto* hitRecordNode = static_cast<StorageBufferNode*>(
+        renderGraph->GetInstanceByName("hit_record_buffer"));
+    auto* deviceNode = static_cast<DeviceNode*>(
+        renderGraph->GetInstanceByName("main_device"));
+    if (!tableNode || !paramsNode || !hitRecordNode || !deviceNode) return;
+    tableNode->RunDiagnostic(*hitRecordNode, *paramsNode,
+                             deviceNode->GetVulkanDevice(), mainLogger,
+                             sampleFrame);
+}
+
 void VulkanGraphApplication::PostTick() {
     if (std::getenv("VIXEN_HDR_METER_DEBUG")) {
         RunHdrMeterDebugReadback();
@@ -1543,6 +1582,12 @@ void VulkanGraphApplication::PostTick() {
         frameCounter_ + 1 >= hitAccumDiagFrame_) {
         hitAccumDiagFrameFired_ = true;
         RunHitAccumDiagReadback(hitAccumDiagFrame_);
+    }
+    if (auto* photonParams = static_cast<PhotonCellParamsConfigNode*>(
+            renderGraph ? renderGraph->GetInstance(photonCellParamsBuffer_) : nullptr);
+        photonParams && photonParams->DiagnosticDue(frameCounter_ + 1)) {
+        photonParams->MarkDiagnosticFired();
+        RunPhotonCellDiagReadback(photonParams->Configuration().diagnosticFrame);
     }
 
     if (!perfCsvWriter_.IsEnabled() || !renderGraph) {
@@ -1585,6 +1630,16 @@ void VulkanGraphApplication::PostTick() {
     // more (+7-8 ms) than the ~2 ms re-read it was meant to save.
     if (auto* accumulate = static_cast<ComputeStageNode*>(renderGraph->GetNodeByName("hit_accum_accumulate"))) {
         passes.push_back({"hit_accum_accumulate", accumulate->GetGPUPerformanceLogger()});
+    }
+    // C1: both photon passes are in the in-frame FrameCompute lane.  They are
+    // absent entirely when VIXEN_PHOTON_CELLS is off.
+    if (auto* photonDeposit = static_cast<ComputeStageNode*>(
+            renderGraph->GetNodeByName("photon_cell_deposit"))) {
+        passes.push_back({"photon_cell_deposit", photonDeposit->GetGPUPerformanceLogger()});
+    }
+    if (auto* photonFold = static_cast<ComputeStageNode*>(
+            renderGraph->GetNodeByName("photon_cell_fold"))) {
+        passes.push_back({"photon_cell_fold", photonFold->GetGPUPerformanceLogger()});
     }
     // W1b: the derived-request shadow wave — its column is what prices moving
     // the production shadow traces out of the shade megakernel.
@@ -3592,6 +3647,11 @@ void VulkanGraphApplication::DeInitialize() {
     // renderGraph/engine_ below; no-op unless VIXEN_PERF_CSV was set.
     if (hitAccumEnabled_ && std::getenv("VIXEN_HIT_ACCUM_PROBE_LOG")) {
         RunHitAccumDiagReadback();
+    }
+    if (auto* photonParams = static_cast<PhotonCellParamsConfigNode*>(
+            renderGraph ? renderGraph->GetInstance(photonCellParamsBuffer_) : nullptr);
+        photonParams && photonParams->ProbeLogEnabled()) {
+        RunPhotonCellDiagReadback();
     }
     perfCsvWriter_.Flush();
 

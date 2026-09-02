@@ -18,6 +18,7 @@ add_library(SVO STATIC
     include/LaineKarrasOctree.h
     include/SVOLOD.h  # Screen-space LOD parameters (Phase B.2)
     include/CellFootprintRegime.h  # Ray-vs-cell sampling/residency policy
+    include/PhotonCells.h  # C0/C1 photon world-cell cache mirror
     include/Recipe/BodyFootprintRegime.h  # Shared CPU/GLSL rendering-regime policy
     include/Recipe/LodSelection.h  # Recipe LOD ladder and CPU transition contract (Wave A)
     include/Recipe/MultiBodyRenderer.h  # Multi-body placement, per-body LOD, and draw ordering
