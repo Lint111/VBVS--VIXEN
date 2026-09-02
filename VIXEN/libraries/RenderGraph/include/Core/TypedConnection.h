@@ -182,9 +182,9 @@ public:
     template<typename SourceSlot, typename TargetSlot>
     ConnectionBatch& Connect(
         NodeHandle sourceNode,
-        SourceSlot sourceSlot,
+        [[maybe_unused]] SourceSlot sourceSlot,
         NodeHandle targetNode,
-        TargetSlot targetSlot,
+        [[maybe_unused]] TargetSlot targetSlot,
         ConnectionMeta meta = {}
     ) {
         // Create pending connection
