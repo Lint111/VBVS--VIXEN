@@ -19,10 +19,13 @@
 
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
 #include <vector>
+#include <utility>
 
 #undef far
 #undef near
@@ -32,6 +35,7 @@
 #include "SdfBake.h"
 #include "ShellOctreeGpu.h"
 #include "ShellDerive.h"
+#include "MipBake.h"
 #include "SdfRecipes.h"
 
 using namespace Vixen::SVO;
@@ -648,4 +652,244 @@ TEST(ShellDerive, ShellThicknessGrows) {
         if (d1.shell[bi])   EXPECT_TRUE(d2.shell[bi])
             << "dilation2 must be a superset of dilation1 at brick " << bi;
     }
+}
+
+static float NormalAngleDegrees(glm::vec3 a, glm::vec3 b) {
+    a = glm::normalize(a);
+    b = glm::normalize(b);
+    const float cosine = std::fmax(-1.0f, std::fmin(1.0f, glm::dot(a, b)));
+    return std::acos(cosine) * 180.0f / 3.14159265358979323846f;
+}
+
+static uint16_t ReadBakedNormal(const ShellDeriveResult& result, uint32_t slot, uint32_t voxel) {
+    const uint32_t* words = reinterpret_cast<const uint32_t*>(result.shellData.data());
+    const uint32_t word = words[static_cast<size_t>(slot) * result.shellBrickStrideFloats +
+                                 result.normalOffsetFloats + voxel / 2u];
+    return static_cast<uint16_t>((voxel & 1u) == 0u ? word & 0xffffu : word >> 16u);
+}
+
+TEST(ShellDerive, BakedNormalsStayWithinMeasuredAngularBound) {
+    ShellFixture f;
+    ShellDeriveParams params;
+    params.bakeNormals = true;
+    params.workerCount = 2u;
+    const ShellDeriveResult r = DeriveShell(f.cat, 0, params);
+    ASSERT_TRUE(r.normalsBaked);
+    ASSERT_EQ(r.normalStrideFloats, kShellNormalStrideFloats);
+    EXPECT_EQ(r.normalPoolBytes,
+              static_cast<uint64_t>(r.shellBrickCount) * 1024u);
+    EXPECT_EQ(r.shellBrickStrideFloats, r.brickStrideFloats + kShellNormalStrideFloats);
+
+    const auto brickToGrid = Vixen::SVO::detail::BuildBrickToGrid(f.cat, 0, r.sourceBrickCount);
+    const float* source = reinterpret_cast<const float*>(f.cat.channelPool.data());
+    const uint32_t stride = r.brickStrideFloats;
+    const glm::vec3 center{32.0f, 32.0f, 32.0f};
+    std::vector<float> errors;
+    for (uint32_t slot = 0; slot < r.shellBrickCount; ++slot) {
+        const uint32_t sourceBrick = r.shellLookup[slot];
+        const uint32_t packed = brickToGrid[sourceBrick];
+        ASSERT_NE(packed, 0xFFFFFFFFu);
+        const uint32_t gx = packed & 0x3ffu;
+        const uint32_t gy = (packed >> 10u) & 0x3ffu;
+        const uint32_t gz = (packed >> 20u) & 0x3ffu;
+        for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; ++voxel) {
+            const float d = source[static_cast<size_t>(sourceBrick) * stride + voxel];
+            if (std::fabs(d) > 3.0f) continue;
+            const glm::vec3 p(static_cast<float>(gx * 8u + (voxel & 7u)),
+                              static_cast<float>(gy * 8u + ((voxel >> 3u) & 7u)),
+                              static_cast<float>(gz * 8u + (voxel >> 6u)));
+            if (glm::length(p - center) < 1.0e-3f) continue;
+            // The shader deliberately falls back to its sentinel-aware twin when
+            // any stencil side reaches an unallocated brick.  Exclude those
+            // undefined samples from the analytic sphere oracle; they are still
+            // baked and covered by the separate border/fallback behavior gates.
+            const uint32_t tableOffset = Vixen::SVO::detail::LookupTableOffset(f.cat, 0);
+            const uint32_t* lookup = reinterpret_cast<const uint32_t*>(f.cat.brickGridLookup.data());
+            const size_t lookupCount = f.cat.brickGridLookup.size() / sizeof(uint32_t);
+            const float* poolFloats = reinterpret_cast<const float*>(f.cat.channelPool.data());
+            const size_t poolFloatCount = f.cat.channelPool.size() / sizeof(float);
+            const float d0 = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p);
+            const float dxp = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p + glm::vec3(0.5f, 0.0f, 0.0f));
+            const float dxm = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p - glm::vec3(0.5f, 0.0f, 0.0f));
+            const float dyp = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p + glm::vec3(0.0f, 0.5f, 0.0f));
+            const float dym = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p - glm::vec3(0.0f, 0.5f, 0.0f));
+            const float dzp = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p + glm::vec3(0.0f, 0.0f, 0.5f));
+            const float dzm = Vixen::SVO::detail::SourceSdfTrilinear(
+                poolFloats, poolFloatCount, f.cat.configs[0].poolBrickBase, stride, 0u,
+                f.cat.configs[0].bricksPerAxis, f.cat.configs[0].brickSize,
+                tableOffset, lookup, lookupCount, p - glm::vec3(0.0f, 0.0f, 0.5f));
+            if (std::fabs(d0) >= kShellNormalSentinel || std::fabs(dxp) >= kShellNormalSentinel ||
+                std::fabs(dxm) >= kShellNormalSentinel || std::fabs(dyp) >= kShellNormalSentinel ||
+                std::fabs(dym) >= kShellNormalSentinel || std::fabs(dzp) >= kShellNormalSentinel ||
+                std::fabs(dzm) >= kShellNormalSentinel) continue;
+            const glm::vec3 baked = DecodeShellNormalOct16(ReadBakedNormal(r, slot, voxel));
+            const glm::vec3 radial = glm::normalize(p - center);
+            errors.push_back(NormalAngleDegrees(baked, radial));
+        }
+    }
+    ASSERT_GT(errors.size(), 100u);
+    std::sort(errors.begin(), errors.end());
+    const float p95 = errors[static_cast<size_t>(errors.size() * 0.95f)];
+    const float maxError = errors.back();
+    printf("[ShellDerive/normals] samples=%zu radial-p95=%.3f max=%.3f\n",
+           errors.size(), p95, maxError);
+    RecordProperty("normalSamples", static_cast<int>(errors.size()));
+    RecordProperty("normalP95Degrees", p95);
+    RecordProperty("normalMaxDegrees", maxError);
+    // The contract is bounded error, not byte identity.  The measured
+    // distribution is recorded above for review.
+    EXPECT_LT(p95, 3.0f);
+    EXPECT_LT(maxError, 8.0f);
+}
+
+TEST(ShellDerive, NormalBakeIsByteIdenticalAtWorkerCountsOneTwoAndDefault) {
+    ShellFixture f;
+    ShellDeriveParams serial;
+    serial.bakeNormals = true;
+    serial.workerCount = 1u;
+    const ShellDeriveResult reference = DeriveShell(f.cat, 0, serial);
+    ASSERT_GT(reference.shellBrickCount, 0u);
+    for (uint32_t workers : {1u, 2u, 0u}) {
+        for (int run = 0; run < 3; ++run) {
+            ShellDeriveParams params = serial;
+            params.workerCount = workers;
+            const ShellDeriveResult candidate = DeriveShell(f.cat, 0, params);
+            EXPECT_EQ(candidate.shellLookup, reference.shellLookup);
+            EXPECT_EQ(candidate.surface, reference.surface);
+            EXPECT_EQ(candidate.shell, reference.shell);
+            ASSERT_EQ(candidate.shellData.size(), reference.shellData.size());
+            EXPECT_EQ(std::memcmp(candidate.shellData.data(), reference.shellData.data(),
+                                  reference.shellData.size()), 0)
+                << "workerCount=" << workers << " run=" << run;
+        }
+    }
+}
+
+TEST(ShellDerive, DirtyRevalidateRebakesOnlyNormalTail) {
+    ShellFixture f;
+    ShellDeriveParams params;
+    params.bakeNormals = true;
+    params.workerCount = 1u;
+    const ShellDeriveResult baseline = DeriveShell(f.cat, 0, params);
+    ASSERT_GT(baseline.shellBrickCount, 2u);
+    const uint32_t target = baseline.shellLookup[0];
+    const uint32_t stride = f.cat.configs[0].brickStrideFloats;
+    const float* source = reinterpret_cast<const float*>(f.cat.channelPool.data());
+    std::vector<float> edited(SerializedOctree::kVoxelsPerBrick);
+    for (uint32_t v = 0; v < edited.size(); ++v)
+        edited[v] = source[static_cast<size_t>(target) * stride + v] + 0.1f * static_cast<float>(v & 7u);
+    ConcatenatedOctrees fresh = f.cat;
+    ASSERT_TRUE(ApplyBrickSdfEdit(fresh, 0, target, edited.data(), edited.size()));
+
+    std::vector<uint8_t> updated = baseline.shellData;
+    ASSERT_EQ(RevalidateShellBricks(fresh, 0, baseline, {target}, updated), 1u);
+    const ShellDeriveResult full = DeriveShell(fresh, 0, params);
+    ASSERT_EQ(full.shellLookup, baseline.shellLookup);
+    const uint32_t slot = baseline.sourceToShellSlot[target];
+    ASSERT_NE(slot, 0xFFFFFFFFu);
+    const size_t tailOffset = (static_cast<size_t>(slot) * baseline.shellBrickStrideFloats +
+                               baseline.normalOffsetFloats) * sizeof(float);
+    EXPECT_EQ(std::memcmp(updated.data() + tailOffset,
+                          full.shellData.data() + tailOffset,
+                          baseline.normalStrideFloats * sizeof(float)), 0);
+    for (uint32_t other = 0; other < baseline.shellBrickCount; ++other) {
+        if (other == slot) continue;
+        const size_t offset = static_cast<size_t>(other) * baseline.shellBrickStrideFloats * sizeof(float);
+        EXPECT_EQ(std::memcmp(updated.data() + offset, baseline.shellData.data() + offset,
+                              baseline.shellBrickStrideFloats * sizeof(float)), 0);
+    }
+}
+
+TEST(ShellDerive, BakedNormalMipSamplesAreRenormalizedAndCovered) {
+    ShellFixture f;
+    SerializedOctree serialized = SerializeSdfWithMips(f.body, true);
+    ASSERT_TRUE(normalMipPoolBakedOf(serialized.config));
+    ASSERT_EQ(serialized.normalMipPool.size(),
+              static_cast<size_t>(serialized.nodeCount) * sizeof(NormalMipSample));
+    const auto* samples = reinterpret_cast<const NormalMipSample*>(serialized.normalMipPool.data());
+    uint32_t covered = 0u;
+    for (uint32_t node = 0; node < serialized.nodeCount; ++node) {
+        const NormalMipSample& sample = samples[node];
+        if (sample.coverage <= 0.0f) continue;
+        ++covered;
+        EXPECT_GE(sample.coverage, 0.0f);
+        EXPECT_LE(sample.coverage, 1.0f);
+        EXPECT_NEAR(glm::length(glm::vec3(sample.x, sample.y, sample.z)), 1.0f, 1.0e-4f);
+    }
+    EXPECT_GT(covered, 0u);
+}
+
+TEST(ShellDerive, BakedNormalsRemainContinuousAcrossBrickBorders) {
+    ShellFixture f;
+    ShellDeriveParams params;
+    params.bakeNormals = true;
+    const ShellDeriveResult r = DeriveShell(f.cat, 0, params);
+    const auto brickToGrid = Vixen::SVO::detail::BuildBrickToGrid(f.cat, 0, r.sourceBrickCount);
+    for (uint32_t a = 0; a < r.shellBrickCount; ++a) {
+        const uint32_t pa = brickToGrid[r.shellLookup[a]];
+        if (pa == 0xFFFFFFFFu) continue;
+        const int ax = static_cast<int>(pa & 0x3ffu);
+        const int ay = static_cast<int>((pa >> 10u) & 0x3ffu);
+        const int az = static_cast<int>((pa >> 20u) & 0x3ffu);
+        for (uint32_t b = 0; b < r.shellBrickCount; ++b) {
+            const uint32_t pb = brickToGrid[r.shellLookup[b]];
+            if (pb == 0xFFFFFFFFu) continue;
+            const int bx = static_cast<int>(pb & 0x3ffu);
+            const int by = static_cast<int>((pb >> 10u) & 0x3ffu);
+            const int bz = static_cast<int>((pb >> 20u) & 0x3ffu);
+            const int manhattan = std::abs(ax - bx) + std::abs(ay - by) + std::abs(az - bz);
+            if (manhattan != 1 || ay != by || az != bz || bx != ax + 1) continue;
+            const glm::vec3 left = DecodeShellNormalOct16(ReadBakedNormal(r, a, 4u + 4u * 8u + 4u * 64u + 7u));
+            const glm::vec3 right = DecodeShellNormalOct16(ReadBakedNormal(r, b, 4u + 4u * 8u + 4u * 64u));
+            EXPECT_LT(NormalAngleDegrees(left, right), 12.0f);
+            return;
+        }
+    }
+    FAIL() << "fixture did not expose an adjacent shell-brick border";
+}
+
+TEST(ShellDerive, SerialVsWaveWallClockMeasurement) {
+    ShellFixture f;
+    using Clock = std::chrono::steady_clock;
+    auto measure = [&](uint32_t workers) {
+        ShellDeriveParams params;
+        params.bakeNormals = true;
+        params.workerCount = workers;
+        double totalMs = 0.0;
+        size_t bytes = 0u;
+        for (int run = 0; run < 3; ++run) {
+            const auto start = Clock::now();
+            const ShellDeriveResult result = DeriveShell(f.cat, 0, params);
+            totalMs += std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+            bytes += result.shellData.size();
+        }
+        return std::pair<double, size_t>{totalMs / 3.0, bytes};
+    };
+    const auto serial = measure(1u);
+    const auto waves = measure(2u);
+    RecordProperty("serialMsMean3", serial.first);
+    RecordProperty("wavesMsMean3", waves.first);
+    RecordProperty("serialOutputBytes3", static_cast<int>(serial.second));
+    RecordProperty("wavesOutputBytes3", static_cast<int>(waves.second));
+    std::printf("[ShellDerive/A-B] serial=%.3fms waves(2)=%.3fms mean-of-3 output=%zuB\n",
+                serial.first, waves.first, waves.second / 3u);
+    EXPECT_EQ(serial.second, waves.second);
 }

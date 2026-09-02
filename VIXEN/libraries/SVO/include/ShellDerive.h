@@ -32,15 +32,57 @@
 //   a far-exterior brick has all distances >= +halfBrickDiag (min fails).
 // ============================================================================
 #include "ShellOctreeGpu.h"   // ConcatenatedOctrees, OctreeConfig, SEM_SDF, kVoxelsPerBrick
+#include "KernelDispatch/Dispatcher.h"
 
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace Vixen::SVO {
+
+// One oct8 normal is two quantized bytes (16 bits total), packed two normals
+// per float word in the existing channelPool SSBO.  This is the conventional
+// octahedral 16-bit representation: it has no per-brick decode frame and keeps
+// interpolation continuous across the apron.
+inline constexpr uint32_t kShellNormalStrideFloats =
+    SerializedOctree::kVoxelsPerBrick / 2u;
+inline constexpr float kShellNormalSentinel = 100.0f;
+
+inline uint16_t EncodeShellNormalOct16(glm::vec3 normal) {
+    const float length = glm::length(normal);
+    if (!(length > 1.0e-6f) || !std::isfinite(length)) normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    else normal /= length;
+
+    const float invL1 = 1.0f / (std::fabs(normal.x) + std::fabs(normal.y) + std::fabs(normal.z));
+    glm::vec2 p(normal.x * invL1, normal.y * invL1);
+    if (normal.z < 0.0f) {
+        p = glm::vec2((1.0f - std::fabs(p.y)) * (p.x < 0.0f ? -1.0f : 1.0f),
+                      (1.0f - std::fabs(p.x)) * (p.y < 0.0f ? -1.0f : 1.0f));
+    }
+    const auto quantize = [](float v) -> uint16_t {
+        const float q = std::fmin(std::fmax(v * 0.5f + 0.5f, 0.0f), 1.0f) * 255.0f;
+        return static_cast<uint16_t>(std::lround(q));
+    };
+    return static_cast<uint16_t>(quantize(p.x) | (static_cast<uint16_t>(quantize(p.y)) << 8u));
+}
+
+inline glm::vec3 DecodeShellNormalOct16(uint16_t packed) {
+    glm::vec2 p(static_cast<float>(packed & 0xffu) / 255.0f * 2.0f - 1.0f,
+                static_cast<float>((packed >> 8u) & 0xffu) / 255.0f * 2.0f - 1.0f);
+    float z = 1.0f - std::fabs(p.x) - std::fabs(p.y);
+    if (z < 0.0f) {
+        p = glm::vec2((1.0f - std::fabs(p.y)) * (p.x < 0.0f ? -1.0f : 1.0f),
+                      (1.0f - std::fabs(p.x)) * (p.y < 0.0f ? -1.0f : 1.0f));
+    }
+    const glm::vec3 normal(p.x, p.y, z);
+    const float length = glm::length(normal);
+    return length > 1.0e-6f ? normal / length : glm::vec3(0.0f, 1.0f, 0.0f);
+}
 
 // ---------------------------------------------------------------------------
 // ShellProxyAabb — raster-proxy artifact element (hybrid slice A).
@@ -67,10 +109,9 @@ static_assert(sizeof(ShellProxyAabb) == 32, "ShellProxyAabb must stay 32B (std43
 // ---------------------------------------------------------------------------
 struct ShellDeriveResult {
     // Compacted SoA pool holding ONLY shell bricks, restrided contiguously.
-    // Byte layout per shell slot is IDENTICAL to the source pool's per-brick
-    // stride (brickStrideFloats floats/brick), so the render shader reads it
-    // with the same addressing, just against a smaller buffer.
-    std::vector<uint8_t> shellData;      // shellBrickCount * brickStrideFloats * 4 bytes
+    // The source channels retain their original offsets; when normals are
+    // enabled, an oct16 tail follows them and shellBrickStrideFloats expands.
+    std::vector<uint8_t> shellData;      // shellBrickCount * shellBrickStrideFloats * 4 bytes
 
     // Compacted lookup: shellSlot -> sourceBrickId. Length == shellBrickCount.
     // This is what a shell-aware brickGridLookup remaps to; increment 1 keeps
@@ -106,10 +147,15 @@ struct ShellDeriveResult {
     uint32_t surfaceBrickCount = 0;
     uint32_t shellBrickCount = 0;       // == shellLookup.size()
     uint32_t brickStrideFloats = 0;
+    uint32_t shellBrickStrideFloats = 0; // source stride + optional normal tail
+    uint32_t normalOffsetFloats = 0;
+    uint32_t normalStrideFloats = 0;
+    bool normalsBaked = false;
 
     // Bytes of the source vs the compacted pool — the measured bandwidth win.
     uint64_t sourcePoolBytes = 0;
     uint64_t shellPoolBytes  = 0;
+    uint64_t normalPoolBytes = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -120,6 +166,11 @@ struct ShellDeriveParams {
     //   1 = minimal sound invariant (26-neighbour of surface).  Default.
     //   2..3 = thicker shells for future effects; still sound (superset).
     uint32_t shellDilation = 1u;
+    // 0 = the shared executor's default; positive values are the deterministic
+    // worker-count gate used by the serial/2/N equivalence tests.
+    uint32_t workerCount = 0u;
+    // Flag-gated payload generation. The old channel pool is untouched when false.
+    bool bakeNormals = false;
 };
 
 namespace detail {
@@ -152,6 +203,198 @@ inline void BrickSdfMinMax(const float* poolFloats, size_t poolFloatCount,
     }
 }
 
+inline uint32_t LookupTableOffset(const ConcatenatedOctrees& cat, uint32_t octreeIdx) {
+    uint32_t offset = 0u;
+    for (uint32_t k = 0; k < octreeIdx; ++k) {
+        const uint32_t bpa = cat.configs[k].bricksPerAxis;
+        offset += bpa * bpa * bpa;
+    }
+    return offset;
+}
+
+inline std::vector<uint32_t> BuildBrickToGrid(const ConcatenatedOctrees& cat,
+                                              uint32_t octreeIdx,
+                                              uint32_t brickCount) {
+    const uint32_t bpa = static_cast<uint32_t>(cat.configs[octreeIdx].bricksPerAxis);
+    const uint32_t tableSize = bpa * bpa * bpa;
+    const uint32_t tableOffset = LookupTableOffset(cat, octreeIdx);
+    const uint32_t* lookup = reinterpret_cast<const uint32_t*>(cat.brickGridLookup.data());
+    const size_t lookupCount = cat.brickGridLookup.size() / sizeof(uint32_t);
+    std::vector<uint32_t> brickToGrid(brickCount, 0xFFFFFFFFu);
+    for (uint32_t flat = 0; flat < tableSize; ++flat) {
+        const size_t idx = static_cast<size_t>(tableOffset) + flat;
+        if (idx >= lookupCount) break;
+        const uint32_t brick = lookup[idx];
+        if (brick == 0xFFFFFFFFu || brick >= brickCount) continue;
+        const uint32_t gx = flat % bpa;
+        const uint32_t gy = (flat / bpa) % bpa;
+        const uint32_t gz = flat / (bpa * bpa);
+        brickToGrid[brick] = gx | (gy << 10u) | (gz << 20u);
+    }
+    return brickToGrid;
+}
+
+inline float SourceSdfVoxel(const float* poolFloats, size_t poolFloatCount,
+                            uint32_t poolBase, uint32_t stride, uint32_t sdfBase,
+                            uint32_t bpa, uint32_t brickSide, uint32_t tableOffset,
+                            const uint32_t* lookup, size_t lookupCount,
+                            int gx, int gy, int gz) {
+    if (gx < 0 || gy < 0 || gz < 0 ||
+        gx >= static_cast<int>(bpa * brickSide) ||
+        gy >= static_cast<int>(bpa * brickSide) ||
+        gz >= static_cast<int>(bpa * brickSide)) {
+        return kShellNormalSentinel;
+    }
+    const uint32_t bx = static_cast<uint32_t>(gx) / brickSide;
+    const uint32_t by = static_cast<uint32_t>(gy) / brickSide;
+    const uint32_t bz = static_cast<uint32_t>(gz) / brickSide;
+    const uint32_t flat = bx + by * bpa + bz * bpa * bpa;
+    const size_t lookupIdx = static_cast<size_t>(tableOffset) + flat;
+    if (lookupIdx >= lookupCount) return kShellNormalSentinel;
+    const uint32_t brick = lookup[lookupIdx];
+    if (brick == 0xFFFFFFFFu) return kShellNormalSentinel;
+    const uint32_t lx = static_cast<uint32_t>(gx) % brickSide;
+    const uint32_t ly = static_cast<uint32_t>(gy) % brickSide;
+    const uint32_t lz = static_cast<uint32_t>(gz) % brickSide;
+    const uint32_t voxel = lx + ly * brickSide + lz * brickSide * brickSide;
+    if (voxel >= SerializedOctree::kVoxelsPerBrick) return kShellNormalSentinel;
+    const size_t poolIdx = static_cast<size_t>(poolBase) +
+                           static_cast<size_t>(brick) * stride + sdfBase + voxel;
+    return poolIdx < poolFloatCount ? poolFloats[poolIdx] : kShellNormalSentinel;
+}
+
+inline float SourceSdfTrilinear(const float* poolFloats, size_t poolFloatCount,
+                                uint32_t poolBase, uint32_t stride, uint32_t sdfBase,
+                                uint32_t bpa, uint32_t brickSide, uint32_t tableOffset,
+                                const uint32_t* lookup, size_t lookupCount,
+                                glm::vec3 gridPos) {
+    const glm::vec3 base = glm::floor(gridPos);
+    const glm::vec3 f = gridPos - base;
+    const int x = static_cast<int>(base.x);
+    const int y = static_cast<int>(base.y);
+    const int z = static_cast<int>(base.z);
+    const float c000 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x, y, z);
+    const float c100 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x + 1, y, z);
+    const float c010 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x, y + 1, z);
+    const float c110 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x + 1, y + 1, z);
+    const float c001 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x, y, z + 1);
+    const float c101 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x + 1, y, z + 1);
+    const float c011 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x, y + 1, z + 1);
+    const float c111 = SourceSdfVoxel(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                      bpa, brickSide, tableOffset, lookup, lookupCount, x + 1, y + 1, z + 1);
+    const float maxAbs = std::max({std::fabs(c000), std::fabs(c100), std::fabs(c010), std::fabs(c110),
+                                   std::fabs(c001), std::fabs(c101), std::fabs(c011), std::fabs(c111)});
+    if (maxAbs >= kShellNormalSentinel) return kShellNormalSentinel;
+    const float z0 = std::fma(f.x, c100 - c000, c000);
+    const float z1 = std::fma(f.x, c110 - c010, c010);
+    const float z2 = std::fma(f.x, c101 - c001, c001);
+    const float z3 = std::fma(f.x, c111 - c011, c011);
+    return std::fma(f.z, std::fma(f.y, z3 - z2, z2) - std::fma(f.y, z1 - z0, z0),
+                    std::fma(f.y, z1 - z0, z0));
+}
+
+inline glm::vec3 DeriveNormalAtVoxel(const float* poolFloats, size_t poolFloatCount,
+                                     uint32_t poolBase, uint32_t stride, uint32_t sdfBase,
+                                     uint32_t bpa, uint32_t brickSide, uint32_t tableOffset,
+                                     const uint32_t* lookup, size_t lookupCount,
+                                     glm::vec3 gridPos) {
+    const float d0 = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                        bpa, brickSide, tableOffset, lookup, lookupCount, gridPos);
+    if (std::fabs(d0) >= kShellNormalSentinel) return glm::vec3(0.0f, 1.0f, 0.0f);
+    const float h = 0.5f;
+    const float dxPlus = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                            bpa, brickSide, tableOffset, lookup, lookupCount,
+                                            gridPos + glm::vec3(h, 0.0f, 0.0f));
+    const float dxMinus = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                             bpa, brickSide, tableOffset, lookup, lookupCount,
+                                             gridPos - glm::vec3(h, 0.0f, 0.0f));
+    const float dyPlus = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                            bpa, brickSide, tableOffset, lookup, lookupCount,
+                                            gridPos + glm::vec3(0.0f, h, 0.0f));
+    const float dyMinus = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                             bpa, brickSide, tableOffset, lookup, lookupCount,
+                                             gridPos - glm::vec3(0.0f, h, 0.0f));
+    const float dzPlus = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                            bpa, brickSide, tableOffset, lookup, lookupCount,
+                                            gridPos + glm::vec3(0.0f, 0.0f, h));
+    const float dzMinus = SourceSdfTrilinear(poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                             bpa, brickSide, tableOffset, lookup, lookupCount,
+                                             gridPos - glm::vec3(0.0f, 0.0f, h));
+    const auto oneSided = [d0](float plus, float minus) {
+        return std::fabs(plus) >= kShellNormalSentinel ? (d0 - minus) * 2.0f
+             : std::fabs(minus) >= kShellNormalSentinel ? (plus - d0) * 2.0f
+             : plus - minus;
+    };
+    const glm::vec3 gradient(oneSided(dxPlus, dxMinus), oneSided(dyPlus, dyMinus),
+                             oneSided(dzPlus, dzMinus));
+    const float length = glm::length(gradient);
+    return length > 1.0e-6f ? gradient / length : glm::vec3(0.0f, 1.0f, 0.0f);
+}
+
+inline void BakeBrickNormals(std::vector<uint8_t>& shellData, uint32_t shellSlot,
+                             uint32_t shellBrickStride, uint32_t normalOffset,
+                             uint32_t brickSide, uint32_t packedGrid,
+                             const float* poolFloats, size_t poolFloatCount,
+                             uint32_t poolBase, uint32_t sourceStride, uint32_t sdfBase,
+                             uint32_t bpa, uint32_t tableOffset, const uint32_t* lookup,
+                             size_t lookupCount) {
+    const uint32_t gx = packedGrid & 0x3ffu;
+    const uint32_t gy = (packedGrid >> 10u) & 0x3ffu;
+    const uint32_t gz = (packedGrid >> 20u) & 0x3ffu;
+    const size_t wordBase = static_cast<size_t>(shellSlot) * shellBrickStride + normalOffset;
+    for (uint32_t voxel = 0; voxel < SerializedOctree::kVoxelsPerBrick; voxel += 2u) {
+        const uint32_t lx0 = voxel & 7u;
+        const uint32_t ly0 = (voxel >> 3u) & 7u;
+        const uint32_t lz0 = voxel >> 6u;
+        const glm::vec3 p0(static_cast<float>(gx * brickSide + lx0),
+                           static_cast<float>(gy * brickSide + ly0),
+                           static_cast<float>(gz * brickSide + lz0));
+        const glm::vec3 n0 = DeriveNormalAtVoxel(poolFloats, poolFloatCount, poolBase,
+                                                  sourceStride, sdfBase, bpa, brickSide,
+                                                  tableOffset, lookup, lookupCount, p0);
+        const uint16_t a = EncodeShellNormalOct16(n0);
+        const uint32_t voxel1 = voxel + 1u;
+        const uint32_t lx1 = voxel1 & 7u;
+        const uint32_t ly1 = (voxel1 >> 3u) & 7u;
+        const uint32_t lz1 = voxel1 >> 6u;
+        const glm::vec3 p1(static_cast<float>(gx * brickSide + lx1),
+                           static_cast<float>(gy * brickSide + ly1),
+                           static_cast<float>(gz * brickSide + lz1));
+        const uint16_t b = EncodeShellNormalOct16(DeriveNormalAtVoxel(
+            poolFloats, poolFloatCount, poolBase, sourceStride, sdfBase, bpa, brickSide,
+            tableOffset, lookup, lookupCount, p1));
+        const uint32_t packed = static_cast<uint32_t>(a) | (static_cast<uint32_t>(b) << 16u);
+        std::memcpy(shellData.data() + (wordBase + voxel / 2u) * sizeof(float), &packed,
+                    sizeof(packed));
+    }
+}
+
+template <typename Fn>
+inline void RunPerBrickWave(const char* owner, uint32_t count, uint32_t requestedWorkers, Fn&& fn,
+                            const char* readDescription, const char* writeDescription) {
+    KernelDispatch::Stage stage;
+    stage.owner = owner;
+    stage.itemCount = count;
+    stage.backend = KernelDispatch::Backend::CpuTbb;
+    // Neighbor tables/frontiers are read-only inputs. Per-brick output is disjoint;
+    // the declarations make that ownership visible to the shared dispatcher.
+    stage.reads = {{1, static_cast<int32_t>(count), readDescription}};
+    stage.writes = {{2, static_cast<int32_t>(count), writeDescription}};
+    stage.perElement = [work = std::forward<Fn>(fn)](uint32_t i) { work(i); };
+    const int workers = requestedWorkers == 0u
+        ? KernelDispatch::DefaultWorkerCount()
+        : static_cast<int>(requestedWorkers);
+    const KernelDispatch::Handle handle = KernelDispatch::RunPerElementStage(stage, {}, workers);
+    if (!handle.ok()) throw std::runtime_error(std::string(owner) + " dispatch failed");
+}
+
 }  // namespace detail
 
 // ---------------------------------------------------------------------------
@@ -180,6 +423,7 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
         // Non-Stored-SDF / empty octree — nothing to derive. Return empty result.
         r.sourceBrickCount  = brickCount;
         r.brickStrideFloats = stride;
+        r.shellBrickStrideFloats = stride;
         return r;
     }
 
@@ -206,46 +450,32 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
 
     r.sourceBrickCount  = brickCount;
     r.brickStrideFloats = stride;
+    r.shellBrickStrideFloats = stride;
     r.surface.assign(brickCount, 0u);
     r.shell.assign(brickCount, 0u);
 
     // ---- Pass 1: SURFACE = sign-and-magnitude crossing over each brick's 512 SDF.
-    for (uint32_t bi = 0; bi < brickCount; ++bi) {
+    detail::RunPerBrickWave("SVO.ShellDerive.classify", brickCount, params.workerCount,
+        [&](uint32_t bi) {
         float mn, mx;
         detail::BrickSdfMinMax(poolFloats, poolFloatCount, poolBase, stride,
                                sdfBase, bi, mn, mx);
-        if (mn < halfDiag && mx > -halfDiag) {
-            r.surface[bi] = 1u;
-            ++r.surfaceBrickCount;
-        }
-    }
+        r.surface[bi] = (mn < halfDiag && mx > -halfDiag) ? 1u : 0u;
+        }, "source SDF pool", "surface classification");
+    for (uint8_t surface : r.surface) r.surfaceBrickCount += surface != 0u ? 1u : 0u;
 
     // ---- Build brickIndex -> grid-coord from the dense grid lookup (invert it).
     // brickGridLookup for this octree is uint32[bpa^3], flat = gx + gy*bpa + gz*bpa^2,
     // value == source brick index, 0xFFFFFFFF == empty. The per-octree tables are
     // concatenated; slice out THIS octree's table by summing prior tables' sizes.
     const uint32_t tableSize = bpa * bpa * bpa;
-    uint32_t tableFloatOffset = 0u;   // in uint32 units within brickGridLookup
-    for (uint32_t k = 0; k < octreeIdx; ++k) {
-        const uint32_t bpaK = cat.configs[k].bricksPerAxis;
-        tableFloatOffset += bpaK * bpaK * bpaK;
-    }
+    const uint32_t tableFloatOffset = detail::LookupTableOffset(cat, octreeIdx);
     const uint32_t* lookup =
         reinterpret_cast<const uint32_t*>(cat.brickGridLookup.data());
     const size_t lookupCount = cat.brickGridLookup.size() / sizeof(uint32_t);
 
     // brickToGrid[bi] = packed grid coord (gx | gy<<10 | gz<<20), or 0xFFFFFFFF.
-    std::vector<uint32_t> brickToGrid(brickCount, 0xFFFFFFFFu);
-    for (uint32_t flat = 0; flat < tableSize; ++flat) {
-        const size_t idx = tableFloatOffset + flat;
-        if (idx >= lookupCount) break;
-        const uint32_t bview = lookup[idx];
-        if (bview == 0xFFFFFFFFu || bview >= brickCount) continue;
-        const uint32_t gx = flat % bpa;
-        const uint32_t gy = (flat / bpa) % bpa;
-        const uint32_t gz = flat / (bpa * bpa);
-        brickToGrid[bview] = gx | (gy << 10) | (gz << 20);
-    }
+    const std::vector<uint32_t> brickToGrid = detail::BuildBrickToGrid(cat, octreeIdx, brickCount);
 
     // ---- Pass 2: SHELL = SURFACE U dilateN(SURFACE) via grid-space 26-neighbourhood.
     // Seed SHELL from SURFACE, then grow `shellDilation` brick-layers. Each layer
@@ -255,10 +485,11 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
     std::vector<uint8_t> frontier = r.surface;
     for (uint32_t layer = 0; layer < dilation; ++layer) {
         std::vector<uint8_t> nextFrontier(brickCount, 0u);
-        for (uint32_t bi = 0; bi < brickCount; ++bi) {
-            if (!frontier[bi]) continue;
+        detail::RunPerBrickWave("SVO.ShellDerive.dilate26", brickCount, params.workerCount,
+            [&](uint32_t bi) {
+            if (r.shell[bi]) return;
             const uint32_t packed = brickToGrid[bi];
-            if (packed == 0xFFFFFFFFu) continue;
+            if (packed == 0xFFFFFFFFu) return;
             const int gx = static_cast<int>(packed & 0x3FFu);
             const int gy = static_cast<int>((packed >> 10) & 0x3FFu);
             const int gz = static_cast<int>((packed >> 20) & 0x3FFu);
@@ -274,16 +505,16 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
                     const uint32_t flat = static_cast<uint32_t>(nx)
                                         + static_cast<uint32_t>(ny) * bpa
                                         + static_cast<uint32_t>(nz) * bpa * bpa;
-                    const size_t idx = tableFloatOffset + flat;
+                    const size_t idx = static_cast<size_t>(tableFloatOffset) + flat;
                     if (idx >= lookupCount) continue;
                     const uint32_t nb = lookup[idx];
-                    if (nb == 0xFFFFFFFFu || nb >= brickCount) continue;
-                    if (!r.shell[nb]) {
-                        r.shell[nb] = 1u;
-                        nextFrontier[nb] = 1u;
+                    if (nb != 0xFFFFFFFFu && nb < brickCount && frontier[nb]) {
+                        nextFrontier[bi] = 1u;
+                        return;
                     }
                 }
-        }
+            }, "frontier, grid lookup, and neighbor reads", "next dilation frontier");
+        for (uint32_t bi = 0; bi < brickCount; ++bi) r.shell[bi] |= nextFrontier[bi];
         frontier.swap(nextFrontier);
     }
 
@@ -294,12 +525,15 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
     for (uint32_t bi = 0; bi < brickCount; ++bi) if (r.shell[bi]) ++shellCount;
 
     r.shellBrickCount = shellCount;
+    r.normalsBaked = params.bakeNormals;
+    r.normalOffsetFloats = params.bakeNormals ? stride : 0u;
+    r.normalStrideFloats = params.bakeNormals ? kShellNormalStrideFloats : 0u;
+    r.shellBrickStrideFloats = stride + r.normalStrideFloats;
     r.shellLookup.reserve(shellCount);
     r.proxyAabbs.reserve(shellCount);
-    r.shellData.resize(static_cast<size_t>(shellCount) * stride * sizeof(float));
+    r.shellData.resize(static_cast<size_t>(shellCount) * r.shellBrickStrideFloats * sizeof(float));
 
     const float invBpa = 1.0f / static_cast<float>(bpa);
-    float* shellFloats = reinterpret_cast<float*>(r.shellData.data());
     uint32_t slot = 0;
     for (uint32_t bi = 0; bi < brickCount; ++bi) {
         if (!r.shell[bi]) continue;
@@ -321,20 +555,31 @@ inline ShellDeriveResult DeriveShell(const ConcatenatedOctrees& cat,
             p.octreeIndex = octreeIdx;
             r.proxyAabbs.push_back(p);
         }
-        // Copy the whole brick stride (all channels) from source pool to shell pool.
-        const size_t srcStart =
-            static_cast<size_t>(poolBase) + static_cast<size_t>(bi) * stride;
-        const size_t dstStart = static_cast<size_t>(slot) * stride;
-        for (uint32_t f = 0; f < stride; ++f) {
-            const size_t si = srcStart + f;
-            shellFloats[dstStart + f] =
-                (si < poolFloatCount) ? poolFloats[si] : 0.0f;
-        }
         ++slot;
     }
 
+    detail::RunPerBrickWave("SVO.ShellDerive.compact", shellCount, params.workerCount,
+        [&](uint32_t shellSlot) {
+        const uint32_t bi = r.shellLookup[shellSlot];
+        const size_t srcStart = static_cast<size_t>(poolBase) +
+                                static_cast<size_t>(bi) * stride;
+        const size_t dstStart = static_cast<size_t>(shellSlot) * r.shellBrickStrideFloats;
+        float* shellFloats = reinterpret_cast<float*>(r.shellData.data());
+        for (uint32_t f = 0; f < stride; ++f) {
+            const size_t si = srcStart + f;
+            shellFloats[dstStart + f] = (si < poolFloatCount) ? poolFloats[si] : 0.0f;
+        }
+        if (params.bakeNormals) {
+            detail::BakeBrickNormals(r.shellData, shellSlot, r.shellBrickStrideFloats,
+                                     r.normalOffsetFloats, brickSide, brickToGrid[bi],
+                                     poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                     bpa, tableFloatOffset, lookup, lookupCount);
+        }
+        }, "source SDF/channel pool and read-only apron neighbors", "compact brick payload");
+
     r.sourcePoolBytes = static_cast<uint64_t>(brickCount) * stride * sizeof(float);
-    r.shellPoolBytes  = static_cast<uint64_t>(shellCount)  * stride * sizeof(float);
+    r.shellPoolBytes  = static_cast<uint64_t>(shellCount) * r.shellBrickStrideFloats * sizeof(float);
+    r.normalPoolBytes = static_cast<uint64_t>(shellCount) * r.normalStrideFloats * sizeof(float);
 
     // ---- Build the grid->shellSlot remap table (drop-in binding-12 replacement).
     // Walk THIS octree's source grid sub-table; for each occupied grid cell whose
@@ -419,12 +664,31 @@ inline uint32_t RevalidateShellBricks(const ConcatenatedOctrees& freshCat,
     const uint32_t stride   = cfg.brickStrideFloats;
     const uint32_t poolBase = cfg.poolBrickBase;
     if (stride == 0u || stride != baseline.brickStrideFloats) return 0u;
+    const uint32_t shellStride = baseline.shellBrickStrideFloats == 0u
+        ? stride : baseline.shellBrickStrideFloats;
 
     const float* poolFloats =
         reinterpret_cast<const float*>(freshCat.channelPool.data());
     const size_t poolFloatCount = freshCat.channelPool.size() / sizeof(float);
     float* shellFloats = reinterpret_cast<float*>(shellDataInOut.data());
     const size_t shellFloatCount = shellDataInOut.size() / sizeof(float);
+
+    uint32_t sdfBase = 0u;
+    bool hasSdf = false;
+    for (uint32_t i = 0; i < cfg.channelCount && i < kMaxChannels; ++i) {
+        if (cfg.channels[i].semanticId == static_cast<uint32_t>(SEM_SDF)) {
+            sdfBase = cfg.channels[i].channelBaseFloats;
+            hasSdf = true;
+            break;
+        }
+    }
+    const uint32_t bpa = static_cast<uint32_t>(cfg.bricksPerAxis);
+    const uint32_t brickSide = cfg.brickSize > 0 ? static_cast<uint32_t>(cfg.brickSize) : 8u;
+    const uint32_t tableOffset = detail::LookupTableOffset(freshCat, octreeIdx);
+    const uint32_t* lookup = reinterpret_cast<const uint32_t*>(freshCat.brickGridLookup.data());
+    const size_t lookupCount = freshCat.brickGridLookup.size() / sizeof(uint32_t);
+    const std::vector<uint32_t> brickToGrid = detail::BuildBrickToGrid(
+        freshCat, octreeIdx, freshCat.brickCounts[octreeIdx]);
 
     uint32_t rewritten = 0u;
     for (uint32_t bi : dirtyBricks) {
@@ -433,12 +697,19 @@ inline uint32_t RevalidateShellBricks(const ConcatenatedOctrees& freshCat,
         if (slot == 0xFFFFFFFFu) continue;   // brick not in the shell; skip (out of scope)
         const size_t srcStart =
             static_cast<size_t>(poolBase) + static_cast<size_t>(bi) * stride;
-        const size_t dstStart = static_cast<size_t>(slot) * stride;
+        const size_t dstStart = static_cast<size_t>(slot) * shellStride;
         if (dstStart + stride > shellFloatCount) continue;
         for (uint32_t f = 0; f < stride; ++f) {
             const size_t si = srcStart + f;
             shellFloats[dstStart + f] =
                 (si < poolFloatCount) ? poolFloats[si] : 0.0f;
+        }
+        if (baseline.normalsBaked && hasSdf && baseline.normalStrideFloats != 0u &&
+            bi < brickToGrid.size() && brickToGrid[bi] != 0xFFFFFFFFu) {
+            detail::BakeBrickNormals(shellDataInOut, slot, shellStride,
+                                     baseline.normalOffsetFloats, brickSide, brickToGrid[bi],
+                                     poolFloats, poolFloatCount, poolBase, stride, sdfBase,
+                                     bpa, tableOffset, lookup, lookupCount);
         }
         ++rewritten;
     }
@@ -478,6 +749,7 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
     out.compact.nodes       = src.nodes;       // binary octree data unchanged
     out.compact.bricks      = src.bricks;
     out.compact.materials   = src.materials;
+    out.compact.mipPool     = src.mipPool;
     out.compact.configs     = src.configs;     // rewrite poolBrickBase below
     out.compact.nodeCounts  = src.nodeCounts;
     out.compact.brickCounts = src.brickCounts; // rewrite to shell brick counts below
@@ -503,6 +775,7 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
         if (stride == 0u || bcount == 0u || !hasSdf) {
             // Pass through unchanged: copy this octree's full bricks + its raw grid sub-table.
             out.compact.configs[oi].poolBrickBase = runningPoolBase;
+            setShellNormalDescriptor(out.compact.configs[oi], 0u, 0u, false);
             const size_t srcStart = static_cast<size_t>(cfg.poolBrickBase);
             const size_t floats   = static_cast<size_t>(bcount) * stride;
             for (size_t f = 0; f < floats; ++f) {
@@ -533,13 +806,16 @@ inline ShellPool DeriveShellPool(const ConcatenatedOctrees& src,
         // Append this octree's compact bricks; set its poolBrickBase.
         out.compact.configs[oi].poolBrickBase = runningPoolBase;
         out.compact.brickCounts[oi]           = r.shellBrickCount;
+        out.compact.configs[oi].brickStrideFloats = r.shellBrickStrideFloats;
+        setShellNormalDescriptor(out.compact.configs[oi], r.normalOffsetFloats,
+                                 r.normalStrideFloats, r.normalsBaked);
         out.compact.channelPool.insert(out.compact.channelPool.end(),
                                        r.shellData.begin(), r.shellData.end());
         // Append this octree's grid remap sub-table (grid -> LOCAL shellSlot).
         out.compact.brickGridLookup.insert(out.compact.brickGridLookup.end(),
                                            r.shellGridLookup.begin(), r.shellGridLookup.end());
 
-        runningPoolBase += r.shellBrickCount * stride;
+        runningPoolBase += r.shellBrickCount * r.shellBrickStrideFloats;
         out.perOctree.push_back(std::move(r));
     }
 

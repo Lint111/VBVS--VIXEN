@@ -97,7 +97,18 @@ bool shadeFromMipSample(uint nodeIdx, out vec3 hitColor, out vec3 hitNormal, out
         hitColor = vec3(0.5);
         incrFarFieldColorFallback();  // batch 10: no SEM_COLOR coverage, flat grey
     }
-    hitNormal = vec3(0.0, 1.0, 0.0);  // v1: flat/placeholder normal, no coarse-normal derivation yet
+    hitNormal = vec3(0.0, 1.0, 0.0);
+#ifdef VIXEN_SHELL_NORMALS
+    // Normal mips are appended to the existing MipSample stream.  Each node
+    // occupies two MipSample units: vec4(normal.xyz, filtered coverage).
+    if (octreeConfig._tailPad[5] != 0u) {
+        uint normalBase = (octreeConfig._tailPad[4] + nodeIdx * 2u) * 2u;
+        if (normalBase + 3u < mipPool.length() && mipPool[normalBase + 3u] > 0.0) {
+            hitNormal = normalize(vec3(mipPool[normalBase], mipPool[normalBase + 1u],
+                                       mipPool[normalBase + 2u]));
+        }
+    }
+#endif
     vec2 emissionSample = readMipSample(nodeIdx, SEM_EMISSION, 0.0);
     hitEmission = emissionSample.y > 0.0 ? emissionSample.x : 0.0;
     return true;

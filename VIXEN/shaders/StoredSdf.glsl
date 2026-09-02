@@ -92,6 +92,66 @@ float _samplePoolVoxel(uint channelBase, ivec3 gridCoord, int comp, int octreeId
     return channelPool[poolBase + brickIdx * stride + channelBase + uint(comp) * VX_VOXELS_PER_BRICK + voxelIdx];
 }
 
+#ifdef VIXEN_SHELL_NORMALS
+// Baked normals occupy the additive tail of each compact shell brick.  The
+// descriptor is carried in OctreeConfig's reserved words so flag-off configs
+// retain the original channel-pool ABI and addressing.
+bool _sampleShellNormalVoxel(ivec3 gridCoord, int octreeIdx, out vec3 normal) {
+    normal = vec3(0.0, 1.0, 0.0);
+    uint normalOffset = configs[octreeIdx]._tailPad[1];
+    uint normalStride = configs[octreeIdx]._tailPad[2];
+    if (configs[octreeIdx]._tailPad[3] == 0u || normalStride == 0u) return false;
+    int bpa = int(configs[octreeIdx].bricksPerAxisSdf);
+    if (bpa <= 0 || any(lessThan(gridCoord, ivec3(0))) ||
+        any(greaterThanEqual(gridCoord, ivec3(bpa * 8)))) return false;
+
+    ivec3 brickCoord = gridCoord / 8;
+    ivec3 local = gridCoord - brickCoord * 8;
+    uint flat = _gridToLookupIdx(brickCoord, bpa);
+    if (flat == 0xFFFFFFFFu) return false;
+    uint brickIdx = brickLookup[configs[octreeIdx].brickLookupBase + flat];
+    if (brickIdx == 0xFFFFFFFFu) return false;
+    uint voxel = uint(local.z * 64 + local.y * 8 + local.x);
+    if (voxel / 2u >= normalStride) return false;
+    uint word = floatBitsToUint(channelPool[configs[octreeIdx].poolBrickBase +
+                                            brickIdx * configs[octreeIdx].brickStrideFloats +
+                                            normalOffset + voxel / 2u]);
+    uint packed = (voxel & 1u) == 0u ? (word & 0xffffu) : (word >> 16u);
+    vec2 p = vec2(float(packed & 0xffu), float((packed >> 8u) & 0xffu)) / 255.0 * 2.0 - 1.0;
+    float z = 1.0 - abs(p.x) - abs(p.y);
+    if (z < 0.0) {
+        p = vec2((1.0 - abs(p.y)) * (p.x < 0.0 ? -1.0 : 1.0),
+                 (1.0 - abs(p.x)) * (p.y < 0.0 ? -1.0 : 1.0));
+    }
+    normal = normalize(vec3(p, z));
+    return true;
+}
+
+bool sampleShellNormalTrilinear(vec3 gridPos, int octreeIdx, out vec3 normal) {
+    vec3 f = fract(gridPos);
+    ivec3 i = ivec3(floor(gridPos));
+    vec3 n000, n100, n010, n110, n001, n101, n011, n111;
+    bool valid = _sampleShellNormalVoxel(i, octreeIdx, n000) &&
+                 _sampleShellNormalVoxel(i + ivec3(1,0,0), octreeIdx, n100) &&
+                 _sampleShellNormalVoxel(i + ivec3(0,1,0), octreeIdx, n010) &&
+                 _sampleShellNormalVoxel(i + ivec3(1,1,0), octreeIdx, n110) &&
+                 _sampleShellNormalVoxel(i + ivec3(0,0,1), octreeIdx, n001) &&
+                 _sampleShellNormalVoxel(i + ivec3(1,0,1), octreeIdx, n101) &&
+                 _sampleShellNormalVoxel(i + ivec3(0,1,1), octreeIdx, n011) &&
+                 _sampleShellNormalVoxel(i + ivec3(1,1,1), octreeIdx, n111);
+    if (!valid) {
+        normal = vec3(0.0, 1.0, 0.0);
+        return false;
+    }
+    vec3 x00 = mix(n000, n100, f.x);
+    vec3 x10 = mix(n010, n110, f.x);
+    vec3 x01 = mix(n001, n101, f.x);
+    vec3 x11 = mix(n011, n111, f.x);
+    normal = normalize(mix(mix(x00, x10, f.y), mix(x01, x11, f.y), f.z));
+    return true;
+}
+#endif
+
 // ---------------------------------------------------------------------------
 // _sampleSdfVoxel: backward-compat wrapper — reads the SDF channel (SEM_SDF).
 // gridCoord is in voxel units (0 .. bpa*8-1 per axis).
@@ -467,6 +527,10 @@ bool _sdfCellContaminated(vec4 z0, vec4 z1) {
 // whenever a side is contaminated.
 // ---------------------------------------------------------------------------
 vec3 sdfGradientStoredFromCell(vec3 gridPos, int octreeIdx, vec3 f, vec4 z0, vec4 z1) {
+#ifdef VIXEN_SHELL_NORMALS
+    vec3 bakedNormal;
+    if (sampleShellNormalTrilinear(gridPos, octreeIdx, bakedNormal)) return bakedNormal;
+#endif
     return _sdfCellContaminated(z0, z1)
         ? _sdfGradientFiniteDifference(gridPos, octreeIdx, channelBaseFloats(SEM_SDF))
         : _sdfCellGradient(f, z0, z1);

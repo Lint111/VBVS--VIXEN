@@ -246,6 +246,43 @@ inline uint32_t brickLookupBaseOf(const OctreeConfig& c) {
 inline void setBrickLookupBase(OctreeConfig& c, uint32_t base) {
     c.brickLookupBase = base;
 }
+
+// Surface-Shell normals (VIXEN_SHELL_NORMALS): the generated OctreeConfig keeps
+// its 64-byte tail reserved for additive payload metadata.  These helpers use
+// three of those existing words rather than changing the generated ABI.  The
+// values are float-element offsets in the compact shell channel pool:
+//   _tailPad[1] = normal words' offset within one compact brick
+//   _tailPad[2] = normal words per compact brick (256 for 512 oct8 pairs)
+//   _tailPad[3] = 1 when this compact tree carries baked normals
+inline uint32_t shellNormalOffsetFloatsOf(const OctreeConfig& c) {
+    return c._tailPad[1];
+}
+inline uint32_t shellNormalStrideFloatsOf(const OctreeConfig& c) {
+    return c._tailPad[2];
+}
+inline bool shellNormalsBakedOf(const OctreeConfig& c) {
+    return c._tailPad[3] != 0u && c._tailPad[2] != 0u;
+}
+inline void setShellNormalDescriptor(OctreeConfig& c, uint32_t offsetFloats,
+                                     uint32_t strideFloats, bool enabled) {
+    c._tailPad[1] = offsetFloats;
+    c._tailPad[2] = strideFloats;
+    c._tailPad[3] = enabled ? 1u : 0u;
+}
+
+// Normal mip samples are appended to the existing MipSample stream (two
+// MipSample units per node: xyz + coverage as four floats).  Word five is a
+// separate ready bit because a valid first-tree base is zero.
+inline uint32_t normalMipPoolBaseOf(const OctreeConfig& c) {
+    return c._tailPad[4];
+}
+inline bool normalMipPoolBakedOf(const OctreeConfig& c) {
+    return c._tailPad[5] != 0u;
+}
+inline void setNormalMipPoolDescriptor(OctreeConfig& c, uint32_t baseMipSamples, bool enabled) {
+    c._tailPad[4] = baseMipSamples;
+    c._tailPad[5] = enabled ? 1u : 0u;
+}
 /// Read traceBoundsMin (Baked-Perf M5 Task 5.1) from OctreeConfig (byte 32).
 /// Conservative allocated-brick AABB minimum, in this octree's OWN normalized
 /// [0,1]^3 local grid space (NOT world space). See the field's own schema doc
@@ -327,6 +364,11 @@ struct SerializedOctree {
     // M1's bake/serialize is opt-in per Task's own scope (existing SerializeSdf
     // callers are unaffected until they choose to call it).
     std::vector<uint8_t> mipPool;
+    // Optional VIXEN_SHELL_NORMALS coarse-normal tail.  Each node consumes
+    // 16 bytes (two MipSample units): xyz is the renormalized filtered normal
+    // and w is the filtered coverage.  It is appended into the same GPU
+    // binding as mipPool so the descriptor interface remains unchanged.
+    std::vector<uint8_t> normalMipPool;
 
     // Deep-Field Mip Policy — anisotropic coarse mips (MipAnisoPool.h): a
     // fully ADDITIVE side pool, same SoA addressing as mipPool
