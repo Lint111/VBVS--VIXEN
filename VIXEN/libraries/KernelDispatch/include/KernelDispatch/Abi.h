@@ -58,12 +58,14 @@ enum class OutputPolicy : uint8_t {
  * @brief Admission lane for work that must not consume another lane's worker budget.
  *
  * FrameCompute is the existing bounded TBB wave executor. BlockingIO is a separately budgeted,
- * lazy lane for shader compilation and cache/file I/O. A BlockingIO task never runs in the
- * FrameCompute arena, and a FrameCompute wave never waits for a BlockingIO worker to become free.
+ * lazy lane for shader compilation and cache/file I/O. BackgroundGpu is a bounded, non-frame-
+ * immediate lane for host-data-friendly work whose result is integrated at an epoch boundary.
+ * A task never borrows workers from another lane.
  */
 enum class TaskLane : uint8_t {
     FrameCompute,
     BlockingIO,
+    BackgroundGpu,
 };
 
 /**
@@ -91,12 +93,20 @@ struct DispatcherProfile {
     OutputPolicy outputs = OutputPolicy::None;
     LaneBudget frameCompute;
     LaneBudget blockingIO;
+    LaneBudget backgroundGpu;
 
     /// Return the configured budget, or `fallback` when the profile requests its bounded default.
     [[nodiscard]] uint32_t WorkerCount(TaskLane lane, uint32_t fallback) const noexcept {
-        const auto& budget = lane == TaskLane::BlockingIO ? blockingIO : frameCompute;
+        const auto& budget = lane == TaskLane::BlockingIO ? blockingIO
+                           : lane == TaskLane::BackgroundGpu ? backgroundGpu
+                           : frameCompute;
         return budget.workerCount == 0 ? fallback : budget.workerCount;
     }
+
+    // BackgroundGpu admission is intentionally a policy surface only in this
+    // slice. A consumer must first prove the CapabilityGraph node exists, then
+    // submit bounded work with an epoch-boundary result; unknown capability
+    // state is fail-closed and never falls back to FrameCompute implicitly.
 
     /// Backend chosen for `owner`, falling back to `fallback` when the profile has no override.
     [[nodiscard]] Backend BackendFor(const std::string& owner, Backend fallback) const {

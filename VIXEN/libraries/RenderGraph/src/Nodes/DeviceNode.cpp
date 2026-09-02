@@ -352,6 +352,17 @@ void DeviceNode::CreateLogicalDevice() {
         return;
     }
 
+    // CapabilityGraph owns secondary-adapter detection and policy.  The
+    // primary logical device remains unchanged; a later BackgroundGpu
+    // consumer may use this recorded choice at an epoch boundary.
+    vulkanDevice->GetCapabilityGraph().EnumeratePhysicalDevices(instance, selectedGPU);
+    if (const auto& background = vulkanDevice->GetCapabilityGraph().GetBackgroundGpuSelection()) {
+        NODE_LOG_INFO("[DeviceNode] BackgroundGpu candidate: adapter " +
+                      std::to_string(background->index));
+    } else {
+        NODE_LOG_INFO("[DeviceNode] BackgroundGpu candidate: none visible");
+    }
+
     // Get device queue
     vulkanDevice->GetDeviceQueue();
 

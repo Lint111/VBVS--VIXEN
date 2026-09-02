@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -145,6 +146,36 @@ private:
     std::string featureName_;
 };
 
+enum class PhysicalDeviceClass : uint8_t {
+    Unknown,
+    Integrated,
+    Discrete,
+    Other,
+};
+
+struct PhysicalDeviceInfo {
+    uint32_t index = 0;
+    VkPhysicalDevice handle = VK_NULL_HANDLE;
+    VkPhysicalDeviceType type = VK_PHYSICAL_DEVICE_TYPE_OTHER;
+    PhysicalDeviceClass classification = PhysicalDeviceClass::Unknown;
+    uint64_t deviceLocalBytes = 0;
+    std::string name;
+};
+
+struct BackgroundGpuSelection {
+    uint32_t index = 0;
+    PhysicalDeviceClass classification = PhysicalDeviceClass::Unknown;
+};
+
+/** Capability node for a detected, non-primary adapter suitable for bounded background work. */
+class BackgroundGpuCapability : public CapabilityNode {
+public:
+    BackgroundGpuCapability() : CapabilityNode("BackgroundGpu") {}
+
+protected:
+    bool CheckAvailability() const override;
+};
+
 /**
  * @brief Composite capability node that depends on other capabilities
  *
@@ -206,6 +237,22 @@ public:
     bool IsDeviceExtensionAvailable(const std::string& name) const;
     bool IsDeviceFeatureAvailable(const std::string& name) const;
 
+    /// Enumerate adapters visible to this instance and select a non-primary background candidate.
+    /// This records capability/policy only; it does not create a second logical device.
+    void EnumeratePhysicalDevices(VkInstance instance, VkPhysicalDevice primary = VK_NULL_HANDLE);
+
+    [[nodiscard]] const std::vector<PhysicalDeviceInfo>& GetPhysicalDevices() const {
+        return physicalDevices_;
+    }
+    [[nodiscard]] const std::optional<BackgroundGpuSelection>& GetBackgroundGpuSelection() const {
+        return backgroundGpuSelection_;
+    }
+    [[nodiscard]] bool HasBackgroundGpu() const noexcept { return backgroundGpuSelection_.has_value(); }
+
+    static PhysicalDeviceClass ClassifyPhysicalDevice(VkPhysicalDeviceType type) noexcept;
+    static std::optional<BackgroundGpuSelection> SelectBackgroundGpu(
+        const std::vector<PhysicalDeviceInfo>& devices);
+
     /// Get all registered capabilities
     const std::unordered_map<std::string, std::shared_ptr<CapabilityNode>>& GetAllCapabilities() const {
         return capabilities_;
@@ -219,6 +266,9 @@ private:
     std::vector<std::string> availableInstanceLayers_;
     std::vector<std::string> availableDeviceExtensions_;
     std::vector<std::string> availableDeviceFeatures_;
+
+    std::vector<PhysicalDeviceInfo> physicalDevices_;
+    std::optional<BackgroundGpuSelection> backgroundGpuSelection_;
 
     // Helper to create and register capabilities
     template<typename T, typename... Args>
