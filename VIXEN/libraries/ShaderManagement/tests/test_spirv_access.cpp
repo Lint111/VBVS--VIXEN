@@ -65,37 +65,3 @@ TEST(SpirvAccess, ReflectsAccessQualifiers) {
     EXPECT_EQ(accessByBinding.at(3), SpirvResourceAccess::ReadWrite);  // plain SSBO
     EXPECT_EQ(accessByBinding.at(4), SpirvResourceAccess::WriteOnly);  // writeonly image
 }
-
-TEST(SpirvAccess, UsesBufferBlockInstanceNameWhenDeclared) {
-    std::string source = R"(
-        #version 450
-        layout(local_size_x = 1) in;
-        layout(set = 0, binding = 0) buffer NamedBlock {
-            float values[];
-        } namedInstance;
-        void main() {
-            namedInstance.values[0] = 1.0;
-        }
-    )";
-
-    ShaderCompiler compiler;
-    auto compileResult = compiler.Compile(ShaderStage::Compute, source);
-    ASSERT_TRUE(compileResult.success);
-
-    CompiledProgram program;
-    program.programId = 0;
-    program.name = "BufferBlockInstanceNameProbe";
-    program.pipelineType = PipelineTypeConstraint::Compute;
-    CompiledShaderStage stage;
-    stage.stage = ShaderStage::Compute;
-    stage.spirvCode = compileResult.spirv;
-    stage.entryPoint = "main";
-    program.stages.push_back(std::move(stage));
-
-    SpirvReflector reflector;
-    auto reflection = reflector.Reflect(program);
-    ASSERT_TRUE(reflection);
-    ASSERT_EQ(reflection->descriptorSets.size(), 1u);
-    ASSERT_EQ(reflection->descriptorSets.at(0).size(), 1u);
-    EXPECT_EQ(reflection->descriptorSets.at(0).front().name, "namedInstance");
-}

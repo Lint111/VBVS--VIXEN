@@ -8523,7 +8523,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // registration is inert (never consulted) on a flag-off build.
     sceneProviders.Provide("rtQueryTlas", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::RTQUERY_TLAS, kSceneRoles);
-    sceneProviders.Provide("rtQueryProxyAabbs", bodyOctreeSceneNode,
+    // Binding 43 is an ANONYMOUS buffer block: its members live at global scope, so
+    // the block name cannot equal a member name (glslang rejects it), and the SDI
+    // reflector keys an anonymous block by its BLOCK name -- the only identifier it
+    // has. The provider therefore carries the block name, not the member array name.
+    sceneProviders.Provide("RtQueryProxyAabbBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, kSceneRoles);
     sceneProviders.Provide("historyImage", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
