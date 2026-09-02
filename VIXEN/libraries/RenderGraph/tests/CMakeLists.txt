@@ -477,6 +477,7 @@ if(TARGET GTest::gtest_main)
     add_executable(test_rendergraph_tracking
         test_resource_access_tracker.cpp
         test_wave_scheduler.cpp
+        test_graph_task_lowering.cpp
     )
 
     target_link_libraries(test_rendergraph_tracking PRIVATE
@@ -488,7 +489,7 @@ if(TARGET GTest::gtest_main)
 
     gtest_discover_tests(test_rendergraph_tracking)
 
-    message(STATUS "✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler)")
+    message(STATUS "✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)")
 else()
     message(STATUS "⊗ test_rendergraph_tracking skipped (GoogleTest not available)")
 endif()

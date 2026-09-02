@@ -319,7 +319,8 @@ bool TaskExecutor::RunWave(std::vector<VirtualTask>& tasks,
 bool TaskExecutor::Run(std::vector<VirtualTask>& tasks,
                        const std::vector<std::vector<TaskId>>& waves,
                        int workerCount,
-                       std::stop_token stopToken) {
+                       std::stop_token stopToken,
+                       WaveCompletionCallback onWaveComplete) {
     errors_.clear();
     if (workerCount < 1) {
         workerCount = static_cast<int>(profile_.WorkerCount(TaskLane::FrameCompute, 1));
@@ -332,7 +333,10 @@ bool TaskExecutor::Run(std::vector<VirtualTask>& tasks,
     bool success = true;
     arena.execute([&] {
         for (const auto& wave : waves) {
-            if (stopToken.stop_requested() || !RunWave(tasks, wave, stopToken)) {
+            const bool waveIssued = !stopToken.stop_requested();
+            const bool waveSucceeded = waveIssued && RunWave(tasks, wave, stopToken);
+            if (waveIssued && onWaveComplete) onWaveComplete(wave);
+            if (!waveSucceeded) {
                 success = false;
                 break;
             }

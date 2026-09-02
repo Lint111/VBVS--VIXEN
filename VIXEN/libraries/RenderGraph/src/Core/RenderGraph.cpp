@@ -1,6 +1,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/IGraphCompilable.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
+#include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
@@ -12,6 +13,9 @@
 #include <sstream>
 #include <system_error>
 #include <cstdlib>  // std::getenv / std::atoi — device-loss fault-injection hook (VIXEN_SIMULATE_DEVICE_LOSS)
+#include <cstring>
+#include <limits>
+#include <thread>
 
 // Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
 #define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
@@ -356,6 +360,7 @@ void RenderGraph::Clear() {
     nameToHandle.clear();
     instancesByType.clear();
     executionOrder.clear();
+    executionTaskPlan_ = {};
     topology.Clear();
     dependencyTracker.Clear();
     // usedDevices.clear();
@@ -564,6 +569,10 @@ void RenderGraph::Compile() {
         std::to_string(resourceAccessTracker_.GetResourceCount()) + " resources, " +
         std::to_string(resourceAccessTracker_.GetNodeCount()) + " nodes tracked");
 
+    // Tier-B lowering is compiled even when runtime use is disabled. This keeps the plan
+    // inspectable and ensures both modes consume the same topology and access model.
+    BuildExecutionTaskPlan();
+
     // Auto-sync: bake the frame sync schedule from the access model (P2/P5a M2).
     // Locate the swapchain node's SWAPCHAIN_PUBLIC Resource* so the scheduler can
     // flag it as an image resource (enables baked image-barrier replay).
@@ -747,6 +756,93 @@ void RenderGraph::AbortCurrentFrame() {
     InvalidateExecutionEpoch();
 }
 
+bool RenderGraph::UseLoweredGraph() const {
+    const char* value = std::getenv("VIXEN_GRAPH_LOWERED");
+    if (!value) return false;
+    return std::strcmp(value, "1") == 0 || std::strcmp(value, "true") == 0 ||
+           std::strcmp(value, "TRUE") == 0 || std::strcmp(value, "on") == 0 ||
+           std::strcmp(value, "ON") == 0;
+}
+
+int RenderGraph::GraphWorkerCount() const {
+    const char* value = std::getenv("VIXEN_GRAPH_WORKERS");
+    if (value && *value) {
+        char* end = nullptr;
+        const long parsed = std::strtol(value, &end, 10);
+        if (end != value && *end == '\0' && parsed > 0) {
+            return static_cast<int>(std::min<long>(
+                parsed, static_cast<long>(std::numeric_limits<int>::max())));
+        }
+    }
+    return static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
+}
+
+VkResult RenderGraph::ExecuteLoweredFrame() {
+    for (auto& task : executionTaskPlan_.tasks) {
+        task.state = KernelDispatch::VirtualTaskState::Pending;
+        task.errorMessage.clear();
+    }
+
+    const int workerCount = GraphWorkerCount();
+    KernelDispatch::DispatcherProfile profile;
+    profile.frameCompute.workerCount = static_cast<uint32_t>(workerCount);
+    KernelDispatch::TaskExecutor executor(std::move(profile));
+    const auto commitWave = [this](const std::vector<KernelDispatch::TaskId>& wave) {
+        // The executor invokes this on the graph caller thread after a wave barrier. This keeps
+        // post-node callbacks at their sequential observation point: notably, a capture callback
+        // registered on a render node still runs before the later Present task is issued.
+        for (const auto& taskId : wave) {
+            NodeInstance* const node = executionTaskPlan_.FindNode(taskId);
+            const auto* task = executionTaskPlan_.FindTask(taskId);
+            if (!node) continue;
+            if (!task || (task->state != KernelDispatch::VirtualTaskState::Completed &&
+                          task->state != KernelDispatch::VirtualTaskState::Failed)) {
+                continue;
+            }
+
+            node->SetState(NodeState::Complete);
+            if (task->state != KernelDispatch::VirtualTaskState::Completed) continue;
+
+            if (!postNodeExecuteCallbacks.empty()) {
+                auto [begin, end] = postNodeExecuteCallbacks.equal_range(node->GetInstanceName());
+                for (auto it = begin; it != end; ++it) it->second(node);
+            }
+
+            if (node->HasDeferredRecompile()) {
+                node->ClearDeferredRecompile();
+                for (size_t i = 0; i < instances.size(); ++i) {
+                    if (instances[i].get() == node) {
+                        MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                        break;
+                    }
+                }
+            }
+        }
+    };
+    const bool succeeded = executor.Run(
+        executionTaskPlan_.tasks,
+        executionTaskPlan_.waves,
+        workerCount,
+        GetExecutionStopToken(),
+        commitWave);
+
+    if (executor.HasErrors()) {
+        const auto& primary = executor.GetErrors().front();
+        if (NodeInstance* node = executionTaskPlan_.FindNode(primary.task)) {
+            GRAPH_LOG_ERROR("[RenderGraph::ExecuteLoweredFrame] Node '" + node->GetInstanceName() +
+                            "' failed during Execute: " + primary.message);
+        } else {
+            GRAPH_LOG_ERROR("[RenderGraph::ExecuteLoweredFrame] Task failed: " + primary.message);
+        }
+        return VK_ERROR_UNKNOWN;
+    }
+
+    // AbortCurrentFrame is the existing successful short-circuit used for out-of-date acquire. A
+    // device-loss abort is surfaced by RenderFrame's existing deviceLost_ check after cleanup.
+    if (!succeeded && !frameAborted_) return VK_ERROR_UNKNOWN;
+    return VK_SUCCESS;
+}
+
 VkResult RenderGraph::RenderFrame() {
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
     // Fail-scenario migration of the AR#1 Phase-3 harness: VIXEN_SIMULATE_DEVICE_LOSS=<frame> arms a
@@ -854,9 +950,12 @@ VkResult RenderGraph::RenderFrame() {
     frameAborted_ = false;
     BeginExecutionEpoch();
 
-    // Execute nodes in dependency order. Nodes handle their own synchronization,
-    // command recording, and presentation.
-    for (NodeInstance* node : executionOrder) {
+    // The default path remains the comparison oracle; the opt-in path runs the compiled node DAG
+    // through KernelDispatch and commits effects in the same graph order below.
+    if (UseLoweredGraph()) {
+        frameResult = ExecuteLoweredFrame();
+    } else {
+        for (NodeInstance* node : executionOrder) {
             // Frame aborted mid-execution (e.g. swapchain OUT_OF_DATE at acquire): stop before the
             // next node — per-image state is invalid until the resize recompile runs. See
             // AbortCurrentFrame(); the skipped nodes' per-node sentinel guards stay as backup.
@@ -917,6 +1016,7 @@ VkResult RenderGraph::RenderFrame() {
                     }
                 }
             }
+        }
     }
 
     // ========================================================================
@@ -1302,6 +1402,18 @@ void RenderGraph::BuildExecutionOrder() {
     // - Batching compatible nodes
     // - Parallel execution groups
     // - GPU timeline optimization
+}
+
+void RenderGraph::BuildExecutionTaskPlan() {
+    executionTaskPlan_ = GraphTaskLowering::Build(
+        topology,
+        executionOrder,
+        resourceAccessTracker_);
+
+    GRAPH_LOG_INFO("[RenderGraph::BuildExecutionTaskPlan] Lowered " +
+        std::to_string(executionTaskPlan_.tasks.size()) + " node tasks into " +
+        std::to_string(executionTaskPlan_.waves.size()) + " waves with " +
+        std::to_string(executionTaskPlan_.dependencyGraph.GetEdgeCount()) + " edges");
 }
 
 void RenderGraph::ComputeDependentCounts() {

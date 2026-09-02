@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace Vixen::RenderGraph {
 
     /**
@@ -63,6 +65,18 @@ struct WorkloadMetrics {
     // Parallelization potential
     bool canRunInParallel = true;
     uint32_t preferredBatchSize = 1;      // For instanced operations
+};
+
+/**
+ * @brief Graph-level execution safety for a node's per-frame ExecuteImpl.
+ *
+ * The default is deliberately serial. WorkloadMetrics::canRunInParallel is only a performance
+ * hint and cannot prove that a node is safe to run beside another node: Vulkan command pools,
+ * queue submission, callbacks, and hidden node state have stronger ownership requirements.
+ */
+enum class GraphExecutionKind : uint8_t {
+    Serial,  ///< Ordered on the graph lane; includes all Vulkan/unknown work by default.
+    Cpu,     ///< CPU-only ExecuteImpl with declared thread-safe/disjoint effects.
 };
 
 }

@@ -25,6 +25,7 @@
 #include "Core/TimelineCapacityTracker.h"
 #include "Core/ResourceAccessTracker.h"  // Sprint 6.4: Conflict detection
 #include "Core/FrameSyncScheduler.h"     // Auto-sync P2: frame sync schedule
+#include "Core/GraphTaskLowering.h"      // Tier-B graph -> shared Tier-A task DAG
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
 #include <atomic>
 #include <memory>
@@ -777,6 +778,11 @@ public:
         return frameSyncScheduler_.GetSchedule();
     }
 
+    /** @brief Compiled node-level task DAG and waves emitted during Compile(). */
+    [[nodiscard]] const GraphTaskPlan& GetExecutionTaskPlan() const {
+        return executionTaskPlan_;
+    }
+
     // ====== Resource Dependency Tracking ======
 
     /**
@@ -828,6 +834,7 @@ private:
 
     // Execution
     std::vector<NodeInstance*> executionOrder;
+    GraphTaskPlan executionTaskPlan_;
     bool isCompiled = false;
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).
@@ -927,6 +934,10 @@ private:
     void AllocateResources();
     void GeneratePipelines();
     void BuildExecutionOrder();
+    void BuildExecutionTaskPlan();
+    VkResult ExecuteLoweredFrame();
+    [[nodiscard]] bool UseLoweredGraph() const;
+    [[nodiscard]] int GraphWorkerCount() const;
     void ComputeDependentCounts();
     void RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& cleaned);
 
