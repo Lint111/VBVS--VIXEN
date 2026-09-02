@@ -75,7 +75,7 @@ public:
     using Params = ChainParams;
 
     void Build(GraphScope& scope, const Params&) {
-        const NodeHandle transform = scope.AddNode("Transform", "Transform");
+        const NodeHandle transform = scope.AddNode("Transform", "transform");
         scope.BindInput(ChainPorts::IN, transform, TransformSlots::IN);
         scope.BindOutput(ChainPorts::OUT, transform, TransformSlots::OUT);
     }
@@ -225,7 +225,7 @@ TEST(SubGraphNodesTest, FlattenedSubGraphProducesTheHandWiredTaskPlan) {
     EXPECT_EQ(WaveNames(groupedPlan), WaveNames(handPlan));
     ASSERT_EQ(group.GetMembers().size(), 1u);
     EXPECT_EQ(grouped.graph.GetInstance(group.GetMembers()[0])->GetInstanceName(),
-              "group/Transform");
+              "group/transform");
 }
 
 TEST(SubGraphNodesTest, ExpansionRejectsUnboundAndDoublyBoundPorts) {

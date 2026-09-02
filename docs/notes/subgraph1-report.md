@@ -82,3 +82,34 @@ The I1/I2 implementation, tests, and required report update are delivered in the
 required post-correction build, per-binary tests, and full build/codegen check remain blocked
 by the shared build/test queue. The implementation was committed as `555272b2`; no push, merge,
 branch switch, or other worktree access was performed.
+
+## Run 3 — flatten parity correction
+
+Controller verification of `555272b2` reported `test_rendergraph_subgraph` at 4/5, with the
+flattening acceptance failing only because the grouped fixture named its member `Transform` while
+the hand-wired reference named it `transform`. Task count and dependency-edge count already
+matched. The fixture now uses the same local name in both constructions, and the explicit scoped
+name assertion was updated accordingly. No RenderGraph implementation, lowering, application, or
+generated file was changed in this correction.
+
+### Acceptance
+
+- I1/I2 focused target build: passed through the queue (`subgraph:build-parity-final`).
+- I2 acceptance: `test_rendergraph_subgraph` **5/5 passed** through the queue
+  (`subgraph:test-subgraph-final`), including `FlattenedSubGraphProducesTheHandWiredTaskPlan`.
+- Lowering dependency regression: `test_rendergraph_tracking` **46/46 passed** through the queue
+  (`subgraph:test-tracking-final`), including all 8 `GraphTaskLoweringTest` cases.
+- Full configured CMake build: **controller-gated failure**, not caused by this change. The build
+  linked the subgraph and tracking targets and reached step 538/556, then `recipe_simd_check`
+  rejected line 4 of `recipe-lowering.extensions` as an invalid extension declaration. The queued
+  retry ended with `UT_JOB_FAILED` / exit 134; no compiler diagnostic referenced the changed file.
+- Standalone light content-codegen gate: **controller-gated failure**, 97/99 artifacts OK, with
+  errors for `Undertow.Native/Generated/GaiaShims.g.cs` and the missing `perf` golden
+  `stack-8edc62062305a223ba9f6ca564532e3fdeeff44baac1b0cf7db8921feebe6a9a/stack-8edc62062305a223ba9f6ca564532e3fdeeff44baac1b0cf7db8921feebe6a9a.json`.
+  The gate also reported pre-existing schema/scheduler warnings.
+
+### Not delivered vs brief — Run 3
+
+No additional I1/I2 behavior was required after the parity diagnosis. The full repository build
+and broad content-codegen gate remain externally blocked as documented above; focused acceptance
+and the graphlower regression are green. No push or merge was performed.
