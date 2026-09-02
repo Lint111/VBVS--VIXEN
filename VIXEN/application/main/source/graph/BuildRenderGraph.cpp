@@ -19,6 +19,7 @@
 #include <future>   // Baked-Perf M7 Task 7.1: std::async per-body parallel bake
 #include <iostream> // Round-5 [ComposedBackend] boot print (mirrors VoxelGridNode.cpp's [FarFieldCount])
 #include <mutex>    // Baked-Perf M7 Task 7.1: serializes calls into Gaia's shared ChunkAllocator
+#include <stdexcept>
 #include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "graph/CornellBoxSceneDefinition.h"  // Sampled Lighting Cornell Box Demo M1: shared scene-definition constants (M1+M2 both read this verbatim)
@@ -205,6 +206,22 @@ bool envFlagIsSet(const char* name, bool& value) {
         return true;
     }
     return false;
+}
+
+enum class RtLightingMode { Auto, Off, Force };
+
+RtLightingMode ParseRtLightingMode() {
+    const char* raw = std::getenv("VIXEN_RT_LIGHTING");
+    if (raw == nullptr) return RtLightingMode::Auto;
+    std::string value(raw);
+    value.erase(std::remove_if(value.begin(), value.end(),
+                               [](unsigned char c) { return std::isspace(c); }), value.end());
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (value.empty() || value == "auto") return RtLightingMode::Auto;
+    if (value == "off") return RtLightingMode::Off;
+    if (value == "force") return RtLightingMode::Force;
+    throw std::runtime_error("VIXEN_RT_LIGHTING must be one of auto, off, or force");
 }
 
 // Baked-perf-pipeline M2 (audit D1, Task 2.1): reads a shader source file and, when
@@ -394,6 +411,8 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 
 void VulkanGraphApplication::BuildRenderGraph() {
     const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
+    const RtLightingMode rtLightingMode = ParseRtLightingMode();
+    const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
     if (!renderGraph) {
         mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
         return;
@@ -1970,7 +1989,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     computeShaderLibNode->RegisterShaderBuilder(
-        [this, marchFamily, marchShaderFeatures, deviceNode, composedTraversalRequested]
+        [this, marchFamily, marchShaderFeatures, deviceNode, composedTraversalRequested, rtLightingMode]
         (int vulkanVer, int spirvVer) {
         // Composed-traversal capability resolution: the VulkanDevice is live by
         // now (this lambda runs from ShaderLibraryNode::CompileImpl, which reads
@@ -1987,13 +2006,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
             auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
             Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice =
                 deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
-            const bool hasRayQuery = vulkanDevice &&
-                vulkanDevice->GetRTXCapabilities().supported &&
-                vulkanDevice->GetRTXCapabilities().rayQuery;
+            const bool capabilityRayQuery = vulkanDevice &&
+                vulkanDevice->HasCapability("RayQueryLighting");
+            const bool hasRayQuery = capabilityRayQuery && rtLightingMode != RtLightingMode::Off;
+            if (rtLightingMode == RtLightingMode::Force && !capabilityRayQuery) {
+                throw std::runtime_error(
+                    "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+            }
             composedUsesRtQuery = hasRayQuery;
             if (mainLogger && mainLogger->IsEnabled()) {
                 mainLogger->Info(std::string("[BuildRenderGraph] VIXEN_COMPOSED_TRAVERSAL resolved: ") +
-                                  (hasRayQuery ? "RT-traversal (RTXCapabilities.rayQuery available)"
+                                  (hasRayQuery ? "RT-traversal (CapabilityGraph: RayQueryLighting available)"
                                                : "grid-DDA (software traversal substitute -- rayQuery unavailable)"));
             }
             resolvedFeatures.push_back(
@@ -2153,6 +2176,49 @@ void VulkanGraphApplication::BuildRenderGraph() {
             return builder;
         });
     };
+    // rtperf S1: the shadow wave is the first lighting consumer selected by
+    // the RayQueryLighting capability. Its interface plan is kept in lock-step
+    // with the feature vector used by SynthesizeComputeStage below. The graph is
+    // constructed before DeviceNode compiles, so the shader builder resolves the
+    // capability from the live device at the deferred shader-library compile point.
+    auto waveShaderFeatures = lightingShaderFeatures;
+    if (waveSlotSwizzleEnabled) {
+        waveShaderFeatures.push_back(kFeatureWaveSlotSwizzle.define);
+    }
+    const auto resolveWaveFeatures = [this, deviceNode, rtLightingMode](
+                                         std::vector<std::string> features) {
+        auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
+        auto* vulkanDevice = deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
+        const bool capabilityRayQuery = vulkanDevice &&
+            vulkanDevice->HasCapability("RayQueryLighting");
+        const bool useRayQuery = rtLightingMode != RtLightingMode::Off && capabilityRayQuery;
+        if (rtLightingMode == RtLightingMode::Force && !capabilityRayQuery) {
+            throw std::runtime_error(
+                "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+        }
+        if (useRayQuery) {
+            features.push_back(kFeatureRayQueryLighting.define);
+        }
+        return std::pair<std::vector<std::string>, bool>{std::move(features), useRayQuery};
+    };
+    const auto registerWaveLightingFamily = [this, waveShaderFeatures, resolveWaveFeatures](
+                                                NodeHandle libHandle,
+                                                std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
+        libNode->RegisterShaderBuilder([this, family, waveShaderFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
+            auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveShaderFeatures);
+            auto builder = family->MakeBuilder(resolvedFeatures);
+            builder.SetTargetVulkanVersion(vulkanVer)
+                   .SetTargetSpirvVersion(useRayQuery ? std::max(spirvVer, 140) : spirvVer)
+                   .AddIncludePath("shaders")
+                   .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .EnableCaching(&shaderCacheManager_);
+            return builder;
+        });
+    };
     registerLightingFamily(directLightingShaderLib,
                            makeLightingFamily("DirectLighting.comp", "DirectLighting"));
 
@@ -2227,8 +2293,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // the trace-hooks variant axis like every traversal pass). W-SPLIT: the
     // wave is unconditionally plain again — VIXEN_HIT_ACCUM_FUSED retired,
     // the accumulate tail moved to its own dispatch below.
-    registerLightingFamily(shadowVisibilityWaveShaderLib,
-                           makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave"));
+    registerWaveLightingFamily(shadowVisibilityWaveShaderLib,
+                               makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave"));
     // W-SPLIT: the re-split accumulate — standalone bindings (no
     // SceneBindings, no trace-hooks axis; the shared lighting feature set is
     // inert for it, same as ProbeApply/RecipeInstanceBucketing above).
@@ -2312,11 +2378,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
         auto waveReservoirFamily = makeLightingFamily("ShadowVisibilityWave.comp", "ShadowVisibilityWave");
         auto waveReservoirFeatures = lightingShaderFeatures;
         waveReservoirFeatures.push_back(kFeatureWaveReservoirPhase.define);
+        if (waveSlotSwizzleEnabled) {
+            waveReservoirFeatures.push_back(kFeatureWaveSlotSwizzle.define);
+        }
         auto* waveResLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(waveReservoirShaderLib));
-        waveResLibNode->RegisterShaderBuilder([this, waveReservoirFamily, waveReservoirFeatures](int vulkanVer, int spirvVer) {
-            auto builder = waveReservoirFamily->MakeBuilder(waveReservoirFeatures);
+        waveResLibNode->RegisterShaderBuilder([this, waveReservoirFamily, waveReservoirFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
+            auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveReservoirFeatures);
+            auto builder = waveReservoirFamily->MakeBuilder(resolvedFeatures);
             builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
+                   .SetTargetSpirvVersion(useRayQuery ? std::max(spirvVer, 140) : spirvVer)
                    .AddIncludePath("shaders")
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
@@ -2549,8 +2619,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // that most needs it).
 
     // W1b: the derived-request shadow wave — 1D over the hit-record buffer's
-    // pixel count (slot = linear pixel index; the shader bounds itself on
-    // hitRecords.length(), so the ceil over-dispatch is a harmless tail).
+    // pixel count. The measured swizzle variant permutes the 64 lanes within
+    // each group, while waveSlot() preserves the same linear slot identity.
     // Same build-time-extent derivation as DirectLighting immediately above
     // (VIXEN_RENDER_SCALE fixed at process start; dims never live-resize).
     // Dispatches unconditionally — the march always produces records, the
@@ -2558,11 +2628,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     {
         const uint32_t wavePixelsX = static_cast<uint32_t>(width * renderScale);
         const uint32_t wavePixelsY = static_cast<uint32_t>(height * renderScale);
-        const uint32_t waveDispatchX = (wavePixelsX * wavePixelsY + 63u) / 64u;
+        const uint32_t linearWaveDispatchX =
+            (wavePixelsX * wavePixelsY + 63u) / 64u;
+        const uint32_t waveDispatchX = linearWaveDispatchX;
+        const uint32_t waveDispatchY = 1u;
         auto* shadowVisibilityWave = static_cast<ComputeStageNode*>(renderGraph->GetInstance(shadowVisibilityWaveNode));
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
-        shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+        shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, waveDispatchY);
         shadowVisibilityWave->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
 
         // B2 (batch-26, gated OFF by default batch-27): the table-wide clear —
@@ -2587,7 +2660,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (hitAccumEnabled) {
             auto* accumulateStage = static_cast<ComputeStageNode*>(renderGraph->GetInstance(hitAccumAccumulateNode));
             accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
-            accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
+            accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, linearWaveDispatchX);
             accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
             accumulateStage->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
         }
@@ -2606,7 +2679,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             auto* waveReservoir = static_cast<ComputeStageNode*>(renderGraph->GetInstance(waveReservoirNode));
             waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
             waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_X, waveDispatchX);
-            waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, 1u);
+            waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Y, waveDispatchY);
             waveReservoir->SetParameter(ComputeStageNodeConfig::PARAM_DISPATCH_Z, 1u);
             // The gather's own push block (imgWidth/imgHeight — ReservoirConfig
             // carries no extent and the pass binds no image to derive from).
@@ -8430,6 +8503,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // registration is inert (never consulted) on a flag-off build.
     sceneProviders.Provide("rtQueryTlas", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::RTQUERY_TLAS, kSceneRoles);
+    sceneProviders.Provide("rtQueryProxyAabbs", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::PROXY_AABB_BUFFER, kSceneRoles);
     sceneProviders.Provide("historyImage", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW,
                            SlotRole::Execute);
@@ -9141,6 +9216,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // VIXEN_POLICY_STENCIL_TILES define or the compiled variant and the wire
     // plan disagree.
     SdiFeatureSet waveSdiFeatures;
+    if (rtLightingMode != RtLightingMode::Off) {
+        waveSdiFeatures.Enable(kFeatureRayQueryLighting);
+    }
+    if (waveSlotSwizzleEnabled) {
+        waveSdiFeatures.Enable(kFeatureWaveSlotSwizzle);
+    }
     if (policyStencilTilesEnabled) {
         waveSdiFeatures.Enable(kFeaturePolicyStencil);
         waveSdiFeatures.Enable(kFeaturePolicyStencilTiles);
@@ -9216,6 +9297,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         SdiFeatureSet waveReservoirSdiFeatures;
         waveReservoirSdiFeatures.Enable(kFeatureWaveReservoirPhase);
+        if (rtLightingMode != RtLightingMode::Off) {
+            waveReservoirSdiFeatures.Enable(kFeatureRayQueryLighting);
+        }
+        if (waveSlotSwizzleEnabled) {
+            waveReservoirSdiFeatures.Enable(kFeatureWaveSlotSwizzle);
+        }
         const auto waveResSynth = SynthesizeComputeStage<WaveSdi::Metadata, WaveSdi::MEMBERS>(
             renderGraph, batch, "shadow_visibility_wave_reservoir", waveReservoirShaderLib,
             waveReservoirNode, lightingCommon, sceneProviders, waveReservoirSdiFeatures,
