@@ -4,6 +4,20 @@ project(RenderGraphTests)
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest)
 
+# Sub-graph composition (I1/I2): scoped naming, membership, port aliases, and
+# compile-time flattening against the shared GraphTaskPlan lowering.
+if(TARGET GTest::gtest_main)
+    add_executable(test_rendergraph_subgraph
+        test_subgraph_nodes.cpp
+    )
+    target_link_libraries(test_rendergraph_subgraph PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_rendergraph_subgraph PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    gtest_discover_tests(test_rendergraph_subgraph)
+    message(STATUS "✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)")
+else()
+    message(STATUS "⊗ test_rendergraph_subgraph skipped (GoogleTest not available)")
+endif()
+
 # ===========================================================================
 # RenderGraph Core Basics (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================

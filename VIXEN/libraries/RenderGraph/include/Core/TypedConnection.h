@@ -246,6 +246,57 @@ public:
     }
 
     /**
+     * @brief Connect a node or sub-graph boundary to a sub-graph boundary.
+     *
+     * Group links are already lowered when requested, so there is no pending
+     * connection rule to defer. Modifiers remain node-slot-only by design.
+     */
+    template<typename SourceSlot, typename Port>
+    ConnectionBatch& Connect(
+        NodeHandle sourceNode,
+        SourceSlot sourceSlot,
+        const SubGraphHandle& target,
+        Port targetPort,
+        ConnectionMeta meta = {}
+    ) {
+        if (!meta.modifiers.empty()) {
+            throw std::runtime_error("Connection modifiers are not supported on sub-graph ports");
+        }
+        graph->Connect(sourceNode, sourceSlot, target, targetPort);
+        return *this;
+    }
+
+    template<typename Port, typename TargetSlot>
+    ConnectionBatch& Connect(
+        const SubGraphHandle& source,
+        Port sourcePort,
+        NodeHandle targetNode,
+        TargetSlot targetSlot,
+        ConnectionMeta meta = {}
+    ) {
+        if (!meta.modifiers.empty()) {
+            throw std::runtime_error("Connection modifiers are not supported on sub-graph ports");
+        }
+        graph->Connect(source, sourcePort, targetNode, targetSlot);
+        return *this;
+    }
+
+    template<typename SourcePort, typename TargetPort>
+    ConnectionBatch& Connect(
+        const SubGraphHandle& source,
+        SourcePort sourcePort,
+        const SubGraphHandle& target,
+        TargetPort targetPort,
+        ConnectionMeta meta = {}
+    ) {
+        if (!meta.modifiers.empty()) {
+            throw std::runtime_error("Connection modifiers are not supported on sub-graph ports");
+        }
+        graph->Connect(source, sourcePort, target, targetPort);
+        return *this;
+    }
+
+    /**
      * @brief Streamlined connection with implicit modifier construction
      *
      * Accepts modifiers directly without ConnectionMeta{} boilerplate.
