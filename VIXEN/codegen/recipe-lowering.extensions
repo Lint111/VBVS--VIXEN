@@ -1,5 +1,7 @@
 # VIXEN-owned recipe opcodes outside the canonical graph-framework enum.
-# Name=ordinal|execution|lowering|vPop|vPush|pPop|pPush|control
+# Name=ordinal|execution|lowering|vPop|vPush|pPop|pPush|control|derivative|hazard|cost
+# Derivative dispositions are the 0eo fail-closed interim (Reject => gradient capability unavailable if a
+# gradient path reaches the op); authoring their real rules is gradient-arc follow-up work.
 # Parsed and validated by the kernel compiler's RecipeLoweringModel.
-DeclarePosition=112|Elementwise|PositionStackControl|3|0|0|0|DeclarePosition
-InvokeRecipe=113|LoweredAway|Invocation|0|1|0|0|InvokeRecipe
+DeclarePosition=112|Elementwise|PositionStackControl|3|0|0|0|DeclarePosition|Reject|NonDifferentiable|Fallback
+InvokeRecipe=113|LoweredAway|Invocation|0|1|0|0|InvokeRecipe|Reject|NonDifferentiable|Fallback
