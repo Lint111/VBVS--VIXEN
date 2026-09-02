@@ -1079,6 +1079,21 @@ layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
 
+// rtperf S1: ray-query primitive indices address the compact shell pool, not
+// the sparse bpa^3 source grid. The CPU flattens these records in octree order
+// and the TLAS instance custom index supplies each octree's proxy base.
+#ifdef VIXEN_RTQUERY_TRAVERSAL
+struct ShellProxyAabb {
+    vec3 minLocal;
+    uint brickId;
+    vec3 maxLocal;
+    uint octreeIndex;
+};
+layout(std430, set = 0, binding = 43) readonly buffer RtQueryProxyAabbBuffer {
+    ShellProxyAabb rtQueryProxyAabbs[];
+};
+#endif
+
 // ============================================================================
 // SHADER COUNTERS (Performance Metrics)
 // ============================================================================

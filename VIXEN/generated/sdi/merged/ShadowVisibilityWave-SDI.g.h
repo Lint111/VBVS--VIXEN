@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: ShadowVisibilityWave
-// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_WAVE_RESERVOIR_PHASE
+// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES VIXEN_RTQUERY_TRAVERSAL VIXEN_WAVE_RESERVOIR_PHASE VIXEN_WAVE_SLOT_SWIZZLE
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -809,6 +809,26 @@ struct PolicyStencilTileBuffer {
 
 };
 
+/**
+ * @brief RtQueryProxyAabbBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x52c684e1773cc08 (for runtime discovery)
+ */
+struct RtQueryProxyAabbBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x52c684e1773cc08ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "ShellProxyAabb";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 32;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
 namespace Set0 {
 
     /**
@@ -1073,6 +1093,22 @@ namespace Set0 {
     };
 
     /**
+     * @brief rtQueryTlas
+     * Type: ACCELERATION_STRUCTURE_KHR
+     * Requires: VIXEN_RTQUERY_TRAVERSAL
+     */
+    struct Binding40 {
+        static constexpr const char* NAME = "rtQueryTlas";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 40;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RTQUERY_TRAVERSAL"};
+    };
+
+    /**
      * @brief PolicyStencilTileBuffer
      * Type: STORAGE_BUFFER
      * Requires: VIXEN_POLICY_STENCIL VIXEN_POLICY_STENCIL_TILES
@@ -1087,6 +1123,23 @@ namespace Set0 {
         static constexpr uint32_t FEATURE_COUNT = 2;
         static constexpr const char* FEATURES[2] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
         using DataType = PolicyStencilTileBuffer;
+    };
+
+    /**
+     * @brief RtQueryProxyAabbBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_RTQUERY_TRAVERSAL
+     */
+    struct Binding43 {
+        static constexpr const char* NAME = "RtQueryProxyAabbBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 43;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_RTQUERY_TRAVERSAL"};
+        using DataType = RtQueryProxyAabbBuffer;
     };
 
 } // namespace Set0
@@ -1110,7 +1163,9 @@ using ShadowConfigSSBO = Set0::Binding18;
 using SpatialReservoirDebugBuffer = Set0::Binding19;
 using LightTreeBufferSSBO = Set0::Binding20;
 using InstanceSkipMaskBuffer = Set0::Binding35;
+using rtQueryTlas = Set0::Binding40;
 using PolicyStencilTileBuffer = Set0::Binding41;
+using RtQueryProxyAabbBuffer = Set0::Binding43;
 } // namespace Bind
 
 namespace Push {
@@ -1249,7 +1304,9 @@ struct MemberInfo {
 inline constexpr const char* const kFeatures_Set0_Binding14[] = {"VIXEN_GPU_TRACE_HOOKS"};
 inline constexpr const char* const kFeatures_Set0_Binding19[] = {"VIXEN_WAVE_RESERVOIR_PHASE"};
 inline constexpr const char* const kFeatures_Set0_Binding20[] = {"VIXEN_WAVE_RESERVOIR_PHASE"};
+inline constexpr const char* const kFeatures_Set0_Binding40[] = {"VIXEN_RTQUERY_TRAVERSAL"};
 inline constexpr const char* const kFeatures_Set0_Binding41[] = {"VIXEN_POLICY_STENCIL", "VIXEN_POLICY_STENCIL_TILES"};
+inline constexpr const char* const kFeatures_Set0_Binding43[] = {"VIXEN_RTQUERY_TRAVERSAL"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"ESVOBuffer", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
@@ -1269,7 +1326,9 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"SpatialReservoirDebugBuffer", false, 0, 19, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding19},
     {"LightTreeBufferSSBO", false, 0, 20, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding20},
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
+    {"rtQueryTlas", false, 0, 40, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding40},
     {"PolicyStencilTileBuffer", false, 0, 41, 0, Access::ReadWrite, 2, kFeatures_Set0_Binding41},
+    {"RtQueryProxyAabbBuffer", false, 0, 43, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding43},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1305,8 +1364,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ShadowVisibilityWave";
-    static constexpr uint32_t NUM_MEMBERS = 32;
-    static constexpr uint32_t NUM_FEATURES = 4;
+    static constexpr uint32_t NUM_MEMBERS = 34;
+    static constexpr uint32_t NUM_FEATURES = 6;
 };
 
 } // namespace ShadowVisibilityWave

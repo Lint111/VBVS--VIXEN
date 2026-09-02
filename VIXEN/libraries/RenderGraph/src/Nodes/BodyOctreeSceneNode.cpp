@@ -59,6 +59,22 @@ bool envFlagEnabled(const char* name) {
     return false;
 }
 
+enum class RtLightingMode { Auto, Off, Force };
+
+RtLightingMode ParseRtLightingMode() {
+    const char* raw = std::getenv("VIXEN_RT_LIGHTING");
+    if (raw == nullptr) return RtLightingMode::Auto;
+    std::string value(raw);
+    value.erase(std::remove_if(value.begin(), value.end(),
+                               [](unsigned char c) { return std::isspace(c); }), value.end());
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (value.empty() || value == "auto") return RtLightingMode::Auto;
+    if (value == "off") return RtLightingMode::Off;
+    if (value == "force") return RtLightingMode::Force;
+    throw std::runtime_error("VIXEN_RT_LIGHTING must be one of auto, off, or force");
+}
+
 // Map a body kind index [0,kKindCount) to a material id in the default palette
 // (BuildDefaultMaterialPalette in ShellOctreeGpu.h fills 1=red, 2=green, 3=white...).
 inline uint32_t MaterialIdForKind(uint32_t kind) {
@@ -138,52 +154,24 @@ void CreateDeviceAddressBuffer(VulkanDevice* device,
                                 VkDeviceSize size,
                                 VkBufferUsageFlags usage,
                                 VkMemoryPropertyFlags memProps,
-                                VkBuffer& outBuffer,
-                                VkDeviceMemory& outMemory,
+                                ResourceManagement::BufferAllocation& outAllocation,
                                 const char* context)
 {
-    VkDevice         vkDevice = device->device;
-    VkPhysicalDevice physDev  = *device->gpu;
-
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size        = size;
-    bufferInfo.usage       = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &outBuffer) != VK_SUCCESS) {
-        throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkCreateBuffer failed for ") + context);
+    const auto location = (memProps & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0
+        ? ResourceManagement::MemoryLocation::HostVisible
+        : ResourceManagement::MemoryLocation::DeviceLocal;
+    auto allocation = device->AllocateBuffer(ResourceManagement::BufferAllocationRequest{
+        size,
+        usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        location,
+        context,
+        false,
+        false});
+    if (!allocation) {
+        throw std::runtime_error(std::string("[BodyOctreeSceneNode] tracked RTAccelStructures allocation failed for ") + context);
     }
-
-    VkMemoryRequirements req{};
-    vkGetBufferMemoryRequirements(vkDevice, outBuffer, &req);
-
-    VkPhysicalDeviceMemoryProperties devMemProps{};
-    vkGetPhysicalDeviceMemoryProperties(physDev, &devMemProps);
-
-    VkMemoryAllocateFlagsInfo flagsInfo{};
-    flagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-    flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.pNext           = &flagsInfo;
-    allocInfo.allocationSize  = req.size;
-    allocInfo.memoryTypeIndex = FindSuitableMemoryType(devMemProps, req.memoryTypeBits, memProps, context);
-
-    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &outMemory) != VK_SUCCESS) {
-        vkDestroyBuffer(vkDevice, outBuffer, nullptr);
-        outBuffer = VK_NULL_HANDLE;
-        throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkAllocateMemory failed for ") + context);
-    }
-
-    if (vkBindBufferMemory(vkDevice, outBuffer, outMemory, 0) != VK_SUCCESS) {
-        vkFreeMemory(vkDevice, outMemory, nullptr);
-        vkDestroyBuffer(vkDevice, outBuffer, nullptr);
-        outMemory = VK_NULL_HANDLE;
-        outBuffer = VK_NULL_HANDLE;
-        throw std::runtime_error(std::string("[BodyOctreeSceneNode] vkBindBufferMemory failed for ") + context);
-    }
+    outAllocation = std::move(*allocation);
+    return;
 }
 
 VkDeviceAddress GetBufferDeviceAddress(VulkanDevice* device, VkBuffer buffer) {
@@ -246,6 +234,7 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
     // force a recompile or the per-frame upload silently truncates (see ExecuteImpl's clamp).
     instances_     = std::move(instances);
     instanceCount_ = static_cast<int32_t>(instances_.size());
+    ++rtQueryInstanceEpoch_;
     const VkDeviceSize neededBytes = static_cast<VkDeviceSize>(
         instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu));
     if (neededBytes > instanceRingCapacity_) {
@@ -287,12 +276,14 @@ void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
             return Vixen::SVO::traceBoundsWorldCenterOf(
                 configs[inst.octreeIndex], worldPos, inst.renderScale, kWorldGridSize);
         });
+    ++rtQueryInstanceEpoch_;
 }
 
 void BodyOctreeSceneNode::SetBakeRecipe(std::vector<Vixen::SVO::Recipe::SdfInstruction> prog) {
     bakeRecipe_  = std::move(prog);
     recipeDirty_ = true;   // P2.3: if already compiled, ExecuteImpl re-materializes on the next frame;
                            //       if pre-Compile, CompileImpl bakes fresh and clears this.
+    ++rtQueryGeometryEpoch_;
     // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: a genuinely new pool is being staged —
     // any previous explicit residency grant applied to the OLD pool, not this one. Clearing
     // the latch here (not inside Rematerialize) means DeriveResidencyDefaultIfUnset's
@@ -309,6 +300,7 @@ void BodyOctreeSceneNode::SetRecipePool(Vixen::SVO::ConcatenatedOctrees pool) {
     poolProvided_ = true;
     octreesBuilt_ = false;   // force EnsureOctreesBuilt to pick up the new pool
     recipeDirty_  = true;    // post-Compile: triggers Rematerialize on next Execute
+    ++rtQueryGeometryEpoch_;
     // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4: see SetBakeRecipe's comment above —
     // same latch-clear reasoning, mirrored for the pool-provided path.
     residencyExplicitlyRequested_ = false;
@@ -323,6 +315,7 @@ bool BodyOctreeSceneNode::EditSourceBrickSdf(uint32_t brickId,
         return false;
     }
     dirtyBricks_.push_back(brickId);
+    ++rtQueryGeometryEpoch_;
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] EditSourceBrickSdf: brick " +
                    std::to_string(brickId) + " edited + marked dirty (" +
                    std::to_string(dirtyBricks_.size()) + " pending)");
@@ -561,6 +554,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // 0), so RevalidateShellBricks can rewrite them in-place in the compact pool.
         const uint32_t rewritten = Vixen::SVO::RevalidateShellBricks(
             concatenated_, /*octreeIdx=*/0u, r0, dirtyBricks_, ws.compact.channelPool);
+        if (rewritten > 0u) ++rtQueryGeometryEpoch_;
         UploadShellSlot(device, writeSlot);
         ++shellRevalidateCount_;
         NODE_LOG_INFO("[BodyOctreeSceneNode] Shell revalidate: " +
@@ -641,10 +635,9 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,          proxyAabbCount_[0]);
     }
 
-    // W-RTQUERY Slice A: (re)build the per-brick-AABB TLAS once octree buffers AND the
-    // current instance list are both known -- a no-op unless VIXEN_RTQUERY_TRAVERSAL is
-    // set AND the device actually supports VK_KHR_ray_query (flag-on-without-capability
-    // logs a warning once and stays on ESVO; see EnsureRtQueryTlasBuilt's own guard).
+    // W-RTQUERY Slice A: (re)build the proxy-AABB TLAS once octree buffers AND the
+    // current instance list are both known -- a no-op when policy is off or the
+    // RayQueryLighting capability is unavailable (auto selects the DDA twin).
     // instanceCount_==0 || octreeRepublished-without-instances is handled inside (rebuild
     // is keyed on (instanceCount_, concatenated_.count) identity, not called unconditionally
     // every frame past the first successful build).
@@ -1255,6 +1248,9 @@ void BodyOctreeSceneNode::Rematerialize() {
     // Rare, explicit edit path — safe to stall (mirrors the ring-grow vkDeviceWaitIdle).
     // Guarantees no in-flight command buffer still references the octree buffers we free.
     vkDeviceWaitIdle(device->device);
+    // The shell/proxy source is about to be replaced; retire its AS before the
+    // octree buffers so no stale proxy geometry can survive the epoch boundary.
+    DestroyRtQueryTlas();
 
     octreesBuilt_ = false;     // force EnsureOctreesBuilt to re-bake + re-concatenate all 3 octrees
     EnsureOctreesBuilt();      // octree 0 uses the new bakeRecipe_; octrees 1/2 unchanged
@@ -1638,37 +1634,36 @@ void BodyOctreeSceneNode::DestroyOctreeBuffers() {
 // (same struct fills, same synchronous submit-and-wait -- this runs at most once per
 // scene-identity change, not per frame, so synchronous is fine here too).
 void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
-    // W-COMPOSED: mirror BuildRenderGraph.cpp's resolved scene predicate at the
-    // downstream TLAS owner. The orbital structure admission selects composed
-    // traversal by default; the explicit 0/1 override remains authoritative.
-    const char* composedEnv = std::getenv("VIXEN_COMPOSED_TRAVERSAL");
-    bool composedTraversalEnabled = envFlagEnabled("VIXEN_TIER_OBSERVABLE_STRUCTURE");
-    if (composedEnv != nullptr) {
-        while (*composedEnv != '\0' && std::isspace(static_cast<unsigned char>(*composedEnv))) ++composedEnv;
-        if (*composedEnv == '0') composedTraversalEnabled = false;
-        else if (*composedEnv == '1') composedTraversalEnabled = true;
-    }
-    if (!envFlagEnabled("VIXEN_RTQUERY_TRAVERSAL") && !composedTraversalEnabled) {
-        return;  // both flags off: never build, never touch the RT function pointers
+    const RtLightingMode rtLightingMode = ParseRtLightingMode();
+    if (rtLightingMode == RtLightingMode::Off) {
+        return;
     }
 
-    const RTXCapabilities& rtxCaps = device->GetRTXCapabilities();
-    if (!rtxCaps.supported || !rtxCaps.rayQuery) {
+    // The graph's RayQueryLighting composite is the single selection authority.
+    // Auto falls back to the permanent composed-DDA twin when the capability is
+    // absent; force is intentionally loud so an owner cannot mistake a fallback
+    // for an engaged RT run.
+    if (!device->HasCapability("RayQueryLighting")) {
+        if (rtLightingMode == RtLightingMode::Force) {
+            throw std::runtime_error(
+                "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
+        }
         static bool warnedOnce = false;
         if (!warnedOnce) {
             warnedOnce = true;
-            NODE_LOG_WARNING("[BodyOctreeSceneNode] VIXEN_RTQUERY_TRAVERSAL set but "
-                              "RTXCapabilities.rayQuery unavailable on this device -- "
-                              "staying on ESVO (RTQUERY_TLAS stays VK_NULL_HANDLE)");
+            NODE_LOG_WARNING("[BodyOctreeSceneNode] RayQueryLighting unavailable -- "
+                              "using the permanent composed-DDA shadow twin");
         }
         return;
     }
 
-    // Rebuild only when the (instance, octree) identity that produced the current
-    // TLAS has actually changed -- cheap re-entrant no-op on every other Execute.
+    // Rebuild only when the source geometry or instance transform/order epoch has
+    // changed. Counts remain diagnostic, not the lifecycle key.
     if (rtQueryTlasBuilt_ &&
         rtQueryTlasBuiltForInstanceCount_ == instanceCount_ &&
-        rtQueryTlasBuiltForOctreeCount_   == concatenated_.count) {
+        rtQueryTlasBuiltForOctreeCount_   == concatenated_.count &&
+        rtQueryTlasBuiltForGeometryEpoch_ == rtQueryGeometryEpoch_ &&
+        rtQueryTlasBuiltForInstanceEpoch_ == rtQueryInstanceEpoch_) {
         return;
     }
 
@@ -1676,24 +1671,27 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         return;  // nothing to build yet (pre-SetInstances / pre-EnsureOctreesBuilt)
     }
 
-    NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_RTQUERY_TRAVERSAL: (re)building per-brick-AABB "
+    NODE_LOG_INFO("[BodyOctreeSceneNode] RayQueryLighting: (re)building proxy-AABB "
                    "TLAS (" + std::to_string(concatenated_.count) + " octrees, " +
                    std::to_string(instances_.size()) + " instances)");
 
-    DestroyRtQueryTlas();  // drop any stale BLAS/TLAS from a prior identity first
+    if (rtQueryTlasBuilt_) {
+        // FrameSync guards ordinary buffer hazards, while the AS handle is an
+        // opaque graph resource. Wait at this rare epoch transition before
+        // retiring it, so a previous in-flight shadow wave cannot dereference
+        // the old TLAS during destruction.
+        vkDeviceWaitIdle(device->device);
+    }
+    DestroyRtQueryTlas();
 
     VkDevice   vkDevice = device->device;
-    const auto vkCreateAS = reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(
-        vkGetDeviceProcAddr(vkDevice, "vkCreateAccelerationStructureKHR"));
-    const auto vkGetASBuildSizes = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
-        vkGetDeviceProcAddr(vkDevice, "vkGetAccelerationStructureBuildSizesKHR"));
-    const auto vkCmdBuildAS = reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
-        vkGetDeviceProcAddr(vkDevice, "vkCmdBuildAccelerationStructuresKHR"));
-    const auto vkGetASDeviceAddress = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
-        vkGetDeviceProcAddr(vkDevice, "vkGetAccelerationStructureDeviceAddressKHR"));
+    const auto vkCreateAS = device->fpCreateAccelerationStructure;
+    const auto vkGetASBuildSizes = device->fpGetAccelerationStructureBuildSizes;
+    const auto vkCmdBuildAS = device->fpCmdBuildAccelerationStructures;
+    const auto vkGetASDeviceAddress = device->fpGetAccelerationStructureDeviceAddress;
     if (!vkCreateAS || !vkGetASBuildSizes || !vkCmdBuildAS || !vkGetASDeviceAddress) {
-        NODE_LOG_WARNING("[BodyOctreeSceneNode] VIXEN_RTQUERY_TRAVERSAL: RT function pointers "
-                          "failed to resolve despite RTXCapabilities.rayQuery -- staying on ESVO");
+        NODE_LOG_WARNING("[BodyOctreeSceneNode] RayQueryLighting: RT function pointers "
+                          "failed to resolve despite CapabilityGraph selection -- using DDA twin");
         return;
     }
 
@@ -1733,80 +1731,52 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         return cmd;
     };
 
-    // --- Per-octree BLAS: one AABB per occupied brick, in octree-LOCAL [0,1]^3 space ---
-    // gx/gy/gz below are BRICK-INDEX units (each in [0,bpa)), not voxel units -- so the
-    // box convention is min = gx/bpa, max = (gx+1)/bpa, i.e. resolution == bricksPerAxis.
-    // (ROUND-19 FIX: this was previously bpa*8 -- a voxel-unit scale applied to brick-unit
-    // indices -- which packed all bpa^3 brick boxes into local [0, 1/8]^3, an 8x-shrunk cube
-    // in the corner of the correct instance box. bpa*8 remains valid as BRICK_SIZE_SDF/voxel
-    // grid resolution elsewhere (e.g. brickLocalToGrid in SceneBindings.glsl /
-    // CoordinateTransforms.glsl), which indexes in VOXEL units -- do not conflate the two.)
+    // --- Per-octree BLAS: the compact shell proxy AABBs, in octree-local [0,1]^3 space ---
+    // Primitive order is deliberately the shell slot order emitted by ShellDerive. The
+    // shader uses the primitive index to address the same compact ChannelPool slot.
     rtQueryBlas_.assign(concatenated_.count, RtQueryBlas{});
-    const uint32_t* lookup = reinterpret_cast<const uint32_t*>(concatenated_.brickGridLookup.data());
-    const size_t    lookupCount = concatenated_.brickGridLookup.size() / sizeof(uint32_t);
+    const auto& shellPool = shellCache_[0];
+    uint32_t proxyBase = 0u;
 
     for (uint32_t oi = 0; oi < concatenated_.count; ++oi) {
-        const Vixen::SVO::OctreeConfig& cfg = concatenated_.configs[oi];
-        const int bpa = cfg.bricksPerAxis;
-        if (bpa <= 0) continue;  // e.g. FORMAT_BINARY octrees in a mixed scene: no lookup table
-        const float resolution = static_cast<float>(bpa);  // gx/gy/gz are brick-index units in [0,bpa)
-        const uint32_t base = cfg.brickLookupBase;
-
-        // FIX 1: primitive index == flat grid index (gz*bpa*bpa + gy*bpa + gx), matching the
-        // shader's decode convention -- so this pushes ONE AABB PER CELL (never compacts/skips),
-        // with unallocated cells getting a degenerate inverted box that the RT core never
-        // intersects (min > max on every axis). Memory cost is bpa^3*24B, trivial.
-        std::vector<VkAabbPositionsKHR> aabbs;
-        aabbs.reserve(static_cast<size_t>(bpa) * bpa * bpa);
-        uint32_t occupiedCount = 0;
-        for (int gz = 0; gz < bpa; ++gz) {
-            for (int gy = 0; gy < bpa; ++gy) {
-                for (int gx = 0; gx < bpa; ++gx) {
-                    const uint32_t flatIdx = static_cast<uint32_t>(gz * bpa * bpa + gy * bpa + gx);
-                    const size_t idx = static_cast<size_t>(base) + flatIdx;
-                    VkAabbPositionsKHR box{};
-                    if (idx >= lookupCount || Vixen::SVO::isBrickUnallocated(lookup[idx])) {
-                        box.minX = box.minY = box.minZ = 1e30f;
-                        box.maxX = box.maxY = box.maxZ = -1e30f;
-                    } else {
-                        box.minX = static_cast<float>(gx)     / resolution;
-                        box.minY = static_cast<float>(gy)     / resolution;
-                        box.minZ = static_cast<float>(gz)     / resolution;
-                        box.maxX = static_cast<float>(gx + 1) / resolution;
-                        box.maxY = static_cast<float>(gy + 1) / resolution;
-                        box.maxZ = static_cast<float>(gz + 1) / resolution;
-                        ++occupiedCount;
-                    }
-                    aabbs.push_back(box);
-                }
-            }
-        }
-        // ROUND-17 probe: bpa + occupiedBrickCount per octree -- discriminates the
-        // remaining round-16 question directly. If octree 3 (the far body) has very
-        // few occupied bricks (e.g. single digits) then ~4 candidates/frame for its
-        // 71 screen pixels is the GEOMETRICALLY CORRECT candidate count for that
-        // BLAS (few boxes exist to hit at all) rather than a traversal/gate bug --
-        // see docs/plans/2026-08-04-wavefront-recipe-shading.md round-17 order.
-        std::cout << "[RtBlasOccupancy] octree=" << oi << " bpa=" << bpa
-                  << " occupiedBricks=" << occupiedCount
-                  << " totalCells=" << (static_cast<uint64_t>(bpa) * bpa * bpa) << std::endl;
-
-        if (occupiedCount == 0) continue;  // fully-unallocated octree (degenerate/empty body)
-
+        if (oi >= shellPool.perOctree.size()) continue;
+        const auto& proxies = shellPool.perOctree[oi].proxyAabbs;
+        if (proxies.empty()) continue;  // non-Stored-SDF octrees have no shell proxy set
         RtQueryBlas& blas = rtQueryBlas_[oi];
+        blas.proxyBase = proxyBase;
+        blas.proxyCount = static_cast<uint32_t>(proxies.size());
+        proxyBase += blas.proxyCount;
+
+        std::vector<VkAabbPositionsKHR> aabbs;
+        aabbs.reserve(proxies.size());
+        for (const auto& proxy : proxies) {
+            VkAabbPositionsKHR box{};
+            box.minX = proxy.minLocal[0];
+            box.minY = proxy.minLocal[1];
+            box.minZ = proxy.minLocal[2];
+            box.maxX = proxy.maxLocal[0];
+            box.maxY = proxy.maxLocal[1];
+            box.maxZ = proxy.maxLocal[2];
+            aabbs.push_back(box);
+        }
+        NODE_LOG_INFO("[RtQuery] BLAS proxy source octree=" + std::to_string(oi) +
+                      " proxyBase=" + std::to_string(blas.proxyBase) +
+                      " proxyCount=" + std::to_string(blas.proxyCount));
         CreateDeviceAddressBuffer(device,
             static_cast<VkDeviceSize>(aabbs.size() * sizeof(VkAabbPositionsKHR)),
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            blas.aabbBuffer, blas.aabbMemory, "RtQuery BLAS AABBs");
-        void* mapped = nullptr;
-        vkMapMemory(vkDevice, blas.aabbMemory, 0, VK_WHOLE_SIZE, 0, &mapped);
+            blas.aabbAllocation, "RTAccelStructures BLAS proxy AABBs");
+        void* mapped = device->MapBuffer(blas.aabbAllocation);
+        if (!mapped) throw std::runtime_error("[BodyOctreeSceneNode] failed to map tracked BLAS proxy AABBs");
         std::memcpy(mapped, aabbs.data(), aabbs.size() * sizeof(VkAabbPositionsKHR));
-        vkUnmapMemory(vkDevice, blas.aabbMemory);
+        device->UnmapBuffer(blas.aabbAllocation);
 
         VkAccelerationStructureGeometryAabbsDataKHR aabbsData{};
         aabbsData.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
-        aabbsData.data.deviceAddress = GetBufferDeviceAddress(device, blas.aabbBuffer);
+        aabbsData.data.deviceAddress = blas.aabbAllocation.deviceAddress != 0
+            ? blas.aabbAllocation.deviceAddress
+            : GetBufferDeviceAddress(device, blas.aabbAllocation.buffer);
         aabbsData.stride = sizeof(VkAabbPositionsKHR);
 
         VkAccelerationStructureGeometryKHR geometry{};
@@ -1831,17 +1801,16 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
 
         CreateDeviceAddressBuffer(device, sizeInfo.accelerationStructureSize,
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, blas.asBuffer, blas.asMemory, "RtQuery BLAS");
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, blas.asAllocation, "RTAccelStructures BLAS");
 
-        VkBuffer       scratchBuf = VK_NULL_HANDLE;
-        VkDeviceMemory scratchMem = VK_NULL_HANDLE;
+        ResourceManagement::BufferAllocation scratchAllocation;
         CreateDeviceAddressBuffer(device, sizeInfo.buildScratchSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            scratchBuf, scratchMem, "RtQuery BLAS scratch");
+            scratchAllocation, "RTAccelStructures BLAS scratch");
 
         VkAccelerationStructureCreateInfoKHR createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-        createInfo.buffer = blas.asBuffer;
+        createInfo.buffer = blas.asAllocation.buffer;
         createInfo.size = sizeInfo.accelerationStructureSize;
         createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
         if (vkCreateAS(vkDevice, &createInfo, nullptr, &blas.handle) != VK_SUCCESS) {
@@ -1849,7 +1818,9 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         }
 
         buildInfo.dstAccelerationStructure = blas.handle;
-        buildInfo.scratchData.deviceAddress = GetBufferDeviceAddress(device, scratchBuf);
+        buildInfo.scratchData.deviceAddress = scratchAllocation.deviceAddress != 0
+            ? scratchAllocation.deviceAddress
+            : GetBufferDeviceAddress(device, scratchAllocation.buffer);
 
         VkAccelerationStructureBuildRangeInfoKHR rangeInfo{};
         rangeInfo.primitiveCount = primitiveCount;
@@ -1861,8 +1832,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         submitAndWait(cmd);
         vkFreeCommandBuffers(vkDevice, buildPool, 1, &cmd);
 
-        vkDestroyBuffer(vkDevice, scratchBuf, nullptr);
-        vkFreeMemory(vkDevice, scratchMem, nullptr);
+        device->FreeBuffer(scratchAllocation);
 
         VkAccelerationStructureDeviceAddressInfoKHR addrInfo{};
         addrInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
@@ -1900,65 +1870,29 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
                 vkInst.transform.matrix[row][col] = localToWorld[col][row];
             }
         }
-        // Hoist redesign: instanceCustomIndex is the INSTANCE index (ii, position in
-        // instances_/bodyInstances[]), NOT the octree index -- the shader derives the
-        // octree as configs[instances[ci].octreeIndex], mirroring TraceWorld.glsl's own
-        // instance loop (`uint oi = inst.octreeIndex;`). This lets the hoisted RT search
-        // recover the SAME BodyInstance (worldPos/renderScale/octreeIndex) TraceWorld's
-        // per-instance loop would have used for this candidate, instead of only the
-        // octree it happens to share with potentially multiple instances.
-        vkInst.instanceCustomIndex = ii;
+        // The 24-bit custom index carries the body-instance index in its low byte and
+        // the flattened proxy base in the upper 16 bits. This is the only per-instance
+        // metadata exposed to a ray-query shader, and recovers both records without a
+        // second AS metadata buffer.
+        const uint32_t proxyBaseForInstance = rtQueryBlas_[oi].proxyBase;
+        if (ii > 0xFFu || proxyBaseForInstance > 0xFFFFu) {
+            vkDestroyCommandPool(vkDevice, buildPool, nullptr);
+            throw std::runtime_error(
+                "[BodyOctreeSceneNode] RTAccelStructures proxy metadata exceeds VkAccelerationStructureInstanceKHR custom-index capacity");
+        }
+        vkInst.instanceCustomIndex = (proxyBaseForInstance << 8u) | ii;
         vkInst.mask = 0xFF;
         vkInst.instanceShaderBindingTableRecordOffset = 0;
         vkInst.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         vkInst.accelerationStructureReference = rtQueryBlas_[oi].deviceAddress;
         vkInstances.push_back(vkInst);
 
-        // ROUND-18 STEP 1: dump this instance's world-space AABB, composed through the
-        // EXACT matrix bytes just written into vkInst.transform (row-major 3x4), not a
-        // parallel derivation -- reconstruct a glm::mat4 from those bytes and transform
-        // the BLAS-local [0,1]^3 cube's 8 corners.
-        {
-            glm::mat4 m(1.0f);
-            for (int row = 0; row < 3; ++row)
-                for (int col = 0; col < 4; ++col)
-                    m[col][row] = vkInst.transform.matrix[row][col];
-            glm::vec3 wmin(1e30f), wmax(-1e30f);
-            for (int c = 0; c < 8; ++c) {
-                glm::vec3 local((c & 1) ? 1.0f : 0.0f, (c & 2) ? 1.0f : 0.0f, (c & 4) ? 1.0f : 0.0f);
-                glm::vec3 w = glm::vec3(m * glm::vec4(local, 1.0f));
-                wmin = glm::min(wmin, w);
-                wmax = glm::max(wmax, w);
-            }
-            std::cout << "[RtTlasInst] i=" << ii << " octree=" << oi
-                      << " worldMin=(" << wmin.x << "," << wmin.y << "," << wmin.z << ")"
-                      << " worldMax=(" << wmax.x << "," << wmax.y << "," << wmax.z << ")"
-                      << std::endl;
-        }
-    }
-
-    // ROUND-16 candidate-supply probe (proven channel, plan-mandated): report per-octree
-    // BLAS presence + final TLAS instance count so a boot's stdout directly answers
-    // "does the scene-scoped 4th octree (VIXEN_BRICKMAP_SCENE far body, octreeIndex=3)
-    // get a BLAS and a TLAS instance, or does the far body have no acceleration
-    // structure at all." See docs/plans/2026-08-04-wavefront-recipe-shading.md,
-    // round-16 order (c) for why.
-    {
-        std::string aabbsPerOctree = "[";
-        for (uint32_t oi = 0; oi < concatenated_.count; ++oi) {
-            if (oi) aabbsPerOctree += ",";
-            aabbsPerOctree += (rtQueryBlas_[oi].handle != VK_NULL_HANDLE) ? "BLAS" : "none";
-        }
-        aabbsPerOctree += "]";
-        std::cout << "[RtTlas] instances=" << vkInstances.size()
-                  << " octreeCount=" << concatenated_.count
-                  << " aabbsPerOctree=" << aabbsPerOctree << std::endl;
     }
 
     if (vkInstances.empty()) {
         vkDestroyCommandPool(vkDevice, buildPool, nullptr);
-        NODE_LOG_WARNING("[BodyOctreeSceneNode] VIXEN_RTQUERY_TRAVERSAL: no Stored-SDF instances "
-                          "with occupied bricks -- TLAS not built, RTQUERY_TLAS stays VK_NULL_HANDLE");
+        NODE_LOG_WARNING("[BodyOctreeSceneNode] RayQueryLighting: no proxy-AABB instances "
+                          "with occupied bricks -- TLAS not built");
         return;
     }
 
@@ -1966,15 +1900,17 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         static_cast<VkDeviceSize>(vkInstances.size() * sizeof(VkAccelerationStructureInstanceKHR)),
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        rtQueryInstanceBuffer_, rtQueryInstanceMemory_, "RtQuery TLAS instances");
-    void* mappedInst = nullptr;
-    vkMapMemory(vkDevice, rtQueryInstanceMemory_, 0, VK_WHOLE_SIZE, 0, &mappedInst);
+        rtQueryInstanceAllocation_, "RTAccelStructures TLAS instances");
+    void* mappedInst = device->MapBuffer(rtQueryInstanceAllocation_);
+    if (!mappedInst) throw std::runtime_error("[BodyOctreeSceneNode] failed to map tracked TLAS instances");
     std::memcpy(mappedInst, vkInstances.data(), vkInstances.size() * sizeof(VkAccelerationStructureInstanceKHR));
-    vkUnmapMemory(vkDevice, rtQueryInstanceMemory_);
+    device->UnmapBuffer(rtQueryInstanceAllocation_);
 
     VkAccelerationStructureGeometryInstancesDataKHR instancesData{};
     instancesData.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-    instancesData.data.deviceAddress = GetBufferDeviceAddress(device, rtQueryInstanceBuffer_);
+    instancesData.data.deviceAddress = rtQueryInstanceAllocation_.deviceAddress != 0
+        ? rtQueryInstanceAllocation_.deviceAddress
+        : GetBufferDeviceAddress(device, rtQueryInstanceAllocation_.buffer);
 
     VkAccelerationStructureGeometryKHR tlasGeometry{};
     tlasGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -1997,14 +1933,14 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
 
     CreateDeviceAddressBuffer(device, tlasSizeInfo.accelerationStructureSize,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, rtQueryTlasBuffer_, rtQueryTlasMemory_, "RtQuery TLAS");
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, rtQueryTlasAllocation_, "RTAccelStructures TLAS");
     CreateDeviceAddressBuffer(device, tlasSizeInfo.buildScratchSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        rtQueryScratchBuffer_, rtQueryScratchMemory_, "RtQuery TLAS scratch");
+        rtQueryScratchAllocation_, "RTAccelStructures TLAS scratch");
 
     VkAccelerationStructureCreateInfoKHR tlasCreateInfo{};
     tlasCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-    tlasCreateInfo.buffer = rtQueryTlasBuffer_;
+    tlasCreateInfo.buffer = rtQueryTlasAllocation_.buffer;
     tlasCreateInfo.size = tlasSizeInfo.accelerationStructureSize;
     tlasCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
     if (vkCreateAS(vkDevice, &tlasCreateInfo, nullptr, &rtQueryTlas_) != VK_SUCCESS) {
@@ -2013,7 +1949,9 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     }
 
     tlasBuildInfo.dstAccelerationStructure = rtQueryTlas_;
-    tlasBuildInfo.scratchData.deviceAddress = GetBufferDeviceAddress(device, rtQueryScratchBuffer_);
+    tlasBuildInfo.scratchData.deviceAddress = rtQueryScratchAllocation_.deviceAddress != 0
+        ? rtQueryScratchAllocation_.deviceAddress
+        : GetBufferDeviceAddress(device, rtQueryScratchAllocation_.buffer);
 
     VkAccelerationStructureBuildRangeInfoKHR tlasRangeInfo{};
     tlasRangeInfo.primitiveCount = tlasInstanceCount;
@@ -2029,8 +1967,10 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     rtQueryTlasBuilt_ = true;
     rtQueryTlasBuiltForInstanceCount_ = instanceCount_;
     rtQueryTlasBuiltForOctreeCount_   = concatenated_.count;
+    rtQueryTlasBuiltForGeometryEpoch_ = rtQueryGeometryEpoch_;
+    rtQueryTlasBuiltForInstanceEpoch_ = rtQueryInstanceEpoch_;
 
-    NODE_LOG_INFO("[BodyOctreeSceneNode] VIXEN_RTQUERY_TRAVERSAL: TLAS built (" +
+    NODE_LOG_INFO("[BodyOctreeSceneNode] RayQueryLighting: TLAS built (" +
                    std::to_string(vkInstances.size()) + " instances over " +
                    std::to_string(rtQueryBlas_.size()) + " BLAS)");
 }
@@ -2042,34 +1982,31 @@ void BodyOctreeSceneNode::DestroyRtQueryTlas() {
         rtQueryTlasBuilt_ = false;
         rtQueryTlasBuiltForInstanceCount_ = -1;
         rtQueryTlasBuiltForOctreeCount_ = 0;
+        rtQueryTlasBuiltForGeometryEpoch_ = 0;
+        rtQueryTlasBuiltForInstanceEpoch_ = 0;
         return;
     }
     VkDevice vkDevice = GetDevice()->device;
-    const auto vkDestroyAS = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
-        vkGetDeviceProcAddr(vkDevice, "vkDestroyAccelerationStructureKHR"));
+    const auto vkDestroyAS = GetDevice()->fpDestroyAccelerationStructure;
 
     for (RtQueryBlas& blas : rtQueryBlas_) {
         if (vkDestroyAS && blas.handle != VK_NULL_HANDLE) vkDestroyAS(vkDevice, blas.handle, nullptr);
-        if (blas.asBuffer != VK_NULL_HANDLE)   { vkDestroyBuffer(vkDevice, blas.asBuffer, nullptr);   }
-        if (blas.asMemory != VK_NULL_HANDLE)   { vkFreeMemory(vkDevice, blas.asMemory, nullptr);      }
-        if (blas.aabbBuffer != VK_NULL_HANDLE) { vkDestroyBuffer(vkDevice, blas.aabbBuffer, nullptr); }
-        if (blas.aabbMemory != VK_NULL_HANDLE) { vkFreeMemory(vkDevice, blas.aabbMemory, nullptr);    }
+        GetDevice()->FreeBuffer(blas.asAllocation);
+        GetDevice()->FreeBuffer(blas.aabbAllocation);
     }
     rtQueryBlas_.clear();
 
     if (vkDestroyAS && rtQueryTlas_ != VK_NULL_HANDLE) vkDestroyAS(vkDevice, rtQueryTlas_, nullptr);
     rtQueryTlas_ = VK_NULL_HANDLE;
-    auto destroy = [&](VkBuffer& buf, VkDeviceMemory& mem) {
-        if (buf != VK_NULL_HANDLE) { vkDestroyBuffer(vkDevice, buf, nullptr); buf = VK_NULL_HANDLE; }
-        if (mem != VK_NULL_HANDLE) { vkFreeMemory(vkDevice, mem, nullptr);    mem = VK_NULL_HANDLE; }
-    };
-    destroy(rtQueryTlasBuffer_,    rtQueryTlasMemory_);
-    destroy(rtQueryScratchBuffer_, rtQueryScratchMemory_);
-    destroy(rtQueryInstanceBuffer_, rtQueryInstanceMemory_);
+    GetDevice()->FreeBuffer(rtQueryTlasAllocation_);
+    GetDevice()->FreeBuffer(rtQueryScratchAllocation_);
+    GetDevice()->FreeBuffer(rtQueryInstanceAllocation_);
 
     rtQueryTlasBuilt_ = false;
     rtQueryTlasBuiltForInstanceCount_ = -1;
     rtQueryTlasBuiltForOctreeCount_ = 0;
+    rtQueryTlasBuiltForGeometryEpoch_ = 0;
+    rtQueryTlasBuiltForInstanceEpoch_ = 0;
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {

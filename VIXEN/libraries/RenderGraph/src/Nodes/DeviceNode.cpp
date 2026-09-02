@@ -301,7 +301,39 @@ void DeviceNode::CreateLogicalDevice() {
 
     NODE_LOG_INFO("[DeviceNode] Validated " + std::to_string(allExtensions.size()) + " base device extensions");
 
-    // Phase K: Auto-enable RTX extensions if available
+    // rtperf S1: enable the minimal ray-query lighting bundle independently of the
+    // legacy full RTX pipeline bundle. RayQueryLighting is a graph capability built
+    // from the enabled AS/ray-query/BDA leaves; the pipeline extension is not part of
+    // that tier and must not be an accidental prerequisite.
+    auto rayQueryLightingExtensions = VulkanDevice::GetRayQueryLightingExtensions();
+    bool rayQueryLightingAvailable = true;
+    for (const auto& rayQueryExt : rayQueryLightingExtensions) {
+        if (!hasExt(rayQueryExt)) {
+            rayQueryLightingAvailable = false;
+            NODE_LOG_INFO("[DeviceNode] RayQueryLighting extension not available: " + std::string(rayQueryExt));
+            break;
+        }
+    }
+    if (rayQueryLightingAvailable) {
+        NODE_LOG_INFO("[DeviceNode] RayQueryLighting extensions available - enabling optional shadow-wave backend");
+        for (const auto& rayQueryExt : rayQueryLightingExtensions) {
+            bool alreadyAdded = false;
+            for (const auto& existingExt : allExtensions) {
+                if (strcmp(existingExt, rayQueryExt) == 0) {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+            if (!alreadyAdded) {
+                allExtensions.push_back(rayQueryExt);
+                NODE_LOG_INFO("[DeviceNode]   + " + std::string(rayQueryExt));
+            }
+        }
+    } else {
+        NODE_LOG_INFO("[DeviceNode] RayQueryLighting extensions not available - shadow wave will use DDA twin");
+    }
+
+    // Phase K: Auto-enable the full RTX pipeline bundle if available
     auto rtxExtensions = VulkanDevice::GetRTXExtensions();
 
     bool rtxAvailable = true;

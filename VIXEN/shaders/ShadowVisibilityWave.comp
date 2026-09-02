@@ -38,7 +38,9 @@
 //
 // Dispatch: 1D over hitRecords.length() (slot = linear pixel index — no
 // extent plumbing; the buffer is already sized width×height by the march's
-// own extent-driven node). Runs between the march (record producer) and
+// own extent-driven node). The optional swizzle only permutes the 64 lanes
+// inside each group, so it needs no additional resource or push data. Runs
+// between the march (record producer) and
 // SpatialReuseShade (record consumer): march→wave RAW, wave→shade RAW on the
 // SAME buffer resource.
 //
@@ -74,6 +76,24 @@ layout(std430, binding = 18) readonly buffer ShadowConfigSSBO {
     ShadowConfig shadowConfig;
 };
 
+#ifdef VIXEN_WAVE_SLOT_SWIZZLE
+uint waveSlot() {
+    const uint lane = gl_LocalInvocationID.x;
+    // 8x8 Morton order within each 64-slot group: lane bits [0,2,4]
+    // become the local x bits and [1,3,5] become the local y bits.
+    const uint mortonLane =
+        ((lane >> 0u) & 1u) |
+        (((lane >> 2u) & 1u) << 1u) |
+        (((lane >> 4u) & 1u) << 2u) |
+        (((lane >> 1u) & 1u) << 3u) |
+        (((lane >> 3u) & 1u) << 4u) |
+        (((lane >> 5u) & 1u) << 5u);
+    return gl_WorkGroupID.x * 64u + mortonLane;
+}
+#else
+uint waveSlot() { return gl_GlobalInvocationID.x; }
+#endif
+
 #ifdef VIXEN_WAVE_RESERVOIR_PHASE
 // ============================================================================
 // RESERVOIR PHASE (wavefront W2a) — a SECOND dispatch of this program, as its
@@ -104,7 +124,8 @@ layout(std430, binding = 20) readonly buffer LightTreeBufferSSBO {
 #include "ReservoirCombine.glsl"
 
 void main() {
-    uint slot = gl_GlobalInvocationID.x;
+    uint slot = waveSlot();
+    if (slot == 0xFFFFFFFFu) return;
     if (slot >= hitRecords.length()) return;
 
     uint flags = hitRecords[slot].flags;
@@ -158,7 +179,8 @@ void main() {
 
 
 void main() {
-    uint slot = gl_GlobalInvocationID.x;
+    uint slot = waveSlot();
+    if (slot == 0xFFFFFFFFu) return;
     if (slot >= hitRecords.length()) return;
 
 #ifdef VIXEN_POLICY_STENCIL_TILES

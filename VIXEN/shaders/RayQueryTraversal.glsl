@@ -139,9 +139,15 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         // instanceCustomIndex is the INSTANCE index (BodyOctreeSceneNode::
         // EnsureRtQueryTlasBuilt, round-3 hoist redesign) -- derive the octree
         // exactly like TraceWorld's own instance loop does.
-        const int  ci       = rayQueryGetIntersectionInstanceCustomIndexEXT(rq, false);
+        const uint packedIndex = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(rq, false));
+        const uint ci = packedIndex & 0xFFu;
+        const uint proxyBase = packedIndex >> 8u;
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+        if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
+            continue;
+        }
         const int  oi       = int(bodyInstances[ci].octreeIndex);
+        if (oi < 0 || uint(oi) >= configs.length()) continue;
         // ROUND-17 probe: octree-3-only loop-entry tally, taken as early as
         // possible (right after oi is known, before any of THIS candidate's
         // own continues below) -- see rtLoopEntriesOct3's field comment.
@@ -152,13 +158,11 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         g_brickArrayBase = configs[oi].brickArrayBase;
         const int bpa = configs[oi].bricksPerAxis;
         if (bpa <= 0) continue;
-        // Recover the brick's grid coord from its flat lookup-table index -- the
-        // SAME flat = gz*bpa*bpa + gy*bpa + gx convention the DDA backend and the
-        // CPU-side AABB build (BodyOctreeSceneNode::EnsureRtQueryTlasBuilt) both use.
-        const int gx = int(brickIdx) % bpa;
-        const int gy = (int(brickIdx) / bpa) % bpa;
-        const int gz = int(brickIdx) / (bpa * bpa);
-        const ivec3 cell = ivec3(gx, gy, gz);
+        const ShellProxyAabb proxy = rtQueryProxyAabbs[proxyBase + brickIdx];
+        if (proxy.octreeIndex != uint(oi)) continue;
+        const vec3 proxyCenter = (proxy.minLocal + proxy.maxLocal) * 0.5;
+        const ivec3 cell = ivec3(clamp(floor(proxyCenter * float(bpa)),
+                                       vec3(0.0), vec3(float(bpa - 1))));
 
         // Candidate ray in OBJECT (octree-local [0,1]^3) space, straight from the
         // API -- no manual world->local inversion. See this function's header for
@@ -174,9 +178,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         // Slab-test the brick's own AABB (octree-local [0,1]^3 space, same box the
         // BLAS itself holds) against objOrigin + s*objDir to find this candidate's
         // entry coefficient s -- which, per the header derivation, IS tWorld.
-        const float resolution = float(bpa) * 8.0;  // BRICK_SIZE_SDF, matches marchBrickSdfCell's pin
-        const vec3 bMinLocal = vec3(cell) / resolution;
-        const vec3 bMaxLocal = bMinLocal + vec3(1.0 / resolution);
+        const float resolution = float(bpa) * 8.0;  // BRICK_SIZE_SDF, grid-space scale
+        const vec3 bMinLocal = proxy.minLocal;
+        const vec3 bMaxLocal = proxy.maxLocal;
         const vec3 invD = vec3(
             abs(objDir.x) > 1e-8 ? 1.0 / objDir.x : 0.0,
             abs(objDir.y) > 1e-8 ? 1.0 / objDir.y : 0.0,
@@ -306,7 +310,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
             incrFarGenRectGateCross();  // batch-24 FARGEN: rect-scoped gate-cross funnel
             if (tCellEnter < bestT) {
                 bestT = tCellEnter;
-                bestInstIdx = ci;
+                bestInstIdx = int(ci);
                 bestOctreeIdx = oi;
                 bestCell = cell;
                 hitNormal = -gridDirN;
@@ -385,7 +389,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
             const float tWorld = tCellEnter + (sHit + kEntryBias) / (dirLen * gridScale);
             if (tWorld < bestT) {
                 bestT = tWorld;
-                bestInstIdx = ci;
+                bestInstIdx = int(ci);
                 bestOctreeIdx = oi;
                 bestCell = cell;
                 hitNormal = nrm;
@@ -413,24 +417,20 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
 
     hitT              = bestT;
     hitInstanceIdx    = uint(bestInstIdx);
-    // FIX 2: match the DDA twin's hitBrickIndex convention exactly (SceneBindings.glsl
-    // ~1986/572) -- brickArrayBase + the LOOKED-UP local brick index, not the flat grid
-    // coordinate directly (that was a third, incompatible convention).
-    {
-        const int bestBpa = configs[bestOctreeIdx].bricksPerAxis;
-        const uint bestFlatIdx = uint(bestCell.z * bestBpa * bestBpa + bestCell.y * bestBpa + bestCell.x);
-        const uint localBrickIdx = brickLookup[configs[bestOctreeIdx].brickLookupBase + bestFlatIdx];
-        // Guard: should be impossible for a hit candidate -- fix 1's degenerate boxes
-        // (min>max) never intersect, so an unallocated cell can't reach here. Skip
-        // defensively rather than emit a bogus index into the brick pool.
-        if (localBrickIdx == 0xFFFFFFFFu) {
-            g_octreeIdx      = savedOctreeIdx;
-            g_brickArrayBase = savedBrickArrayBase;
-            debugInfo.exitCode = DEBUG_EXIT_NONE;
-            return false;
-        }
-        hitBrickIndex = uint(configs[bestOctreeIdx].brickArrayBase) + localBrickIdx;
+    // The proxy primitive identifies a compact candidate, while the shared
+    // compact grid lookup remains the authoritative cell -> shell-slot map.
+    // Keep this final addressing identical to the DDA twin.
+    const int bestBpa = configs[bestOctreeIdx].bricksPerAxis;
+    const uint bestFlatIdx = uint(bestCell.z * bestBpa * bestBpa +
+                                  bestCell.y * bestBpa + bestCell.x);
+    const uint localBrickIdx = brickLookup[configs[bestOctreeIdx].brickLookupBase + bestFlatIdx];
+    if (localBrickIdx == 0xFFFFFFFFu) {
+        g_octreeIdx      = savedOctreeIdx;
+        g_brickArrayBase = savedBrickArrayBase;
+        debugInfo.exitCode = DEBUG_EXIT_NONE;
+        return false;
     }
+    hitBrickIndex = uint(configs[bestOctreeIdx].brickArrayBase) + localBrickIdx;
     hitVoxelLinearIdx = 0u;
     debugInfo.hitFlag = 1u;
     // Leave g_octreeIdx/g_brickArrayBase pointed at the WINNING octree, matching
@@ -459,19 +459,26 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         if (rayQueryGetIntersectionTypeEXT(rq, false) != gl_RayQueryCandidateIntersectionAABBEXT) {
             continue;
         }
-        const int  ci       = rayQueryGetIntersectionInstanceCustomIndexEXT(rq, false);
+        const uint packedIndex = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(rq, false));
+        const uint ci = packedIndex & 0xFFu;
+        const uint proxyBase = packedIndex >> 8u;
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+        if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
+            continue;
+        }
         const int  oi       = int(bodyInstances[ci].octreeIndex);
+        if (oi < 0 || uint(oi) >= configs.length()) continue;
 
         g_octreeIdx      = oi;
         g_mipSampleLevel = 0u;
         g_brickArrayBase = configs[oi].brickArrayBase;
         const int bpa = configs[oi].bricksPerAxis;
         if (bpa <= 0) continue;
-        const int gx = int(brickIdx) % bpa;
-        const int gy = (int(brickIdx) / bpa) % bpa;
-        const int gz = int(brickIdx) / (bpa * bpa);
-        const ivec3 cell = ivec3(gx, gy, gz);
+        const ShellProxyAabb proxy = rtQueryProxyAabbs[proxyBase + brickIdx];
+        if (proxy.octreeIndex != uint(oi)) continue;
+        const vec3 proxyCenter = (proxy.minLocal + proxy.maxLocal) * 0.5;
+        const ivec3 cell = ivec3(clamp(floor(proxyCenter * float(bpa)),
+                                       vec3(0.0), vec3(float(bpa - 1))));
 
         const vec3 objOrigin = rayQueryGetIntersectionObjectRayOriginEXT(rq, false);
         const vec3 objDir    = rayQueryGetIntersectionObjectRayDirectionEXT(rq, false);
@@ -480,8 +487,8 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         const vec3 gridDirN = objDir / dirLen;
 
         const float resolution = float(bpa) * 8.0;
-        const vec3 bMinLocal = vec3(cell) / resolution;
-        const vec3 bMaxLocal = bMinLocal + vec3(1.0 / resolution);
+        const vec3 bMinLocal = proxy.minLocal;
+        const vec3 bMaxLocal = proxy.maxLocal;
         const vec3 invD = vec3(
             abs(objDir.x) > 1e-8 ? 1.0 / objDir.x : 0.0,
             abs(objDir.y) > 1e-8 ? 1.0 / objDir.y : 0.0,

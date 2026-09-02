@@ -59,6 +59,10 @@ inline constexpr ShaderFeature kFeatureB2ProxyPrepass{"VIXEN_B2_PROXY_PREPASS"};
 // reservoir phase (answers HitRecord._pad0[2] bit 4 from the combined
 // reservoir). Same program, own compiled variant; no device requirement.
 inline constexpr ShaderFeature kFeatureWaveReservoirPhase{"VIXEN_WAVE_RESERVOIR_PHASE"};
+// rtperf S0/e4: optional wave-slot swizzle. The shader derives the same linear
+// HitRecord slot from an 8x8 Morton lane order; it adds no interface members so
+// the default wave contract remains unchanged.
+inline constexpr ShaderFeature kFeatureWaveSlotSwizzle{"VIXEN_WAVE_SLOT_SWIZZLE"};
 // kFeatureHitAccumFused (VIXEN_HIT_ACCUM_FUSED) RETIRED at W-SPLIT: the
 // accumulate tail moved back to its own HitAccumulate.comp dispatch — the
 // fusion cost more (+7-8 ms structural) than the re-read it was meant to
@@ -105,6 +109,13 @@ inline constexpr ShaderFeature kFeatureBrickmapDebug{"VIXEN_BRICKMAP_DEBUG"};
  *  search phase across all three while the sampling tail (marchBrickSdfCell) stays shared.
  */
 inline constexpr ShaderFeature kFeatureRtQueryTraversal{"VIXEN_RTQUERY_TRAVERSAL"};
+
+// rtperf S1: the lighting capability is the graph-selected acceleration tier,
+// not the broader RTXSupport composite (which also includes pipeline tracing
+// and deferred-host-operation requirements).
+inline constexpr const char* kRayQueryLightingCapabilities[] = {"RayQueryLighting"};
+inline constexpr ShaderFeature kFeatureRayQueryLighting{
+    "VIXEN_RTQUERY_TRAVERSAL", kRayQueryLightingCapabilities, 1};
 
 /** @brief W-COMPOSED: the role ruling made code -- RT-traversal + DDA-leaf +
  *  ESVO-data-access are complementary tiers of ONE traversal, not rival
