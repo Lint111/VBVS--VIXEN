@@ -271,8 +271,9 @@ Debug and reused cached artifacts). All fixed on `claude/wsl-build-portability`.
   long manual dance no consumer should have to do.
 - **Added (for review):** a VIXEN-side auto-provision so a WSL2 build gets GPU rendering turnkey —
   `cmake/ProvisionWslVulkan.cmake` (+ `provision-wsl-vulkan.sh`) detects `/dev/dxg` and builds Dozen
-  no-sudo into `~/.cache/vixen/wsl-vulkan` (idempotent, cached, **non-fatal** → software fallback on
-  failure, opt-out `VIXEN_AUTO_PROVISION_WSL_VULKAN=OFF`); and `VulkanGraphApplication::Initialize()`
+  no-sudo into `~/.cache/vixen/wsl-vulkan` (idempotent, cached, **non-fatal** provisioning failure;
+  the runtime selector is strict unless `VIXEN_ALLOW_SOFTWARE_VULKAN=1`, with opt-out
+  `VIXEN_AUTO_PROVISION_WSL_VULKAN=OFF`); and `VulkanGraphApplication::Initialize()`
   selects the provisioned ICD before instance creation (gated on `/dev/dxg` + `VK_ICD_FILENAMES`-unset,
   so it's a no-op off WSL / when the user chose an ICD). Every `VixenApp` consumer benefits.
 - **Status:** ADDED on `claude/wsl-build-portability` (awaiting your review/adoption). Proven turnkey:

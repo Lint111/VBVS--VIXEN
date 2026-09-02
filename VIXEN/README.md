@@ -25,7 +25,9 @@ cmake --build build --config Debug --parallel 16     # or Release
 - **WSL2 GPU rendering:** the default WSL2 Vulkan ICD is **software** (lavapipe/llvmpipe) — 10-25x
   slower than a real GPU and not representative of driver behavior. `cmake/ProvisionWslVulkan.cmake`
   auto-builds Mesa **Dozen** (Vulkan-over-D3D12) for real-GPU rendering on `/dev/dxg`; see FR-20 in
-  `Vixen-Docs/05-Progress/features/consumer-feedback-undertow.md`. For perf-sensitive render work,
+  `Vixen-Docs/05-Progress/features/consumer-feedback-undertow.md`. If the Dozen manifest is missing,
+  VIXEN fails loud by default; set `VK_ICD_FILENAMES` explicitly or use
+  `VIXEN_ALLOW_SOFTWARE_VULKAN=1` for an intentional software run. For perf-sensitive render work,
   prefer native Windows.
 - **Trimmed build:** `-DVULKAN_TRIMMED_BUILD=ON` fetches headers only (no runtime libs).
 - **Tests:** `ctest` from the build dir, or run the per-library `test_*` binaries directly.
