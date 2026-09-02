@@ -1,5 +1,7 @@
 #include "VulkanSwapChain.h"
 
+#include <algorithm>  // std::clamp for the surface-capability extent clamp
+
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL); Vulkan-only below
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -337,9 +339,23 @@ VulkanStatus VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDev
     );
 
     if(scPrivateVars.surfCapabilities.currentExtent.width == (uint32_t)-1) {
-        // If the surface size is undefined, the size is set to image size
-        scPrivateVars.swapChainExtent.width = width;
-        scPrivateVars.swapChainExtent.height = height;
+        // If the surface size is undefined, the size is set to image size -- but it must still lie
+        // within the surface's advertised [minImageExtent, maxImageExtent] range
+        // (VUID-VkSwapchainCreateInfoKHR-imageExtent-01274). A requested window size outside that
+        // range is otherwise passed through verbatim and rejected at vkCreateSwapchainKHR.
+        const VkSurfaceCapabilitiesKHR& caps = scPrivateVars.surfCapabilities;
+        scPrivateVars.swapChainExtent.width =
+            std::clamp(width, caps.minImageExtent.width, caps.maxImageExtent.width);
+        scPrivateVars.swapChainExtent.height =
+            std::clamp(height, caps.minImageExtent.height, caps.maxImageExtent.height);
+        if (scPrivateVars.swapChainExtent.width != width ||
+            scPrivateVars.swapChainExtent.height != height) {
+            LOG_INFO("[GetSurfaceCapabilitiesAndPresentMode] Requested extent "
+                     + std::to_string(width) + "x" + std::to_string(height)
+                     + " clamped to the surface's supported range: "
+                     + std::to_string(scPrivateVars.swapChainExtent.width) + "x"
+                     + std::to_string(scPrivateVars.swapChainExtent.height));
+        }
     } else {
         // If the surface size is defined, the swap chain size must match
         scPrivateVars.swapChainExtent = scPrivateVars.surfCapabilities.currentExtent;
@@ -407,13 +423,25 @@ void VulkanSwapChain::ManagePresentMode()
         LOG_INFO("[ManagePresentMode] Using FIFO mode (V-Sync enabled)");
     }
 
-    // Determine the number of images
+    // Determine the number of images. minImageCount+1 can fall BELOW minImageCount only if the
+    // capabilities were never populated, but the max clamp below can drop it under the minimum on a
+    // driver reporting maxImageCount < minImageCount+1 -- clamp both ends so the request always
+    // lands inside [minImageCount, maxImageCount] (VUID-VkSwapchainCreateInfoKHR-minImageCount-01271).
     scPrivateVars.desiredNumberOfSwapChainImages = scPrivateVars.surfCapabilities.minImageCount + 1;
     if((scPrivateVars.surfCapabilities.maxImageCount > 0) &&
        (scPrivateVars.desiredNumberOfSwapChainImages > scPrivateVars.surfCapabilities.maxImageCount)) {
         // Application must settle for fewer images than desired
         scPrivateVars.desiredNumberOfSwapChainImages = scPrivateVars.surfCapabilities.maxImageCount;
     }
+    if (scPrivateVars.desiredNumberOfSwapChainImages < scPrivateVars.surfCapabilities.minImageCount) {
+        scPrivateVars.desiredNumberOfSwapChainImages = scPrivateVars.surfCapabilities.minImageCount;
+    }
+    LOG_INFO("[ManagePresentMode] Swapchain image count " +
+             std::to_string(scPrivateVars.desiredNumberOfSwapChainImages) + " (surface allows [" +
+             std::to_string(scPrivateVars.surfCapabilities.minImageCount) + ", " +
+             (scPrivateVars.surfCapabilities.maxImageCount > 0
+                  ? std::to_string(scPrivateVars.surfCapabilities.maxImageCount)
+                  : std::string("unbounded")) + "])");
 
     if(scPrivateVars.surfCapabilities.supportedTransforms &
        VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) {

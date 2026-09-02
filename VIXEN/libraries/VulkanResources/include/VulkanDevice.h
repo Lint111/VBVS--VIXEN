@@ -60,7 +60,12 @@ public:
     VkQueue queue;
     std::vector<VkQueueFamilyProperties> queueFamilyProperties;
     uint32_t graphicsQueueIndex;
-    uint32_t graphicsQueueWithPresentIndex;
+    // The queue family proven (by vkGetPhysicalDeviceSurfaceSupportKHR against a real surface, in
+    // NegotiatePresentQueue) to support presentation. UINT32_MAX means "presentation has not been
+    // negotiated" -- the honest initial state. It is NOT seeded from graphicsQueueIndex: doing so
+    // made HasPresentSupport() report true on a device whose present support was never queried.
+    static constexpr uint32_t kPresentQueueNotNegotiated = UINT32_MAX;
+    uint32_t graphicsQueueWithPresentIndex = kPresentQueueNotNegotiated;
     uint32_t queueFamilyCount;
     VkPhysicalDeviceFeatures deviceFeatures; // physical device features
 
@@ -98,7 +103,23 @@ public:
     VulkanResult<uint32_t> GetGraphicsQueueHandle();
     void GetDeviceQueue();
 
-    // Present queue support
+    /**
+     * @brief Negotiate presentation against a REAL surface, before device creation (0ep.3/0ej).
+     *
+     * Queries vkGetPhysicalDeviceSurfaceSupportKHR per queue family and selects the first family
+     * that is both GRAPHICS-capable and present-capable, recording it in
+     * graphicsQueueWithPresentIndex. This replaces the "assume graphics can present" placeholder
+     * that made HasPresentSupport() unconditionally true, so a device that genuinely cannot
+     * present is now DETECTABLE instead of failing later at a null vkCreateSwapchainKHR.
+     *
+     * Must be called after GetPhysicalDeviceQueuesAndProperties() and before CreateDevice().
+     * Returns the selected family index, or an error naming the gap when no family can present to
+     * this surface — the caller decides whether that is fatal (presentation requested) per 0ej.
+     */
+    VulkanResult<uint32_t> NegotiatePresentQueue(VkSurfaceKHR surface);
+
+    // Present queue support. Meaningful only after NegotiatePresentQueue() has run against a real
+    // surface; without that negotiation this reports false rather than a fabricated true.
     bool HasPresentSupport() const;
     PFN_vkQueuePresentKHR GetPresentFunction() const;
 
