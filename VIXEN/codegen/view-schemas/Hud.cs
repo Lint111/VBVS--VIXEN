@@ -21,8 +21,8 @@ namespace Vixen.ViewSchemas
         public int    bodyCount;
         public string activeLensName;
         public int    activeLensCount;
-        [ViewSection(Layout = ViewLayout.Aos)] public HudFaction[] factions;
-        [ViewSection(Layout = ViewLayout.Aos)] public HudEvent[]   events;
+        [ViewSection(Layout = ViewLayout.Soa)] public HudFaction[] factions;
+        [ViewSection(Layout = ViewLayout.Soa)] public HudEvent[]   events;
         // T1 inspect panel: the selected-body/entity detail. inspectSelected gates the panel's
         // data-if in hud.rml; the rest are meaningless when inspectSelected == 0.
         public int    inspectSelected;   // 1 = a body/entity is selected (bound as a bool via data-if)

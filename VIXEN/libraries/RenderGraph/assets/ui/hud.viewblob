@@ -1,6 +1,6 @@
 # viewblob v1
 model hud
-version 0x9D4ACFD2
+version 0x886D047D
 elem HudFaction
   name string
   grievance float

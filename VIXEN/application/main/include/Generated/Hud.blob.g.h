@@ -29,6 +29,6 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kHud_fields[] = {
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kHudBlob = {
-    "hud", kHud_fields, 0x9D4ACFD2u /* generated version */ };
+    "hud", kHud_fields, 0x886D047Du /* generated version */ };
 
 }  // namespace Vixen::Views

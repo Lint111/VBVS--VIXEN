@@ -4,7 +4,7 @@ namespace Vixen.Views
 {
     public sealed partial class HudViewWriter
     {
-        public const uint SchemaVersion = 0x9D4ACFD2u;
+        public const uint SchemaVersion = 0x886D047Du;
 
         public struct HudFactionRow
         {
@@ -50,20 +50,18 @@ namespace Vixen.Views
             __size = checked(__size + 4);
             int __size_n_factions = this.factions.Count;
             __size = checked(__size + 4);
-            for (int __i = 0; __i < __size_n_factions; __i++) {
-                __size = checked(__size + WStrSize(this.factions[__i].name));
-                __size = checked(__size + 4);
-                __size = checked(__size + 1);
-                __size = checked(__size + 1);
-                __size = checked(__size + 1);
-                __size = checked(__size + 1);
-            }
+            __size = checked(__size + checked((__size_n_factions + 1) * 4));
+            for (int __i = 0; __i < __size_n_factions; __i++) __size = checked(__size + Utf8Size(this.factions[__i].name));
+            __size = checked(__size + checked(__size_n_factions * 4));
+            __size = checked(__size + checked(__size_n_factions * 1));
+            __size = checked(__size + checked(__size_n_factions * 1));
+            __size = checked(__size + checked(__size_n_factions * 1));
+            __size = checked(__size + checked(__size_n_factions * 1));
             int __size_n_events = this.events.Count;
             __size = checked(__size + 4);
-            for (int __i = 0; __i < __size_n_events; __i++) {
-                __size = checked(__size + WStrSize(this.events[__i].kind));
-                __size = checked(__size + 4);
-            }
+            __size = checked(__size + checked((__size_n_events + 1) * 4));
+            for (int __i = 0; __i < __size_n_events; __i++) __size = checked(__size + Utf8Size(this.events[__i].kind));
+            __size = checked(__size + checked(__size_n_events * 4));
             __size = checked(__size + 4);
             __size = checked(__size + WStrSize(this.inspectName));
             __size = checked(__size + WStrSize(this.inspectCause));
@@ -83,20 +81,74 @@ namespace Vixen.Views
             WI32(b, ref at, this.bodyCount);
             WStr(b, ref at, this.activeLensName);
             WI32(b, ref at, this.activeLensCount);
-            W32(b, ref at, (uint)this.factions.Count);
-            foreach (var __r_factions in this.factions) {
-                WStr(b, ref at, __r_factions.name);
-                WF32(b, ref at, __r_factions.grievance);
-                WBool(b, ref at, __r_factions.focused);
-                WBool(b, ref at, __r_factions.known);
-                WBool(b, ref at, __r_factions.inLens);
-                WBool(b, ref at, __r_factions.recentChanged);
+            int __n_factions = this.factions.Count;
+            W32(b, ref at, (uint)__n_factions);
+            int __c_factions_name_offsetsBytes = checked((__n_factions + 1) * 4);
+            var __c_factions_name_offsets = b.Slice(at, __c_factions_name_offsetsBytes);
+            int __c_factions_name_offsetsAt = 0;
+            int __c_factions_name_blobStart = at + __c_factions_name_offsetsBytes;
+            uint __c_factions_name_blobAt = 0u;
+            W32(__c_factions_name_offsets, ref __c_factions_name_offsetsAt, 0u);
+            for (int __i = 0; __i < __n_factions; __i++) {
+                string __c_factions_name_value = this.factions[__i].name ?? string.Empty;
+                int __len = Utf8Size(__c_factions_name_value);
+                System.Text.Encoding.UTF8.GetBytes(__c_factions_name_value, b.Slice(__c_factions_name_blobStart + checked((int)__c_factions_name_blobAt), __len));
+                __c_factions_name_blobAt += (uint)__len;
+                W32(__c_factions_name_offsets, ref __c_factions_name_offsetsAt, __c_factions_name_blobAt);
             }
-            W32(b, ref at, (uint)this.events.Count);
-            foreach (var __r_events in this.events) {
-                WStr(b, ref at, __r_events.kind);
-                WI32(b, ref at, __r_events.tick);
+            at = checked(__c_factions_name_blobStart + (int)__c_factions_name_blobAt);
+            var __c_factions_grievance_span = b.Slice(at, checked(__n_factions * 4));
+            int __c_factions_grievance_spanAt = 0;
+            for (int __i = 0; __i < __n_factions; __i++) {
+                WF32(__c_factions_grievance_span, ref __c_factions_grievance_spanAt, this.factions[__i].grievance);
             }
+            at += __c_factions_grievance_span.Length;
+            var __c_factions_focused_span = b.Slice(at, checked(__n_factions * 1));
+            int __c_factions_focused_spanAt = 0;
+            for (int __i = 0; __i < __n_factions; __i++) {
+                WBool(__c_factions_focused_span, ref __c_factions_focused_spanAt, this.factions[__i].focused);
+            }
+            at += __c_factions_focused_span.Length;
+            var __c_factions_known_span = b.Slice(at, checked(__n_factions * 1));
+            int __c_factions_known_spanAt = 0;
+            for (int __i = 0; __i < __n_factions; __i++) {
+                WBool(__c_factions_known_span, ref __c_factions_known_spanAt, this.factions[__i].known);
+            }
+            at += __c_factions_known_span.Length;
+            var __c_factions_inLens_span = b.Slice(at, checked(__n_factions * 1));
+            int __c_factions_inLens_spanAt = 0;
+            for (int __i = 0; __i < __n_factions; __i++) {
+                WBool(__c_factions_inLens_span, ref __c_factions_inLens_spanAt, this.factions[__i].inLens);
+            }
+            at += __c_factions_inLens_span.Length;
+            var __c_factions_recentChanged_span = b.Slice(at, checked(__n_factions * 1));
+            int __c_factions_recentChanged_spanAt = 0;
+            for (int __i = 0; __i < __n_factions; __i++) {
+                WBool(__c_factions_recentChanged_span, ref __c_factions_recentChanged_spanAt, this.factions[__i].recentChanged);
+            }
+            at += __c_factions_recentChanged_span.Length;
+            int __n_events = this.events.Count;
+            W32(b, ref at, (uint)__n_events);
+            int __c_events_kind_offsetsBytes = checked((__n_events + 1) * 4);
+            var __c_events_kind_offsets = b.Slice(at, __c_events_kind_offsetsBytes);
+            int __c_events_kind_offsetsAt = 0;
+            int __c_events_kind_blobStart = at + __c_events_kind_offsetsBytes;
+            uint __c_events_kind_blobAt = 0u;
+            W32(__c_events_kind_offsets, ref __c_events_kind_offsetsAt, 0u);
+            for (int __i = 0; __i < __n_events; __i++) {
+                string __c_events_kind_value = this.events[__i].kind ?? string.Empty;
+                int __len = Utf8Size(__c_events_kind_value);
+                System.Text.Encoding.UTF8.GetBytes(__c_events_kind_value, b.Slice(__c_events_kind_blobStart + checked((int)__c_events_kind_blobAt), __len));
+                __c_events_kind_blobAt += (uint)__len;
+                W32(__c_events_kind_offsets, ref __c_events_kind_offsetsAt, __c_events_kind_blobAt);
+            }
+            at = checked(__c_events_kind_blobStart + (int)__c_events_kind_blobAt);
+            var __c_events_tick_span = b.Slice(at, checked(__n_events * 4));
+            int __c_events_tick_spanAt = 0;
+            for (int __i = 0; __i < __n_events; __i++) {
+                WI32(__c_events_tick_span, ref __c_events_tick_spanAt, this.events[__i].tick);
+            }
+            at += __c_events_tick_span.Length;
             WI32(b, ref at, this.inspectSelected);
             WStr(b, ref at, this.inspectName);
             WStr(b, ref at, this.inspectCause);
