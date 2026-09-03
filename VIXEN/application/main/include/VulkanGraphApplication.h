@@ -576,7 +576,10 @@ public:
                      std::span<const Vixen::App::HudFactionIn> factions,
                      std::span<const Vixen::App::HudEventIn> events);
     // T1 inspect: forward the selected-entity detail to the HUD (see PushHudView's bridge rationale).
-    void PushHudInspect(bool selected, const char* name, const char* cause);
+    // The trailing diplomacy fields (maxGrievance/strength/topRelName/topRelSig) are RESTORED detail.
+    void PushHudInspect(bool selected, const char* name, const char* cause,
+                        float maxGrievance = 0.0f, float strength = 0.0f,
+                        const char* topRelName = nullptr, float topRelSig = 0.0f);
     // Step-6 M-ui: push the selected building's three-channel data into the mounted building-inspector
     // fragment (same bridge rationale as PushHudView). No-op before Prepare() / when nothing is mounted.
     void PushBuildingInspector(const Vixen::App::BuildingInspectorIn& in);

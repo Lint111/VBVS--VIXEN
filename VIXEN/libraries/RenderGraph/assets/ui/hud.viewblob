@@ -1,6 +1,6 @@
 # viewblob v1
 model hud
-version 0x886D047D
+version 0xAB357DCD
 elem HudFaction
   name string
   grievance float
@@ -8,6 +8,7 @@ elem HudFaction
   known bool
   inLens bool
   recentChanged bool
+  recentEventAge int
 elem HudEvent
   kind string
   tick int
@@ -20,3 +21,7 @@ field events array HudEvent
 field inspectSelected int
 field inspectName string
 field inspectCause string
+field inspectMaxGrievance float
+field inspectStrength float
+field inspectTopRelName string
+field inspectTopRelSig float

@@ -30,8 +30,9 @@ void PushHudView(HudView& view, int tick, int bodyCount, int activeLens, int act
     view.SetHudView(tick, bodyCount, activeLens, activeLensCount, factions, events);
 }
 
-void PushHudInspect(HudView& view, bool selected, const char* name, const char* cause) {
-    view.SetHudInspect(selected, name, cause);
+void PushHudInspect(HudView& view, bool selected, const char* name, const char* cause,
+                    float maxGrievance, float strength, const char* topRelName, float topRelSig) {
+    view.SetHudInspect(selected, name, cause, maxGrievance, strength, topRelName, topRelSig);
 }
 
 void PushHudSpeed(HudView& view, double speed) {

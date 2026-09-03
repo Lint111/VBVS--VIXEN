@@ -4284,9 +4284,12 @@ void VulkanGraphApplication::PushHudView(int tick, int bodyCount, int activeLens
     Vixen::App::PushHudView(*hudView_, tick, bodyCount, activeLens, activeLensCount, factions, events);
 }
 
-void VulkanGraphApplication::PushHudInspect(bool selected, const char* name, const char* cause) {
+void VulkanGraphApplication::PushHudInspect(bool selected, const char* name, const char* cause,
+                                            float maxGrievance, float strength,
+                                            const char* topRelName, float topRelSig) {
     if (!hudView_) return;
-    Vixen::App::PushHudInspect(*hudView_, selected, name, cause);
+    Vixen::App::PushHudInspect(*hudView_, selected, name, cause,
+                               maxGrievance, strength, topRelName, topRelSig);
 }
 
 void VulkanGraphApplication::PushBuildingInspector(const Vixen::App::BuildingInspectorIn& in) {

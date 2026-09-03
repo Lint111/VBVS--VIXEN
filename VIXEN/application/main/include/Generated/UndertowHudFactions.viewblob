@@ -1,6 +1,6 @@
 # viewblob v1
 model undertowhudfactions
-version 0x614A4C0D
+version 0xCC4C8C33
 elem UndertowHudFactionRow
   name string
   grievance float

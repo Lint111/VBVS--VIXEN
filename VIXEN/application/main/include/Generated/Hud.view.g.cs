@@ -4,7 +4,7 @@ namespace Vixen.Views
 {
     public sealed partial class HudViewWriter
     {
-        public const uint SchemaVersion = 0x886D047Du;
+        public const uint SchemaVersion = 0xAB357DCDu;
 
         public struct HudFactionRow
         {
@@ -14,6 +14,7 @@ namespace Vixen.Views
             public bool known;
             public bool inLens;
             public bool recentChanged;
+            public int recentEventAge;
         }
         public struct HudEventRow
         {
@@ -30,6 +31,10 @@ namespace Vixen.Views
         public int inspectSelected;
         public string inspectName;
         public string inspectCause;
+        public float inspectMaxGrievance;
+        public float inspectStrength;
+        public string inspectTopRelName;
+        public float inspectTopRelSig;
 
         private static int Utf8Size(string v) => System.Text.Encoding.UTF8.GetByteCount(v ?? string.Empty);
         private static int WStrSize(string v) => checked(4 + Utf8Size(v));
@@ -57,6 +62,7 @@ namespace Vixen.Views
             __size = checked(__size + checked(__size_n_factions * 1));
             __size = checked(__size + checked(__size_n_factions * 1));
             __size = checked(__size + checked(__size_n_factions * 1));
+            __size = checked(__size + checked(__size_n_factions * 4));
             int __size_n_events = this.events.Count;
             __size = checked(__size + 4);
             __size = checked(__size + checked((__size_n_events + 1) * 4));
@@ -65,6 +71,10 @@ namespace Vixen.Views
             __size = checked(__size + 4);
             __size = checked(__size + WStrSize(this.inspectName));
             __size = checked(__size + WStrSize(this.inspectCause));
+            __size = checked(__size + 4);
+            __size = checked(__size + 4);
+            __size = checked(__size + WStrSize(this.inspectTopRelName));
+            __size = checked(__size + 4);
             return __size;
         }
 
@@ -76,7 +86,7 @@ namespace Vixen.Views
             int at = 0;
             b[at++] = (byte)'U'; b[at++] = (byte)'T'; b[at++] = (byte)'V'; b[at++] = (byte)'A';
             W32(b, ref at, SchemaVersion);
-            W32(b, ref at, 9u);
+            W32(b, ref at, 13u);
             WI32(b, ref at, this.tick);
             WI32(b, ref at, this.bodyCount);
             WStr(b, ref at, this.activeLensName);
@@ -127,6 +137,12 @@ namespace Vixen.Views
                 WBool(__c_factions_recentChanged_span, ref __c_factions_recentChanged_spanAt, this.factions[__i].recentChanged);
             }
             at += __c_factions_recentChanged_span.Length;
+            var __c_factions_recentEventAge_span = b.Slice(at, checked(__n_factions * 4));
+            int __c_factions_recentEventAge_spanAt = 0;
+            for (int __i = 0; __i < __n_factions; __i++) {
+                WI32(__c_factions_recentEventAge_span, ref __c_factions_recentEventAge_spanAt, this.factions[__i].recentEventAge);
+            }
+            at += __c_factions_recentEventAge_span.Length;
             int __n_events = this.events.Count;
             W32(b, ref at, (uint)__n_events);
             int __c_events_kind_offsetsBytes = checked((__n_events + 1) * 4);
@@ -152,6 +168,10 @@ namespace Vixen.Views
             WI32(b, ref at, this.inspectSelected);
             WStr(b, ref at, this.inspectName);
             WStr(b, ref at, this.inspectCause);
+            WF32(b, ref at, this.inspectMaxGrievance);
+            WF32(b, ref at, this.inspectStrength);
+            WStr(b, ref at, this.inspectTopRelName);
+            WF32(b, ref at, this.inspectTopRelSig);
             return __size;
         }
 

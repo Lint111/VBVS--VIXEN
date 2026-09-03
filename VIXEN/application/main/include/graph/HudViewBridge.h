@@ -42,8 +42,12 @@ void WireHudView(Vixen::RenderGraph::UIRenderNode& node, HudView& view);
 void PushHudView(HudView& view, int tick, int bodyCount, int activeLens, int activeLensCount,
                  std::span<const HudFactionIn> factions, std::span<const HudEventIn> events);
 
-// Forwards to HudView::SetHudInspect (T1 selected-entity detail panel).
-void PushHudInspect(HudView& view, bool selected, const char* name, const char* cause);
+// Forwards to HudView::SetHudInspect (T1 selected-entity detail panel). The trailing diplomacy
+// fields (maxGrievance/strength/topRelName/topRelSig) are RESTORED detail; a caller with no source
+// uses the defaulted overload.
+void PushHudInspect(HudView& view, bool selected, const char* name, const char* cause,
+                    float maxGrievance = 0.0f, float strength = 0.0f,
+                    const char* topRelName = nullptr, float topRelSig = 0.0f);
 
 // Forwards to HudView::SetSpeed (host sim-speed readout on the clock line).
 void PushHudSpeed(HudView& view, double speed);

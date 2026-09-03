@@ -11,6 +11,7 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kHudFaction_fields[] = {
     {"known", Vixen::RenderGraph::ViewKind::Bool, {}},
     {"inLens", Vixen::RenderGraph::ViewKind::Bool, {}},
     {"recentChanged", Vixen::RenderGraph::ViewKind::Bool, {}},
+    {"recentEventAge", Vixen::RenderGraph::ViewKind::Int, {}},
 };
 inline constexpr Vixen::RenderGraph::ViewFieldDesc kHudEvent_fields[] = {
     {"kind", Vixen::RenderGraph::ViewKind::String, {}},
@@ -26,9 +27,13 @@ inline constexpr Vixen::RenderGraph::ViewFieldDesc kHud_fields[] = {
     {"inspectSelected", Vixen::RenderGraph::ViewKind::Int, {}},
     {"inspectName", Vixen::RenderGraph::ViewKind::String, {}},
     {"inspectCause", Vixen::RenderGraph::ViewKind::String, {}},
+    {"inspectMaxGrievance", Vixen::RenderGraph::ViewKind::Float, {}},
+    {"inspectStrength", Vixen::RenderGraph::ViewKind::Float, {}},
+    {"inspectTopRelName", Vixen::RenderGraph::ViewKind::String, {}},
+    {"inspectTopRelSig", Vixen::RenderGraph::ViewKind::Float, {}},
 };
 
 inline constexpr Vixen::RenderGraph::ViewBlob kHudBlob = {
-    "hud", kHud_fields, 0x886D047Du /* generated version */ };
+    "hud", kHud_fields, 0xAB357DCDu /* generated version */ };
 
 }  // namespace Vixen::Views

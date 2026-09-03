@@ -611,6 +611,17 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --view-schema "${_schema_view_run}"
         --schema-json "${_schema_catalog_run}" --view-executor-consumer Undertow.View
         --exclude VectorProof
+        # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
+        # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
+        # the SAME names as the catalogue's derived-query sections, so they must be excluded from the
+        # noun/AppFlow sweep or the enum gets duplicate enumerators. They are decode faces, not nouns.
+        --exclude UndertowHud
+        --exclude UndertowHudFactions
+        --exclude UndertowHudEvents
+        --exclude UndertowHudInspect
+        --exclude UndertowBuildingFacets
+        --exclude UndertowBuildingPower
+        --exclude UndertowBuildingLabor
         --out-header "${_out_appflow_hdr_run}")
     add_custom_target(appflow_check ALL
         JOB_POOL vixen_codegen
@@ -632,6 +643,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --view-noun-enum --schema "${_schema_view_run}"
         --schema-json "${_schema_catalog_run}" --view-executor-consumer Undertow.View
         --exclude VectorProof
+        # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
+        # above) — same-named catalogue derived queries already carry these nouns.
+        --exclude UndertowHud
+        --exclude UndertowHudFactions
+        --exclude UndertowHudEvents
+        --exclude UndertowHudInspect
+        --exclude UndertowBuildingFacets
+        --exclude UndertowBuildingPower
+        --exclude UndertowBuildingLabor
         --out-header "${_out_view_noun_hdr_run}")
     add_custom_target(view_noun_enum_check ALL
         JOB_POOL vixen_codegen
