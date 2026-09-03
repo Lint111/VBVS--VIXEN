@@ -1,42 +1,65 @@
-# viewrestore1 — report: the view-query contract, all HUD panels restored through it
+# viewrestore1 — report: the HUD RECONNECT (successor target for the qb/qc/qi[] contract)
 
 Date: 2026-09-03
 Lane: `lane-viewrestore` (engine worktree `vixen/engine/.claude-worktrees/viewrestore`, off
 `wave/authoring-convergence`). NEVER pushed.
 
+## Scope note (controller-ruled 2026-09-03, second update)
+
+The FULL query contract (qb = base args fixing a constant output shape; qc = user conditions; qi[] =
+runtime externally-injected query terms from other systems, a DYNAMIC shape with a constant fetched
+shape) is going through the `qidesign` DESIGN LANE first, as an instance of the callable-consumer-
+interface foundation (`docs/specs/callable-consumer-interfaces.md`). This lane's scope is narrowed to
+the **RECONNECT**: fix the every-frame version-mismatch reject so the panels read their LIVE per-
+section data again, built as a clean SUCCESSOR TARGET for that contract (section-addressed reads + a
+predicate seam) — WITHOUT building the dynamic-query machinery. Successor points are marked
+`TODO(qidesign)` in the code. See [[view-query-contract]] and [[hud-wire-contract-severed]].
+
 ## Result
 
-The retired monolithic HUD read is replaced by a **section-composition + predicate-filter query
-contract** (`view_query.h`/`.cpp`). All four HUD panels — factions, events, inspect, and the building
-inspector — are restored THROUGH it, with every lost field flowing from a live sim producer. The
-every-frame-dead read (a single merged-blob version reject) is GONE: each section now decodes by its
-OWN structural version, so a mismatch skips one section, never the frame. A round-trip test proves
-partial fetch, per-section independent versioning, predicate filtering, and that the restored fields
-survive with non-default values.
+The retired monolithic HUD read is replaced by a minimal **section-addressed reconnect**
+(`vixen/render/view_query.h`/`.cpp`). All four HUD panels — factions, events, inspect, and the
+building inspector — read their live per-section data again, with every lost field flowing from a live
+sim producer. The every-frame-dead read (a single merged-blob version reject) is GONE: each section
+decodes by its OWN structural version, so a mismatch skips one section, never the frame. A round-trip
+test proves section-addressed reads, per-section independent versioning, the predicate seam, and that
+the restored fields survive with non-default values.
 
-This was ruled (controller/owner) as "B extended into a view-query contract": keep undertow's live
-per-section writers, make the VIXEN consumer a query over sections, filter row sections by predicate.
-See [[view-query-contract]] and [[hud-wire-contract-severed]].
+The reconnect's local vocabulary (`QuerySpec`/`Predicate`/`HudQueryResult`) is deliberately shaped to
+map onto the contract's qc/qi terms so the successor swap is mechanical — they are NOT the contract
+types, and the machinery stops at a static section set + a single-op (EqU64) predicate seam.
 
-## The contract (`vixen/render/view_query.h`)
+## The reconnect (`vixen/render/view_query.h`)
 
-- **`QuerySpec`** — a panel declares the set of `ContainerSection`s it needs, plus an optional row
+- **`QuerySpec`** — a panel names the set of `ContainerSection`s it needs, plus an optional row
   `Predicate`. Named per-panel sets: `HudRootQuery`, `FactionsQuery`, `EventsQuery`, `InspectQuery`,
   `BuildingInspectorQuery(selectedId)`.
-- **`Predicate`** — minimal grammar, one op (`EqU64`) over one named column against one value. Grows
-  without touching call sites. First (only) case: `rowId == selectedBuildingId`.
+- **`Predicate`** — a single-op seam (`EqU64`) over one named column against one value. NOT a general
+  grammar. Only case: `rowId == selectedBuildingId`.
 - **`Query(container, spec)`** — fetches each requested section's UTVA span from the
   `ViewContainerReader`, decodes it with THAT section's own `ViewBlob` (own version), and — for row
   sections — filters rows by the predicate as they decode. Returns a plain-data `HudQueryResult`
   (RmlUi-free) the panels compose from. BuildingFacets/Power/Labor are joined by `rowId` into one
   `BuildingRow` per building.
-- Mirrors the schema-catalogue derived queries that replaced the readmodel roots on the producer side
-  (`core/src/Undertow.Authoring/Schema/SchemaJson.cs` `derivedQueries`): the view WIRE becomes
-  queryable the way the content catalogue is.
 
 The building inspector's "one selected building" is the predicate `rowId == selected` at fetch time
-over the all-buildings wire — a query-builder answer, not a producer-side selection (the owner's
-directive).
+over the all-buildings wire — not a producer-side selection.
+
+## Successor seams left for the qb/qc/qi[] contract (marked `TODO(qidesign)`)
+
+Each is a point where the reconnect does the minimal static thing and the contract will take over:
+
+- **`view_query.h` `QuerySpec`** — a static section set; stand-in for a query CONSUMER (qc) declaring
+  its qi[]. The contract makes qi[] a DYNAMIC shape (runtime-injected terms) with a constant fetched
+  shape; not built here.
+- **`view_query.h` `Predicate`/`PredicateOp`** — a single-op predicate seam; becomes a qi query TERM.
+  Injected terms from other systems widen/narrow the set without changing the output shape — the
+  reconnect does NOT grow the grammar.
+- **`vixen/app/src/main.cpp` (building inspector)** — the selection is passed as a static predicate
+  value (`selectedRowId` from the pick path); under the contract it becomes a runtime-injected qi term.
+- The section-addressed decode itself (each section by its own version) is the value-based, no-
+  monolithic-reject read shape the contract's value-based lowering will produce — the reconnect just
+  hand-writes it for now.
 
 ## How each section decodes independently (the fix for the every-frame reject)
 
