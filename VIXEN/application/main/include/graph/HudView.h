@@ -20,7 +20,8 @@ public:
     void Register(Rml::DataModelConstructor& c) override {
         Vixen::Views::BindHudModel(c, Vixen::Views::HudBind{
             &tick_, &bodyCount_, &activeLensName_, &activeLensCount_, &factions_, &events_,
-            &inspectSelected_, &inspectName_, &inspectCause_ });
+            &inspectSelected_, &inspectName_, &inspectCause_,
+            &inspectMaxGrievance_, &inspectStrength_, &inspectTopRelName_, &inspectTopRelSig_ });
         // speed is HOST state (RealtimeSimDriver.Speed), not a sim/SimFrame field, so it is bound as
         // an EXTRA "hud"-model variable here rather than added to the generated Hud [View] schema —
         // keeping the pace out of the sim while still surfacing it on the clock line ({{speed}}).
@@ -33,8 +34,12 @@ public:
                     std::span<const HudFactionIn> factions, std::span<const HudEventIn> events);
     // T1 inspect panel: set the selected-entity detail (gates the panel's data-if in hud.rml).
     // Kept separate from SetHudView so the engine's own demo HUD (which has no inspect source)
-    // need not supply it — undertow pushes it each frame, the demo leaves it cleared.
-    void SetHudInspect(bool selected, const char* name, const char* cause);
+    // need not supply it — undertow pushes it each frame, the demo leaves it cleared. The trailing
+    // diplomacy fields (maxGrievance/strength/topRelName/topRelSig) are RESTORED detail; a caller
+    // that has no detail source (the demo) uses the defaulted overload.
+    void SetHudInspect(bool selected, const char* name, const char* cause,
+                       float maxGrievance = 0.0f, float strength = 0.0f,
+                       const char* topRelName = nullptr, float topRelSig = 0.0f);
 
     // Host sim-speed readout: formats the multiplier as "×N" (e.g. "×1", "×0.5", "×25") into the
     // bound "speed" var and dirties it. Kept separate from SetHudView (like SetHudInspect) so the
@@ -65,6 +70,10 @@ private:
     int         inspectSelected_ = 0;
     Rml::String inspectName_;
     Rml::String inspectCause_;
+    float       inspectMaxGrievance_ = 0.0f;   // RESTORED
+    float       inspectStrength_ = 0.0f;       // RESTORED
+    Rml::String inspectTopRelName_;            // RESTORED
+    float       inspectTopRelSig_ = 0.0f;      // RESTORED
     Rml::String speed_ = "\xC3\x97" "1";   // "×1" (UTF-8 multiply sign) — host pace; updated by SetSpeed.
     Rml::DataModelHandle model_;
 };
