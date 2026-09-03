@@ -18,7 +18,8 @@ void HudView::SetHudView(int tick, int bodyCount, int activeLens, int activeLens
     for (const HudFactionIn& f : factions)
         factions_.push_back({ f.name ? Rml::String(f.name) : Rml::String{},
                               f.grievance, f.focused, f.known, f.inLens,
-                              f.recentEventAge < kJuiceK });
+                              f.recentEventAge < kJuiceK,   // recentChanged: derived pulse flag
+                              static_cast<int>(f.recentEventAge) });  // RESTORED raw age
 
     events_.clear();
     events_.reserve(events.size());
@@ -43,14 +44,24 @@ void HudView::SetSpeed(double speed) {
     if (model_) model_.DirtyVariable("speed");
 }
 
-void HudView::SetHudInspect(bool selected, const char* name, const char* cause) {
+void HudView::SetHudInspect(bool selected, const char* name, const char* cause,
+                            float maxGrievance, float strength,
+                            const char* topRelName, float topRelSig) {
     inspectSelected_ = selected ? 1 : 0;
     inspectName_  = name  ? Rml::String(name)  : Rml::String{};
     inspectCause_ = cause ? Rml::String(cause) : Rml::String{};
+    inspectMaxGrievance_ = maxGrievance;                                        // RESTORED
+    inspectStrength_     = strength;                                            // RESTORED
+    inspectTopRelName_   = topRelName ? Rml::String(topRelName) : Rml::String{}; // RESTORED
+    inspectTopRelSig_    = topRelSig;                                           // RESTORED
     if (model_) {
         model_.DirtyVariable("inspectSelected");
         model_.DirtyVariable("inspectName");
         model_.DirtyVariable("inspectCause");
+        model_.DirtyVariable("inspectMaxGrievance");
+        model_.DirtyVariable("inspectStrength");
+        model_.DirtyVariable("inspectTopRelName");
+        model_.DirtyVariable("inspectTopRelSig");
     }
 }
 

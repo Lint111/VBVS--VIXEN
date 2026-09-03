@@ -11,6 +11,7 @@
     <span data-gen-field="HudFaction.known">{{faction.known}}</span>
     <span data-gen-field="HudFaction.inLens">{{faction.inLens}}</span>
     <span data-gen-field="HudFaction.recentChanged">{{faction.recentChanged}}</span>
+    <span data-gen-field="HudFaction.recentEventAge">{{faction.recentEventAge}}</span>
 </div>
 <div class="gen-list" data-for="event : events">
     <span data-gen-field="HudEvent.kind">{{event.kind}}</span>
@@ -19,3 +20,7 @@
 <div data-gen-field="inspectSelected">{{inspectSelected}}</div>
 <div data-gen-field="inspectName">{{inspectName}}</div>
 <div data-gen-field="inspectCause">{{inspectCause}}</div>
+<div data-gen-field="inspectMaxGrievance">{{inspectMaxGrievance}}</div>
+<div data-gen-field="inspectStrength">{{inspectStrength}}</div>
+<div data-gen-field="inspectTopRelName">{{inspectTopRelName}}</div>
+<div data-gen-field="inspectTopRelSig">{{inspectTopRelSig}}</div>

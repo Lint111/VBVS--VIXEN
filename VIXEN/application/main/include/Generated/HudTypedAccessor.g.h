@@ -20,6 +20,10 @@ public:
     static constexpr size_t kField_inspectSelected = 6;
     static constexpr size_t kField_inspectName = 7;
     static constexpr size_t kField_inspectCause = 8;
+    static constexpr size_t kField_inspectMaxGrievance = 9;
+    static constexpr size_t kField_inspectStrength = 10;
+    static constexpr size_t kField_inspectTopRelName = 11;
+    static constexpr size_t kField_inspectTopRelSig = 12;
 
     size_t count_factions() const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_factions).size();
@@ -49,6 +53,18 @@ public:
     Rml::String inspectCause() const {
         return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectCause));
     }
+    float inspectMaxGrievance() const {
+        return *static_cast<float*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectMaxGrievance));
+    }
+    float inspectStrength() const {
+        return *static_cast<float*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectStrength));
+    }
+    Rml::String inspectTopRelName() const {
+        return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectTopRelName));
+    }
+    float inspectTopRelSig() const {
+        return *static_cast<float*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectTopRelSig));
+    }
 
     static constexpr size_t kElem_factions_name = 0;
     Rml::String factions_name(uint32_t i) const {
@@ -73,6 +89,10 @@ public:
     static constexpr size_t kElem_factions_recentChanged = 5;
     bool factions_recentChanged(uint32_t i) const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_factions)[i].Cell(kElem_factions_recentChanged).b;
+    }
+    static constexpr size_t kElem_factions_recentEventAge = 6;
+    int factions_recentEventAge(uint32_t i) const {
+        return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_factions)[i].Cell(kElem_factions_recentEventAge).i;
     }
 
     static constexpr size_t kElem_events_kind = 0;

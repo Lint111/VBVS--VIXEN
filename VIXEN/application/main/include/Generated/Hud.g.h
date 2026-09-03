@@ -6,7 +6,7 @@
 
 namespace Vixen::Views {
 
-struct HudFaction { Rml::String name; float grievance; bool focused; bool known; bool inLens; bool recentChanged; };
+struct HudFaction { Rml::String name; float grievance; bool focused; bool known; bool inLens; bool recentChanged; int recentEventAge; };
 struct HudEvent { Rml::String kind; int tick; };
 struct HudBind {
     int* tick;
@@ -18,6 +18,10 @@ struct HudBind {
     int* inspectSelected;
     Rml::String* inspectName;
     Rml::String* inspectCause;
+    float* inspectMaxGrievance;
+    float* inspectStrength;
+    Rml::String* inspectTopRelName;
+    float* inspectTopRelSig;
 };
 
 inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
@@ -28,6 +32,7 @@ inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
         sh.RegisterMember("known", &HudFaction::known);
         sh.RegisterMember("inLens", &HudFaction::inLens);
         sh.RegisterMember("recentChanged", &HudFaction::recentChanged);
+        sh.RegisterMember("recentEventAge", &HudFaction::recentEventAge);
     }
     if (auto sh = c.RegisterStruct<HudEvent>()) {
         sh.RegisterMember("kind", &HudEvent::kind);
@@ -44,6 +49,10 @@ inline void BindHudModel(Rml::DataModelConstructor& c, const HudBind& b) {
     c.Bind("inspectSelected", b.inspectSelected);
     c.Bind("inspectName", b.inspectName);
     c.Bind("inspectCause", b.inspectCause);
+    c.Bind("inspectMaxGrievance", b.inspectMaxGrievance);
+    c.Bind("inspectStrength", b.inspectStrength);
+    c.Bind("inspectTopRelName", b.inspectTopRelName);
+    c.Bind("inspectTopRelSig", b.inspectTopRelSig);
 }
 
 }  // namespace Vixen::Views
