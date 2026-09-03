@@ -114,6 +114,13 @@ TEST(TypedAccessorEmitter, GeneratedAccessorsMatchRawStoreDecodedValues) {
     EXPECT_EQ(hud.events_tick(0), 40);
     EXPECT_EQ(hud.events_kind(1), "truce");
     EXPECT_EQ(hud.events_tick(1), 99);
+
+    // Inspect scalars remain top-level fields in the merged Hud schema. Keep this typed-accessor
+    // assertion alongside the array proof so a stale generated header cannot silently drop the
+    // tail fields while the raw ViewStore test still passes.
+    EXPECT_EQ(hud.inspectSelected(), 1);
+    EXPECT_EQ(hud.inspectName(), "Reds");
+    EXPECT_EQ(hud.inspectCause(), "border skirmish");
 }
 
 namespace {

@@ -17,6 +17,9 @@ public:
     static constexpr size_t kField_activeLensCount = 3;
     static constexpr size_t kField_factions = 4;
     static constexpr size_t kField_events = 5;
+    static constexpr size_t kField_inspectSelected = 6;
+    static constexpr size_t kField_inspectName = 7;
+    static constexpr size_t kField_inspectCause = 8;
 
     size_t count_factions() const {
         return const_cast<Vixen::RenderGraph::ViewStore&>(store_).Array(kField_factions).size();
@@ -36,6 +39,15 @@ public:
     }
     int activeLensCount() const {
         return *static_cast<int*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_activeLensCount));
+    }
+    int inspectSelected() const {
+        return *static_cast<int*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectSelected));
+    }
+    Rml::String inspectName() const {
+        return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectName));
+    }
+    Rml::String inspectCause() const {
+        return *static_cast<Rml::String*>(const_cast<Vixen::RenderGraph::ViewStore&>(store_).ScalarSlotPtr(kField_inspectCause));
     }
 
     static constexpr size_t kElem_factions_name = 0;
