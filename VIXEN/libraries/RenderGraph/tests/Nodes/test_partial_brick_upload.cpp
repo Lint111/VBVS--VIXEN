@@ -44,6 +44,7 @@
 #include <gtest/gtest.h>
 
 #include "Nodes/BodyOctreeSceneNode.h"
+#include "BrickConfigUpload.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
 #include "Data/Core/CompileTimeResourceSystem.h"  // Resource
 #include "Core/NodeContext.h"
@@ -354,97 +355,66 @@ TEST_F(PartialBrickUploadTest, BricksAllocatedFullSizeButPopulatedOnlyAfterResid
     EXPECT_EQ(statsRightAfterRequest.totalUploads, 0u)
         << "RequestBrickResidency must not upload synchronously inside the setter.";
 
-    // --- Servicing the request: the NEXT Execute tick performs the actual upload.
-    // Inc1 M4c: UploadBrickPool now queues via device->Upload() + FlushUploads() WITHOUT
-    // blocking (was device->WaitAllUploads() — see BodyOctreeSceneNode.h's async-completion-
-    // tracking comment) — a per-toggle stall was fine for M2's "rare, explicit" residency
-    // change, but M4c's per-frame camera-driven re-check turns toggles frequent enough that
-    // it would hitch. So totalUploads (queued immediately inside BatchedUploader::Upload,
-    // synchronous) is asserted right after Execute(), but totalBytesUploaded (only
-    // incremented once ProcessCompletions() observes the GPU-side copy finished) needs the
-    // upload to actually complete first — explicitly waited for below via WaitAllUploads(),
-    // mirroring how a live render loop's PollBrickUploadCompletion() would observe it a few
-    // frames later instead of the very same tick.
+    // --- Servicing the request: the next Execute tick submits two ordered uploads in one
+    // batch: brick bytes first, then resident-config bytes. Upload and batch counts are
+    // synchronous evidence that both requests entered the same submission; the byte counter
+    // below is completion evidence from the real GPU path.
+    const auto statsBeforeExecute = uploaderObserver_->GetStats();
+    const uint64_t expectedUploads = statsBeforeExecute.totalUploads + 2;
+    const uint64_t expectedBatches = statsBeforeExecute.totalBatches + 1;
+    // The queue is non-blocking: upload counts are available immediately, while completed
+    // bytes are checked only after WaitAllUploads has observed the GPU copy.
     //
-    // IMPORTANT RACE NOTE (Inc2 M2 — root-caused via a debug trace, see the plan doc's M2
-    // Progress Log): PollBrickUploadCompletion() is ALSO called (unconditionally, every
-    // ExecuteImpl) on THIS SAME tick, right after UploadBrickPool() queues the brick upload
-    // just below (ExecuteImpl's ordering: UploadBrickPool() then PollBrickUploadCompletion(),
-    // both inside one call, no yield between them). Whether that same-tick poll already
-    // observes the brick upload complete — and immediately queues the phase-2 config
-    // re-upload right here on frame 1 — or not (deferring phase 2 to a later tick's poll) is
-    // a genuine, harmless race against how fast the driver signals the copy's fence: dzn/
-    // Dozen on an idle GPU can signal a tiny buffer copy's fence within microseconds of
-    // vkQueueSubmit, comfortably inside this same function call — confirmed via instrumented
-    // trace showing both orderings occur across repeated runs of the identical binary. The
-    // ORIGINAL bug in this test was asserting the config re-upload landed on a SPECIFIC fixed
-    // tick (always frame 2); this fix instead polls Execute() — the same non-blocking idiom
-    // PollBrickUploadCompletion itself uses, no fixed sleep — counting total uploads reached
-    // from a baseline taken BEFORE frame 1 (statsRightAfterRequest, always 0), since the
-    // config re-upload may legitimately land on frame 1's own Execute() call.
-    constexpr uint64_t kBrickUpload  = 1;  // UploadBrickPool's device->Upload() call
-    constexpr uint64_t kConfigReupload = 1;  // PollBrickUploadCompletion phase 2's device->Upload() call
-    const uint64_t kExpectedAfterBothPhases =
-        statsRightAfterRequest.totalUploads + kBrickUpload + kConfigReupload;
-    constexpr uint32_t kMaxPollTicks = 32;  // generous: production settles this in 1-2 ticks
-
     frameIndex = 1; SetHandleVal<uint32_t>(frRes, frameIndex);
     ASSERT_NO_THROW(node->Execute());
 
     const auto statsRightAfterExecute = uploaderObserver_->GetStats();
-    EXPECT_GT(statsRightAfterExecute.totalUploads, statsRightAfterRequest.totalUploads)
-        << "ExecuteImpl must service a pending residency request via BatchedUploader "
-           "(Task 5's device->Upload() wiring), on the tick after the request was made — "
-           "totalUploads increments synchronously inside BatchedUploader::Upload() itself, "
-           "independent of GPU completion, so this is observable immediately.";
-    // NOTE: currentPendingBytes/currentPendingUploads only reflect BatchedUploader's
-    // PRE-FLUSH queue (pendingUploads_/pendingBytes_, reset to empty by Flush() — see
-    // BatchedUploader::Flush()'s own body) — UploadBrickPool calls FlushUploads()
-    // immediately after queuing, so by the time Execute() returns there is nothing left in
-    // that bucket to observe; the upload has moved to submittedBatches_ (in-flight, no stat
-    // exposes byte counts there). totalUploads above is the only synchronously-observable
-    // signal that something was queued; totalBytesUploaded (checked below) is the only
-    // signal for actual GPU-side completion.
-
+    EXPECT_EQ(statsRightAfterExecute.totalUploads, expectedUploads)
+        << "ExecuteImpl must queue exactly one brick request and one config request.";
+    EXPECT_EQ(statsRightAfterExecute.totalBatches, expectedBatches)
+        << "Brick and config requests must share one ordered BatchedUploader submission.";
     deviceShell_->WaitAllUploads();  // drive completion explicitly (async, so it isn't automatic)
-    auto statsAfterExecute = uploaderObserver_->GetStats();
-    EXPECT_GT(statsAfterExecute.totalBytesUploaded, 0u)
-        << "Once the async upload completes, totalBytesUploaded must reflect it.";
+    const auto statsAfterCompletion = uploaderObserver_->GetStats();
+    EXPECT_EQ(statsAfterCompletion.totalBytesUploaded,
+              statsBeforeExecute.totalBytesUploaded + node->BrickPoolBytes() + node->OctreeConfigBytes())
+        << "GPU completion must account for both brick and config byte ranges.";
 
-    // --- Drive the state machine's remaining phase transition(s). This does NOT mean
-    // totalUploads freezes after the brick upload: SOME Execute tick (frame 1's own tick per
-    // the race note above, or a later one) observes the brick upload complete and queues ONE
-    // follow-up config re-upload (stamping brickResident=1 — PollBrickUploadCompletion's
-    // phase 2), which legitimately bumps totalUploads by exactly one over the pre-request
-    // baseline. Poll Execute() + WaitAllUploads() (bounded by kMaxPollTicks, not a fixed
-    // sleep) until totalUploads reaches that settled count — never assume which tick gets
-    // there, only that it eventually does, exactly once.
-    bool reachedSettledCount = (statsAfterExecute.totalUploads == kExpectedAfterBothPhases);
-    for (uint32_t pollTick = 1; !reachedSettledCount && pollTick <= kMaxPollTicks; ++pollTick) {
-        frameIndex += 1; SetHandleVal<uint32_t>(frRes, frameIndex);
-        ASSERT_NO_THROW(node->Execute());
-        deviceShell_->WaitAllUploads();  // drive whatever this tick queued to completion too
-        statsAfterExecute = uploaderObserver_->GetStats();
-        ASSERT_LE(statsAfterExecute.totalUploads, kExpectedAfterBothPhases)
-            << "totalUploads overshot the expected settled count (brick + exactly one config "
-               "re-upload) — more uploads happened than this state machine should ever queue "
-               "for a single residency request, a genuine correctness bug, not a timing issue.";
-        reachedSettledCount = (statsAfterExecute.totalUploads == kExpectedAfterBothPhases);
-    }
-    ASSERT_TRUE(reachedSettledCount)
-        << "totalUploads never reached the expected settled count (" << kExpectedAfterBothPhases
-        << ") within " << kMaxPollTicks << " Execute ticks — PollBrickUploadCompletion's phase 2 "
-           "(config re-upload) appears genuinely stuck, not merely slow to be observed.";
-    const auto statsFullySettled = statsAfterExecute;
+    // Completion is polled by ExecuteImpl; no second config upload is expected.
+    frameIndex += 1; SetHandleVal<uint32_t>(frRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+    EXPECT_TRUE(node->IsBrickPoolUploaded())
+        << "The single ordered completion must publish brick residency.";
 
     // One more Execute tick with nothing pending must be a true no-op.
     frameIndex += 1; SetHandleVal<uint32_t>(frRes, frameIndex);
     ASSERT_NO_THROW(node->Execute());
     const auto statsAfterSecondExecute = uploaderObserver_->GetStats();
-    EXPECT_EQ(statsAfterSecondExecute.totalUploads, statsFullySettled.totalUploads)
-        << "Once both the brick upload and its config re-upload have fully settled, a later "
-           "Execute tick with no new RequestBrickResidency call must not upload anything else.";
+    EXPECT_EQ(statsAfterSecondExecute.totalUploads, expectedUploads)
+        << "An unchanged generation must not submit another brick/config upload.";
 
     node->Cleanup(CleanupReason::FinalTeardown);
     nodeBase.reset();
+}
+
+TEST(BrickConfigUpload, GenerationKeyedRangesSkipUnchangedGeneration) {
+    Vixen::SVO::BrickConfigGenerationState state;
+    Vixen::SVO::BrickConfigDirtyRanges ranges;
+    ranges.bricks.push_back({8, 16});
+    ranges.configs.push_back({32, 64});
+
+    state.Stage(7, ranges);
+    EXPECT_TRUE(state.NeedsSubmission(7));
+    state.MarkSubmitted(7);
+    EXPECT_FALSE(state.NeedsSubmission(7));
+
+    Vixen::SVO::BrickConfigDirtyRanges unchangedGeneration;
+    unchangedGeneration.bricks.push_back({128, 16});
+    state.Stage(7, unchangedGeneration);
+    EXPECT_FALSE(state.NeedsSubmission(7));
+
+    Vixen::SVO::BrickConfigDirtyRanges nextGeneration;
+    nextGeneration.configs.push_back({256, 64});
+    state.Stage(8, nextGeneration);
+    EXPECT_TRUE(state.NeedsSubmission(8));
+    EXPECT_EQ(state.pending.configs.front().offset, 256u);
 }

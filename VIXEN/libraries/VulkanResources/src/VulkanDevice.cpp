@@ -698,6 +698,14 @@ ResourceManagement::UploadHandle VulkanDevice::Upload(
     return uploader_->Upload(data, size, dstBuffer, dstOffset);
 }
 
+ResourceManagement::UploadHandle VulkanDevice::UploadOrdered(
+    const std::vector<ResourceManagement::BatchedUploader::UploadRequest>& requests) {
+    if (!uploader_) {
+        return ResourceManagement::InvalidUploadHandle;
+    }
+    return uploader_->UploadOrdered(requests);
+}
+
 void VulkanDevice::WaitAllUploads() {
     if (uploader_) {
         uploader_->WaitIdle();

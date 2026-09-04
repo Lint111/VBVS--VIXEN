@@ -517,8 +517,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
                       " readyMask=" + std::to_string(wholesaleAvailability_.readyMask));
     }
     if (brickResidencyDirty_) {
-        UploadBrickPool();
-        brickResidencyDirty_ = false;
+        brickResidencyDirty_ = !UploadBrickPool();
     }
 
     // Inc1 M4c: poll (non-blocking) for in-flight brick/config uploads queued by
@@ -1205,6 +1204,27 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     // Render binds SHELL_DATA/SHELL_LOOKUP (the compact pool) — never the full pool.
     DeriveShellCache();
     CreateShellBuffers(device);
+
+    // A newly-created buffer set is a new content generation. A lazy generation starts with
+    // full dirty ranges; an eager generation was copied by CreateHostBuffer/CreateShellBuffers
+    // already and is therefore marked consumed without entering the uploader.
+    Vixen::SVO::BrickConfigDirtyRanges dirty;
+    if (!brickPoolUploaded_) {
+        if (!concatenated_.bricks.empty()) {
+            dirty.bricks.push_back({0, concatenated_.bricks.size()});
+        }
+        const auto* activeConfigs = shellCache_[0].compact.configs.empty()
+            ? &concatenated_.configs
+            : &shellCache_[0].compact.configs;
+        if (!activeConfigs->empty()) {
+            dirty.configs.push_back({0, activeConfigs->size() * sizeof(Vixen::SVO::OctreeConfig)});
+        }
+    }
+    ++brickConfigGeneration_;
+    brickConfigUploadState_.Stage(brickConfigGeneration_, std::move(dirty));
+    if (brickPoolUploaded_) {
+        brickConfigUploadState_.MarkSubmitted(brickConfigGeneration_);
+    }
 }
 
 void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
@@ -1412,11 +1432,11 @@ void BodyOctreeSceneNode::CreateShellBuffers(VulkanDevice* device) {
                   std::to_string(proxyCount) + " x32B x2 slots)");
 }
 
-void BodyOctreeSceneNode::UploadBrickPool() {
+bool BodyOctreeSceneNode::UploadBrickPool() {
     VulkanDevice* device = GetDevice();
     if (!device) {
         NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool called with no device");
-        return;
+        return false;
     }
 
     // De-residency (false): Inc1 §0 scope is per-tree binary "not requested"/"fully
@@ -1427,31 +1447,67 @@ void BodyOctreeSceneNode::UploadBrickPool() {
         NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: no-op (residencyRequested_=" +
                       std::string(residencyRequested_ ? "true" : "false") + ", bricks=" +
                       std::to_string(concatenated_.bricks.size()) + "B)");
-        return;
+        return true;
     }
     if (brickPoolUploaded_) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: already uploaded, skipping");
-        return;
+        return true;
     }
 
-    const VkDeviceSize size = static_cast<VkDeviceSize>(concatenated_.bricks.size());
-    const auto handle = device->Upload(concatenated_.bricks.data(), size, bricksBuffer_, 0);
+    if (!brickConfigUploadState_.NeedsSubmission(brickConfigGeneration_)) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: generation " +
+                      std::to_string(brickConfigGeneration_) + " already submitted, skipping");
+        return true;
+    }
+
+    // Stamp the exact config view bound by the renderer. The ordered uploader records all brick
+    // ranges first and all config ranges second, so resident=1 cannot become visible before the
+    // preceding brick writes complete on the queue.
+    auto* activeConfigs = Vixen::SVO::StampAndSelectActiveConfigs(concatenated_, shellCache_);
+    const uint32_t readinessMask = wholesaleAdmissionEnabled_
+        ? wholesaleAvailability_.pendingMask
+        : Vixen::SVO::WholesalePayloadMask();
+    for (auto& cfg : *activeConfigs) {
+        cfg._tailPad[0] = readinessMask;
+    }
+
+    std::vector<ResourceManagement::BatchedUploader::UploadRequest> requests;
+    requests.reserve(brickConfigUploadState_.pending.bricks.size() +
+                     brickConfigUploadState_.pending.configs.size());
+    const auto appendRequests = [&requests](
+        const std::vector<Vixen::SVO::BrickConfigByteRange>& ranges,
+        const std::uint8_t* source,
+        VkBuffer destination) {
+        for (const auto& range : ranges) {
+            requests.push_back({source + range.offset,
+                                static_cast<VkDeviceSize>(range.size),
+                                destination,
+                                static_cast<VkDeviceSize>(range.offset)});
+        }
+    };
+    appendRequests(brickConfigUploadState_.pending.bricks,
+                   concatenated_.bricks.data(), bricksBuffer_);
+    appendRequests(brickConfigUploadState_.pending.configs,
+                   reinterpret_cast<const std::uint8_t*>(activeConfigs->data()), configBuffer_);
+
+    const auto handle = device->UploadOrdered(requests);
     if (handle == ResourceManagement::InvalidUploadHandle) {
-        NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool: BatchedUploader::Upload failed ("
-                      + std::to_string(static_cast<uint64_t>(size)) + "B)");
-        return;
+        NODE_LOG_ERROR("[BodyOctreeSceneNode] UploadBrickPool: ordered brick/config staging failed");
+        return false;
     }
 
-    // Inc1 M4c: kick off GPU execution without blocking (was device->WaitAllUploads(), a
-    // synchronous vkDeviceWaitIdle-equivalent stall) — M2's assumption that residency
-    // toggles are rare no longer holds once M4c re-checks the trigger every frame the
-    // camera moves/zooms/rotates. brickPoolUploaded_/brickResident are NOT flipped here;
-    // PollBrickUploadCompletion() (called every ExecuteImpl) advances the rest of this
-    // state machine once the GPU-side copy is actually visible, non-blocking.
+    uint64_t uploadedBrickBytes = 0;
+    for (const auto& range : brickConfigUploadState_.pending.bricks) {
+        uploadedBrickBytes += range.size;
+    }
+    // T-042: one non-blocking submission for both payloads. The command buffer records the brick
+    // copies before the resident-config copies, moving the invariant into queue ordering.
     device->FlushUploads();
     pendingBrickUploadHandle_ = handle;
+    brickConfigUploadState_.MarkSubmitted(brickConfigGeneration_);
     ++wholesalePairTransferCount_;
 
+    const VkDeviceSize size = static_cast<VkDeviceSize>(concatenated_.bricks.size());
     RecordBrickPoolUpload(static_cast<uint64_t>(size));
 
     // Inc1 M4 Task 6b: first-ever queue is "boot", every later one (a residency toggle) is
@@ -1466,7 +1522,10 @@ void BodyOctreeSceneNode::UploadBrickPool() {
     }
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] UploadBrickPool: queued " +
-                  std::to_string(static_cast<uint64_t>(size)) + "B via BatchedUploader (async)");
+                  std::to_string(uploadedBrickBytes) + "B bricks + " +
+                  std::to_string(static_cast<uint64_t>(activeConfigs->size() * sizeof(Vixen::SVO::OctreeConfig))) +
+                  "B config via one ordered BatchedUploader submission (async)");
+    return true;
 }
 
 void BodyOctreeSceneNode::PublishWholesaleReuse() {
@@ -1532,66 +1591,17 @@ void BodyOctreeSceneNode::PollBrickUploadCompletion() {
         return;
     }
 
-    // Phase 1: brick data in flight. Once visible, stamp brickResident=1 into the CPU-side
-    // config mirror and queue ITS upload — must not happen before the bricks land, or the
-    // shader could observe brickResident=1 while still reading stale/zeroed brick bytes.
+    // The ordered batch contains all brick ranges first and all resident-config ranges second.
+    // One completion handle therefore proves both copies are visible; no CPU-side phase 2 or
+    // second flush is needed.
     if (pendingBrickUploadHandle_ != ResourceManagement::InvalidUploadHandle) {
         if (!device->IsUploadComplete(pendingBrickUploadHandle_)) {
             return;  // still in flight — check again next frame
         }
         pendingBrickUploadHandle_ = ResourceManagement::InvalidUploadHandle;
         brickPoolUploaded_ = true;
-
-        // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4b: binding-5 (OCTREE_CONFIG_BUFFER)
-        // holds whichever configs the live render actually samples. CreateShellBuffers
-        // rewrites it to the shell-COMPACT configs (re-packed per-octree poolBrickBase) at
-        // Compile whenever a shell cache was derived — re-uploading the SOURCE configs here
-        // unconditionally would clobber that rewrite at exactly the mip->brick transition,
-        // corrupting SDF addressing for octree index >=1 in any multi-octree pool.
-        // StampAndSelectActiveConfigs (ResidencyDefault.h) stamps brickResident=1 into the
-        // SAME view CreateShellBuffers last wrote and returns which vector to re-upload.
-        const bool haveShellCache = !shellCache_[0].compact.configs.empty();
-        std::vector<Vixen::SVO::OctreeConfig>* activeConfigs =
-            Vixen::SVO::StampAndSelectActiveConfigs(concatenated_, shellCache_);
-        // mipfix (2026-09-01): with wholesale admission DISABLED nothing ever moves
-        // pendingMask off 0, so this stamp told StoredSdf.glsl:138 "no payload ready"
-        // and the march sentineled to 1e9 — the recorded-history-long MipFallback red.
-        // The classic path uploads payloads wholesale by construction: full mask.
-        // (The other disabled-path stamps already do this — see the reset path that
-        // writes WholesalePayloadMask() into every config.)
-        const uint32_t readinessMask = wholesaleAdmissionEnabled_
-            ? wholesaleAvailability_.pendingMask
-            : Vixen::SVO::WholesalePayloadMask();
-        for (auto& cfg : *activeConfigs) {
-            cfg._tailPad[0] = readinessMask;
-        }
-
-        const VkDeviceSize configSize =
-            static_cast<VkDeviceSize>(activeConfigs->size()) *
-            static_cast<VkDeviceSize>(sizeof(Vixen::SVO::OctreeConfig));
-        if (configSize > 0) {
-            const auto cfgHandle = device->Upload(activeConfigs->data(), configSize, configBuffer_, 0);
-            if (cfgHandle == ResourceManagement::InvalidUploadHandle) {
-                NODE_LOG_ERROR("[BodyOctreeSceneNode] PollBrickUploadCompletion: config re-upload failed ("
-                              + std::to_string(static_cast<uint64_t>(configSize)) + "B)");
-            } else {
-                device->FlushUploads();
-                pendingConfigUploadHandle_ = cfgHandle;
-            }
-        }
-        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brick pool visible on GPU ("
-                      + std::string(haveShellCache ? "compact" : "source") + " configs re-uploaded)");
-        return;  // one phase transition per call, matches the queue-then-poll-next-frame pattern
-    }
-
-    // Phase 2: config re-upload in flight (brickResident=1 becoming visible).
-    if (pendingConfigUploadHandle_ != ResourceManagement::InvalidUploadHandle) {
-        if (!device->IsUploadComplete(pendingConfigUploadHandle_)) {
-            return;
-        }
-        pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
         Vixen::SVO::PublishWholesaleReady(wholesaleAvailability_);
-        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: brickResident config visible on GPU");
+        NODE_LOG_INFO("[BodyOctreeSceneNode] PollBrickUploadCompletion: ordered brick+config submission visible on GPU");
     }
 }
 

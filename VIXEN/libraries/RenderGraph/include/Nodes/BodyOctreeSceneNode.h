@@ -8,6 +8,7 @@
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
 #include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
+#include "BrickConfigUpload.h" // generation-keyed brick/config dirty ranges
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
 #include "InstanceSort.h"     // Vixen::SVO::SortInstancesFrontToBack (Inc1 M4b)
 #include "WholesaleAvailability.h"
@@ -222,6 +223,10 @@ public:
     [[nodiscard]] uint64_t BootBytesUploaded() const { return bootBytesUploaded_; }
     [[nodiscard]] uint64_t SteadyStateBytesUploaded() const { return steadyStateBytesUploaded_; }
     [[nodiscard]] uint64_t ChannelPoolBytes() const { return concatenated_.channelPool.size(); }
+    [[nodiscard]] uint64_t BrickPoolBytes() const { return concatenated_.bricks.size(); }
+    [[nodiscard]] uint64_t OctreeConfigBytes() const {
+        return concatenated_.configs.size() * sizeof(Vixen::SVO::OctreeConfig);
+    }
     [[nodiscard]] uint64_t BrickLookupBytes() const { return concatenated_.brickGridLookup.size(); }
     [[nodiscard]] uint64_t MipPoolBytes() const { return concatenated_.mipPool.size(); }
     [[nodiscard]] uint64_t TierRefBytes() const { return concatenated_.tierRefTable.size() * sizeof(Vixen::SVO::TierRef); }
@@ -300,7 +305,7 @@ private:
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
     void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
-    void UploadBrickPool();        // Inc1 M2: BatchedUploader-driven brick population (ExecuteImpl-only)
+    bool UploadBrickPool();        // T-042: ordered brick+config population (ExecuteImpl-only)
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
     void PublishWholesaleReuse();
     void DeriveResidencyDefaultIfUnset();  // Lazy-Procedural-Delta-Baseline Inc0 M2 Task 4
@@ -376,15 +381,13 @@ private:
     // camera unmoved, instead of being silently reset to lazy.
     bool                                    residencyExplicitlyRequested_ = false;
 
-    // Inc1 M4c: async completion-tracking for the brick-pool upload. M2's UploadBrickPool
-    // originally blocked on device->WaitAllUploads() every toggle — fine for a "rare,
-    // explicit" residency change, but M4c's per-frame camera-driven re-check turns toggles
-    // frequent enough that a synchronous wait-idle would hitch. Upload() now queues +
-    // FlushUploads()es without blocking; ExecuteImpl polls IsUploadComplete() each frame
-    // (cheap: a fence/timeline check, not a wait) and only flips brickPoolUploaded_ /
-    // stamps brickResident=1 into configs once the GPU-side copy is actually visible.
+    // Inc1 M4c/T-042: async completion-tracking for the ordered brick-plus-config upload.
+    // UploadBrickPool stages brick ranges first and resident-config ranges second in one
+    // BatchedUploader submission, then ExecuteImpl polls the single completion handle without
+    // blocking. Queue order therefore makes brickResident=1 visible only after brick bytes.
     ResourceManagement::UploadHandle       pendingBrickUploadHandle_  = ResourceManagement::InvalidUploadHandle;
-    ResourceManagement::UploadHandle       pendingConfigUploadHandle_ = ResourceManagement::InvalidUploadHandle;
+    Vixen::SVO::BrickConfigGenerationState brickConfigUploadState_;
+    uint64_t                                brickConfigGeneration_ = 0;
 
     // Inc1 M4 Task 6b: cumulative brick-pool bytes uploaded, split by whether the FIRST
     // (boot) upload has completed yet. bootBytesUploaded_ latches the size of that first

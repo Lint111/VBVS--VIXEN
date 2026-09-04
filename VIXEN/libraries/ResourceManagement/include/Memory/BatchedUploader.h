@@ -113,6 +113,20 @@ struct BatchedUploaderStats {
 class BatchedUploader {
 public:
     /**
+     * @brief One ordered CPU-to-GPU upload request.
+     *
+     * Requests passed to UploadOrdered are recorded in vector order in one
+     * pending batch. The returned handle represents completion of the whole
+     * ordered batch because all requests share its submission fence/timeline.
+     */
+    struct UploadRequest {
+        const void* srcData = nullptr;
+        VkDeviceSize size = 0;
+        VkBuffer dstBuffer = VK_NULL_HANDLE;
+        VkDeviceSize dstOffset = 0;
+    };
+
+    /**
      * @brief Configuration for batched uploader
      */
     struct Config {
@@ -187,6 +201,20 @@ public:
         VkDeviceSize size,
         VkBuffer dstBuffer,
         VkDeviceSize dstOffset = 0);
+
+    /**
+     * @brief Queue multiple CPU uploads as one ordered batch.
+     *
+     * All source bytes are copied to staging before any request is added to
+     * the pending queue. A failed reservation therefore cannot leave a
+     * brick-only or config-only submission behind. Flush() may still combine
+     * this ordered group with other pending work, but the requests retain their
+     * relative order and one completion handle covers the group.
+     *
+     * @return Handle for the final request in the ordered group, or
+     *         InvalidUploadHandle if any request cannot be staged.
+     */
+    [[nodiscard]] UploadHandle UploadOrdered(const std::vector<UploadRequest>& requests);
 
     /**
      * @brief Queue a buffer-to-buffer copy (no staging)

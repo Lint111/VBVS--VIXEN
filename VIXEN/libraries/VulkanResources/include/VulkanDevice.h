@@ -4,6 +4,7 @@
 #include "VulkanLayerAndExtension.h"
 #include "error/VulkanError.h"
 #include "CapabilityGraph.h"
+#include "Memory/BatchedUploader.h"
 #include <memory>
 #include <functional>
 #include <mutex>
@@ -11,7 +12,6 @@
 
 // Forward declarations for upload/update/allocation infrastructure (Sprint 5)
 namespace ResourceManagement {
-    class BatchedUploader;
     class BatchedUpdater;
     class DeviceBudgetManager;
     class IMemoryAllocator;
@@ -20,7 +20,6 @@ namespace ResourceManagement {
     struct BufferAllocationRequest;
     using UploadHandle = uint64_t;
     using UpdateRequestPtr = std::unique_ptr<UpdateRequestBase>;
-    // Note: InvalidUploadHandle defined in BatchedUploader.h (included in .cpp)
 }
 
 namespace Vixen::Vulkan::Resources {
@@ -263,6 +262,15 @@ public:
         VkDeviceSize size,
         VkBuffer dstBuffer,
         VkDeviceSize dstOffset = 0);
+
+    /**
+     * @brief Queue an ordered group of CPU-to-GPU buffer uploads.
+     *
+     * The requests are staged transactionally and retain their order in one
+     * BatchedUploader submission. The returned handle covers the group.
+     */
+    [[nodiscard]] ResourceManagement::UploadHandle UploadOrdered(
+        const std::vector<ResourceManagement::BatchedUploader::UploadRequest>& requests);
 
     /**
      * @brief Wait for all pending uploads to complete

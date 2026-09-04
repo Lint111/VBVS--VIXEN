@@ -78,58 +78,71 @@ UploadHandle BatchedUploader::Upload(
     VkBuffer dstBuffer,
     VkDeviceSize dstOffset)
 {
-    if (!srcData || size == 0 || dstBuffer == VK_NULL_HANDLE) {
+    return UploadOrdered({UploadRequest{srcData, size, dstBuffer, dstOffset}});
+}
+
+UploadHandle BatchedUploader::UploadOrdered(const std::vector<UploadRequest>& requests) {
+    if (requests.empty()) {
         return InvalidUploadHandle;
     }
 
-    // Acquire staging buffer
-    auto staging = stagingPool_->AcquireBuffer(size, "BatchUpload");
-    if (!staging) {
-        return InvalidUploadHandle;  // Staging quota exhausted
+    std::vector<PendingUpload> uploads;
+    uploads.reserve(requests.size());
+    uint64_t totalBytes = 0;
+
+    // Stage every request before publishing any of them to pendingUploads_. This gives callers
+    // an all-or-nothing brick-plus-config admission when the staging quota is exhausted.
+    for (const UploadRequest& request : requests) {
+        if (!request.srcData || request.size == 0 || request.dstBuffer == VK_NULL_HANDLE) {
+            for (const PendingUpload& upload : uploads) {
+                stagingPool_->ReleaseBuffer(upload.stagingHandle);
+            }
+            return InvalidUploadHandle;
+        }
+
+        auto staging = stagingPool_->AcquireBuffer(request.size, "BatchUpload");
+        if (!staging || !staging->mappedData) {
+            if (staging && staging->handle != InvalidStagingHandle) {
+                stagingPool_->ReleaseBuffer(staging->handle);
+            }
+            for (const PendingUpload& upload : uploads) {
+                stagingPool_->ReleaseBuffer(upload.stagingHandle);
+            }
+            return InvalidUploadHandle;
+        }
+        std::memcpy(staging->mappedData, request.srcData, request.size);
+
+        const UploadHandle handle = nextHandle_.fetch_add(1, std::memory_order_relaxed);
+        uploads.push_back(PendingUpload{
+            .handle = handle,
+            .stagingHandle = staging->handle,
+            .dstBuffer = request.dstBuffer,
+            .dstOffset = request.dstOffset,
+            .size = request.size,
+            .isCopy = false,
+            .srcBuffer = staging->buffer,
+            .srcOffset = 0
+        });
+        totalBytes += request.size;
     }
 
-    // Copy data to staging buffer. The pool is configured with persistentMapping=true, so
-    // mappedData should always be set; if StagingBufferPool's own MapBuffer failed at
-    // acquisition time it comes back null and there is no retry path here — release and bail
-    // rather than queue an unwritten staging buffer that gets transferred as garbage (audit V-N16).
-    if (!staging->mappedData) {
-        stagingPool_->ReleaseBuffer(staging->handle);
-        return InvalidUploadHandle;
-    }
-    std::memcpy(staging->mappedData, srcData, size);
-
-    // Generate handle
-    UploadHandle handle = nextHandle_.fetch_add(1, std::memory_order_relaxed);
-
-    // Create pending upload record
-    PendingUpload upload{
-        .handle = handle,
-        .stagingHandle = staging->handle,
-        .dstBuffer = dstBuffer,
-        .dstOffset = dstOffset,
-        .size = size,
-        .isCopy = false,
-        .srcBuffer = staging->buffer,
-        .srcOffset = 0
-    };
-
-    // Queue the upload
     {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         if (pendingUploads_.empty()) {
             oldestPendingTime_ = std::chrono::steady_clock::now();
         }
-        pendingUploads_.push_back(upload);
+        pendingUploads_.insert(pendingUploads_.end(), uploads.begin(), uploads.end());
     }
 
-    pendingBytes_.fetch_add(size, std::memory_order_relaxed);
-    SetStatus(handle, UploadStatus::Pending);
-    ++totalUploads_;
+    pendingBytes_.fetch_add(totalBytes, std::memory_order_relaxed);
+    for (const PendingUpload& upload : uploads) {
+        SetStatus(upload.handle, UploadStatus::Pending);
+    }
+    totalUploads_.fetch_add(uploads.size(), std::memory_order_relaxed);
 
-    // Check if we should auto-flush
+    // Check only after the complete ordered group is visible to Flush().
     CheckAutoFlush();
-
-    return handle;
+    return uploads.back().handle;
 }
 
 UploadHandle BatchedUploader::CopyBuffer(
