@@ -14,6 +14,7 @@
 #include "PerfCsvWriter.h"  // Inc1 M4 Task 6b: always-available perf-CSV recorder (no-op unless VIXEN_PERF_CSV set)
 #include "Connection/SdiHazardCensus.h"  // Semantic-wiring S3: derived-hazard observer (VIXEN_SDI_HAZARD_REPORT)
 #include "ShaderCacheManager.h"  // Baked-perf-pipeline M2b: persistent disk cache for the 4 live shader builders (BuildRenderGraph.cpp)
+#include "RecipeBucketDataCacher.h"  // Row A: persistent frame-indexed dirty-range publication state
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -36,7 +37,6 @@ namespace Vixen::RenderGraph { class PhotonCellTableNode; }
 namespace Vixen::RenderGraph { class PhotonCellParamsConfigNode; }
 namespace Vixen::SVO { struct BodyInstanceGpu; }  // M-wire: per-body GPU instance record (64 bytes)
 namespace Vixen::SVO { struct ConcatenatedOctrees; }  // Spec B I3: boot-baked recipe pool (SetRecipePool)
-namespace CashSystem { struct RecipeBucketSnapshot; }
 #include "Recipe/RecipeRegistry.h"  // Lazy-Procedural-Delta-Baseline Inc0 M5: zero-bake uber-shader recipes.
 // Real include (not forward-declared like the two lines above) -- RecipeEntry is a NESTED type of
 // RecipeRegistry, and RegisterProceduralRecipe below takes one by value; a forward-declared class
@@ -408,11 +408,11 @@ private:
     };
     std::unordered_map<uint32_t, SpecializedRecipePipeline> recipeSpecializedPipelineCache_;
 
-    // Row A: CashSystem's generation-keyed canonical snapshot plus one last-published snapshot per
-    // persistent frame slot. A slot reused with the same generation performs zero writes; a slot
-    // catching up after rotation receives only the ranges it missed.
+    // Row A: CashSystem's generation-keyed canonical snapshot plus persistent dirty-range state per
+    // frame slot. A slot reused with the same generation performs zero writes; a slot catching up
+    // after rotation consumes the ranges it retained until publication succeeds.
     std::shared_ptr<const CashSystem::RecipeBucketSnapshot> recipeBucketLastSnapshot_;
-    std::vector<std::shared_ptr<const CashSystem::RecipeBucketSnapshot>> recipeBucketFrameSnapshots_;
+    std::vector<CashSystem::RecipeBucketFrameState> recipeBucketFrameStates_;
     std::vector<uint32_t> recipeBucketLastInstanceRecipes_;
     uint64_t recipeBucketInstanceGeneration_ = 0;
     VkBuffer recipeBucketLastSkipMaskBuffer_ = VK_NULL_HANDLE;

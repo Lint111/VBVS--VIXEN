@@ -789,52 +789,10 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
         recipeBucketLastBoundSphereBuffer_ != boundSphereNode->GetBufferHandle(0) ||
         recipeBucketLastMetaBuffer_ != bucketMetaNode->GetBufferHandle(0);
     if (ringBuffersChanged) {
-        recipeBucketFrameSnapshots_.clear();
+        recipeBucketFrameStates_.clear();
         recipeBucketLastSkipMaskBuffer_ = skipMaskNode->GetBufferHandle(0);
         recipeBucketLastBoundSphereBuffer_ = boundSphereNode->GetBufferHandle(0);
         recipeBucketLastMetaBuffer_ = bucketMetaNode->GetBufferHandle(0);
-    }
-
-    CashSystem::RecipeBucketCacheCreateInfo cacheInfo;
-    cacheInfo.registryGeneration = proceduralRecipes_.GetGeneration();
-    cacheInfo.instanceGeneration = recipeBucketInstanceGeneration_;
-    if (recipeBucketLastSnapshot_) {
-        cacheInfo.bucketMeta = recipeBucketLastSnapshot_->bucketMeta;
-    }
-
-    // Load-Tier Contract M1/M2: zero remains the real "not opted in" value for both thresholds.
-    for (uint32_t recipeId : proceduralRecipes_.Ids()) {
-        if (recipeId >= cacheInfo.boundSpheres.size()) continue;
-        const auto* entry = proceduralRecipes_.Get(recipeId);
-        if (!entry) continue;
-        auto& sphere = cacheInfo.boundSpheres[recipeId];
-        sphere.center[0] = entry->boundCenter.x;
-        sphere.center[1] = entry->boundCenter.y;
-        sphere.center[2] = entry->boundCenter.z;
-        sphere.radius = entry->boundRadius > 0.0f ? entry->boundRadius : 1.0f;
-        sphere.relaxation = entry->stepRelaxation > 0.0f ? entry->stepRelaxation : 1.0f;
-        sphere.gateFootprintThreshold = entry->gateFootprintThreshold;
-        sphere.precisionFootprintThreshold = entry->precisionFootprintThreshold;
-    }
-
-    for (uint32_t hotId : hotRecipeIds) {
-        if (hotId >= cacheInfo.bucketMeta.size()) continue;
-        const auto* entry = proceduralRecipes_.Get(hotId);
-        auto& meta = cacheInfo.bucketMeta[hotId];
-        meta.memberCount = static_cast<uint32_t>(instancesByRecipe[hotId].size());
-        meta.rectMinX = 0;
-        meta.rectMinY = 0;
-        meta.boundRadius = entry && entry->boundRadius > 0.0f ? entry->boundRadius : 1.0f;
-        meta.stepRelaxation = entry && entry->stepRelaxation > 0.0f ? entry->stepRelaxation : 1.0f;
-    }
-
-    for (uint32_t hotId : hotRecipeIds) {
-        for (uint32_t instIdx : instancesByRecipe[hotId]) {
-            const size_t wordIdx = instIdx / 32u;
-            if (wordIdx < CashSystem::kRecipeBucketCpuMaskWordCount) {
-                cacheInfo.instanceSkipMask[wordIdx] |= (1u << (instIdx % 32u));
-            }
-        }
     }
 
     auto& mainCacher = renderGraph->GetMainCacher();
@@ -852,25 +810,80 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
         CashSystem::RecipeBucketCacheCreateInfo
     >(cacherType);
     if (!bucketCacher) return;
-    const auto snapshot = bucketCacher->GetOrCreate(cacheInfo);
-    if (!snapshot) return;
+
+    // Rebuild the canonical payload only when one of its two declared generations changes. The
+    // unchanged-frame path reuses the immutable snapshot and does not re-fill or compare any
+    // table; frame slots retain their own pending ranges below.
+    const uint64_t registryGeneration = proceduralRecipes_.GetGeneration();
+    std::shared_ptr<const CashSystem::RecipeBucketSnapshot> snapshot = recipeBucketLastSnapshot_;
+    if (!snapshot || snapshot->registryGeneration != registryGeneration ||
+        snapshot->instanceGeneration != recipeBucketInstanceGeneration_) {
+        CashSystem::RecipeBucketCacheCreateInfo cacheInfo;
+        cacheInfo.registryGeneration = registryGeneration;
+        cacheInfo.instanceGeneration = recipeBucketInstanceGeneration_;
+        if (recipeBucketLastSnapshot_) {
+            cacheInfo.bucketMeta = recipeBucketLastSnapshot_->bucketMeta;
+        }
+
+        // Load-Tier Contract M1/M2: zero remains the real "not opted in" value for both thresholds.
+        for (uint32_t recipeId : proceduralRecipes_.Ids()) {
+            if (recipeId >= cacheInfo.boundSpheres.size()) continue;
+            const auto* entry = proceduralRecipes_.Get(recipeId);
+            if (!entry) continue;
+            auto& sphere = cacheInfo.boundSpheres[recipeId];
+            sphere.center[0] = entry->boundCenter.x;
+            sphere.center[1] = entry->boundCenter.y;
+            sphere.center[2] = entry->boundCenter.z;
+            sphere.radius = entry->boundRadius > 0.0f ? entry->boundRadius : 1.0f;
+            sphere.relaxation = entry->stepRelaxation > 0.0f ? entry->stepRelaxation : 1.0f;
+            sphere.gateFootprintThreshold = entry->gateFootprintThreshold;
+            sphere.precisionFootprintThreshold = entry->precisionFootprintThreshold;
+        }
+
+        for (uint32_t hotId : hotRecipeIds) {
+            if (hotId >= cacheInfo.bucketMeta.size()) continue;
+            const auto* entry = proceduralRecipes_.Get(hotId);
+            auto& meta = cacheInfo.bucketMeta[hotId];
+            meta.memberCount = static_cast<uint32_t>(instancesByRecipe[hotId].size());
+            meta.rectMinX = 0;
+            meta.rectMinY = 0;
+            meta.boundRadius = entry && entry->boundRadius > 0.0f ? entry->boundRadius : 1.0f;
+            meta.stepRelaxation = entry && entry->stepRelaxation > 0.0f ? entry->stepRelaxation : 1.0f;
+        }
+
+        for (uint32_t hotId : hotRecipeIds) {
+            for (uint32_t instIdx : instancesByRecipe[hotId]) {
+                const size_t wordIdx = instIdx / 32u;
+                if (wordIdx < CashSystem::kRecipeBucketCpuMaskWordCount) {
+                    cacheInfo.instanceSkipMask[wordIdx] |= (1u << (instIdx % 32u));
+                }
+            }
+        }
+
+        snapshot = bucketCacher->GetOrCreate(cacheInfo);
+        if (!snapshot) return;
+        recipeBucketLastSnapshot_ = snapshot;
+    }
 
     const auto* frameSyncInst = static_cast<FrameSyncNode*>(
         renderGraph->GetInstanceByName("frame_sync"));
     const uint32_t frameIndex = frameSyncInst
         ? frameSyncInst->GetCurrentFrameIndex() % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
         : 0u;
-    if (recipeBucketFrameSnapshots_.size() != FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT) {
-        recipeBucketFrameSnapshots_.assign(FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT, nullptr);
+    if (recipeBucketFrameStates_.size() != FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT) {
+        recipeBucketFrameStates_.assign(FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT, {});
     }
-    CashSystem::RecipeBucketSnapshot zeroSnapshot{};
-    const auto& previous = recipeBucketFrameSnapshots_[frameIndex]
-        ? *recipeBucketFrameSnapshots_[frameIndex] : zeroSnapshot;
-    const auto dirty = CashSystem::ComputeRecipeBucketDirtyRanges(previous, *snapshot);
+    auto& frameState = recipeBucketFrameStates_[frameIndex];
+    if (frameState.snapshot != snapshot) {
+        CashSystem::RecipeBucketSnapshot zeroSnapshot{};
+        frameState.pending = CashSystem::ComputeRecipeBucketDirtyRanges(
+            frameState.snapshot ? *frameState.snapshot : zeroSnapshot, *snapshot);
+    }
 
     auto publishRanges = [frameIndex](StorageBufferNode* node,
                                        const std::vector<CashSystem::RecipeBucketByteRange>& ranges,
                                        const void* source) {
+        if (ranges.empty()) return true;
         void* mapped = node->MapCurrentForWrite(frameIndex);
         if (!mapped) return false;
         for (const auto& range : ranges) {
@@ -882,12 +895,12 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
         return true;
     };
     const bool published =
-        publishRanges(skipMaskNode, dirty.instanceSkipMask, snapshot->instanceSkipMask.data()) &&
-        publishRanges(boundSphereNode, dirty.boundSpheres, snapshot->boundSpheres.data()) &&
-        publishRanges(bucketMetaNode, dirty.bucketMeta, snapshot->bucketMeta.data());
+        publishRanges(skipMaskNode, frameState.pending.instanceSkipMask, snapshot->instanceSkipMask.data()) &&
+        publishRanges(boundSphereNode, frameState.pending.boundSpheres, snapshot->boundSpheres.data()) &&
+        publishRanges(bucketMetaNode, frameState.pending.bucketMeta, snapshot->bucketMeta.data());
     if (!published) return;
-    recipeBucketFrameSnapshots_[frameIndex] = snapshot;
-    recipeBucketLastSnapshot_ = snapshot;
+    frameState.snapshot = snapshot;
+    frameState.pending = {};
 
     // The bucketing pre-pass (ComputeStageNode trio, wired in BuildRenderGraph.cpp) has already
     // run by the time this PreTick reads its previous-frame indirect output. One frame of latency

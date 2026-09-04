@@ -70,6 +70,15 @@ struct RecipeBucketDirtyRanges {
     }
 };
 
+// Persistent publication state for one frame-ring slot. The snapshot identifies the bytes the
+// slot has consumed; pending ranges survive frame rotation until that slot is successfully
+// published. This is deliberately separate from the canonical cacher so a slow slot cannot lose
+// a generation update while another slot advances.
+struct RecipeBucketFrameState {
+    std::shared_ptr<const RecipeBucketSnapshot> snapshot;
+    RecipeBucketDirtyRanges pending;
+};
+
 template<typename T, std::size_t N>
 inline std::vector<RecipeBucketByteRange> ComputeRecipeBucketDirtyRanges(
     const std::array<T, N>& previous,
