@@ -1,6 +1,6 @@
 # GaiaVoxelWorld - ECS-Backed Voxel Data Management
 
-> **Runtime-materialization update (2026-09):** `VoxelInjectionQueue` has been retired. GaiaVoxelWorld remains the compatibility/editor ECS path; materialized deltas are assembled as owned, pre-ordered ESVO pages through `BulkMaterializationQueue`. See `Vixen-Docs/01-Architecture/Voxel-Mutation-Replacement-2026-09.md`.
+> **Runtime-materialization update (2026-09):** `VoxelInjectionQueue` has been retired. GaiaVoxelWorld remains the compatibility/editor ECS path; materialized deltas are assembled as owned, pre-ordered ESVO pages through the shared-dispatch `DispatchMaterializationBatch` adapter. See `Vixen-Docs/01-Architecture/Voxel-Mutation-Replacement-2026-09.md`.
 
 **Status**: ✅ Implementation Complete | ⚠️ Build Blocked by MSVC PDB Lock | ✅ Test Suite Ready (121 tests)
 
@@ -10,7 +10,7 @@ ECS-based voxel data backend using [Gaia ECS](https://github.com/richardbiely/ga
 
 ## Architecture Overview
 
-GaiaVoxelWorld is the **single source of truth** for all voxel data. AttributeRegistry, VoxelInjectionQueue, and SVO trees reference entities via lightweight IDs instead of copying data.
+GaiaVoxelWorld is the **single source of truth** for all voxel data. AttributeRegistry and SVO trees reference entities via lightweight IDs instead of copying data.
 
 ### Key Components
 
@@ -20,12 +20,7 @@ GaiaVoxelWorld is the **single source of truth** for all voxel data. AttributeRe
    - Spatial queries (region, brick, solid voxels)
    - Batch operations for performance
 
-2. **VoxelInjectionQueue** - Async entity creation pipeline
-   - Lock-free ring buffer (65k capacity)
-   - Worker thread pool
-   - 40-byte queue entries vs 64+ bytes (37% reduction)
-
-3. **VoxelInjector** - SVO spatial indexing
+2. **VoxelInjector** - SVO spatial indexing
    - Brick-level entity grouping
    - Batched octree insertion
    - Compaction coordination

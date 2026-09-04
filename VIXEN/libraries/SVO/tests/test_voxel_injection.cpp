@@ -22,7 +22,6 @@
 #include "VoxelComponents.h"
 #include "AttributeRegistry.h"
 
-#include <chrono>
 #include <thread>
 
 using namespace Vixen::GaiaVoxel;
@@ -194,22 +193,22 @@ TEST(BulkMaterializationIntegrationTest, CpuRecipeProducesUploadReadyEsvoPage) {
         .bandVoxels = 2.0f,
         .brickDepth = 3,
     };
-    BulkMaterializationQueue queue(1, 1);
-    ASSERT_EQ(queue.tryEnqueue(std::move(request)), EnqueueResult::Accepted);
-
     CpuRecipeMaterializer backend;
-    ASSERT_EQ(queue.process(backend, 2), ProcessResult::Processed);
-    auto result = queue.tryPop();
-    ASSERT_TRUE(result.has_value());
-    ASSERT_EQ(result->status, MaterializationStatus::Completed) << result->error;
-    EXPECT_FALSE(result->page.nodes.empty());
-    EXPECT_FALSE(result->page.bricks.empty());
-    EXPECT_FALSE(result->page.channelPool.empty());
-    EXPECT_EQ(result->page.nodeCount,
-              result->page.nodes.size() / sizeof(ChildDescriptor));
-    EXPECT_EQ(result->page.brickCount,
-              result->page.bricks.size() / SerializedOctree::kBrickStrideBytes);
-    EXPECT_NE(result->canonicalHash, 0u);
+    std::vector<BulkMaterializationRequest> requests;
+    requests.push_back(std::move(request));
+    const auto batch = DispatchMaterializationBatch(std::move(requests), backend, 2);
+    ASSERT_TRUE(batch.succeeded);
+    ASSERT_EQ(batch.results.size(), 1u);
+    const auto& result = batch.results[0];
+    ASSERT_EQ(result.status, MaterializationStatus::Completed) << result.error;
+    EXPECT_FALSE(result.page.nodes.empty());
+    EXPECT_FALSE(result.page.bricks.empty());
+    EXPECT_FALSE(result.page.channelPool.empty());
+    EXPECT_EQ(result.page.nodeCount,
+              result.page.nodes.size() / sizeof(ChildDescriptor));
+    EXPECT_EQ(result.page.brickCount,
+              result.page.bricks.size() / SerializedOctree::kBrickStrideBytes);
+    EXPECT_NE(result.canonicalHash, 0u);
 }
 
 TEST(BulkMaterializationIntegrationTest, CpuRecipeOneVsNWorkerCanonicalHashParity) {
@@ -228,26 +227,26 @@ TEST(BulkMaterializationIntegrationTest, CpuRecipeOneVsNWorkerCanonicalHashParit
         };
     };
 
-    BulkMaterializationQueue serial(2, 2);
-    BulkMaterializationQueue parallel(2, 2);
+    std::vector<BulkMaterializationRequest> serialRequests;
+    std::vector<BulkMaterializationRequest> parallelRequests;
     for (uint64_t region = 0; region < 2; ++region) {
-        ASSERT_EQ(serial.tryEnqueue(makeRequest(region)), EnqueueResult::Accepted);
-        ASSERT_EQ(parallel.tryEnqueue(makeRequest(region)), EnqueueResult::Accepted);
+        serialRequests.push_back(makeRequest(region));
+        parallelRequests.push_back(makeRequest(region));
     }
 
     CpuRecipeMaterializer backend;
-    ASSERT_EQ(serial.process(backend, 1), ProcessResult::Processed);
-    ASSERT_EQ(parallel.process(backend, 2), ProcessResult::Processed);
+    const auto serial = DispatchMaterializationBatch(std::move(serialRequests), backend, 1);
+    const auto parallel = DispatchMaterializationBatch(std::move(parallelRequests), backend, 2);
+    ASSERT_TRUE(serial.succeeded);
+    ASSERT_TRUE(parallel.succeeded);
     for (uint64_t region = 0; region < 2; ++region) {
-        auto oneWorker = serial.tryPop();
-        auto manyWorkers = parallel.tryPop();
-        ASSERT_TRUE(oneWorker.has_value());
-        ASSERT_TRUE(manyWorkers.has_value());
-        ASSERT_EQ(oneWorker->status, MaterializationStatus::Completed) << oneWorker->error;
-        ASSERT_EQ(manyWorkers->status, MaterializationStatus::Completed) << manyWorkers->error;
-        EXPECT_EQ(oneWorker->key.region, region);
-        EXPECT_EQ(manyWorkers->key.region, region);
-        EXPECT_EQ(oneWorker->canonicalHash, manyWorkers->canonicalHash);
+        const auto& oneWorker = serial.results[region];
+        const auto& manyWorkers = parallel.results[region];
+        ASSERT_EQ(oneWorker.status, MaterializationStatus::Completed) << oneWorker.error;
+        ASSERT_EQ(manyWorkers.status, MaterializationStatus::Completed) << manyWorkers.error;
+        EXPECT_EQ(oneWorker.key.region, region);
+        EXPECT_EQ(manyWorkers.key.region, region);
+        EXPECT_EQ(oneWorker.canonicalHash, manyWorkers.canonicalHash);
     }
 }
 
@@ -307,25 +306,20 @@ TEST(BulkMaterializationIntegrationTest, SimdBatchCancellationProducesTerminalRe
         .brickDepth = 3,
     };
 
-    BulkMaterializationQueue queue(1, 1);
-    ASSERT_EQ(queue.tryEnqueue(std::move(request)), EnqueueResult::Accepted);
     CpuRecipeMaterializer realBackend;
     std::stop_source stop;
-    ProcessResult processResult = ProcessResult::NoWork;
+    MaterializationBatchResult batch;
+    std::vector<BulkMaterializationRequest> requests;
+    requests.push_back(std::move(request));
     std::jthread worker([&] {
-        processResult = queue.process(realBackend, 1, stop.get_token());
+        batch = DispatchMaterializationBatch(
+            std::move(requests), realBackend, 1, stop.get_token());
     });
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (queue.stats().inFlight == 0 && std::chrono::steady_clock::now() < deadline)
-        std::this_thread::yield();
-    ASSERT_EQ(queue.stats().inFlight, 1u);
     stop.request_stop();
     worker.join();
 
-    EXPECT_EQ(processResult, ProcessResult::Processed);
-    auto result = queue.tryPop();
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->status, MaterializationStatus::Cancelled);
-    EXPECT_EQ(queue.stats().cancelled, 1u);
+    ASSERT_FALSE(batch.succeeded);
+    ASSERT_EQ(batch.results.size(), 1u);
+    EXPECT_EQ(batch.results[0].status, MaterializationStatus::Cancelled);
 }

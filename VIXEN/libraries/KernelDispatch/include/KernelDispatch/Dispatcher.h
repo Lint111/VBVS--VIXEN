@@ -25,6 +25,7 @@
 #include "TaskExecutor.h"
 #include "VirtualTask.h"
 #include <string>
+#include <stop_token>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -52,7 +53,8 @@ inline int DefaultWorkerCount() {
  */
 inline Handle RunPerElementStage(const Stage& stage,
                                  const DispatcherProfile& profile = {},
-                                 int workerCount = DefaultWorkerCount()) {
+                                 int workerCount = DefaultWorkerCount(),
+                                 std::stop_token stopToken = {}) {
     Handle h;
 
     const Backend backend = profile.BackendFor(stage.owner, stage.backend);
@@ -83,7 +85,7 @@ inline Handle RunPerElementStage(const Stage& stage,
     }
 
     TaskExecutor executor;
-    bool ok = executor.Run(tasks, {wave}, workerCount);
+    bool ok = executor.Run(tasks, {wave}, workerCount, stopToken);
 
     h.completed = true;
     h.succeeded = ok;

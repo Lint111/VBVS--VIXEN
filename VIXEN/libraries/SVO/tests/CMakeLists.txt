@@ -73,19 +73,18 @@ endif()
 
 gtest_discover_tests(test_voxel_injection)
 
-add_executable(test_voxel_injection_queue
-    test_voxel_injection_queue.cpp
+add_executable(test_bulk_materialization_dispatch
+    test_bulk_materialization_dispatch.cpp
 )
-target_link_libraries(test_voxel_injection_queue PRIVATE GTest::gtest_main SVO GaiaVoxelWorld)
-set_target_properties(test_voxel_injection_queue PROPERTIES FOLDER "Tests/SVO Tests")
+target_link_libraries(test_bulk_materialization_dispatch PRIVATE GTest::gtest_main SVO GaiaVoxelWorld)
+set_target_properties(test_bulk_materialization_dispatch PROPERTIES FOLDER "Tests/SVO Tests")
 if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_voxel_injection_queue POST_BUILD
+    add_custom_command(TARGET test_bulk_materialization_dispatch POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_voxel_injection_queue>
-        COMMENT "Copying TBB DLL for test_voxel_injection_queue")
+            $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_bulk_materialization_dispatch>
+        COMMENT "Copying TBB DLL for test_bulk_materialization_dispatch")
 endif()
-gtest_discover_tests(test_voxel_injection_queue)
+gtest_discover_tests(test_bulk_materialization_dispatch)
 
 # ===========================================================================
 # Data Structures Tests
