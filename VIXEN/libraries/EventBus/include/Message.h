@@ -215,7 +215,7 @@ struct TextMessage : public Message {
 /**
  * @brief Worker thread result message
  * 
- * Automatically emitted by WorkerThreadBridge when async work completes.
+ * Used for generic worker completion reporting when an event payload is needed.
  */
 struct WorkerResultMessage : public Message {
     static constexpr MessageType TYPE = 1;
