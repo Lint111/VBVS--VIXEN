@@ -9,6 +9,16 @@
 > `NodeInstance::ExecuteTasks` now supplies `owningGraph->GetMainCacher().GetTaskExecutor()` to
 > `SlotTaskManager::ExecuteParallel`; the per-batch local `TaskExecutor` construction is gone.
 > Budget batches, stop-token cancellation, indexed result placement, and 1/2/N tests remain intact.
+=======
+> **✅ 2026-09-07 — T-036 loop/domain metadata + shared frame pipeline implemented in `lane-t036pipeline`.**
+> PhysicsLoop (60Hz/per-frame) and SimLoop (30Hz/period-2) now publish stable KernelDispatch domain
+> metadata. `FramePipeline` admits due immutable-snapshot work through the injected MainCacher executor,
+> bounds F/F+1 overlap, commits in submission order, and discards stale epochs. Targeted metadata and
+> pipeline tests were added. Boxed `test_rendergraph_coresystems_b` passed 115/115; the changed app
+> registration source compiled in `VixenApp` before that target was stall-killed in an unrelated
+> `BuildRenderGraph.cpp` compile (environmental finding). The literal task refs `docs/design/...` and
+> `docs/briefs/...` are absent in this checkout; the contract is documented in the canonical Multicore
+> Dispatch direction document.
 
 > **✅ 2026-09-07 — T-031 scene-body baking + CashSystem I/O executor migration completed in `lane-t031executor`.**
 > The Cornell baked-demo cache-miss path submits eight indexed body bake/build tasks through the

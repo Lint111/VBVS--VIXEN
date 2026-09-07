@@ -63,6 +63,14 @@ RenderGraph::RenderGraph(
         this->mainLogger = mainLogger;
     }
 
+    if (mainCacher) {
+        // The frame pipeline is an adapter over the injected MainCacher executor. It deliberately
+        // does not create a RenderGraph-owned worker pool, so frame compute and recurring domains
+        // share the same admission budget as T-031's scene-body work.
+        framePipeline_ = std::make_unique<KernelDispatch::FramePipeline>(
+            mainCacher->GetTaskExecutor());
+    }
+
     // Subscribe to events using RAII ScopedSubscriptions
     if (messageBus) {
         subscriptions_.SetBus(messageBus);
@@ -742,12 +750,14 @@ bool RenderGraph::RecoverFromDeviceLoss() {
 void RenderGraph::BeginExecutionEpoch() {
     executionStopSource_.request_stop();
     executionStopSource_ = std::stop_source{};
-    executionEpoch_.fetch_add(1, std::memory_order_release);
+    const uint64_t epoch = executionEpoch_.fetch_add(1, std::memory_order_release) + 1;
+    if (framePipeline_) framePipeline_->BeginEpoch(epoch);
 }
 
 void RenderGraph::InvalidateExecutionEpoch() {
     if (executionStopSource_.request_stop()) {
-        executionEpoch_.fetch_add(1, std::memory_order_release);
+        const uint64_t epoch = executionEpoch_.fetch_add(1, std::memory_order_release) + 1;
+        if (framePipeline_) framePipeline_->BeginEpoch(epoch);
     }
 }
 
@@ -888,6 +898,11 @@ VkResult RenderGraph::RenderFrame() {
     // only SetCurrentFrame is called here, not another increment.
     loopManager.SetCurrentFrame(globalFrameIndex);
     loopManager.UpdateLoops(frameTimer.GetDeltaTime());
+
+    // Publish completed immutable-snapshot work from the preceding frame in submission order.
+    // Multi-rate domains are admitted by their LoopDomainMetadata; no worker may publish directly
+    // into live graph state between these graph-owned boundaries.
+    if (framePipeline_) framePipeline_->CommitReady(false);
 
     // Event processing now handled in application's Update() phase
     // This allows updating without rendering and different frame rates
@@ -1052,6 +1067,10 @@ VkResult RenderGraph::RenderFrame() {
     if (scopeManager_ && !autoPressureAdjustment_) {
         scopeManager_->EndFrame();
     }
+
+    // Give work that completed during this frame the same deterministic publication boundary. Work
+    // that is not ready remains queued for the next frame and can overlap the next admission.
+    if (framePipeline_) framePipeline_->CommitReady(false);
 
     // Increment frame counter for next frame
     globalFrameIndex++;

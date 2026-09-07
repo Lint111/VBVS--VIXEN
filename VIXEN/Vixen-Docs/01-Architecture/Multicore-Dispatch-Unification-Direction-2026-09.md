@@ -234,6 +234,36 @@ After node-wave parity, introduce immutable `FrameSnapshot[F]` inputs and versio
 
 Simulation update remains authoritative and ordered. Device loss, graph recompilation, or scene epoch changes cancel unpublished work. No worker writes live node state directly across frame epochs.
 
+#### 8.4.1 T-036 loop/domain metadata contract
+
+The recurring work currently visible in the live graph is:
+
+- the per-frame render/physics domain (`PhysicsLoop`, 60 Hz at the current render base); and
+- the slower simulation domain (`SimLoop`, 30 Hz, represented as `periodFrames = 2`).
+
+`KernelDispatch::LoopDomainMetadata` is the domain-blind hand-off used by both RenderGraph and the
+shared executor:
+
+| Field | Contract |
+|---|---|
+| `domainId` | Stable owner-assigned identity. It must not depend on worker count or completion order. |
+| `periodFrames` / `phase` | Deterministic frame eligibility. Period `1` is per-frame work; a domain is due when `frameIndex % periodFrames == phase`. |
+| `lane` | Admission lane. Current recurring CPU work uses `FrameCompute`; blocking cache/I/O remains on `BlockingIO`. |
+| `deterministic` | The output is worker-count and timing invariant. Reductions/merges must use fixed partitions and a fixed merge order. |
+| `allowFramePipelining` | Opt-in only for work that reads immutable frame snapshots and does not write live node state from a worker. |
+
+`KernelDispatch::FramePipeline` is constructed over the injected `MainCacher::GetTaskExecutor()`;
+it does not create a consumer-owned pool. It bounds F/F+1 submissions, admits only due domains,
+observes completion in submission order, and invokes commit callbacks only at graph-owned frame
+boundaries. `BeginEpoch` invalidates unpublished work after graph recompilation or device loss;
+stale results are discarded even if their callable finishes. The callback is therefore the only
+publication point for live/render state.
+
+The graph calls `CommitReady(false)` at its frame boundaries. Domain owners may submit an
+immutable-snapshot `FramePipelineWork` through `RenderGraph::GetFramePipeline()`; work that is not
+ready remains queued for the next frame, allowing the next due domain to overlap without changing
+simulation authority or publication order.
+
 ### 8.5 Federation visibility
 
 The managed side should not observe worker count, TBB, queue choice, or native task completion order. It observes:

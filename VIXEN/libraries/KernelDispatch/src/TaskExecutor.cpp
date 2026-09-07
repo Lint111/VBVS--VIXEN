@@ -87,6 +87,10 @@ TaskExecutor::TaskExecutor(DispatcherProfile profile)
 
 TaskExecutor::~TaskExecutor() {
     {
+        std::unique_lock lock(asyncMutex_);
+        asyncIdleCondition_.wait(lock, [this] { return asyncOutstanding_ == 0; });
+    }
+    {
         std::lock_guard lock(blockingMutex_);
         blockingStopping_ = true;
     }
@@ -266,7 +270,8 @@ VirtualTask* TaskExecutor::FindTask(std::vector<VirtualTask>& tasks, const TaskI
 
 bool TaskExecutor::RunWave(std::vector<VirtualTask>& tasks,
                            const std::vector<TaskId>& wave,
-                           std::stop_token stopToken) {
+                           std::stop_token stopToken,
+                           std::vector<TaskError>& errors) {
     if (wave.empty()) return true;
 
     // Each worker writes only its own result slot. Errors are gathered after the wave and sorted by
@@ -309,11 +314,28 @@ bool TaskExecutor::RunWave(std::vector<VirtualTask>& tasks,
         }
         return lhs.task.owner < rhs.task.owner;
     });
-    errors_.insert(errors_.end(),
+    errors.insert(errors.end(),
                    std::make_move_iterator(orderedErrors.begin()),
                    std::make_move_iterator(orderedErrors.end()));
 
     return orderedErrors.empty() && !stopToken.stop_requested();
+}
+
+bool TaskExecutor::RunInCurrentArena(
+    std::vector<VirtualTask>& tasks,
+    const std::vector<std::vector<TaskId>>& waves,
+    std::stop_token stopToken,
+    std::vector<TaskError>& errors) {
+    bool success = true;
+    for (const auto& wave : waves) {
+        const bool waveIssued = !stopToken.stop_requested();
+        const bool waveSucceeded = waveIssued && RunWave(tasks, wave, stopToken, errors);
+        if (!waveSucceeded) {
+            success = false;
+            break;
+        }
+    }
+    return success;
 }
 
 bool TaskExecutor::Run(std::vector<VirtualTask>& tasks,
@@ -330,19 +352,67 @@ bool TaskExecutor::Run(std::vector<VirtualTask>& tasks,
     // A per-run arena caps concurrency: workerCount==1 forces serial execution, N gives N workers.
     // This is the determinism knob the spec's 1/2/N gate exercises.
     tbb::task_arena arena(workerCount);
-    bool success = true;
+    bool success = false;
     arena.execute([&] {
         for (const auto& wave : waves) {
             const bool waveIssued = !stopToken.stop_requested();
-            const bool waveSucceeded = waveIssued && RunWave(tasks, wave, stopToken);
+            const bool waveSucceeded = waveIssued && RunWave(tasks, wave, stopToken, errors_);
             if (waveIssued && onWaveComplete) onWaveComplete(wave);
             if (!waveSucceeded) {
                 success = false;
-                break;
+                return;
             }
         }
+        success = !stopToken.stop_requested();
     });
     return success;
+}
+
+std::future<AsyncRunResult> TaskExecutor::RunAsync(
+    std::vector<VirtualTask> tasks,
+    std::vector<std::vector<TaskId>> waves,
+    int workerCount,
+    std::stop_token stopToken) {
+    auto promise = std::make_shared<std::promise<AsyncRunResult>>();
+    auto result = promise->get_future();
+    if (workerCount < 1) {
+        workerCount = static_cast<int>(profile_.WorkerCount(TaskLane::FrameCompute, 1));
+    }
+
+    {
+        std::lock_guard lock(asyncMutex_);
+        if (!asyncArena_.is_active()) {
+            // TBB reserves one arena slot for the thread admitting queued work. Keep an
+            // additional slot so two adjacent frame submissions can overlap even when each
+            // submission requests a two-worker frame budget.
+            asyncArena_.initialize(std::max(2, workerCount + 1));
+        }
+        ++asyncOutstanding_;
+    }
+
+    auto asyncTasks = std::make_shared<std::vector<VirtualTask>>(std::move(tasks));
+    auto asyncWaves = std::make_shared<std::vector<std::vector<TaskId>>>(std::move(waves));
+    asyncArena_.enqueue([this, promise, asyncTasks, asyncWaves, stopToken] {
+        AsyncRunResult asyncResult;
+        try {
+            if (!stopToken.stop_requested()) {
+                // The enqueue body already executes inside asyncArena_. Calling execute() again
+                // here would consume the arena's second slot and serialize adjacent submissions.
+                asyncResult.succeeded = RunInCurrentArena(
+                    *asyncTasks, *asyncWaves, stopToken, asyncResult.errors);
+            }
+        } catch (const std::exception& error) {
+            asyncResult.errors.push_back(TaskError{{}, error.what()});
+        } catch (...) {
+            asyncResult.errors.push_back(TaskError{{}, "Unknown exception"});
+        }
+        promise->set_value(std::move(asyncResult));
+        {
+            std::lock_guard lock(asyncMutex_);
+            if (--asyncOutstanding_ == 0) asyncIdleCondition_.notify_all();
+        }
+    });
+    return result;
 }
 
 }  // namespace Vixen::KernelDispatch

@@ -67,6 +67,33 @@ enum class TaskLane : uint8_t {
 };
 
 /**
+ * @brief Stable cadence and ownership metadata for recurring work.
+ *
+ * `periodFrames` is the render-frame period at which a domain is eligible to run. A value of one
+ * is per-frame work; two is the current 30 Hz simulation domain when the render clock is 60 Hz.
+ * `phase` selects the first eligible frame and makes the schedule independent of worker timing.
+ * The scheduler uses this metadata only for admission; the domain owner remains responsible for
+ * producing immutable inputs and for committing outputs at a frame boundary.
+ *
+ * The metadata is intentionally domain-blind. RenderGraph's LoopManager supplies the values for
+ * physics/simulation domains, while KernelDispatch's FramePipeline consumes them without depending
+ * on RenderGraph, Vulkan, or managed simulation types.
+ */
+struct LoopDomainMetadata {
+    uint64_t domainId = 0;               ///< Stable owner-assigned identity (0 = unspecified).
+    uint32_t periodFrames = 1;           ///< Eligibility period; 1 means every frame.
+    uint32_t phase = 0;                  ///< First eligible frame modulo period.
+    TaskLane lane = TaskLane::FrameCompute;
+    bool deterministic = true;           ///< Output must be worker-count and timing invariant.
+    bool allowFramePipelining = true;    ///< Immutable snapshot work may overlap later frames.
+
+    [[nodiscard]] bool IsDue(uint64_t frameIndex) const noexcept {
+        const uint32_t period = periodFrames == 0 ? 1 : periodFrames;
+        return (frameIndex % period) == (phase % period);
+    }
+};
+
+/**
  * @brief Worker budget for one admission lane.
  *
  * `workerCount == 0` selects the implementation's bounded default (currently min(4, hardware
