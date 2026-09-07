@@ -20,8 +20,8 @@ bool IsValidState(FlowStateId s) {
 LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachine& fsm,
                                 ActionStack& stack, BindingStore& bindings, InputProfile& input,
                                 DataTargetTable* dataTargets) {
-    const auto actions = view.actions();
-    const auto transitions = view.transitions();
+    const auto actions = view.actionTable();
+    const auto transitions = view.transitionTable();
 
     if (actions.empty()) {
         return LoadResult::EmptyArtifact;
@@ -37,22 +37,22 @@ LoadResult AppFlowLoader::Load(const AppFlowContainerView& view, FlowStateMachin
     bindings.RegisterActions(actions);
 
     // Seed element triggers into the BindingStore (Inc-4 §4.2).
-    for (const auto& t : view.elementTriggers()) {
+    for (const auto& t : view.elementTriggerTable()) {
         bindings.AddElementTrigger(t);
     }
     // Seed key defaults into the InputProfile, by scope (Inc-4 §4.1/§4.5).
-    for (const auto& k : view.keyDefaults()) {
+    for (const auto& k : view.keyDefaultTable()) {
         input.Bind(k.scope, k.state, k.chord, k.action);
     }
     // Seed return edges as Return-action key bindings (Esc in <from> -> Return). The FROM state
     // scopes the binding so Esc only pops where a return edge is declared.
-    for (const auto& r : view.returnEdges()) {
+    for (const auto& r : view.returnEdgeTable()) {
         input.Bind(Generated::FlowScope::State, r.from, r.trigger, Generated::FlowActionId::Return);
     }
 
     // Seed Data-action view-noun targets (M2c). nullptr (no provider wired) skips the leg.
     if (dataTargets) {
-        for (const auto& d : view.dataTargets()) {
+        for (const auto& d : view.dataTargetTable()) {
             (*dataTargets)[static_cast<uint16_t>(d.action)] = d.viewNoun;
         }
     }

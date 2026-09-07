@@ -26,10 +26,15 @@ void AppFlowRuntime::Publish(AppFlowChangedEvent::Kind kind, FlowStateId state,
 // and not read `.action` on non-Action* kinds. Inc-2 should either carry the affected id
 // or add an explicit "none" sentinel (there is no reserved sentinel enumerator yet).
 
-LoadResult AppFlowRuntime::Load(IViewDataProvider* dataProvider) {
+LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvider* dataProvider) {
     dataProvider_ = dataProvider;
-    return AppFlowLoader::Load(AppFlowContainerView{}, fsm_, stack_, bindings_, inputProfile_,
+    const AppFlowContainerView compiledIn{};
+    return AppFlowLoader::Load(view ? *view : compiledIn, fsm_, stack_, bindings_, inputProfile_,
                               &dataTargets_);
+}
+
+LoadResult AppFlowRuntime::Load(IViewDataProvider* dataProvider) {
+    return Load(nullptr, dataProvider);
 }
 
 DispatchResult AppFlowRuntime::DispatchData(FlowActionId id, uint32_t value) {

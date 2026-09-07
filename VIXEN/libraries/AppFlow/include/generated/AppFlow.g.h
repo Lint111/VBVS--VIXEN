@@ -6,6 +6,8 @@
 
 namespace Vixen::AppFlow::Generated {
 
+inline constexpr uint32_t kAppFlowShapeHash = 0x113F6528u;
+
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
@@ -90,12 +92,44 @@ inline constexpr AppFlowDataTarget kDataTargets[] = {
 
 // Mirrors RecipeContainerView's role: the reader later tasks parse the artifact through.
 struct AppFlowContainerView {
+    constexpr AppFlowContainerView() :
+        actions_(kActionDecls), transitions_(kTransitions)
+        , elementTriggers_(kElementTriggers), keyDefaults_(kKeyDefaults), returnEdges_(kReturnEdges)
+        , dataTargets_(kDataTargets)
+    {}
+
+    constexpr AppFlowContainerView(
+        std::span<const AppFlowActionDecl> actions,
+        std::span<const AppFlowTransition> transitions,
+        std::span<const AppFlowElementTrigger> elementTriggers = {},
+        std::span<const AppFlowKeyDefault> keyDefaults = {},
+        std::span<const AppFlowReturnEdge> returnEdges = {},
+        std::span<const AppFlowDataTarget> dataTargets = {}
+    ) : actions_(actions), transitions_(transitions)
+        , elementTriggers_(elementTriggers), keyDefaults_(keyDefaults), returnEdges_(returnEdges)
+        , dataTargets_(dataTargets)
+    {}
+
+private:
+    std::span<const AppFlowActionDecl> actions_;
+    std::span<const AppFlowTransition> transitions_;
+    std::span<const AppFlowElementTrigger> elementTriggers_;
+    std::span<const AppFlowKeyDefault> keyDefaults_;
+    std::span<const AppFlowReturnEdge> returnEdges_;
+    std::span<const AppFlowDataTarget> dataTargets_;
+public:
     static constexpr std::span<const AppFlowActionDecl> actions() { return kActionDecls; }
     static constexpr std::span<const AppFlowTransition> transitions() { return kTransitions; }
     static constexpr std::span<const AppFlowElementTrigger> elementTriggers() { return kElementTriggers; }
     static constexpr std::span<const AppFlowKeyDefault> keyDefaults() { return kKeyDefaults; }
     static constexpr std::span<const AppFlowReturnEdge> returnEdges() { return kReturnEdges; }
     static constexpr std::span<const AppFlowDataTarget> dataTargets() { return kDataTargets; }
+    constexpr std::span<const AppFlowActionDecl> actionTable() const { return actions_; }
+    constexpr std::span<const AppFlowTransition> transitionTable() const { return transitions_; }
+    constexpr std::span<const AppFlowElementTrigger> elementTriggerTable() const { return elementTriggers_; }
+    constexpr std::span<const AppFlowKeyDefault> keyDefaultTable() const { return keyDefaults_; }
+    constexpr std::span<const AppFlowReturnEdge> returnEdgeTable() const { return returnEdges_; }
+    constexpr std::span<const AppFlowDataTarget> dataTargetTable() const { return dataTargets_; }
 };
 
 } // namespace Vixen::AppFlow::Generated

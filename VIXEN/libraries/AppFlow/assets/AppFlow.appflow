@@ -1,0 +1,70 @@
+# appflow v1
+model appflow
+shape 0x113F6528
+state Editing 0
+state Simulating 1
+state Paused 2
+state Settings 3
+guard DocumentValid 0
+action ToggleLayer 0
+action Undo 1
+action Redo 2
+action Save 3
+action UndoSettingChange 4
+action Return 5
+action Data 6
+paramtype String 0
+paramtype Int 1
+paramtype Float 2
+paramtype EntityRef 3
+key None 0
+key A 1
+key B 2
+key C 3
+key D 4
+key E 5
+key F 6
+key G 7
+key H 8
+key I 9
+key J 10
+key K 11
+key L 12
+key M 13
+key N 14
+key O 15
+key P 16
+key Q 17
+key R 18
+key S 19
+key T 20
+key U 21
+key V 22
+key W 23
+key X 24
+key Y 25
+key Z 26
+key Escape 27
+mod None 0
+mod Ctrl 1
+mod Shift 2
+mod Alt 4
+mod Super 8
+decl 0 sizeof(LayerState) 1
+decl 1 sizeof(LayerState) 1
+decl 2 sizeof(LayerState) 1
+decl 3 sizeof(LayerState) 1
+decl 4 sizeof(LayerState) 1
+decl 5 sizeof(LayerState) 1
+decl 6 sizeof(LayerState) 1
+param 0 layerIndex 1
+transition 0 1 0 none
+transition 0 3 0 none
+trigger layer-{index}-toggle 0 layerIndex click
+trigger back-button 5 - click
+keydefault 1 26 1 0 0
+keydefault 2 25 1 0 0
+keydefault 3 19 0 0 0
+keydefault 4 26 1 1 3
+return 3 27 0
+data 6 0 EditorNouns_layerMask

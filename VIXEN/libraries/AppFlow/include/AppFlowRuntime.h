@@ -35,7 +35,8 @@ public:
     // Builds the generated AppFlowContainerView and loads it into the fsm/stack/bindings (+ M2c
     // dataTargets). Optionally wires an IViewDataProvider so a Data action's noun read/write goes
     // through it (nullptr — the default — leaves the Data leg inert, never a crash).
-    LoadResult Load(IViewDataProvider* dataProvider = nullptr);
+    LoadResult Load(const AppFlowContainerView* view = nullptr, IViewDataProvider* dataProvider = nullptr);
+    LoadResult Load(IViewDataProvider* dataProvider);
 
     // Pass-throughs to the fsm, exposed so a consumer (or test) can drive Inc-1's
     // externally-set guard stub without reaching into the owned FlowStateMachine.

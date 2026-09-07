@@ -169,6 +169,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # [KernelCallable] methods and contributes nothing to the emitted header.
         _codegen_to_wsl_path("${_cg}" _schema_callables_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h" _out_appflow_hdr_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow" _out_appflow_data_run)
         # seam M2a: the typed ViewNounId enum, generated from every [View] field in view-schemas/
         # (struct-qualified members). #included by IViewDataProvider.h, replacing the Inc-A hand-stub.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h" _out_view_noun_hdr_run)
@@ -225,6 +226,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # also picks up view-schemas/UndertowViewCallables.cs, not just appflow-schemas/.
         set(_schema_callables_run "${_cg}")
         set(_out_appflow_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/AppFlow.g.h")
+        set(_out_appflow_data_run "${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow")
         # seam M2a: the typed ViewNounId enum (native-path mirror of the WSL-bridge block above).
         set(_out_view_noun_hdr_run "${VIXEN_ROOT}/libraries/AppFlow/include/generated/ViewNounId.g.h")
         # See the WSL-bridge branch's comment above: tool-owned output moved to
@@ -622,16 +624,17 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --exclude UndertowBuildingFacets
         --exclude UndertowBuildingPower
         --exclude UndertowBuildingLabor
-        --out-header "${_out_appflow_hdr_run}")
+        --out-header "${_out_appflow_hdr_run}"
+        --out-datafile "${_out_appflow_data_run}")
     add_custom_target(appflow_check ALL
         JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
-        COMMENT "[codegen] golden check: AppFlow.g.h matches canonical AppFlowReference schema"
+        COMMENT "[codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema"
         JOB_POOL msbuild
         VERBATIM)
     add_custom_target(appflow_regen
         COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
-        COMMENT "[codegen] regenerate AppFlow.g.h"
+        COMMENT "[codegen] regenerate AppFlow.g.h + AppFlow.appflow"
         JOB_POOL msbuild
         VERBATIM)
 

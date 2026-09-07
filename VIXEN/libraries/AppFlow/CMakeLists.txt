@@ -15,6 +15,7 @@ set(APPFLOW_HEADERS
     include/BindingStore.h
     include/LayerController.h
     include/AppFlowRuntime.h
+    include/AppFlowBlobFile.h
     include/InputProfile.h
     include/IViewDataProvider.h
     include/LayerControllerViewDataProvider.h
@@ -28,6 +29,7 @@ set(APPFLOW_SOURCES
     src/BindingStore.cpp
     src/LayerController.cpp
     src/AppFlowRuntime.cpp
+    src/AppFlowBlobFile.cpp
     src/InputProfile.cpp
 )
 add_library(AppFlow STATIC ${APPFLOW_HEADERS} ${APPFLOW_SOURCES})
@@ -36,7 +38,7 @@ target_include_directories(AppFlow PUBLIC
     $<INSTALL_INTERFACE:include>)
 target_compile_features(AppFlow PUBLIC cxx_std_23)
 set_target_properties(AppFlow PROPERTIES FOLDER "Libraries")
-target_link_libraries(AppFlow PUBLIC EventBus)   # MessageBus + BaseEventMessage
+target_link_libraries(AppFlow PUBLIC EventBus Logger)   # MessageBus + BlobFile diagnostics
 
 if(BUILD_TESTS)
     add_subdirectory(tests)
