@@ -8,6 +8,11 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <atomic>
+
+namespace Vixen::KernelDispatch {
+class TaskExecutor;
+}
 
 using namespace Vixen::GaiaVoxel;
 
@@ -168,8 +173,19 @@ struct Octree {
  */
 class SVOBuilder {
 public:
-    explicit SVOBuilder(const BuildParams& params = BuildParams{});
+    /**
+     * Construct a builder.
+     *
+     * @param params Build parameters, including the requested shared-executor worker count.
+     * @param executor Optional non-owning shared executor. A null executor keeps this standalone
+     *                  builder serial; callers with a MainCacher should pass its GetTaskExecutor().
+     */
+    explicit SVOBuilder(const BuildParams& params = BuildParams{},
+                        KernelDispatch::TaskExecutor* executor = nullptr);
     ~SVOBuilder();
+
+    /// Replace the non-owning executor used by subsequent builds.
+    void setTaskExecutor(KernelDispatch::TaskExecutor* executor) noexcept { m_taskExecutor = executor; }
 
     /**
      * Build octree from input mesh.
@@ -257,9 +273,10 @@ private:
         std::unique_ptr<VoxelNode> rootNode;
 
         // Statistics
-        size_t nodesProcessed = 0;
-        size_t leavesCreated = 0;
-        size_t triangleTests = 0;
+        std::atomic<size_t> nodesProcessed{0};
+        std::atomic<size_t> leavesCreated{0};
+        std::atomic<size_t> triangleTests{0};
+        std::atomic<bool> dispatchFailed{false};
 
         // Progress tracking
         std::function<void(float)> progressCallback;
@@ -271,14 +288,15 @@ private:
         static constexpr size_t MAX_TRIANGLES_PER_NODE = 100'000;  // Prevent triangle explosion
 
         bool checkMemoryLimits() const {
-            return nodesProcessed < MAX_NODES;
+            return nodesProcessed.load(std::memory_order_relaxed) < MAX_NODES;
         }
     };
 
     std::unique_ptr<BuildContext> m_context;
+    KernelDispatch::TaskExecutor* m_taskExecutor = nullptr;  // non-owning; owned by MainCacher/host
 
     // Recursive subdivision
-    void subdivideNode(BuildContext::VoxelNode* node);
+    void subdivideNode(BuildContext::VoxelNode* node, bool allowSharedDispatch);
     void subdivideNodeFromVoxels(BuildContext::VoxelNode* node,
                                   const std::vector<uint8_t>& voxelData,
                                   uint32_t gridResolution,

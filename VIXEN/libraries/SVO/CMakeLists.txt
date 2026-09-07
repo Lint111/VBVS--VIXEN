@@ -138,18 +138,12 @@ else()
     message(FATAL_ERROR "GaiaVoxelWorld target not found - ensure libraries/GaiaVoxelWorld is built before SVO")
 endif()
 
-# TBB for parallel processing (provided by dependencies/CMakeLists.txt)
+# KernelDispatch owns worker admission and its TBB implementation. SVOBuilder receives a
+# non-owning TaskExecutor from its host; it does not create or link a private TBB arena.
 if(TARGET KernelDispatch)
     target_link_libraries(SVO PUBLIC KernelDispatch)
 else()
     message(FATAL_ERROR "KernelDispatch target not found - ensure libraries/KernelDispatch is built before SVO")
-endif()
-
-if(TARGET TBB::tbb)
-    target_link_libraries(SVO PRIVATE TBB::tbb)
-    message(STATUS "SVO: TBB linked for parallel processing")
-else()
-    message(WARNING "SVO: TBB::tbb target not found - parallel processing disabled")
 endif()
 
 # ------------------------------------------------------------------------------
