@@ -10,16 +10,18 @@
 // LaineKarrasOctree -> ISVOStructure), whose std::hash<> specialisations must be visible before
 // RmlUi's bundled robin_hood.h wraps them.
 #include "VulkanGraphApplication.h"
+#include "KernelDispatch/TaskExecutor.h"
+#include <array>
 #include <algorithm>  // std::clamp for the VIXEN_PROCEDURAL_UBER_DEMO N clamp
 #include <cctype>    // std::isspace for whitespace-safe boolean env flags
 #include <cmath>    // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <cstdlib>  // std::strtof for the VIXEN_RENDER_SCALE env parse (M4)
 #include <fstream>  // Inc0 M5: read BodyInstanceRayMarch.comp's raw source for the recipe splice
 #include <sstream>  // Inc0 M5: rdbuf() into a string for the splice
-#include <future>   // Baked-Perf M7 Task 7.1: std::async per-body parallel bake
 #include <iostream> // Round-5 [ComposedBackend] boot print (mirrors VoxelGridNode.cpp's [FarFieldCount])
 #include <mutex>    // Baked-Perf M7 Task 7.1: serializes calls into Gaia's shared ChunkAllocator
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>  // Baked-Perf M7 Task 7.2: ConcatenateSdfWithMips precomputed-serialize map
 #include "Recipe/UberShaderSplice.h"  // Inc0 M5: SpliceProceduralRecipesIntoSource
 #include "graph/CornellBoxSceneDefinition.h"  // Sampled Lighting Cornell Box Demo M1: shared scene-definition constants (M1+M2 both read this verbatim)
@@ -5882,7 +5884,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 worldCut = std::move(cachedBundle->lightTreeCut);
             } else {
 
-            // Baked-Perf M7 Task 7.1: the 8 bodies bake independently -- each owns its own
+            // T-031: the 8 bodies are submitted as one shared KernelDispatch wave -- each owns its own
             // GaiaVoxelWorld (its own gaia::ecs::World instance, SdfBake.h's BakeSdfWorld
             // constructs a fresh one per call) and its own AttributeRegistry/LaineKarrasOctree
             // (SdfBake.h's SdfBodyOctree bundle). A FIRST thread-safety pass (component IDs,
@@ -5911,56 +5913,79 @@ void VulkanGraphApplication::BuildRenderGraph() {
             // passes -- pure computation, no Gaia calls, audit-doc-confirmed dominant cost of
             // the bake) for whichever bodies haven't yet reached the lock runs concurrently
             // with whichever ONE body currently holds it during its own allocation phase.
-            // (mainLogger->Info/Error calls deliberately stay OUTSIDE the parallel section below --
+            // (mainLogger->Info/Error calls deliberately stay OUTSIDE the executor wave below --
             // Logger's own logEntries vector is NOT internally synchronized, only the two atomics
-            // are, so logging from worker threads would race; every existing log call already sat
+            // are, so logging from executor workers would race; every existing log call already sat
             // on the main thread after all bakes complete, so this is unchanged.)
-            auto leftWallFut  = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[0].prog), bodies[0].worldCenter, kWallN, kWallSubdiv,
-                                            glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
-            auto rightWallFut = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[1].prog), bodies[1].worldCenter, kWallN, kWallSubdiv,
-                                            glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf));
-            auto backWallFut  = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[2].prog), bodies[2].worldCenter, kWallN, kWallSubdiv,
-                                            glm::vec3(kWallSpanHalf, kWallSpanHalf, kWallThicknessHalf));
-            auto floorFut     = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[3].prog), bodies[3].worldCenter, kWallN, kWallSubdiv,
-                                            glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
-            auto ceilingFut   = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[4].prog), bodies[4].worldCenter, kWallN, kWallSubdiv,
-                                            glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf));
-            auto sphereObjFut = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[6].prog), bodies[6].worldCenter, kSmallN, kSmallSubdiv,
-                                            glm::vec3(0.0f));
-            auto boxObjFut    = std::async(std::launch::async, bakeWorldSpaceBody, std::cref(bodies[7].prog), bodies[7].worldCenter, kSmallN, kSmallSubdiv,
-                                            glm::vec3(0.0f));
+            std::array<std::optional<Vixen::SVO::SdfBodyOctree>, 8> bakedBodies;
+            std::vector<Vixen::KernelDispatch::VirtualTask> bakeTasks;
+            std::vector<Vixen::KernelDispatch::TaskId> bakeWave;
+            bakeTasks.reserve(bakedBodies.size());
+            bakeWave.reserve(bakedBodies.size());
+            constexpr uint64_t kCornellBakeOwner = 0x54435042414B4531ULL; // "TCPBAKE1"
+            const auto addBakeTask = [&](size_t bodyIndex, std::function<Vixen::SVO::SdfBodyOctree()> bake) {
+                const Vixen::KernelDispatch::TaskId taskId{
+                    kCornellBakeOwner, static_cast<uint32_t>(bodyIndex)};
+                bakeWave.push_back(taskId);
+                bakeTasks.push_back({taskId, [&, bodyIndex, bake = std::move(bake)]() mutable {
+                    bakedBodies[bodyIndex].emplace(bake());
+                }});
+            };
 
-            // Light body: baked WITH emission (constant intensity across its whole volume —
-            // the ceiling-recessed box IS the emitter, no separate "emissive surface only"
-            // distinction at this milestone's fidelity). Same world-space-eval adapter as every
-            // other body, plus an EmitFn (BakeSdfWorld's own generic EmitFn template param).
-            // Runs on its own async task too -- BakeSdfWorld+BuildSdfBodyOctree together are the
-            // SAME self-contained bake-and-build sequence bakeWorldSpaceBody wraps for the other
-            // 7 bodies, just with an explicit EmitFn instead of the default NoEmission.
-            // (kLightWorldCenter is declared above, before the cache hit/miss branch --
-            // needed by both branches.)
-            auto lightFut = std::async(std::launch::async, [&]() {
+            addBakeTask(0, [&] { return bakeWorldSpaceBody(
+                bodies[0].prog, bodies[0].worldCenter, kWallN, kWallSubdiv,
+                glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf)); });
+            addBakeTask(1, [&] { return bakeWorldSpaceBody(
+                bodies[1].prog, bodies[1].worldCenter, kWallN, kWallSubdiv,
+                glm::vec3(kWallThicknessHalf, kWallSpanHalf, kZWideHalf)); });
+            addBakeTask(2, [&] { return bakeWorldSpaceBody(
+                bodies[2].prog, bodies[2].worldCenter, kWallN, kWallSubdiv,
+                glm::vec3(kWallSpanHalf, kWallSpanHalf, kWallThicknessHalf)); });
+            addBakeTask(3, [&] { return bakeWorldSpaceBody(
+                bodies[3].prog, bodies[3].worldCenter, kWallN, kWallSubdiv,
+                glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf)); });
+            addBakeTask(4, [&] { return bakeWorldSpaceBody(
+                bodies[4].prog, bodies[4].worldCenter, kWallN, kWallSubdiv,
+                glm::vec3(kWallSpanHalf, kWallThicknessHalf, kZWideHalf)); });
+            addBakeTask(5, [&] {
+                // Light body: same self-contained bake-and-build sequence, with emission.
                 std::lock_guard<std::mutex> gaiaLock(g_gaiaChunkAllocatorMutex);
                 Vixen::SVO::SdfBakeResult lightBaked = Vixen::SVO::BakeSdfWorld(
                     makeWorldSpaceEval(bodies[5].prog, kLightWorldCenter, kSmallN, kSmallSubdiv),
                     kLightWorldCenter, kSmallN, kBand, 3,
                     [](const glm::vec3&) { return kLightEmissionIntensity; },
-                    [](const glm::vec3&) { return glm::vec3(1.0f); });  // flat white, not the debug rainbow (tint applied once via inst.color; see bakeWorldSpaceBody)
+                    [](const glm::vec3&) { return glm::vec3(1.0f); });
                 return Vixen::SVO::BuildSdfBodyOctree(lightBaked, 3);
             });
+            addBakeTask(6, [&] { return bakeWorldSpaceBody(
+                bodies[6].prog, bodies[6].worldCenter, kSmallN, kSmallSubdiv, glm::vec3(0.0f)); });
+            addBakeTask(7, [&] { return bakeWorldSpaceBody(
+                bodies[7].prog, bodies[7].worldCenter, kSmallN, kSmallSubdiv, glm::vec3(0.0f)); });
 
-            // Join point: .get() blocks until each body's bake completes. Order of the .get()
-            // calls doesn't affect wall time (all 8 tasks were already launched above); this
-            // sequence just matches the original single-threaded assignment order so downstream
-            // code (octreesForCat, instances[]) is untouched.
-            Vixen::SVO::SdfBodyOctree leftWallBody   = leftWallFut.get();
-            Vixen::SVO::SdfBodyOctree rightWallBody  = rightWallFut.get();
-            Vixen::SVO::SdfBodyOctree backWallBody   = backWallFut.get();
-            Vixen::SVO::SdfBodyOctree floorBody      = floorFut.get();
-            Vixen::SVO::SdfBodyOctree ceilingBody    = ceilingFut.get();
-            Vixen::SVO::SdfBodyOctree sphereObjBody  = sphereObjFut.get();
-            Vixen::SVO::SdfBodyOctree boxObjBody     = boxObjFut.get();
-            Vixen::SVO::SdfBodyOctree lightBody      = lightFut.get();
+            // The executor wave is the join point. Results are still consumed below in body index
+            // order, matching the former future.get() sequence and preserving concatenation order.
+            auto& sharedExecutor = renderGraph->GetMainCacher().GetTaskExecutor();
+            const int workerCount = static_cast<int>(std::min(
+                8u, std::max(1u, std::thread::hardware_concurrency())));
+            const bool bakeDispatchSucceeded = sharedExecutor.Run(
+                bakeTasks, {bakeWave}, workerCount);
+            if (!bakeDispatchSucceeded) {
+                const auto& errors = sharedExecutor.GetErrors();
+                const std::string message = errors.empty()
+                    ? "shared executor cancelled the Cornell body bake"
+                    : errors.front().message;
+                throw std::runtime_error(
+                    "[BuildRenderGraph] Cornell body bake failed: " + message);
+            }
+
+            Vixen::SVO::SdfBodyOctree leftWallBody   = std::move(*bakedBodies[0]);
+            Vixen::SVO::SdfBodyOctree rightWallBody  = std::move(*bakedBodies[1]);
+            Vixen::SVO::SdfBodyOctree backWallBody   = std::move(*bakedBodies[2]);
+            Vixen::SVO::SdfBodyOctree floorBody      = std::move(*bakedBodies[3]);
+            Vixen::SVO::SdfBodyOctree ceilingBody    = std::move(*bakedBodies[4]);
+            Vixen::SVO::SdfBodyOctree lightBody      = std::move(*bakedBodies[5]);
+            Vixen::SVO::SdfBodyOctree sphereObjBody  = std::move(*bakedBodies[6]);
+            Vixen::SVO::SdfBodyOctree boxObjBody     = std::move(*bakedBodies[7]);
 
             // (kLightWorldPos/kLightRenderScale declared above, before the cache branch.)
 

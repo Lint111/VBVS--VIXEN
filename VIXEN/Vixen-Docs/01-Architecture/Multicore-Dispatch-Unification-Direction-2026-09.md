@@ -399,3 +399,24 @@ Timing evidence for the shader-build path (same one-stage compute shader, captur
 - Before migration, original private-thread-pool probe: `Test #311 ... Passed 0.24 sec`, ctest total `0.37 sec`, process wall `0.59 sec` (`/tmp/undertow-box-logs/1788276854-test-shaderlanes:timing-before.log`).
 - After migration, blocking-lane readiness/event probe: `Test #312 ... Passed 0.21 sec`, ctest total `0.33 sec`, process wall `0.53 sec` (`/tmp/undertow-box-logs/1788277002-test-shaderlanes:timing-after.log`).
 - The comparison shows no new stall on this path; queue admission time is outside the timed subprocess and is reported separately by the box log.
+
+## 16. T-031 implementation record — 2026-09-07
+
+Delivered:
+
+- The Cornell baked-demo cache-miss path now submits its eight scene-body bake/build operations as
+  one indexed `VirtualTask` wave through the injected `MainCacher::GetTaskExecutor()`.
+- The Gaia chunk-allocator mutex remains inside every body task, including the emissive light body;
+  this preserves the known process-global allocator safety boundary while the executor owns task
+  admission, worker lifetime, and the wave barrier.
+- Body results are stored by stable body index and moved into the existing canonical concatenation
+  order after the wave completes. Executor failures are reported through its deterministic ordered
+  error list.
+- CashSystem's asynchronous device/global cache save/load paths remain on MainCacher's separately
+  budgeted KernelDispatch blocking lane. No CashSystem private async launch remains; synchronous
+  manifest and unowned-registry behavior is unchanged by contract.
+
+The implementation source census is now zero `std::async`/`std::launch` occurrences in the scene
+body-bake consumer and zero such occurrences in CashSystem. The `std::thread` instances retained by
+`KernelDispatch::TaskExecutor` are its shared, separately budgeted blocking lane, not a
+consumer-owned pool.

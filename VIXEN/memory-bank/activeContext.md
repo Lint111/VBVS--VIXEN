@@ -1,3 +1,12 @@
+> **✅ 2026-09-07 — T-031 scene-body baking + CashSystem I/O executor migration completed in `lane-t031executor`.**
+> The Cornell baked-demo cache-miss path submits eight indexed body bake/build tasks through the
+> injected `MainCacher::GetTaskExecutor()` and consumes results in canonical order, retaining the
+> Gaia process-global chunk allocator mutex. CashSystem async save/load was already on the same
+> MainCacher-owned blocking lane at branch start; source census confirms zero `std::async`/`std::launch`
+> in the scene-body consumer and CashSystem. Targeted executor/CashSystem/SVO checks: 105 tests passed.
+> Production target `VIXEN` rebuilt cleanly; full default build reaches the existing AppFlow CodegenTool
+> contract failure (`--view-executor-consumer` parsed as a path), documented as environmental.
+
 > **✅ 2026-09-02 — T-083 ReadParam baked/virtual parity repaired in the parityfix lane.**
 > `readparam_sphere` now uses a world-space snapshot of `0.5` for virtual evaluation and a bake-grid
 > snapshot of `3.0` for the local program's 6x scale. Baseline reproduced `5816/9580/0.6071`; three
