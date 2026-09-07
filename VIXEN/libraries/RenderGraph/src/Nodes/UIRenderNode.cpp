@@ -88,6 +88,150 @@ UIRenderNode::UIRenderNode(const std::string& instanceName, NodeType* nodeType)
 
 void UIRenderNode::SetupImpl(TypedSetupContext& /*ctx*/) {}
 
+void UIRenderNode::ConfigureHudHotReload() {
+    const char* hotReloadEnv = std::getenv("VIXEN_HOTRELOAD_HUD");
+    hudHotReloadEnabled_ = hotReloadEnv && *hotReloadEnv && std::string(hotReloadEnv) != "0";
+    if (!hudHotReloadEnabled_) return;
+    if (nodeLogger) {
+        nodeLogger->SetEnabled(true);
+        nodeLogger->SetTerminalOutput(true);
+    }
+
+    if (!configuredView_ || !configuredView_->ModelName() ||
+        std::string(configuredView_->ModelName()) != "hud") {
+        NODE_LOG_WARNING("[UIRenderNode] VIXEN_HOTRELOAD_HUD requires the primary view model to be 'hud'");
+        hudHotReloadEnabled_ = false;
+        view_ = configuredView_;
+        return;
+    }
+
+    hotReloadBlobPath_ = ResolveUiAsset("assets/ui/hud.viewblob");
+    std::error_code ec;
+    const auto writeTime = std::filesystem::last_write_time(hotReloadBlobPath_, ec);
+    if (!ec) {
+        hotReloadLastWriteTime_ = writeTime;
+        hotReloadHasWriteTime_ = true;
+    }
+
+    auto loaded = ViewBlobFile::Load(hotReloadBlobPath_);
+    if (!loaded) {
+        NODE_LOG_WARNING("[UIRenderNode] VIXEN_HOTRELOAD_HUD could not load '" + hotReloadBlobPath_ +
+                         "'; keeping the compiled HUD view");
+        view_ = configuredView_;
+        return;
+    }
+
+    hotReloadBlobFile_ = std::make_shared<ViewBlobFile>(std::move(*loaded));
+    hotReloadView_ = std::make_shared<BlobView>(hotReloadBlobFile_->Blob(), configuredView_->DocumentPath());
+    registeredViewVersion_ = hotReloadView_->Store().Blob().version;
+    view_ = hotReloadView_;
+    NODE_LOG_INFO("[UIRenderNode] VIXEN_HOTRELOAD_HUD enabled for '" + hotReloadBlobPath_ +
+                  "' (view version 0x" + [&] {
+                      char version[9]{};
+                      std::snprintf(version, sizeof(version), "%08X", registeredViewVersion_);
+                      return std::string(version);
+                  }() + ")");
+}
+
+bool UIRenderNode::RestorePrimaryView(const std::shared_ptr<IView>& previous) {
+    if (!context_ || !previous || !previous->ModelName()) return false;
+
+    Rml::DataModelConstructor constructor = context_->CreateDataModel(previous->ModelName());
+    if (!constructor) {
+        NODE_LOG_ERROR("[UIRenderNode] failed to restore HUD data model '" +
+                       std::string(previous->ModelName()) + "'");
+        return false;
+    }
+    previous->Register(constructor);
+    viewModel_ = constructor.GetModelHandle();
+    document_ = context_->LoadDocument(resolvedDocPath_);
+    if (!document_) {
+        context_->RemoveDataModel(previous->ModelName());
+        viewModel_ = {};
+        NODE_LOG_ERROR("[UIRenderNode] failed to restore HUD document '" + resolvedDocPath_ + "'");
+        return false;
+    }
+    document_->Show();
+    view_ = previous;
+    return true;
+}
+
+bool UIRenderNode::RebindPrimaryView(const std::shared_ptr<IView>& candidate) {
+    if (!context_ || !candidate || !candidate->ModelName() || !view_ || !view_->ModelName()) return false;
+    if (std::string(candidate->ModelName()) != view_->ModelName()) {
+        NODE_LOG_WARNING("[UIRenderNode] HUD view model name changed; keeping the previous view");
+        return false;
+    }
+
+    const std::shared_ptr<IView> previous = view_;
+    if (document_) context_->UnloadDocument(document_);
+    document_ = nullptr;
+    context_->RemoveDataModel(previous->ModelName());
+    viewModel_ = {};
+
+    Rml::DataModelConstructor constructor = context_->CreateDataModel(candidate->ModelName());
+    if (!constructor) {
+        NODE_LOG_WARNING("[UIRenderNode] could not create replacement HUD data model; restoring previous view");
+        RestorePrimaryView(previous);
+        return false;
+    }
+
+    candidate->Register(constructor);
+    if (const auto candidateBlob = std::dynamic_pointer_cast<BlobView>(candidate);
+        candidateBlob && !candidateBlob->Registered()) {
+        context_->RemoveDataModel(candidate->ModelName());
+        viewModel_ = {};
+        NODE_LOG_WARNING("[UIRenderNode] replacement HUD view rejected during registration; restoring previous view");
+        RestorePrimaryView(previous);
+        return false;
+    }
+
+    viewModel_ = constructor.GetModelHandle();
+    document_ = context_->LoadDocument(resolvedDocPath_);
+    if (!document_) {
+        context_->RemoveDataModel(candidate->ModelName());
+        viewModel_ = {};
+        NODE_LOG_WARNING("[UIRenderNode] replacement HUD document failed to load; restoring previous view");
+        RestorePrimaryView(previous);
+        return false;
+    }
+    document_->Show();
+    view_ = candidate;
+    return true;
+}
+
+void UIRenderNode::PollHudHotReload() {
+    if (!hudHotReloadEnabled_ || !initialized_ || !context_ || !configuredView_) return;
+    if (++hotReloadPollTicks_ % 15u != 0u) return;  // low-cadence mtime poll; no watcher thread
+
+    std::error_code ec;
+    const auto writeTime = std::filesystem::last_write_time(hotReloadBlobPath_, ec);
+    if (ec || (hotReloadHasWriteTime_ && writeTime <= hotReloadLastWriteTime_)) return;
+    hotReloadLastWriteTime_ = writeTime;
+    hotReloadHasWriteTime_ = true;
+
+    auto loaded = ViewBlobFile::Load(hotReloadBlobPath_);
+    if (!loaded) {
+        NODE_LOG_WARNING("[UIRenderNode] HUD .viewblob reload failed; keeping the previous good view");
+        return;
+    }
+
+    auto candidateFile = std::make_shared<ViewBlobFile>(std::move(*loaded));
+    auto candidate = std::make_shared<BlobView>(candidateFile->Blob(), configuredView_->DocumentPath());
+    if (registeredViewVersion_ != 0) candidate->SetConsumerVersion(registeredViewVersion_);
+    if (candidate->Store().Version() != candidate->Store().Blob().version) {
+        NODE_LOG_WARNING("[UIRenderNode] view shape changed → rebuild required; keeping the previous good view");
+        return;
+    }
+
+    if (!RebindPrimaryView(candidate)) return;
+
+    hotReloadBlobFile_ = std::move(candidateFile);
+    hotReloadView_ = std::move(candidate);
+    registeredViewVersion_ = hotReloadView_->Store().Blob().version;
+    NODE_LOG_INFO("[UIRenderNode] reloaded HUD view from '" + hotReloadBlobPath_ + "'");
+}
+
 void UIRenderNode::FreeCommandBuffers() {
     if (!commandBuffers_.empty() && commandPool_ && device_ != VK_NULL_HANDLE)
         vkFreeCommandBuffers(device_, commandPool_, static_cast<uint32_t>(commandBuffers_.size()), commandBuffers_.data());
@@ -109,6 +253,7 @@ void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
     composite_ = GetParameterValue<bool>(UIRenderNodeConfig::PARAM_COMPOSITE, false);
 
     if (!initialized_) {
+        ConfigureHudHotReload();
         // One-time: the RmlUi render interface/pipeline (built against the consumed render pass —
         // render passes of the same colour format are compatible, so the pipeline survives a resize),
         // RmlUi global init, the context, and the document.
@@ -380,7 +525,10 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSem);
 }
 
-void UIRenderNode::SetView(std::shared_ptr<IView> view) { view_ = std::move(view); }
+void UIRenderNode::SetView(std::shared_ptr<IView> view) {
+    configuredView_ = std::move(view);
+    if (!hudHotReloadEnabled_) view_ = configuredView_;
+}
 
 void UIRenderNode::MarkViewDirty(const char* field) { if (viewModel_ && field) viewModel_.DirtyVariable(field); }
 

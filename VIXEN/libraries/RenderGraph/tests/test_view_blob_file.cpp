@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 #include "Ui/ViewBlobFile.h"
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 using namespace Vixen::RenderGraph;
 
 static const char* kGood =
@@ -36,6 +39,41 @@ TEST(ViewBlobFile, RejectsUnknownKind) {
 TEST(ViewBlobFile, RejectsArrayReferencingUndeclaredElem) {
     auto f = ViewBlobFile::Parse("model hud\nversion 0x1\nfield x array Ghost\n");
     EXPECT_FALSE(f.has_value());
+}
+
+TEST(ViewBlobFile, LoadReloadsModifiedFileAndRejectsBadReplacement) {
+    const auto suffix = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path path = std::filesystem::temp_directory_path() /
+        ("vixen_viewblob_reload_" + std::to_string(suffix) + ".viewblob");
+
+    {
+        std::ofstream out(path);
+        ASSERT_TRUE(out);
+        out << "model hud\nversion 0xABCD1234\nfield tick int\n";
+    }
+    auto first = ViewBlobFile::Load(path.string());
+    ASSERT_TRUE(first.has_value());
+    ASSERT_EQ(first->Blob().fields.size(), 1u);
+    EXPECT_EQ(first->Blob().fields[0].name, "tick");
+
+    {
+        std::ofstream out(path);
+        ASSERT_TRUE(out);
+        out << "model hud\nversion 0xABCD1234\nfield bodyCount int\n";
+    }
+    auto second = ViewBlobFile::Load(path.string());
+    ASSERT_TRUE(second.has_value());
+    ASSERT_EQ(second->Blob().fields.size(), 1u);
+    EXPECT_EQ(second->Blob().fields[0].name, "bodyCount");
+
+    {
+        std::ofstream out(path);
+        ASSERT_TRUE(out);
+        out << "model hud\nversion 0xABCD1234\nfield broken banana\n";
+    }
+    EXPECT_FALSE(ViewBlobFile::Load(path.string()).has_value());
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
 }
 
 // View Contract Inc-5b Milestone 2.4b: the "vector" token must parse to ViewKind::Vector for

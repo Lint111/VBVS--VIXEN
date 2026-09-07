@@ -3,7 +3,9 @@
 #include "Core/NodeType.h"
 #include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/UIRenderNodeConfig.h"
+#include "Ui/BlobView.h"
 #include "Ui/IView.h"
+#include "Ui/ViewBlobFile.h"
 #include "Ui/VixenRmlRenderInterface.h"
 #include "Ui/VixenRmlSystemInterface.h"
 
@@ -51,6 +53,10 @@ public:
     /// without knowing any field. Call before the first compile.
     void SetView(std::shared_ptr<IView> view);
 
+    /// Poll the opt-in HUD .viewblob source and transactionally re-register its RmlUi model.
+    /// Hosts call this once at the top of their update tick, before rendering begins.
+    void PollHudHotReload();
+
     // --- IUiCompositionHost (relational-vertical-slice M-ui) ---
     // A second-document mount lifecycle over this node's one shared Rml::Context, beside the primary
     // (HUD) document_. Mounts are stored in mounts_ keyed by handle. See IView.h for the contract.
@@ -84,6 +90,9 @@ private:
     void FreeCommandBuffers();  // free the per-image command buffers (no device wait)
     void DestroyCompositeSemaphores();  // destroy the owned per-image "ui complete" semaphores
     void RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, uint32_t frameIndex);
+    void ConfigureHudHotReload();
+    bool RebindPrimaryView(const std::shared_ptr<IView>& candidate);
+    bool RestorePrimaryView(const std::shared_ptr<IView>& previous);
 
     bool initialized_ = false;
     VkDevice device_ = VK_NULL_HANDLE;
@@ -114,10 +123,23 @@ private:
     std::filesystem::file_time_type lastUiWriteTime_{};
 
     // Renderer-agnostic view seam (Inc-2): the node hosts whatever IView the consumer sets, knowing
-    // no field name. view_ is created into viewModel_ in CompileImpl (CreateDataModel(view_->ModelName())
-    // -> view_->Register(c)); MarkViewDirty forwards to viewModel_.DirtyVariable.
+    // no field name. configuredView_ is the consumer's native/fallback view; view_ is the active view
+    // registered into viewModel_. In the opt-in HUD blob path, view_ is a BlobView while configuredView_
+    // remains available for a failed parse or failed transactional rebind.
+    std::shared_ptr<IView> configuredView_;
     std::shared_ptr<IView>  view_;
     Rml::DataModelHandle    viewModel_;
+
+    // T1.0: runtime HUD view-blob reload state. The file and BlobView are shared separately because
+    // BlobView stores a reference to ViewBlob's backing storage; both must survive the registered model.
+    bool hudHotReloadEnabled_ = false;
+    uint32_t hotReloadPollTicks_ = 0;
+    uint32_t registeredViewVersion_ = 0;
+    bool hotReloadHasWriteTime_ = false;
+    std::string hotReloadBlobPath_;
+    std::filesystem::file_time_type hotReloadLastWriteTime_{};
+    std::shared_ptr<ViewBlobFile> hotReloadBlobFile_;
+    std::shared_ptr<BlobView> hotReloadView_;
 
     // --- IUiCompositionHost mounts (M-ui) ---
     // A live mounted fragment: its second document + its own isolated data model, in the shared

@@ -1790,6 +1790,15 @@ void VulkanGraphApplication::Update() {
             renderGraph->UpdateTime();
         }
 
+        // T1.0: poll the opt-in HUD .viewblob watcher at the top of the host update tick. This is
+        // before ProcessEvents/RecompileDirtyNodes and before Render(), so a successful model swap
+        // cannot occur while UIRenderNode is recording the current frame.
+        if (renderGraph) {
+            if (auto* ui = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiRenderNode_))) {
+                ui->PollHudHotReload();
+            }
+        }
+
         // Drain the WindowNode's own GLFW callback queue FIRST, unconditionally -- independent of node
         // Execute() (RenderFrame() skips ALL node Execute() while renderPaused, including WindowNode's
         // own, so a Restore/Maximize queued by glfwPollEvents() while minimized would otherwise never
