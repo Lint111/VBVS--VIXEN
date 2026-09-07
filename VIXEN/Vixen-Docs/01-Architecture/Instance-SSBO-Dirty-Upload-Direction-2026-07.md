@@ -24,9 +24,10 @@ changed**:
 
 - `SetInstances()` (~line 135) just stashes the whole `std::vector<BodyInstanceGpu>` — no per-field
   dirty tracking exists at all, for `recipeParams` or anything else.
-- `ExecuteImpl()` (~line 401-419) rebuilds a packed byte buffer from the ENTIRE `instances_` vector
-  every single frame (`PackInstances(toPack)`) and `memcpy`s the whole thing into the current
-  frame's ring slot, unconditionally — there is no early-out for "nothing changed since last frame."
+- `ExecuteImpl()` directly `memcpy`s the ENTIRE `instances_` vector into the current frame's
+  ring slot, unconditionally (T-041 removed the transient `toPack` and `PackInstances` buffers) —
+  there is no early-out for "nothing changed since last frame." The direct binding preserves the
+  same full `N × 64 B` upload semantics; this note's dirty-only question remains open.
 - The destination is a **per-frame-in-flight RING buffer** (`perFrame_`, `kRingSize =
   MAX_FRAMES_IN_FLIGHT`, comment at line 40) — NOT one persistent buffer. Each ring slot is a
   physically distinct allocation that only gets written when its frame index comes around.
@@ -86,11 +87,9 @@ rather than bolted onto today's simple SSBO ring independently.
 
 ## 5. Open questions (for whoever scopes this properly)
 
-- Is the actual pain point upload BANDWIDTH (bytes/frame) or CPU-side PACKING cost
-  (`PackInstances` re-serializing the whole vector every frame, independent of the GPU transfer
-  itself)? These have different fixes — a packing-cost problem might be solved by caching the
-  packed bytes and only re-serializing changed instances into an already-packed buffer, without
-  touching the ring-buffer/GPU-upload side at all.
+- Is the remaining pain point upload BANDWIDTH (bytes/frame), now that T-041 removed the CPU-side
+  PACKING cost? A future dirty-only design would need to change the ring upload semantics, not
+  restore a cached packed intermediate.
 - Does [[Recipe-Declared-Gaia-Query-Direction-2026-07]]'s per-recipe-type batched dispatch (also
   captured 2026-07-15) subsume this? If sim-side data is already grouped/batched per recipe type
   before it reaches the render side, "dirty" might naturally become "this recipe-type's batch

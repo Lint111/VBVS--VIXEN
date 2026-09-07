@@ -428,14 +428,12 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     // if SetInstances is called with a larger list before the first Compile.
     {
         // Capacity: max of current instance list and a safe minimum (1 record).
-        std::vector<Vixen::SVO::BodyInstanceGpu> placeholderList;
-        if (instances_.empty()) {
-            placeholderList.push_back(Vixen::SVO::BodyInstanceGpu{});
-        }
-        const std::vector<Vixen::SVO::BodyInstanceGpu>& toMeasure =
-            instances_.empty() ? placeholderList : instances_;
-        const std::vector<uint8_t> packed = Vixen::SVO::PackInstances(toMeasure);
-        const VkDeviceSize needed = std::max<VkDeviceSize>(packed.size(), 1);
+        // BodyInstanceGpu is already the exact std430 page layout, so sizing does
+        // not need to materialize a transient byte copy.
+        const VkDeviceSize instanceBytes = static_cast<VkDeviceSize>(
+            instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu));
+        const VkDeviceSize needed = std::max<VkDeviceSize>(
+            instanceBytes, sizeof(Vixen::SVO::BodyInstanceGpu));
         EnsureRingAllocated(devicePtr, needed);
     }
 
@@ -570,30 +568,29 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,    proxyAabbCount_[readSlot]);
     }
 
-    // Build the packed byte representation of the current instance list.
-    // If empty, produce a valid 1-element placeholder so the SSBO is always non-null.
-    std::vector<Vixen::SVO::BodyInstanceGpu> toPack;
-    if (instances_.empty()) {
-        toPack.push_back(Vixen::SVO::BodyInstanceGpu{});  // zeroed placeholder
-    } else {
-        toPack = instances_;
-    }
-    const std::vector<uint8_t> packed = Vixen::SVO::PackInstances(toPack);
-
-    // Upload into THIS frame's ring buffer (host-coherent: no flush needed).
-    // The frame fence for frameIndex was waited before Execute fired, so this
-    // slot is guaranteed not in flight.
+    // Upload the shell-owned 64-byte pages directly into THIS frame's ring buffer.
+    // BodyInstanceGpu is already the exact std430 byte layout, so no source vector
+    // or packed byte buffer is needed. If empty, use one zeroed placeholder so the
+    // SSBO remains valid even though INSTANCE_COUNT is zero. The frame fence for
+    // frameIndex was waited before Execute fired, so this slot is not in flight.
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);
-    if (mapped && !packed.empty()) {
+    Vixen::SVO::BodyInstanceGpu emptyPlaceholder{};
+    const Vixen::SVO::BodyInstanceGpu* source = instances_.empty()
+        ? &emptyPlaceholder
+        : instances_.data();
+    const size_t sourceBytes = instances_.empty()
+        ? sizeof(emptyPlaceholder)
+        : instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu);
+    if (mapped && sourceBytes != 0) {
         const size_t copyBytes = std::min(static_cast<size_t>(instanceRingCapacity_),
-                                          packed.size());
-        std::memcpy(mapped, packed.data(), copyBytes);
+                                          sourceBytes);
+        std::memcpy(mapped, source, copyBytes);
     }
 
     // Emit THIS frame's buffer so the descriptor binds the just-written data.
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 
-    // Honest count clamp: packed.size() can exceed instanceRingCapacity_ between a SetInstances
+    // Honest count clamp: sourceBytes can exceed instanceRingCapacity_ between a SetInstances
     // growth and the recompile that actually grows the ring (SetInstances now requests that
     // recompile, but it hasn't necessarily run by this Execute). The upload above already clamps
     // copyBytes to the ring's real capacity — clamp the emitted count the same way so the shader

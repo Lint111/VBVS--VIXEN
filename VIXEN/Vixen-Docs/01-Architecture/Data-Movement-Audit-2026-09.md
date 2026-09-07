@@ -19,12 +19,11 @@ invariant that makes the hop real.
 ## Executive finding
 
 The highest-frequency confirmed tax is the instance table. `BodyInstanceGpu` is already a
-64-byte std430 record (`VIXEN/libraries/SVO/include/ShellOctreeGpu.h:458-473`), but every
-`BodyOctreeSceneNode::ExecuteImpl` allocates a second vector, copies the whole instance list,
-allocates a byte vector, and memcpy's that byte vector into the persistent ring
-(`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:573-590`; the packer is a
-memcpy-only helper at `VIXEN/libraries/SVO/include/ShellOctreeGpu.h:1378-1386`). This is a
-per-frame `N × 64 B` CPU movement with no format conversion.
+64-byte std430 record (`VIXEN/libraries/SVO/include/ShellOctreeGpu.h:458-473`). T-041 now
+writes the shell-owned records directly into the persistent ring
+(`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:571-587`), removing the
+transient vector and byte-buffer allocations. The remaining per-frame movement is the required
+`N × 64 B` host-to-mapped-ring memcpy; there is still no format conversion.
 
 The next recurring tax is opt-in recipe bucketing: the CPU maps, clears, fills, and unmaps the
 skip-mask, bound-sphere, and bucket-meta SSBOs every pre-tick
@@ -134,7 +133,7 @@ explicitly sentenced rather than inferred.
 
 | ID | Producer → consumer | Transformation / evidence | Frequency | Payload | Verdict |
 |---|---|---|---|---|---|
-| P3-H8 | `instances_` → `toPack` → packed byte vector | Execute copies the whole `instances_` vector (or creates a placeholder), then `PackInstances` allocates and memcpy's an identical byte layout before the ring memcpy (`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:573-590`; `VIXEN/libraries/SVO/include/ShellOctreeGpu.h:1378-1386`). | every frame | `N × 64 B` plus transient duplicate | **DIRECT** — write `instances_.data()` directly into the already persistent per-frame ring, retaining only the empty placeholder and capacity clamp. This is the top bandwidth×frequency finding. |
+| P3-H8 | shell-owned `instances_` → persistent instance ring | `ExecuteImpl` writes the shell-owned `BodyInstanceGpu` array directly into the mapped ring slot; empty scenes use one zeroed placeholder and the emitted count remains capacity-clamped (`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:571-601`). | every frame | `N × 64 B` | **DIRECT** — **T-041 COMPLETE:** no transient source vector or pack buffer; the ring memcpy remains the required GPU-facing write. This is the top bandwidth×frequency finding. |
 | P3-H9 | body instance list → CPU recipe groups/hot IDs | The bucketed pre-tick takes a const reference, gathers indices into an unordered map, filters hot recipes, and sorts ids (`VIXEN/application/main/source/VulkanGraphApplication.cpp:735-748`). | every frame when bucketed dispatch is enabled | S, `N × 4 B` indices plus map overhead | **KEEP** — grouping is the producer of GPU indirect membership and needs recipe-id knowledge; it avoids a GPU readback. |
 | P3-H10 | hot recipe groups → low skip-mask words | `RunRecipeBucketedDispatchPreTick` builds the low-word payload only on an instance-generation change, then publishes changed byte ranges into the selected persistent frame slot (`VIXEN/application/main/source/VulkanGraphApplication.cpp:814-861,876-903`; ring setup is `VIXEN/application/main/source/graph/BuildRenderGraph.cpp:1466-1469`). | generation change or first catch-up of a frame slot | dirty byte ranges; 4 B × low mask word | **DIRECT** — T-078 keeps the existing mask layout and GPU consumers while eliminating per-frame clear/map/unmap work. |
 | P3-H11 | `RecipeRegistry` entries → bound-sphere SSBO | The immutable canonical table is rebuilt only when the registry generation changes; each frame slot retains and consumes only the changed entry ranges (`VIXEN/application/main/source/VulkanGraphApplication.cpp:814-841,876-903`). | registry change or first catch-up of a frame slot | dirty byte ranges; 32 B × changed entry | **DIRECT** — T-078 caches the table by registry generation and writes the existing shader layout through persistent frame mappings. |
@@ -167,7 +166,7 @@ kept below them.
 
 | Rank | Finding | Action and owner seam |
 |---:|---|---|
-| 1 | P3-H8: whole instance list copy + memcpy-only packing every frame | `DIRECT` from `BodyInstanceGpu` to the existing persistent ring; change `BodyOctreeSceneNode::ExecuteImpl` and retain ring capacity/fence invariants. |
+| 1 | P3-H8: whole instance list copy + memcpy-only packing every frame | **T-041 COMPLETE:** `DIRECT` from `BodyInstanceGpu` to the existing persistent ring in `BodyOctreeSceneNode::ExecuteImpl`; ring capacity/fence invariants retained. |
 | 2 | P3-H10/P3-H11/P3-H12/P4-H11: per-frame map/fill/unmap of masks and recipe tables | **T-078 COMPLETE:** `DIRECT` through existing frame-indexed storage buffers; cache the canonical payload by registry/instance generation and retain per-slot dirty ranges until consumed. |
 | 3 | P4-H3/P4-H4: brick upload and resident-config visibility use separate forced flush/phase transitions | `BATCH` in `BatchedUploader`/`BodyOctreeSceneNode`, preserving brick-before-config visibility. This is a latency win as much as a submission-count win. |
 | 4 | P2-H4: editor render-preview VRC1 serialize → parse → copy | `ELIMINATE` the preview-only blob round-trip; retain VRC1 for save/export and external interchange. |
@@ -187,7 +186,7 @@ churn, or submission granularity that make a byte movement more expensive than i
 | L2 | Uploader can fall back to queue idle when command buffers are exhausted | `SubmitBatch` retries, then calls `vkQueueWaitIdle` if no command buffer is available (`VIXEN/libraries/ResourceManagement/src/Memory/BatchedUploader.cpp:410-429`). | **KEEP** as a bounded safety fallback, but track it as a latency counter; reduce incidence by preserving the existing batch limits and avoiding forced one-upload submissions. |
 | L3 | Shell slot writes map/unmap each update | Reused shell buffers call `vkMapMemory`, memcpy, and `vkUnmapMemory` (`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:1319-1329`). | **DIRECT** to a persistent mapped slot allocation; fence/slot ownership remains the invariant. |
 | L4 | Recipe bucket tables map/unmap on every pre-tick | T-078 uses `StorageBufferNode::MapCurrentForWrite` only for non-empty retained dirty ranges; unchanged frame slots take no mapping call (`VIXEN/application/main/source/VulkanGraphApplication.cpp:876-903`; persistent mapping implementation is `VIXEN/libraries/RenderGraph/src/Nodes/StorageBufferNode.cpp:197-200`). | generation change or frame-slot catch-up | dirty byte ranges | **DIRECT** — persistent frame slots retain fence ownership and eliminate the steady-state map/unmap churn. |
-| L5 | Per-frame body list is copied before the persistent ring write | `toPack = instances_` and `PackInstances` add two CPU copies/allocations before the ring memcpy (`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:573-590`). | **DIRECT**; this removes both transient allocations and one full CPU read/write pass per frame. |
+| L5 | Per-frame body list is copied before the persistent ring write | T-041 removed `toPack` and `PackInstances`; `instances_.data()` is copied directly into the mapped ring slot (`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:571-587`). | **DIRECT — COMPLETE**; transient allocations and the extra full CPU read/write pass are gone. |
 | L6 | Instance ring growth stalls the whole device | Capacity overflow calls `vkDeviceWaitIdle`, destroys the ring, and recreates all ring buffers (`VIXEN/libraries/RenderGraph/src/Nodes/BodyOctreeSceneNode.cpp:1206-1235`). | **KEEP** — safe resize needs no in-flight references; it is rare and explicitly not the per-frame path. Pre-size from the source instance-page maximum if the owner can state one. |
 | L7 | B1 depth clear waits for queue idle during image creation | Both depth images are cleared/transitioned in one one-shot submit and `DepthTargetNode` waits for queue idle (`VIXEN/libraries/RenderGraph/src/Nodes/DepthTargetNode.cpp:210-229`). | **KEEP** as boot/resize initialization; it is not per frame and establishes the miss-sentinel/layout invariant. |
 | L8 | B1 depth/HiZ/cull history is one frame delayed | Depth slots are selected by `frame & 1`, with the other slot read, and the cull receives previous-frame camera constants (`VIXEN/libraries/RenderGraph/src/Nodes/DepthTargetNode.cpp:92-104`; `VIXEN/application/main/source/VulkanGraphApplication.cpp:690-713`). | **KEEP** — removing the delay would require a same-frame dependency/barrier and could make cull read depth while march writes it. |
