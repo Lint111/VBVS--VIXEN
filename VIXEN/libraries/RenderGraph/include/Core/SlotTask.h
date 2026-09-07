@@ -15,6 +15,10 @@ namespace ResourceManagement {
     ResourceScope SlotScopeToResourceScope(uint8_t slotScopeValue);
 }
 
+namespace Vixen::KernelDispatch {
+    class TaskExecutor;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations
@@ -150,6 +154,7 @@ public:
      *
      * @param tasks Task contexts to execute
      * @param taskFunction Function to execute per task
+     * @param sharedExecutor Shared KernelDispatch executor owned by the graph's MainCacher
      * @param budgetManager Resource budget manager (optional)
      * @param maxParallelism Maximum concurrent tasks (0 = auto)
      * @param stopToken Cooperative cancellation for the owning graph execution epoch
@@ -158,6 +163,7 @@ public:
     uint32_t ExecuteParallel(
         std::vector<SlotTaskContext>& tasks,
         const SlotTaskFunction& taskFunction,
+        KernelDispatch::TaskExecutor& sharedExecutor,
         ResourceBudgetManager* budgetManager = nullptr,
         uint32_t maxParallelism = 0,
         std::stop_token stopToken = {}
