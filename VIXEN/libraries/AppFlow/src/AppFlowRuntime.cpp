@@ -27,10 +27,26 @@ void AppFlowRuntime::Publish(AppFlowChangedEvent::Kind kind, FlowStateId state,
 // or add an explicit "none" sentinel (there is no reserved sentinel enumerator yet).
 
 LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvider* dataProvider) {
-    dataProvider_ = dataProvider;
+    // Build every reload into fresh primitives first. AppFlowLoader validates before mutating,
+    // and the temporary primitives make a failed parse/load leave the live runtime untouched.
+    FlowStateMachine freshFsm;
+    ActionStack freshStack;
+    BindingStore freshBindings;
+    InputProfile freshInputProfile;
+    DataTargetTable freshDataTargets;
     const AppFlowContainerView compiledIn{};
-    return AppFlowLoader::Load(view ? *view : compiledIn, fsm_, stack_, bindings_, inputProfile_,
-                              &dataTargets_);
+    const LoadResult result = AppFlowLoader::Load(view ? *view : compiledIn, freshFsm, freshStack,
+                                                  freshBindings, freshInputProfile, &freshDataTargets);
+    if (result != LoadResult::Ok) return result;
+
+    fsm_ = std::move(freshFsm);
+    stack_ = std::move(freshStack);
+    bindings_ = std::move(freshBindings);
+    inputProfile_ = std::move(freshInputProfile);
+    dataTargets_ = std::move(freshDataTargets);
+    dataProvider_ = dataProvider;
+    handlers_.clear();
+    return LoadResult::Ok;
 }
 
 LoadResult AppFlowRuntime::Load(IViewDataProvider* dataProvider) {

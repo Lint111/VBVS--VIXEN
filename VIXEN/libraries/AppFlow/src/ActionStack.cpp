@@ -5,7 +5,22 @@
 namespace Vixen::AppFlow {
 
 void ActionStack::LoadActions(const AppFlowActionDecl* table, size_t count) {
-    actions_.assign(table, table + count);
+    actions_.clear();
+    actionParams_.clear();
+    actions_.reserve(count);
+    actionParams_.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        if (table[i].paramCount == 0) {
+            actionParams_.emplace_back();
+        } else {
+            actionParams_.emplace_back(table[i].params, table[i].params + table[i].paramCount);
+        }
+    }
+    for (size_t i = 0; i < count; ++i) {
+        AppFlowActionDecl action = table[i];
+        action.params = actionParams_[i].empty() ? nullptr : actionParams_[i].data();
+        actions_.push_back(action);
+    }
 }
 
 bool ActionStack::IsKnownAction(FlowActionId id) const {

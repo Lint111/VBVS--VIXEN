@@ -34,7 +34,8 @@ target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorl
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.
 target_compile_definitions(vixen_editor PRIVATE
-    VIXEN_EDITOR_DEFAULT_DOCUMENT="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
+    VIXEN_EDITOR_DEFAULT_DOCUMENT="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
+    VIXEN_EDITOR_APPFLOW_PATH="${VIXEN_ROOT}/libraries/AppFlow/assets/AppFlow.appflow")
 
 set_property(TARGET vixen_editor PROPERTY RUNTIME_OUTPUT_DIRECTORY ${VIXEN_BINARIES_DIR})
 set_property(TARGET vixen_editor PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG ${VIXEN_BINARIES_DIR})

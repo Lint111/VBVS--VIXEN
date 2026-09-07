@@ -17,6 +17,10 @@ class AppFlowBlobFile {
 public:
     static std::optional<AppFlowBlobFile> Parse(std::string_view text);
     static std::optional<AppFlowBlobFile> Load(const std::string& path);
+    // Reads only the declared shape line so a consumer can distinguish a rejected facade
+    // interface/graph from an otherwise malformed or unreadable artifact. Full validation still
+    // belongs to Parse()/Load().
+    static std::optional<uint32_t> ReadDeclaredShapeHash(const std::string& path);
 
     const Generated::AppFlowContainerView& View() const { return view_; }
     uint32_t ShapeHash() const { return shapeHash_; }

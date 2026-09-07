@@ -123,6 +123,29 @@ TEST(AppFlowBlob, InteriorEditPreservesShapeHash) {
     EXPECT_STREQ(blob->View().elementTriggerTable()[0].elementPattern, "layer-{index}-other");
 }
 
+TEST(AppFlowBlob, ReloadedRuntimeOwnsParsedBlobStorage) {
+    auto blob = AppFlowBlobFile::Parse(ReplaceOnce(
+        ReadGeneratedBlob(), "layer-{index}-toggle", "layer-{index}-other"));
+    ASSERT_TRUE(blob.has_value());
+
+    AppFlowRuntime runtime(nullptr, 1);
+    ASSERT_EQ(runtime.Load(&blob->View()), LoadResult::Ok);
+    runtime.RegisterHandler(FlowActionId::ToggleLayer,
+                            [&](const AppFlowRuntime::Params&) {
+                                runtime.Stack().Dispatch(FlowActionId::ToggleLayer,
+                                                         [](bool) {});
+                            });
+
+    const AppFlowContainerView invalid(
+        std::span<const AppFlowActionDecl>{}, std::span<const AppFlowTransition>{});
+    EXPECT_EQ(runtime.Load(&invalid), LoadResult::EmptyArtifact);
+
+    // The runtime must not depend on the temporary blob's strings or parameter arrays after Load.
+    blob.reset();
+    EXPECT_EQ(runtime.DispatchBySelector("layer-3-other"), DispatchResult::Ok);
+    EXPECT_EQ(runtime.DispatchBySelector("layer-3-toggle"), DispatchResult::RejectedByState);
+}
+
 TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {
     const std::string shapeEdit = ReplaceOnce(
         ReadGeneratedBlob(), "shape 0x113F6528", "shape 0x00000000");

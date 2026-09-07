@@ -26,6 +26,7 @@
 #include <Logger.h>
 
 #include <memory>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -100,6 +101,13 @@ public:
     bool CaptureFrameToPng(const std::string& path, std::string& err);
 
 private:
+    // Replays the consumer-owned handler wiring after AppFlowRuntime replaces its primitives.
+    void RegisterAppFlowHandlers();
+
+    // Polls the external AppFlow artifact at a bounded cadence. The swap is called from Update()
+    // before input dispatch, which is the editor's between-tick point.
+    void PollAppFlowFile();
+
     // Inc-A2: re-derives layersView_'s bound "layers" array from doc_'s per-layer name/op plus
     // rt_.Layers().Mask()'s current bit state. Shared by the initial population (LoadDocument)
     // and the ToggleLayer handler's same-frame echo (the SAME ApplyFn body Undo()/Redo() re-run,
@@ -163,7 +171,9 @@ private:
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding
     bool escWasDown_ = false;  // edge-detect for the Return (Esc) keybinding
-    bool handlersRegistered_ = false;  // guards the one-time RegisterHandler calls in LoadDocument
+    std::string appFlowPath_;
+    std::filesystem::file_time_type appFlowMtime_{};
+    bool appFlowMtimeInitialized_ = false;
 
     // Inc-2b Task 3/4: capture + script harness state, all zero-cost/inert when the two
     // VIXEN_EDITOR_* env knobs are unset (see BuildRenderGraph + Update).

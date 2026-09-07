@@ -216,7 +216,7 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
             file.actions_, file.transitions_, file.elementTriggers_, file.keyDefaults_,
             file.returnEdges_, file.dataTargets_);
         if (file.shapeHash_ != Generated::kAppFlowShapeHash) {
-            Error("shape hash mismatch: this facade change alters the interface/graph -> rebuild required");
+            Error("shape hash mismatch: this facade change alters the interface/graph → rebuild required");
             return std::nullopt;
         }
         return file;
@@ -241,6 +241,32 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Load(const std::string& path) {
         return std::nullopt;
     } catch (...) {
         Error("unknown exception while loading");
+        return std::nullopt;
+    }
+}
+
+std::optional<uint32_t> AppFlowBlobFile::ReadDeclaredShapeHash(const std::string& path) {
+    try {
+        std::ifstream input(path, std::ios::binary);
+        if (!input) return std::nullopt;
+
+        std::string raw;
+        std::optional<uint32_t> shape;
+        while (std::getline(input, raw)) {
+            if (raw.empty() || raw[0] == '#') continue;
+            std::istringstream line(raw);
+            std::string directive;
+            line >> directive;
+            if (directive != "shape") continue;
+
+            std::string token;
+            if (!(line >> token) || !token.starts_with("0x")) return std::nullopt;
+            auto parsed = Number(token, 16);
+            if (!parsed) return std::nullopt;
+            shape = *parsed;
+        }
+        return shape;
+    } catch (...) {
         return std::nullopt;
     }
 }

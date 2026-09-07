@@ -68,6 +68,9 @@ private:
     bool IsKnownAction(FlowActionId id) const;
 
     std::vector<AppFlowActionDecl> actions_;
+    // AppFlowActionDecl::params is a borrowed pointer in the generated ABI. Keep a deep-owned
+    // copy so a runtime loaded from a temporary AppFlowBlobFile never retains blob storage.
+    std::vector<std::vector<Generated::FlowParamSchema>> actionParams_;
     std::vector<Group> undo_;
     std::vector<Group> redo_;
     bool hasOpenGroup_ = false;

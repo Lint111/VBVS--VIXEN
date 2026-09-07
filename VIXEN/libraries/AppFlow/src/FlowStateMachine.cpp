@@ -3,7 +3,13 @@
 namespace Vixen::AppFlow {
 
 void FlowStateMachine::LoadTransitions(const AppFlowTransition* table, size_t count) {
-    transitions_.assign(table, table + count);
+    transitions_.clear();
+    effects_.clear();
+    transitions_.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        effects_.emplace_back(table[i].effect ? table[i].effect : "");
+        transitions_.push_back({table[i].from, table[i].to, table[i].guard, effects_.back().c_str()});
+    }
 }
 
 void FlowStateMachine::SetGuardResult(FlowGuardId g, bool pass) {

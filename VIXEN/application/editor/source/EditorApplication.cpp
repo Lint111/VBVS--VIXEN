@@ -15,15 +15,21 @@
 #include "Core/RenderGraph.h"
 #include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
+#include "AppFlowBlobFile.h"                   // T1.2: external AppFlow watch/reload
 #include "generated/AppFlowCallables.g.hpp"   // Inc-4 R5c: transplanted applyToggle(mask,index)
 #include "GaiaLayerViewDataProvider.h"        // Inc-B: view->model seam, Gaia-backed provider
 #include <Logger.h>
 
 #include <cstdlib>
+#include <filesystem>
 #include <sstream>
 
 #define GLFW_INCLUDE_NONE   // don't pull in <GL/gl.h> (absent on headless/WSL builds)
 #include <GLFW/glfw3.h>
+
+#ifndef VIXEN_EDITOR_APPFLOW_PATH
+#define VIXEN_EDITOR_APPFLOW_PATH "assets/AppFlow.appflow"
+#endif
 
 namespace {
 // Inc-2b Task 4: parses "toggle:2@30,undo@60,redo@90" into ScriptedAction entries. A malformed
@@ -126,6 +132,11 @@ EditorApplication::EditorApplication(std::string documentPath)
     // the pre-existing "Saved document to ..." one, was silently buffered into logEntries and
     // never reached stdout/the redirected run_editor_script.log. Mirrors main.cpp:56.
     logger_->SetTerminalOutput(true);
+    if (const char* overridePath = std::getenv("VIXEN_EDITOR_APPFLOW_PATH")) {
+        appFlowPath_ = overridePath;
+    } else {
+        appFlowPath_ = VIXEN_EDITOR_APPFLOW_PATH;
+    }
 }
 
 EditorApplication::~EditorApplication() {
@@ -173,7 +184,10 @@ bool EditorApplication::LoadDocument(const std::string& path) {
         return false;
     }
     documentPath_ = path;
-    rt_.Load();  // load the AppFlow reference vocab (state/action tables)
+    if (rt_.Load(nullptr, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
+        lastEditorError_ = "AppFlowRuntime initial load failed";
+        return false;
+    }
     rt_.Layers().SetLayerCount(doc_.LayerCount());  // (re)sync the mask to the freshly loaded doc
 
     // Inc-B: re-seed the Gaia layer entity to the freshly loaded document's real mask (all layers
@@ -193,16 +207,21 @@ bool EditorApplication::LoadDocument(const std::string& path) {
     // SetLayerCount resync above.
     RefreshLayersView();
 
-    // Inc-4 reframe (design §4.3, R5b): register the 5 self-contained handlers exactly once.
-    // Each handler decides for itself which primitive it needs (Stack() for undoable actions,
-    // NavPop() for navigation, a bare side effect for Save) -- the framework/registry knows
-    // none of this. Guarded so a document reload doesn't double-register.
-    if (!handlersRegistered_) {
-        handlersRegistered_ = true;
-        using Vixen::AppFlow::Generated::FlowActionId;
-        rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
-            const uint32_t idx = ParseParam(p, "layerIndex");
-            rt_.Stack().Dispatch(FlowActionId::ToggleLayer, [this, idx](bool /*forward*/) {
+    RegisterAppFlowHandlers();
+    std::error_code appFlowEc;
+    appFlowMtime_ = std::filesystem::last_write_time(appFlowPath_, appFlowEc);
+    appFlowMtimeInitialized_ = !appFlowEc;
+    return true;
+}
+
+void EditorApplication::RegisterAppFlowHandlers() {
+    // Inc-4 reframe (design §4.3, R5b): register the 5 self-contained handlers. This block is
+    // intentionally replayable: AppFlowRuntime::Load() installs fresh primitives and clears the
+    // old registry, so reloading a compatible .appflow replaces bindings without duplicates.
+    using Vixen::AppFlow::Generated::FlowActionId;
+    rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
+        const uint32_t idx = ParseParam(p, "layerIndex");
+        rt_.Stack().Dispatch(FlowActionId::ToggleLayer, [this, idx](bool /*forward*/) {
                 // Inc-A reroute (View-Model-Binding-Framework-Design-2026-07.md §5): the ONE
                 // genuine view->model binding now goes read -> provider -> projection ->
                 // provider -> write, instead of calling LayerController directly. Undo stays
@@ -246,25 +265,77 @@ bool EditorApplication::LoadDocument(const std::string& path) {
                 // into the bound checkboxes for toggle, undo, and redo alike -- no separate wiring
                 // per action. Cheap: RefreshLayersView() re-reads doc_'s per-layer name/op
                 // (already O(layerCount), unconditionally small) rather than caching them.
-                RefreshLayersView();
-            });
+            RefreshLayersView();
         });
-        rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
-            rt_.Stack().Undo();
-        });
-        rt_.RegisterHandler(FlowActionId::Redo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
-            rt_.Stack().Redo();
-        });
-        rt_.RegisterHandler(FlowActionId::Save, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
-            if (!SaveDocument()) {
-                logger_->Error("[EditorApplication] SaveDocument failed: " + lastEditorError_);
-            }
-        });
-        rt_.RegisterHandler(FlowActionId::Return, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
-            rt_.NavPop();
-        });
+    });
+    rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        rt_.Stack().Undo();
+    });
+    rt_.RegisterHandler(FlowActionId::Redo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        rt_.Stack().Redo();
+    });
+    rt_.RegisterHandler(FlowActionId::Save, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        if (!SaveDocument()) {
+            logger_->Error("[EditorApplication] SaveDocument failed: " + lastEditorError_);
+        }
+    });
+    rt_.RegisterHandler(FlowActionId::Return, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
+        rt_.NavPop();
+    });
+}
+
+void EditorApplication::PollAppFlowFile() {
+    constexpr long kPollIntervalTicks = 15;
+    if ((updateTick_ % kPollIntervalTicks) != 0) return;
+
+    std::error_code ec;
+    const auto mtime = std::filesystem::last_write_time(appFlowPath_, ec);
+    if (ec) {
+        if (appFlowMtimeInitialized_) {
+            logger_->Warning("[EditorApplication] AppFlow watch: cannot stat '" + appFlowPath_ + "'");
+        }
+        return;
     }
-    return true;
+    if (!appFlowMtimeInitialized_) {
+        appFlowMtime_ = mtime;
+        appFlowMtimeInitialized_ = true;
+        return;
+    }
+    if (mtime == appFlowMtime_) return;
+
+    // Consume this mtime once even when the candidate is rejected. This preserves the running
+    // state on parse failure and prevents a broken save from retry-spamming every poll; the next
+    // editor save produces a new mtime and a fresh candidate.
+    appFlowMtime_ = mtime;
+
+    const auto declaredShape = Vixen::AppFlow::AppFlowBlobFile::ReadDeclaredShapeHash(appFlowPath_);
+    if (declaredShape.has_value() && *declaredShape != Vixen::AppFlow::Generated::kAppFlowShapeHash) {
+        logger_->Error("[EditorApplication] facade change alters the interface/graph → rebuild required; "
+                       "keeping the running compiled-in state");
+        return;
+    }
+
+    auto blob = Vixen::AppFlow::AppFlowBlobFile::Load(appFlowPath_);
+    if (!blob.has_value()) {
+        logger_->Error("[EditorApplication] AppFlow reload rejected: parse failure; keeping the running state");
+        return;
+    }
+    if (blob->ShapeHash() != Vixen::AppFlow::Generated::kAppFlowShapeHash) {
+        // Defensive gate in addition to AppFlowBlobFile::Parse()'s fail-closed validation.
+        logger_->Error("[EditorApplication] facade change alters the interface/graph → rebuild required; "
+                       "keeping the running compiled-in state");
+        return;
+    }
+
+    // AppFlowRuntime::Load() validates and builds fresh primitives before committing them. The
+    // parsed blob is a local candidate and may be destroyed immediately after this call: runtime
+    // primitives deep-own the pointer-bearing generated fields they retain.
+    if (rt_.Load(&blob->View(), &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
+        logger_->Error("[EditorApplication] AppFlow reload rejected: validation failure; keeping the running state");
+        return;
+    }
+    RegisterAppFlowHandlers();
+    logger_->Info("[EditorApplication] AppFlow reloaded from '" + appFlowPath_ + "'");
 }
 
 void EditorApplication::BuildRenderGraph() {
@@ -554,6 +625,10 @@ void EditorApplication::Update() {
     // the base method's catch shape) so the no-throw-across-the-tick contract (design §5) really
     // holds for the toggle/undo/capture/script code added in Inc-2b, not just by assertion.
     try {
+    // T1.2: check the external facade before this tick's input dispatch. A successful compatible
+    // reload therefore supplies the new trigger/key tables to the running editor immediately;
+    // a rejected candidate leaves the already-loaded runtime untouched.
+    PollAppFlowFile();
     // Drain UI clicks (S4 pattern) and dispatch by selector -- carries no behavior itself; the
     // registered ToggleLayer/Return handlers decide what the click means (design §4.3). A
     // selector with no binding (a non-editor UI hit) resolves to RejectedByState and is ignored.

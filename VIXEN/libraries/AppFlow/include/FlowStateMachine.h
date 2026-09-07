@@ -1,6 +1,8 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <string>
 #include <unordered_map>
 #include <vector>
 #include "AppFlowResults.h"
@@ -42,6 +44,9 @@ private:
     static constexpr size_t kHistoryCap = 16;
 
     std::vector<AppFlowTransition> transitions_;
+    // AppFlowTransition::effect is a borrowed string pointer in the generated ABI. Own the
+    // strings alongside the copied transitions so blob-backed loads are safe after parsing.
+    std::deque<std::string> effects_;
     FlowStateId current_{};
     std::unordered_map<uint16_t, bool> guardResults_;
     std::vector<FlowStateId> history_;   // bounded, drop-oldest
