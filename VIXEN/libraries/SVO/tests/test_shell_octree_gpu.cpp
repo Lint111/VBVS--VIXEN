@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 using namespace Vixen::SVO;
@@ -243,6 +244,43 @@ TEST(ShellOctreeGpu, InstancePackingRoundTrips) {
             EXPECT_FLOAT_EQ(out[i].color[k], in[i].color[k]);
         }
     }
+}
+
+TEST(ShellOctreeGpu, DirectInstancePageCopyIsByteIdenticalToPackedPage) {
+    std::vector<BodyInstanceGpu> source(2);
+    source[0].worldPos[0] = 1.0f;
+    source[0].worldPos[1] = -2.0f;
+    source[0].worldPos[2] = 3.5f;
+    source[0].renderScale = 4.0f;
+    source[0].color[0] = 0.1f;
+    source[0].color[1] = 0.2f;
+    source[0].color[2] = 0.3f;
+    source[0].octreeIndex = 7u;
+    source[0].providerKind = 1u;
+    source[0].recipeId = 11u;
+    source[0].recipeParams[0] = 0.45f;
+    source[0].recipeParams[1] = 0.12f;
+    source[0].recipeParams[2] = 8.0f;
+
+    source[1].worldPos[0] = -5.0f;
+    source[1].worldPos[1] = 6.0f;
+    source[1].worldPos[2] = 7.5f;
+    source[1].renderScale = 8.0f;
+    source[1].color[0] = 0.4f;
+    source[1].color[1] = 0.5f;
+    source[1].color[2] = 0.6f;
+    source[1].octreeIndex = 2u;
+    source[1].providerKind = 0u;
+    source[1].recipeId = 0u;
+    source[1].recipeParams[0] = 1.25f;
+    source[1].recipeParams[1] = -0.25f;
+    source[1].recipeParams[2] = 16.0f;
+
+    const std::vector<uint8_t> packed = PackInstances(source);
+    std::vector<uint8_t> direct(packed.size(), 0u);
+    std::memcpy(direct.data(), source.data(), direct.size());
+
+    EXPECT_EQ(direct, packed);
 }
 
 }  // namespace
