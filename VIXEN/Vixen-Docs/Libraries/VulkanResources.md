@@ -74,6 +74,15 @@ Each `VulkanDevice` owns a `Vixen::CapabilityGraph` (`device.GetCapabilityGraph(
 graph of GPU capabilities (device extensions/features, instance extensions/layers, and composites
 like `RTXSupport`, `SwapchainMaintenance1`). Query via `device.HasCapability("RTXSupport")`.
 
+Optional implementation choices go through `CapabilityGraph::ResolveOptionalPath` rather than
+repeating capability checks at call sites. It returns `CapabilityPath::CapabilityEnabled` only when
+the feature is requested and the graph reports the capability; otherwise it returns
+`CapabilityPath::CapabilityIndependent`, which names the permanent fallback/twin. The twin is an
+output contract, not merely a graceful-degradation branch: output-affecting optional paths must
+produce byte-identical results. The B2 proxy writer is covered by
+`RenderGraph_ProxyIntervalPrepassDevice.RasterAndComputeRecordsMatchMirrorByteForByte`, which
+executes both writers and compares their output records byte-for-byte.
+
 > [!note] AR#8 (2026-06-14): per-instance, not static
 > The available extension/layer/feature sets are now **per-`CapabilityGraph` instance state**, not
 > process-wide static vectors. Device-level sets are supplied by the owning `VulkanDevice`;

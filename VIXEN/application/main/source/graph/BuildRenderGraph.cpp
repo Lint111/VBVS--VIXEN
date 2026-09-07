@@ -2082,10 +2082,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
             auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
             Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice =
                 deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
-            const bool capabilityRayQuery = vulkanDevice &&
-                vulkanDevice->HasCapability("RayQueryLighting");
-            const bool hasRayQuery = capabilityRayQuery && rtLightingMode != RtLightingMode::Off;
-            if (rtLightingMode == RtLightingMode::Force && !capabilityRayQuery) {
+            const auto rayQueryPath = vulkanDevice
+                ? vulkanDevice->GetCapabilityGraph().ResolveOptionalPath(
+                    "RayQueryLighting", rtLightingMode != RtLightingMode::Off)
+                : Vixen::CapabilityPath::CapabilityIndependent;
+            const bool hasRayQuery = rayQueryPath == Vixen::CapabilityPath::CapabilityEnabled;
+            if (rtLightingMode == RtLightingMode::Force &&
+                rayQueryPath == Vixen::CapabilityPath::CapabilityIndependent) {
                 throw std::runtime_error(
                     "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
             }
@@ -2265,10 +2268,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                          std::vector<std::string> features) {
         auto* deviceNodeInst = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
         auto* vulkanDevice = deviceNodeInst ? deviceNodeInst->GetVulkanDevice() : nullptr;
-        const bool capabilityRayQuery = vulkanDevice &&
-            vulkanDevice->HasCapability("RayQueryLighting");
-        const bool useRayQuery = rtLightingMode != RtLightingMode::Off && capabilityRayQuery;
-        if (rtLightingMode == RtLightingMode::Force && !capabilityRayQuery) {
+        const auto rayQueryPath = vulkanDevice
+            ? vulkanDevice->GetCapabilityGraph().ResolveOptionalPath(
+                "RayQueryLighting", rtLightingMode != RtLightingMode::Off)
+            : Vixen::CapabilityPath::CapabilityIndependent;
+        const bool useRayQuery = rayQueryPath == Vixen::CapabilityPath::CapabilityEnabled;
+        if (rtLightingMode == RtLightingMode::Force &&
+            rayQueryPath == Vixen::CapabilityPath::CapabilityIndependent) {
             throw std::runtime_error(
                 "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
         }

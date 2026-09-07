@@ -49,8 +49,9 @@ void ProxyRasterStageNode::CompileImpl(TypedCompileContext& ctx) {
     SetDevice(device);
     const bool forceComputeWriter = GetParameterValue<bool>(
         ProxyRasterStageNodeConfig::PARAM_FORCE_COMPUTE_WRITER, false);
-    useFragmentWriter_ = !forceComputeWriter && device->HasCapability(
-        "DeviceFeature:fragmentStoresAndAtomics");
+    const auto writerPath = device->GetCapabilityGraph().ResolveOptionalPath(
+        "DeviceFeature:fragmentStoresAndAtomics", !forceComputeWriter);
+    useFragmentWriter_ = writerPath == Vixen::CapabilityPath::CapabilityEnabled;
 
     const VkPipeline selectedPipeline = useFragmentWriter_
         ? ctx.In(ProxyRasterStageNodeConfig::PIPELINE)

@@ -92,6 +92,14 @@ bool CapabilityGraph::IsCapabilityAvailable(const std::string& name) const {
     return cap && cap->IsAvailable();
 }
 
+CapabilityPath CapabilityGraph::ResolveOptionalPath(
+    const std::string& capabilityName, bool requested) const {
+    if (!requested || !IsCapabilityAvailable(capabilityName)) {
+        return CapabilityPath::CapabilityIndependent;
+    }
+    return CapabilityPath::CapabilityEnabled;
+}
+
 void CapabilityGraph::InvalidateAll() {
     for (auto& [name, cap] : capabilities_) {
         cap->Invalidate();
@@ -100,18 +108,22 @@ void CapabilityGraph::InvalidateAll() {
 
 void CapabilityGraph::SetAvailableInstanceExtensions(std::vector<std::string> extensions) {
     availableInstanceExtensions_ = std::move(extensions);
+    InvalidateAll();
 }
 
 void CapabilityGraph::SetAvailableInstanceLayers(std::vector<std::string> layers) {
     availableInstanceLayers_ = std::move(layers);
+    InvalidateAll();
 }
 
 void CapabilityGraph::SetAvailableDeviceExtensions(std::vector<std::string> extensions) {
     availableDeviceExtensions_ = std::move(extensions);
+    InvalidateAll();
 }
 
 void CapabilityGraph::SetAvailableDeviceFeatures(std::vector<std::string> features) {
     availableDeviceFeatures_ = std::move(features);
+    InvalidateAll();
 }
 
 bool CapabilityGraph::IsInstanceExtensionAvailable(const std::string& name) const {
@@ -263,6 +275,12 @@ void CapabilityGraph::BuildStandardCapabilities() {
     auto bufferDeviceAddress = CreateCapability<DeviceExtensionCapability>(
         "DeviceExt:VK_KHR_buffer_device_address", VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
+    auto spirv14 = CreateCapability<DeviceExtensionCapability>(
+        "DeviceExt:VK_KHR_spirv_1_4", VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+
+    auto shaderFloatControls = CreateCapability<DeviceExtensionCapability>(
+        "DeviceExt:VK_KHR_shader_float_controls", VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+
     //==========================================================================
     // Device Features (non-concrete, queried via vkGetPhysicalDeviceFeatures2)
     //==========================================================================
@@ -350,14 +368,21 @@ void CapabilityGraph::BuildStandardCapabilities() {
     rtxSupport->AddDependency(rayQuery);
     rtxSupport->AddDependency(deferredHostOps);
     rtxSupport->AddDependency(bufferDeviceAddress);
+    rtxSupport->AddDependency(spirv14);
+    rtxSupport->AddDependency(shaderFloatControls);
     RegisterCapability(rtxSupport);
 
     // Tier-1 lighting ray queries intentionally do not depend on the RT-pipeline extension.
-    // RTXSupport above remains the existing Tier-2 pipeline capability.
+    // RTXSupport above remains the existing Tier-2 pipeline capability. The SPIR-V and shader
+    // float-control extensions are also prerequisites because the selected shader bundle requests
+    // them even though the lighting path does not require the full RT pipeline.
     auto rayQueryLighting = std::make_shared<CompositeCapability>("RayQueryLighting");
     rayQueryLighting->AddDependency(accelerationStructure);
     rayQueryLighting->AddDependency(rayQuery);
     rayQueryLighting->AddDependency(bufferDeviceAddress);
+    rayQueryLighting->AddDependency(deferredHostOps);
+    rayQueryLighting->AddDependency(spirv14);
+    rayQueryLighting->AddDependency(shaderFloatControls);
     RegisterCapability(rayQueryLighting);
 
     auto subgroupCoopTraversal = std::make_shared<CompositeCapability>("SubgroupCoopTraversal");

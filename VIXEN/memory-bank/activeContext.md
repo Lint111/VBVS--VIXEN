@@ -19,6 +19,15 @@
 > `BuildRenderGraph.cpp` compile (environmental finding). The literal task refs `docs/design/...` and
 > `docs/briefs/...` are absent in this checkout; the contract is documented in the canonical Multicore
 > Dispatch direction document.
+=======
+> **✅ 2026-09-07 — T-081 optional GPU paths generalized through CapabilityGraph (lane-t081capgraph).**
+> `CapabilityGraph::ResolveOptionalPath` now returns an explicit capability-enabled or
+> capability-independent fallback/twin route, with availability-set setters invalidating cached
+> composites. RT-lighting selection in `BuildRenderGraph`/`BodyOctreeSceneNode`, B2 proxy writer
+> selection, and optional swapchain/timestamp paths consume the shared resolver. The new graph
+> contract test passed 5/5; `VixenApp`, `VulkanResources`, and the B2 device target built. The
+> existing D3D12-backed B2 parity gate passed 1/1, including
+> `memcmp` byte-identical fragment-writer versus compute-twin output.
 
 > **✅ 2026-09-07 — T-031 scene-body baking + CashSystem I/O executor migration completed in `lane-t031executor`.**
 > The Cornell baked-demo cache-miss path submits eight indexed body bake/build tasks through the

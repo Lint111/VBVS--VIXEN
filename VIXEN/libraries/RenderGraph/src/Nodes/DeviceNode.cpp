@@ -277,6 +277,18 @@ void DeviceNode::CreateLogicalDevice() {
 
     NODE_LOG_INFO("[DeviceNode] Found " + std::to_string(extCount) + " available device extensions");
 
+    // Publish physical-device extension availability before selecting optional bundles. This
+    // makes CapabilityGraph the authority for both RT route decisions, including their complete
+    // extension prerequisites; VulkanDevice republishes the actually-enabled set after creation.
+    auto& capabilityGraph = vulkanDevice->GetCapabilityGraph();
+    capabilityGraph.BuildStandardCapabilities();
+    std::vector<std::string> availableExtensionNames;
+    availableExtensionNames.reserve(availableExts.size());
+    for (const auto& ext : availableExts) {
+        availableExtensionNames.emplace_back(ext.extensionName);
+    }
+    capabilityGraph.SetAvailableDeviceExtensions(std::move(availableExtensionNames));
+
     auto hasExt = [&availableExts](const char* name) {
         for (const auto& ext : availableExts) {
             if (strcmp(ext.extensionName, name) == 0) {
@@ -323,12 +335,12 @@ void DeviceNode::CreateLogicalDevice() {
     // from the enabled AS/ray-query/BDA leaves; the pipeline extension is not part of
     // that tier and must not be an accidental prerequisite.
     auto rayQueryLightingExtensions = VulkanDevice::GetRayQueryLightingExtensions();
-    bool rayQueryLightingAvailable = true;
+    const auto rayQueryLightingPath = capabilityGraph.ResolveOptionalPath("RayQueryLighting");
+    const bool rayQueryLightingAvailable =
+        rayQueryLightingPath == Vixen::CapabilityPath::CapabilityEnabled;
     for (const auto& rayQueryExt : rayQueryLightingExtensions) {
         if (!hasExt(rayQueryExt)) {
-            rayQueryLightingAvailable = false;
             NODE_LOG_INFO("[DeviceNode] RayQueryLighting extension not available: " + std::string(rayQueryExt));
-            break;
         }
     }
     if (rayQueryLightingAvailable) {
@@ -353,12 +365,11 @@ void DeviceNode::CreateLogicalDevice() {
     // Phase K: Auto-enable the full RTX pipeline bundle if available
     auto rtxExtensions = VulkanDevice::GetRTXExtensions();
 
-    bool rtxAvailable = true;
+    const auto rtxPath = capabilityGraph.ResolveOptionalPath("RTXSupport");
+    const bool rtxAvailable = rtxPath == Vixen::CapabilityPath::CapabilityEnabled;
     for (const auto& rtxExt : rtxExtensions) {
         if (!hasExt(rtxExt)) {
-            rtxAvailable = false;
             NODE_LOG_INFO("[DeviceNode] RTX extension not available: " + std::string(rtxExt));
-            break;
         }
     }
 

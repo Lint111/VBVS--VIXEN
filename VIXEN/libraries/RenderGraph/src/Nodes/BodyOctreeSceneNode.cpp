@@ -1656,7 +1656,8 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     // Auto falls back to the permanent composed-DDA twin when the capability is
     // absent; force is intentionally loud so an owner cannot mistake a fallback
     // for an engaged RT run.
-    if (!device->HasCapability("RayQueryLighting")) {
+    const auto rayQueryPath = device->GetCapabilityGraph().ResolveOptionalPath("RayQueryLighting");
+    if (rayQueryPath == Vixen::CapabilityPath::CapabilityIndependent) {
         if (rtLightingMode == RtLightingMode::Force) {
             throw std::runtime_error(
                 "VIXEN_RT_LIGHTING=force requested, but CapabilityGraph has no RayQueryLighting capability");
