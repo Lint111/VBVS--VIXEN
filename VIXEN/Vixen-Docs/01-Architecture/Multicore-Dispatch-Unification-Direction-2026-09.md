@@ -253,7 +253,7 @@ The generated descriptor can be shared by the managed `DispatcherSpec`/Burst low
 | 3 | Unused `WorkerThreadBridge` and `AsyncShaderBundleBuilder`. | **WorkerThreadBridge retired in T-029 (2026-09-04).** `AsyncShaderBundleBuilder` remains as the public API adapter over `KernelDispatch`'s blocking lane. |
 | 4 | `BulkMaterializationQueue` private TBB arena. | **Retired in T-030.** The test-only queue was removed; the remaining owned batch adapter uses `KernelDispatch::RunPerElementStage`. |
 | 5 | Scene-bake and CashSystem `std::async`. | Submit compute and blocking work to the correct lanes; model Gaia as a serial-resource key; preserve cache teardown barriers. |
-| 6 | `SVOBuilder` direct TBB recursion. | Migrate after serialized-octree 1/2/N parity and nested-executor behavior are proven. |
+| 6 | `SVOBuilder` direct TBB recursion. | **Retired in T-032 (2026-09-07).** `SVOBuilder` submits one stable root-octant wave to its host's shared `TaskExecutor`; recursive descendants stay serial to prevent nested executor/TBB arenas. The SVO parity gate covers workers 1/2/8. |
 | 7 | `InstanceGroup` node-cloning API. | **Retired in the 2026-09-01 cleanup.** Its useful scaling/partition intent remains a shared stage-domain concern; manual semantic instances remain unchanged. |
 | 8 | Inert RenderGraph pressure/profile layer. | Move live cost/priority/backend/partition knobs to shared profiles; retain renderer-specific measurement only where it drives an implemented action. |
 
@@ -420,3 +420,21 @@ The implementation source census is now zero `std::async`/`std::launch` occurren
 body-bake consumer and zero such occurrences in CashSystem. The `std::thread` instances retained by
 `KernelDispatch::TaskExecutor` are its shared, separately budgeted blocking lane, not a
 consumer-owned pool.
+
+## 17. T-032 implementation record — 2026-09-07
+
+Delivered:
+
+- `SVOBuilder::subdivideNode` no longer includes or calls TBB directly. When supplied a host-owned
+  `KernelDispatch::TaskExecutor` (for example `MainCacher::GetTaskExecutor()`), it submits the eight
+  fixed root-octant subtrees as one shared `VirtualTask` wave; each subtree then recurses serially so
+  shared-executor calls and nested TBB arenas cannot multiply.
+- The null-executor compatibility path is serial and owns no private pool. `BuildParams::numThreads`
+  selects the shared wave's worker count, while zero delegates admission to the executor profile.
+- Build counters are atomic, contour samples derive from stable triangle/sample identity instead of
+  the process-global PRNG, and shared-worker progress callbacks are deferred to the final main-thread
+  completion callback. These changes make the authoritative octree shape and attributes independent
+  of worker count.
+- `test_svo_builder` compares the serialized descriptor/contour/attribute snapshot at workers 1, 2,
+  and 8. SVO's direct TBB link and builder includes were removed; TBB remains only as KernelDispatch's
+  implementation dependency and test/runtime staging dependency.

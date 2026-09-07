@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 #include "SVOBuilder.h"
+#include "KernelDispatch/TaskExecutor.h"
+
+#include <cstdint>
+#include <vector>
 
 using namespace Vixen::SVO;
 
@@ -42,6 +46,47 @@ InputMesh createCube(float size) {
     mesh.maxBounds = glm::vec3(size);
 
     return mesh;
+}
+
+std::vector<uint32_t> snapshotOctree(const Octree& octree) {
+    std::vector<uint32_t> snapshot;
+    snapshot.push_back(static_cast<uint32_t>(octree.maxLevels));
+    snapshot.push_back(static_cast<uint32_t>(octree.totalVoxels));
+    snapshot.push_back(static_cast<uint32_t>(octree.leafVoxels));
+    if (!octree.root) {
+        snapshot.push_back(0);
+        return snapshot;
+    }
+
+    const auto append = [&](uint32_t value) { snapshot.push_back(value); };
+    append(static_cast<uint32_t>(octree.root->childDescriptors.size()));
+    for (const auto& descriptor : octree.root->childDescriptors) {
+        append(descriptor.childPointer);
+        append(descriptor.farBit);
+        append(descriptor.validMask);
+        append(descriptor.leafMask);
+        append(descriptor.contourPointer);
+        append(descriptor.contourMask);
+    }
+    append(static_cast<uint32_t>(octree.root->contours.size()));
+    for (const auto& contour : octree.root->contours) {
+        append(contour.thickness);
+        append(contour.position);
+        append(contour.nx);
+        append(contour.ny);
+        append(contour.nz);
+    }
+    append(static_cast<uint32_t>(octree.root->attributes.size()));
+    for (const auto& attributes : octree.root->attributes) {
+        append(attributes.blue);
+        append(attributes.green);
+        append(attributes.red);
+        append(attributes.alpha);
+        append(attributes.sign_and_axis);
+        append(attributes.u_coordinate);
+        append(attributes.v_coordinate);
+    }
+    return snapshot;
 }
 
 // ===========================================================================
@@ -87,6 +132,30 @@ TEST(SVOBuilderTest, BuildStats) {
     EXPECT_GT(stats.voxelsProcessed, 0);
     EXPECT_GT(stats.leavesCreated, 0);
     EXPECT_GT(stats.buildTimeSeconds, 0.0f);
+}
+
+TEST(SVOBuilderTest, SharedExecutorWorkerCountParity) {
+    BuildParams params;
+    params.maxLevels = 5;
+    params.colorErrorThreshold = 0.0f;
+    params.numThreads = 1;
+
+    std::vector<uint32_t> baseline;
+    for (const int workerCount : {1, 2, 8}) {
+        params.numThreads = workerCount;
+        Vixen::KernelDispatch::TaskExecutor sharedExecutor;
+        SVOBuilder builder(params, &sharedExecutor);
+        auto octree = builder.build(createCube(1.0f));
+
+        ASSERT_NE(octree, nullptr) << "shared executor build failed at " << workerCount << " workers";
+        const auto snapshot = snapshotOctree(*octree);
+        if (baseline.empty()) {
+            baseline = snapshot;
+        } else {
+            EXPECT_EQ(snapshot, baseline)
+                << "serialized SVO output changed at " << workerCount << " workers";
+        }
+    }
 }
 
 // ===========================================================================

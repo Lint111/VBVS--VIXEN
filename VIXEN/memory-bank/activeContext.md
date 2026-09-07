@@ -1,3 +1,10 @@
+> **✅ 2026-09-07 — T-032 SVOBuilder migration implemented in `lane-t032svo`.**
+> `SVOBuilder::subdivideNode` now accepts an optional non-owning host `KernelDispatch::TaskExecutor`
+> and submits one stable root-octant wave; descendants recurse serially to prevent nested executor/TBB
+> arenas. Direct SVOBuilder TBB includes/linkage were removed. Atomic counters and identity-derived
+> contour samples close the worker-count determinism gaps, and `test_svo_builder` adds exact output
+> parity for workers 1/2/8. Targeted build/test and final census remain pending.
+
 > **✅ 2026-09-07 — T-031 scene-body baking + CashSystem I/O executor migration completed in `lane-t031executor`.**
 > The Cornell baked-demo cache-miss path submits eight indexed body bake/build tasks through the
 > injected `MainCacher::GetTaskExecutor()` and consumes results in canonical order, retaining the

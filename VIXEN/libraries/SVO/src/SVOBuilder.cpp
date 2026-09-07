@@ -7,19 +7,38 @@
 #include <queue>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
-#include <tbb/parallel_for.h>
-#include <tbb/concurrent_vector.h>
+#include "KernelDispatch/TaskExecutor.h"
 
 namespace Vixen::SVO {
+
+namespace {
+
+constexpr uint64_t kSvoBuilderTaskOwner = 0x53564F4255494C44ULL; // "SVOBUILD"
+
+uint32_t MixSampleSeed(uint32_t value) {
+    value ^= value >> 16;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15;
+    value *= 0x846CA68Bu;
+    return value ^ (value >> 16);
+}
+
+float DeterministicUnitSample(uint32_t seed) {
+    // Keep the same 24-bit precision for every worker count and platform FP mode.
+    return static_cast<float>(MixSampleSeed(seed) >> 8) * (1.0f / 16777216.0f);
+}
+
+} // namespace
 
 // ============================================================================
 // SVOBuilder Implementation
 // ============================================================================
 // Note: BuildContext is now defined in SVOBuilder.h
 
-SVOBuilder::SVOBuilder(const BuildParams& params)
+SVOBuilder::SVOBuilder(const BuildParams& params, KernelDispatch::TaskExecutor* executor)
     : m_params(params)
-    , m_context(std::make_unique<BuildContext>()) {
+    , m_context(std::make_unique<BuildContext>())
+    , m_taskExecutor(executor) {
 }
 
 SVOBuilder::~SVOBuilder() = default;
@@ -62,6 +81,11 @@ std::unique_ptr<Octree> SVOBuilder::build(
     m_context->params = m_params;
     m_context->progressCallback = m_progressCallback;
     m_context->octree = std::make_unique<Octree>();
+    m_context->rootNode.reset();
+    m_context->nodesProcessed.store(0, std::memory_order_relaxed);
+    m_context->leavesCreated.store(0, std::memory_order_relaxed);
+    m_context->triangleTests.store(0, std::memory_order_relaxed);
+    m_context->dispatchFailed.store(false, std::memory_order_relaxed);
 
     // Empty input has no geometry: return an empty octree (totalVoxels/leafVoxels stay 0) instead
     // of running the subdivide path, which would count the single empty root node and leave
@@ -89,7 +113,11 @@ std::unique_ptr<Octree> SVOBuilder::build(
               m_context->rootNode->triangleIndices.end(), 0);
 
     // Recursively build octree
-    subdivideNode(m_context->rootNode.get());
+    subdivideNode(m_context->rootNode.get(), true);
+
+    if (m_context->dispatchFailed.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
 
     // Finalize octree structure
     finalizeOctree();
@@ -98,8 +126,8 @@ std::unique_ptr<Octree> SVOBuilder::build(
     float buildTime = std::chrono::duration<float>(endTime - startTime).count();
 
     // Update statistics
-    m_stats.voxelsProcessed = m_context->nodesProcessed;
-    m_stats.leavesCreated = m_context->leavesCreated;
+    m_stats.voxelsProcessed = m_context->nodesProcessed.load(std::memory_order_relaxed);
+    m_stats.leavesCreated = m_context->leavesCreated.load(std::memory_order_relaxed);
     m_stats.buildTimeSeconds = buildTime;
     m_stats.averageBranchingFactor = calculateBranchingFactor(m_context->rootNode.get());
 
@@ -126,6 +154,11 @@ std::unique_ptr<Octree> SVOBuilder::buildFromVoxelGrid(
     m_context->params = m_params;
     m_context->progressCallback = m_progressCallback;
     m_context->octree = std::make_unique<Octree>();
+    m_context->rootNode.reset();
+    m_context->nodesProcessed.store(0, std::memory_order_relaxed);
+    m_context->leavesCreated.store(0, std::memory_order_relaxed);
+    m_context->triangleTests.store(0, std::memory_order_relaxed);
+    m_context->dispatchFailed.store(false, std::memory_order_relaxed);
 
     // Create root node
     m_context->rootNode = std::make_unique<BuildContext::VoxelNode>();
@@ -144,8 +177,8 @@ std::unique_ptr<Octree> SVOBuilder::buildFromVoxelGrid(
     float buildTime = std::chrono::duration<float>(endTime - startTime).count();
 
     // Update statistics
-    m_stats.voxelsProcessed = m_context->nodesProcessed;
-    m_stats.leavesCreated = m_context->leavesCreated;
+    m_stats.voxelsProcessed = m_context->nodesProcessed.load(std::memory_order_relaxed);
+    m_stats.leavesCreated = m_context->leavesCreated.load(std::memory_order_relaxed);
     m_stats.buildTimeSeconds = buildTime;
     m_stats.averageBranchingFactor = calculateBranchingFactor(m_context->rootNode.get());
 
@@ -156,27 +189,31 @@ std::unique_ptr<Octree> SVOBuilder::buildFromVoxelGrid(
 // Recursive Subdivision
 // ============================================================================
 
-void SVOBuilder::subdivideNode(BuildContext::VoxelNode* node) {
-    m_context->nodesProcessed++;
+void SVOBuilder::subdivideNode(BuildContext::VoxelNode* node, bool allowSharedDispatch) {
+    const size_t nodesProcessed = m_context->nodesProcessed.fetch_add(
+        1, std::memory_order_relaxed) + 1;
 
     // Memory leak guard: abort if exceeded node limit
     if (!m_context->checkMemoryLimits()) {
         node->isLeaf = true;
-        m_context->leavesCreated++;
+        m_context->leavesCreated.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
     // Triangle explosion guard: force leaf if too many triangles
     if (node->triangleIndices.size() > BuildContext::MAX_TRIANGLES_PER_NODE) {
         node->isLeaf = true;
-        m_context->leavesCreated++;
+        m_context->leavesCreated.fetch_add(1, std::memory_order_relaxed);
         node->attributes = integrateAttributes(node);
         return;
     }
 
     // Update progress
-    if (m_context->progressCallback && m_context->nodesProcessed % 1000 == 0) {
-        float progress = static_cast<float>(m_context->nodesProcessed) /
+    // Progress callbacks are main-thread-only once shared dispatch is enabled. The final 1.0
+    // callback still comes from finalizeOctree; serial standalone builds retain intermediate
+    // progress updates for backwards compatibility.
+    if (m_context->progressCallback && !m_taskExecutor && nodesProcessed % 1000 == 0) {
+        float progress = static_cast<float>(nodesProcessed) /
                         static_cast<float>(m_context->totalEstimatedNodes);
         m_context->progressCallback(std::min(progress, 0.99f));
     }
@@ -184,7 +221,7 @@ void SVOBuilder::subdivideNode(BuildContext::VoxelNode* node) {
     // Check termination criteria
     if (shouldTerminate(node)) {
         node->isLeaf = true;
-        m_context->leavesCreated++;
+        m_context->leavesCreated.fetch_add(1, std::memory_order_relaxed);
 
         // Compute leaf attributes
         node->attributes = integrateAttributes(node);
@@ -235,22 +272,34 @@ void SVOBuilder::subdivideNode(BuildContext::VoxelNode* node) {
         }
     }
 
-    // Recursively subdivide non-empty children
-    // Use parallel_for only for shallow nodes (depth 0-4) to prevent exponential thread explosion
-    // Deep nodes (depth 5+) use serial execution to limit memory usage
-    const int PARALLEL_DEPTH_LIMIT = 4;
-
-    if (node->level < PARALLEL_DEPTH_LIMIT) {
-        tbb::parallel_for(size_t(0), size_t(8), [&](size_t i) {
-            if (node->children[i]) {
-                subdivideNode(node->children[i].get());
-            }
-        });
+    // Submit exactly one wave for the root's independent octants. Each task recursively processes
+    // its subtree serially, which avoids nested TaskExecutor::Run calls and nested TBB arenas while
+    // preserving fixed octant ownership and deterministic post-wave finalization.
+    if (allowSharedDispatch && m_taskExecutor) {
+        std::vector<KernelDispatch::VirtualTask> tasks;
+        std::vector<KernelDispatch::TaskId> wave;
+        tasks.reserve(node->children.size());
+        wave.reserve(node->children.size());
+        for (size_t i = 0; i < node->children.size(); ++i) {
+            if (!node->children[i]) continue;
+            const KernelDispatch::TaskId taskId{
+                kSvoBuilderTaskOwner, static_cast<uint32_t>(i)};
+            wave.push_back(taskId);
+            tasks.push_back({
+                taskId,
+                [this, node, i] { subdivideNode(node->children[i].get(), false); },
+                {},
+                KernelDispatch::VirtualTaskState::Pending,
+                {}});
+        }
+        const int workerCount = m_params.numThreads > 0 ? m_params.numThreads : 0;
+        if (!m_taskExecutor->Run(tasks, {wave}, workerCount)) {
+            m_context->dispatchFailed.store(true, std::memory_order_release);
+        }
     } else {
-        // Serial execution for deep nodes
-        for (size_t i = 0; i < 8; ++i) {
+        for (size_t i = 0; i < node->children.size(); ++i) {
             if (node->children[i]) {
-                subdivideNode(node->children[i].get());
+                subdivideNode(node->children[i].get(), false);
             }
         }
     }
@@ -304,7 +353,7 @@ void SVOBuilder::filterTrianglesToChild(
 
     // Test each parent triangle against child AABB
     for (int triIdx : parent->triangleIndices) {
-        m_context->triangleTests++;
+        m_context->triangleTests.fetch_add(1, std::memory_order_relaxed);
 
         const InputTriangle& tri = m_context->triangles[triIdx];
 
@@ -506,9 +555,12 @@ void SVOBuilder::sampleSurfacePoints(
 
         // Sample points on triangle surface using barycentric coordinates
         for (int i = 0; i < samplesPerTriangle; ++i) {
-            // Generate random barycentric coordinates
-            float u = float(rand()) / float(RAND_MAX);
-            float v = float(rand()) / float(RAND_MAX);
+            // Derive samples from stable logical identity rather than global rand(). The previous
+            // process-global PRNG made contour output depend on worker completion order.
+            const uint32_t seed = static_cast<uint32_t>(triIdx) * 0x9E3779B9u
+                                ^ static_cast<uint32_t>(i + 1) * 0x85EBCA6Bu;
+            float u = DeterministicUnitSample(seed);
+            float v = DeterministicUnitSample(seed ^ 0xC2B2AE35u);
 
             // Ensure u + v <= 1 (point inside triangle)
             if (u + v > 1.0f) {
@@ -647,8 +699,8 @@ void SVOBuilder::finalizeOctree() {
     m_context->octree->worldMax = m_context->worldMax;
 
     // Update statistics
-    m_context->octree->totalVoxels = m_context->nodesProcessed;
-    m_context->octree->leafVoxels = m_context->leavesCreated;
+    m_context->octree->totalVoxels = m_context->nodesProcessed.load(std::memory_order_relaxed);
+    m_context->octree->leafVoxels = m_context->leavesCreated.load(std::memory_order_relaxed);
 
     // Final progress update
     if (m_context->progressCallback) {
@@ -667,12 +719,12 @@ void SVOBuilder::subdivideNodeFromVoxels(
     const glm::ivec3& gridOffset,
     uint32_t gridSize) {
 
-    m_context->nodesProcessed++;
+    m_context->nodesProcessed.fetch_add(1, std::memory_order_relaxed);
 
     // Memory leak guard
     if (!m_context->checkMemoryLimits()) {
         node->isLeaf = true;
-        m_context->leavesCreated++;
+        m_context->leavesCreated.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -693,7 +745,7 @@ void SVOBuilder::subdivideNodeFromVoxels(
     // If empty, mark as leaf with no data
     if (!hasVoxels) {
         node->isLeaf = true;
-        m_context->leavesCreated++;
+        m_context->leavesCreated.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -723,7 +775,7 @@ void SVOBuilder::subdivideNodeFromVoxels(
 
     if (reachedBrickLevel || reachedMinSize || reachedMinVoxelSize || reachedMaxDepth) {
         node->isLeaf = true;
-        m_context->leavesCreated++;
+        m_context->leavesCreated.fetch_add(1, std::memory_order_relaxed);
 
         // Compute average color from voxels in this region
         glm::vec3 avgColor(0.0f);
