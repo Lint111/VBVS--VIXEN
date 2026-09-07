@@ -638,7 +638,8 @@ void SwapChainNode::CreatePerImageSyncResources() {
 
     // Per-IMAGE present fences (VK_EXT_swapchain_maintenance1). Left empty if unavailable;
     // SwapChainNode/PresentNode skip fence logic when the array is empty.
-    if (GetDevice()->HasCapability("SwapchainMaintenance1")) {
+    if (GetDevice()->GetCapabilityGraph().ResolveOptionalPath("SwapchainMaintenance1") ==
+        Vixen::CapabilityPath::CapabilityEnabled) {
         presentFences.resize(imageCount);
         VkFenceCreateInfo fenceInfo{};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;

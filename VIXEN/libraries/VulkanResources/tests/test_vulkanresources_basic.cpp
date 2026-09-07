@@ -16,6 +16,32 @@ TEST(VulkanResources_CapabilityGraph, FragmentStoresAndAtomicsUsesDeviceFeatureS
         "DeviceFeature:fragmentStoresAndAtomics"));
 }
 
+TEST(VulkanResources_CapabilityGraph, OptionalPathUsesIndependentTwinWhenDisabledOrUnavailable) {
+    Vixen::CapabilityGraph graph;
+    graph.BuildStandardCapabilities();
+
+    EXPECT_EQ(graph.ResolveOptionalPath("RayQueryLighting"),
+              Vixen::CapabilityPath::CapabilityIndependent);
+
+    graph.SetAvailableDeviceExtensions({
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,
+    });
+    EXPECT_EQ(graph.ResolveOptionalPath("RayQueryLighting"),
+              Vixen::CapabilityPath::CapabilityEnabled);
+    EXPECT_EQ(graph.ResolveOptionalPath("RayQueryLighting", false),
+              Vixen::CapabilityPath::CapabilityIndependent);
+
+    // Unknown capabilities fail closed to the same capability-independent
+    // twin as a known-but-unavailable optional capability.
+    EXPECT_EQ(graph.ResolveOptionalPath("CapabilityThatDoesNotExist"),
+              Vixen::CapabilityPath::CapabilityIndependent);
+}
+
 TEST(VulkanResources_CapabilityGraph, RayQueryAndSubgroupCompositesUseAvailabilitySets) {
     Vixen::CapabilityGraph graph;
     graph.BuildStandardCapabilities();
@@ -28,7 +54,10 @@ TEST(VulkanResources_CapabilityGraph, RayQueryAndSubgroupCompositesUseAvailabili
     graph.SetAvailableDeviceExtensions({
         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
         VK_KHR_RAY_QUERY_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,
     });
     graph.SetAvailableDeviceFeatures({
         "subgroupComputeBallot",

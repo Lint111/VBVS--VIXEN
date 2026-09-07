@@ -167,6 +167,18 @@ struct BackgroundGpuSelection {
     PhysicalDeviceClass classification = PhysicalDeviceClass::Unknown;
 };
 
+/**
+ * @brief Selected implementation for an optional GPU capability.
+ *
+ * CapabilityIndependent is the permanent fallback/twin.  Callers should use
+ * this result to select an implementation, rather than reimplementing the
+ * capability-and-policy predicate at each call site.
+ */
+enum class CapabilityPath : uint8_t {
+    CapabilityIndependent,
+    CapabilityEnabled,
+};
+
 /** Capability node for a detected, non-primary adapter suitable for bounded background work. */
 class BackgroundGpuCapability : public CapabilityNode {
 public:
@@ -218,6 +230,14 @@ public:
     /// Check if a capability exists and is available
     bool IsCapabilityAvailable(const std::string& name) const;
 
+    /// Resolve an optional implementation path through the graph.
+    ///
+    /// A disabled request always selects the capability-independent twin.  A
+    /// requested path selects the capability-enabled implementation only when
+    /// the named capability is registered and available.
+    [[nodiscard]] CapabilityPath ResolveOptionalPath(
+        const std::string& capabilityName, bool requested = true) const;
+
     /// Build standard Vulkan capability graph
     void BuildStandardCapabilities();
 
@@ -227,6 +247,8 @@ public:
     // --- Available-capability sets (AR#8: per-graph instance state; replaces process-wide statics).
     // Instance-level sets are self-populated by BuildStandardCapabilities. Device-level sets are
     // supplied by the owning VulkanDevice after the physical device is selected.
+    // Each setter invalidates cached composite results so a route decision made
+    // after device enumeration cannot observe stale capability state.
     void SetAvailableInstanceExtensions(std::vector<std::string> extensions);
     void SetAvailableInstanceLayers(std::vector<std::string> layers);
     void SetAvailableDeviceExtensions(std::vector<std::string> extensions);
