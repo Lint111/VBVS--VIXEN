@@ -711,6 +711,45 @@ TEST_F(LoopManagerTest, LagSpikeRecovery) {
 }
 
 // ============================================================================
+// Shared-executor domain metadata
+// ============================================================================
+
+TEST_F(LoopManagerTest, PublishesStableDomainMetadata) {
+    LoopConfig config = {HzToSeconds(30.0), "Simulation"};
+    config.domain = {
+        0x53494D4C4F4F5031ULL,
+        2,
+        0,
+        Vixen::KernelDispatch::TaskLane::FrameCompute,
+        true,
+        true};
+    const uint32_t id = manager->RegisterLoop(config);
+    const LoopReference* ref = manager->GetLoopReference(id);
+
+    ASSERT_NE(ref, nullptr);
+    EXPECT_EQ(ref->domain.domainId, 0x53494D4C4F4F5031ULL);
+    EXPECT_EQ(ref->domain.periodFrames, 2u);
+    EXPECT_TRUE(ref->domain.deterministic);
+    EXPECT_TRUE(ref->domain.allowFramePipelining);
+}
+
+TEST_F(LoopManagerTest, NormalizesMissingDomainIdentityAndPeriod) {
+    LoopConfig config = {HzToSeconds(60.0), "Physics"};
+    config.domain.periodFrames = 0;
+    const uint32_t id = manager->RegisterLoop(config);
+    const LoopReference* ref = manager->GetLoopReference(id);
+
+    ASSERT_NE(ref, nullptr);
+    EXPECT_EQ(ref->domain.domainId, static_cast<uint64_t>(id) + 1);
+    EXPECT_EQ(ref->domain.periodFrames, 1u);
+    EXPECT_EQ(ref->stateFrameIndex, 0u);
+
+    manager->SetCurrentFrame(12);
+    manager->UpdateLoops(HzToSeconds(60.0));
+    EXPECT_EQ(ref->stateFrameIndex, 12u);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 

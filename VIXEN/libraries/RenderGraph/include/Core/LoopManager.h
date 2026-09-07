@@ -1,10 +1,13 @@
 #pragma once
 #include "Timer.h"
+#include "KernelDispatch/Abi.h"
 #include <string>
 #include <unordered_map>
 #include <cstdint>
 
 namespace Vixen::RenderGraph {
+
+using LoopDomainMetadata = Vixen::KernelDispatch::LoopDomainMetadata;
 
 /**
  * @brief Defines how a loop handles missed timesteps
@@ -34,6 +37,8 @@ struct LoopReference {
     uint64_t lastExecutedFrame = 0;
     double lastExecutionTimeMs = 0.0;
     LoopCatchupMode catchupMode = LoopCatchupMode::MultipleSteps;
+    LoopDomainMetadata domain{};             ///< Scheduler-facing cadence/ownership contract.
+    uint64_t stateFrameIndex = 0;            ///< Frame that produced this reference state.
 };
 
 /**
@@ -44,6 +49,7 @@ struct LoopConfig {
     std::string name;              ///< Human-readable name for logging
     LoopCatchupMode catchupMode = LoopCatchupMode::MultipleSteps;
     double maxCatchupTime = 0.25;  ///< Spiral of death protection (250ms)
+    LoopDomainMetadata domain{};   ///< Stable scheduler metadata; period 1 is per-frame.
 };
 
 /**
@@ -58,6 +64,12 @@ struct LoopConfig {
  * 3. RenderGraph calls UpdateLoops() once per frame
  * 4. LoopReferences updated based on accumulator state
  * 5. Nodes check LoopReference->shouldExecuteThisFrame
+ *
+ * The `domain` metadata is the hand-off to KernelDispatch::FramePipeline. `periodFrames == 1`
+ * describes per-frame work (PhysicsLoop in the current 60Hz render base); `periodFrames == 2`
+ * describes the 30Hz SimLoop. The manager remains the authoritative ordered cadence source. A
+ * domain may pipeline only immutable snapshot work, and its result must be committed at a graph
+ * frame boundary in submission order.
  *
  * Example:
  *   LoopManager manager;

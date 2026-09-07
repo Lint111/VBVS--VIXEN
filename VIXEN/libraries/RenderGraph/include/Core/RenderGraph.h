@@ -18,6 +18,7 @@
 #include "Message.h"
 #include "Time/EngineTime.h"
 #include "MainCacher.h"
+#include "KernelDispatch/FramePipeline.h"
 #include "Core/LoopManager.h"
 #include "Core/GraphLifecycleHooks.h"
 #include "Core/TaskProfileRegistry.h"
@@ -73,7 +74,8 @@ using ResourceManagement::DeviceBudgetManager;
  * - All RenderGraph methods must be called from the **same thread** (main thread)
  * - Graph construction (AddNode, ConnectNodes) must complete before execution begins
  * - Execution (RenderFrame, Execute) must not be called concurrently with graph modification
- * - LoopManager loops execute **sequentially**, not in parallel (single-threaded execution)
+ * - LoopManager cadence state and commits execute on the graph thread; opted-in immutable snapshot
+ *   work may overlap through the shared KernelDispatch FramePipeline
  *
  * **Rationale**:
  * - Vulkan command buffer recording is single-threaded per command buffer
@@ -419,6 +421,16 @@ public:
      */
     LoopManager& GetLoopManager() { return loopManager; }
     const LoopManager& GetLoopManager() const { return loopManager; }
+
+    /**
+     * @brief Access the graph's bounded F/F+1 pipeline on the injected shared executor.
+     *
+     * Domain owners submit immutable-snapshot work here and commit only from the graph's frame
+     * boundary. The pipeline is absent only for legacy tests that construct a graph without a
+     * MainCacher; production EngineContext construction always supplies one.
+     */
+    KernelDispatch::FramePipeline* GetFramePipeline() { return framePipeline_.get(); }
+    const KernelDispatch::FramePipeline* GetFramePipeline() const { return framePipeline_.get(); }
 
     /**
      * @brief Get resource budget manager for task execution
@@ -848,6 +860,7 @@ private:
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
     CashSystem::MainCacher* mainCacher = nullptr;  // Non-owning pointer
+    std::unique_ptr<KernelDispatch::FramePipeline> framePipeline_;
     EventBus::ScopedSubscriptions subscriptions_;  // RAII subscriptions (auto-unsubscribe on destruction)
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 

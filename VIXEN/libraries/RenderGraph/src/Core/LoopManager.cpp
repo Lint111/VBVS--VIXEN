@@ -13,6 +13,15 @@ uint32_t LoopManager::RegisterLoop(const LoopConfig& config) {
 
     LoopState state;
     state.config = config;
+    // Loop IDs are allocated once per graph and make a safe default domain identity. Explicit
+    // domain IDs remain preferred when a loop must be recognized across graph rebuilds.
+    if (state.config.domain.domainId == 0) {
+        state.config.domain.domainId = static_cast<uint64_t>(id) + 1;
+    }
+    if (state.config.domain.periodFrames == 0) {
+        state.config.domain.periodFrames = 1;
+    }
+    state.config.domain.phase %= state.config.domain.periodFrames;
     state.reference.loopID = id;
     state.reference.shouldExecuteThisFrame = false;
     state.reference.deltaTime = 0.0;
@@ -20,6 +29,8 @@ uint32_t LoopManager::RegisterLoop(const LoopConfig& config) {
     state.reference.lastExecutedFrame = 0;
     state.reference.lastExecutionTimeMs = 0.0;
     state.reference.catchupMode = config.catchupMode;
+    state.reference.domain = state.config.domain;
+    state.reference.stateFrameIndex = currentFrameIndex;
     state.accumulator = 0.0;
 
     loops[id] = state;
@@ -42,6 +53,7 @@ void LoopManager::UpdateLoops(double frameTime) {
     }
 
     for (auto& [id, state] : loops) {
+        state.reference.stateFrameIndex = currentFrameIndex;
         // Apply per-loop max catchup time
         // Defensive: ensure maxCatchupTime is sane; default to 0.25 if invalid/uninitialized
         double effectiveMaxCatchup = state.config.maxCatchupTime;

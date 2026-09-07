@@ -258,22 +258,30 @@ void VulkanGraphApplication::Initialize() {
 
     mainLogger->Debug("Registering physics loop");
     // Phase 0.4: Register loops with the graph
-    // Physics loop at 60Hz with multiple-step catchup
+    // Recurring domains: physics is due every render frame at the current 60Hz base; simulation
+    // below is due every second render frame (30Hz). Both consume immutable snapshots when they
+    // opt into FramePipeline, and both retain deterministic fixed-step publication.
+    constexpr Vixen::KernelDispatch::LoopDomainMetadata kPhysicsDomain{
+        0x5048595349435331ULL, 1, 0, Vixen::KernelDispatch::TaskLane::FrameCompute, true, true};
     physicsLoopID = renderGraph->RegisterLoop(LoopConfig{
         1.0 / 60.0,  // 60Hz timestep
         "PhysicsLoop",
         LoopCatchupMode::MultipleSteps,
-        0.25  // Max 250ms catchup
+        0.25, // Max 250ms catchup
+        kPhysicsDomain
     });
     mainLogger->Debug("Physics loop registered with ID: " + std::to_string(physicsLoopID));
     mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
 
     // Register sim logic loop at 30Hz (decoupled from render fps; drives the embedded sim)
+    constexpr Vixen::KernelDispatch::LoopDomainMetadata kSimulationDomain{
+        0x53494D4C4F4F5031ULL, 2, 0, Vixen::KernelDispatch::TaskLane::FrameCompute, true, true};
     simLoopID = renderGraph->RegisterLoop(LoopConfig{
         1.0 / 30.0,                                  // 30Hz logic cadence
         "SimLoop",
         LoopCatchupMode::MultipleSteps,
-        0.25  // Max 250ms catchup
+        0.25, // Max 250ms catchup
+        kSimulationDomain
     });
     mainLogger->Debug("Sim loop registered with ID: " + std::to_string(simLoopID));
     mainLogger->Info("Registered SimLoop (30Hz) with ID: " + std::to_string(simLoopID));

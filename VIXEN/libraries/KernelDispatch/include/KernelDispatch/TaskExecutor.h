@@ -21,6 +21,7 @@
 #include "TaskDependencyGraph.h"
 #include "VirtualTask.h"
 #include "Abi.h"
+#include <oneapi/tbb/task_arena.h>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -40,6 +41,12 @@ namespace Vixen::KernelDispatch {
 struct TaskError {
     TaskId task;
     std::string message;
+};
+
+/// Result returned by an asynchronous frame-compute submission.
+struct AsyncRunResult {
+    bool succeeded = false;
+    std::vector<TaskError> errors;
 };
 
 /// Terminal state of a task submitted to the blocking lane.
@@ -144,6 +151,21 @@ public:
              WaveCompletionCallback onWaveComplete = {});
 
     /**
+     * @brief Enqueue frame-compute work on this executor's shared TBB arena.
+     *
+     * Unlike a consumer-owned std::async/future pool, the returned operation is admitted by the
+     * same executor that owns the frame-compute budget. The input vectors are moved into the
+     * queued operation, so callers may safely build the next frame immediately after submission.
+     * The optional wave callback is intentionally omitted: asynchronous callers must publish
+     * domain effects through the returned result at a deterministic frame boundary.
+     */
+    std::future<AsyncRunResult> RunAsync(
+        std::vector<VirtualTask> tasks,
+        std::vector<std::vector<TaskId>> waves,
+        int workerCount,
+        std::stop_token stopToken = {});
+
+    /**
      * @brief Submit one blocking/I/O task to the separately budgeted lane.
      *
      * The lane starts lazily at the profile's `blockingIO.workerCount` budget (or its bounded
@@ -201,10 +223,21 @@ private:
     std::condition_variable blockingIdleCondition_;
     std::atomic<uint64_t> nextSubmissionOrder_{0};
 
+    mutable std::mutex asyncMutex_;
+    std::condition_variable asyncIdleCondition_;
+    size_t asyncOutstanding_ = 0;
+    oneapi::tbb::task_arena asyncArena_;
+
     VirtualTask* FindTask(std::vector<VirtualTask>& tasks, const TaskId& id) const;
     bool RunWave(std::vector<VirtualTask>& tasks,
                  const std::vector<TaskId>& wave,
-                 std::stop_token stopToken);
+                 std::stop_token stopToken,
+                 std::vector<TaskError>& errors);
+
+    bool RunInCurrentArena(std::vector<VirtualTask>& tasks,
+                           const std::vector<std::vector<TaskId>>& waves,
+                           std::stop_token stopToken,
+                           std::vector<TaskError>& errors);
 
     void EnsureBlockingWorkersLocked();
     void BlockingWorkerLoop();

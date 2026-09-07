@@ -82,6 +82,7 @@ message(STATUS "[RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer
 
 add_executable(test_rendergraph_coresystems_b
     Core/test_loop_manager.cpp
+    Core/test_frame_pipeline.cpp
     Core/test_per_frame_resources.cpp
     Core/test_gpu_query_manager.cpp
 )

@@ -18,6 +18,7 @@ set(KERNELDISPATCH_HEADERS
     include/KernelDispatch/VirtualTask.h         # opaque-id task (was NodeInstance*-keyed)
     include/KernelDispatch/TaskDependencyGraph.h # opaque-id DAG (sort / parallel levels)
     include/KernelDispatch/TaskExecutor.h        # TBB task-wave executor, worker-count control
+    include/KernelDispatch/FramePipeline.h       # cadence-aware F/F+1 admission and commit
     include/KernelDispatch/Dispatcher.h          # RunPerElementStage(stage) -> Handle
 )
 
