@@ -69,6 +69,39 @@ bool Narrow(uint32_t value, T& out, const char* what) {
 
 } // namespace
 
+AppFlowBlobFile::AppFlowBlobFile(AppFlowBlobFile&& other) noexcept
+    : strings_(std::move(other.strings_)),
+      paramArrays_(std::move(other.paramArrays_)),
+      actions_(std::move(other.actions_)),
+      transitions_(std::move(other.transitions_)),
+      elementTriggers_(std::move(other.elementTriggers_)),
+      keyDefaults_(std::move(other.keyDefaults_)),
+      returnEdges_(std::move(other.returnEdges_)),
+      dataTargets_(std::move(other.dataTargets_)),
+      shapeHash_(other.shapeHash_) {
+    RebindView();
+}
+
+AppFlowBlobFile& AppFlowBlobFile::operator=(AppFlowBlobFile&& other) noexcept {
+    if (this == &other) return *this;
+    strings_ = std::move(other.strings_);
+    paramArrays_ = std::move(other.paramArrays_);
+    actions_ = std::move(other.actions_);
+    transitions_ = std::move(other.transitions_);
+    elementTriggers_ = std::move(other.elementTriggers_);
+    keyDefaults_ = std::move(other.keyDefaults_);
+    returnEdges_ = std::move(other.returnEdges_);
+    dataTargets_ = std::move(other.dataTargets_);
+    shapeHash_ = other.shapeHash_;
+    RebindView();
+    return *this;
+}
+
+void AppFlowBlobFile::RebindView() noexcept {
+    view_ = Generated::AppFlowContainerView(
+        actions_, transitions_, elementTriggers_, keyDefaults_, returnEdges_, dataTargets_);
+}
+
 std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
     try {
         AppFlowBlobFile file;

@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Vixen::AppFlow {
@@ -20,8 +21,8 @@ public:
     const Generated::AppFlowContainerView& View() const { return view_; }
     uint32_t ShapeHash() const { return shapeHash_; }
 
-    AppFlowBlobFile(AppFlowBlobFile&&) = default;
-    AppFlowBlobFile& operator=(AppFlowBlobFile&&) = default;
+    AppFlowBlobFile(AppFlowBlobFile&& other) noexcept;
+    AppFlowBlobFile& operator=(AppFlowBlobFile&& other) noexcept;
     AppFlowBlobFile(const AppFlowBlobFile&) = delete;
     AppFlowBlobFile& operator=(const AppFlowBlobFile&) = delete;
 
@@ -38,6 +39,8 @@ private:
     std::vector<Generated::AppFlowDataTarget> dataTargets_;
     Generated::AppFlowContainerView view_;
     uint32_t shapeHash_ = 0;
+
+    void RebindView() noexcept;
 };
 
 } // namespace Vixen::AppFlow
