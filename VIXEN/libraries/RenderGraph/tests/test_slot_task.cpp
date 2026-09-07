@@ -41,6 +41,7 @@ using namespace ResourceManagement;
 class SlotTaskManagerTest : public ::testing::Test {
 protected:
     SlotTaskManager taskManager;
+    Vixen::KernelDispatch::TaskExecutor sharedExecutor;
 
     // Create N tasks with specified memory estimates
     std::vector<SlotTaskContext> CreateTasks(size_t count, uint64_t memoryPerTask = 0) {
@@ -124,7 +125,8 @@ TEST_F(SlotTaskManagerTest, ExecuteSequential_NullFunction) {
 TEST_F(SlotTaskManagerTest, ExecuteParallel_AllSuccess) {
     auto tasks = CreateTasks(10);
 
-    uint32_t success = taskManager.ExecuteParallel(tasks, SuccessTask, nullptr, 4);
+    uint32_t success = taskManager.ExecuteParallel(
+        tasks, SuccessTask, sharedExecutor, nullptr, 4);
 
     EXPECT_EQ(success, 10u);
     EXPECT_EQ(taskManager.GetLastExecutionStats().completedTasks, 10u);
@@ -134,7 +136,8 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_AllSuccess) {
 TEST_F(SlotTaskManagerTest, ExecuteParallel_SomeFailures) {
     auto tasks = CreateTasks(10);
 
-    uint32_t success = taskManager.ExecuteParallel(tasks, FailOnOddTask, nullptr, 4);
+    uint32_t success = taskManager.ExecuteParallel(
+        tasks, FailOnOddTask, sharedExecutor, nullptr, 4);
 
     EXPECT_EQ(success, 5u);
     EXPECT_EQ(taskManager.GetLastExecutionStats().completedTasks, 5u);
@@ -158,7 +161,7 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_RespectsMaxParallelism) {
     };
 
     auto tasks = CreateTasks(20);
-    taskManager.ExecuteParallel(tasks, trackConcurrency, nullptr, 4);
+    taskManager.ExecuteParallel(tasks, trackConcurrency, sharedExecutor, nullptr, 4);
 
     // Max concurrent should not exceed 4
     EXPECT_LE(maxConcurrent.load(), 4);
@@ -208,7 +211,7 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_IsResultInvariantAtOneTwoAndNWorkers
 
         Snapshot snapshot;
         snapshot.successCount = taskManager.ExecuteParallel(
-            tasks, task, &budgetManager, workerCount, {});
+            tasks, task, sharedExecutor, &budgetManager, workerCount);
         snapshot.outputs = outputs;
         for (const auto& item : tasks) {
             snapshot.statuses.push_back(static_cast<uint8_t>(item.status));
@@ -250,6 +253,7 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_GraphEpochInvalidationStartsNoTasks)
                 ++started;
                 return true;
             },
+            sharedExecutor,
             nullptr,
             workerCount,
             token);
@@ -286,6 +290,7 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_ExceptionStopsLaterBudgetBatches) {
             }
             return true;
         },
+        sharedExecutor,
         nullptr,
         2,
         {});
@@ -544,7 +549,8 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_DynamicThrottling) {
     budgetManager.SetBudget(BudgetResourceType::HostMemory,
         ResourceBudget(200 * 1024, 100 * 1024, false));  // Only 200KB - fits 2 tasks at a time
 
-    uint32_t success = taskManager.ExecuteParallel(tasks, SuccessTask, &budgetManager, 4);
+    uint32_t success = taskManager.ExecuteParallel(
+        tasks, SuccessTask, sharedExecutor, &budgetManager, 4);
 
     EXPECT_EQ(success, 10u);
 
@@ -558,7 +564,8 @@ TEST_F(SlotTaskManagerTest, ExecuteParallel_DynamicThrottling) {
 TEST_F(SlotTaskManagerTest, ExecuteParallel_NoBudgetManager) {
     auto tasks = CreateTasks(10, 100 * 1024);
 
-    uint32_t success = taskManager.ExecuteParallel(tasks, SuccessTask, nullptr, 4);
+    uint32_t success = taskManager.ExecuteParallel(
+        tasks, SuccessTask, sharedExecutor, nullptr, 4);
 
     EXPECT_EQ(success, 10u);
     // Without budget manager, no throttling

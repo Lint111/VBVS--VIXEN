@@ -381,13 +381,15 @@ uint32_t NodeInstance::ExecuteTasks(
     ResourceBudgetManager* budget = budgetManager ? budgetManager : GetBudgetManager();
 
     // Execute sequentially or in parallel based on flags and budget
-    if (forceSequential || !budget) {
+    if (forceSequential || !budget || !owningGraph) {
         return taskManager.ExecuteSequential(tasks, taskFunction);
     } else {
         const std::stop_token stopToken = owningGraph
             ? owningGraph->GetExecutionStopToken()
             : std::stop_token{};
-        return taskManager.ExecuteParallel(tasks, taskFunction, budget, 0, stopToken);
+        return taskManager.ExecuteParallel(
+            tasks, taskFunction, owningGraph->GetMainCacher().GetTaskExecutor(),
+            budget, 0, stopToken);
     }
 }
 

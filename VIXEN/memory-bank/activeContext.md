@@ -5,6 +5,11 @@
 > contour samples close the worker-count determinism gaps, and `test_svo_builder` adds exact output
 > parity for workers 1/2/8. Targeted build/test and final census remain pending.
 
+> **✅ 2026-09-07 — T-035 routed SlotTaskManager through shared KernelDispatch ownership.**
+> `NodeInstance::ExecuteTasks` now supplies `owningGraph->GetMainCacher().GetTaskExecutor()` to
+> `SlotTaskManager::ExecuteParallel`; the per-batch local `TaskExecutor` construction is gone.
+> Budget batches, stop-token cancellation, indexed result placement, and 1/2/N tests remain intact.
+
 > **✅ 2026-09-07 — T-031 scene-body baking + CashSystem I/O executor migration completed in `lane-t031executor`.**
 > The Cornell baked-demo cache-miss path submits eight indexed body bake/build tasks through the
 > injected `MainCacher::GetTaskExecutor()` and consumes results in canonical order, retaining the

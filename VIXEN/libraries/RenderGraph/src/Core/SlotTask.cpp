@@ -133,6 +133,7 @@ uint32_t SlotTaskManager::ExecuteSequential(
 uint32_t SlotTaskManager::ExecuteParallel(
     std::vector<SlotTaskContext>& tasks,
     const SlotTaskFunction& taskFunction,
+    KernelDispatch::TaskExecutor& sharedExecutor,
     ResourceBudgetManager* budgetManager,
     uint32_t maxParallelism,
     std::stop_token stopToken)
@@ -256,8 +257,7 @@ uint32_t SlotTaskManager::ExecuteParallel(
             dispatchTasks.push_back(std::move(dispatchTask));
         }
 
-        KernelDispatch::TaskExecutor executor;
-        const bool batchCompleted = executor.Run(
+        const bool batchCompleted = sharedExecutor.Run(
             dispatchTasks,
             dependencyGraph.GetParallelLevels(),
             static_cast<int>(batchParallelism),
