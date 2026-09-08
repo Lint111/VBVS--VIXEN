@@ -6,7 +6,7 @@ lane: locksynthesis (branch lock-synthesis, base d0646590 = inventory commit on 
 author: senior-architecture design pass (federation lock audit, part 2)
 composes-with:
   - 2026-09-08-runtime-lock-inventory-and-classification.md            (INPUT — the 47+1 classified families; not re-inventoried here)
-  - kernel wave-assembler design (lane waveassembler, kernel repo, IN FLIGHT at this writing — the ORDER/PARTITION elimination mechanism)
+  - kernel docs/design/2026-09-08-wave-assembler-dispatch.md              (lane waveassembler, branch kernel-waveassembler 0ac776d5 — the ORDER/PARTITION elimination mechanism; vocabulary adopted here)
   - undertow docs/design/2026-09-07-delta-set-transpilation-audit.md    (lane-deltatranspile 70633a91c — the DELTA mechanism + envelope order + no-monolith check)
   - undertow docs/design/2026-09-08-n-level-scope-scale-dispatch-api.md (lane-nscopeapi fa2baff74 — active-set runner, manifest handshake §6.3)
   - WorkUnit-Convention-Interface-Design-2026-09-07.md                   (lane-workunitdesign e6070e7b — C-5 parity flag, C-7 two conformance rules)
@@ -26,17 +26,25 @@ remains is hardware-mandated serialization, minimized to a single **owner** — 
 
 **Legend.** **[MEASURED]** = read from source at the audited base (path:line). **[INVENTORY]** = taken from the
 classification doc, not re-verified here. **[PROPOSED]** = this design's choice. **[OD-n]** = an owner decision
-collected in §8. ⚠ = a dependency on work in flight.
+collected in §8. ⚠ = a dependency on work not yet landed (only `Backend::GpuCompute` remains one).
 
 Paths below are relative to `VIXEN/` unless prefixed with a repo name.
+
+**Vocabulary (adopted from the wave-assembler doc, so the two designs read as one).** A **candidate row** is a
+static, compile-time declared dispatch (the kernel's `kNativeDispatchCandidates`; in VIXEN, the row a subsystem
+declares — §4.1). A **`WaveSchedule`** is the per-tick unit `AssembleWaves(WaveAssemblyInput) → WaveSchedule`
+emits for frame N+1: a fixed-capacity POD of **waves** (concurrent groups) of **rows** (`WaveRow{candidate,
+itemCount, kind}`). "**Plan**" names only the static artifact (`NativeDispatchPlan.g.h`, `WirePlan`), never the
+per-tick unit.
 
 ---
 
 ## 0. Headline
 
-- **Two views of one thesis.** The kernel `waveassembler` lane (in flight) replaces the static `NativeDispatchPlan`
-  with a per-tick assembler: tick N computes N+1's wave schedule from N's committed state, off the critical path, and
-  feeds TBB. That assembler IS the elimination mechanism for the inventory's **12 ORDER-able + 11 PARTITION-able**
+- **Two views of one thesis.** The kernel wave assembler replaces the static `NativeDispatchPlan` as the per-tick
+  authority: during frame N it computes N+1's `WaveSchedule` — topology (colouring/order) from the codegen-time
+  conflict tables over *declared* write-sets, activation and sizing from the sealed delta summary of the latest
+  committed frame — off the critical path, and feeds TBB. That assembler IS the elimination mechanism for the inventory's **12 ORDER-able + 11 PARTITION-able**
   families (23 of 47): an ORDER-able lock exists because two phases are not yet sequenced by a schedule; a
   PARTITION-able lock exists because ownership is not yet assigned by one. Once the assembler owns both, those
   locks have nothing left to protect. This doc does not build a second scheduler; it specifies the **rows VIXEN
@@ -54,7 +62,7 @@ Paths below are relative to `VIXEN/` unless prefixed with a repo name.
 - **The 1 GENUINELY-NEEDED** family (VK2, per-physical-`VkQueue` host serialization) becomes a **queue-owner stage**:
   workers record into owned command pools (RM9 partition) and publish `SubmitRecord` deltas; one owner per physical
   queue drains them in canonical order and calls `vkQueueSubmit2` once per batch. Serialization is preserved as an
-  invariant of the plan; the mutex, the device-wide map lock in front of it (VK1), the `vkQueueWaitIdle` calls
+  invariant of the `WaveSchedule`; the mutex, the device-wide map lock in front of it (VK1), the `vkQueueWaitIdle` calls
   held under it, and the unguarded `SkyProjectionNode.cpp:565` path all go away **by construction**, because no
   node holds a raw queue handle any more (§2.5). Today VIXEN creates exactly **one** queue
   (`VulkanDevice.cpp:32-35`, `queueCount = 1`, graphics family) [MEASURED], so "one owner per physical queue" is one
@@ -70,7 +78,7 @@ Paths below are relative to `VIXEN/` unless prefixed with a repo name.
   subsystem without an access-manifest row is scheduled as a whole-slot stage, the conservative barrier
   `RunChainPerItem` already applies to non-opted-in stages (`Dispatcher.h:213-218`) [MEASURED], so a not-yet-migrated
   subsystem is slower, never wrong (§4.3); and there is **no `LockFreeManager`** — every mechanism is a declaration
-  on the subsystem plus a row in the plan, composed at build time (§4.4).
+  on the subsystem plus a candidate row, composed at build time (§4.4).
 
 ---
 
@@ -80,7 +88,7 @@ Paths below are relative to `VIXEN/` unless prefixed with a repo name.
 |---|---|---|---|
 | **P1 Owner** — every mutable cell has exactly one writer per wave, addressed by a stable key that outlives the wave | K2 `(stage,index)` hazard keys, `Dispatcher.h:201-218`; per-item RAW/WAW/WAR edges from `StateAccessKey` overlap [MEASURED] | a **partition key** per subsystem (§2.1 table): frame-slot, resource id, upload lane, device, job slot. Never a pointer, never arrival order. | PARTITION-able (11 + GPU1) |
 | **P2 Delta channel** — producers append to private segments; the barrier seals them into canonical order; one consumer applies | undertow `DataPipe` envelope `(epoch, publisherOrdinal, stableWorkKey, localSequence)`, `DataPipe.cs:282-419`; the H10 assignment pipe and the `Compute`/`Apply` split (delta doc §1.2) | per-producer append + seal at the tick's commit barrier; apply stage `itemCount` = records, not dataset | DELTA-able (12) |
-| **P3 Wave / commit barrier** — stages proved disjoint run concurrently; waves run in sequence; the barrier is where deltas seal and generations publish | K1 `RunSystemWaves`, `Dispatcher.h:353-411`: "does NOT re-derive or re-verify disjointness — the plan/manifest is the safety proof" [MEASURED]; ⚠ the wave assembler computes the waves for N+1 | VIXEN's host phases (input fold, window drain, upload submit, present, cache publish, structural apply) become **plan rows** with declared access sets; the frame is a plan | ORDER-able (12) |
+| **P3 Wave / commit barrier** — stages proved disjoint run concurrently; waves run in sequence; the barrier is where deltas seal and generations publish | K1 `RunSystemWaves`, `Dispatcher.h:353-411`: "does NOT re-derive or re-verify disjointness — the plan/manifest is the safety proof" [MEASURED]; the wave assembler emits the `WaveSchedule` for N+1 (kernel doc `2026-09-08-wave-assembler-dispatch.md`) | VIXEN's host phases (input fold, window drain, upload submit, present, cache publish, structural apply) become **candidate rows** with declared access sets; the frame is a `WaveSchedule` | ORDER-able (12) |
 | **P4 Generation** — build once, publish at a barrier, read without synchronization, retire after the last reader's wave joins | content boundary shape-hash (TaskConsumer audit §3.2): a shape-hashed artifact is immutable by identity; `DeterministicCompactor` input-order publication (`Runtime/DeterministicCompactor.cs`) | every registry/cache/lookup becomes an epoch-numbered immutable table; invalidation = next epoch; no reader ever waits | CACHE/MEMO (11) |
 
 **The parity flag is the fifth input**, not a primitive: `Parity { Deterministic, Lossy }` per dispatch system
@@ -88,10 +96,12 @@ Paths below are relative to `VIXEN/` unless prefixed with a repo name.
 row, whether P2's seal must sort (Deterministic) or may accept race-winner order (Lossy, the kernel's `AppendRef`
 family), and whether P4 must publish bit-identical generations or policy-identical ones (§3).
 
-**The tick model VIXEN adopts (the plan the assembler emits, VIXEN's view):**
+**The tick model VIXEN adopts (the `WaveSchedule` the assembler emits, VIXEN's view):**
 
 ```
-tick N:   [assemble N+1  (reads N-1's committed deltas + access manifests; off the critical path — assembler lane)]
+tick N:   [assemble N+1  (topology from the constexpr conflict/predecessor tables; activation + itemCount from
+                          the sealed delta summary of commit[N-1]; off the critical path; double-buffered slots[2],
+                          join-then-index-flip, no mutex — assembler doc)]
           [wave 0 … wave k  (RunSystemWaves; each item owns disjoint keys — P1; producers append deltas — P2)]
           [commit barrier: seal every channel (canonical order) → apply stages → publish generations (P4)
                            → observe GPU timeline values completed since last tick → retire generations/resources
@@ -124,7 +134,7 @@ exactly the failure a pointer key produces).
 | RM9 `cmdBufferMutex_` | **recording worker** — one `VkCommandPool` per worker per frame-slot | pool + its FIFO; reset at the frame-slot's retire | none needed: completion recycles by frame-slot, not by returning to a shared FIFO | Vulkan requires external sync per pool anyway; partitioning the pool (not just the FIFO) is what makes concurrent recording legal. |
 | RM12 `statusMutex_` | **upload handle** → stable slot index (generation-tagged) | one status word per slot, written by the completion owner only | clients read the slot (published at barrier); pruned slot = generation mismatch → `Failed` (preserves `:180` semantics) | K2 "published result slots". |
 | C4 `m_deviceRegistriesMutex` | **device id** | per-device registry, immutable outer directory built at device set-up | device teardown = retirement barrier (P4) | the outer map is a P4 generation; the per-device row is the owner. |
-| SH3 per-worker `ThreadLocalQueue` | **job slot** assigned by the plan (no stealing) | its queue | submitters publish `JobRecord` deltas to the slot owner's mailbox | stealing breaks single-owner; the recommendation (§7) is not to keep persistent private workers at all. |
+| SH3 per-worker `ThreadLocalQueue` | **job slot** assigned from the row's position in the `WaveSchedule` (no stealing) | its queue | submitters publish `JobRecord` deltas to the slot owner's mailbox | stealing breaks single-owner; the recommendation (§7) is not to keep persistent private workers at all. |
 | SH5 `buildsMutex_` | **build handle** → coordinator-owned job slot | status snapshot per slot | cancellation = a delta flag observed at the job's next step boundary | polling `wait` becomes a barrier join. |
 | SVO2 `BulkMaterializationQueue::m_mutex` | producers own **request slots**; workers own **result slots** (K4: `BulkMaterialization.cpp:190,216` already has disjoint result slots [INVENTORY]) | coordinator owns capacity + close state | enqueue/pop = delta; close = a generation flip | no production caller located — pattern-conformance on activation (§5, phase 6). |
 | EB4 `WorkerThreadBridge` | **producer mailbox** per submitter, one consumer | its mailbox | none | same "persistent private worker" question as SH3/SH4. |
@@ -136,10 +146,14 @@ for anything addressed by a handle; lane (worker ordinal) for anything the assem
 anything device-scoped; canonical content key for anything reduced. A key the assembler cannot know before the wave
 (a pointer, an arrival ordinal) is not a partition key — it is a delta payload. [OD-1] ratifies the column.
 
-**Anti-monolith check.** There is no partition table object. Each subsystem declares its key as part of its plan
-row (the same place it declares its access set); the assembler reads the declaration and hands out lanes/slots. The
+**Anti-monolith check.** There is no partition table object. Each subsystem declares its key *kind* as part of
+its candidate row (the same place it declares its access set). The assembler does **not** assign lanes or owner
+ids (it owns wave grouping, order and per-row `itemCount` only — assembler doc §(4)); lane/slot identity is
+therefore **derived deterministically by VIXEN from the row itself** — `(candidate index, item index)` for
+per-item keys, the frame-slot for GPU-recycled resources, the declared id for handle-addressed resources. The
 kernel's `DispatcherProfile` maps owner-id → backend today (`Abi.h`, "the native counterpart of the kernel's
-`DispatcherProfile`"); the lane assignment rides the same per-row mapping.
+`DispatcherProfile`"); the lane derivation rides the same per-row mapping. Nothing is assigned at runtime by a
+central object.
 
 ### 2.2 DELTA-able → append-only delta + deterministic merge (12 families)
 
@@ -189,17 +203,18 @@ item; after, it is one append per item and one owner drain per barrier.
 **Anti-monolith check (same as the delta doc §5.2).** Channels are per-declaration (one per `(consumer,
 payload)`), segments are per-producer, and the only shared object is a control-plane registry that "never
 publishes" — no world delta buffer, no `DeltaManager`. VIXEN's channels are declared by the subsystem that consumes
-them, next to its plan row.
+them, next to its candidate row.
 
 ### 2.3 ORDER-able → deterministic dispatch order (12 families)
 
 **Mechanism.** Each ORDER-able lock separates two phases that are not yet sequenced by a schedule. The fix is to
-name the phases as plan rows with declared access sets so the assembler orders them (RAW/WAW/WAR edges from
-`StateAccessKey` overlap, K2), and to make the mutation phase publish a P4 generation at the barrier so the read
+name the phases as candidate rows with declared access sets so the assembler orders them (RAW/WAW/WAR over
+*declared* write-sets, computed at codegen into `kNativeDispatchConflicts`; a predecessor edge is a hard wave
+boundary — assembler rule R2), and to make the mutation phase publish a P4 generation at the barrier so the read
 phase never sees a half-built state. Where eligibility depends on the GPU, the row carries a timeline value and the
 assembler places it only after that value has been observed.
 
-| Family [INVENTORY] | Phases today | Plan rows [PROPOSED] | Generation published | GPU dependency |
+| Family [INVENTORY] | Phases today | Candidate rows [PROPOSED] | Generation published | GPU dependency |
 |---|---|---|---|---|
 | RG3 `InputNode::eventMutex_` | GLFW callback push (pump, in Render) vs drain (Update) | `input.pump` (main-thread-affine stage, writes `input.pending`) → `input.fold` (reads `input.pending`, writes `input.frame`) | `input.frame` snapshot | none. Pump→next-tick-fold latency is preserved unless [OD-8] moves the pump row earlier. |
 | RG4 `WindowNode::eventMutex` | GLFW callbacks vs host drain vs node drain | `window.pump` (main-thread) → `window.publish` | immutable per-frame window state (size, focus, events) | none. "Drain even during pause" = the row is unconditional. |
@@ -209,7 +224,7 @@ assembler places it only after that value has been observed.
 | SVO1 `m_processMutex` | competing batch coordinators | one `svo.materialize` coordinator row per octree/region | — | none. |
 | SVO3 `LaineKarrasOctree::m_renderLock` | full rebuild (exclusive) vs render lease | `svo.rebuild` (writes `octree.next`) → `svo.publish` at the barrier → readers hold `octree.current` | octree generation; per-region rows if the rebuild is partitioned (optional, inventory alternative) | old generation retired after last reader's wave AND the GPU timeline value for buffers that referenced it. Fixes the exclusive `lockForRendering()` gap [INVENTORY]. |
 | SH2 `ShaderLibrary::libraryMutex` | compile/reflect vs get/swap/watch | `shader.compile[i]` (owned outputs) → `shader.swap` at barrier | program-table generation | none. The nested nonrecursive acquisitions (finding #4) vanish with the lock. |
-| SH4 `cvMutex_` (CV sleep/wake) | idle workers vs dispatch | **no CV**: builds are plan-dispatched jobs, workers are the TBB arena | — | none. The inventory flagged that a barrier cannot replace an async wakeup; the resolution is to remove the persistent private worker (§7, [OD-9]). |
+| SH4 `cvMutex_` (CV sleep/wake) | idle workers vs dispatch | **no CV**: builds are schedule-dispatched rows, workers are the TBB arena | — | none. The inventory flagged that a barrier cannot replace an async wakeup; the resolution is to remove the persistent private worker (§7, [OD-9]). |
 | EB2 `subscriptionMutex` | registry edit vs dispatch (handler under lock) | `bus.applySubscriptions` at barrier → `bus.dispatch` reads the generation | subscriber table generation | none. Handlers run on the dispatch owner, unlocked; edits from handlers land in the next epoch. |
 | GA1 `RelationshipObserver::m_mutex` | callback registry + deferred ops vs Gaia structural writes | `gaia.structuralCommit` (single owner; the actual writes at `RelationshipObserver.cpp:122,155,211` were never covered by this lock [INVENTORY]) → `gaia.notify` reads the callback generation | callback registry generation; deferred ops = a P2 channel | none. |
 | APP1 `g_gaiaChunkAllocatorMutex` | 8 `std::async` bodies serialized around bake+build | `body.evaluate[i]` (pure, owned plain outputs, parallel) → `body.applyStructure` (one owner touching Gaia's process-wide allocator, sequential) | baked-scene artifact (already cached; the cache hit bypasses both rows) | none. Real allocator partitioning stays out of scope unless Gaia's allocator ownership changes (inventory). |
@@ -228,7 +243,7 @@ deterministically (`SdiStageWiring.h:185`; K4). That is already the right shape 
   order** before the parallel row runs (the plan requests slot k of its range; the apply row honors it), so
   `nameToHandle`/`instances` are identical regardless of which plan finished first.
 
-Construction is the **tick-0 plan**: the same assembler, the same `RunSystemWaves`, the same commit barrier. Whether
+Construction is the **tick-0 `WaveSchedule`**: the same assembler, the same `RunSystemWaves`, the same commit barrier. Whether
 the funnel dominates startup is unmeasured (inventory); the design makes it parallel-capable without changing the
 single-writer invariant on the graph containers. The optional SDI *header generation* registry (SH8) is a separate
 cache family (§2.4).
@@ -244,7 +259,7 @@ it explicitly. (2) A CPU barrier never proves GPU completion — every retire/re
 is known before the runtime needs it, **precompute** the whole table at build/startup and publish it once (the
 content-boundary pattern: shape-hashed, dual-output, immutable by identity); (b) if keys arrive at runtime, assign
 **exactly one builder per key** (the first requester in canonical order, or the assembler's pre-assignment when the
-requests are plan rows), publish the entry as a **generation** at the barrier, and let every reader hold a
+requests are candidate rows), publish the entry as a **generation** at the barrier, and let every reader hold a
 generation handle; (c) invalidation is an epoch flip, never an in-place erase; (d) retirement waits for the wave in
 which the last reader of the old generation joined (and, for GPU-referenced artifacts, the timeline value).
 
@@ -258,7 +273,7 @@ which the last reader of the old generation joined (and, for GPU-referenced arti
 | C6 `TypeRegistry::m_mutex` | yes | frozen after registration | no runtime instantiation located — conformance on activation. |
 | RG6 UI hit-mask cache | mostly (UI assets are declared) | pre-resolved mask table at UI load; runtime miss = per-key builder | entries never erased today; matches the generation model directly. |
 | SH1 `ShaderCacheManager::cacheMutex` | content-addressed | **immutable content-addressed artifacts** (SPIR-V by content hash) + per-key publisher; stats = fold; maintenance/eviction = a staged epoch | filesystem access is not global exclusion; unrelated keys never serialize. |
-| SH7 `s_initMutex` (glslang) | — | `shader.initProcess` row in tick 0, before any compiler row | the one residual "once" — replaced by plan order, not `call_once`. |
+| SH7 `s_initMutex` (glslang) | — | `shader.initProcess` row in tick 0, before any compiler row | the one residual "once" — replaced by schedule order (a predecessor edge), not `call_once`. |
 | SH8 `SdiRegistryManager::mutex_` (`recursive_mutex`) | yes (registrations are a batch) | batch registration row → deterministic alias resolution → one immutable snapshot | optional builder-callback path; recursion vanishes with the lock. |
 | SVO4 `VoxelDataCache` | partly | key partitions + per-key builder + generation; returned pointers become generation handles (fixes lifetime-vs-`Clear`) | no external non-test caller — conformance on activation. |
 
@@ -285,8 +300,8 @@ one host thread touches the object at a time.
   signals[], timelineValue, fence?}` to the queue's channel (P2). Producer ordinal + seq give the canonical
   submission order; the assembler assigns ordinals so the order is deterministic per tick.
 - **One owner per physical queue drains.** The `queue.submit[q]` row runs on exactly one worker, after every
-  recording row it depends on (an explicit plan edge, since data flow does not express queue access — the
-  inventory's `VulkanDevice.h:100` note). It seals the channel, coalesces consecutive records into as few
+  recording row it depends on (an explicit **predecessor edge** — a hard wave boundary under assembler rule R2 —
+  since data flow does not express queue access: the inventory's `VulkanDevice.h:100` note). It seals the channel, coalesces consecutive records into as few
   `vkQueueSubmit2` calls as the semaphore graph allows (batching is a *win* of the owner, not a cost), and issues
   `vkQueuePresentKHR` last. Serialization is an invariant of "one row, one worker"; there is no mutex.
 - **Waits leave the frame path.** `vkQueueWaitIdle` under the queue guard (`CommandBufferUtility.cpp:106`,
@@ -296,7 +311,7 @@ one host thread touches the object at a time.
 - **The unguarded path is impossible, not fixed.** `SkyProjectionNode.cpp:565` calls `fpQueueSubmit2_` directly
   today; under the owner design a node has no queue handle to call it on. The bug class is closed by the API shape.
 - **Multiple queues (future).** One owner row per physical queue; async compute and transfer get their own owners
-  and timelines; cross-queue ordering is semaphores in the records, sequenced by the plan.
+  and timelines; cross-queue ordering is semaphores in the records, sequenced by the schedule.
 
 **Tie to `KernelDispatch::Backend::GpuCompute`.** A stage whose backend resolves to `GpuCompute` lowers to exactly
 this shape: *record on the worker → publish a `SubmitRecord` → the queue owner submits → the next barrier observes
@@ -342,39 +357,56 @@ the row's flag; nothing else in the subsystem changes.
 
 ## 4. Composition with the wave assembler (one thesis, two views)
 
-⚠ The assembler design is being written in the kernel repo in parallel; this section states the contract this
-design *needs from it* and *gives to it*, so the two compose. Terms marked † are to be aligned to the assembler
-doc's spelling when it lands; the semantics are the ones stated here.
+The assembler design is committed on kernel `kernel-waveassembler` @ `0ac776d5`
+(`docs/design/2026-09-08-wave-assembler-dispatch.md`). This section states the contract this design *gives it*
+and *takes from it*, in that doc's vocabulary, so the two compose as one mechanism.
 
-### 4.1 What VIXEN gives the assembler: plan rows
+### 4.1 What VIXEN gives the assembler: candidate rows
 
-Every subsystem in §2 contributes rows of one shape — the same shape the kernel's `NativeDispatchPlanEntry` +
-`GaiaFieldAccessManifest` already give `RunSystemWaves` (K1: "the caller is responsible for grouping stages into
-waves using that proof"):
+Every subsystem in §2 contributes **static candidate rows** — the same shape the kernel's
+`kNativeDispatchCandidates` + `GaiaFieldAccessManifest` already give `RunSystemWaves` (K1: "the caller is
+responsible for grouping stages into waves using that proof"). The row is constexpr; nothing about it is decided
+at runtime:
 
 ```
-row { owner id; access set {(slot, index-range | whole), Read|Write};
-      partition key kind (§2.1); channels produced / consumed (§2.2);
-      generations published / read (§2.4); timeline dependencies (§2.3);
-      backend set (CpuInline | CpuTbb | … | GpuCompute); parity (Deterministic | Lossy);
-      affinity (main-thread for GLFW rows; queue-owner rows are single-worker) }
+candidate { owner id; DECLARED access set {(slot, index-range | whole), Read|Write};   // -> kNativeDispatchConflicts
+            declared predecessors;                                                       // -> kNativeDispatchPredecessors (R2: hard wave boundary)
+            partition key kind (§2.1); channels produced / consumed (§2.2);
+            generations published / read (§2.4); timeline dependencies (§2.3);
+            backend set (CpuInline | CpuTbb | … | GpuCompute); parity (Deterministic | Lossy);
+            affinity (main-thread for GLFW rows; queue-owner rows are single-worker) }
 ```
+
+Two rules the assembler doc fixes and this design mirrors: **the conflict relation is computed at codegen over
+DECLARED write-sets and is never refined by a frame's actual deltas** (refining from a stale frame's write-set is a
+race); and **a declared predecessor edge is a hard wave boundary** (rule R2 — which also closes the measured
+disagreement between the `--gaia-app` `std::async` spine and the `RunSystemWaves` driver on same-colour
+predecessors, assembler doc §1.3; VIXEN inherits the R2 answer rather than a third driver).
 
 Rows are **declared by the subsystem, composed at build time** — this is the whole anti-monolith argument: the
-plan is the *sum* of declarations, the assembler is a *function* of them, and nothing owns "the lock strategy".
+candidate table is the *sum* of declarations, the assembler is a *function* of them, and nothing owns "the lock
+strategy".
 
-### 4.2 What the assembler gives VIXEN
+### 4.2 What the assembler gives VIXEN — and what it deliberately does not
 
-- **Waves for N+1†** computed from N's committed deltas + the rows' access sets — the ORDER-able elimination.
-- **Partition assignment†** — lane/slot ids per row-item for the tick (upload lanes, recording pools per
-  frame-slot, builder slots) — the PARTITION-able elimination. If the assembler owns only wave grouping and not
-  lane assignment, VIXEN assigns lanes deterministically from the row's declared key (ordinal = position in the
-  wave's canonical row order) — the semantics are identical; only the location of the assignment moves. [OD-1]
-- **Producer ordinals** for every channel producer in the tick — the DELTA-able canonical order [OD-2].
-- **Generation retire points** — the barrier after which no row reads generation g, so P4 retirement is a
-  scheduled row, not a reference count.
-- **Timeline observation at tick start** — the assembler reads the completed timeline values before assembling, so
-  retire/reuse rows are placed only when eligible; no row ever waits on the GPU on the critical path.
+The assembler consumes `WaveAssemblyInput = { active-set bitmask, pointer to the SEALED DELTA SUMMARY of the
+latest committed frame (per-channel counts + dirty-scope bits; `nullptr` ⇒ unknown ⇒ full-dataset),
+per-declaration materialized-input hooks }` and emits a `WaveSchedule` for N+1 (`forEpoch = N+1`), double-buffered
+`slots[2]`, join-then-index-flip, no mutex. Two-phase pipelining: topology during frame N from commit[N-1]; only
+O(channels) count-binding at the N→N+1 boundary.
+
+| The assembler owns | The assembler does **not** own — VIXEN derives it deterministically |
+|---|---|
+| **Wave grouping + dispatch order** (the ORDER-able elimination) | — |
+| **Per-row `itemCount`**: whole-system rows stay `itemCount = 1` and self-partition (option B, unchanged); Apply rows get `itemCount = sealed touched-row count`; safe-skip when the summary says a channel is empty | **per-item hazard layering inside a wave** — left to `TaskDependencyGraph`/`RunChainPerItem` (opt-in), which is exactly the K2 mechanism §2.1 relies on |
+| **Activation** (which candidates run this tick) from the active set + delta summary | **Lane / slot / owner identity** — derived from `(candidate index, item index)`, the frame-slot, or the declared resource id (§2.1). The assembler assigns no owner ids; a scope-level single-writer partition, if declared, becomes `(system, scope-class)` *candidate* rows — still constexpr, still not runtime-assigned. [OD-1] |
+| — | **Producer ordinals** for delta channels = the producer's **candidate index** (static, canonical) with per-item index as the tiebreak — the DELTA-able canonical order needs no runtime assignment. [OD-2] |
+| **Placement of retire rows**: a retire candidate's predecessors include every reader of generation g, so the wave boundary after them IS the retire point; the timeline dependency is a materialized-input hook the assembler reads at tick start (a completed value, never a wait) | **The generation and timeline values themselves** — published by the owner rows at the commit barrier (§2.3, §2.4) |
+| **Parity per row**: `NativeDispatchCandidate.parity` (0 = Deterministic default, 1 = Lossy) with the meaning fixed in assembler doc §6.2 — Lossy relaxes order (tick placement / budget demotion, soft precedence-policy edges, delta merge order) and never the conflict relation | **The declared carrier** for the flag does not exist yet (`SystemDecl` has no field; assembler owner decision D3). §3 of this doc uses the §6.2 meaning verbatim and adds nothing to it. [OD-3] |
+
+Net: the assembler dissolves the ORDER-able class outright and dissolves the PARTITION-able class *together with*
+§2.1's declared keys — it decides *when* and *how many*; the declaration decides *who owns what*. That split is
+what keeps both designs free of a runtime owner-assignment object.
 
 ### 4.3 Smooth degradation is structural
 
@@ -386,7 +418,8 @@ everything that does not* — correct on day one, faster as it declares finer ac
 pattern VIXEN already uses for device features (`CapabilityGraph.h:177` [MEASURED]) applied to scheduling: a
 missing capability degrades the schedule, it never hard-fails it. During migration a subsystem may keep its mutex
 inside a whole-slot row; the mutex is then provably uncontended (the row is a barrier) and is deleted once the row
-gains an access set — the deletion is a *declaration change*, verified by the plan, not a leap of faith.
+gains an access set — the deletion is a *declaration change*, verified by the codegen conflict table, not a leap
+of faith.
 
 ### 4.4 The re-monolith guard, applied
 
@@ -396,7 +429,7 @@ gains an access set — the deletion is a *declaration change*, verified by the 
 | a global delta buffer | per-declaration channels with per-producer segments (delta doc §5.2 verbatim) |
 | a central cache manager | each cacher publishes its own generation; `MainCacher` shrinks to a frozen factory table + lifecycle rows |
 | a "GPU submit manager" | one owner **row** per physical queue; it owns nothing but the channel it drains |
-| a scheduler inside VIXEN | none: VIXEN's `TBBVirtualTaskExecutor` and the kernel's `TaskExecutor` already share the Tier-A executor shape; the plan comes from the assembler, VIXEN only executes waves |
+| a scheduler inside VIXEN | none: VIXEN's `TBBVirtualTaskExecutor` and the kernel's `TaskExecutor` already share the Tier-A executor shape; the `WaveSchedule` comes from the assembler, VIXEN only executes waves |
 
 ---
 
@@ -410,13 +443,13 @@ previous phase's gate holds; no phase changes authored surfaces.
 
 | Phase | Families | Mechanism | Gate | Why here |
 |---|---|---|---|---|
-| **0 — instrument + frame-as-plan skeleton** | none removed | host phases (input/window/upload/submit/present) declared as whole-slot rows and run through `RunSystemWaves` (the opt-in TBB path, `RenderGraph.h:1016`); the inventory's measurement prescription (owner, acquisition count, wait/hold time, worker, queue, phase) added as a build-flagged census | 1/2/N with the sequential executor and the wave executor producing identical frames; acquisition counts recorded per family | establishes the plan shape and the baseline numbers §9 needs; nothing is lock-free yet, nothing can regress |
+| **0 — instrument + frame-as-`WaveSchedule` skeleton** | none removed | host phases (input/window/upload/submit/present) declared as whole-slot rows and run through `RunSystemWaves` (the opt-in TBB path, `RenderGraph.h:1016`); the inventory's measurement prescription (owner, acquisition count, wait/hold time, worker, queue, phase) added as a build-flagged census | 1/2/N with the sequential executor and the wave executor producing identical frames; acquisition counts recorded per family | establishes the plan shape and the baseline numbers §9 needs; nothing is lock-free yet, nothing can regress |
 | **1 — queue owner + recording pools** | VK1, VK2, RM9 (+ SkyProjection unguarded path, WaitIdle under guard) | §2.5 owner row; RM9 per-worker per-frame-slot pools; `SubmitRecord` channel; timeline values replace `WaitIdle` in frame paths | 1/2/N, VL, census(VK1/VK2/RM9); `SubmitMutex` deleted from `VulkanDevice` | inventory priority 1: reaches 19 node files + upload/UI/cache helpers; it is also the first piece of `Backend::GpuCompute` |
 | **2 — upload/staging/lifetime lanes** | RM7, RM8, RM10, RM11, RM12, RM1, RM13, RM2 | §2.1 lanes + §2.2 channels + §2.3 retire row after timeline | 1/2/N, VL, census; upload throughput not below baseline at N=1 | inventory priority 2 + 9; depends on phase 1's timeline discipline |
 | **3 — EventBus** | EB1, EB2, EB3 | per-producer segments; subscriber generation; folded stats; `PublishImmediate` on generation | 1/2/N; a handler that subscribes/unsubscribes/publishes-immediate no longer deadlocks (test from finding #3); census | inventory priority 3 + 4; hot per-publication; independent of GPU |
 | **4 — cache publication** | C1 (15 cachers), C3, C4, SH1, RM4, C2, C6, RG6, SH7, SH8, SVO4 | §2.4 per-key builder + generations; frozen factory tables; RM4 reserve-CAS admission; content-boundary precompute for declaration-derivable keys [OD-5] | 1/2/N; the six same-key wait paths pass a concurrent same-key stress test; census | inventory priority 5 + 6; unlocks parallel resource creation safely |
 | **5 — host phases + world** | RG3, RG4, RG5, APP1, SVO3, RM3 | §2.3 rows; APP1 evaluate/apply split; SVO3 generations | 1/2/N; input semantics test (press/release/cursor-at-click, pause accumulation) unchanged unless [OD-8]; cold-start body bake wall time not above baseline | inventory priority 7 + 8 + the "small cleanups"; needs phase 1 for GPU-referenced retirement |
-| **6 — dormant families, on activation only** | SH2, SH3, SH4, SH5, SVO1, SVO2, EB4, GA1, C6, RM13 | conformance to §2 on the day they gain a caller; or retirement [OD-9] | a **declaration gate**: no `std::mutex` may be added or re-activated under `libraries/` without a plan row (the census script as a CI check) | inventory: activation evidence first; do not displace measured work |
+| **6 — dormant families, on activation only** | SH2, SH3, SH4, SH5, SVO1, SVO2, EB4, GA1, C6, RM13 | conformance to §2 on the day they gain a caller; or retirement [OD-9] | a **declaration gate**: no `std::mutex` may be added or re-activated under `libraries/` without a candidate row (the census script as a CI check) | inventory: activation evidence first; do not displace measured work |
 | **7 — GPU-gated** | GPU1; GPU delta-apply for RM channels | key-owned aggregation (sort/group then reduce); resident buffers + delta upload (delta doc slice #4) | `Backend::GpuCompute` landed; GPU parity per WorkUnit C-5 | CPU-first ruling |
 | **demonstrations, any time** | RG1, KD1, RG7 | per-task error slots (K3) — small, cold, and the cleanest illustration of the pattern | 1/2/N error order deterministic | pattern proof, not throughput |
 
@@ -445,7 +478,7 @@ deterministic fallback of §4.2. Phase 7 waits on `Backend::GpuCompute`, whose f
 
 | Residual | Form after this design | Is it a scaling wall? |
 |---|---|---|
-| Host access to each physical `VkQueue` | one owner row per queue; serial by plan, no mutex; submissions batched | no — recording is parallel; the owner does O(records) bookkeeping + a handful of `vkQueueSubmit2` per tick. It becomes a wall only if a tick needs more submits than one core can issue, which is a queue-count question (more owners), not a lock question |
+| Host access to each physical `VkQueue` | one owner row per queue; serial by schedule, no mutex; submissions batched | no — recording is parallel; the owner does O(records) bookkeeping + a handful of `vkQueueSubmit2` per tick. It becomes a wall only if a tick needs more submits than one core can issue, which is a queue-count question (more owners), not a lock question |
 | GPU completion | fences/timeline semaphores observed at the barrier | no — never waited on in the frame path after phase 1 |
 | VMA internal synchronization | present until [OD-6] flips the externally-synchronized flag behind the per-device allocation owner | bounded to allocation rows; not on the per-frame path once staging is lane-owned |
 | Gaia process-wide chunk allocator (APP1 apply row) | one structural-apply row | cold-start only; cache hit bypasses it |
@@ -453,7 +486,7 @@ deterministic fallback of §4.2. Phase 7 waits on `Backend::GpuCompute`, whose f
 | GLFW main-thread affinity (RG3/RG4 pump rows) | main-thread-affine rows | inherent to the windowing API; two rows per tick |
 | TBB / standard library / driver internals | uncounted (inventory scope) | not addressable from first-party source; measure, do not assume |
 | Exception-path error collection (RG1/KD1) | per-task slots (K3) — a fold, not a lock | cold |
-| Asynchronous wakeup for persistent private workers (SH4, EB4) | **eliminated by not keeping persistent private workers** — builds become plan-dispatched jobs in the TBB arena. If the owner keeps them [OD-9], a CV protocol remains and is the one honest "sleep lock" in the process | isolated to shader build tooling |
+| Asynchronous wakeup for persistent private workers (SH4, EB4) | **eliminated by not keeping persistent private workers** — builds become schedule-dispatched rows in the TBB arena. If the owner keeps them [OD-9], a CV protocol remains and is the one honest "sleep lock" in the process | isolated to shader build tooling |
 | Multi-process cache-directory ownership | OS file lock or per-process namespace [OD-10] | not a runtime lock |
 
 "Lock-free by construction" here means what the inventory says it means: correctly proved task ownership and
@@ -465,9 +498,9 @@ scheduling — not a formal wait-free progress guarantee for every library the p
 
 | # | Decision | Recommendation |
 |---|---|---|
-| **OD-1** | **Partition-key column of §2.1** — in particular whether the upload lane key is `(worker ordinal, size class)` or `(frame-slot, size class)`, and whether lane assignment lives in the assembler or in VIXEN's row declaration | worker-ordinal lanes (matches recording-pool partitioning); assignment in the assembler when it lands, deterministic fallback from row order until then |
-| **OD-2** | **Cross-producer ordering contract** for every delta channel = assembler-assigned producer ordinal, not arrival; **OD-2b** recipe family representative = `min(recipeId)` | ratify both; they are the same rule the delta doc's envelope already encodes |
-| **OD-3** | **Which telemetry families are `Lossy`** (RG2, RG7, EB3, SH6, C2 candidates in §3) | RG2/EB3/SH6/C2 Lossy; RG7 Deterministic while tracking is enabled |
+| **OD-1** | **Partition-key column of §2.1** — in particular whether the upload lane key is `(worker ordinal, size class)` or `(frame-slot, size class)`. The assembler has ruled it assigns no owner ids, so the key is derived by VIXEN from the candidate row; ratify the derivation rule `(candidate index, item index)` / frame-slot / declared id | worker-ordinal lanes (matches recording-pool partitioning); derivation from the candidate row, no runtime assignment anywhere |
+| **OD-2** | **Cross-producer ordering contract** for every delta channel = the producer's static candidate index (+ item index), never arrival; **OD-2b** recipe family representative = `min(recipeId)` | ratify both; they are the same rule the delta doc's envelope already encodes, with the ordinal now static |
+| **OD-3** | **Which telemetry families are `Lossy`** (RG2, RG7, EB3, SH6, C2 candidates in §3) — and the flag's **carrier**, which does not exist yet (assembler decision D3: `SystemDecl` has no field; VIXEN's acceptor sketch has `Parity kParity`) | RG2/EB3/SH6/C2 Lossy; RG7 Deterministic while tracking is enabled; one carrier for both repos, decided with D3 |
 | **OD-4** | **Queue-owner placement**: one submit row per wave that produced records (lower latency, more submits) vs one per tick (max batching); present as part of the last submit row or its own row | per-wave when any record signals a value another wave in the same tick waits on, else per-tick; present in its own final row |
 | **OD-5** | **How much of CashSystem becomes build-time precompute through the content boundary** (pipelines/layouts/samplers/render passes are derivable from declared contracts + SDI; textures/meshes/AS are not) | precompute the declaration-derivable four; runtime per-key builders for the rest |
 | **OD-6** | **Set `VMA_ALLOCATOR_CREATE_EXTERNALLY_SYNCHRONIZED_BIT`** once allocation is routed through the per-device owner | yes, after phase 2's VL-clean 1/2/N gate; never before |
@@ -475,7 +508,7 @@ scheduling — not a formal wait-free progress guarantee for every library the p
 | **OD-8** | **Input latency**: keep pump-in-Render → fold-next-Update (today's semantics) or move the pump row before the fold | keep; a latency change is a separate, explicitly approved change (inventory) |
 | **OD-9** | **Dormant families** (SH2-SH5, SH8, SVO1/2/4, EB4, GA1, C6, RM13 — no located shipping caller): migrate-on-activation under the declaration gate, or delete now | gate now; delete `ShaderLibrary`'s persistent worker model (SH3/SH4) in favor of plan-dispatched jobs when shader hot-reload is next touched |
 | **OD-10** | **Multi-process cache directory** ownership | per-process namespace by default; OS file lock only if sharing is a requirement |
-| **OD-11** | **The declaration gate**: no new `std::mutex`/`shared_mutex`/`recursive_mutex` under `libraries/` without a plan row + classification (CI reuses the inventory's census script) | adopt at phase 0 so the count can only go down |
+| **OD-11** | **The declaration gate**: no new `std::mutex`/`shared_mutex`/`recursive_mutex` under `libraries/` without a candidate row + classification (CI reuses the inventory's census script) | adopt at phase 0 so the count can only go down |
 
 ---
 
@@ -514,7 +547,7 @@ No speedup number is asserted here: the inventory measured no wait time, and thi
   the per-row relaxation knob, dissolve **46 of 47** host mutex families and the GPU claim protocol, class by class,
   with a concrete mechanism per family (§2).
 - **The one hardware-mandated serialization** (physical-queue host access) becomes a **queue-owner row** — serial by
-  plan, lock-free by construction, batching as a side effect, and the first concrete piece of
+  schedule, lock-free by construction, batching as a side effect, and the first concrete piece of
   `Backend::GpuCompute` (§2.5).
 - **The design composes with the wave assembler** as two views of one deterministic-dispatch thesis: VIXEN
   contributes declared rows; the assembler emits waves, lanes, ordinals and retire points; unmigrated subsystems
@@ -531,6 +564,6 @@ moves. Phase 0 (instrumentation + whole-slot rows) is the only work that can sta
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
-- **None introduced.** Design-only; no engine, tooling, generator or setup change was made. The assembler doc was
-  not yet committed when this was written; §4's † terms are to be aligned to its spelling in a follow-up doc edit,
-  not a code change.
+- **None introduced.** Design-only; no engine, tooling, generator or setup change was made. §4 was aligned to the
+  committed wave-assembler doc's vocabulary (`WaveSchedule` / wave / row / candidate; "plan" = static artifact only)
+  before this commit; no term is used here that the assembler doc does not define.
