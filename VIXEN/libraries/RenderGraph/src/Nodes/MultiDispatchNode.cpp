@@ -461,17 +461,19 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // forbids. IN_FLIGHT_FENCE stays as an INPUT (gates whether this node participates in
         // the real submit chain at all, matching every pre-M3 consumer's record-only default
         // when unconnected) -- it is deliberately never passed to vkQueueSubmit2 itself.
-        VkResult result;
-        {
+        // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; the owner drains in
+        // canonical order after the wave (a submit fault there surfaces the device-loss path). When
+        // the channel is inactive (sequential/headless), fall back to the guarded direct submit.
+        if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE))) {
             std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
-            result = vulkanDevice_->fpQueueSubmit2(vulkanDevice_->queue, 1, &si, VK_NULL_HANDLE);
-        }
-        if (result != VK_SUCCESS) {
-            if (result == VK_ERROR_DEVICE_LOST) {
-                GetOwningGraph()->NotifyDeviceLost("MultiDispatchNode::ExecuteImpl vkQueueSubmit2");
+            const VkResult result = vulkanDevice_->fpQueueSubmit2(vulkanDevice_->queue, 1, &si, VK_NULL_HANDLE);
+            if (result != VK_SUCCESS) {
+                if (result == VK_ERROR_DEVICE_LOST) {
+                    GetOwningGraph()->NotifyDeviceLost("MultiDispatchNode::ExecuteImpl vkQueueSubmit2");
+                }
+                throw std::runtime_error("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
+                                         std::to_string(result));
             }
-            throw std::runtime_error("[MultiDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " +
-                                     std::to_string(result));
         }
     }
 

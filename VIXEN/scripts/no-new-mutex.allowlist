@@ -55,6 +55,7 @@ VIXEN/libraries/RenderGraph/src/Nodes/PresentNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/ProbeAtlasNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/ProxyRasterStageNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/ShellRevalidateNode.cpp	0	VK2-borrowed
+VIXEN/libraries/RenderGraph/src/Nodes/SkyProjectionNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/SkySphereNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/TraceRaysNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/UIRenderNode.cpp	0	VK2-borrowed

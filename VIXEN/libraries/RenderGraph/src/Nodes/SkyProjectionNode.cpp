@@ -17,6 +17,7 @@
 
 #include <cstring>
 #include <filesystem>
+#include <mutex>       // lock-free phase 1: guarded fallback submit when the channel is inactive
 #include <set>
 #include <stdexcept>
 #include <vector>
@@ -562,7 +563,15 @@ void SkyProjectionNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // `leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence` composite-mode convention exactly
     // (this node reads IN_FLIGHT_FENCE per its config's doc comment, but never as its own submit
     // fence — the downstream UI composite pass owns it).
-    fpQueueSubmit2_(queue_, 1, &si, VK_NULL_HANDLE);
+    // Lock-free phase 1 (design §2.5): publish to the queue-owner channel instead of submitting
+    // directly here. This also STRUCTURALLY closes the audit finding #1 (this site's fpQueueSubmit2_
+    // was the ONE unguarded submit): the owner is the single serial submitter. When the channel is
+    // inactive (sequential/headless), fall back to a submit that — unlike the old code — now takes the
+    // queue submit mutex, so even the fallback is externally synchronized per Vulkan spec.
+    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, VK_NULL_HANDLE))) {
+        std::lock_guard submitLock(GetDevice()->SubmitMutex(queue_));
+        fpQueueSubmit2_(queue_, 1, &si, VK_NULL_HANDLE);
+    }
 
     // Topology-only passthrough (see header doc comment): nothing ever waits this value at
     // runtime (mirrors UIRenderNode's own COMPOSITE_WAIT_SEMAPHORE input being permanently

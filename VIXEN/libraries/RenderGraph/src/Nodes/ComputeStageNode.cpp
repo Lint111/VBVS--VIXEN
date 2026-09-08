@@ -278,16 +278,17 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
-    VkResult result;
-    {
+    // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; the owner drains in
+    // canonical order after the wave. Inactive channel (sequential/headless) -> guarded direct submit.
+    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, submitFence))) {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
         std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
-    }
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " +
-                                 std::to_string(result));
+        const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("[ComputeStageNode::ExecuteImpl] vkQueueSubmit2 failed: " +
+                                     std::to_string(result));
+        }
     }
 
     // Output the renderComplete semaphore (consumer → Present). For a producer there is

@@ -599,6 +599,16 @@ void RenderGraph::Compile() {
         }
     }
     frameSyncScheduler_.Build(executionOrder, resourceAccessTracker_, swapchainResource);
+
+    // Lock-free phase 1 (design §2.5): assign each node its stable submit-channel ordinal (its
+    // executionOrder position) and size the channel to the node count. A frame-path submit then
+    // publishes into its own slot with no lock; the owner drains in this ordinal order. Nodes not in
+    // executionOrder keep SIZE_MAX and submit directly (never publish).
+    for (std::size_t i = 0; i < executionOrder.size(); ++i) {
+        if (executionOrder[i]) executionOrder[i]->SetSubmitOrdinal(i);
+    }
+    submitChannel_.Configure(executionOrder.size());
+
     std::ostringstream fingerprint;
     fingerprint << std::hex << std::setfill('0') << std::setw(16)
                 << HashExecutionNodeNames(executionOrder);
@@ -792,6 +802,84 @@ int RenderGraph::GraphWorkerCount() const {
     return static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
 }
 
+bool RenderGraph::PublishSubmit(NodeInstance* producer, SubmitRecord&& record) {
+    // Only accept when the lowered executor owns this frame AND the producer has a valid slot.
+    // Otherwise the caller submits directly under its guard (unchanged behaviour) — this is the
+    // structural fallback that keeps a headless/sequential/test graph correct.
+    if (!submitChannelDraining_ || !submitChannel_.IsConfigured() || !producer) return false;
+    const std::size_t ordinal = producer->GetSubmitOrdinal();
+    if (ordinal >= submitChannel_.Size()) return false;
+    // The owner drains through the producing node's own device (queue + fpQueueSubmit2). A node with
+    // no device cannot be drained — reject so it submits directly (it has nothing to submit through
+    // the channel anyway).
+    if (!producer->GetDevice()) return false;
+    record.device = producer->GetDevice();
+    submitChannel_.Publish(ordinal, std::move(record));
+    return true;
+}
+
+// The queue owner (design §2.5): issue every submit published by the nodes that just completed this
+// wave, in canonical ordinal order. Runs on the graph caller thread after the wave barrier, so the
+// per-slot writes are visible with no lock and physical-queue access is serial by construction (one
+// owner, one thread) — no VK2 mutex. Present records are issued via their present function; ordinary
+// records via fpQueueSubmit2. A failed submit is recorded as a channel fault (device-loss surfaces
+// through RenderFrame's existing deviceLost_ path), replacing each node's former inline throw.
+void RenderGraph::DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave) {
+    if (!submitChannel_.IsConfigured()) return;
+    // Collect the ordinals of the nodes in this wave that published, then drain in ordinal order so
+    // the submission sequence is the canonical executionOrder sequence regardless of TBB finish order.
+    std::vector<std::size_t> ordinals;
+    ordinals.reserve(wave.size());
+    for (const auto& taskId : wave) {
+        NodeInstance* const node = executionTaskPlan_.FindNode(taskId);
+        if (!node) continue;
+        const std::size_t ordinal = node->GetSubmitOrdinal();
+        if (ordinal < submitChannel_.Size() && submitChannel_.Filled(ordinal)) ordinals.push_back(ordinal);
+    }
+    if (ordinals.empty()) return;
+    std::sort(ordinals.begin(), ordinals.end());
+
+    for (const std::size_t ordinal : ordinals) {
+        SubmitRecord& rec = submitChannel_.Record(ordinal);
+        VulkanDevice* const device = rec.device;  // the producing node's device (set at publish)
+        if (rec.present) {
+            VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+            VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
+            if (rec.presentFence != VK_NULL_HANDLE) {
+                presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
+                presentFenceInfo.swapchainCount = 1;
+                presentFenceInfo.pFences = &rec.presentFence;
+                presentInfo.pNext = &presentFenceInfo;
+            }
+            presentInfo.waitSemaphoreCount = rec.presentWait != VK_NULL_HANDLE ? 1u : 0u;
+            presentInfo.pWaitSemaphores = rec.presentWait != VK_NULL_HANDLE ? &rec.presentWait : nullptr;
+            presentInfo.swapchainCount = 1;
+            presentInfo.pSwapchains = &rec.swapchain;
+            presentInfo.pImageIndices = &rec.imageIndex;
+            if (rec.presentFn && device) {
+                const VkResult r = rec.presentFn(device->queue, &presentInfo);
+                // VK_SUBOPTIMAL_KHR / OUT_OF_DATE are handled by the swapchain nodes as before; only
+                // a hard failure is a channel fault. (Present result is not fed back per-node today.)
+                if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
+                    submitChannel_.RecordFault("vkQueuePresentKHR (queue-owner)", r);
+                }
+            }
+        } else {
+            VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+            si.waitSemaphoreInfoCount = static_cast<uint32_t>(rec.waits.size());
+            si.pWaitSemaphoreInfos = rec.waits.empty() ? nullptr : rec.waits.data();
+            si.commandBufferInfoCount = static_cast<uint32_t>(rec.commandBuffers.size());
+            si.pCommandBufferInfos = rec.commandBuffers.empty() ? nullptr : rec.commandBuffers.data();
+            si.signalSemaphoreInfoCount = static_cast<uint32_t>(rec.signals.size());
+            si.pSignalSemaphoreInfos = rec.signals.empty() ? nullptr : rec.signals.data();
+            if (device && device->fpQueueSubmit2) {
+                const VkResult r = device->fpQueueSubmit2(device->queue, 1, &si, rec.fence);
+                if (r != VK_SUCCESS) submitChannel_.RecordFault("vkQueueSubmit2 (queue-owner)", r);
+            }
+        }
+    }
+}
+
 VkResult RenderGraph::ExecuteLoweredFrame() {
     for (auto& task : executionTaskPlan_.tasks) {
         task.state = KernelDispatch::VirtualTaskState::Pending;
@@ -813,10 +901,22 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
     }
     frameWaveStats_.wholeSlotRows = frameWaveStats_.rows;
 
+    // Lock-free phase 1: the owner drains published submits per wave, so a frame-path node's
+    // PublishSubmit is accepted only for the duration of the lowered frame. Reset the slots first.
+    submitChannel_.BeginFrame();
+    submitChannelDraining_ = true;
+    struct DrainGuard {
+        bool& flag;
+        ~DrainGuard() { flag = false; }
+    } drainGuard{submitChannelDraining_};
+
     KernelDispatch::DispatcherProfile profile;
     profile.frameCompute.workerCount = static_cast<uint32_t>(workerCount);
     KernelDispatch::TaskExecutor executor(std::move(profile));
     const auto commitWave = [this](const std::vector<KernelDispatch::TaskId>& wave) {
+        // Queue-owner drain (design §2.5): issue this wave's published submits in canonical order,
+        // BEFORE the post-node callbacks below (a capture callback must observe a submitted frame).
+        DrainSubmitWave(wave);
         // The executor invokes this on the graph caller thread after a wave barrier. This keeps
         // post-node callbacks at their sequential observation point: notably, a capture callback
         // registered on a render node still runs before the later Present task is issued.
@@ -863,6 +963,15 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
         } else {
             GRAPH_LOG_ERROR("[RenderGraph::ExecuteLoweredFrame] Task failed: " + primary.message);
         }
+        return VK_ERROR_UNKNOWN;
+    }
+
+    // Lock-free phase 1: a submit/present failure observed by the queue owner (design §2.5) surfaces
+    // here, taking the place of each node's former inline throw-on-submit-failure. Treated like an
+    // execution failure so RenderFrame's existing deviceLost_/error handling runs.
+    if (submitChannel_.HasFault()) {
+        GRAPH_LOG_ERROR("[RenderGraph::ExecuteLoweredFrame] Queue-owner submit fault: " +
+                        submitChannel_.FaultMessage());
         return VK_ERROR_UNKNOWN;
     }
 

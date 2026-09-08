@@ -17,6 +17,7 @@
 #include <map>
 #include <variant>
 #include <memory>
+#include <cstddef>
 #include <cstdint>
 #include "Logger.h"
 #include "MessageBus.h"
@@ -104,6 +105,14 @@ public:
     uint64_t GetInstanceId() const { return instanceId; }
     NodeHandle GetHandle() const { return nodeHandle; }
     void SetHandle(NodeHandle handle) { nodeHandle = handle; }
+
+    // Lock-free phase 1 (SubmitChannel): the node's stable position in the graph's executionOrder,
+    // assigned at compile. Used as the node's per-frame submit-channel slot index so a frame-path
+    // submit publishes into its OWN slot with no lock (design §2.5). SIZE_MAX = not assigned (a node
+    // that never runs through the lowered executor, e.g. a headless/test path); such a node must not
+    // publish. See RenderGraph::PublishSubmit / SubmitChannel.h.
+    std::size_t GetSubmitOrdinal() const { return submitOrdinal_; }
+    void SetSubmitOrdinal(std::size_t ordinal) { submitOrdinal_ = ordinal; }
 
     // Tags (for bulk operations via events)
     void AddTag(const std::string& tag);
@@ -1000,6 +1009,9 @@ protected:
     std::string instanceName;
     uint64_t instanceId;
     NodeHandle nodeHandle;  // Handle to this node in the graph
+    // Lock-free phase 1: stable executionOrder position, assigned at Compile (SIZE_MAX until then).
+    // Used as the node's per-frame SubmitChannel slot index. See GetSubmitOrdinal / SubmitChannel.h.
+    std::size_t submitOrdinal_ = static_cast<std::size_t>(-1);
     NodeType* nodeType;
     std::vector<std::string> tags;  // Tags for bulk operations (e.g., "shadow-maps", "post-process")
 

@@ -29,6 +29,7 @@
 #include "Core/GraphTaskLowering.h"      // Tier-B graph -> shared Tier-A task DAG
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
 #include "LockCensus.h"                         // Lock-free phase 0: per-frame mutex/wave census (no-op unless VIXEN_LOCK_CENSUS)
+#include "Core/SubmitChannel.h"                 // Lock-free phase 1: queue-owner submit channel (design §2.5)
 #include <atomic>
 #include <memory>
 #include <string>
@@ -830,6 +831,28 @@ public:
         return executionTaskPlan_;
     }
 
+    // ====== Lock-free phase 1: queue-owner submit channel (design §2.5) ======
+    // A frame-path async submit site (a graph node) calls PublishSubmit instead of taking
+    // VulkanDevice::SubmitMutex and calling vkQueueSubmit2 itself. The node publishes a deep-copied
+    // SubmitRecord into its OWN per-frame slot (indexed by its executionOrder ordinal — no lock,
+    // distinct nodes own distinct slots). After each wave barrier, ExecuteLoweredFrame's owner drain
+    // (DrainSubmitWave, graph caller thread) issues the published submits in canonical ordinal order,
+    // and present last. This replaces the per-queue mutex hold (VK2) on the frame path with a
+    // single-owner invariant. The channel is a no-op (IsConfigured()==false) on graphs that never ran
+    // through the lowered executor, so a node's PublishSubmit falls back to a direct guarded submit.
+    [[nodiscard]] bool SubmitChannelActive() const { return submitChannel_.IsConfigured() && submitChannelDraining_; }
+
+    /// A frame-path node publishes its submit. Returns true if the channel accepted it (the node must
+    /// then NOT submit itself); false if the channel is inactive (the node submits directly, guarded).
+    bool PublishSubmit(NodeInstance* producer, SubmitRecord&& record);
+
+private:
+    /// Queue owner: issue the submits published by the nodes in `wave`, in canonical ordinal order,
+    /// on the graph caller thread after the wave barrier (design §2.5). Called from ExecuteLoweredFrame.
+    void DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave);
+
+public:
+
     // ====== Resource Dependency Tracking ======
 
     /**
@@ -896,6 +919,13 @@ private:
     // frame end. lockCensus_ is an empty no-op type when the census is compiled out.
     Vixen::LockCensus::FrameWaveStats frameWaveStats_;
     Vixen::LockCensus::FrameSampler lockCensus_;
+
+    // Lock-free phase 1 queue-owner channel (design §2.5). Configured at Compile() to the node count;
+    // filled by PublishSubmit during a wave; drained in canonical order by ExecuteLoweredFrame after
+    // each wave barrier. submitChannelDraining_ is true only while the lowered executor owns the frame
+    // (so a node outside the lowered path submits directly). See SubmitChannel.h.
+    SubmitChannel submitChannel_;
+    bool submitChannelDraining_ = false;
     bool isCompiled = false;
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).

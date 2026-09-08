@@ -353,16 +353,17 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Submit to graphics queue via synchronization2. Externally synchronized per Vulkan spec
     // (audit V-M11): the TBB parallel executor can schedule this alongside another node's
     // submit on the same queue.
-    VkResult result;
-    {
+    // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical
+    // order after the wave (a fault there surfaces device-loss). Inactive channel -> guarded submit.
+    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, submitFence))) {
         std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
-        result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
-    }
-    if (result != VK_SUCCESS) {
-        if (result == VK_ERROR_DEVICE_LOST) {
-            GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2");
+        const VkResult result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
+        if (result != VK_SUCCESS) {
+            if (result == VK_ERROR_DEVICE_LOST) {
+                GetOwningGraph()->NotifyDeviceLost("ComputeDispatchNode::ExecuteImpl vkQueueSubmit2");
+            }
+            throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
         }
-        throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer (vkQueueSubmit2): " + std::to_string(result));
     }
 
     // Output semaphore for Present to wait on

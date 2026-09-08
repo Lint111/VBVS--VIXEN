@@ -149,14 +149,16 @@ void ProxyRasterStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submit.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     submit.pSignalSemaphoreInfos = signals.data();
 
-    VkResult result = VK_SUCCESS;
-    {
+    // Lock-free phase 1 (design §2.5): publish the submit to the queue-owner channel instead of
+    // taking VK2 and calling vkQueueSubmit2 here. The owner drains it in canonical order after the
+    // wave. When the channel is inactive (sequential/headless path), fall back to the guarded submit.
+    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(submit, VK_NULL_HANDLE))) {
         std::lock_guard lock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1u, &submit, VK_NULL_HANDLE);
-    }
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ProxyRasterStageNode] vkQueueSubmit2 failed: " +
-                                 std::to_string(result));
+        const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1u, &submit, VK_NULL_HANDLE);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("[ProxyRasterStageNode] vkQueueSubmit2 failed: " +
+                                     std::to_string(result));
+        }
     }
 
     const std::vector<VkBuffer> writes =

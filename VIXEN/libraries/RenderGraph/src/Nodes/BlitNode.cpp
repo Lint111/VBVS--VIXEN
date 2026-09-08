@@ -245,16 +245,17 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // see the fence-ownership comment above. Terminal blit: this is the last submit, own the fence.
     VkFence submitFence = submissionPolicy.ownsFrameFence ? inFlightFence : VK_NULL_HANDLE;
 
-    VkResult result;
-    {
+    // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical
+    // order after the wave. Inactive channel (sequential/headless) -> guarded direct submit.
+    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, submitFence))) {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
         std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
-        result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
-    }
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[BlitNode::ExecuteImpl] vkQueueSubmit2 failed: " +
-                                 std::to_string(result));
+        const VkResult result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("[BlitNode::ExecuteImpl] vkQueueSubmit2 failed: " +
+                                     std::to_string(result));
+        }
     }
 
     // Baked-Perf M6 Task 6.3: publish the real semaphore only when this submit actually

@@ -180,6 +180,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/PerFrameResources.cpp
     src/Core/EngineContext.cpp           # AR#7: instantiable EngineContext
     src/Core/RenderGraph.cpp
+    src/Core/SubmitChannel.cpp          # lock-free phase 1: queue-owner submit channel (design §2.5)
     src/Core/FrameSyncScheduler.cpp     # auto-sync P2: pure scheduling core
     src/Core/GraphTaskLowering.cpp      # Tier-B graph -> shared Tier-A task DAG
     src/Core/PassRecorder.cpp           # auto-sync P4 M2: baggage-free recorder (barrier replay + compute + render)

@@ -513,7 +513,10 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    {
+    // Lock-free phase 1 (design §2.5): publish the frame-final submit (this node owns inFlightFence)
+    // to the queue-owner channel; the owner drains it last-in-wave, in canonical order. When the
+    // channel is inactive (sequential/headless), fall back to the guarded direct submit.
+    if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence))) {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
         std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
