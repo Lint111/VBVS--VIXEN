@@ -4,7 +4,7 @@
 using namespace Vixen::SVO;
 using Recipe::SdfInstruction;
 using Recipe::SdfOpCode;
-using Recipe::RecipeStackArity;
+using Recipe::RecipeStackStaticArity;
 using Recipe::StackArity;
 
 static SdfInstruction sphere(float r) {
@@ -122,7 +122,7 @@ TEST(RecipeRegistry, LinkRejectsStackOverflow) {
 }
 
 // --- Drift-guard: every valid opcode must have non-trivial arity ---------
-// Catches missing entries in RecipeStackArity before they become bad accepts/rejects.
+// Catches missing entries in RecipeStackStaticArity before they become bad accepts/rejects.
 // Legitimate no-ops (Output, ComposeFloat3) are explicitly excluded.
 
 // --- Recipe-Parameterization-Plan-2026-07 M1 Task 4: ReadParam/ReadParamFloat3 registration ---
@@ -220,12 +220,12 @@ TEST(RecipeRegistry, ArityTableCoversAllValidOpcodes) {
         uint8_t v = static_cast<uint8_t>(raw);
         if (!IsValidSdfOpCode(v)) continue;
         if (isLegitNoOp(v)) continue;
-        auto a = RecipeStackArity(static_cast<SdfOpCode>(v));
+        auto a = RecipeStackStaticArity(static_cast<SdfOpCode>(v));
         if (a.vPop == 0 && a.vPush == 0 && a.pPop == 0 && a.pPush == 0)
             missing.push_back(v);
     }
 
     for (uint8_t v : missing)
-        ADD_FAILURE() << "opcode " << (int)v << " is valid but has zero arity — add to RecipeStackArity";
+        ADD_FAILURE() << "opcode " << (int)v << " is valid but has zero arity — add to RecipeStackStaticArity";
     EXPECT_TRUE(missing.empty());
 }

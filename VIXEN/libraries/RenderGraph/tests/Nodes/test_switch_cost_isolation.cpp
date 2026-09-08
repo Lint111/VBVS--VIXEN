@@ -70,7 +70,7 @@
 #endif
 
 using Vixen::SVO::Recipe::SdfOpCode;
-using Vixen::SVO::Recipe::RecipeStackArity;
+using Vixen::SVO::Recipe::RecipeStackStaticArity;
 using Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl;
 using Vixen::SVO::RecipeRegistry;
 using Vixen::SVO::Recipe::SdfInstruction;

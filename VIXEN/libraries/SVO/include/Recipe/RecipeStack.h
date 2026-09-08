@@ -2,7 +2,10 @@
 #include <cstdint>
 #include "Recipe/generated/SdfOpCodes.g.h"
 
-// RecipeStackArity — shared arity table for the value-stack VM.
+// RecipeStackStaticArity — hand-authored arity table for the value-stack VM.
+// The generated SIMD face owns the canonical RecipeStackArity name when the
+// pinned kernel emits opcode metadata; keep this consumer-side validator seam
+// distinct until the two tables are consolidated.
 // Source of truth derived from evalRecipe (SdfRecipeEval.h) so the registry
 // validator and the emitter agree without duplicating the table.
 // ponytail: psp (position stack) tracked too; both share the 64-slot limit.
@@ -17,7 +20,7 @@ struct StackArity {
 
 // Returns the arity for the given opcode.
 // Returns {0,0,0,0} for unknown/no-op opcodes (Output, ComposeFloat3).
-inline StackArity RecipeStackArity(SdfOpCode op) {
+inline StackArity RecipeStackStaticArity(SdfOpCode op) {
     switch (op) {
         // --- Leaf primitives: push 1 value ---
         case SdfOpCode::Sphere:

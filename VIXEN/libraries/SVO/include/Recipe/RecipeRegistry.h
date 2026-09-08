@@ -217,7 +217,7 @@ public:
                 if (in.paramMask != 0) return RegisterResult::ParamMaskUnsupported;
             }
 
-            auto a = Recipe::RecipeStackArity(static_cast<Recipe::SdfOpCode>(in.opCode));
+            auto a = Recipe::RecipeStackStaticArity(static_cast<Recipe::SdfOpCode>(in.opCode));
             // underflow checks
             if (sp < a.vPop)  return RegisterResult::StackOverflow;
             if (psp < a.pPop) return RegisterResult::StackOverflow;

@@ -45,15 +45,26 @@ set(_cg "${CMAKE_CURRENT_SOURCE_DIR}")
 # historical four-parent relative path resolves to engine/core instead of the
 # undertow superproject's core directory. Probe both repository layouts without
 # tying generator discovery to a particular user's checkout path.
+set(VIXEN_SCHEMA_CATALOG "" CACHE FILEPATH
+    "Undertow schema catalogue used by AppFlow/ViewNounId codegen checks")
 set(_schema_catalog_source "")
-foreach(_schema_catalog_candidate IN ITEMS
-        "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
-        "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
-    if(EXISTS "${_schema_catalog_candidate}")
-        set(_schema_catalog_source "${_schema_catalog_candidate}")
-        break()
+if(VIXEN_SCHEMA_CATALOG)
+    if(EXISTS "${VIXEN_SCHEMA_CATALOG}")
+        set(_schema_catalog_source "${VIXEN_SCHEMA_CATALOG}")
+    else()
+        message(FATAL_ERROR
+            "VIXEN_SCHEMA_CATALOG does not exist: ${VIXEN_SCHEMA_CATALOG}")
     endif()
-endforeach()
+else()
+    foreach(_schema_catalog_candidate IN ITEMS
+            "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
+            "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+        if(EXISTS "${_schema_catalog_candidate}")
+            set(_schema_catalog_source "${_schema_catalog_candidate}")
+            break()
+        endif()
+    endforeach()
+endif()
 
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
 # Resolve YEROKET_ROOT from the first home candidate that actually contains the repo,
@@ -74,8 +85,64 @@ if(NOT DEFINED YEROKET_ROOT)
     endif()
     set(YEROKET_ROOT "${_yk_root}" CACHE PATH "Yeroket repo root (kernel-codegen tool)")
 endif()
-set(_yk_tool "${YEROKET_ROOT}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
+
+# The engine consumes one reviewed kernel snapshot for every codegen check.  This
+# is deliberately materialized under the build tree instead of checking out the
+# user's kernel repository: a mutable main checkout must not silently change the
+# generated contract between configure and build.  b50d40f5 is the kernel commit
+# that produced the current AppFlow golden and includes the earlier recipe SIMD
+# contract; newer kernel-main commits are intentionally outside this engine pin.
+set(YEROKET_KERNEL_SHA "b50d40f5bbd5dd9816c25540b8aeaadcada5ba31" CACHE STRING
+    "Pinned Yeroket kernel commit used by VIXEN codegen checks")
+set(_yk_root "${YEROKET_ROOT}")
+set(_yk_pin_dir "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}")
+set(_yk_pin_stamp "${_yk_pin_dir}/.archive-complete")
+if(NOT EXISTS "${_yk_pin_stamp}")
+    find_program(_yk_git NAMES git)
+    if(NOT _yk_git)
+        message(FATAL_ERROR "[codegen] pinned Yeroket kernel ${YEROKET_KERNEL_SHA} requires git, but git was not found")
+    endif()
+    execute_process(
+        COMMAND "${_yk_git}" -C "${YEROKET_ROOT}" cat-file -e "${YEROKET_KERNEL_SHA}^{commit}"
+        RESULT_VARIABLE _yk_pin_exists
+        OUTPUT_QUIET
+        ERROR_VARIABLE _yk_pin_error)
+    if(NOT _yk_pin_exists EQUAL 0)
+        message(FATAL_ERROR "[codegen] pinned Yeroket kernel ${YEROKET_KERNEL_SHA} is unavailable from ${YEROKET_ROOT} "
+            "(${_yk_pin_error}); pass -DYEROKET_ROOT=<clone containing the pin>")
+    endif()
+    set(_yk_pin_archive "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}.tar")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_yk_pin_dir}"
+        RESULT_VARIABLE _yk_pin_mkdir)
+    execute_process(
+        COMMAND "${_yk_git}" -C "${YEROKET_ROOT}" archive --format=tar --output "${_yk_pin_archive}" "${YEROKET_KERNEL_SHA}"
+        RESULT_VARIABLE _yk_pin_archive_result
+        ERROR_VARIABLE _yk_pin_archive_error)
+    if(NOT _yk_pin_mkdir EQUAL 0 OR NOT _yk_pin_archive_result EQUAL 0)
+        message(FATAL_ERROR "[codegen] could not archive pinned Yeroket kernel ${YEROKET_KERNEL_SHA} "
+            "(${_yk_pin_archive_error})")
+    endif()
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E tar xf "${_yk_pin_archive}"
+        WORKING_DIRECTORY "${_yk_pin_dir}"
+        RESULT_VARIABLE _yk_pin_extract
+        ERROR_VARIABLE _yk_pin_extract_error)
+    if(NOT _yk_pin_extract EQUAL 0)
+        message(FATAL_ERROR "[codegen] could not extract pinned Yeroket kernel ${YEROKET_KERNEL_SHA} "
+            "(${_yk_pin_extract_error})")
+    endif()
+    file(WRITE "${_yk_pin_stamp}" "${YEROKET_KERNEL_SHA}\n")
+endif()
+set(_yk_root "${_yk_pin_dir}")
+
+set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
+    if(NOT _schema_catalog_source)
+        message(FATAL_ERROR
+            "[codegen] AppFlow/ViewNounId checks require Undertow's schema catalogue; "
+            "pass -DVIXEN_SCHEMA_CATALOG=<path>/schemas.json for a standalone VIXEN configure")
+    endif()
     # All drift guards invoke the same CodegenTool project. Parallel `dotnet run`
     # processes race while MSBuild copies the shared output DLLs, so serialize
     # check targets without constraining the native compile/link pool.
@@ -147,8 +214,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         # render-param block, via the new --struct-precision emitter.
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h" _out_recipeparams_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
-        _codegen_to_wsl_path("${YEROKET_ROOT}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
-        _codegen_to_wsl_path("${YEROKET_ROOT}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_cg}/recipe-lowering.extensions" _recipe_extensions_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp" _out_recipe_simd_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
@@ -211,8 +278,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
-        set(_recipe_opcode_source_run "${YEROKET_ROOT}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
-        set(_recipe_kernel_source_run "${YEROKET_ROOT}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
+        set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
+        set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_extensions_run "${_cg}/recipe-lowering.extensions")
         set(_out_recipe_simd_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
@@ -315,7 +382,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # Compiler-owned closed-recipe lowering + SIMD4 evaluator. Both source-generator
     # and CLI modes call RecipeSimdEmitter; this target guards the vendored native face.
     set(_recipe_simd_args
-        run --project "${_yk_tool_run}" -c Release --
+        "${_yk_dll_run}"
         --recipe-simd-cpp
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
@@ -330,6 +397,13 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
         COMMENT "[codegen] regenerate RecipeSimd.g.hpp from kernel lowering pipeline"
         VERBATIM)
+
+    set(_view_catalog_args)
+    if(_schema_catalog_source)
+        set(_view_catalog_args
+            --schema-json "${_schema_catalog_run}"
+            --view-executor-consumer Undertow.View)
+    endif()
 
     # --- LightingConfig via the same Yeroket tool (Sampled Lighting Inc0 M1: lights
     # become generated, drift-guarded data types). Generated header lives beside
@@ -611,7 +685,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         "${_yk_dll_run}"
         --schema "${_schema_appflow_run}" --appflow
         --view-schema "${_schema_view_run}"
-        --schema-json "${_schema_catalog_run}" --view-executor-consumer Undertow.View
+        ${_view_catalog_args}
         --exclude VectorProof
         # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
         # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
@@ -644,7 +718,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     set(_view_noun_args
         "${_yk_dll_run}"
         --view-noun-enum --schema "${_schema_view_run}"
-        --schema-json "${_schema_catalog_run}" --view-executor-consumer Undertow.View
+        ${_view_catalog_args}
         --exclude VectorProof
         # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
         # above) — same-named catalogue derived queries already carry these nouns.
