@@ -253,7 +253,7 @@ public:
                                            proxyAabbCapacity_[slot]);
         return total;
     }
-    [[nodiscard]] const Vixen::SVO::WholesaleAvailability& WholesaleState() const { return wholesaleAvailability_; }
+    [[nodiscard]] const Vixen::SVO::ResidencyState& WholesaleState() const { return wholesaleAvailability_; }
     [[nodiscard]] uint64_t WholesalePairTransferCount() const { return wholesalePairTransferCount_; }
     [[nodiscard]] uint64_t LastWholesaleReusableBytes() const { return lastWholesaleReusableBytes_; }
     [[nodiscard]] const std::vector<UploadLedgerEntry>& UploadLedgerSnapshot() const {
@@ -362,7 +362,7 @@ private:
     bool                                    residencyRequested_  = true;
     bool                                    brickPoolUploaded_   = false;
     bool                                    brickResidencyDirty_ = false;
-    Vixen::SVO::WholesaleAvailability       wholesaleAvailability_;
+    Vixen::SVO::ResidencyState              wholesaleAvailability_;
     bool                                    wholesaleAdmissionEnabled_ = false;
     uint64_t                                wholesalePairTransferCount_ = 0;
     uint64_t                                lastWholesaleReusableBytes_ = 0;

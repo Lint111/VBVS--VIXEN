@@ -984,7 +984,7 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
         bricksBuffer_, bricksMemory_, "octree bricks SSBO");
     brickPoolUploaded_ = residencyRequested_ && !concatenated_.bricks.empty();
     if (brickPoolUploaded_) {
-        wholesaleAvailability_.committedRegime = Vixen::SVO::CellFootprintRegime::Surface;
+        Vixen::SVO::SetCommittedRegime(wholesaleAvailability_, Vixen::SVO::CellFootprintRegime::Surface);
         wholesaleAvailability_.readyMask =
             static_cast<uint32_t>(Vixen::SVO::WholesalePayload::ChannelPool) |
             static_cast<uint32_t>(Vixen::SVO::WholesalePayload::BrickLookup);

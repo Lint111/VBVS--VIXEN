@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CellFootprintRegime.h"
+#include "ResidencyTier.h"
 
 #include <cstdint>
 #include <array>
@@ -16,9 +17,26 @@ enum class WholesalePayload : uint32_t {
     OccupancyGrid = 1u << 3,
 };
 
-struct WholesaleAvailability {
+// Per-scope residency state — the out-of-core design's `ResidencyState`
+// (Vixen-Docs/01-Architecture/2026-09-08-out-of-core-residency-architecture.md §2.3),
+// i.e. the former `WholesaleAvailability` struct with the ladder position added beside
+// the regime it is derived from. R0 (design §8) adds the dimension WITHOUT changing the
+// protocol: the regime fields, masks, counters, retained-payload ledger and the FNV
+// signature below are byte-for-byte what the wholesale gate ran on before, and every
+// caller still keys its decisions on `committedRegime`. `desiredTier`/`committedTier`
+// are kept in lockstep by the same functions that move the regimes
+// (ResidencyTierOfRegime) — they are observers of today's T0/T1 ladder, read by nothing
+// on the upload path yet. Re-keying one state per (kind, scope) is R1 (per-region
+// requests); today there is exactly one instance per BodyOctreeSceneNode, whose scope is
+// the whole concatenated pool and whose kind set is the payload mask.
+//
+// R4-corollary (design D9): this state is render-side residency bookkeeping; it is never a
+// simulation input.
+struct ResidencyState {
     CellFootprintRegime desiredRegime = CellFootprintRegime::MipHit;
     CellFootprintRegime committedRegime = CellFootprintRegime::MipHit;
+    ResidencyTier desiredTier = ResidencyTierOfRegime(CellFootprintRegime::MipHit);
+    ResidencyTier committedTier = ResidencyTierOfRegime(CellFootprintRegime::MipHit);
     uint32_t generation = 0;
     uint32_t pendingMask = 0;
     uint32_t readyMask = 0;
@@ -47,7 +65,19 @@ inline uint32_t WholesaleS4PayloadMask() {
            static_cast<uint32_t>(WholesalePayload::OccupancyGrid);
 }
 
-inline void RetainWholesalePayload(WholesaleAvailability& state, uint32_t payloadMask,
+// The only writers of the regime fields: every regime move carries its tier with it, so
+// the tier can never drift from the regime it is derived from.
+inline void SetDesiredRegime(ResidencyState& state, CellFootprintRegime regime) {
+    state.desiredRegime = regime;
+    state.desiredTier = ResidencyTierOfRegime(regime);
+}
+
+inline void SetCommittedRegime(ResidencyState& state, CellFootprintRegime regime) {
+    state.committedRegime = regime;
+    state.committedTier = ResidencyTierOfRegime(regime);
+}
+
+inline void RetainWholesalePayload(ResidencyState& state, uint32_t payloadMask,
                                    uint64_t channelPoolBytes, uint64_t brickLookupBytes,
                                    uint64_t channelPoolHash, uint64_t brickLookupHash) {
     if ((payloadMask & WholesaleFinePayloadMask()) == WholesaleFinePayloadMask()) {
@@ -60,18 +90,18 @@ inline void RetainWholesalePayload(WholesaleAvailability& state, uint32_t payloa
 // Apply the frozen hysteresis: two consecutive Surface classifications promote, while
 // four consecutive non-Surface classifications demote. A transition clears readiness
 // before any payload is reused, so stale retained bytes are never shader-readable.
-inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
+inline bool AdvanceWholesaleAvailability(ResidencyState& state,
                                          CellFootprintRegime classified,
                                          uint32_t payloadMask) {
     const bool surface = classified == CellFootprintRegime::Surface;
     state.surfaceFrames = surface ? state.surfaceFrames + 1u : 0u;
     state.nonSurfaceFrames = surface ? 0u : state.nonSurfaceFrames + 1u;
-    state.desiredRegime = classified;
+    SetDesiredRegime(state, classified);
 
     bool changed = false;
     if (state.committedRegime != CellFootprintRegime::Surface && state.surfaceFrames >= 2u) {
         if ((payloadMask & WholesaleFinePayloadMask()) != WholesaleFinePayloadMask()) return false;
-        state.committedRegime = CellFootprintRegime::Surface;
+        SetCommittedRegime(state, CellFootprintRegime::Surface);
         state.pendingMask = payloadMask;
         state.readyMask = 0u;
         if ((state.retainedMask & payloadMask) == payloadMask) {
@@ -83,7 +113,7 @@ inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
         ++state.generation;
         changed = true;
     } else if (state.committedRegime == CellFootprintRegime::Surface && state.nonSurfaceFrames >= 4u) {
-        state.committedRegime = classified;
+        SetCommittedRegime(state, classified);
         state.pendingMask = 0u;
         state.readyMask = 0u;
         ++state.generation;
@@ -92,14 +122,16 @@ inline bool AdvanceWholesaleAvailability(WholesaleAvailability& state,
     return changed;
 }
 
-inline void PublishWholesaleReady(WholesaleAvailability& state) {
+inline void PublishWholesaleReady(ResidencyState& state) {
     state.readyMask = state.pendingMask != 0u ? state.pendingMask :
         (state.reusablePopulatedBytes != 0u ? WholesaleFinePayloadMask() : 0u);
     state.pendingMask = 0u;
     state.reusablePopulatedBytes = 0u;
 }
 
-inline uint64_t WholesaleResidentSignatureFNV64(const WholesaleAvailability& state,
+// Per-octree parity witness (design §2.3). Deliberately does NOT mix the tier fields:
+// they are derived from the regime, so the signature is unchanged by R0 by construction.
+inline uint64_t WholesaleResidentSignatureFNV64(const ResidencyState& state,
                                                 uint32_t octreeIndex = 0u) {
     uint64_t hash = 1469598103934665603ull;
     const auto mix = [&hash](uint64_t value) {

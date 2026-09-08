@@ -496,6 +496,15 @@ target_link_libraries(test_wholesale_availability PRIVATE GTest::gtest_main)
 set_target_properties(test_wholesale_availability PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_wholesale_availability)
 
+# Out-of-core R0: the declared residency rows (ResidencyRow.h / ResidencyTier.h) —
+# header-only, dependency-free like the wholesale ledger above.
+add_executable(test_residency_row test_residency_row.cpp)
+target_compile_features(test_residency_row PRIVATE cxx_std_17)
+target_include_directories(test_residency_row PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(test_residency_row PRIVATE GTest::gtest_main)
+set_target_properties(test_residency_row PROPERTIES FOLDER "Tests/SVO Tests")
+gtest_discover_tests(test_residency_row)
+
 add_executable(test_wholesale_capacity_arena test_wholesale_capacity_arena.cpp)
 target_compile_features(test_wholesale_capacity_arena PRIVATE cxx_std_17)
 target_include_directories(test_wholesale_capacity_arena PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
