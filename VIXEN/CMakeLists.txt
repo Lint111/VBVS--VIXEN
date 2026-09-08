@@ -165,6 +165,16 @@ if(VIXEN_FAIL_SCENARIOS)
     add_compile_definitions(VIXEN_FAIL_SCENARIOS=1)
 endif()
 
+# Lock census (Core/LockCensus.h) — lock-free federation phase 0. ON swaps the frame-path mutex
+# declarations for counting wrappers (acquisitions/contention/wait/hold per inventory family) and
+# makes RenderGraph sample them per frame (summary at graph teardown; VIXEN_LOCK_CENSUS_CSV=<path>
+# for a per-frame CSV). OFF (default) is a pure type alias: no wrapper, no counters, no code.
+option(VIXEN_LOCK_CENSUS "Count/time mutex acquisitions per lock-inventory family on the frame path" OFF)
+if(VIXEN_LOCK_CENSUS)
+    message(STATUS "Lock census enabled (VIXEN_LOCK_CENSUS)")
+    add_compile_definitions(VIXEN_LOCK_CENSUS=1)
+endif()
+
 # Descriptor resource lifecycle tracking (Debug/DescriptorResourceTracker.h) - records every
 # DescriptorResourceEntry creation/extraction/bind event (source location, handle value, node
 # name) into a thread-safe registry, with optional real-time console printing. Used to diagnose
@@ -536,6 +546,26 @@ add_subdirectory(libraries)
 option(VIXEN_CODEGEN_GATE "Run the config-struct codegen golden check" ON)
 if(VIXEN_CODEGEN_GATE)
     add_subdirectory(codegen)
+endif()
+
+# No-new-mutex declaration gate (lock-free federation phase 0, design §5 / OD-11): every build runs
+# scripts/check-no-new-mutex.sh, which fails when libraries/ or application/ gains a mutex declaration
+# not pinned (with its inventory family) in scripts/no-new-mutex.allowlist. Needs bash + python3;
+# silently skipped where either is absent (a plain MSVC shell) — run it from WSL/CI there.
+option(VIXEN_NO_NEW_MUTEX_GATE "Run the no-new-mutex declaration gate on every build" ON)
+if(VIXEN_NO_NEW_MUTEX_GATE)
+    find_program(VIXEN_GATE_BASH NAMES bash)
+    find_program(VIXEN_GATE_PYTHON3 NAMES python3)
+    if(VIXEN_GATE_BASH AND VIXEN_GATE_PYTHON3)
+        add_custom_target(no_new_mutex_check ALL
+            COMMAND ${VIXEN_GATE_BASH} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-no-new-mutex.sh"
+                    --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            COMMENT "no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)"
+            VERBATIM)
+    else()
+        message(STATUS "no-new-mutex gate skipped: bash/python3 not found (run scripts/check-no-new-mutex.sh from WSL/CI)")
+    endif()
 endif()
 
 # ============================================================================

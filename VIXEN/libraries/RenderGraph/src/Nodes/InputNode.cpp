@@ -329,7 +329,7 @@ void InputNode::OnKey(GLFWwindow* w, int key, int /*scancode*/, int action, int 
 }
 
 void InputNode::QueueEvent(const InputEvent& event) {
-    std::lock_guard<std::mutex> lock(eventMutex_);
+    std::lock_guard lock(eventMutex_);
     pendingInput_.push_back(event);
 }
 
@@ -380,7 +380,7 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
 void InputNode::ProcessPendingInput() {
     std::vector<InputEvent> eventsToProcess;
     {
-        std::lock_guard<std::mutex> lock(eventMutex_);
+        std::lock_guard lock(eventMutex_);
         eventsToProcess.swap(pendingInput_);
     }
     for (const auto& event : eventsToProcess) {

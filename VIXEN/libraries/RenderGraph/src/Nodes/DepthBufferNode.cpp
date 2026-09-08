@@ -242,7 +242,7 @@ void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
 
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard<std::mutex> submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
+        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
         vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
         vkQueueWaitIdle(vulkanDevice->queue);
     }

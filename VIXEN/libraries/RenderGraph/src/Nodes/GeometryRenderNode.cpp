@@ -252,7 +252,7 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        std::lock_guard submitLock(device->SubmitMutex(device->queue));
         result = vkQueueSubmit(device->queue, 1, &submitInfo, inFlightFence);
     }
     if (result != VK_SUCCESS) {

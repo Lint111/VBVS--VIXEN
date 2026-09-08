@@ -16,7 +16,7 @@ BatchedUploader::BatchedUploader(
     uint32_t queueFamilyIndex,
     DeviceBudgetManager* budgetManager,
     const Config& config,
-    std::mutex* submitMutex)
+    Vixen::LockCensus::QueueSubmitMutex* submitMutex)
     : config_(config)
     , device_(device)
     , queue_(queue)
@@ -127,7 +127,7 @@ UploadHandle BatchedUploader::UploadOrdered(const std::vector<UploadRequest>& re
     }
 
     {
-        std::lock_guard<std::mutex> lock(pendingMutex_);
+        std::lock_guard lock(pendingMutex_);
         if (pendingUploads_.empty()) {
             oldestPendingTime_ = std::chrono::steady_clock::now();
         }
@@ -170,7 +170,7 @@ UploadHandle BatchedUploader::CopyBuffer(
     };
 
     {
-        std::lock_guard<std::mutex> lock(pendingMutex_);
+        std::lock_guard lock(pendingMutex_);
         if (pendingUploads_.empty()) {
             oldestPendingTime_ = std::chrono::steady_clock::now();
         }
@@ -187,7 +187,7 @@ UploadHandle BatchedUploader::CopyBuffer(
 }
 
 UploadStatus BatchedUploader::GetStatus(UploadHandle handle) const {
-    std::lock_guard<std::mutex> lock(statusMutex_);
+    std::lock_guard lock(statusMutex_);
     auto it = uploadStatus_.find(handle);
     if (it == uploadStatus_.end()) {
         return UploadStatus::Failed;  // Unknown handle
@@ -223,7 +223,7 @@ void BatchedUploader::Flush() {
     std::vector<PendingUpload> toSubmit;
 
     {
-        std::lock_guard<std::mutex> lock(pendingMutex_);
+        std::lock_guard lock(pendingMutex_);
         if (pendingUploads_.empty()) {
             return;
         }
@@ -241,7 +241,7 @@ void BatchedUploader::Flush() {
 uint32_t BatchedUploader::ProcessCompletions() {
     uint32_t completed = 0;
 
-    std::lock_guard<std::mutex> lock(submittedMutex_);
+    std::lock_guard lock(submittedMutex_);
 
     while (!submittedBatches_.empty()) {
         auto& batch = submittedBatches_.front();
@@ -300,7 +300,7 @@ void BatchedUploader::WaitIdle() {
     // Wait for all submitted batches
     while (true) {
         {
-            std::lock_guard<std::mutex> lock(submittedMutex_);
+            std::lock_guard lock(submittedMutex_);
             if (submittedBatches_.empty()) {
                 break;
             }
@@ -321,7 +321,7 @@ BatchedUploaderStats BatchedUploader::GetStats() const {
     stats.totalBytesUploaded = totalBytesUploaded_.load(std::memory_order_relaxed);
 
     {
-        std::lock_guard<std::mutex> lock(pendingMutex_);
+        std::lock_guard lock(pendingMutex_);
         stats.currentPendingUploads = pendingUploads_.size();
     }
     stats.currentPendingBytes = pendingBytes_.load(std::memory_order_relaxed);
@@ -335,7 +335,7 @@ BatchedUploaderStats BatchedUploader::GetStats() const {
 }
 
 uint32_t BatchedUploader::GetPendingCount() const {
-    std::lock_guard<std::mutex> lock(pendingMutex_);
+    std::lock_guard lock(pendingMutex_);
     return static_cast<uint32_t>(pendingUploads_.size());
 }
 
@@ -395,7 +395,7 @@ void BatchedUploader::CreateTimelineSemaphore() {
 }
 
 VkCommandBuffer BatchedUploader::AcquireCommandBuffer() {
-    std::lock_guard<std::mutex> lock(cmdBufferMutex_);
+    std::lock_guard lock(cmdBufferMutex_);
 
     if (availableCommandBuffers_.empty()) {
         // Need to wait for a batch to complete
@@ -416,7 +416,7 @@ void BatchedUploader::ReleaseCommandBuffer(VkCommandBuffer cmdBuffer) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(cmdBufferMutex_);
+    std::lock_guard lock(cmdBufferMutex_);
     availableCommandBuffers_.push(cmdBuffer);
 }
 
@@ -433,8 +433,8 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
         if (cmdBuffer == VK_NULL_HANDLE) {
             // Still none - wait for GPU. Externally synchronized per Vulkan spec (audit V-M11).
             {
-                std::unique_lock<std::mutex> lock;
-                if (submitMutex_) lock = std::unique_lock<std::mutex>(*submitMutex_);
+                std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
+                if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
                 vkQueueWaitIdle(queue_);
             }
             ProcessCompletions();
@@ -484,8 +484,8 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     // uploader owns the only path to this queue (no cross-node contention), it's null and submitLock
     // owns no mutex — every submitLock.unlock() below must be owns_lock()-guarded, or unlocking a
     // lock that holds no mutex throws std::system_error(operation_not_permitted).
-    std::unique_lock<std::mutex> submitLock;
-    if (submitMutex_) submitLock = std::unique_lock<std::mutex>(*submitMutex_);
+    std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> submitLock;
+    if (submitMutex_) submitLock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
 
     if (useTimelineSemaphores_ && timelineSemaphore_ != VK_NULL_HANDLE) {
         // Use timeline semaphore
@@ -535,7 +535,7 @@ void BatchedUploader::SubmitBatch(std::vector<PendingUpload>&& uploads) {
     }
 
     {
-        std::lock_guard<std::mutex> lock(submittedMutex_);
+        std::lock_guard lock(submittedMutex_);
         submittedBatches_.push(std::move(batch));
     }
 
@@ -556,7 +556,7 @@ void BatchedUploader::CheckAutoFlush() {
     // Check upload count threshold
     size_t pendingCount = 0;
     {
-        std::lock_guard<std::mutex> lock(pendingMutex_);
+        std::lock_guard lock(pendingMutex_);
         pendingCount = pendingUploads_.size();
     }
 
@@ -580,12 +580,12 @@ void BatchedUploader::CheckAutoFlush() {
 }
 
 void BatchedUploader::SetStatus(UploadHandle handle, UploadStatus status) {
-    std::lock_guard<std::mutex> lock(statusMutex_);
+    std::lock_guard lock(statusMutex_);
     uploadStatus_[handle] = status;
 }
 
 void BatchedUploader::PruneStatus(UploadHandle handle) {
-    std::lock_guard<std::mutex> lock(statusMutex_);
+    std::lock_guard lock(statusMutex_);
     uploadStatus_.erase(handle);
 }
 

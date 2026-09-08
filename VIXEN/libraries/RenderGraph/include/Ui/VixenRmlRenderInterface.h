@@ -5,6 +5,7 @@
 // host-visible vertex/index buffers. RmlUi compiles geometry on layout change (not per frame), so the
 // buffers are cheap. The owning UIRenderNode calls Init() once (Compile) and BeginFrame()+context
 // Render() each frame; draws are recorded into the BeginFrame() command buffer.
+#include "LockCensus.h"
 #include <vulkan/vulkan.h>
 #include <RmlUi/Core/RenderInterface.h>
 
@@ -27,7 +28,7 @@ public:
     // against itself.
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue, uint32_t queueFamilyIndex,
               const VkPhysicalDeviceMemoryProperties& memProps, VkCommandPool commandPool, VkRenderPass renderPass,
-              std::mutex* submitMutex);
+              Vixen::LockCensus::QueueSubmitMutex* submitMutex);
     // Destroy all owned Vulkan objects. Caller must vkDeviceWaitIdle first.
     void Shutdown();
 
@@ -84,7 +85,7 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
-    std::mutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
+    Vixen::LockCensus::QueueSubmitMutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
     uint32_t queueFamilyIndex_ = 0;
     VkPhysicalDeviceMemoryProperties memProps_{};
     VkCommandPool commandPool_ = VK_NULL_HANDLE;

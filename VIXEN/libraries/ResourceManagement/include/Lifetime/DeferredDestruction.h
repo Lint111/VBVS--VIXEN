@@ -6,6 +6,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include "LockCensus.h"
 #include <mutex>
 
 namespace ResourceManagement {
@@ -97,7 +98,7 @@ public:
      * @param capacity Number of pending destructions to pre-allocate for
      */
     void PreReserve(size_t capacity) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         PreReserveLocked(capacity);
     }
 
@@ -105,7 +106,7 @@ public:
      * @brief Get current pre-allocated capacity
      */
     size_t GetCapacity() const noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         return buffer_.size();
     }
 
@@ -136,7 +137,7 @@ public:
             return;  // Nothing to destroy
         }
 
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         PushInternal(PendingDestruction(
             [device, handle, destroyer]() {
                 destroyer(device, handle, nullptr);
@@ -166,7 +167,7 @@ public:
             return;
         }
 
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         PushInternal(PendingDestruction(std::move(destructorFunc), currentFrame));
     }
 
@@ -197,7 +198,7 @@ public:
         // non-recursive mutex if still held here.
         std::vector<PendingDestruction> due;
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::lock_guard lock(mutex_);
             while (size_ > 0) {
                 const auto& pending = buffer_[head_];
 
@@ -239,7 +240,7 @@ public:
         // own teardown queues another deferred destruction).
         std::vector<PendingDestruction> all;
         {
-            std::lock_guard<std::mutex> lock(mutex_);
+            std::lock_guard lock(mutex_);
             all.reserve(size_);
             while (size_ > 0) {
                 all.push_back(std::move(buffer_[head_]));
@@ -257,7 +258,7 @@ public:
      * @brief Get number of pending destructions
      */
     size_t GetPendingCount() const noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         return size_;
     }
 
@@ -269,7 +270,7 @@ public:
      * - maxSizeReached << capacity → decrease PreReserve capacity
      */
     PreAllocationStats GetPreAllocationStats() const noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         PreAllocationStats stats;
         stats.capacity = buffer_.size();
         stats.currentSize = size_;
@@ -287,7 +288,7 @@ public:
      * Resets growth count and high-water mark for fresh measurement period.
      */
     void ResetStats() noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         maxSizeReached_ = size_;
         growthCount_ = 0;
         totalQueued_ = 0;
@@ -405,7 +406,7 @@ private:
     // frame loop's ProcessFrame()/Flush(). ProcessFrame()/Flush() pop under this lock into a
     // local batch and run destructors after releasing it, so a destructor that re-enters
     // AddGeneric() doesn't deadlock.
-    mutable std::mutex mutex_;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM1> mutex_;
 
     // Ring buffer storage
     std::vector<PendingDestruction> buffer_;

@@ -1,4 +1,42 @@
-# VIXEN Data Visualization Tools
+# VIXEN Tools
+
+## Gates
+
+### `check-no-new-mutex.sh` — no-new-mutex declaration gate
+
+Lock-free federation phase 0 (`Vixen-Docs/01-Architecture/2026-09-08-lockfree-federation-architecture.md`
+§5 phase 0/6, OD-11). Engine-side twin of the kernel's R-B enforcement gate: a declaration check that
+fails when `VIXEN/libraries` or `VIXEN/application` gains a mutex that is not declared. A mutex is
+declared when its file's owning declarations are pinned with their inventory family IDs in
+`scripts/no-new-mutex.allowlist`, or when it is spelled through `Core/LockCensus.h`
+(`Vixen::LockCensus::Mutex<Family::XX>`), which names its inventory row in the type.
+
+```bash
+VIXEN/scripts/check-no-new-mutex.sh          # PASS/FAIL (+ WARN for UNCLASSIFIED rows); exit 1 on FAIL
+VIXEN/scripts/check-no-new-mutex.sh --fix    # re-sync the allowlist from the tree; new files land as UNCLASSIFIED
+```
+
+Wired into every build as the `no_new_mutex_check` target (`-DVIXEN_NO_NEW_MUTEX_GATE=OFF` to opt out;
+skipped automatically where bash/python3 are absent). The allowlist diff is the declaration to review:
+a lock removal re-syncs its row downward, an addition must carry a family (or be classified — an
+`UNCLASSIFIED` row warns until the inventory has a row for it).
+
+### Lock census (`-DVIXEN_LOCK_CENSUS=ON`)
+
+The measurement half of phase 0 (design §9). `Core/LockCensus.h` swaps the frame-path mutex
+declarations (VK1/VK2, EB1-3, RM1/RM7-12, C1/C3/C4, RG2-4) for counting wrappers; `RenderGraph`
+samples them once per frame together with the executed wave shape (waves, rows, max wave width,
+whole-slot rows, worker count, frame CPU ms). Off by default — a pure type alias, no code.
+
+```bash
+cmake --preset vixen-wsl -B build/wsl-census -DVIXEN_LOCK_CENSUS=ON
+VIXEN_LOCK_CENSUS_CSV=/tmp/census.csv VIXEN_EXIT_AFTER_FRAMES=300 ./build/wsl-census/binaries/VIXEN   # one CSV row per frame
+# summary (mean per frame per family) is printed as "[LockCensus] ..." lines at graph teardown
+# 1/2/N sweep (sequential + lowered w=1,2,4): VIXEN/scripts/lock-census-sweep.sh build/wsl-census/binaries/VIXEN out/ 300
+# byte-identity across worker counts is checked with the existing capture/golden tools, not by the sweep
+```
+
+## Data visualization
 
 Python scripts for aggregating benchmark data and generating charts for documentation.
 

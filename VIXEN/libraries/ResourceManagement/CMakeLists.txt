@@ -79,6 +79,9 @@ target_include_directories(ResourceManagement
 find_package(Vulkan REQUIRED)
 target_link_libraries(ResourceManagement PUBLIC Vulkan::Vulkan)
 
+# Core: the uploader/staging/lifetime headers declare their mutexes through Core/LockCensus.h.
+target_link_libraries(ResourceManagement PUBLIC Core::Core)
+
 # VMA (Vulkan Memory Allocator) - provided by dependencies/CMakeLists.txt
 if(TARGET VulkanMemoryAllocator)
     target_link_libraries(ResourceManagement PUBLIC VulkanMemoryAllocator)

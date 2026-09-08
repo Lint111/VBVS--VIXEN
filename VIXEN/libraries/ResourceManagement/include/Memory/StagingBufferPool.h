@@ -7,6 +7,7 @@
 #include <deque>
 #include <expected>
 #include <memory>
+#include "LockCensus.h"
 #include <mutex>
 #include <optional>
 #include <string_view>
@@ -240,7 +241,7 @@ private:
         VkDeviceSize minSize = 0;
         VkDeviceSize maxSize = 0;
         std::deque<StagingBufferHandle> available;  // FIFO for reuse
-        mutable std::mutex mutex;
+        mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM7> mutex;
     };
 
     // Configuration
@@ -251,7 +252,7 @@ private:
     std::atomic<StagingBufferHandle> nextHandle_{1};
 
     // Buffer tracking (handle → record)
-    mutable std::mutex recordsMutex_;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM8> recordsMutex_;
     std::unordered_map<StagingBufferHandle, BufferRecord> records_;
 
     // Size-class buckets

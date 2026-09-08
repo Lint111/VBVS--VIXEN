@@ -215,7 +215,7 @@ void DepthTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandPo
     submit.commandBufferCount = 1;
     submit.pCommandBuffers    = &cmd;
     {
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        std::lock_guard submitLock(device->SubmitMutex(device->queue));
         if (vkQueueSubmit(device->queue, 1, &submit, VK_NULL_HANDLE) != VK_SUCCESS) {
             vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
             throw std::runtime_error("[DepthTargetNode] vkQueueSubmit (clear) failed");

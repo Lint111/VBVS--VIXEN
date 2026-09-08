@@ -13,6 +13,7 @@
 #include <typeinfo>
 #include <vector>
 #include <memory>
+#include "LockCensus.h"
 #include <mutex>
 #include <shared_mutex>
 #include <filesystem>
@@ -714,11 +715,11 @@ private:
     std::unordered_map<std::type_index, std::unique_ptr<CacherBase>> m_globalCachers;
     
     // Device-specific registries
-    mutable std::shared_mutex m_deviceRegistriesMutex;
+    mutable Vixen::LockCensus::SharedMutex<Vixen::LockCensus::Family::C4> m_deviceRegistriesMutex;
     std::unordered_map<DeviceIdentifier, DeviceRegistry, DeviceIdentifier::DeviceHasher> m_deviceRegistries;
-    
+
     // Thread safety for global registry
-    mutable std::shared_mutex m_globalRegistryMutex;
+    mutable Vixen::LockCensus::SharedMutex<Vixen::LockCensus::Family::C3> m_globalRegistryMutex;
 };
 
 } // namespace CashSystem

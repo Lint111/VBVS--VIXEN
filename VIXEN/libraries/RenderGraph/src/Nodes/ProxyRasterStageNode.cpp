@@ -151,7 +151,7 @@ void ProxyRasterStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     VkResult result = VK_SUCCESS;
     {
-        std::lock_guard<std::mutex> lock(GetDevice()->SubmitMutex(GetDevice()->queue));
+        std::lock_guard lock(GetDevice()->SubmitMutex(GetDevice()->queue));
         result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1u, &submit, VK_NULL_HANDLE);
     }
     if (result != VK_SUCCESS) {

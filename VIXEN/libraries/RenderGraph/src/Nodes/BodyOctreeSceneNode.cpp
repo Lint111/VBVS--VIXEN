@@ -1724,7 +1724,7 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &cmd;
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        std::lock_guard submitLock(device->SubmitMutex(device->queue));
         if (vkQueueSubmit(device->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
             throw std::runtime_error("[BodyOctreeSceneNode] EnsureRtQueryTlasBuilt: vkQueueSubmit failed");
         }

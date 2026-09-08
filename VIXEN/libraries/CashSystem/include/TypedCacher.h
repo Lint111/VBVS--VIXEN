@@ -9,6 +9,7 @@
 // Note: BatchedUploader now owned by VulkanDevice (Sprint 5 Phase 2.5.3)
 // Access via m_device->Upload() instead of GetUploader()
 
+#include "LockCensus.h"
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
@@ -192,7 +193,7 @@ protected:
         PtrT resource;
     };
 
-    mutable std::shared_mutex m_lock;
+    mutable Vixen::LockCensus::SharedMutex<Vixen::LockCensus::Family::C1> m_lock;
     std::unordered_map<std::uint64_t, CacheEntry> m_entries;
     std::unordered_map<std::uint64_t, std::shared_future<PtrT>> m_pending;
 

@@ -372,7 +372,7 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
-        std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+        std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
         result = vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, inFlightFence);
     }
     if (result != VK_SUCCESS) {

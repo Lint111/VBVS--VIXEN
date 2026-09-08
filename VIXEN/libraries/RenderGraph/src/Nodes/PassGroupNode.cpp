@@ -196,7 +196,7 @@ void PassGroupNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
-        std::lock_guard<std::mutex> submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
+        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
         result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
     }
     if (result != VK_SUCCESS) {

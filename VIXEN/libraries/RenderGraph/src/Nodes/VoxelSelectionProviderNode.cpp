@@ -326,7 +326,7 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
     {
         // Externally synchronized per Vulkan spec (audit V-M11); NOT held across the
         // vkWaitForFences below, per the comment above about not stalling the whole queue.
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        std::lock_guard submitLock(device->SubmitMutex(device->queue));
         if (vkQueueSubmit(device->queue, 1, &submit, fence) != VK_SUCCESS) {
             vkDestroyFence(vkDevice, fence, nullptr);
             vkFreeCommandBuffers(vkDevice, commandPool_, 1, &cmd);

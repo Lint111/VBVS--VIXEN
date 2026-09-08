@@ -42,6 +42,9 @@ target_link_libraries(EventBus PUBLIC Threads::Threads)
 # glm::glm is a header-only INTERFACE target, so this just adds its include path.
 target_link_libraries(EventBus PUBLIC glm::glm)
 
+# Core: MessageBus.h declares its mutexes through Core/LockCensus.h (header-only census wrappers).
+target_link_libraries(EventBus PUBLIC Core::Core)
+
 # ============================================================================
 # Precompiled Headers
 # ============================================================================

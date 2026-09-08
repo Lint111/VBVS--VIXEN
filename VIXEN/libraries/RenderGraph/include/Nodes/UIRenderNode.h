@@ -1,4 +1,5 @@
 #pragma once
+#include "LockCensus.h"
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/GPUPerformanceLogger.h"
@@ -98,7 +99,7 @@ private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     PFN_vkQueueSubmit2KHR fpQueueSubmit2_ = nullptr;  // cached from VulkanDevice each compile
-    std::mutex* submitMutex_ = nullptr;  // VulkanDevice::SubmitMutex(queue_) — guards the per-frame submit (audit V-M11)
+    Vixen::LockCensus::QueueSubmitMutex* submitMutex_ = nullptr;  // VulkanDevice::SubmitMutex(queue_) — guards the per-frame submit (audit V-M11)
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;   // consumed from RenderPassNode (not owned)
     VkExtent2D extent_{};

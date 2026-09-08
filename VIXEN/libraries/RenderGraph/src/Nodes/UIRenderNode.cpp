@@ -516,8 +516,8 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
-        std::unique_lock<std::mutex> lock;
-        if (submitMutex_) lock = std::unique_lock<std::mutex>(*submitMutex_);
+        std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
+        if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
         fpQueueSubmit2_(queue_, 1, &si, inFlightFence);
     }
 

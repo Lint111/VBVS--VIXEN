@@ -174,7 +174,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     bool submitOk;
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(queue));
+        std::lock_guard submitLock(device->SubmitMutex(queue));
         submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
         if (submitOk) {
             vkQueueWaitIdle(queue);
@@ -375,7 +375,7 @@ inline bool CaptureSwapchainToPng(Vixen::Vulkan::Resources::VulkanDevice* device
     bool submitOk;
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(queue));
+        std::lock_guard submitLock(device->SubmitMutex(queue));
         submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
         if (submitOk) {
             vkQueueWaitIdle(queue);

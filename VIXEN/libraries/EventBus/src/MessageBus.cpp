@@ -17,7 +17,7 @@ MessageBus::MessageBus() {
 MessageBus::~MessageBus() = default;
 
 EventSubscriptionID MessageBus::Subscribe(MessageType type, MessageHandler handler) {
-    std::lock_guard<std::mutex> lock(subscriptionMutex);
+    std::lock_guard lock(subscriptionMutex);
 
     EventSubscriptionID id = nextSubscriptionID++;
 
@@ -45,7 +45,7 @@ EventSubscriptionID MessageBus::SubscribeAll(MessageHandler handler) {
 }
 
 EventSubscriptionID MessageBus::SubscribeCategory(EventCategory category, MessageHandler handler) {
-    std::lock_guard<std::mutex> lock(subscriptionMutex);
+    std::lock_guard lock(subscriptionMutex);
 
     EventSubscriptionID id = nextSubscriptionID++;
     Subscription sub;
@@ -78,7 +78,7 @@ EventSubscriptionID MessageBus::SubscribeCategories(EventCategory categories, Me
 }
 
 void MessageBus::Unsubscribe(EventSubscriptionID id) {
-    std::lock_guard<std::mutex> lock(subscriptionMutex);
+    std::lock_guard lock(subscriptionMutex);
 
     // Find subscription in list
     for (auto it = subscriptions.begin(); it != subscriptions.end(); ++it) {
@@ -111,7 +111,7 @@ void MessageBus::Unsubscribe(EventSubscriptionID id) {
 }
 
 void MessageBus::UnsubscribeAll() {
-    std::lock_guard<std::mutex> lock(subscriptionMutex);
+    std::lock_guard lock(subscriptionMutex);
     subscriptions.clear();
 
     if (loggingEnabled) {
@@ -122,13 +122,13 @@ void MessageBus::UnsubscribeAll() {
 void MessageBus::Publish(std::unique_ptr<BaseEventMessage> message) {
     size_t currentSize = 0;
     {
-        std::lock_guard<std::mutex> lock(queueMutex);
+        std::lock_guard lock(queueMutex);
         messageQueue_.Push(std::move(message));
         currentSize = messageQueue_.Size();
     }
 
     {
-        std::lock_guard<std::mutex> lock(statsMutex);
+        std::lock_guard lock(statsMutex);
         stats.totalPublished++;
         stats.currentQueueSize = currentSize;
 
@@ -146,7 +146,7 @@ void MessageBus::PublishImmediate(const BaseEventMessage& message) {
     DispatchMessage(message);
 
     {
-        std::lock_guard<std::mutex> lock(statsMutex);
+        std::lock_guard lock(statsMutex);
         stats.totalPublished++;
         stats.totalProcessed++;
         stats.publishedByType[message.type]++;
@@ -158,7 +158,7 @@ void MessageBus::ProcessMessages() {
     // Swap queue to minimize lock time
     PreAllocatedQueue<std::unique_ptr<BaseEventMessage>> localQueue;
     {
-        std::lock_guard<std::mutex> lock(queueMutex);
+        std::lock_guard lock(queueMutex);
         localQueue.Swap(messageQueue_);
     }
 
@@ -181,7 +181,7 @@ void MessageBus::ProcessMessages() {
 
     // Update stats
     {
-        std::lock_guard<std::mutex> lock(statsMutex);
+        std::lock_guard lock(statsMutex);
         stats.totalProcessed += processed;
         stats.currentQueueSize = 0;
     }
@@ -191,7 +191,7 @@ void MessageBus::ProcessMessages() {
 }
 
 void MessageBus::DispatchMessage(const BaseEventMessage& message) {
-    std::lock_guard<std::mutex> lock(subscriptionMutex);
+    std::lock_guard lock(subscriptionMutex);
 
     // Collect candidate subscriptions from type lookup (exact type and type==0)
     std::vector<Subscription*> candidates;
@@ -250,13 +250,13 @@ void MessageBus::DispatchMessage(const BaseEventMessage& message) {
 
     // Update type statistics
     {
-        std::lock_guard<std::mutex> lock(statsMutex);
+        std::lock_guard lock(statsMutex);
         stats.publishedByType[message.type]++;
     }
 }
 
 void MessageBus::ClearQueue() {
-    std::lock_guard<std::mutex> lock(queueMutex);
+    std::lock_guard lock(queueMutex);
 
     size_t discarded = messageQueue_.Size();
     messageQueue_.Clear();
@@ -266,23 +266,23 @@ void MessageBus::ClearQueue() {
     }
 
     {
-        std::lock_guard<std::mutex> lock(statsMutex);
+        std::lock_guard lock(statsMutex);
         stats.currentQueueSize = 0;
     }
 }
 
 size_t MessageBus::GetQueuedCount() const {
-    std::lock_guard<std::mutex> lock(queueMutex);
+    std::lock_guard lock(queueMutex);
     return messageQueue_.Size();
 }
 
 MessageBus::Stats MessageBus::GetStats() const {
-    std::lock_guard<std::mutex> lock(statsMutex);
+    std::lock_guard lock(statsMutex);
     return stats;
 }
 
 void MessageBus::ResetStats() {
-    std::lock_guard<std::mutex> lock(statsMutex);
+    std::lock_guard lock(statsMutex);
     stats = {};
     warningLoggedThisSession = false;  // Allow warnings again after reset
 
@@ -325,7 +325,7 @@ void MessageBus::CheckCapacityWarning(size_t currentSize) {
 
         // Increment warning counter (needs lock)
         {
-            std::lock_guard<std::mutex> lock(statsMutex);
+            std::lock_guard lock(statsMutex);
             stats.capacityWarningCount++;
         }
 
@@ -344,7 +344,7 @@ void MessageBus::CheckCapacityWarning(size_t currentSize) {
 // ============================================================================
 
 void MessageBus::Reserve(size_t capacity) {
-    std::lock_guard<std::mutex> lock(queueMutex);
+    std::lock_guard lock(queueMutex);
     messageQueue_.Reserve(capacity);
 
     // Also update expected capacity for warning thresholds
@@ -360,12 +360,12 @@ void MessageBus::Reserve(size_t capacity) {
 }
 
 size_t MessageBus::GetQueueCapacity() const {
-    std::lock_guard<std::mutex> lock(queueMutex);
+    std::lock_guard lock(queueMutex);
     return messageQueue_.Capacity();
 }
 
 size_t MessageBus::GetQueueGrowthCount() const {
-    std::lock_guard<std::mutex> lock(queueMutex);
+    std::lock_guard lock(queueMutex);
     return messageQueue_.GetGrowthCount();
 }
 

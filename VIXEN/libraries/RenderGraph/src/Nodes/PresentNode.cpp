@@ -131,7 +131,7 @@ VkResult PresentNode::Present(Context& ctx) {
     // Queue present. Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel
     // executor can schedule another node's submit on the same queue.
     {
-        std::lock_guard<std::mutex> submitLock(device->SubmitMutex(device->queue));
+        std::lock_guard submitLock(device->SubmitMutex(device->queue));
         lastResult = VIXEN_FAULT_FILTER(GetOwningGraph(), Present, fpQueuePresent(device->queue, &presentInfo));
     }
 

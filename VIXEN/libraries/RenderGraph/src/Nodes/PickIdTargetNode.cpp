@@ -270,7 +270,7 @@ void PickIdTargetNode::TransitionAllToGeneral(VkCommandPool commandPool) {
     // Submit on the device queue and wait — this runs once at Compile, before any dispatch.
     // Externally synchronized per Vulkan spec (audit V-M11) regardless.
     {
-        std::lock_guard<std::mutex> submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
+        std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
         if (vkQueueSubmit(GetDevice()->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
             vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
             throw std::runtime_error("[PickIdTargetNode] vkQueueSubmit (transition) failed");

@@ -48,7 +48,7 @@ StagingBufferPool::~StagingBufferPool() {
     Clear();
 
     // Destroy any remaining active buffers (shouldn't happen in proper usage)
-    std::lock_guard<std::mutex> lock(recordsMutex_);
+    std::lock_guard lock(recordsMutex_);
     for (auto& [handle, record] : records_) {
         if (record.allocation.buffer != VK_NULL_HANDLE) {
             // Unmap if mapped
@@ -114,7 +114,7 @@ void StagingBufferPool::ReleaseBuffer(StagingBufferHandle handle) {
 
     BufferRecord record;
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         auto it = records_.find(handle);
         if (it == records_.end() || !it->second.inUse) {
             return;  // Invalid or already released
@@ -147,7 +147,7 @@ void StagingBufferPool::ReleaseAndDestroy(StagingBufferHandle handle) {
 
     BufferRecord record;
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         auto it = records_.find(handle);
         if (it == records_.end() || !it->second.inUse) {
             return;
@@ -177,7 +177,7 @@ uint64_t StagingBufferPool::Trim(uint64_t targetBytes) {
     // Iterate buckets from largest to smallest (more efficient trimming)
     for (int i = static_cast<int>(NumBuckets) - 1; i >= 0 && currentPooled > targetBytes; --i) {
         auto& bucket = buckets_[i];
-        std::lock_guard<std::mutex> lock(bucket.mutex);
+        std::lock_guard lock(bucket.mutex);
 
         while (!bucket.available.empty() && currentPooled > targetBytes) {
             StagingBufferHandle handle = bucket.available.back();
@@ -186,7 +186,7 @@ uint64_t StagingBufferPool::Trim(uint64_t targetBytes) {
             // Get buffer size before destroying
             VkDeviceSize bufferSize = 0;
             {
-                std::lock_guard<std::mutex> recordLock(recordsMutex_);
+                std::lock_guard recordLock(recordsMutex_);
                 auto it = records_.find(handle);
                 if (it != records_.end()) {
                     bufferSize = it->second.size;
@@ -207,7 +207,7 @@ void StagingBufferPool::Clear() {
     std::vector<StagingBufferHandle> toDestroy;
 
     for (auto& bucket : buckets_) {
-        std::lock_guard<std::mutex> lock(bucket.mutex);
+        std::lock_guard lock(bucket.mutex);
         for (auto handle : bucket.available) {
             toDestroy.push_back(handle);
         }
@@ -238,7 +238,7 @@ StagingPoolStats StagingBufferPool::GetStats() const {
 
     // Count pooled buffers
     for (const auto& bucket : buckets_) {
-        std::lock_guard<std::mutex> lock(bucket.mutex);
+        std::lock_guard lock(bucket.mutex);
         stats.totalPooledBuffers += bucket.available.size();
     }
 
@@ -251,7 +251,7 @@ StagingPoolStats StagingBufferPool::GetStats() const {
 
     // Calculate active buffers from records
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         for (const auto& [handle, record] : records_) {
             if (record.inUse) {
                 ++stats.activeBuffers;
@@ -299,7 +299,7 @@ StagingBufferPool::AcquireFromBucket(size_t bucketIndex, VkDeviceSize requestedS
 
     StagingBufferHandle handle = InvalidStagingHandle;
     {
-        std::lock_guard<std::mutex> lock(bucket.mutex);
+        std::lock_guard lock(bucket.mutex);
         if (bucket.available.empty()) {
             return std::nullopt;
         }
@@ -324,7 +324,7 @@ StagingBufferPool::AcquireFromBucket(size_t bucketIndex, VkDeviceSize requestedS
         BufferRecord toDestroy;
         bool undersized = false;
         {
-            std::lock_guard<std::mutex> lock(recordsMutex_);
+            std::lock_guard lock(recordsMutex_);
             auto it = records_.find(handle);
             if (it == records_.end()) {
                 return std::nullopt;  // Record was destroyed
@@ -348,7 +348,7 @@ StagingBufferPool::AcquireFromBucket(size_t bucketIndex, VkDeviceSize requestedS
     // Mark as in use
     BufferRecord* record = nullptr;
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         auto it = records_.find(handle);
         if (it == records_.end()) {
             return std::nullopt;  // Record was destroyed
@@ -405,7 +405,7 @@ StagingBufferPool::AllocateNewBuffer(VkDeviceSize size, std::string_view debugNa
     record.inUse = true;
 
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         records_[handle] = record;
     }
 
@@ -428,7 +428,7 @@ void StagingBufferPool::ReturnToBucket(StagingBufferHandle handle, size_t bucket
 
     VkDeviceSize bufferSize = 0;
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         auto it = records_.find(handle);
         if (it != records_.end()) {
             bufferSize = it->second.size;
@@ -437,7 +437,7 @@ void StagingBufferPool::ReturnToBucket(StagingBufferHandle handle, size_t bucket
 
     // Check bucket capacity
     {
-        std::lock_guard<std::mutex> lock(bucket.mutex);
+        std::lock_guard lock(bucket.mutex);
         if (bucket.available.size() >= config_.maxPooledBuffersPerBucket) {
             // Bucket full - destroy oldest buffer
             StagingBufferHandle oldest = bucket.available.front();
@@ -446,7 +446,7 @@ void StagingBufferPool::ReturnToBucket(StagingBufferHandle handle, size_t bucket
             // Get size of buffer being destroyed
             VkDeviceSize oldestSize = 0;
             {
-                std::lock_guard<std::mutex> recordLock(recordsMutex_);
+                std::lock_guard recordLock(recordsMutex_);
                 auto it = records_.find(oldest);
                 if (it != records_.end()) {
                     oldestSize = it->second.size;
@@ -467,7 +467,7 @@ void StagingBufferPool::ReturnToBucket(StagingBufferHandle handle, size_t bucket
 void StagingBufferPool::DestroyBuffer(StagingBufferHandle handle) {
     BufferRecord record;
     {
-        std::lock_guard<std::mutex> lock(recordsMutex_);
+        std::lock_guard lock(recordsMutex_);
         auto it = records_.find(handle);
         if (it == records_.end()) {
             return;

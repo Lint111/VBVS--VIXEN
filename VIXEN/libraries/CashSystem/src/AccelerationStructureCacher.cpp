@@ -470,7 +470,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, con
 
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard<std::mutex> submitLock(m_device->SubmitMutex(m_device->queue));
+        std::lock_guard submitLock(m_device->SubmitMutex(m_device->queue));
         VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (BLAS)");
         vkQueueWaitIdle(m_device->queue);
     }
@@ -660,7 +660,7 @@ void AccelerationStructureCacher::BuildTLAS(const AccelStructCreateInfo& ci, Acc
 
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard<std::mutex> submitLock(m_device->SubmitMutex(m_device->queue));
+        std::lock_guard submitLock(m_device->SubmitMutex(m_device->queue));
         VK_CHECK_LOG(vkQueueSubmit(m_device->queue, 1, &submitInfo, VK_NULL_HANDLE), "Queue submit (TLAS)");
         vkQueueWaitIdle(m_device->queue);
     }

@@ -242,7 +242,7 @@ void SkySphereNode::TransitionToGeneral(VkCommandPool commandPool) {
     submitInfo.pCommandBuffers    = &cmd;
 
     {
-        std::lock_guard<std::mutex> submitLock(device_->SubmitMutex(device_->queue));
+        std::lock_guard submitLock(device_->SubmitMutex(device_->queue));
         if (vkQueueSubmit(device_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
             vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
             throw std::runtime_error("[SkySphereNode] vkQueueSubmit (transition) failed");

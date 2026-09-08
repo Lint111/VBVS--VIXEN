@@ -6,6 +6,7 @@
 #include "InputEvents.h"
 #include <unordered_map>
 #include <vector>
+#include "LockCensus.h"
 #include <mutex>
 #include <chrono>
 
@@ -178,7 +179,7 @@ private:
     // inside glfwPollEvents() on the main thread, but the mutex is cheap insurance + matches the
     // WindowNode::pendingEvents idiom this mirrors) ---
     std::vector<InputEvent> pendingInput_;
-    std::mutex eventMutex_;
+    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RG3> eventMutex_;
 
     // --- Canonical state, event-derived (updated by FoldEvent via ProcessPendingInput) ---
     glm::vec2 cursorPos_{0.0f};           // Last known absolute cursor position

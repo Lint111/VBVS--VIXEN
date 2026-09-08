@@ -53,7 +53,7 @@ void VixenRmlRenderInterface::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags
 void VixenRmlRenderInterface::Init(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue queue,
                                    uint32_t queueFamilyIndex, const VkPhysicalDeviceMemoryProperties& memProps,
                                    VkCommandPool commandPool, VkRenderPass renderPass,
-                                   std::mutex* submitMutex) {
+                                   Vixen::LockCensus::QueueSubmitMutex* submitMutex) {
     device_ = device;
     physicalDevice_ = physicalDevice;
     queue_ = queue;
@@ -260,8 +260,8 @@ VixenRmlRenderInterface::Texture* VixenRmlRenderInterface::CreateTextureRGBA(con
     si.pCommandBuffers = &cmd;
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::unique_lock<std::mutex> lock;
-        if (submitMutex_) lock = std::unique_lock<std::mutex>(*submitMutex_);
+        std::unique_lock<Vixen::LockCensus::QueueSubmitMutex> lock;
+        if (submitMutex_) lock = std::unique_lock<Vixen::LockCensus::QueueSubmitMutex>(*submitMutex_);
         Check(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), "submit one-shot");
         vkQueueWaitIdle(queue_);
     }

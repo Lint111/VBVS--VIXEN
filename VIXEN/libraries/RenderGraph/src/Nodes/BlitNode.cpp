@@ -249,7 +249,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
-        std::lock_guard<std::mutex> submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
+        std::lock_guard submitLock(GetDevice()->SubmitMutex(GetDevice()->queue));
         result = GetDevice()->fpQueueSubmit2(GetDevice()->queue, 1, &si, submitFence);
     }
     if (result != VK_SUCCESS) {

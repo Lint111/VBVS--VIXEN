@@ -2,6 +2,7 @@
 
 #include "Message.h"
 #include "PreAllocatedQueue.h"
+#include "LockCensus.h"
 #include <functional>
 #include <vector>
 #include <list>
@@ -254,11 +255,11 @@ private:
     void DispatchMessage(const BaseEventMessage& message);
 
     PreAllocatedQueue<std::unique_ptr<BaseEventMessage>> messageQueue_;
-    mutable std::mutex queueMutex;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::EB1> queueMutex;
 
     // Owning storage for subscriptions
     std::list<Subscription> subscriptions;
-    std::mutex subscriptionMutex;
+    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::EB2> subscriptionMutex;
 
     // Fast lookup by MessageType (emT) -> list of subscribers
     std::unordered_map<MessageType, std::vector<Subscription*>> typeSubscriptions;
@@ -271,7 +272,7 @@ private:
 
     // Statistics
     Stats stats;
-    mutable std::mutex statsMutex;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::EB3> statsMutex;
 
     bool loggingEnabled = false;
 

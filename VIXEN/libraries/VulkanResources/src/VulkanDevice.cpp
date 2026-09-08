@@ -475,11 +475,11 @@ PFN_vkQueuePresentKHR VulkanDevice::GetPresentFunction() const {
     return vkQueuePresentKHR;
 }
 
-std::mutex& VulkanDevice::SubmitMutex(VkQueue queue) {
-    std::lock_guard<std::mutex> lock(submitMutexMapLock_);
+Vixen::LockCensus::QueueSubmitMutex& VulkanDevice::SubmitMutex(VkQueue queue) {
+    std::lock_guard lock(submitMutexMapLock_);
     auto it = submitMutexes_.find(queue);
     if (it == submitMutexes_.end()) {
-        it = submitMutexes_.emplace(queue, std::make_unique<std::mutex>()).first;
+        it = submitMutexes_.emplace(queue, std::make_unique<Vixen::LockCensus::QueueSubmitMutex>()).first;
     }
     return *it->second;
 }

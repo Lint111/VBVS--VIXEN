@@ -5,6 +5,7 @@
 #include "error/VulkanError.h"
 #include "CapabilityGraph.h"
 #include "Memory/BatchedUploader.h"
+#include "LockCensus.h"
 #include <memory>
 #include <functional>
 #include <mutex>
@@ -138,7 +139,7 @@ public:
      *
      * @param queue The VkQueue that will be submitted to or presented on.
      */
-    std::mutex& SubmitMutex(VkQueue queue);
+    Vixen::LockCensus::QueueSubmitMutex& SubmitMutex(VkQueue queue);
 
     // KI-012: some queue families (e.g. Mesa Dozen's transfer-capable graphics queue) report
     // minImageTransferGranularity = (0,0,0), which per spec means vkCmdCopyImageToBuffer/
@@ -482,8 +483,9 @@ private:
     // Per-queue submit mutexes (audit V-M11). unique_ptr so a rehash never invalidates a mutex
     // reference already handed out by SubmitMutex(); guarded by submitMutexMapLock_ (only
     // during first-use creation of an entry, not around the submit itself).
-    std::mutex submitMutexMapLock_;
-    std::unordered_map<VkQueue, std::unique_ptr<std::mutex>> submitMutexes_;
+    // Lock-census families VK1 (the directory lock) and VK2 (the per-queue mutex); see LockCensus.h.
+    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::VK1> submitMutexMapLock_;
+    std::unordered_map<VkQueue, std::unique_ptr<Vixen::LockCensus::QueueSubmitMutex>> submitMutexes_;
 
 };
 

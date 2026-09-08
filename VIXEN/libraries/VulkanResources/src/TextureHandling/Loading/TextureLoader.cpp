@@ -168,7 +168,7 @@ VulkanStatus TextureLoader::UploadLinear(
     {
         // Externally synchronized per Vulkan spec (audit V-M11); not held across the fence
         // wait below.
-        std::lock_guard<std::mutex> submitLock(deviceObj->SubmitMutex(deviceObj->queue));
+        std::lock_guard submitLock(deviceObj->SubmitMutex(deviceObj->queue));
         result = vkQueueSubmit(deviceObj->queue, 1, &submitInfo, fence);
     }
     if (result != VK_SUCCESS) {

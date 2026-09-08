@@ -28,6 +28,7 @@
 #include "Core/FrameSyncScheduler.h"     // Auto-sync P2: frame sync schedule
 #include "Core/GraphTaskLowering.h"      // Tier-B graph -> shared Tier-A task DAG
 #include "Core/FailScenario.h"                  // Inc 1: self-neutralizing when VIXEN_FAIL_SCENARIOS is off
+#include "LockCensus.h"                         // Lock-free phase 0: per-frame mutex/wave census (no-op unless VIXEN_LOCK_CENSUS)
 #include <atomic>
 #include <memory>
 #include <string>
@@ -890,6 +891,11 @@ private:
     // Execution
     std::vector<NodeInstance*> executionOrder;
     GraphTaskPlan executionTaskPlan_;
+    // Lock-free federation phase 0 census: what the executor ran this frame (wave width, rows,
+    // worker count) and, in VIXEN_LOCK_CENSUS builds, the per-family mutex counters sampled at
+    // frame end. lockCensus_ is an empty no-op type when the census is compiled out.
+    Vixen::LockCensus::FrameWaveStats frameWaveStats_;
+    Vixen::LockCensus::FrameSampler lockCensus_;
     bool isCompiled = false;
     // AR#16: set by ExecuteCleanup (shutdown). RenderFrame() checks this so it never executes a node
     // against destroyed resources (the render loop can iterate once more after WindowCloseEvent).

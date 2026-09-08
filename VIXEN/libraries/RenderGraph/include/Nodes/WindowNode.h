@@ -4,6 +4,7 @@
 #include "Data/Nodes/WindowNodeConfig.h"
 #include <memory>
 #include <vector>
+#include "LockCensus.h"
 #include <mutex>
 
 struct GLFWwindow;  // GLFW/glfw3.h is included in the .cpp; the header only needs the handle type.
@@ -96,7 +97,7 @@ private:
     // Window event queue for deferred processing in Execute(). WindowEvent itself is declared
     // public: above (fail-scenario stimulus seam needs the type visible; no state exposed here).
     std::vector<WindowEvent> pendingEvents;
-    mutable std::recursive_mutex eventMutex;  // Protect event queue; mutable for logically-const queries
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RG4, std::recursive_mutex> eventMutex;  // Protect event queue; mutable for logically-const queries
 
     // Shared tail of ExecuteImpl / ProcessPendingEvents: publish everything except Resize (which each
     // caller handles itself, since only ExecuteImpl has a ctx to republish graph-slot outputs through).

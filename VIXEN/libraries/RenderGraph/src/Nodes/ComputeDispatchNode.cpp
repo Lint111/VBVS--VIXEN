@@ -355,7 +355,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // submit on the same queue.
     VkResult result;
     {
-        std::lock_guard<std::mutex> submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
+        std::lock_guard submitLock(vulkanDevice->SubmitMutex(vulkanDevice->queue));
         result = vulkanDevice->fpQueueSubmit2(vulkanDevice->queue, 1, &si, submitFence);
     }
     if (result != VK_SUCCESS) {

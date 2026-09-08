@@ -463,7 +463,7 @@ void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // when unconnected) -- it is deliberately never passed to vkQueueSubmit2 itself.
         VkResult result;
         {
-            std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+            std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
             result = vulkanDevice_->fpQueueSubmit2(vulkanDevice_->queue, 1, &si, VK_NULL_HANDLE);
         }
         if (result != VK_SUCCESS) {

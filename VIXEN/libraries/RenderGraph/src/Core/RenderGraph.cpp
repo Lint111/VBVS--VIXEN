@@ -5,6 +5,7 @@
 #include "VulkanDevice.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 #include <unordered_set>
 #include <filesystem>
@@ -122,6 +123,10 @@ RenderGraph::RenderGraph(
 }
 
 RenderGraph::~RenderGraph() {
+    // Lock census summary (VIXEN_LOCK_CENSUS builds only; a no-op otherwise). Printed before the
+    // shutdown event so the numbers cover exactly the frames RenderFrame() sampled.
+    lockCensus_.Report();
+
     // Sprint 6.5: Publish shutdown event for CalibrationStore auto-save
     if (messageBus) {
         messageBus->Publish(
@@ -794,6 +799,20 @@ VkResult RenderGraph::ExecuteLoweredFrame() {
     }
 
     const int workerCount = GraphWorkerCount();
+    // Census measurement 3 (design §9): the wave width the executor is about to run. Every graph
+    // node task is a whole-slot row today (no per-item access set), so wholeSlotRows == rows; the
+    // number is recorded rather than assumed so later phases can show it falling.
+    frameWaveStats_ = {};
+    frameWaveStats_.lowered = true;
+    frameWaveStats_.workerCount = static_cast<uint32_t>(workerCount);
+    frameWaveStats_.waves = static_cast<uint32_t>(executionTaskPlan_.waves.size());
+    for (const auto& wave : executionTaskPlan_.waves) {
+        const auto width = static_cast<uint32_t>(wave.size());
+        frameWaveStats_.rows += width;
+        if (width > frameWaveStats_.maxWaveWidth) frameWaveStats_.maxWaveWidth = width;
+    }
+    frameWaveStats_.wholeSlotRows = frameWaveStats_.rows;
+
     KernelDispatch::DispatcherProfile profile;
     profile.frameCompute.workerCount = static_cast<uint32_t>(workerCount);
     KernelDispatch::TaskExecutor executor(std::move(profile));
@@ -965,11 +984,17 @@ VkResult RenderGraph::RenderFrame() {
     frameAborted_ = false;
     BeginExecutionEpoch();
 
+    // Lock census (phase 0): wall time of the node-execution span, sampled with the per-family
+    // counters at frame end. Two clock reads per frame; kept unconditional so the CSV columns
+    // mean the same thing in census and non-census builds.
+    const auto frameExecuteStart = std::chrono::steady_clock::now();
+
     // The default path remains the comparison oracle; the opt-in path runs the compiled node DAG
     // through KernelDispatch and commits effects in the same graph order below.
     if (UseLoweredGraph()) {
         frameResult = ExecuteLoweredFrame();
     } else {
+        frameWaveStats_ = {};  // sequential path: no waves; rows = nodes executed
         for (NodeInstance* node : executionOrder) {
             // Frame aborted mid-execution (e.g. swapchain OUT_OF_DATE at acquire): stop before the
             // next node — per-image state is invalid until the resize recompile runs. See
@@ -985,6 +1010,8 @@ VkResult RenderGraph::RenderFrame() {
                 node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
 
                 node->SetState(NodeState::Executing);
+                ++frameWaveStats_.rows;
+                ++frameWaveStats_.wholeSlotRows;
 
                 // Phase 2a: catch a node Execute failure here instead of letting the exception
                 // propagate out of RenderFrame -> the app loop -> a process-fatal exit (and UB across
@@ -1071,6 +1098,12 @@ VkResult RenderGraph::RenderFrame() {
     // Give work that completed during this frame the same deterministic publication boundary. Work
     // that is not ready remains queued for the next frame and can overlap the next admission.
     if (framePipeline_) framePipeline_->CommitReady(false);
+
+    // Lock census sample for this frame (no-op unless VIXEN_LOCK_CENSUS). Taken after the frame's
+    // own bus dispatch/cleanup so the per-frame deltas include every acquisition the frame caused.
+    frameWaveStats_.frameCpuMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - frameExecuteStart).count();
+    lockCensus_.Sample(globalFrameIndex, frameWaveStats_);
 
     // Increment frame counter for next frame
     globalFrameIndex++;

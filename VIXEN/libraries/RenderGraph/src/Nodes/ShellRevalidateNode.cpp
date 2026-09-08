@@ -378,7 +378,7 @@ void ShellRevalidateNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.pCommandBuffers    = &commandBuffer_;
     {
         // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard<std::mutex> submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
+        std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
         if (vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
             throw std::runtime_error("[ShellRevalidateNode::ExecuteImpl] vkQueueSubmit failed");
         }

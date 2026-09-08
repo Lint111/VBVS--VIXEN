@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Memory/StagingBufferPool.h"
+#include "LockCensus.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -156,7 +157,7 @@ public:
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
         const Config& config,
-        std::mutex* submitMutex = nullptr);
+        Vixen::LockCensus::QueueSubmitMutex* submitMutex = nullptr);
 
     /**
      * @brief Create a batched uploader with default configuration
@@ -166,7 +167,7 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex,
         DeviceBudgetManager* budgetManager,
-        std::mutex* submitMutex = nullptr)
+        Vixen::LockCensus::QueueSubmitMutex* submitMutex = nullptr)
         : BatchedUploader(device, queue, queueFamilyIndex, budgetManager, Config{}, submitMutex) {}
 
     /**
@@ -369,7 +370,7 @@ private:
     Config config_;
     VkDevice device_;
     VkQueue queue_;
-    std::mutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
+    Vixen::LockCensus::QueueSubmitMutex* submitMutex_ = nullptr;  // guards queue_ submits engine-wide (audit V-M11)
     DeviceBudgetManager* budgetManager_;
 
     // Staging buffer pool
@@ -379,7 +380,7 @@ private:
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers_;
     std::queue<VkCommandBuffer> availableCommandBuffers_;
-    std::mutex cmdBufferMutex_;
+    Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM9> cmdBufferMutex_;
 
     // Timeline semaphore (if supported)
     VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;
@@ -387,20 +388,20 @@ private:
     bool useTimelineSemaphores_ = false;
 
     // Pending uploads (not yet submitted)
-    mutable std::mutex pendingMutex_;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM10> pendingMutex_;
     std::vector<PendingUpload> pendingUploads_;
     std::atomic<uint64_t> pendingBytes_{0};
     std::chrono::steady_clock::time_point oldestPendingTime_;
 
     // Submitted batches (awaiting GPU completion)
-    mutable std::mutex submittedMutex_;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM11> submittedMutex_;
     std::queue<SubmittedBatch> submittedBatches_;
 
     // Handle generation
     std::atomic<UploadHandle> nextHandle_{1};
 
     // Handle status tracking
-    mutable std::mutex statusMutex_;
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RM12> statusMutex_;
     std::unordered_map<UploadHandle, UploadStatus> uploadStatus_;
 
     // Statistics

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LockCensus.h"
 #include "Headers.h"
 #include <mutex>
 
@@ -40,6 +41,6 @@ public:
                                     const VkCommandBuffer* pCmdBufList,
                                     const VkSubmitInfo* pSubmitInfo = nullptr,
                                     const VkFence& fence = VK_NULL_HANDLE,
-                                    std::mutex* submitMutex = nullptr);
+                                    Vixen::LockCensus::QueueSubmitMutex* submitMutex = nullptr);
 
 };

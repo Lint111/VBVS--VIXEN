@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <functional>
 #include <chrono>
+#include "LockCensus.h"
 #include <mutex>
 
 namespace Vixen::RenderGraph {
@@ -441,7 +442,7 @@ public:
      * @param actualNs Measured execution time in nanoseconds
      */
     virtual void RecordMeasurement(uint64_t actualNs) {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         pendingSamples_.push_back(actualNs);
 
         // Auto-process if we've accumulated too many samples
@@ -460,7 +461,7 @@ public:
      * @param actualNs Actual measured time
      */
     void RecordPredictionSample(uint64_t estimatedNs, uint64_t actualNs) {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         pendingPredictions_.push_back({estimatedNs, actualNs});
 
         // Auto-trim if we've accumulated too many
@@ -480,7 +481,7 @@ public:
      * @return Vector of pending predictions (moved)
      */
     [[nodiscard]] std::vector<PendingPrediction> ConsumePendingPredictions() {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         auto result = std::move(pendingPredictions_);
         pendingPredictions_.clear();
         return result;
@@ -490,7 +491,7 @@ public:
      * @brief Check if there are pending predictions - thread-safe
      */
     [[nodiscard]] bool HasPendingPredictions() const {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         return !pendingPredictions_.empty();
     }
 
@@ -508,7 +509,7 @@ public:
      * (e.g., exponential moving average).
      */
     virtual void ProcessSamples() {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         ProcessSamplesLocked();
     }
 
@@ -516,7 +517,7 @@ public:
      * @brief Get number of pending (unprocessed) samples (thread-safe)
      */
     [[nodiscard]] size_t GetPendingSampleCount() const {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         return pendingSamples_.size();
     }
 
@@ -524,7 +525,7 @@ public:
      * @brief Check if there are pending samples to process (thread-safe)
      */
     [[nodiscard]] bool HasPendingSamples() const {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         return !pendingSamples_.empty();
     }
 
@@ -622,7 +623,7 @@ public:
      * Derived classes should override to reset their specific calibration data.
      */
     virtual void ResetCalibration() {
-        std::lock_guard<std::mutex> lock(samplesMutex_);
+        std::lock_guard lock(samplesMutex_);
         workUnits_ = 0;  // Reset to baseline
         sampleCount_ = 0;
         lastMeasuredCostNs_ = 0;
@@ -675,7 +676,7 @@ protected:
     // Samples collection - raw measurements accumulated before processing
     std::vector<uint64_t> pendingSamples_;
     std::vector<PendingPrediction> pendingPredictions_;  ///< Prediction samples for error tracking
-    mutable std::mutex samplesMutex_;  // Protects pendingSamples_ and pendingPredictions_
+    mutable Vixen::LockCensus::Mutex<Vixen::LockCensus::Family::RG2> samplesMutex_;  // Protects pendingSamples_ and pendingPredictions_
     static constexpr size_t kMaxPendingSamples = 1024;  // Auto-process when exceeded
 };
 
