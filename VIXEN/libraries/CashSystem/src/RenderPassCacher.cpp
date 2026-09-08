@@ -12,15 +12,12 @@
 namespace CashSystem {
 
 void RenderPassCacher::Cleanup() {
-    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached render passes");
+    LOG_INFO("Cleaning up " + std::to_string(EntryCount()) + " cached render passes");
 
-    // Destroy all cached Vulkan resources. Locked: m_entries is mutated here while
-    // DeviceRegistry can be running Serialize/DeserializeFromFile for this same cacher on
-    // another thread via the blocking lane (audit V-M9). Released before Clear(), which takes its own
-    // unique_lock.
+    // Destroy all cached Vulkan resources. Walks the published generation (teardown is the
+    // quiescent point; the walk holds nothing), then Clear() retires it.
     if (GetDevice()) {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource) {
                 if (entry.resource->renderPass != VK_NULL_HANDLE) {
                     LOG_DEBUG("Destroying VkRenderPass: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->renderPass)));
@@ -28,7 +25,7 @@ void RenderPassCacher::Cleanup() {
                     entry.resource->renderPass = VK_NULL_HANDLE;
                 }
             }
-        }
+        });
     }
 
     // Clear the cache entries after destroying resources
@@ -42,19 +39,11 @@ std::shared_ptr<RenderPassWrapper> RenderPassCacher::GetOrCreate(const RenderPas
     std::string renderPassName = std::string("color:") + std::to_string(static_cast<int>(ci.colorFormat)) +
                                  (ci.hasDepth ? ("+depth:" + std::to_string(static_cast<int>(ci.depthFormat))) : "");
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for render pass " + renderPassName + " (key=" + std::to_string(key) + ")");
-            return it->second.resource;
-        }
-        auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) {
-            LOG_DEBUG("CACHE PENDING for render pass " + renderPassName + " (key=" + std::to_string(key) + "), waiting...");
-            return pit->second.get();
-        }
+    // Lock-free hit probe (logging only); the base handles the miss/pending path: one builder
+    // per key, same-key callers wait on the key's slot holding nothing (P4).
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for render pass " + renderPassName + " (key=" + std::to_string(key) + ")");
+        return hit;
     }
 
     LOG_DEBUG("CACHE MISS for render pass " + renderPassName + " (key=" + std::to_string(key) + "), creating new resource...");
@@ -181,7 +170,8 @@ std::uint64_t RenderPassCacher::ComputeKey(const RenderPassCreateParams& ci) con
 }
 
 bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const {
-    LOG_INFO("SerializeToFile: Serializing " + std::to_string(m_entries.size()) + " render pass configs to " + path.string());
+    const auto entries = Snapshot();  // count written == rows written, holding nothing
+    LOG_INFO("SerializeToFile: Serializing " + std::to_string(entries.size()) + " render pass configs to " + path.string());
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
@@ -190,12 +180,12 @@ bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const 
     }
 
     // Write entry count
-    std::shared_lock rlock(m_lock);
-    uint32_t count = static_cast<uint32_t>(m_entries.size());
+    uint32_t count = static_cast<uint32_t>(entries.size());
     ofs.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
     // Write each entry: key + create params (not VkRenderPass handle)
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
+        const std::uint64_t key = entry.key;
         ofs.write(reinterpret_cast<const char*>(&key), sizeof(key));
 
         // Serialize metadata for recreation

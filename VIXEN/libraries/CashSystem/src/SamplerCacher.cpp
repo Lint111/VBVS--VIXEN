@@ -13,15 +13,12 @@
 namespace CashSystem {
 
 void SamplerCacher::Cleanup() {
-    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached samplers");
+    LOG_INFO("Cleaning up " + std::to_string(EntryCount()) + " cached samplers");
 
-    // Destroy all cached Vulkan samplers. Locked: m_entries is mutated here while
-    // DeviceRegistry can be running Serialize/DeserializeFromFile for this same cacher on
-    // another thread via the blocking lane (audit V-M9). Released before Clear(), which takes its own
-    // unique_lock.
+    // Destroy all cached Vulkan samplers. Walks the published generation (teardown is the
+    // quiescent point; the walk holds nothing), then Clear() retires it.
     if (GetDevice()) {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource) {
                 if (entry.resource->resource != VK_NULL_HANDLE) {
                     LOG_DEBUG("Destroying VkSampler: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->resource)));
@@ -29,7 +26,7 @@ void SamplerCacher::Cleanup() {
                     entry.resource->resource = VK_NULL_HANDLE;
                 }
             }
-        }
+        });
     }
 
     // Clear the cache entries after destroying resources
@@ -49,22 +46,14 @@ std::shared_ptr<SamplerWrapper> SamplerCacher::GetOrCreate(const SamplerCreatePa
                << ",aniso=" << ci.maxAnisotropy << ")";
     std::string resourceName = nameStream.str();
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for " + resourceName + " (key=" + std::to_string(key) + ")");
-            return it->second.resource;
-        }
-        auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) {
-            LOG_DEBUG("CACHE PENDING for " + resourceName + " (key=" + std::to_string(key) + "), waiting...");
-            return pit->second.get();
-        }
+    // Lock-free hit probe (logging only); the base handles the miss/pending path: one builder
+    // per key, same-key callers wait on the key's slot holding nothing (P4).
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for " + resourceName + " (key=" + std::to_string(key) + ")");
+        return hit;
     }
 
-    LOG_DEBUG("CACHE MISS for " + resourceName + " (key=" + std::to_string(key) + "), creating new sampler...");
+    LOG_DEBUG("CACHE MISS for " + resourceName + " (key=" + std::to_string(key) + "), creating or joining the builder...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<SamplerWrapper, SamplerCreateParams>::GetOrCreate(ci);
@@ -137,7 +126,8 @@ std::uint64_t SamplerCacher::ComputeKey(const SamplerCreateParams& ci) const {
 }
 
 bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
-    LOG_INFO("SerializeToFile: Serializing " + std::to_string(m_entries.size()) + " sampler configs to " + path.string());
+    const auto entries = Snapshot();  // count written == rows written, holding nothing
+    LOG_INFO("SerializeToFile: Serializing " + std::to_string(entries.size()) + " sampler configs to " + path.string());
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
@@ -146,12 +136,12 @@ bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
     }
 
     // Write entry count
-    std::shared_lock rlock(m_lock);
-    uint32_t count = static_cast<uint32_t>(m_entries.size());
+    uint32_t count = static_cast<uint32_t>(entries.size());
     ofs.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
     // Write each entry: key + metadata (not Vulkan handle)
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
+        const std::uint64_t key = entry.key;
         ofs.write(reinterpret_cast<const char*>(&key), sizeof(key));
 
         // Serialize metadata for recreation
@@ -262,17 +252,12 @@ bool SamplerCacher::DeserializeFromFile(const std::filesystem::path& path, void*
             ci.compareEnable = compareEnable;
             ci.compareOp = compareOp;
 
-            CacheEntry entry;
-            entry.key = key;
-            entry.ci = ci;
-            entry.resource = wrapper;
-
-            std::unique_lock lock(m_lock);
-            m_entries.emplace(key, std::move(entry));
+            // Publish into the current generation (an already-live key keeps its entry)
+            Publish(key, ci, wrapper);
         }
 
         ifs.close();
-        LOG_INFO("DeserializeFromFile: Successfully loaded " + std::to_string(m_entries.size()) + " samplers from cache");
+        LOG_INFO("DeserializeFromFile: Successfully loaded " + std::to_string(EntryCount()) + " samplers from cache");
         return true;
 
     } catch (const std::exception& e) {

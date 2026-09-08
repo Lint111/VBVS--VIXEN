@@ -4,6 +4,7 @@
 #include "TypedCacher.h"
 #include "MainCacher.h"
 #include "PipelineLayoutCacher.h"
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -105,7 +106,7 @@ public:
     std::shared_ptr<ComputePipelineWrapper> GetOrCreate(const ComputePipelineCreateParams& ci);
 
     // Convenience: Get the global pipeline cache (shared with graphics)
-    VkPipelineCache GetPipelineCache() const { return m_globalCache; }
+    VkPipelineCache GetPipelineCache() const { return m_globalCache.load(std::memory_order_acquire); }
 
     // Serialization
     bool SerializeToFile(const std::filesystem::path& path) const override;
@@ -128,7 +129,9 @@ private:
     void LogPipelineExecutableStatistics(const std::string& shaderKey, VkPipeline pipeline);
 
     // Global pipeline cache (shared with graphics pipelines)
-    VkPipelineCache m_globalCache = VK_NULL_HANDLE;
+    // Read unlocked on the pipeline-creation path, cleared by Cleanup(): an atomic handle, not a
+    // lock (P4 removed TypedCacher's shared lock it used to borrow).
+    std::atomic<VkPipelineCache> m_globalCache{VK_NULL_HANDLE};
 };
 
 } // namespace CashSystem

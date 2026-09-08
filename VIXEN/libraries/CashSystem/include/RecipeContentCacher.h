@@ -95,8 +95,8 @@ protected:
     }
 
 private:
-    // Guards mutation of an already-cached record's memberRecipeIds (TypedCacher's own m_lock is
-    // private to the base and does not cover post-GetOrCreate mutation of the returned resource).
+    // Guards mutation of an already-cached record's memberRecipeIds (TypedCacher publishes
+    // immutable entries and does not cover post-GetOrCreate mutation of the returned resource).
     std::mutex m_memberLock;
 };
 

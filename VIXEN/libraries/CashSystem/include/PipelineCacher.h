@@ -4,6 +4,7 @@
 #include "TypedCacher.h"
 #include "MainCacher.h"
 #include "PipelineLayoutCacher.h"  // Need full definition for std::shared_ptr<PipelineLayoutWrapper>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -167,7 +168,9 @@ private:
     void CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
 
     // Global pipeline cache loaded from disk (used for all new pipeline creations)
-    VkPipelineCache m_globalCache = VK_NULL_HANDLE;
+    // Read unlocked on the pipeline-creation path, written by DeserializeFromFile()/Cleanup():
+    // an atomic handle, not a lock (P4 removed TypedCacher's shared lock it used to borrow).
+    std::atomic<VkPipelineCache> m_globalCache{VK_NULL_HANDLE};
 };
 
 } // namespace CashSystem

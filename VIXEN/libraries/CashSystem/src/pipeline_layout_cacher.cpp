@@ -9,22 +9,14 @@ namespace CashSystem {
 std::shared_ptr<PipelineLayoutWrapper> PipelineLayoutCacher::GetOrCreate(const PipelineLayoutCreateParams& ci) {
     auto key = ComputeKey(ci);
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for layout " + ci.layoutKey + " (key=" + std::to_string(key) + ")");
-            return it->second.resource;
-        }
-        auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) {
-            LOG_DEBUG("CACHE PENDING for layout " + ci.layoutKey);
-            return pit->second.get();
-        }
+    // Lock-free hit probe (logging only); the base handles the miss/pending path: one builder
+    // per key, same-key callers wait on the key's slot holding nothing (P4).
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for layout " + ci.layoutKey + " (key=" + std::to_string(key) + ")");
+        return hit;
     }
 
-    LOG_DEBUG("CACHE MISS for layout " + ci.layoutKey + " (key=" + std::to_string(key) + "), creating new resource...");
+    LOG_DEBUG("CACHE MISS for layout " + ci.layoutKey + " (key=" + std::to_string(key) + "), creating or joining the builder...");
 
     // Call parent implementation
     return TypedCacher<PipelineLayoutWrapper, PipelineLayoutCreateParams>::GetOrCreate(ci);
@@ -93,20 +85,18 @@ std::uint64_t PipelineLayoutCacher::ComputeKey(const PipelineLayoutCreateParams&
 }
 
 void PipelineLayoutCacher::Cleanup() {
-    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached layouts");
+    LOG_INFO("Cleaning up " + std::to_string(EntryCount()) + " cached layouts");
 
-    // Locked: m_entries is mutated here while DeviceRegistry can be running
-    // Serialize/DeserializeFromFile for this same cacher on another thread via the blocking lane
-    // (audit V-M9). Released before Clear(), which takes its own unique_lock.
+    // Walks the published generation (teardown is the quiescent point; the walk holds
+    // nothing), then Clear() retires it.
     if (GetDevice()) {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
                 LOG_DEBUG("Destroying VkPipelineLayout: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->layout)));
                 vkDestroyPipelineLayout(GetDevice()->device, entry.resource->layout, nullptr);
                 entry.resource->layout = VK_NULL_HANDLE;
             }
-        }
+        });
     }
 
     Clear();

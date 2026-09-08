@@ -47,15 +47,13 @@ bool PipelineCacheBlobMatchesDevice(const std::vector<uint8_t>& blob, const VkPh
 }
 
 void PipelineCacher::Cleanup() {
-    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached pipelines");
+    LOG_INFO("Cleaning up " + std::to_string(EntryCount()) + " cached pipelines");
 
-    // Destroy all cached Vulkan resources. Locked: m_entries/m_globalCache are mutated here
-    // while DeviceRegistry can be running SerializeToFile/DeserializeFromFile for this same
-    // cacher on another thread via the blocking lane (audit V-M9). Released before Clear() below,
-    // which takes its own unique_lock.
+    // Destroy all cached Vulkan resources. Walks the published generation (teardown is the
+    // quiescent point; the walk holds nothing), then Clear() retires it.
     if (GetDevice()) {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource) {
                 if (entry.resource->pipeline != VK_NULL_HANDLE) {
                     LOG_DEBUG("Destroying VkPipeline: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->pipeline)));
@@ -68,19 +66,19 @@ void PipelineCacher::Cleanup() {
                     entry.resource->pipelineLayoutWrapper.reset();
                 }
                 // Don't destroy individual caches if they're pointing to m_globalCache
-                if (entry.resource->cache != VK_NULL_HANDLE && entry.resource->cache != m_globalCache) {
+                if (entry.resource->cache != VK_NULL_HANDLE && entry.resource->cache != globalCache) {
                     LOG_DEBUG("Destroying VkPipelineCache: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->cache)));
                     vkDestroyPipelineCache(GetDevice()->device, entry.resource->cache, nullptr);
                     entry.resource->cache = VK_NULL_HANDLE;
                 }
             }
-        }
+        });
 
         // Destroy global cache
-        if (m_globalCache != VK_NULL_HANDLE) {
+        if (globalCache != VK_NULL_HANDLE) {
             LOG_DEBUG("Destroying global pipeline cache");
-            vkDestroyPipelineCache(GetDevice()->device, m_globalCache, nullptr);
-            m_globalCache = VK_NULL_HANDLE;
+            vkDestroyPipelineCache(GetDevice()->device, globalCache, nullptr);
+            m_globalCache.store(VK_NULL_HANDLE, std::memory_order_release);
         }
     }
 
@@ -94,22 +92,14 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreate(const PipelineCreat
     auto key = ComputeKey(ci);
     std::string pipelineName = ci.vertexShaderKey + "+" + ci.fragmentShaderKey;
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for pipeline " + pipelineName + " (key=" + std::to_string(key) + ")");
-            return it->second.resource;
-        }
-        auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) {
-            LOG_DEBUG("CACHE PENDING for pipeline " + pipelineName + " (key=" + std::to_string(key) + "), waiting...");
-            return pit->second.get();
-        }
+    // Lock-free hit probe (logging only); the base handles the miss/pending path: one builder
+    // per key, same-key callers wait on the key's slot holding nothing (P4).
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for pipeline " + pipelineName + " (key=" + std::to_string(key) + ")");
+        return hit;
     }
 
-    LOG_DEBUG("CACHE MISS for pipeline " + pipelineName + " (key=" + std::to_string(key) + "), creating new resource...");
+    LOG_DEBUG("CACHE MISS for pipeline " + pipelineName + " (key=" + std::to_string(key) + "), creating or joining the builder...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<PipelineWrapper, PipelineCreateParams>::GetOrCreate(ci);
@@ -368,15 +358,13 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
     }
 
     // If we have a global cache, merge it with the new cache
-    // This allows new pipelines to benefit from cached data. Locked read: m_globalCache can be
+    // This allows new pipelines to benefit from cached data. Atomic read: m_globalCache can be
     // set concurrently by DeserializeFromFile() via the blocking lane (audit V-M9).
-    {
-        std::shared_lock rlock(m_lock);
-        if (m_globalCache != VK_NULL_HANDLE) {
-            // Just use the global cache directly instead of creating individual caches
-            wrapper.cache = m_globalCache;
-            return;
-        }
+    if (const VkPipelineCache globalCache = m_globalCache.load(std::memory_order_acquire);
+        globalCache != VK_NULL_HANDLE) {
+        // Just use the global cache directly instead of creating individual caches
+        wrapper.cache = globalCache;
+        return;
     }
 
     // Create pipeline cache for performance (fallback if no global cache)
@@ -402,17 +390,13 @@ bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
         return false;
     }
 
-    // Collect all valid pipeline caches from entries. Locked: races DeviceRegistry-driven
-    // Cleanup()/GetOrCreate() for this cacher on other threads via the blocking lane (audit V-M9).
+    // Collect all valid pipeline caches from the published entries (lock-free generation walk).
     std::vector<VkPipelineCache> caches;
-    {
-        std::shared_lock rlock(m_lock);
-        for (const auto& [key, entry] : m_entries) {
-            if (entry.resource && entry.resource->cache != VK_NULL_HANDLE) {
-                caches.push_back(entry.resource->cache);
-            }
+    ForEachEntry([&](const CacheEntry& entry) {
+        if (entry.resource && entry.resource->cache != VK_NULL_HANDLE) {
+            caches.push_back(entry.resource->cache);
         }
-    }
+    });
 
     if (caches.empty()) {
         LOG_INFO("No pipeline caches to serialize");
@@ -544,12 +528,9 @@ bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void
         return false;
     }
 
-    // Locked: m_globalCache is read unlocked by CreatePipelineCache() on the pipeline-creation
-    // hot path; this write must not race it (audit V-M9).
-    {
-        std::unique_lock wlock(m_lock);
-        m_globalCache = loadedCache;
-    }
+    // m_globalCache is read by CreatePipelineCache() on the pipeline-creation hot path; the
+    // handle is atomic so this publish cannot tear against that read (audit V-M9).
+    m_globalCache.store(loadedCache, std::memory_order_release);
 
     LOG_INFO("Loaded pipeline cache from " + path.string() + " (" + std::to_string(cacheData.size()) + " bytes)");
     return true;

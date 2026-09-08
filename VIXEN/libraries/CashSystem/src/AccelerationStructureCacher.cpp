@@ -73,20 +73,15 @@ void AccelerationStructureCacher::QueueTLASUpdate(CachedAccelerationStructure* c
 }
 
 void AccelerationStructureCacher::QueueTLASUpdate(uint64_t cacheKey, uint32_t imageIndex) {
-    // Look up cached entry by key
-    std::shared_lock lock(m_lock);
-    auto it = m_entries.find(cacheKey);
-    if (it == m_entries.end() || !it->second.resource) {
+    // Look up the published entry by key (lock-free probe)
+    auto resource = Find(cacheKey);
+    if (!resource) {
         LOG_WARNING("[AccelerationStructureCacher::QueueTLASUpdate] Cache key not found: " +
                     std::to_string(cacheKey));
         return;
     }
 
-    // Unlock before calling the other overload (which may log)
-    CachedAccelerationStructure* cached = it->second.resource.get();
-    lock.unlock();
-
-    QueueTLASUpdate(cached, imageIndex);
+    QueueTLASUpdate(resource.get(), imageIndex);
 }
 
 // ============================================================================
@@ -180,12 +175,10 @@ void AccelerationStructureCacher::Cleanup() {
         vkGetDeviceProcAddr(m_device->device, "vkDestroyAccelerationStructureKHR")
     );
 
-    // Cleanup all cached entries. Locked: m_entries is mutated here while DeviceRegistry can be
-    // running Serialize/DeserializeFromFile for this same cacher on another thread via
-    // the blocking lane (audit V-M9). Released before Clear(), which takes its own unique_lock.
+    // Cleanup all cached entries. Walks the published generation (teardown is the quiescent
+    // point; the walk holds nothing), then Clear() below retires it.
     {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource) {
                 auto& asData = entry.resource->accelStruct;
 
@@ -219,7 +212,7 @@ void AccelerationStructureCacher::Cleanup() {
                 asData.primitiveCount = 0;
                 entry.resource->sourceAABBCount = 0;
             }
-        }
+        });
     }
 
     // Destroy command pool

@@ -237,13 +237,13 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
     uint32_t version = 1;
     file.write(reinterpret_cast<const char*>(&version), sizeof(version));
 
-    // Write number of cached textures
-    std::shared_lock lock(m_lock);
-    uint32_t cacheSize = static_cast<uint32_t>(m_entries.size());
+    // Write number of cached textures (snapshot: count written == rows written, holding nothing)
+    const auto entries = Snapshot();
+    uint32_t cacheSize = static_cast<uint32_t>(entries.size());
     file.write(reinterpret_cast<const char*>(&cacheSize), sizeof(cacheSize));
 
     // Serialize each texture
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
         const auto& wrapper = entry.resource;
 
         // Write file path
@@ -357,14 +357,12 @@ bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void*
 }
 
 void TextureCacher::Cleanup() {
-    // Clean up Vulkan resources before clearing cache
+    // Clean up Vulkan resources before clearing cache. Walks the published generation
+    // (teardown is the quiescent point; the walk holds nothing), then Clear() retires it.
+    ForEachEntry([&](const CacheEntry& entry) {
+        const auto& wrapper = entry.resource;
 
-    std::unique_lock lock(m_lock);
-
-    for (auto& [key, entry] : m_entries) {
-        auto& wrapper = entry.resource;
-
-        if (!wrapper) continue;
+        if (!wrapper) return;
 
         VkDevice device = GetDevice() ? GetDevice()->device : VK_NULL_HANDLE;
 
@@ -388,7 +386,7 @@ void TextureCacher::Cleanup() {
 
         // Clear cached pixel data
         wrapper->pixelData.clear();
-    }
+    });
 
     // Destroy the transient upload command pool (frees any command buffers still
     // allocated from it as a side effect).
@@ -400,9 +398,8 @@ void TextureCacher::Cleanup() {
         m_uploadCommandPool = VK_NULL_HANDLE;
     }
 
-    // Clear the cache
-    m_entries.clear();
-    m_pending.clear();
+    // Clear the cache (epoch flip; the walked generation is retired)
+    Clear();
 
     LOG_INFO("[TextureCacher::Cleanup] Cleaned up all texture resources");
 }

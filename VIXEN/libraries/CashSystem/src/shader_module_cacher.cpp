@@ -40,22 +40,14 @@ namespace CashSystem {
 std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreate(const ShaderModuleCreateParams& ci) {
     auto key = ComputeKey(ci);
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for " + ci.shaderName + " (key=" + std::to_string(key) + ")");
-            return it->second.resource;
-        }
-        auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) {
-            LOG_DEBUG("CACHE PENDING for " + ci.shaderName + " (key=" + std::to_string(key) + "), waiting...");
-            return pit->second.get();
-        }
+    // Lock-free hit probe (logging only); the base handles the miss/pending path: one builder
+    // per key, same-key callers wait on the key's slot holding nothing (P4).
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for " + ci.shaderName + " (key=" + std::to_string(key) + ")");
+        return hit;
     }
 
-    LOG_DEBUG("CACHE MISS for " + ci.shaderName + " (key=" + std::to_string(key) + "), creating new resource...");
+    LOG_DEBUG("CACHE MISS for " + ci.shaderName + " (key=" + std::to_string(key) + "), creating or joining the builder...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<ShaderModuleWrapper, ShaderModuleCreateParams>::GetOrCreate(ci);
@@ -126,14 +118,10 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
     uint64_t key = ComputeKey(params);
     LOG_DEBUG("cache_key=" + std::to_string(key));
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for SPIR-V " + shaderName + " (key=" + std::to_string(key) + ")");
-            return it->second.resource;
-        }
+    // Check cache first (lock-free probe of the published generation)
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for SPIR-V " + shaderName + " (key=" + std::to_string(key) + ")");
+        return hit;
     }
 
     LOG_DEBUG("CACHE MISS for SPIR-V " + shaderName + " (key=" + std::to_string(key) + "), creating new VkShaderModule...");
@@ -169,18 +157,17 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
         LOG_DEBUG("VkShaderModule created from SPIR-V: " + std::to_string(reinterpret_cast<uint64_t>(wrapper->shaderModule)));
     }
 
-    // Cache the result
-    {
-        std::unique_lock wlock(m_lock);
-        CacheEntry entry;
-        entry.resource = wrapper;
-        entry.key = key;
-        m_entries[key] = std::move(entry);
+    // Publish the result. If another thread published this key first, its module is canonical
+    // (same key => interchangeable value) and ours is released.
+    auto published = Publish(key, params, wrapper);
+    if (published != wrapper && wrapper->shaderModule != VK_NULL_HANDLE && GetDevice()) {
+        vkDestroyShaderModule(GetDevice()->device, wrapper->shaderModule, nullptr);
+        wrapper->shaderModule = VK_NULL_HANDLE;
     }
 
-    LOG_DEBUG("GetOrCreateFromSpirv complete: VkShaderModule=" + std::to_string(reinterpret_cast<uint64_t>(wrapper->shaderModule)));
+    LOG_DEBUG("GetOrCreateFromSpirv complete: VkShaderModule=" + std::to_string(reinterpret_cast<uint64_t>(published->shaderModule)));
 
-    return wrapper;
+    return published;
 }
 
 std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModuleCreateParams& ci) {
@@ -306,21 +293,18 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
 }
 
 void ShaderModuleCacher::Cleanup() {
-    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached shader modules");
+    LOG_INFO("Cleaning up " + std::to_string(EntryCount()) + " cached shader modules");
 
-    // Destroy all cached VkShaderModule handles. Locked: m_entries is mutated here while
-    // DeviceRegistry can be running SerializeToFile/DeserializeFromFile for this same cacher on
-    // another thread via the blocking lane (audit V-M9). Released before Clear(), which takes its own
-    // unique_lock.
+    // Destroy all cached VkShaderModule handles. Walks the published generation (teardown is
+    // the quiescent point; the walk holds nothing), then Clear() retires it.
     if (GetDevice()) {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource && entry.resource->shaderModule != VK_NULL_HANDLE) {
                 LOG_DEBUG("Destroying VkShaderModule: " + std::to_string(reinterpret_cast<uint64_t>(entry.resource->shaderModule)));
                 vkDestroyShaderModule(GetDevice()->device, entry.resource->shaderModule, nullptr);
                 entry.resource->shaderModule = VK_NULL_HANDLE;
             }
-        }
+        });
     }
 
     // Clear the cache entries after destroying resources
@@ -339,20 +323,21 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
 
         CacheWriter writer(file);
 
-        // Locked: m_entries can be mutated concurrently by Cleanup()/GetOrCreate() for this
-        // same cacher on another thread via the blocking lane (audit V-M9).
-        std::shared_lock rlock(m_lock);
+        // Snapshot the published generation so the count written matches the rows written even
+        // if a publication lands concurrently (the walk itself holds nothing).
+        const auto entries = Snapshot();
 
-        LOG_INFO("SerializeToFile: Saving " + std::to_string(m_entries.size()) + " shader modules to " + path.string());
+        LOG_INFO("SerializeToFile: Saving " + std::to_string(entries.size()) + " shader modules to " + path.string());
 
         // Write header: version + entry count
         uint32_t version = 1;
-        uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
+        uint32_t entryCount = static_cast<uint32_t>(entries.size());
         writer.WritePod(version);
         writer.WritePod(entryCount);
 
         // Write each cache entry
-        for (const auto& [key, entry] : m_entries) {
+        for (const auto& entry : entries) {
+            const std::uint64_t key = entry.key;
             if (!entry.resource || entry.resource->spirvCode.empty()) {
                 continue;  // Skip invalid entries
             }
@@ -500,18 +485,12 @@ bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, 
                 }
             }
 
-            // Insert into cache
-            CacheEntry entry;
-            entry.key = key;
-            entry.ci = std::move(ci);
-            entry.resource = wrapper;
-
-            std::unique_lock lock(m_lock);
-            m_entries.emplace(key, std::move(entry));
+            // Publish into the current generation (an already-live key keeps its entry)
+            Publish(key, ci, wrapper);
         }
 
         file.close();
-        LOG_INFO("DeserializeFromFile: Successfully loaded " + std::to_string(m_entries.size()) + " shader modules from cache");
+        LOG_INFO("DeserializeFromFile: Successfully loaded " + std::to_string(EntryCount()) + " shader modules from cache");
         return true;
 
     } catch (const std::exception& e) {

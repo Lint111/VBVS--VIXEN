@@ -64,13 +64,13 @@ bool ShaderCompilationCacher::SerializeToFile(const std::filesystem::path& path)
     uint32_t version = 1;
     file.write(reinterpret_cast<const char*>(&version), sizeof(version));
 
-    // Write number of cached shaders
-    std::shared_lock lock(m_lock);
-    uint32_t cacheSize = static_cast<uint32_t>(m_entries.size());
+    // Write number of cached shaders (snapshot: count written == rows written, holding nothing)
+    const auto entries = Snapshot();
+    uint32_t cacheSize = static_cast<uint32_t>(entries.size());
     file.write(reinterpret_cast<const char*>(&cacheSize), sizeof(cacheSize));
 
     // Serialize each compiled shader
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
         const auto& wrapper = entry.resource;
 
         // Write source path
@@ -214,13 +214,8 @@ bool ShaderCompilationCacher::DeserializeFromFile(const std::filesystem::path& p
 
         uint64_t key = ComputeKey(params);
 
-        // Insert into cache
-        std::unique_lock lock(m_lock);
-        CacheEntry entry;
-        entry.key = key;
-        entry.ci = params;
-        entry.resource = wrapper;
-        m_entries.emplace(key, std::move(entry));
+        // Publish into the current generation (an already-live key keeps its entry)
+        Publish(key, params, wrapper);
     }
 
     LOG_INFO("DeserializeFromFile: Loaded " + std::to_string(cacheSize) + " compiled shaders");

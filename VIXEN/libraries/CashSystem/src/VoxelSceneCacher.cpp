@@ -160,17 +160,13 @@ std::uint64_t VoxelSceneCacher::ComputeKey(const VoxelSceneCreateInfo& ci) const
 void VoxelSceneCacher::Cleanup() {
     LOG_INFO("[VoxelSceneCacher::Cleanup] Cleaning up cached scene data");
 
-    // Cleanup all cached entries. Locked: m_entries is mutated here while DeviceRegistry can be
-    // running SerializeToFile/DeserializeFromFile for this same cacher on another thread via
-    // the blocking lane (audit V-M9). Released before Clear(), which takes its own unique_lock.
-    {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
-            if (entry.resource) {
-                entry.resource->Cleanup(m_device->device);
-            }
+    // Cleanup all cached entries. Walks the published generation (teardown is the quiescent
+    // point; the walk holds nothing), then Clear() below retires it.
+    ForEachEntry([&](const CacheEntry& entry) {
+        if (entry.resource) {
+            entry.resource->Cleanup(m_device->device);
         }
-    }
+    });
 
     // Note: BatchedUploader now owned by VulkanDevice - no cleanup needed here
 
@@ -199,9 +195,9 @@ static constexpr uint32_t VOXEL_SCENE_CACHE_MAGIC = 0x56534341; // "VSCA"
 static constexpr size_t VOXEL_SCENE_MAX_VECTOR_ELEMS = 1u << 30;  // 1 Gi elements
 
 bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const {
-    std::lock_guard lock(m_lock);
+    const auto entries = Snapshot();  // count written == rows written, holding nothing
 
-    if (m_entries.empty()) {
+    if (entries.empty()) {
         LOG_INFO("[VoxelSceneCacher::SerializeToFile] No entries to serialize");
         return true;
     }
@@ -218,13 +214,14 @@ bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const 
     writer.WritePod(VOXEL_SCENE_CACHE_MAGIC);
     writer.WritePod(VOXEL_SCENE_CACHE_VERSION);
 
-    uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
+    uint32_t entryCount = static_cast<uint32_t>(entries.size());
     writer.WritePod(entryCount);
 
     LOG_INFO("[VoxelSceneCacher::SerializeToFile] Serializing " + std::to_string(entryCount) + " scene entries to " + path.string());
 
     // Write each entry
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
+        const std::uint64_t key = entry.key;
         const auto& ci = entry.ci;
         const auto& data = entry.resource;
 
@@ -305,8 +302,6 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
     }
 
     LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loading " + std::to_string(entryCount) + " scene entries from " + path.string());
-
-    std::lock_guard lock(m_lock);
 
     for (uint32_t i = 0; i < entryCount; ++i) {
         uint64_t key = 0;
@@ -390,12 +385,8 @@ bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, vo
         LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Re-uploading entry " + std::to_string(i) + " (" + SceneTypeToString(ci.sceneType) + " @ " + std::to_string(ci.resolution) + "^3) to GPU");
         UploadToGPU(*data);
 
-        // Store in cache
-        CacheEntry entry;
-        entry.key = key;
-        entry.ci = ci;
-        entry.resource = data;
-        m_entries.emplace(key, std::move(entry));
+        // Publish into the current generation (an already-live key keeps its entry)
+        Publish(key, ci, data);
     }
 
     LOG_INFO("[VoxelSceneCacher::DeserializeFromFile] Loaded " + std::to_string(entryCount) + " entries");

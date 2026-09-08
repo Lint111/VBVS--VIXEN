@@ -166,13 +166,13 @@ bool DescriptorCacher::SerializeToFile(const std::filesystem::path& path) const 
     uint32_t version = 1;
     file.write(reinterpret_cast<const char*>(&version), sizeof(version));
 
-    // Write number of cached descriptors
-    std::shared_lock lock(m_lock);
-    uint32_t cacheSize = static_cast<uint32_t>(m_entries.size());
+    // Write number of cached descriptors (snapshot: count written == rows written, holding nothing)
+    const auto entries = Snapshot();
+    uint32_t cacheSize = static_cast<uint32_t>(entries.size());
     file.write(reinterpret_cast<const char*>(&cacheSize), sizeof(cacheSize));
 
     // Serialize each descriptor layout metadata
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
         const auto& wrapper = entry.resource;
 
         // Write layout hash

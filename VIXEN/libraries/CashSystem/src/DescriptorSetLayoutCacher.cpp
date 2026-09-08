@@ -13,14 +13,10 @@ std::shared_ptr<DescriptorSetLayoutWrapper> DescriptorSetLayoutCacher::GetOrCrea
 ) {
     auto key = ComputeKey(ci);
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for layout: " + ci.layoutKey);
-            return it->second.resource;
-        }
+    // Check cache first (lock-free probe of the published generation)
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for layout: " + ci.layoutKey);
+        return hit;
     }
 
     LOG_DEBUG("CACHE MISS - Creating new layout for key: " + ci.layoutKey);
@@ -85,21 +81,17 @@ std::uint64_t DescriptorSetLayoutCacher::ComputeKey(const DescriptorSetLayoutCre
 }
 
 void DescriptorSetLayoutCacher::Cleanup() {
-    LOG_INFO("Cleanup: Destroying " + std::to_string(m_entries.size()) + " descriptor set layouts");
+    LOG_INFO("Cleanup: Destroying " + std::to_string(EntryCount()) + " descriptor set layouts");
 
-    // Locked: iterating m_entries here races GetOrCreate()'s insert on another thread — even
-    // though this loop body doesn't mutate, unordered_map iteration during a concurrent insert
-    // is UB (audit V-M9).
-    {
-        std::shared_lock rlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
-            if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
-                // Note: We don't have direct access to VkDevice here
-                // In production, store device pointer or use deferred cleanup
-                LOG_WARNING("Skipping VkDescriptorSetLayout cleanup - device required");
-            }
+    // Walks the published generation (immutable cells: a concurrent publish never invalidates
+    // the walk), then Clear() retires it.
+    ForEachEntry([&](const CacheEntry& entry) {
+        if (entry.resource && entry.resource->layout != VK_NULL_HANDLE) {
+            // Note: We don't have direct access to VkDevice here
+            // In production, store device pointer or use deferred cleanup
+            LOG_WARNING("Skipping VkDescriptorSetLayout cleanup - device required");
         }
-    }
+    });
 
     Clear();  // Use base class Clear()
 }

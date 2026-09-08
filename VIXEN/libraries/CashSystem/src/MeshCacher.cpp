@@ -14,15 +14,12 @@
 namespace CashSystem {
 
 void MeshCacher::Cleanup() {
-    LOG_INFO("Cleaning up " + std::to_string(m_entries.size()) + " cached meshes");
+    LOG_INFO("Cleaning up " + std::to_string(EntryCount()) + " cached meshes");
 
-    // Free all cached Vulkan resources via allocator infrastructure. Locked: m_entries is
-    // mutated here while DeviceRegistry can be running Serialize/DeserializeFromFile for this
-    // same cacher on another thread via the blocking lane (audit V-M9). Released before Clear(), which
-    // takes its own unique_lock.
+    // Free all cached Vulkan resources via allocator infrastructure. Walks the published
+    // generation (teardown is the quiescent point; the walk holds nothing), then Clear() retires it.
     {
-        std::unique_lock wlock(m_lock);
-        for (auto& [key, entry] : m_entries) {
+        ForEachEntry([&](const CacheEntry& entry) {
             if (entry.resource) {
                 // Free vertex allocation
                 if (entry.resource->vertexAllocation.buffer != VK_NULL_HANDLE) {
@@ -40,7 +37,7 @@ void MeshCacher::Cleanup() {
                 entry.resource->vertexData.clear();
                 entry.resource->indexData.clear();
             }
-        }
+        });
     }
 
     // Clear the cache entries after destroying resources
@@ -55,22 +52,14 @@ std::shared_ptr<MeshWrapper> MeshCacher::GetOrCreate(const MeshCreateParams& ci)
         ? "procedural_mesh_" + std::to_string(key)
         : ci.filePath;
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(key);
-        if (it != m_entries.end()) {
-            LOG_DEBUG("CACHE HIT for " + resourceName + " (key=" + std::to_string(key) + ", vertices=" + std::to_string(it->second.resource->vertexCount) + ", indices=" + std::to_string(it->second.resource->indexCount) + ")");
-            return it->second.resource;
-        }
-        auto pit = m_pending.find(key);
-        if (pit != m_pending.end()) {
-            LOG_DEBUG("CACHE PENDING for " + resourceName + " (key=" + std::to_string(key) + "), waiting...");
-            return pit->second.get();
-        }
+    // Lock-free hit probe (logging only); the base handles the miss/pending path: one builder
+    // per key, same-key callers wait on the key's slot holding nothing (P4).
+    if (auto hit = Find(key)) {
+        LOG_DEBUG("CACHE HIT for " + resourceName + " (key=" + std::to_string(key) + ", vertices=" + std::to_string(hit->vertexCount) + ", indices=" + std::to_string(hit->indexCount) + ")");
+        return hit;
     }
 
-    LOG_DEBUG("CACHE MISS for " + resourceName + " (key=" + std::to_string(key) + "), creating new mesh...");
+    LOG_DEBUG("CACHE MISS for " + resourceName + " (key=" + std::to_string(key) + "), creating or joining the builder...");
 
     // Call parent implementation which will invoke Create()
     return TypedCacher<MeshWrapper, MeshCreateParams>::GetOrCreate(ci);
@@ -194,7 +183,8 @@ std::uint64_t MeshCacher::ComputeKey(const MeshCreateParams& ci) const {
 }
 
 bool MeshCacher::SerializeToFile(const std::filesystem::path& path) const {
-    LOG_INFO("SerializeToFile: Serializing " + std::to_string(m_entries.size()) + " mesh entries to " + path.string());
+    const auto entries = Snapshot();  // count written == rows written, holding nothing
+    LOG_INFO("SerializeToFile: Serializing " + std::to_string(entries.size()) + " mesh entries to " + path.string());
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
@@ -203,12 +193,12 @@ bool MeshCacher::SerializeToFile(const std::filesystem::path& path) const {
     }
 
     // Write entry count
-    std::shared_lock rlock(m_lock);
-    uint32_t count = static_cast<uint32_t>(m_entries.size());
+    uint32_t count = static_cast<uint32_t>(entries.size());
     ofs.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
     // Write each entry: key + metadata + cached CPU data
-    for (const auto& [key, entry] : m_entries) {
+    for (const auto& entry : entries) {
+        const std::uint64_t key = entry.key;
         ofs.write(reinterpret_cast<const char*>(&key), sizeof(key));
 
         const auto& w = entry.resource;
