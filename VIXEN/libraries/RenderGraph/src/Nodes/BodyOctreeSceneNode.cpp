@@ -17,6 +17,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <utility>   // std::pair / std::move (OOC R1 retire ledger)
 #include <vector>
 
 #include <glm/gtc/matrix_transform.hpp>  // W-RTQUERY Slice A: glm::translate/glm::scale for TLAS instance transforms
@@ -480,11 +481,22 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
 }
 
 void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    // OOC R1: a MONOTONIC per-node Execute counter is the clock for the off-tick retire/reclaim
+    // ledger (Rematerialize + ReclaimRetiredBuffers). It is deliberately NOT CURRENT_FRAME_INDEX,
+    // which FrameSyncNode already reduces mod MAX_FRAMES_IN_FLIGHT (it cycles 0,1,0,1…) and so
+    // cannot measure elapsed frames. Incremented once here, at the top of every Execute.
+    const uint64_t executeFrame = ++executeFrameCounter_;
+
+    // OOC R1: destroy any retired octree generation whose frames-in-flight have all completed.
+    // Runs every Execute (cheap scan when empty); never a device-wide wait.
+    ReclaimRetiredBuffers(executeFrame);
+
     // P2.3: a runtime recipe edit (SetBakeRecipe after Compile) re-bakes + re-uploads here,
-    // at the fence-waited safe point — never on the recompile cascade.
+    // at the fence-waited safe point — never on the recompile cascade. OOC R1: this is now an
+    // off-tick unload(g)+load(g+1)+flip — the old buffers are retired, not freed behind a stall.
     bool octreeRepublished = false;
     if (recipeDirty_) {
-        Rematerialize();
+        Rematerialize(executeFrame);
         recipeDirty_      = false;
         octreeRepublished = true;
     }
@@ -525,6 +537,8 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     PollBrickUploadCompletion();
 
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
+    // Per-frame ring index from FrameSyncNode — the WRAPPED CURRENT_FRAME_INDEX (0,1,0,1…),
+    // distinct from executeFrame above (the monotonic retire clock). Used for ring/read-slot math.
     const uint32_t rawFrame   = ctx.In(BodyOctreeSceneNodeConfig::CURRENT_FRAME_INDEX);
     const uint32_t frameIndex = rawFrame % kRingSize;
 
@@ -1256,26 +1270,136 @@ void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize
                   std::to_string(static_cast<uint64_t>(neededCapacity)) + "B storage buffers");
 }
 
-void BodyOctreeSceneNode::Rematerialize() {
+void BodyOctreeSceneNode::Rematerialize(uint64_t executeFrame) {
     VulkanDevice* device = GetDevice();
     if (!device) {
         NODE_LOG_ERROR("[BodyOctreeSceneNode] Rematerialize called with no device");
         return;
     }
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: rebuilding octree buffers");
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Rematerialize: rebuilding octree buffers off-tick "
+                  "(gen retire at execute frame " + std::to_string(executeFrame) + ")");
 
-    // Rare, explicit edit path — safe to stall (mirrors the ring-grow vkDeviceWaitIdle).
-    // Guarantees no in-flight command buffer still references the octree buffers we free.
-    vkDeviceWaitIdle(device->device);
-    // The shell/proxy source is about to be replaced; retire its AS before the
-    // octree buffers so no stale proxy geometry can survive the epoch boundary.
-    DestroyRtQueryTlas();
+    // OOC R1 (design §1.1 site 2, §4.1 step 1b + 1a, §4.3 rules 1-3): a recipe edit is an
+    // unload(gen g) + load(gen g+1) + flip, NOT a device-wide stall.
+    //
+    //  1. The CPU re-bake/re-concatenate is pure over immutable input (no GPU object touched).
+    //  2. The OLD generation's GPU buffers are RETIRED — moved into pendingRetire_ stamped with
+    //     the frame that last bound them — not freed. A fresh VkBuffer created below is a new
+    //     Resource* identity that no in-flight command buffer can reference, so nothing has to
+    //     wait for the queue to idle before it exists.
+    //  3. CreateOctreeBuffers builds the new (back) generation into the now-nulled members;
+    //     ExecuteImpl publishes them by re-emitting the handles this same frame (octreeRepublished).
+    //  4. ReclaimRetiredBuffers destroys the retired generation once kRingSize frames have
+    //     elapsed — the conservative "every frame-in-flight that could still bind it is done"
+    //     bound (the same bound the instance ring's grow path relies on). No vkDeviceWaitIdle,
+    //     no per-frame stall: this runs at the fence-waited Execute safe point and returns.
 
     octreesBuilt_ = false;     // force EnsureOctreesBuilt to re-bake + re-concatenate all 3 octrees
-    EnsureOctreesBuilt();      // octree 0 uses the new bakeRecipe_; octrees 1/2 unchanged
+    EnsureOctreesBuilt();      // octree 0 uses the new bakeRecipe_; octrees 1/2 unchanged (pure CPU)
 
-    DestroyOctreeBuffers();    // ring is NOT touched
-    CreateOctreeBuffers(device);
+    RetireOctreeBuffers(executeFrame);  // move old GPU buffers + AS into pendingRetire_ (no free, no wait)
+    CreateOctreeBuffers(device);        // build the fresh generation into the nulled members
+}
+
+// OOC R1: retire the current octree/shell/proxy GPU buffers and the RT acceleration structure
+// into a generation stamped with the frame that last bound them, WITHOUT destroying any of them
+// or waiting on the queue. The members are nulled so CreateOctreeBuffers/DestroyRtQueryTlas's
+// callers build a fresh generation cleanly. This replaces the DestroyOctreeBuffers() +
+// DestroyRtQueryTlas() + vkDeviceWaitIdle triad that Rematerialize used to run inline.
+void BodyOctreeSceneNode::RetireOctreeBuffers(uint64_t retiredAtFrame) {
+    RetiredBufferGeneration gen;
+    gen.retiredAtFrame = retiredAtFrame;
+
+    const auto retire = [&gen](VkBuffer& buf, VkDeviceMemory& mem) {
+        if (buf != VK_NULL_HANDLE || mem != VK_NULL_HANDLE) {
+            gen.buffers.emplace_back(buf, mem);
+        }
+        buf = VK_NULL_HANDLE;
+        mem = VK_NULL_HANDLE;
+    };
+
+    // Same buffer set DestroyOctreeBuffers frees, but retired instead of destroyed.
+    retire(nodesBuffer_,         nodesMemory_);
+    retire(bricksBuffer_,        bricksMemory_);
+    retire(materialsBuffer_,     materialsMemory_);
+    retire(configBuffer_,        configMemory_);
+    retire(sdfBuffer_,           sdfMemory_);
+    retire(brickLookupBuffer_,   brickLookupMemory_);
+    for (uint32_t i = 0; i < 2; ++i) {
+        retire(shellDataBuffer_[i],   shellDataMemory_[i]);
+        retire(shellLookupBuffer_[i], shellLookupMemory_[i]);
+        retire(proxyAabbBuffer_[i],   proxyAabbMemory_[i]);
+        shellDataCapacity_[i]   = 0;
+        shellLookupCapacity_[i] = 0;
+        proxyAabbCapacity_[i]   = 0;
+        proxyAabbCount_[i]      = 0;
+    }
+    retire(mipPoolBuffer_,       mipPoolMemory_);
+    retire(tierRefTableBuffer_,  tierRefTableMemory_);
+    retire(occupancyGridBuffer_, occupancyGridMemory_);
+
+    // The RT acceleration structure references the shell/proxy source about to be replaced.
+    // Its AS handles and tracked buffer allocations are retired on the SAME clock so a still
+    // in-flight shadow wave cannot dereference a freed TLAS (the exact hazard the old
+    // vkDeviceWaitIdle-before-DestroyRtQueryTlas guarded).
+    for (RtQueryBlas& blas : rtQueryBlas_) {
+        if (blas.handle != VK_NULL_HANDLE) gen.accelStructures.push_back(blas.handle);
+        gen.allocations.push_back(blas.asAllocation);
+        gen.allocations.push_back(blas.aabbAllocation);
+    }
+    rtQueryBlas_.clear();
+    if (rtQueryTlas_ != VK_NULL_HANDLE) gen.accelStructures.push_back(rtQueryTlas_);
+    gen.allocations.push_back(rtQueryTlasAllocation_);
+    gen.allocations.push_back(rtQueryScratchAllocation_);
+    gen.allocations.push_back(rtQueryInstanceAllocation_);
+    rtQueryTlas_ = VK_NULL_HANDLE;
+    rtQueryTlasAllocation_ = {};
+    rtQueryScratchAllocation_ = {};
+    rtQueryInstanceAllocation_ = {};
+    rtQueryTlasBuilt_ = false;
+    rtQueryTlasBuiltForInstanceCount_ = -1;
+    rtQueryTlasBuiltForOctreeCount_ = 0;
+    rtQueryTlasBuiltForGeometryEpoch_ = 0;
+    rtQueryTlasBuiltForInstanceEpoch_ = 0;
+
+    if (!gen.buffers.empty() || !gen.accelStructures.empty() || !gen.allocations.empty()) {
+        pendingRetire_.push_back(std::move(gen));
+        ++retiredBufferGenerationCount_;
+    }
+}
+
+// OOC R1: destroy retired generations whose retirement is at least kRingSize Execute frames old —
+// every frame-in-flight that could still bind them has completed. Mirrors
+// WholesaleCapacityArena::Reclaim(completedFrame). executeFrame is monotonic (never wraps in a
+// realistic session), so "executeFrame - retiredAtFrame >= kRingSize" is the completion bound.
+void BodyOctreeSceneNode::ReclaimRetiredBuffers(uint64_t executeFrame) {
+    VulkanDevice* device = GetDevice();
+    if (!device) return;
+    VkDevice vkDevice = device->device;
+    const auto vkDestroyAS = device->fpDestroyAccelerationStructure;
+
+    for (size_t i = 0; i < pendingRetire_.size();) {
+        RetiredBufferGeneration& gen = pendingRetire_[i];
+        // Execute frames elapsed since retirement (monotonic; retirement stamp <= executeFrame).
+        const uint64_t age = executeFrame - gen.retiredAtFrame;
+        if (age < kRingSize) { ++i; continue; }  // some frame that bound it may still be in flight
+
+        for (VkAccelerationStructureKHR as : gen.accelStructures) {
+            if (vkDestroyAS && as != VK_NULL_HANDLE) vkDestroyAS(vkDevice, as, nullptr);
+        }
+        for (ResourceManagement::BufferAllocation& alloc : gen.allocations) {
+            device->FreeBuffer(alloc);
+        }
+        for (auto& [buf, mem] : gen.buffers) {
+            if (buf != VK_NULL_HANDLE) vkDestroyBuffer(vkDevice, buf, nullptr);
+            if (mem != VK_NULL_HANDLE) vkFreeMemory(vkDevice, mem, nullptr);
+        }
+        NODE_LOG_INFO("[BodyOctreeSceneNode] ReclaimRetiredBuffers: freed retired generation "
+                      "(retiredAtFrame=" + std::to_string(gen.retiredAtFrame) +
+                      " executeFrame=" + std::to_string(executeFrame) + ")");
+        pendingRetire_.erase(pendingRetire_.begin() + static_cast<std::ptrdiff_t>(i));
+        ++reclaimedBufferGenerationCount_;
+    }
 }
 
 // ============================================================================
@@ -2024,6 +2148,21 @@ void BodyOctreeSceneNode::DestroyRtQueryTlas() {
 }
 
 void BodyOctreeSceneNode::DestroyBuffers() {
+    // OOC R1: final teardown — the device is idle (CleanupImpl(FinalTeardown) is only reached
+    // after the app/test drains the queue), so any octree generations still awaiting reclaim can
+    // be destroyed unconditionally now. Force the age check to pass by reclaiming against a frame
+    // far past every retirement stamp, then free the live buffers as before.
+    if (!pendingRetire_.empty()) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] DestroyBuffers: flushing " +
+                      std::to_string(pendingRetire_.size()) + " retired octree generation(s)");
+        // executeFrame = max stamp + kRingSize guarantees every pending generation is old enough.
+        uint64_t drainFrame = 0;
+        for (const RetiredBufferGeneration& gen : pendingRetire_) {
+            drainFrame = std::max(drainFrame, gen.retiredAtFrame);
+        }
+        ReclaimRetiredBuffers(drainFrame + kRingSize);
+    }
+
     DestroyOctreeBuffers();
     DestroyRtQueryTlas();  // W-RTQUERY Slice A: no-op when never built (flag off / no capability)
 

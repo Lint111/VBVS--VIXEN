@@ -18,6 +18,7 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <memory>
+#include <utility>   // std::pair (OOC R1 retired-buffer ledger)
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -304,7 +305,19 @@ private:
                              VkDeviceSize neededCapacity);            // allocate/grow instance ring
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
-    void Rematerialize();          // P2.3: re-bake octree 0 + recreate octree buffers (behind vkDeviceWaitIdle)
+    void Rematerialize(uint64_t executeFrame);  // OOC R1: re-bake octree 0 + build new octree buffers OFF-TICK
+                                                // (unload(g)+load(g+1)+flip; the old buffers are RETIRED, not
+                                                // freed behind a vkDeviceWaitIdle — design §4.1/§4.3)
+    // OOC R1 (out-of-core residency, design §4.3 rules 1-3): the anti-stutter retire/reclaim
+    // path that dissolves Rematerialize's vkDeviceWaitIdle. RetireOctreeBuffers moves the
+    // current octree/shell/proxy buffer handles (and the RT AS) into pendingRetire_ stamped
+    // with the frame that last bound them, WITHOUT destroying them or waiting; the members are
+    // nulled so CreateOctreeBuffers builds a fresh back generation into them. ReclaimRetiredBuffers
+    // destroys a retired generation only once kRingSize frames have elapsed since retirement — the
+    // conservative "all frames-in-flight that could reference it have completed" bound the instance
+    // ring already relies on (no fence needed; mirrors WholesaleCapacityArena::Retire/Reclaim).
+    void RetireOctreeBuffers(uint64_t retiredAtFrame);
+    void ReclaimRetiredBuffers(uint64_t executeFrame);
     bool UploadBrickPool();        // T-042: ordered brick+config population (ExecuteImpl-only)
     void PollBrickUploadCompletion();  // Inc1 M4c: non-blocking completion check (replaces WaitAllUploads)
     void PublishWholesaleReuse();
@@ -450,6 +463,31 @@ private:
     // recipes, or one with only non-whitelisted-opcode recipes).
     VkBuffer       occupancyGridBuffer_  = VK_NULL_HANDLE;
     VkDeviceMemory occupancyGridMemory_  = VK_NULL_HANDLE;
+
+    // OOC R1: a MONOTONIC per-node Execute counter — the retire/reclaim clock. It is NOT
+    // CURRENT_FRAME_INDEX: FrameSyncNode's index is already reduced mod MAX_FRAMES_IN_FLIGHT
+    // (it cycles 0,1,0,1…), so it cannot measure elapsed frames. This counter increments once
+    // per ExecuteImpl and never wraps in any realistic session (uint64), so
+    // "executeFrame - retiredAtExecuteFrame >= kRingSize" is an exact "every frame-in-flight
+    // that could still bind the retired buffers has completed" bound.
+    uint64_t executeFrameCounter_ = 0;
+
+    // OOC R1: retired-buffer ledger for the off-tick Rematerialize (design §4.3). When a
+    // recipe edit re-materializes the octree, the OLD generation's buffers are moved here
+    // stamped with the executeFrameCounter_ value that last bound them instead of being freed
+    // behind a vkDeviceWaitIdle; ReclaimRetiredBuffers destroys them once kRingSize Execute
+    // frames have elapsed (all in-flight frames that could reference them are done). A retired
+    // generation carries both plain VkBuffer/VkDeviceMemory pairs (octree/shell/proxy pools)
+    // and the RT acceleration-structure handles + their tracked BufferAllocations.
+    struct RetiredBufferGeneration {
+        uint64_t retiredAtFrame = 0;   // executeFrameCounter_ value at retirement (monotonic)
+        std::vector<std::pair<VkBuffer, VkDeviceMemory>> buffers;
+        std::vector<VkAccelerationStructureKHR> accelStructures;
+        std::vector<ResourceManagement::BufferAllocation> allocations;
+    };
+    std::vector<RetiredBufferGeneration> pendingRetire_;
+    uint64_t retiredBufferGenerationCount_ = 0;   // diagnostic: generations ever retired
+    uint64_t reclaimedBufferGenerationCount_ = 0;  // diagnostic: generations ever reclaimed
 
     // --- Surface-Shell ESVO cache GPU buffers (double-buffered by DISTINCT object
     //     identity). Render reads slot [N&1] (last committed); the ShellRevalidate
