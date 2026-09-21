@@ -14,6 +14,7 @@ Living log of confirmed-but-unfixed issues. Each entry: symptom, root cause, imp
 ---
 
 ## KI-051 — Mixed-leg reservoir/secondary-wave COUNTER variance across repeated boots (third nondeterminism axis; not stencil-data variance)
+[[spt:T-0001]]
 
 **Discovered:** 2026-08-10, E7-T1 stencil-slice re-gate (`perf/e7-t1-stencil-report.md`).
 
@@ -42,6 +43,7 @@ frame-hash or population-count determinism on the mixed/reservoir path specifica
 ---
 
 ## KI-050 — Stored-control boot image bistability (second nondeterminism axis, orthogonal to KI-049)
+[[spt:T-0002]]
 
 **Discovered:** 2026-08-09/10, E4-T1 virtual-census run (`perf/e4-t1-virtual-census-report.md`).
 
@@ -65,6 +67,7 @@ reference set until root-caused).
 ---
 
 ## KI-049 — Config-dependent boot-regime bias remains unexplained after round-robin disambiguation
+[[spt:T-0003]]
 
 **Discovered:** 2026-08-09, overnight round-robin sweep in the wavefront epoch ledger.
 
@@ -130,6 +133,7 @@ quality.
 ---
 
 ## KI-048 — `cmd.exe` launched from a WSL/UNC cwd can hang silently
+[[spt:T-0004]]
 
 **Discovered:** 2026-08-09, batch-46 execution work; the same invocation stalled three
 times.
@@ -267,6 +271,7 @@ explicitly — pool bytes is the cheap unconditional check (`[BrickDataHash] siz
 ---
 
 ## KI-046 — Two-state boot alternation: nominally-identical boots draw from exactly two frame states, not one
+[[spt:T-0005]]
 
 **Discovered:** 2026-08-08, wavefront epoch batch 40 (validator frame-hash finding).
 
@@ -385,6 +390,7 @@ instrument for DDA and must not be gated on again. See
 ---
 
 ## KI-042 — Window minimization during a `VIXEN_PERF_CSV` capture corrupts the rolling-average `steady_state_fps` column with non-physical spikes
+[[spt:T-0006]]
 
 **Discovered:** 2026-07-18, Recipe Diversity Stress Scene Inc6 M4, during the N=150 FPS sweep (one of 3
 independent runs, `run2`).
@@ -424,6 +430,7 @@ discarded and replaced) during Inc6 M4's own sweep, not fixed. Natural owner: wh
 ---
 
 ## KI-041 — Intermittent late-frame Vulkan-validation crash (~1-in-3 to 1-in-2 bench runs) + lingering `VIXEN.exe` survives the crash and poisons the next run
+[[spt:T-0007]]
 
 **Discovered:** 2026-07-17, by the Baked-Perf M8 Task 8.2 implementer while pixel-diffing OMEGA=1.0 vs 1.5 renders (needed many clean runs, so the flakiness was frequent enough to characterize).
 
@@ -442,6 +449,7 @@ discarded and replaced) during Inc6 M4's own sweep, not fixed. Natural owner: wh
 ---
 
 ## KI-040 — `BakeArtifactCache::LoadBakeArtifact` resizes buffers from an UNVALIDATED length prefix → a corrupt `.bake` file crashes with `bad_alloc` instead of the promised silent miss
+[[spt:T-0008]]
 
 **Discovered:** 2026-07-17, by the Task 7.6 Opus validator while empirically closing the v1-cache-rejection gap (planting a garbage file at the current cache key to exercise the loader's reject path).
 
@@ -458,6 +466,7 @@ discarded and replaced) during Inc6 M4's own sweep, not fixed. Natural owner: wh
 ---
 
 ## KI-037 — `RecipeInstanceBucketing.comp`'s `ProjectToPixel` silently drops behind-camera bound-sphere extrema, shrinking (not growing) the coverage rect for camera-straddling instances
+[[spt:T-0009]]
 
 **Discovered:** 2026-07-16, during [[Recipe-Bucketed-Dispatch-Overhead-Inc3-Plan-2026-07]] M2's
 barrier-coalescing correctness analysis — root-caused while establishing whether M1's per-bucket
@@ -506,6 +515,7 @@ barrier-coalescing or otherwise builds a correctness-relevant decision on these 
 ---
 
 ## KI-039 — Intermittent boot-time layout/acquire-semaphore validation flake on the Cornell baked demo, same `body_octree_scene` recompile trigger as KI-033
+[[spt:T-0010]]
 
 **Discovered:** 2026-07-17, during Baked-Perf-Fix-Pipeline M6 Task 6.4's before/after validation-layer
 A/B gate (sync hygiene: blit exit-barrier layout fix + orphaned semaphore fix, audit E3/E4).
@@ -555,6 +565,7 @@ own investigation session, not scoped to the baked-perf sync-hygiene milestone t
 ---
 
 ## KI-038 — `test_baked_vs_virtual_parity`'s `readparam_sphere` corpus entry applies its `ReadParam` snapshot in the WRONG coordinate space on the baked path, producing a genuine (not KI-032) IoU failure
+[[spt:T-0011]]
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2d's warm-up A
 (pattern-copying the KI-032 `HitRecordBuffer` readback fix into `test_baked_vs_virtual_parity.cpp`).
@@ -622,6 +633,7 @@ to the bake/splice/dispatch wiring — this is specifically the corpus AUTHORING
 ---
 
 ## KI-036 — `test_shadow_correctness.cpp` dispatches only `BodyInstanceRayMarch.comp`, which no longer contains the shadow-shading code it exists to test
+[[spt:T-0012]]
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c's SPV-consumer test-health
 restoration sweep (root-causing the shared blank-render class KI-032/KI-034 already partially cover).
@@ -696,6 +708,7 @@ dedicated session to implement option (a).
 ---
 
 ## KI-035 — `BodyOctreeSceneNode::CreateOctreeBuffers` cannot express per-octree brick residency; a whole-pool `brickResident` stamp clobbers any caller's hand-set per-octree value
+[[spt:T-0013]]
 
 **Discovered:** 2026-07-16, during [[Baked-Perf-Fix-Pipeline-Plan-2026-07]] M2c, while restoring
 `test_tier_crossing_lod_residency.cpp`'s tests after fixing the colorImg dead-buffer bug (KI-032/
@@ -751,6 +764,7 @@ than patched) — needs a deliberate product-code change + validator review, not
 ---
 
 ## KI-034 — 8 test files hand-mirror `BodyInstanceRayMarch.comp`'s push-constant struct at a stale 76 bytes, now 92; blocks ~30+ render tests
+[[spt:T-0014]]
 
 **Discovered:** 2026-07-15, during [[Recipe-GPU-Instance-Bucketing-Inc2-Plan-2026-07]] M1's Opus
 validator's regression sweep — the implementer reported "4 pre-existing failures," but the
@@ -806,6 +820,7 @@ session, ideally reached before it grows to a 9th/10th copy-pasted stale mirror.
 ---
 
 ## KI-032 — `test_baked_vs_virtual_parity`/`test_mip_fallback_render`/`test_recipe_pool_render` read back a color image no shader in their single-pass dispatch ever writes (Sampled-Lighting-Inc3 M5 pass-split fallout)
+[[spt:T-0015]]
 
 **Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M4's Task 11 (baked-vs-virtual
 parity gate for a `ReadParam` recipe) — while root-causing why `test_baked_vs_virtual_parity`'s
@@ -905,6 +920,7 @@ recipe/param-VM one) — Task 11's corpus entry and wiring are provably correct 
 ---
 
 ## KI-033 — `VIXEN_PROCEDURAL_UBER_DEMO` boot recompile leaves shared descriptor set stale, producing a persistent VUID cascade
+[[spt:T-0016]]
 
 **Discovered:** 2026-07-15, during [[Recipe-Parameterization-Plan-2026-07]] M3's live validation-layer
 render gate — the first time this exact gate (`VIXEN_PROCEDURAL_UBER_DEMO` + real Windows-native GPU +
@@ -949,6 +965,7 @@ itself) · **Status:** OPEN, pre-existing, out of scope for
 ---
 
 ## KI-027 — `VoxelInjectionQueue`/`VoxelInjector` concurrent voxel creation is unsound (heap corruption, ECS assertion mismatch)
+[[spt:T-0017]]
 
 **Discovered:** 2026-07-12, in a broad ctest sweep audit — 7 tests fail: `VoxelInjectionQueueTest.ProcessMultipleVoxels` (SEGFAULT: `_CrtIsValidHeapPointer`/`is_block_type_valid` debug-heap assertions — real heap corruption, not a benign crash), `.ProcessBatchCreation` (Gaia ECS internal assertion `entityExpected == entityPresent` at `gaia.h:30565`), `.ConcurrentEnqueue`, `.StopDuringProcessing`, `VoxelInjectorTest.InsertEntities_SingleEntity` (`Exit code 0xc0000409`, a Windows stack-buffer-overrun/security-cookie trap), `.InsertEntities_MultipleEntities`, `.InsertEntitiesBatched_SingleBrick`, `.InsertEntitiesBatched_MultipleBricks`, `.CompactOctree`, `.InsertEntities_MixValidAndInvalid`, `.LargeBatchInsertion`.
 
@@ -1001,6 +1018,7 @@ old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark
 ---
 
 ## KI-025 — Frame-1 accumulation artifact: a small patch renders sky-colored for ~5 frames before self-converging
+[[spt:T-0018]]
 
 **Discovered:** 2026-07-11, during Sampled Lighting Inc3 M2 (geometric reprojection reject) gate testing — surfaced incidentally, not caused by M2's change.
 
@@ -1017,6 +1035,7 @@ old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark
 ---
 
 ## KI-024 — `compute_desc_gatherer`'s resource array never grew to cover bindings 18-21, breaking the `test_dispatch` demo pipeline
+[[spt:T-0019]]
 
 **Discovered:** 2026-07-11, during Sampled Lighting Inc3 M1's live gate (byte-identical + syncval capture) — surfaced as a side effect, not something M1's own code touches.
 
@@ -1033,6 +1052,7 @@ old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark
 ---
 
 ## KI-021 — Existing build dirs keep the STALE pre-v0.9.2 Gaia after the pin bump (FetchContent does not re-fetch on reconfigure)
+[[spt:T-0020]]
 
 **Discovered:** 2026-07-10, immediately after the Gaia v0.9.2 pin bump (merge `7dde7ee7`).
 
@@ -1048,6 +1068,7 @@ old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark
 
 **Severity:** Low (one-time per-build-dir clear; fresh dirs unaffected) · **Status:** OPEN (self-clears as build dirs are recreated; auto-heal fix designed)
 ## KI-022 — `VIXEN_RESIZE_AT_FRAME` mid-run window resize crashes with an access violation (pre-existing, unrelated to Sampled Lighting)
+[[spt:T-0021]]
 
 **Discovered:** 2026-07-10, during Sampled Lighting Inc2 M4 (camera-motion reprojection + per-pixel history validation), as a side effect of live-gating the accumulation work — no prior Inc0-2 gate in this program had exercised a mid-run resize before.
 
@@ -1080,6 +1101,7 @@ old-page reclamation. If authoring still needs per-voxel ECS entities, benchmark
 ---
 
 ## KI-019 — `GPUQueryManager::ReadAllResults` never unblocks in some graph configurations (all GPU dispatch timing silently no-ops)
+[[spt:T-0022]]
 
 **Discovered:** 2026-07-10, during Sampled Lighting Inc1 M5 (shadow-ray cost measurement), while trying to use the existing `GPUPerformanceLogger`/`GPUQueryManager` timestamp machinery to time the `BodyInstanceRayMarch` compute dispatch in isolation.
 
@@ -1118,6 +1140,7 @@ Not a code defect — recording because it silently corrupted 21 test binaries (
 ---
 
 ## KI-016 — editor undo (`rt_.Undo()`) has no visible render effect: post-toggle state persists
+[[spt:T-0023]]
 
 **Discovered:** 2026-07-06, during View Contract Inc-2 M3 close-out (the first fresh re-run of the editor windowed gate since AppFlow Inc-2b shipped it).
 
@@ -1164,6 +1187,7 @@ Running any SINGLE `FailScenarioSweep*` test that does a live resize+recompile (
 ---
 
 ## KI-008 — lavapipe is no longer usable for this project
+[[spt:T-0024]]
 
 **Discovered:** 2026-07-04, standing rule for the widescreen-perf-fix program's worktrees.
 
@@ -1326,6 +1350,7 @@ extent (width = 500, height = 500, depth = 1) when ... this queue only allows fu
 ---
 
 ## KI-006 — `CleanupImpl`-no-Recompile-guard class in `DescriptorSetNode`/`ComputePipelineNode`
+[[spt:T-0025]]
 
 **Files/lines:** `libraries/RenderGraph/src/Nodes/DescriptorSetNode.cpp:976-1001` (`DescriptorSetNode::CleanupImpl` — destroys descriptor pool + descriptor set layout unconditionally); `libraries/RenderGraph/src/Nodes/ComputePipelineNode.cpp:124-141` (`ComputePipelineNode::CleanupImpl` — destroys shader module + resets pipeline/layout/cache handles unconditionally).
 
@@ -1342,6 +1367,7 @@ extent (width = 500, height = 500, depth = 1) when ... this queue only allows fu
 ---
 
 ## KI-005 — L2 cache-key mismatch: `ComputePipelineCacher` hashes a resize-invariant string while `PipelineLayoutCacher` hands out a live handle
+[[spt:T-0026]]
 
 **Files/lines:** `libraries/CashSystem/src/ComputePipelineCacher.cpp:47-56` (`ComputeKey` hashes `ci.layoutKey`, a `std::string`); `libraries/RenderGraph/src/Nodes/ComputePipelineNode.cpp:~201` (`layoutParams.layoutKey = shaderBundle->uuid + "_pipeline_layout"` — constant across resizes, since the shader UUID doesn't change).
 
@@ -1366,6 +1392,7 @@ extent (width = 500, height = 500, depth = 1) when ... this queue only allows fu
 ---
 
 ## KI-004 — Nodes downstream of `FrameSyncNode` keep executing on a condemned frame after device loss, racing recovery teardown
+[[spt:T-0027]]
 
 **Update 2026-07-03 (partial fix landed, bug NOT fully resolved):** `RenderGraph::NotifyDeviceLost()` now calls `AbortCurrentFrame()` before latching (mirroring `9d95bd75`'s central abort for the out-of-date acquire path). **Verified this closes the originally-diagnosed race** — the log now shows "Frame aborted before node '...' — skipping the rest of this frame" fire the instant device loss is detected, and no downstream node executes on the condemned frame anymore.
 
