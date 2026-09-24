@@ -130,30 +130,34 @@ set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 # Gaia ECS - Entity Component System
 # ============================================================================
 
+# The one Gaia revision consumed by VIXEN and Undertow's native loader. The loader reads the
+# revision from the `gaia` target property below when it validates a separately supplied header
+# directory; do not add a second Gaia pin there.
+set(VIXEN_GAIA_UPSTREAM_REVISION "a2e62491b56a8589c31da97128f0658088050a70")
+
+# FetchContent's shared default `<base>/gaia-src` is reused across worktrees and therefore cannot
+# safely hold multiple pinned revisions. Keep revision-keyed entries side by side and select the
+# entry derived from the declaration when it has been provisioned; explicit caller overrides still
+# take precedence. The revision check below rejects an old default-cache checkout if the new entry
+# has not yet been refreshed.
+if((NOT DEFINED FETCHCONTENT_SOURCE_DIR_GAIA OR "${FETCHCONTENT_SOURCE_DIR_GAIA}" STREQUAL "")
+   AND DEFINED FETCHCONTENT_BASE_DIR)
+    string(SUBSTRING "${VIXEN_GAIA_UPSTREAM_REVISION}" 0 8 _vixen_gaia_revision_prefix)
+    set(_vixen_gaia_revision_cache
+        "${FETCHCONTENT_BASE_DIR}/gaia-${_vixen_gaia_revision_prefix}/gaia-src")
+    if(EXISTS "${_vixen_gaia_revision_cache}/single_include/gaia.h")
+        set(FETCHCONTENT_SOURCE_DIR_GAIA "${_vixen_gaia_revision_cache}" CACHE PATH
+            "Revision-keyed source directory for VIXEN's pinned Gaia." FORCE)
+        message(STATUS "VIXEN: using revision-keyed Gaia cache ${FETCHCONTENT_SOURCE_DIR_GAIA}")
+    endif()
+endif()
+
 FetchContent_Declare(
     gaia
     GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
-    # Pinned to a specific commit rather than a moving ref.
-    # GIT_TAG main previously froze at whatever commit each build dir first fetched
-    # (FetchContent caches _deps and does not re-fetch on reconfigure), so the tree
-    # silently drifted. A pinned SHA is reproducible across every build dir/worktree
-    # and cannot silently drift; bump it deliberately.
-    # Current: UPSTREAM-PIN (2026-08-17, PR #37 intake) — richardbiely/gaia-ecs main
-    # @ 0c2753d86388b9c30b80d0ff27e9daf61d3990cf. This is upstream's OWN merge of PR #37
-    # ("fix(ecs): dispatch OnSet observers off worker threads", merged 063a5873, 2026-08-14)
-    # plus the maintainer's own follow-up regeneration of single_include/gaia.h
-    # (0c2753d, "update amalgamated gaia.h after 063a587") — i.e. exactly what the prior
-    # FORK-PIN (Lint111/gaia-ecs pin/parallel-observer-publication @ 2b5b914) was manually
-    # carrying, now upstream and no longer needing our fork. WE consume single_include/gaia.h
-    # EXCLUSIVELY (target_include_directories below points at single_include/, and every e7
-    # test does #include <gaia.h>), so the pin MUST be at-or-after the amalgamation-refresh
-    # commit, not just the merge commit — the merge commit alone (063a5873) still had a STALE
-    # single_include/gaia.h missing the fix (verified: 0 hits for DeferredOnSet/m_deferOnSetDepth
-    # at 063a5873, 8 hits at 0c2753d). Intake gate: the FETCHED single_include/gaia.h must contain
-    # DeferredOnSet or m_deferOnSetDepth (upstream's own naming for the fix; NOT DeferOnSetSlotScope,
-    # which was our fork's name for its own independent implementation of the same fix) — never
-    # trust a green reconfigure, FetchContent caches _deps.
-    GIT_TAG        0c2753d86388b9c30b80d0ff27e9daf61d3990cf
+    # Pin the full upstream HEAD SHA so each build is reproducible. FetchContent reuses an existing
+    # source directory, so the revision check after MakeAvailable below also catches a stale cache.
+    GIT_TAG        "${VIXEN_GAIA_UPSTREAM_REVISION}"
     # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
     GIT_SHALLOW    FALSE
     GIT_PROGRESS   TRUE
@@ -170,28 +174,50 @@ set(GAIA_GENERATE_SINGLE_HEADER OFF CACHE BOOL "Generate the single file header 
 
 FetchContent_MakeAvailable(gaia)
 
-# Organize Gaia in Dependencies folder
-if(TARGET gaia)
-    set_target_properties(gaia PROPERTIES FOLDER "Dependencies")
-    # Upstream's own INTERFACE include dir is the repo root (gaia_SOURCE_DIR), which
-    # matches its pre-v0.9 layout where the amalgamated header lived at the top level.
-    # As of v0.9.2 the committed single header moved to single_include/gaia.h (and a
-    # multi-header include/gaia.h also exists) — neither is at the root anymore, so
-    # VIXEN's `#include <gaia.h>` consumers (VoxelComponents, GaiaVoxelWorld,
-    # GaiaArchetypes) need single_include/ added explicitly.
-    target_include_directories(gaia INTERFACE $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
-    # SYSTEM: the single_include/gaia.h amalgamation trips several first-party-visible warnings
-    # (-Wunused-variable et al, hundreds of them) that are gaia's problem, not ours. Upstream's own
-    # CMakeLists.txt (run by FetchContent_MakeAvailable, above) ALSO declares single_include as an
-    # INTERFACE include -- non-SYSTEM -- so a second target_include_directories(... SYSTEM ...) call
-    # here just appends a duplicate path entry rather than overriding upstream's; the compiler keeps
-    # the first (non-SYSTEM) occurrence and the warnings still leak through. The actual override
-    # mechanism is INTERFACE_SYSTEM_INCLUDE_DIRECTORIES, which retroactively marks an
-    # ALREADY-DECLARED include path as SYSTEM for every consumer, without re-adding it -- the
-    # standard third-party exemption mechanism (see perf/fedwarn-vixen1-report.md).
-    set_property(TARGET gaia APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
-        $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
+if(NOT TARGET gaia)
+    message(FATAL_ERROR "VIXEN: FetchContent did not provide the declared Gaia target")
 endif()
+execute_process(
+    COMMAND git -C "${gaia_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE _vixen_gaia_revision_rc
+    OUTPUT_VARIABLE _vixen_gaia_actual_revision
+    ERROR_VARIABLE _vixen_gaia_revision_error
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(NOT _vixen_gaia_revision_rc EQUAL 0)
+    message(FATAL_ERROR
+        "VIXEN: cannot verify the fetched Gaia source revision at ${gaia_SOURCE_DIR}: "
+        "${_vixen_gaia_revision_error}")
+endif()
+if(NOT "${_vixen_gaia_actual_revision}" STREQUAL "${VIXEN_GAIA_UPSTREAM_REVISION}")
+    message(FATAL_ERROR
+        "VIXEN: Gaia source revision mismatch: declared ${VIXEN_GAIA_UPSTREAM_REVISION}, "
+        "fetched ${_vixen_gaia_actual_revision} at ${gaia_SOURCE_DIR}. Refresh the FetchContent "
+        "source directory for the declared SHA.")
+endif()
+set_property(TARGET gaia PROPERTY VIXEN_GAIA_UPSTREAM_REVISION "${VIXEN_GAIA_UPSTREAM_REVISION}")
+message(STATUS "VIXEN: Gaia source verified at ${_vixen_gaia_actual_revision}")
+
+# Organize Gaia in Dependencies folder
+set_target_properties(gaia PROPERTIES FOLDER "Dependencies")
+# Upstream's own INTERFACE include dir is the repo root (gaia_SOURCE_DIR), which
+# matches its pre-v0.9 layout where the amalgamated header lived at the top level.
+# As of v0.9.2 the committed single header moved to single_include/gaia.h (and a
+# multi-header include/gaia.h also exists) — neither is at the root anymore, so
+# VIXEN's `#include <gaia.h>` consumers (VoxelComponents, GaiaVoxelWorld,
+# GaiaArchetypes) need single_include/ added explicitly.
+target_include_directories(gaia INTERFACE $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
+# SYSTEM: the single_include/gaia.h amalgamation trips several first-party-visible warnings
+# (-Wunused-variable et al, hundreds of them) that are gaia's problem, not ours. Upstream's own
+# CMakeLists.txt (run by FetchContent_MakeAvailable, above) ALSO declares single_include as an
+# INTERFACE include -- non-SYSTEM -- so a second target_include_directories(... SYSTEM ...) call
+# here just appends a duplicate path entry rather than overriding upstream's; the compiler keeps
+# the first (non-SYSTEM) occurrence and the warnings still leak through. The actual override
+# mechanism is INTERFACE_SYSTEM_INCLUDE_DIRECTORIES, which retroactively marks an
+# ALREADY-DECLARED include path as SYSTEM for every consumer, without re-adding it -- the
+# standard third-party exemption mechanism (see perf/fedwarn-vixen1-report.md).
+set_property(TARGET gaia APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+    $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
 
 message(STATUS "Gaia ECS fetched - available to all libraries")
 
