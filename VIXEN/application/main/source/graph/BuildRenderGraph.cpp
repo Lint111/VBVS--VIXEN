@@ -8674,8 +8674,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
     sceneProviders.Provide("idOutputImage", pickIdTargetNode,
                            PickIdTargetNodeConfig::ID_IMAGE_VIEW, SlotRole::Execute);
-    sceneProviders.Provide("sceneRadianceImage", sceneRadianceNode,
-                           SceneRadianceNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    // SpatialReuseShade writes the fp16 intermediate only when the optional tonemap pass is
+    // present. With HDR exposure disabled, preserve the legacy direct-to-rgba8 render target:
+    // it is also the image declared by IMAGE_WRITE and consumed by BlitNode.
+    if (hdrExposureEnabled) {
+        sceneProviders.Provide("sceneRadianceImage", sceneRadianceNode,
+                               SceneRadianceNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
+    } else {
+        sceneProviders.Provide("sceneRadianceImage", renderTargetNode,
+                               RenderTargetNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    }
     sceneProviders.Provide("sceneRadianceHistory", accumulationHistoryNode,
                            AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, SlotRole::Execute);
     if (hdrExposureEnabled) {

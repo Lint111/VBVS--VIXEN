@@ -40,6 +40,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -122,6 +123,33 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t
     pc.raySizeCoef = 0.0f; pc.raySizeBias = 0.0f;
     pc.instanceCount = instanceCount;
     return pc;
+}
+
+// KI-018 (commit 784adff7) moved ray-march results from outputImage to HitRecordBuffer;
+// mirror the shader's std430 record so this gate reads the current geometry output.
+struct HitRecordCpu {
+    float albedo[3];
+    float roughness;
+    float worldNormal[3];
+    float hitT;
+    float worldPos[3];
+    uint32_t flags;
+    uint32_t _pad0[4];
+};
+static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
+constexpr uint32_t kHitRecordFlagHit = 0x1u;
+
+std::vector<uint8_t> HitRecordsToRgb(const std::vector<HitRecordCpu>& records) {
+    std::vector<uint8_t> rgb(records.size() * 3u, 0);
+    for (size_t i = 0; i < records.size(); ++i) {
+        const HitRecordCpu& record = records[i];
+        if ((record.flags & kHitRecordFlagHit) == 0u) continue;
+        for (size_t channel = 0; channel < 3; ++channel) {
+            rgb[i * 3u + channel] = static_cast<uint8_t>(
+                std::clamp(record.albedo[channel], 0.0f, 1.0f) * 255.0f);
+        }
+    }
+    return rgb;
 }
 
 // Flattens the golden document with a per-layer enabled override built from `mask` (bit i ==
@@ -314,11 +342,11 @@ protected:
         if (zero) { void* m=nullptr; vkMapMemory(logicalDevice_, mem, 0, size, 0, &m); std::memset(m,0,size_t(size)); vkUnmapMemory(logicalDevice_, mem); }
     }
 
-    // Render using the real BodyInstanceRayMarch shader (binding 5 = SSBO, I3.2).
-    void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
-                      VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
-                      const PushConstants& pc, uint32_t w, uint32_t h,
-                      std::vector<uint8_t>& rgba, double& ms) {
+    // Render using the real BodyInstanceRayMarch shader and read its current geometry output.
+    void RenderToHitRecords(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
+                            VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
+                            const PushConstants& pc, uint32_t w, uint32_t h,
+                            std::vector<HitRecordCpu>& outHitRecords, double& ms) {
         ASSERT_TRUE(softwareConfirmed_);
         // Baked-perf-pipeline M2: RayTraceBuffer (binding 4) is real, non-placeholder -- see
         // test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
@@ -333,12 +361,13 @@ protected:
         if (sdf    == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummySdf,dSdfMem,true); sdf = dummySdf; }
         if (lookup == VK_NULL_HANDLE) { CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyLookup,dLookupMem,true); lookup = dummyLookup; }
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyMip,dMipMem,true);
-        // Baked-perf-pipeline M2: bindings 15/18 (TierRefTableBuffer/HitRecordBuffer) placeholders
-        // -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller citation.
+        // Baked-perf-pipeline M2: binding 15 is a placeholder; binding 18 is the current ray-march
+        // geometry output (KI-018 moved it off outputImage).
         VkBuffer dummyTierRef=VK_NULL_HANDLE, dummyHitRecord=VK_NULL_HANDLE;
         VkDeviceMemory dTierRefMem=VK_NULL_HANDLE, dHitRecordMem=VK_NULL_HANDLE;
         CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyTierRef,dTierRefMem,true);
-        CreateHostBuffer(256,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
+        const VkDeviceSize hitRecordBufSize = VkDeviceSize(w) * VkDeviceSize(h) * sizeof(HitRecordCpu);
+        CreateHostBuffer(hitRecordBufSize,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,dummyHitRecord,dHitRecordMem,true);
         // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer (binding 35) placeholder.
         VkBuffer dummySkipMask=VK_NULL_HANDLE;
         VkDeviceMemory dSkipMaskMem=VK_NULL_HANDLE;
@@ -462,19 +491,17 @@ protected:
         vkCmdPushConstants(cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
         vkCmdDispatch(cmd, (w+7)/8, (h+7)/8, 1);
 
-        VkImageMemoryBarrier toSrc{}; toSrc.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        toSrc.oldLayout=VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        toSrc.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; toSrc.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        toSrc.image=colorImg; toSrc.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
-        toSrc.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; toSrc.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,0,nullptr,1,&toSrc);
-
-        const VkDeviceSize rbSz = VkDeviceSize(w)*h*4;
-        VkBuffer rb=VK_NULL_HANDLE; VkDeviceMemory rbMem=VK_NULL_HANDLE;
-        CreateHostBuffer(rbSz, VK_BUFFER_USAGE_TRANSFER_DST_BIT, rb, rbMem, false);
-        VkBufferImageCopy cp{}; cp.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; cp.imageExtent={w,h,1};
-        vkCmdCopyImageToBuffer(cmd, colorImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rb, 1, &cp);
+        VkBufferMemoryBarrier hitRecordBarrier{};
+        hitRecordBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hitRecordBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        hitRecordBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hitRecordBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hitRecordBarrier.buffer = dummyHitRecord;
+        hitRecordBarrier.offset = 0;
+        hitRecordBarrier.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0, 0, nullptr, 1, &hitRecordBarrier, 0, nullptr);
         ASSERT_EQ(vkEndCommandBuffer(cmd), VK_SUCCESS);
 
         VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd;
@@ -485,12 +512,13 @@ protected:
         const auto t1 = std::chrono::steady_clock::now();
         ms = double(std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count());
 
-        void* mapped=nullptr; ASSERT_EQ(vkMapMemory(logicalDevice_,rbMem,0,rbSz,0,&mapped), VK_SUCCESS);
-        rgba.assign(size_t(w)*h*4, 0); std::memcpy(rgba.data(), mapped, size_t(rbSz));
-        vkUnmapMemory(logicalDevice_, rbMem);
+        void* mapped = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, dHitRecordMem, 0, hitRecordBufSize, 0, &mapped), VK_SUCCESS);
+        outHitRecords.assign(size_t(w) * h, HitRecordCpu{});
+        std::memcpy(outHitRecords.data(), mapped, size_t(hitRecordBufSize));
+        vkUnmapMemory(logicalDevice_, dHitRecordMem);
 
         vkDeviceWaitIdle(logicalDevice_);
-        vkDestroyBuffer(logicalDevice_,rb,nullptr); vkFreeMemory(logicalDevice_,rbMem,nullptr);
         vkDestroyDescriptorPool(logicalDevice_,pool2,nullptr);
         vkDestroyPipeline(logicalDevice_,pipeline,nullptr);
         vkDestroyPipelineLayout(logicalDevice_,pl,nullptr);
@@ -511,9 +539,9 @@ protected:
     }
 
     // Bakes `pool` into a BodyOctreeSceneNode, renders one instance (octreeIndex=0,
-    // renderScale=5.0, worldPos=(0,0,0)) with the given camera, and returns the RGBA readback.
+    // renderScale=5.0, worldPos=(0,0,0)) with the given camera, and returns hit records.
     void RenderPool(Vixen::SVO::ConcatenatedOctrees pool, const PushConstants& pc,
-                     uint32_t w, uint32_t h, std::vector<uint8_t>& outRgba) {
+                     uint32_t w, uint32_t h, std::vector<HitRecordCpu>& outHitRecords) {
         using C = BodyOctreeSceneNodeConfig;
         BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
         auto nodeBase = nodeType.CreateInstance("appflow_toggle_render_test");
@@ -560,8 +588,8 @@ protected:
         ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
 
         double ms = 0.0;
-        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
-                                             sdfBuf, lookBuf, pc, w, h, outRgba, ms));
+        ASSERT_NO_FATAL_FAILURE(RenderToHitRecords(nodes, bricks, mats, cfgBuf, instBuf,
+                                                   sdfBuf, lookBuf, pc, w, h, outHitRecords, ms));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -597,18 +625,19 @@ TEST_F(AppFlowEditorToggleRenderTest, ToggleThenUndoRestoresRender) {
     const glm::vec3 eye = target + glm::vec3(0.35f, 1.3f, 0.35f);
     const PushConstants pc = MakeCamera(eye, target, kW, kH, 1);
 
-    auto renderMask = [&](uint32_t mask) -> std::vector<uint8_t> {
+    auto renderMask = [&](uint32_t mask) -> std::vector<HitRecordCpu> {
         std::vector<uint8_t> blob;
         auto bakeResult = FlattenAndBake(view, mask, blob);
         EXPECT_TRUE(bakeResult.ok) << bakeResult.err;
-        std::vector<uint8_t> rgba;
-        RenderPool(std::move(bakeResult.pool), pc, kW, kH, rgba);
-        return rgba;
+        if (!bakeResult.ok) return {};
+        std::vector<HitRecordCpu> hitRecords;
+        RenderPool(std::move(bakeResult.pool), pc, kW, kH, hitRecords);
+        return hitRecords;
     };
 
     // 1. All layers enabled (the runtime's initial mask).
-    const std::vector<uint8_t> pixelsInitial = renderMask(rt.Layers().Mask());
-    ASSERT_EQ(pixelsInitial.size(), size_t(kW) * kH * 4);
+    const std::vector<HitRecordCpu> hitRecordsInitial = renderMask(rt.Layers().Mask());
+    ASSERT_EQ(hitRecordsInitial.size(), size_t(kW) * kH);
 
     // 2. Toggle the cut layer off through AppFlowRuntime, re-render with the resulting mask.
     // ToggleLayer is a registered handler (design §4.3), not a framework verb: the framework
@@ -623,19 +652,20 @@ TEST_F(AppFlowEditorToggleRenderTest, ToggleThenUndoRestoresRender) {
               Vixen::AppFlow::DispatchResult::Ok);
     EXPECT_FALSE(rt.Layers().IsEnabled(kCutLayerIndex));
     EXPECT_EQ(changed, 1);
-    const std::vector<uint8_t> pixelsToggled = renderMask(rt.Layers().Mask());
+    const std::vector<HitRecordCpu> hitRecordsToggled = renderMask(rt.Layers().Mask());
+    ASSERT_EQ(hitRecordsToggled.size(), size_t(kW) * kH);
 
     // 3. Undo through AppFlowRuntime, re-render again.
     ASSERT_EQ(rt.Stack().Undo(), Vixen::AppFlow::DispatchResult::Ok);
     EXPECT_TRUE(rt.Layers().IsEnabled(kCutLayerIndex));
     EXPECT_EQ(changed, 2);
-    const std::vector<uint8_t> pixelsUndone = renderMask(rt.Layers().Mask());
+    const std::vector<HitRecordCpu> hitRecordsUndone = renderMask(rt.Layers().Mask());
+    ASSERT_EQ(hitRecordsUndone.size(), size_t(kW) * kH);
 
-    auto writePng = [&](const char* path, const std::vector<uint8_t>& rgba) {
-        std::vector<uint8_t> rgb(size_t(kW)*kH*3);
-        for (uint32_t i = 0; i < kW*kH; ++i) {
-            rgb[i*3+0]=rgba[i*4+0]; rgb[i*3+1]=rgba[i*4+1]; rgb[i*3+2]=rgba[i*4+2];
-        }
+    const std::vector<uint8_t> pixelsInitial = HitRecordsToRgb(hitRecordsInitial);
+    const std::vector<uint8_t> pixelsToggled = HitRecordsToRgb(hitRecordsToggled);
+    const std::vector<uint8_t> pixelsUndone = HitRecordsToRgb(hitRecordsUndone);
+    auto writePng = [&](const char* path, const std::vector<uint8_t>& rgb) {
         stbi_write_png(path, int(kW), int(kH), 3, rgb.data(), int(kW)*3);
     };
     writePng("/tmp/appflow_toggle_initial.png", pixelsInitial);
@@ -646,22 +676,36 @@ TEST_F(AppFlowEditorToggleRenderTest, ToggleThenUndoRestoresRender) {
     // camera looks straight down through the cylinder bore at screen-centre).
     int boreDiffPixels = 0;
     constexpr uint32_t kRegionHalf = 40;
+    int hitPixelsInitial = 0;
+    int hitPixelsToggled = 0;
+    for (const auto& record : hitRecordsInitial)
+        if ((record.flags & kHitRecordFlagHit) != 0u) ++hitPixelsInitial;
+    for (const auto& record : hitRecordsToggled)
+        if ((record.flags & kHitRecordFlagHit) != 0u) ++hitPixelsToggled;
     for (uint32_t y = kH/2 - kRegionHalf; y < kH/2 + kRegionHalf; ++y) {
         for (uint32_t x = kW/2 - kRegionHalf; x < kW/2 + kRegionHalf; ++x) {
             const uint32_t i = y*kW + x;
-            const int dr = int(pixelsInitial[i*4+0]) - int(pixelsToggled[i*4+0]);
-            const int dg = int(pixelsInitial[i*4+1]) - int(pixelsToggled[i*4+1]);
-            const int db = int(pixelsInitial[i*4+2]) - int(pixelsToggled[i*4+2]);
-            if (std::abs(dr) > 16 || std::abs(dg) > 16 || std::abs(db) > 16) ++boreDiffPixels;
+            const auto& initial = hitRecordsInitial[i];
+            const auto& toggled = hitRecordsToggled[i];
+            const bool initialHit = (initial.flags & kHitRecordFlagHit) != 0u;
+            const bool toggledHit = (toggled.flags & kHitRecordFlagHit) != 0u;
+            if (initialHit != toggledHit) { ++boreDiffPixels; continue; }
+            if (!initialHit) continue;
+            const float dr = std::abs(initial.albedo[0] - toggled.albedo[0]);
+            const float dg = std::abs(initial.albedo[1] - toggled.albedo[1]);
+            const float db = std::abs(initial.albedo[2] - toggled.albedo[2]);
+            if (dr > 16.0f/255.0f || dg > 16.0f/255.0f || db > 16.0f/255.0f) ++boreDiffPixels;
         }
     }
-    std::printf("[APPFLOW/toggle] boreDiffPixels=%d (region=%ux%u)\n",
-                boreDiffPixels, kRegionHalf*2, kRegionHalf*2);
+    std::printf("[APPFLOW/toggle] hitInitial=%d hitToggled=%d boreDiffPixels=%d (region=%ux%u)\n",
+                hitPixelsInitial, hitPixelsToggled, boreDiffPixels, kRegionHalf*2, kRegionHalf*2);
 
     // The toggle must have visibly changed the render at the bore (mirrors the template's
     // ablation-gate threshold — this file uses the same camera and same cut layer).
     EXPECT_GT(boreDiffPixels, 3000)
         << "ToggleLayer through AppFlowRuntime did not change the rendered geometry at the bore";
+    EXPECT_GT(hitPixelsToggled, hitPixelsInitial)
+        << "Disabling the cut layer should fill in the bore and increase the hit count";
 
     // Undo must restore the render byte-for-byte — not just "close", exact.
     ASSERT_EQ(pixelsUndone.size(), pixelsInitial.size());
