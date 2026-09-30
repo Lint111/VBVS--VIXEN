@@ -320,15 +320,57 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # MSB4018 on deps.json -- wave-46 composite finals, two failed runs). Building once and
     # invoking the dll directly means these checks never re-enter MSBuild at all, so they can
     # neither race each other nor undertow's own undertow_codegen_tool build.
+    # On Linux, the dotnet muxer starts the SDK's dotnet.dll before MSBuild can apply project
+    # properties. Give that CLI process an invariant runtimeconfig through `dotnet exec`, then
+    # build CodegenTool with InvariantGlobalization=true so its own runtimeconfig carries the
+    # same setting. This lets the tool run on hosts without system ICU without a DOTNET_* env
+    # override in the build scripts.
+    set(_codegen_linux_dotnet_cli_command "")
+    if(UNIX AND NOT APPLE)
+        get_filename_component(_codegen_dotnet_real "${VIXEN_DOTNET}" REALPATH)
+        get_filename_component(_codegen_dotnet_root "${_codegen_dotnet_real}" DIRECTORY)
+        file(GLOB _codegen_dotnet_cli_runtimeconfigs
+            "${_codegen_dotnet_root}/sdk/*/dotnet.runtimeconfig.json")
+        list(SORT _codegen_dotnet_cli_runtimeconfigs COMPARE NATURAL ORDER DESCENDING)
+        if(NOT _codegen_dotnet_cli_runtimeconfigs)
+            message(FATAL_ERROR
+                "[codegen] cannot locate the .NET SDK runtimeconfig under ${_codegen_dotnet_root}/sdk; "
+                "CodegenTool needs an invariant SDK runtimeconfig on Linux hosts without ICU")
+        endif()
+        list(GET _codegen_dotnet_cli_runtimeconfigs 0 _codegen_dotnet_cli_runtimeconfig_source)
+        get_filename_component(_codegen_dotnet_sdk_dir "${_codegen_dotnet_cli_runtimeconfig_source}" DIRECTORY)
+        set(_codegen_dotnet_cli_dll "${_codegen_dotnet_sdk_dir}/dotnet.dll")
+        if(NOT EXISTS "${_codegen_dotnet_cli_dll}")
+            message(FATAL_ERROR "[codegen] .NET SDK CLI was not found beside ${_codegen_dotnet_cli_runtimeconfig_source}")
+        endif()
+        file(READ "${_codegen_dotnet_cli_runtimeconfig_source}" _codegen_dotnet_cli_runtimeconfig)
+        string(JSON _codegen_dotnet_cli_runtimeconfig SET
+            "${_codegen_dotnet_cli_runtimeconfig}"
+            runtimeOptions configProperties System.Globalization.Invariant true)
+        set(_codegen_dotnet_cli_runtimeconfig_path
+            "${CMAKE_CURRENT_BINARY_DIR}/dotnet-cli-invariant.runtimeconfig.json")
+        file(WRITE "${_codegen_dotnet_cli_runtimeconfig_path}" "${_codegen_dotnet_cli_runtimeconfig}\n")
+        set(_codegen_linux_dotnet_cli_command
+            "${VIXEN_DOTNET}" exec
+            --runtimeconfig "${_codegen_dotnet_cli_runtimeconfig_path}"
+            "${_codegen_dotnet_cli_dll}" build)
+    endif()
     if(_codegen_need_wsl_bridge)
         add_custom_target(engine_codegen_tool
-            COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj" -c Release -nodeReuse:false
+            COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj" -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
             COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
+            JOB_POOL msbuild
+            VERBATIM)
+    elseif(UNIX AND NOT APPLE)
+        add_custom_target(engine_codegen_tool
+            COMMAND ${_codegen_linux_dotnet_cli_command} "${_yk_tool}/CodegenTool.csproj"
+                -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
+            COMMENT "[codegen] building the kernel CodegenTool once with invariant globalization"
             JOB_POOL msbuild
             VERBATIM)
     else()
         add_custom_target(engine_codegen_tool
-            COMMAND ${VIXEN_DOTNET} build "${_yk_tool}/CodegenTool.csproj" -c Release -nodeReuse:false
+            COMMAND ${VIXEN_DOTNET} build "${_yk_tool}/CodegenTool.csproj" -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
             COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
             JOB_POOL msbuild
             VERBATIM)
