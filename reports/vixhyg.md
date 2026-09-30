@@ -24,6 +24,7 @@ Commit: `b42a4346109035ff84d6b11b673656f7d9c92980`.
 
 Evidence:
 
+- The initial baseline configure/build in `build/wsl` had already compiled `ShaderManagement` and its dependent test targets before this edit, so the reported first-build race did not reproduce here.
 - Fresh configure: `cmake --preset vixen-wsl -B ../build/wsl-vixhyg-fresh -DVIXEN_SCHEMA_CATALOG=/home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json` — exit 0.
 - Fresh affected build: `cmake --build ../build/wsl-vixhyg-fresh --target ShaderManagement test_rendergraph_core test_rendergraph_criticalnodes_gpurender1 --parallel 8` — exit 0.
 - The build log shows `spirv_reflect.c` compiled at step 100 and `libspirv-reflect-static.a` linked at step 140, before `ShaderManagement` compiled `SPIRVReflection.cpp` at step 180 (`/home/liory/.local/state/undertow/undertow-box-logs/1790798014-build-fresh-affected-build.log`).
