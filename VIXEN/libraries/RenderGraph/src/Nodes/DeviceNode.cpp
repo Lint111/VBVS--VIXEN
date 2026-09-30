@@ -55,6 +55,14 @@ void DeviceNode::SetupImpl(TypedSetupContext& ctx) {
     // Use global extension/layer lists
     deviceExtensions = deviceExtensionNames;
     deviceLayers = layerNames;
+    if (!GetParameterValue<bool>(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, true)) {
+        deviceExtensions.erase(std::remove_if(deviceExtensions.begin(), deviceExtensions.end(),
+            [](const char* extension) {
+                return strcmp(extension, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0 ||
+                       strcmp(extension, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0 ||
+                       strcmp(extension, VK_KHR_MAINTENANCE_6_EXTENSION_NAME) == 0;
+            }), deviceExtensions.end());
+    }
 
     NODE_LOG_INFO("[DeviceNode] Requested " + std::to_string(deviceExtensions.size()) + " device extensions");
     NODE_LOG_INFO("[DeviceNode] Requested " + std::to_string(deviceLayers.size()) + " device layers");

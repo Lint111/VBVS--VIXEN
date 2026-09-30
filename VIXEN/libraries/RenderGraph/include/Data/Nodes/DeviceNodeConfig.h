@@ -55,6 +55,7 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
 
     // Compile-time parameter names
     static constexpr const char* PARAM_GPU_INDEX = "gpu_index";
+    static constexpr const char* PARAM_ENABLE_PRESENTATION = "enable_presentation";
 
     // Sentinel for PARAM_GPU_INDEX meaning "no explicit preference - auto-select"
     // (prefers a discrete GPU over an integrated one; see DeviceNode::SelectPhysicalDevice)

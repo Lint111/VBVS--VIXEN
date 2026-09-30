@@ -13,7 +13,7 @@ using IRenderTarget = Vixen::Vulkan::Resources::IRenderTarget;
 // Compile-time slot counts (declared early for reuse)
 namespace RenderTargetNodeCounts {
     static constexpr size_t INPUTS  = 2;  // VULKAN_DEVICE_IN, EXTENT_SOURCE
-    static constexpr size_t OUTPUTS = 4;  // RENDER_TARGET, CURRENT_VIEW, WIDTH_OUT, HEIGHT_OUT
+    static constexpr size_t OUTPUTS = 5;  // RENDER_TARGET, CURRENT_VIEW, IMAGE_INDEX, WIDTH_OUT, HEIGHT_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -29,9 +29,10 @@ namespace RenderTargetNodeCounts {
  * Inputs: 2
  *   - VULKAN_DEVICE_IN (VulkanDevice*)  - Device for allocation
  *   - EXTENT_SOURCE    (IRenderTarget*) - Optional. When connected, drives follow-swapchain sizing.
- * Outputs: 4
+ * Outputs: 5
  *   - RENDER_TARGET (IRenderTarget*) - Offscreen color target (RenderTargetData)
  *   - CURRENT_VIEW  (VkImageView)    - View for the current in-flight buffer
+ *   - IMAGE_INDEX   (uint32_t)       - Current image ring index
  *   - WIDTH_OUT     (uint32_t)       - Render target width
  *   - HEIGHT_OUT    (uint32_t)       - Render target height
  * Parameters: width, height, format, imageCount, usage, scale
@@ -66,11 +67,15 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(WIDTH_OUT, uint32_t, 2,
+    OUTPUT_SLOT(IMAGE_INDEX, uint32_t, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(HEIGHT_OUT, uint32_t, 3,
+    OUTPUT_SLOT(WIDTH_OUT, uint32_t, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(HEIGHT_OUT, uint32_t, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -102,6 +107,9 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
         HandleDescriptor viewDesc{"VkImageView"};
         INIT_OUTPUT_DESC(CURRENT_VIEW, "current_view", ResourceLifetime::Persistent, viewDesc);
 
+        BufferDescription imageIndexDesc{};
+        INIT_OUTPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, imageIndexDesc);
+
         // Output: width / height (transient scalar values)
         BufferDescription wDesc{};
         INIT_OUTPUT_DESC(WIDTH_OUT,  "width",  ResourceLifetime::Transient, wDesc);
@@ -126,8 +134,9 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
                   "RENDER_TARGET must be IRenderTarget*");
 
     static_assert(CURRENT_VIEW_Slot::index == 1, "CURRENT_VIEW must be at index 1");
-    static_assert(WIDTH_OUT_Slot::index  == 2,   "WIDTH_OUT must be at index 2");
-    static_assert(HEIGHT_OUT_Slot::index == 3,   "HEIGHT_OUT must be at index 3");
+    static_assert(IMAGE_INDEX_Slot::index == 2, "IMAGE_INDEX must be at index 2");
+    static_assert(WIDTH_OUT_Slot::index  == 3,   "WIDTH_OUT must be at index 3");
+    static_assert(HEIGHT_OUT_Slot::index == 4,   "HEIGHT_OUT must be at index 4");
 
     VALIDATE_NODE_CONFIG(RenderTargetNodeConfig, RenderTargetNodeCounts);
 };

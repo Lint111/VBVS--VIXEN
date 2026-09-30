@@ -11,12 +11,12 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * @brief Resource configuration for UIRenderNode (RmlUi → Vulkan).
  *
  * UIRenderNode mirrors GeometryRenderNode: it CONSUMES a color-only RENDER_PASS (from RenderPassNode)
- * and FRAMEBUFFERS (from FramebufferNode) built off the swapchain, so the swapchain-derived resource
- * lifecycle (recreate + cleanup on resize) lives in those nodes — never in the consumer. It owns only
+ * and FRAMEBUFFERS (from FramebufferNode) built off the selected render target, so target-derived
+ * resource lifecycle lives in those nodes — never in the consumer. It owns only
  * its RmlUi pipeline/geometry/textures (via VixenRmlRenderInterface) and its per-image command buffers.
  *
  * Inputs (10): SWAPCHAIN_INFO, COMMAND_POOL, VULKAN_DEVICE, IMAGE_INDEX, CURRENT_FRAME_INDEX,
- *   IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY,
+ *   IN_FLIGHT_FENCE, optional IMAGE_AVAILABLE_SEMAPHORES_ARRAY and RENDER_COMPLETE_SEMAPHORES_ARRAY,
  *   RENDER_PASS, FRAMEBUFFERS.
  * Outputs (2): COMMAND_BUFFERS, RENDER_COMPLETE_SEMAPHORE.
  * Parameters: rmlDocumentPath, fontPath.
@@ -39,7 +39,8 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     // IMAGE_AVAILABLE_SEMAPHORES_ARRAY. The node then waits on that array indexed by IMAGE (the
     // compute→UI handoff), signals its own per-image "ui complete" semaphore (output via
     // RENDER_COMPLETE_SEMAPHORE for present), and owns the frame fence. False = standalone UI graph
-    // (S0 demo): wait imageAvailable[frame], signal renderComplete[image].
+    // (S0 demo): wait imageAvailable[frame], signal renderComplete[image]. If both WSI arrays are
+    // unconnected, the same render pass runs offscreen and only the frame fence is signaled.
     static constexpr const char* PARAM_COMPOSITE = "composite";
 
     // ===== INPUTS (8) =====
@@ -70,10 +71,10 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
         SlotNullability::Required, SlotRole::Execute, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
     INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 6,
-        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+        SlotNullability::Optional, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
-        SlotNullability::Required, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
+        SlotNullability::Optional, SlotRole::Dependency, SlotMutability::ReadOnly, SlotScope::NodeLevel);
 
     // Color-only render pass (from RenderPassNode) + per-image framebuffers (from FramebufferNode),
     // both built off the swapchain. UIRenderNode consumes them; it does not own their lifecycle.

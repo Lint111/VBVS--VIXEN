@@ -141,10 +141,10 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &beginInfo);
 
-    // Same-layout barrier: only orders this read-back after the blit's write to the image
-    // (VK_ACCESS_TRANSFER_WRITE_BIT from BlitRenderTargetToSwapchain -> VK_ACCESS_TRANSFER_READ_BIT
-    // here) on a fresh queue submission. oldLayout == newLayout == TRANSFER_SRC_OPTIMAL, so this
-    // never touches (or needs to update) ComputeDispatchNode's renderTargetImageLayouts_ tracking.
+    // Same-layout barrier: orders this read-back after the prior image writer (which may be a
+    // compute/transfer producer or a color-attachment render pass) on a fresh queue submission.
+    // oldLayout == newLayout == TRANSFER_SRC_OPTIMAL, so this never changes layout tracking owned
+    // by a producer such as ComputeDispatchNode.
     VkImageMemoryBarrier syncOnly{};
     syncOnly.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     syncOnly.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -153,9 +153,9 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     syncOnly.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     syncOnly.image = image;
     syncOnly.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    syncOnly.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    syncOnly.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
     syncOnly.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          0, 0, nullptr, 0, nullptr, 1, &syncOnly);
 
     VkBufferImageCopy region{};
