@@ -6,32 +6,8 @@
 
 include(FetchContent)
 
-# ============================================================================
-# GLM - OpenGL Mathematics Library
-# ============================================================================
-
-FetchContent_Declare(
-    glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG        1.0.1
-    GIT_SHALLOW    TRUE
-)
-
-FetchContent_MakeAvailable(glm)
-
-# glm is header-only; mark its headers SYSTEM so glm's own warnings are suppressed
-# for consumers without silencing -Wall/-Wextra/-Werror in the consumer's own TUs.
-# (Do NOT use target_compile_options(glm INTERFACE -w) -- INTERFACE compile options
-# propagate into every consumer's compile command and defeat -Werror project-wide;
-# see the identical gaia INTERFACE_SYSTEM_INCLUDE_DIRECTORIES precedent below.)
-if(TARGET glm)
-    get_target_property(_glm_includes glm INTERFACE_INCLUDE_DIRECTORIES)
-    if(_glm_includes)
-        set_property(TARGET glm APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${_glm_includes})
-    endif()
-    unset(_glm_includes)
-    set_target_properties(glm PROPERTIES FOLDER "Dependencies")
-endif()
+# Native loader dependencies are shared with VIXEN_NATIVE_DEPENDENCIES_ONLY.
+add_subdirectory(native)
 
 # ============================================================================
 # Vulkan Headers (if not provided by SDK)
@@ -125,101 +101,6 @@ else()
     target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
 endif()
 set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
-
-# ============================================================================
-# Gaia ECS - Entity Component System
-# ============================================================================
-
-# The one Gaia revision consumed by VIXEN and Undertow's native loader. The loader reads the
-# revision from the `gaia` target property below when it validates a separately supplied header
-# directory; do not add a second Gaia pin there.
-set(VIXEN_GAIA_UPSTREAM_REVISION "a2e62491b56a8589c31da97128f0658088050a70")
-
-# FetchContent's shared default `<base>/gaia-src` is reused across worktrees and therefore cannot
-# safely hold multiple pinned revisions. Keep revision-keyed entries side by side and select the
-# entry derived from the declaration when it has been provisioned; explicit caller overrides still
-# take precedence. The revision check below rejects an old default-cache checkout if the new entry
-# has not yet been refreshed.
-if((NOT DEFINED FETCHCONTENT_SOURCE_DIR_GAIA OR "${FETCHCONTENT_SOURCE_DIR_GAIA}" STREQUAL "")
-   AND DEFINED FETCHCONTENT_BASE_DIR)
-    string(SUBSTRING "${VIXEN_GAIA_UPSTREAM_REVISION}" 0 8 _vixen_gaia_revision_prefix)
-    set(_vixen_gaia_revision_cache
-        "${FETCHCONTENT_BASE_DIR}/gaia-${_vixen_gaia_revision_prefix}/gaia-src")
-    if(EXISTS "${_vixen_gaia_revision_cache}/single_include/gaia.h")
-        set(FETCHCONTENT_SOURCE_DIR_GAIA "${_vixen_gaia_revision_cache}" CACHE PATH
-            "Revision-keyed source directory for VIXEN's pinned Gaia." FORCE)
-        message(STATUS "VIXEN: using revision-keyed Gaia cache ${FETCHCONTENT_SOURCE_DIR_GAIA}")
-    endif()
-endif()
-
-FetchContent_Declare(
-    gaia
-    GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
-    # Pin the full upstream HEAD SHA so each build is reproducible. FetchContent reuses an existing
-    # source directory, so the revision check after MakeAvailable below also catches a stale cache.
-    GIT_TAG        "${VIXEN_GAIA_UPSTREAM_REVISION}"
-    # SHALLOW disabled: a non-tag SHA can't be shallow-fetched on all git/server combos.
-    GIT_SHALLOW    FALSE
-    GIT_PROGRESS   TRUE
-)
-
-# Configure Gaia ECS options
-set(GAIA_BUILD_UNITTEST OFF CACHE BOOL "Build Gaia unit tests" FORCE)
-set(GAIA_BUILD_EXAMPLES OFF CACHE BOOL "Build Gaia examples" FORCE)
-set(GAIA_PROFILER_CPU OFF CACHE BOOL "Enable Gaia CPU profiler" FORCE)
-# The committed single_include/gaia.h is used as-is; do not regenerate it at build
-# time. Regeneration runs a shell amalgamation script that is unavailable in this
-# checkout (and needs clang-format), and is unnecessary since the header exists.
-set(GAIA_GENERATE_SINGLE_HEADER OFF CACHE BOOL "Generate the single file header automatically." FORCE)
-
-FetchContent_MakeAvailable(gaia)
-
-if(NOT TARGET gaia)
-    message(FATAL_ERROR "VIXEN: FetchContent did not provide the declared Gaia target")
-endif()
-execute_process(
-    COMMAND git -C "${gaia_SOURCE_DIR}" rev-parse HEAD
-    RESULT_VARIABLE _vixen_gaia_revision_rc
-    OUTPUT_VARIABLE _vixen_gaia_actual_revision
-    ERROR_VARIABLE _vixen_gaia_revision_error
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-if(NOT _vixen_gaia_revision_rc EQUAL 0)
-    message(FATAL_ERROR
-        "VIXEN: cannot verify the fetched Gaia source revision at ${gaia_SOURCE_DIR}: "
-        "${_vixen_gaia_revision_error}")
-endif()
-if(NOT "${_vixen_gaia_actual_revision}" STREQUAL "${VIXEN_GAIA_UPSTREAM_REVISION}")
-    message(FATAL_ERROR
-        "VIXEN: Gaia source revision mismatch: declared ${VIXEN_GAIA_UPSTREAM_REVISION}, "
-        "fetched ${_vixen_gaia_actual_revision} at ${gaia_SOURCE_DIR}. Refresh the FetchContent "
-        "source directory for the declared SHA.")
-endif()
-set_property(TARGET gaia PROPERTY VIXEN_GAIA_UPSTREAM_REVISION "${VIXEN_GAIA_UPSTREAM_REVISION}")
-message(STATUS "VIXEN: Gaia source verified at ${_vixen_gaia_actual_revision}")
-
-# Organize Gaia in Dependencies folder
-set_target_properties(gaia PROPERTIES FOLDER "Dependencies")
-# Upstream's own INTERFACE include dir is the repo root (gaia_SOURCE_DIR), which
-# matches its pre-v0.9 layout where the amalgamated header lived at the top level.
-# As of v0.9.2 the committed single header moved to single_include/gaia.h (and a
-# multi-header include/gaia.h also exists) — neither is at the root anymore, so
-# VIXEN's `#include <gaia.h>` consumers (VoxelComponents, GaiaVoxelWorld,
-# GaiaArchetypes) need single_include/ added explicitly.
-target_include_directories(gaia INTERFACE $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
-# SYSTEM: the single_include/gaia.h amalgamation trips several first-party-visible warnings
-# (-Wunused-variable et al, hundreds of them) that are gaia's problem, not ours. Upstream's own
-# CMakeLists.txt (run by FetchContent_MakeAvailable, above) ALSO declares single_include as an
-# INTERFACE include -- non-SYSTEM -- so a second target_include_directories(... SYSTEM ...) call
-# here just appends a duplicate path entry rather than overriding upstream's; the compiler keeps
-# the first (non-SYSTEM) occurrence and the warnings still leak through. The actual override
-# mechanism is INTERFACE_SYSTEM_INCLUDE_DIRECTORIES, which retroactively marks an
-# ALREADY-DECLARED include path as SYSTEM for every consumer, without re-adding it -- the
-# standard third-party exemption mechanism (see perf/fedwarn-vixen1-report.md).
-set_property(TARGET gaia APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
-    $<BUILD_INTERFACE:${gaia_SOURCE_DIR}/single_include>)
-
-message(STATUS "Gaia ECS fetched - available to all libraries")
 
 # ============================================================================
 # GoogleTest - Testing Framework
@@ -438,51 +319,5 @@ foreach(_rml RmlCore RmlUi RmlDebugger rmlui_core)
     endif()
 endforeach()
 message(STATUS "RmlUi + FreeType fetched - moddable UI available")
-
-# ============================================================================
-# oneTBB - Intel Threading Building Blocks
-# ============================================================================
-# Used by: SVO (parallel octree), RenderGraph (TBBGraphExecutor)
-
-find_package(TBB QUIET)
-if(NOT TARGET TBB::tbb)
-    FetchContent_Declare(
-        TBB
-        GIT_REPOSITORY https://github.com/oneapi-src/oneTBB
-        GIT_TAG v2021.11.0
-        GIT_SHALLOW TRUE
-    )
-    set(TBB_TEST OFF CACHE BOOL "" FORCE)
-    set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(TBB)
-
-    # Organize in Dependencies folder
-    if(TARGET tbb)
-        set_target_properties(tbb PROPERTIES FOLDER "Dependencies")
-    endif()
-    if(TARGET tbbmalloc)
-        set_target_properties(tbbmalloc PROPERTIES FOLDER "Dependencies")
-    endif()
-    if(TARGET tbbmalloc_proxy)
-        set_target_properties(tbbmalloc_proxy PROPERTIES FOLDER "Dependencies")
-    endif()
-
-    # gcc 13+ at -O2/-O3 emits a FALSE-POSITIVE -Wstringop-overflow inside TBB's lock-free atomics
-    # ("__atomic_store_1 ... writing 1 byte into a region of size 0"). TBB builds with -Werror, so on
-    # a gcc-13 Release build this breaks an otherwise-fine compile. Strip the error-promotion (and the
-    # warning) on the TBB targets for GCC only — it's a known compiler/TBB interaction in third-party
-    # code, not ours — so VIXEN builds in any configuration (Debug dodged it by being -O0).
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        foreach(_tbb_tgt tbb tbbmalloc tbbmalloc_proxy)
-            if(TARGET ${_tbb_tgt})
-                target_compile_options(${_tbb_tgt} PRIVATE -Wno-error=stringop-overflow -Wno-stringop-overflow)
-            endif()
-        endforeach()
-    endif()
-
-    message(STATUS "oneTBB fetched - parallel execution available to all libraries")
-else()
-    message(STATUS "oneTBB found - parallel execution available to all libraries")
-endif()
 
 message(STATUS "Dependencies configured - all third-party libraries fetched")

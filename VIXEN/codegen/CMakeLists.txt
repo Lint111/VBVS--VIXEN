@@ -61,25 +61,31 @@ set(_cg "${CMAKE_CURRENT_SOURCE_DIR}")
 # historical four-parent relative path resolves to engine/core instead of the
 # undertow superproject's core directory. Probe both repository layouts without
 # tying generator discovery to a particular user's checkout path.
-set(VIXEN_SCHEMA_CATALOG "" CACHE FILEPATH
-    "Undertow schema catalogue used by AppFlow/ViewNounId codegen checks")
 set(_schema_catalog_source "")
-if(VIXEN_SCHEMA_CATALOG)
-    if(EXISTS "${VIXEN_SCHEMA_CATALOG}")
-        set(_schema_catalog_source "${VIXEN_SCHEMA_CATALOG}")
-    else()
-        message(FATAL_ERROR
-            "VIXEN_SCHEMA_CATALOG does not exist: ${VIXEN_SCHEMA_CATALOG}")
-    endif()
+option(VIXEN_RENDERER_PROVIDER_MODE
+    "Consume VIXEN as a generic renderer whose pack supplies catalogue contract data" OFF)
+if(VIXEN_RENDERER_PROVIDER_MODE)
+    message(STATUS "[codegen] renderer-provider mode: pack contract supplies catalogue-derived AppFlow data")
 else()
-    foreach(_schema_catalog_candidate IN ITEMS
-            "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
-            "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
-        if(EXISTS "${_schema_catalog_candidate}")
-            set(_schema_catalog_source "${_schema_catalog_candidate}")
-            break()
+    set(VIXEN_SCHEMA_CATALOG "" CACHE FILEPATH
+        "Undertow schema catalogue used by AppFlow/ViewNounId codegen checks")
+    if(VIXEN_SCHEMA_CATALOG)
+        if(EXISTS "${VIXEN_SCHEMA_CATALOG}")
+            set(_schema_catalog_source "${VIXEN_SCHEMA_CATALOG}")
+        else()
+            message(FATAL_ERROR
+                "VIXEN_SCHEMA_CATALOG does not exist: ${VIXEN_SCHEMA_CATALOG}")
         endif()
-    endforeach()
+    else()
+        foreach(_schema_catalog_candidate IN ITEMS
+                "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
+                "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+            if(EXISTS "${_schema_catalog_candidate}")
+                set(_schema_catalog_source "${_schema_catalog_candidate}")
+                break()
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
@@ -154,7 +160,7 @@ set(_yk_root "${_yk_pin_dir}")
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
-    if(NOT _schema_catalog_source)
+    if(NOT _schema_catalog_source AND NOT VIXEN_RENDERER_PROVIDER_MODE)
         message(FATAL_ERROR
             "[codegen] AppFlow/ViewNounId checks require Undertow's schema catalogue; "
             "pass -DVIXEN_SCHEMA_CATALOG=<path>/schemas.json for a standalone VIXEN configure")
@@ -803,71 +809,73 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         JOB_POOL msbuild
         VERBATIM)
 
-    # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
-    # AppFlowReference.cs's [Flow*]-attributed enums/classes — retires the Inc-1 hand-authored
-    # mirror (TODO(appflow-codegen)). Committed + drift-guarded like every other generated artifact.
-    # AppFlow resolves [FlowDataTarget] names against the same complete ordered noun model as
-    # ViewNounId: native [View] schemas, matching derived-query views, then runtime-state facets.
-    set(_appflow_args
-        "${_yk_dll_run}"
-        --schema "${_schema_appflow_run}" --appflow
-        --view-schema "${_schema_view_run}"
-        ${_view_catalog_args}
-        --exclude VectorProof
-        # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
-        # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
-        # the SAME names as the catalogue's derived-query sections, so they must be excluded from the
-        # noun/AppFlow sweep or the enum gets duplicate enumerators. They are decode faces, not nouns.
-        --exclude UndertowHud
-        --exclude UndertowHudFactions
-        --exclude UndertowHudEvents
-        --exclude UndertowHudInspect
-        --exclude UndertowBuildingFacets
-        --exclude UndertowBuildingPower
-        --exclude UndertowBuildingLabor
-        --out-header "${_out_appflow_hdr_run}"
-        --out-datafile "${_out_appflow_data_run}")
-    add_custom_target(appflow_check ALL
-        JOB_POOL vixen_codegen
-        COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
-        COMMENT "[codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema"
-        JOB_POOL msbuild
-        VERBATIM)
-    add_custom_target(appflow_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
-        COMMENT "[codegen] regenerate AppFlow.g.h + AppFlow.appflow"
-        JOB_POOL msbuild
-        VERBATIM)
+    if(NOT VIXEN_RENDERER_PROVIDER_MODE)
+        # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
+        # AppFlowReference.cs's [Flow*]-attributed enums/classes — retires the Inc-1 hand-authored
+        # mirror (TODO(appflow-codegen)). Committed + drift-guarded like every other generated artifact.
+        # AppFlow resolves [FlowDataTarget] names against the same complete ordered noun model as
+        # ViewNounId: native [View] schemas, matching derived-query views, then runtime-state facets.
+        set(_appflow_args
+            "${_yk_dll_run}"
+            --schema "${_schema_appflow_run}" --appflow
+            --view-schema "${_schema_view_run}"
+            ${_view_catalog_args}
+            --exclude VectorProof
+            # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
+            # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
+            # the SAME names as the catalogue's derived-query sections, so they must be excluded from the
+            # noun/AppFlow sweep or the enum gets duplicate enumerators. They are decode faces, not nouns.
+            --exclude UndertowHud
+            --exclude UndertowHudFactions
+            --exclude UndertowHudEvents
+            --exclude UndertowHudInspect
+            --exclude UndertowBuildingFacets
+            --exclude UndertowBuildingPower
+            --exclude UndertowBuildingLabor
+            --out-header "${_out_appflow_hdr_run}"
+            --out-datafile "${_out_appflow_data_run}")
+        add_custom_target(appflow_check ALL
+            JOB_POOL vixen_codegen
+            COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
+            COMMENT "[codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_custom_target(appflow_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
+            COMMENT "[codegen] regenerate AppFlow.g.h + AppFlow.appflow"
+            JOB_POOL msbuild
+            VERBATIM)
 
-    # --- ViewNounId enum: one full catalogue-derived noun space. Native [View] fields retain the
-    # prefix in native schema order; every selected derived query and every runtime-state view facet
-    # follows in catalogue declaration order. AppFlow above consumes this identical model.
-    set(_view_noun_args
-        "${_yk_dll_run}"
-        --view-noun-enum --schema "${_schema_view_run}"
-        ${_view_catalog_args}
-        --exclude VectorProof
-        # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
-        # above) — same-named catalogue derived queries already carry these nouns.
-        --exclude UndertowHud
-        --exclude UndertowHudFactions
-        --exclude UndertowHudEvents
-        --exclude UndertowHudInspect
-        --exclude UndertowBuildingFacets
-        --exclude UndertowBuildingPower
-        --exclude UndertowBuildingLabor
-        --out-header "${_out_view_noun_hdr_run}")
-    add_custom_target(view_noun_enum_check ALL
-        JOB_POOL vixen_codegen
-        COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
-        COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
-        JOB_POOL msbuild
-        VERBATIM)
-    add_custom_target(view_noun_enum_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
-        COMMENT "[codegen] regenerate ViewNounId.g.h"
-        JOB_POOL msbuild
-        VERBATIM)
+        # --- ViewNounId enum: one full catalogue-derived noun space. Native [View] fields retain the
+        # prefix in native schema order; every selected derived query and every runtime-state view facet
+        # follows in catalogue declaration order. AppFlow above consumes this identical model.
+        set(_view_noun_args
+            "${_yk_dll_run}"
+            --view-noun-enum --schema "${_schema_view_run}"
+            ${_view_catalog_args}
+            --exclude VectorProof
+            # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
+            # above) — same-named catalogue derived queries already carry these nouns.
+            --exclude UndertowHud
+            --exclude UndertowHudFactions
+            --exclude UndertowHudEvents
+            --exclude UndertowHudInspect
+            --exclude UndertowBuildingFacets
+            --exclude UndertowBuildingPower
+            --exclude UndertowBuildingLabor
+            --out-header "${_out_view_noun_hdr_run}")
+        add_custom_target(view_noun_enum_check ALL
+            JOB_POOL vixen_codegen
+            COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
+            COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_custom_target(view_noun_enum_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
+            COMMENT "[codegen] regenerate ViewNounId.g.h"
+            JOB_POOL msbuild
+            VERBATIM)
+    endif()
 
     # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every
     # [KernelCallable] method body in the AppFlow schema dir to neutral C++ via CppAstVisitor —

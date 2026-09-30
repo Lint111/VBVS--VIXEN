@@ -14,6 +14,23 @@ set(VIXEN_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(Recipe_Name "VIXEN")
 
+# Standalone entry point for the renderer's non-graphics dependency contract.
+# It deliberately branches before Vulkan provisioning and the render/UI project is configured.
+option(VIXEN_NATIVE_DEPENDENCIES_ONLY
+    "Configure only VIXEN's native loader dependency composition target" OFF)
+if(VIXEN_NATIVE_DEPENDENCIES_ONLY)
+    project(VIXENNativeDependencies VERSION 1.0 LANGUAGES C CXX)
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+    set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
+        "Build-tree FetchContent sources for the native dependency provider")
+    set(USE_PRECOMPILED_HEADERS OFF CACHE BOOL
+        "Keep the native dependency provider independent of VIXEN library PCH settings")
+    add_subdirectory(dependencies/native)
+    return()
+endif()
+
 # ============================================================================
 # Build Performance Optimizations
 # ============================================================================
