@@ -83,10 +83,9 @@ using Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace {
 
-// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 92 bytes
-// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
-// work -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller
-// citation of why a from-scratch shader rebuild surfaces this mirror's staleness).
+// SceneBindings.glsl's shared PushConstants payload ends at byte 92; std430
+// rounds its push-constant block to the 16-byte base alignment, so the Vulkan
+// range and this C++ mirror occupy 96 bytes.
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;
@@ -97,8 +96,9 @@ struct PushConstants {
                     // packs debugTargetPixel at offset 76 without this explicit filler.
     glm::ivec2 debugTargetPixel;
     uint32_t   accumFrameCount;
+    uint32_t   _pad1;  // std430 rounds the 92-byte payload up to 96 bytes
 };
-static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
 
 // ---------------------------------------------------------------------------
 // M2c fix: this file's colorImg (binding 0) readback went permanently dark when

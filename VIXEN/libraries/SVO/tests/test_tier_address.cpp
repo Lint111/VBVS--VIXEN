@@ -8,7 +8,11 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <cstdio>
+
 #include "TierAddress.h"
+#include "TierAddressResolver.h"
 
 using namespace Vixen::SVO;
 
@@ -143,4 +147,63 @@ TEST(TierAddress, ToStringIsStableAndRoundTripDistinguishable) {
 TEST(TierAddress, ToStringOfRootIsZeroDepthEmptyHops) {
     TierAddress root;
     EXPECT_EQ(root.ToString(), "0:");
+}
+
+TEST(TierAddressResolver, ThirtyAuAddressKeepsCloseupOffsetInTheActiveTier) {
+    constexpr double kAuMeters = 149'597'870'700.0;
+    constexpr double kSystemSpanMeters = 120.0 * kAuMeters;
+    constexpr double kChildScale = 1.0 / 1024.0;
+    constexpr double kBodyRadiusMeters = 4.0;
+    constexpr double kCameraClearanceMeters = 1.0;
+    constexpr std::size_t kTierDepth = 4;
+    const double tierSpanMeters = kSystemSpanMeters * std::pow(kChildScale, kTierDepth);
+
+    // Four concrete, per-parent TierRef slices: the first child's origin is
+    // 30 AU from the system center; later children are centered in their own
+    // parent's [1,2) frame. These are VIXEN in-process refs, not a wire shape.
+    ConcatenatedOctrees octrees;
+    octrees.count = static_cast<uint32_t>(kTierDepth + 1);
+    octrees.configs.resize(kTierDepth + 1);
+    octrees.tierRefCounts.assign(kTierDepth + 1, 0u);
+    octrees.tierRefCounts[0] = 1;
+    for (std::size_t i = 0; i < kTierDepth; ++i) {
+        TierRef ref{};
+        ref.childOctreeIndex = static_cast<uint32_t>(i + 1);
+        ref.childOriginLocal[0] = (i == 0) ? 1.75f : 1.5f;
+        ref.childOriginLocal[1] = 1.5f;
+        ref.childOriginLocal[2] = 1.5f;
+        ref.childScale = static_cast<float>(kChildScale);
+        octrees.tierRefTable.push_back(ref);
+        if (i + 1 < kTierDepth) octrees.tierRefCounts[i + 1] = 1;
+        setTierRefTableBase(octrees.configs[i], static_cast<uint32_t>(i));
+    }
+
+    const TierAddress cameraAddress{0, 0, 0, 0};
+    EXPECT_NEAR(tierSpanMeters, 16.326, 0.01);
+    EXPECT_NEAR((static_cast<double>(octrees.tierRefTable[0].childOriginLocal[0]) - 1.5) * kSystemSpanMeters,
+                30.0 * kAuMeters, 1e-6);
+
+    // The body center sits at +30 AU in the system's X axis. Its camera point
+    // is carried independently in the addressed tier: four 2^-10 hops make
+    // that tier about 16.3m wide, so this local float retains sub-mm clearance.
+    const double cameraOffsetFromBodyCenterMeters = kBodyRadiusMeters + kCameraClearanceMeters;
+    const glm::dvec3 cameraTierLocalPosition{
+        1.5,
+        1.5,
+        1.5 + cameraOffsetFromBodyCenterMeters / tierSpanMeters,
+    };
+    const auto resolved = ResolveTierAddressPosition(octrees, 0, cameraAddress, cameraTierLocalPosition);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->octreeIndex, 4u);
+
+    EXPECT_DOUBLE_EQ(resolved->localPosition.z, cameraTierLocalPosition.z);
+    const float cameraZForShader = static_cast<float>(resolved->localPosition.z);
+    const float surfaceZForShader = static_cast<float>(1.5 + kBodyRadiusMeters / tierSpanMeters);
+    const double measuredClearanceMeters =
+        (static_cast<double>(cameraZForShader) - static_cast<double>(surfaceZForShader)) * tierSpanMeters;
+    const double clearanceErrorMeters = std::abs(measuredClearanceMeters - kCameraClearanceMeters);
+    EXPECT_LT(clearanceErrorMeters, 0.001)
+        << "float tier-local camera/surface error at 30 AU = " << clearanceErrorMeters << " m";
+    std::printf("[TIER ADDRESS 30 AU] tier span %.9f m, camera clearance %.9f m, float error %.12g m\n",
+                tierSpanMeters, measuredClearanceMeters, clearanceErrorMeters);
 }
