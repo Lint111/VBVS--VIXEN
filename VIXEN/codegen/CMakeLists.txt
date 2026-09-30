@@ -21,16 +21,32 @@ if(DEFINED ENV{USERNAME})
     list(APPEND _home_candidates "//wsl$/Ubuntu/home/$ENV{USERNAME}" "//wsl.localhost/Ubuntu/home/$ENV{USERNAME}")
 endif()
 
-# Robust dotnet discovery across both OS conventions + common install dirs.
+# Prefer the PATH-selected launcher first. Environment-managed launchers can supply runtime
+# libraries or other host configuration that a raw binary under ~/.dotnet does not provide.
+# Keep home/system locations as fallback for standalone installs that are not on PATH.
 set(_dotnet_hints "")
 foreach(_h IN LISTS _home_candidates)
     if(_h)
         list(APPEND _dotnet_hints "${_h}/.dotnet")
     endif()
 endforeach()
-find_program(VIXEN_DOTNET NAMES dotnet
-    HINTS ${_dotnet_hints}
-    PATHS "/usr/bin" "/usr/local/bin" "/usr/share/dotnet" "C:/Program Files/dotnet")
+find_program(_vixen_dotnet_on_path NAMES dotnet)
+set(_vixen_dotnet_is_home_fallback FALSE)
+foreach(_h IN LISTS _dotnet_hints)
+    if(VIXEN_DOTNET STREQUAL "${_h}/dotnet" OR VIXEN_DOTNET STREQUAL "${_h}/dotnet.exe")
+        set(_vixen_dotnet_is_home_fallback TRUE)
+    endif()
+endforeach()
+if(_vixen_dotnet_on_path AND (NOT VIXEN_DOTNET OR _vixen_dotnet_is_home_fallback))
+    # Refresh an old auto-discovered ~/.dotnet cache entry as well as preferring PATH
+    # on a new configure. Explicit custom VIXEN_DOTNET paths remain caller-controlled.
+    set(VIXEN_DOTNET "${_vixen_dotnet_on_path}" CACHE FILEPATH "Dotnet executable used by VIXEN codegen" FORCE)
+endif()
+if(NOT VIXEN_DOTNET)
+    find_program(VIXEN_DOTNET NAMES dotnet
+        HINTS ${_dotnet_hints}
+        PATHS "/usr/bin" "/usr/local/bin" "/usr/share/dotnet" "C:/Program Files/dotnet")
+endif()
 if(NOT VIXEN_DOTNET)
     message(WARNING "[codegen] KI-015: dotnet not found (searched ${_dotnet_hints} + system paths) — "
         "codegen regen/golden DRIFT GUARD DISABLED; committed generated headers are used as-is and "
