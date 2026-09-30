@@ -264,6 +264,22 @@ add_custom_command(
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv_b2 DEPENDS ${_brm_spv_b2})
 
+# RTQuery traversal is an optional production branch, so keep it covered by a
+# registered compile check alongside the default/B1/B2 variants. CTest writes
+# the SPIR-V into the build tree and surfaces glslc diagnostics on failure.
+set(_brm_spv_rtquery "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch_rtquery.spv")
+add_test(NAME test_body_instance_raymarch_rtquery_compile
+    COMMAND "${VIXEN_GLSLC}"
+        -fshader-stage=compute
+        -I "${_brm_shader_dir}"
+        -I "${CMAKE_SOURCE_DIR}/libraries/SVO/shaders"
+        --target-env=vulkan1.3
+        -DVIXEN_GPU_TRACE_HOOKS=1
+        -DVIXEN_RTQUERY_TRAVERSAL=1
+        "${_brm_src}"
+        -o "${_brm_spv_rtquery}"
+)
+
 # ===========================================================================
 # Group 5: test_rendergraph_criticalnodes_gpurender1 — real-shader GPU render
 # tests sharing body_instance_raymarch_spv, SVO + (conditional) stb, single

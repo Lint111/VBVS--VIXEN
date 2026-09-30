@@ -21,16 +21,32 @@ if(DEFINED ENV{USERNAME})
     list(APPEND _home_candidates "//wsl$/Ubuntu/home/$ENV{USERNAME}" "//wsl.localhost/Ubuntu/home/$ENV{USERNAME}")
 endif()
 
-# Robust dotnet discovery across both OS conventions + common install dirs.
+# Prefer the PATH-selected launcher first. Environment-managed launchers can supply runtime
+# libraries or other host configuration that a raw binary under ~/.dotnet does not provide.
+# Keep home/system locations as fallback for standalone installs that are not on PATH.
 set(_dotnet_hints "")
 foreach(_h IN LISTS _home_candidates)
     if(_h)
         list(APPEND _dotnet_hints "${_h}/.dotnet")
     endif()
 endforeach()
-find_program(VIXEN_DOTNET NAMES dotnet
-    HINTS ${_dotnet_hints}
-    PATHS "/usr/bin" "/usr/local/bin" "/usr/share/dotnet" "C:/Program Files/dotnet")
+find_program(_vixen_dotnet_on_path NAMES dotnet)
+set(_vixen_dotnet_is_home_fallback FALSE)
+foreach(_h IN LISTS _dotnet_hints)
+    if(VIXEN_DOTNET STREQUAL "${_h}/dotnet" OR VIXEN_DOTNET STREQUAL "${_h}/dotnet.exe")
+        set(_vixen_dotnet_is_home_fallback TRUE)
+    endif()
+endforeach()
+if(_vixen_dotnet_on_path AND (NOT VIXEN_DOTNET OR _vixen_dotnet_is_home_fallback))
+    # Refresh an old auto-discovered ~/.dotnet cache entry as well as preferring PATH
+    # on a new configure. Explicit custom VIXEN_DOTNET paths remain caller-controlled.
+    set(VIXEN_DOTNET "${_vixen_dotnet_on_path}" CACHE FILEPATH "Dotnet executable used by VIXEN codegen" FORCE)
+endif()
+if(NOT VIXEN_DOTNET)
+    find_program(VIXEN_DOTNET NAMES dotnet
+        HINTS ${_dotnet_hints}
+        PATHS "/usr/bin" "/usr/local/bin" "/usr/share/dotnet" "C:/Program Files/dotnet")
+endif()
 if(NOT VIXEN_DOTNET)
     message(WARNING "[codegen] KI-015: dotnet not found (searched ${_dotnet_hints} + system paths) — "
         "codegen regen/golden DRIFT GUARD DISABLED; committed generated headers are used as-is and "
@@ -45,25 +61,31 @@ set(_cg "${CMAKE_CURRENT_SOURCE_DIR}")
 # historical four-parent relative path resolves to engine/core instead of the
 # undertow superproject's core directory. Probe both repository layouts without
 # tying generator discovery to a particular user's checkout path.
-set(VIXEN_SCHEMA_CATALOG "" CACHE FILEPATH
-    "Undertow schema catalogue used by AppFlow/ViewNounId codegen checks")
 set(_schema_catalog_source "")
-if(VIXEN_SCHEMA_CATALOG)
-    if(EXISTS "${VIXEN_SCHEMA_CATALOG}")
-        set(_schema_catalog_source "${VIXEN_SCHEMA_CATALOG}")
-    else()
-        message(FATAL_ERROR
-            "VIXEN_SCHEMA_CATALOG does not exist: ${VIXEN_SCHEMA_CATALOG}")
-    endif()
+option(VIXEN_RENDERER_PROVIDER_MODE
+    "Consume VIXEN as a generic renderer whose pack supplies catalogue contract data" OFF)
+if(VIXEN_RENDERER_PROVIDER_MODE)
+    message(STATUS "[codegen] renderer-provider mode: pack contract supplies catalogue-derived AppFlow data")
 else()
-    foreach(_schema_catalog_candidate IN ITEMS
-            "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
-            "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
-        if(EXISTS "${_schema_catalog_candidate}")
-            set(_schema_catalog_source "${_schema_catalog_candidate}")
-            break()
+    set(VIXEN_SCHEMA_CATALOG "" CACHE FILEPATH
+        "Undertow schema catalogue used by AppFlow/ViewNounId codegen checks")
+    if(VIXEN_SCHEMA_CATALOG)
+        if(EXISTS "${VIXEN_SCHEMA_CATALOG}")
+            set(_schema_catalog_source "${VIXEN_SCHEMA_CATALOG}")
+        else()
+            message(FATAL_ERROR
+                "VIXEN_SCHEMA_CATALOG does not exist: ${VIXEN_SCHEMA_CATALOG}")
         endif()
-    endforeach()
+    else()
+        foreach(_schema_catalog_candidate IN ITEMS
+                "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
+                "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+            if(EXISTS "${_schema_catalog_candidate}")
+                set(_schema_catalog_source "${_schema_catalog_candidate}")
+                break()
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # --- OctreeConfig via the Yeroket kernel-codegen tool (D5: config outside Yeroket, tool in Yeroket) ---
@@ -137,7 +159,7 @@ set(_yk_root "${_yk_pin_dir}")
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
-    if(NOT _schema_catalog_source)
+    if(NOT _schema_catalog_source AND NOT VIXEN_RENDERER_PROVIDER_MODE)
         message(FATAL_ERROR
             "[codegen] AppFlow/ViewNounId checks require Undertow's schema catalogue; "
             "pass -DVIXEN_SCHEMA_CATALOG=<path>/schemas.json for a standalone VIXEN configure")
@@ -323,15 +345,80 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # MSB4018 on deps.json -- wave-46 composite finals, two failed runs). Building once and
     # invoking the dll directly means these checks never re-enter MSBuild at all, so they can
     # neither race each other nor undertow's own undertow_codegen_tool build.
+    # On Linux, the dotnet muxer starts the SDK's dotnet.dll before MSBuild can apply project
+    # properties. Give that CLI process an invariant runtimeconfig through `dotnet exec`, then
+    # build CodegenTool with InvariantGlobalization=true so its own runtimeconfig carries the
+    # same setting. This lets the tool run on hosts without system ICU without a DOTNET_* env
+    # override in the build scripts.
+    set(_codegen_linux_dotnet_cli_command "")
+    if(UNIX AND NOT APPLE)
+        execute_process(
+            COMMAND "${VIXEN_DOTNET}" --list-sdks
+            RESULT_VARIABLE _codegen_dotnet_sdk_list_result
+            OUTPUT_VARIABLE _codegen_dotnet_sdk_list
+            ERROR_VARIABLE _codegen_dotnet_sdk_list_error
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT _codegen_dotnet_sdk_list_result EQUAL 0)
+            message(FATAL_ERROR
+                "[codegen] cannot query SDKs through the selected .NET launcher ${VIXEN_DOTNET}: "
+                "${_codegen_dotnet_sdk_list_error}")
+        endif()
+        string(REPLACE "\r" "" _codegen_dotnet_sdk_list "${_codegen_dotnet_sdk_list}")
+        string(REPLACE "\n" ";" _codegen_dotnet_sdk_entries "${_codegen_dotnet_sdk_list}")
+        set(_codegen_dotnet_cli_runtimeconfigs "")
+        foreach(_codegen_dotnet_sdk_entry IN LISTS _codegen_dotnet_sdk_entries)
+            if(_codegen_dotnet_sdk_entry MATCHES "^([^ ]+) \\[([^]]+)\\]$")
+                set(_codegen_dotnet_sdk_version "${CMAKE_MATCH_1}")
+                set(_codegen_dotnet_sdk_root "${CMAKE_MATCH_2}")
+                set(_codegen_dotnet_sdk_runtimeconfig
+                    "${_codegen_dotnet_sdk_root}/${_codegen_dotnet_sdk_version}/dotnet.runtimeconfig.json")
+                if(EXISTS "${_codegen_dotnet_sdk_runtimeconfig}")
+                    list(APPEND _codegen_dotnet_cli_runtimeconfigs
+                        "${_codegen_dotnet_sdk_runtimeconfig}")
+                endif()
+            endif()
+        endforeach()
+        list(SORT _codegen_dotnet_cli_runtimeconfigs COMPARE NATURAL ORDER DESCENDING)
+        if(NOT _codegen_dotnet_cli_runtimeconfigs)
+            message(FATAL_ERROR
+                "[codegen] the selected .NET launcher ${VIXEN_DOTNET} reported no SDK runtimeconfig "
+                "through --list-sdks; CodegenTool needs an invariant SDK runtimeconfig on Linux "
+                "hosts without ICU (reported: ${_codegen_dotnet_sdk_list})")
+        endif()
+        list(GET _codegen_dotnet_cli_runtimeconfigs 0 _codegen_dotnet_cli_runtimeconfig_source)
+        get_filename_component(_codegen_dotnet_sdk_dir "${_codegen_dotnet_cli_runtimeconfig_source}" DIRECTORY)
+        set(_codegen_dotnet_cli_dll "${_codegen_dotnet_sdk_dir}/dotnet.dll")
+        if(NOT EXISTS "${_codegen_dotnet_cli_dll}")
+            message(FATAL_ERROR "[codegen] .NET SDK CLI was not found beside ${_codegen_dotnet_cli_runtimeconfig_source}")
+        endif()
+        file(READ "${_codegen_dotnet_cli_runtimeconfig_source}" _codegen_dotnet_cli_runtimeconfig)
+        string(JSON _codegen_dotnet_cli_runtimeconfig SET
+            "${_codegen_dotnet_cli_runtimeconfig}"
+            runtimeOptions configProperties System.Globalization.Invariant true)
+        set(_codegen_dotnet_cli_runtimeconfig_path
+            "${CMAKE_CURRENT_BINARY_DIR}/dotnet-cli-invariant.runtimeconfig.json")
+        file(WRITE "${_codegen_dotnet_cli_runtimeconfig_path}" "${_codegen_dotnet_cli_runtimeconfig}\n")
+        set(_codegen_linux_dotnet_cli_command
+            "${VIXEN_DOTNET}" exec
+            --runtimeconfig "${_codegen_dotnet_cli_runtimeconfig_path}"
+            "${_codegen_dotnet_cli_dll}" build)
+    endif()
     if(_codegen_need_wsl_bridge)
         add_custom_target(engine_codegen_tool
-            COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj" -c Release -nodeReuse:false
+            COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj" -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
             COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
+            JOB_POOL msbuild
+            VERBATIM)
+    elseif(UNIX AND NOT APPLE)
+        add_custom_target(engine_codegen_tool
+            COMMAND ${_codegen_linux_dotnet_cli_command} "${_yk_tool}/CodegenTool.csproj"
+                -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
+            COMMENT "[codegen] building the kernel CodegenTool once with invariant globalization"
             JOB_POOL msbuild
             VERBATIM)
     else()
         add_custom_target(engine_codegen_tool
-            COMMAND ${VIXEN_DOTNET} build "${_yk_tool}/CodegenTool.csproj" -c Release -nodeReuse:false
+            COMMAND ${VIXEN_DOTNET} build "${_yk_tool}/CodegenTool.csproj" -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
             COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
             JOB_POOL msbuild
             VERBATIM)
@@ -729,71 +816,73 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         JOB_POOL msbuild
         VERBATIM)
 
-    # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
-    # AppFlowReference.cs's [Flow*]-attributed enums/classes — retires the Inc-1 hand-authored
-    # mirror (TODO(appflow-codegen)). Committed + drift-guarded like every other generated artifact.
-    # AppFlow resolves [FlowDataTarget] names against the same complete ordered noun model as
-    # ViewNounId: native [View] schemas, matching derived-query views, then runtime-state facets.
-    set(_appflow_args
-        "${_yk_dll_run}"
-        --schema "${_schema_appflow_run}" --appflow
-        --view-schema "${_schema_view_run}"
-        ${_view_catalog_args}
-        --exclude VectorProof
-        # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
-        # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
-        # the SAME names as the catalogue's derived-query sections, so they must be excluded from the
-        # noun/AppFlow sweep or the enum gets duplicate enumerators. They are decode faces, not nouns.
-        --exclude UndertowHud
-        --exclude UndertowHudFactions
-        --exclude UndertowHudEvents
-        --exclude UndertowHudInspect
-        --exclude UndertowBuildingFacets
-        --exclude UndertowBuildingPower
-        --exclude UndertowBuildingLabor
-        --out-header "${_out_appflow_hdr_run}"
-        --out-datafile "${_out_appflow_data_run}")
-    add_custom_target(appflow_check ALL
-        JOB_POOL vixen_codegen
-        COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
-        COMMENT "[codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema"
-        JOB_POOL msbuild
-        VERBATIM)
-    add_custom_target(appflow_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
-        COMMENT "[codegen] regenerate AppFlow.g.h + AppFlow.appflow"
-        JOB_POOL msbuild
-        VERBATIM)
+    if(NOT VIXEN_RENDERER_PROVIDER_MODE)
+        # --- AppFlow schema (View Contract Inc-4, M1): --appflow generates AppFlow.g.h from
+        # AppFlowReference.cs's [Flow*]-attributed enums/classes — retires the Inc-1 hand-authored
+        # mirror (TODO(appflow-codegen)). Committed + drift-guarded like every other generated artifact.
+        # AppFlow resolves [FlowDataTarget] names against the same complete ordered noun model as
+        # ViewNounId: native [View] schemas, matching derived-query views, then runtime-state facets.
+        set(_appflow_args
+            "${_yk_dll_run}"
+            --schema "${_schema_appflow_run}" --appflow
+            --view-schema "${_schema_view_run}"
+            ${_view_catalog_args}
+            --exclude VectorProof
+            # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
+            # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
+            # the SAME names as the catalogue's derived-query sections, so they must be excluded from the
+            # noun/AppFlow sweep or the enum gets duplicate enumerators. They are decode faces, not nouns.
+            --exclude UndertowHud
+            --exclude UndertowHudFactions
+            --exclude UndertowHudEvents
+            --exclude UndertowHudInspect
+            --exclude UndertowBuildingFacets
+            --exclude UndertowBuildingPower
+            --exclude UndertowBuildingLabor
+            --out-header "${_out_appflow_hdr_run}"
+            --out-datafile "${_out_appflow_data_run}")
+        add_custom_target(appflow_check ALL
+            JOB_POOL vixen_codegen
+            COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
+            COMMENT "[codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_custom_target(appflow_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
+            COMMENT "[codegen] regenerate AppFlow.g.h + AppFlow.appflow"
+            JOB_POOL msbuild
+            VERBATIM)
 
-    # --- ViewNounId enum: one full catalogue-derived noun space. Native [View] fields retain the
-    # prefix in native schema order; every selected derived query and every runtime-state view facet
-    # follows in catalogue declaration order. AppFlow above consumes this identical model.
-    set(_view_noun_args
-        "${_yk_dll_run}"
-        --view-noun-enum --schema "${_schema_view_run}"
-        ${_view_catalog_args}
-        --exclude VectorProof
-        # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
-        # above) — same-named catalogue derived queries already carry these nouns.
-        --exclude UndertowHud
-        --exclude UndertowHudFactions
-        --exclude UndertowHudEvents
-        --exclude UndertowHudInspect
-        --exclude UndertowBuildingFacets
-        --exclude UndertowBuildingPower
-        --exclude UndertowBuildingLabor
-        --out-header "${_out_view_noun_hdr_run}")
-    add_custom_target(view_noun_enum_check ALL
-        JOB_POOL vixen_codegen
-        COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
-        COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
-        JOB_POOL msbuild
-        VERBATIM)
-    add_custom_target(view_noun_enum_regen
-        COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
-        COMMENT "[codegen] regenerate ViewNounId.g.h"
-        JOB_POOL msbuild
-        VERBATIM)
+        # --- ViewNounId enum: one full catalogue-derived noun space. Native [View] fields retain the
+        # prefix in native schema order; every selected derived query and every runtime-state view facet
+        # follows in catalogue declaration order. AppFlow above consumes this identical model.
+        set(_view_noun_args
+            "${_yk_dll_run}"
+            --view-noun-enum --schema "${_schema_view_run}"
+            ${_view_catalog_args}
+            --exclude VectorProof
+            # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
+            # above) — same-named catalogue derived queries already carry these nouns.
+            --exclude UndertowHud
+            --exclude UndertowHudFactions
+            --exclude UndertowHudEvents
+            --exclude UndertowHudInspect
+            --exclude UndertowBuildingFacets
+            --exclude UndertowBuildingPower
+            --exclude UndertowBuildingLabor
+            --out-header "${_out_view_noun_hdr_run}")
+        add_custom_target(view_noun_enum_check ALL
+            JOB_POOL vixen_codegen
+            COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
+            COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
+            JOB_POOL msbuild
+            VERBATIM)
+        add_custom_target(view_noun_enum_regen
+            COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
+            COMMENT "[codegen] regenerate ViewNounId.g.h"
+            JOB_POOL msbuild
+            VERBATIM)
+    endif()
 
     # --- AppFlow callables (Inc-4 reframe R4, design D12/D13): --callable-cpp transplants every
     # [KernelCallable] method body in the AppFlow schema dir to neutral C++ via CppAstVisitor —

@@ -1,3 +1,12 @@
+> **✅ 2026-09-30 — T-1342/T-1344 renderer build hygiene (`lane-kfrhyg`).** Codegen now prefers the
+> PATH-selected `dotnet` launcher and refreshes an older cached `~/.dotnet/dotnet` fallback when a
+> PATH launcher is available. Compiler-cache data defaults under `CMAKE_BINARY_DIR/_cache/compiler`
+> and reaches ccache/sccache through `cmake -E env`. The `engine_codegen_tool` target passed; the
+> full `vixen-wsl` build passed 332/332 steps with the pinned historical catalogue fixture. The
+> current Undertow catalogue still fails `appflow_check` on unscoped `DepletionMaterialRow` (T-1345
+> design STOP). No ccache/sccache binary is installed here, so the local cache path is configured
+> but cache-hit behavior was not exercised. VIXEN commit: `9a49449e` plus the pending cache commit.
+
 > **⚠️ 2026-09-30 — T-1140 (`lane-aurender`) paused before implementation.** Discovery at
 > `d3316e7d` traced float instance/camera paths through upload, culling, TLAS, ray setup, and temporal
 > reprojection. The required double input/origin transport API is not specified; report and alternatives

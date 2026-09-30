@@ -14,6 +14,23 @@ set(VIXEN_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(Recipe_Name "VIXEN")
 
+# Standalone entry point for the renderer's non-graphics dependency contract.
+# It deliberately branches before Vulkan provisioning and the render/UI project is configured.
+option(VIXEN_NATIVE_DEPENDENCIES_ONLY
+    "Configure only VIXEN's native loader dependency composition target" OFF)
+if(VIXEN_NATIVE_DEPENDENCIES_ONLY)
+    project(VIXENNativeDependencies VERSION 1.0 LANGUAGES C CXX)
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+    set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
+        "Build-tree FetchContent sources for the native dependency provider")
+    set(USE_PRECOMPILED_HEADERS OFF CACHE BOOL
+        "Keep the native dependency provider independent of VIXEN library PCH settings")
+    add_subdirectory(dependencies/native)
+    return()
+endif()
+
 # ============================================================================
 # Build Performance Optimizations
 # ============================================================================
@@ -46,6 +63,8 @@ endif()
 # sccache (better than nothing on the non-PCH majority of the build) rather than
 # failing the configure.
 option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
+set(VIXEN_COMPILER_CACHE_DIR "${CMAKE_BINARY_DIR}/_cache/compiler" CACHE PATH
+    "Directory for VIXEN compiler cache data")
 if(USE_CCACHE)
     # Self-provisioning (Windows only — see ProvisionCcache.cmake): auto-downloads ccache into a
     # project-local cache if not already on PATH, same contract as Vulkan/gdb/windowing-deps
@@ -55,15 +74,26 @@ if(USE_CCACHE)
     find_program(SCCACHE_PROGRAM sccache)
 
     if(VIXEN_PROVISIONED_CCACHE_PROGRAM)
+        set(_vixen_compiler_cache_program "${VIXEN_PROVISIONED_CCACHE_PROGRAM}")
+        set(_vixen_compiler_cache_env "CCACHE_DIR")
+        set(_vixen_compiler_cache_kind "ccache")
         message(STATUS "Using ccache: ${VIXEN_PROVISIONED_CCACHE_PROGRAM} (preferred over sccache - caches MSVC PCH)")
-        set(CMAKE_C_COMPILER_LAUNCHER ${VIXEN_PROVISIONED_CCACHE_PROGRAM})
-        set(CMAKE_CXX_COMPILER_LAUNCHER ${VIXEN_PROVISIONED_CCACHE_PROGRAM})
     elseif(SCCACHE_PROGRAM)
+        set(_vixen_compiler_cache_program "${SCCACHE_PROGRAM}")
+        set(_vixen_compiler_cache_env "SCCACHE_DIR")
+        set(_vixen_compiler_cache_kind "sccache")
         message(STATUS "Found sccache: ${SCCACHE_PROGRAM} (ccache not found/provisioned - note: sccache cannot cache MSVC PCH compiles)")
-        set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
-        set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
     else()
         message(STATUS "ccache/sccache not found - install for faster rebuilds")
+    endif()
+
+    if(_vixen_compiler_cache_program)
+        set(_vixen_compiler_cache_path "${VIXEN_COMPILER_CACHE_DIR}/${_vixen_compiler_cache_kind}")
+        set(_vixen_compiler_launcher
+            "${CMAKE_COMMAND};-E;env;${_vixen_compiler_cache_env}=${_vixen_compiler_cache_path};${_vixen_compiler_cache_program}")
+        set(CMAKE_C_COMPILER_LAUNCHER "${_vixen_compiler_launcher}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${_vixen_compiler_launcher}")
+        message(STATUS "VIXEN compiler cache data: ${_vixen_compiler_cache_path}")
     endif()
 endif()
 

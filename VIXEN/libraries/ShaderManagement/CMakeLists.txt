@@ -15,7 +15,9 @@ FetchContent_Declare(
 )
 # Don't build executables, we just need the header/source
 set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "" FORCE)
-set(SPIRV_REFLECT_STATIC_LIB OFF CACHE BOOL "" FORCE)
+# Build and consume the fetched library as a target so CMake carries its include
+# directory and build ordering into ShaderManagement's first compilation.
+set(SPIRV_REFLECT_STATIC_LIB ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(spirv_reflect)
 
 # Organize spirv_reflect in Dependencies folder (if target exists)
@@ -26,11 +28,6 @@ endif()
 # Collect source files
 file(GLOB SHADER_MGMT_HEADERS "include/ShaderManagement/*.h")
 file(GLOB SHADER_MGMT_SOURCES "src/*.cpp")
-
-# Add SPIRV-Reflect source directly (header-only library pattern)
-list(APPEND SHADER_MGMT_SOURCES 
-    ${spirv_reflect_SOURCE_DIR}/spirv_reflect.c
-)
 
 # Create static library
 add_library(ShaderManagement STATIC
@@ -44,7 +41,6 @@ target_include_directories(ShaderManagement
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${spirv_reflect_SOURCE_DIR}
 )
 
 # Note: EventBus includes come from target_link_libraries(ShaderManagement PUBLIC EventBus) below
@@ -55,7 +51,8 @@ if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 endif()
 
 # Link to project-level hash provider for consistent hashing behavior
-target_link_libraries(ShaderManagement PRIVATE ProjectHash)
+target_link_libraries(ShaderManagement PRIVATE ProjectHash spirv-reflect-static)
+add_dependencies(ShaderManagement spirv-reflect-static)
 
 # Link to nlohmann_json for serialization (ShaderBundleSerializer, FileManifest)
 # Already fetched in dependencies/CMakeLists.txt
