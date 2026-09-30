@@ -27,7 +27,7 @@ The available offscreen GPU render fixtures were private executables: `test_rend
 
 ## Downstream KFR smoke
 
-The required output location is `/home/liory/projects/KernelFederationRenderer/.claude-worktrees/kfrsmoke/reports/kfrsmoke.png`. KFR's smoke is run against the committed VIXEN lane tip with an ephemeral provider-pin overlay; the result and final PNG status will be recorded here after that witness.
+KFR's renderer was configured against committed VIXEN tip `8ff936210dae2482659bbb61f1b32e93c59628f1` using an ignored source overlay whose provider pin was changed only in the overlay. The final merged KFR build passed and CTest passed **8/8**, including the one-frame headless session smoke. The image is [reports/kfrsmoke.png](/home/liory/projects/KernelFederationRenderer/.claude-worktrees/kfrsmoke/reports/kfrsmoke.png), 500 × 500 RGB, 21,239 bytes, SHA-256 `072e2c0af01894d906ce1d9fb036821eae259be4fd59116e2ae8672dbe96495c`. The KFR fixture loads the prepared sample contract state and renders its `MainMenu` at frame 1; it checks the sample pack exists but does not execute the externally owned production pack loader.
 
 ## STOPs and owner follow-up
 
@@ -43,3 +43,7 @@ The required output location is `/home/liory/projects/KernelFederationRenderer/.
 - proposed: Resolve CTest suite-list paths before changing test directory
 - proposed: Allow a lane-local VIXEN provider override without editing the committed pin
 - proposed: Keep runtime cache writes out of the tracked global manifest
+- proposed: Reuse provisioned Vulkan SDKs across KFR scratch builds
+- proposed: Reuse staged X11 development packages across KFR build trees
+- proposed: Avoid refetching the kernel pin for scratch source overlays
+- proposed: Build CodeGraph indexes for disposable worktrees
