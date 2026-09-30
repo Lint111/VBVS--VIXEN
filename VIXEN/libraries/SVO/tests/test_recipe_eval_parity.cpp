@@ -119,6 +119,19 @@ TEST(RecipeEvalParity, Hash32MatchesLowbias32GoldenVectors) {
     }
 }
 
+TEST(RecipeEvalParity, Hash32CombineMatchesGoldenVectors) {
+    for (const auto& [state, value, expected] : TestVectors::Hash32CombineGoldenVectors) {
+        SCOPED_TRACE("state=0x" + [&] { std::ostringstream s; s << std::hex << state; return s.str(); }());
+        const SdfInstruction prog[] = {
+            pushParam(std::bit_cast<float>(state)),
+            pushParam(std::bit_cast<float>(value)),
+            [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
+        };
+        const float actual = evalRecipe(prog, 3, glm::vec3(0.0f));
+        EXPECT_EQ(std::bit_cast<uint32_t>(actual), expected);
+    }
+}
+
 TEST(RecipeEvalParity, Hash32CombineUsesDeclaredBodySeedFoldOrder) {
     const SdfInstruction prog[] = {
         pushParam(std::bit_cast<float>(0x12345678u)),

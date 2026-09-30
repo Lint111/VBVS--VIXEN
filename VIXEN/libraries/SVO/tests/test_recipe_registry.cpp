@@ -105,6 +105,38 @@ static SdfInstruction makeUnion() {
     SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Union; return in;
 }
 
+static SdfInstruction pushParam(float value) {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::PushParam; in.data[0] = value; return in;
+}
+
+static SdfInstruction hash32() {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Hash32; return in;
+}
+
+static SdfInstruction hash32Combine() {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Hash32Combine; return in;
+}
+
+TEST(RecipeRegistry, Hash32StackArityMatchesKernelContract) {
+    RecipeRegistry reg;
+
+    RecipeRegistry::RecipeEntry hashUnderflow{};
+    hashUnderflow.bytecode = { hash32() };
+    EXPECT_EQ(reg.Register(30u, hashUnderflow), RecipeRegistry::RegisterResult::StackOverflow);
+
+    RecipeRegistry::RecipeEntry combineUnderflow{};
+    combineUnderflow.bytecode = { pushParam(1.0f), hash32Combine() };
+    EXPECT_EQ(reg.Register(31u, combineUnderflow), RecipeRegistry::RegisterResult::StackOverflow);
+
+    RecipeRegistry::RecipeEntry hash{};
+    hash.bytecode = { pushParam(1.0f), hash32() };
+    EXPECT_EQ(reg.Register(32u, hash), RecipeRegistry::RegisterResult::Ok);
+
+    RecipeRegistry::RecipeEntry combine{};
+    combine.bytecode = { pushParam(1.0f), pushParam(2.0f), hash32Combine() };
+    EXPECT_EQ(reg.Register(33u, combine), RecipeRegistry::RegisterResult::Ok);
+}
+
 TEST(RecipeRegistry, LinkAcceptsValidRecipe) {
     // {Link, Link, Union} is balanced (2 pushes, 1 binary pop) → Ok
     RecipeRegistry reg;

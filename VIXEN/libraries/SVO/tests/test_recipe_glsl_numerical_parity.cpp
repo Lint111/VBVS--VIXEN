@@ -929,6 +929,32 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
             << "GPU Hash32 input 0x" << std::hex << vector.input;
     }
 
+    const std::array<SdfInstruction, 3> combineProgram = {
+        ReadParamInstruction(0), ReadParamInstruction(1), Hash32CombineInstruction(),
+    };
+    const std::string combineFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        combineProgram.data(), static_cast<uint32_t>(combineProgram.size()), 0);
+    const auto combineSpirv = compiler.Compile(
+        ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, combineFn), "main", opts);
+    ASSERT_TRUE(combineSpirv.success) << combineSpirv.GetFullLog();
+    ASSERT_FALSE(combineSpirv.spirv.empty());
+    for (const auto& vector : Vixen::SVO::Recipe::TestVectors::Hash32CombineGoldenVectors) {
+        std::array<float, 6> params{};
+        params[0] = std::bit_cast<float>(vector.state);
+        params[1] = std::bit_cast<float>(vector.value);
+        const float cpu = Vixen::SVO::Recipe::evalRecipe(
+            combineProgram.data(), static_cast<uint32_t>(combineProgram.size()), onePoint[0],
+            std::span<const float>(params.data(), params.size()));
+        EXPECT_EQ(std::bit_cast<uint32_t>(cpu), vector.expected)
+            << "CPU Hash32Combine state 0x" << std::hex << vector.state;
+
+        std::vector<float> gpu;
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(combineSpirv.spirv, onePoint, gpu, params));
+        ASSERT_EQ(gpu.size(), 1u);
+        EXPECT_EQ(std::bit_cast<uint32_t>(gpu[0]), vector.expected)
+            << "GPU Hash32Combine state 0x" << std::hex << vector.state;
+    }
+
     const auto foldProgram = BodySeedFoldProgram();
     const std::string foldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
         foldProgram.data(), static_cast<uint32_t>(foldProgram.size()), 0);

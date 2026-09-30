@@ -75,6 +75,9 @@ inline StackArity RecipeStackStaticArity(SdfOpCode op) {
         case SdfOpCode::MathExp:
         case SdfOpCode::MathLog:
         case SdfOpCode::MathLog2:
+        // Matches the generated kernel signature: raw uint32 bits are transported in one
+        // float slot and replaced in place by the hash result.
+        case SdfOpCode::Hash32:
         case SdfOpCode::Passthrough:
             return {1, 1, 0, 0};
 
@@ -106,6 +109,8 @@ inline StackArity RecipeStackStaticArity(SdfOpCode op) {
         case SdfOpCode::MathMin:
         case SdfOpCode::MathMax:
         case SdfOpCode::Displacement:
+        // Matches the generated kernel signature: pop value bits, then state bits; push one result.
+        case SdfOpCode::Hash32Combine:
             return {2, 1, 0, 0};
 
         // Float3ScalarMul: pop 4 (float3 + scalar), push 3 (net -1)
