@@ -335,6 +335,19 @@ inline float evalRecipe(const SdfInstruction* prog, uint32_t count, glm::vec3 p,
                 stack[sp-1] *= distScaleStack[psp];  // apply distScale (1.0f for M4a; M4b Transform uses actual scale)
             } break;
 
+            // R322 A1: hash values are transported only as raw uint32 float-slot bits.
+            // The strict-FP SVO build contract prevents optimization from treating those slots
+            // as ordinary numeric values between integer-only hash instructions.
+            case SdfOpCode::Hash32: {
+                assert(sp >= 1 && "Hash32: value stack underflow");
+                stack[sp - 1] = SdfCore_Hash32(stack[sp - 1]);
+            } break;
+            case SdfOpCode::Hash32Combine: {
+                assert(sp >= 2 && "Hash32Combine: value stack underflow");
+                const float valueBits = stack[--sp];
+                stack[sp - 1] = SdfCore_Hash32Combine(stack[sp - 1], valueBits);
+            } break;
+
             // ── M4c: value-math lane ───────────────────────────────────────────────
             // Unary: stack[sp-1] = SdfCore_MathX(stack[sp-1], data…)
             case SdfOpCode::MathSin: {

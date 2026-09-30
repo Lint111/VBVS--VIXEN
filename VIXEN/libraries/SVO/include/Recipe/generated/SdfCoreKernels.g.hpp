@@ -1,9 +1,9 @@
-// GENERATED from SdfCoreKernels.cs by the kernel-framework C++/HLSL emitter
-// Do not edit; regenerate via the Yeroket source generator (P1 automates).
-
 #pragma once
+// GENERATED from SdfCoreKernels.cs by the kernel-framework C++ emitter.
+// Do not edit; regenerate via --recipe-kernels-cpp.
 #include <glm/glm.hpp>
 #include <cstdint>
+#include <bit>
 
 namespace Yeroket::Sdf::Generated {
 
@@ -389,6 +389,26 @@ inline glm::vec3 SdfCore_Float3Normalize(glm::vec3 v) {
     float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
     float invLen = (lenSq < 1e-14f ? 0.0f : 1.0f / glm::sqrt(lenSq));
     return v * invLen;
+}
+
+inline float SdfCore_Hash32(float valueBits) {
+    uint32_t x = std::bit_cast<std::uint32_t>(valueBits);
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return std::bit_cast<float>(x);
+}
+
+inline float SdfCore_Hash32Combine(float stateBits, float valueBits) {
+    uint32_t x = (std::bit_cast<std::uint32_t>(stateBits) ^ std::bit_cast<std::uint32_t>(valueBits)) + 0x9e3779b9u;
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return std::bit_cast<float>(x);
 }
 
 } // namespace Yeroket::Sdf::Generated

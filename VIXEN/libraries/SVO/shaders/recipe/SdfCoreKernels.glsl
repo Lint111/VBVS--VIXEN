@@ -402,4 +402,25 @@ vec3 SdfCore_Float3Normalize(vec3 v) {
     return v * invLen;
 }
 
+// R322 A1, bit-mirrored from SdfCoreKernels.g.hlsl: lowbias32 over a raw uint32 payload.
+float SdfCore_Hash32(float valueBits) {
+    uint x = floatBitsToUint(valueBits);
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return uintBitsToFloat(x);
+}
+
+float SdfCore_Hash32Combine(float stateBits, float valueBits) {
+    uint x = (floatBitsToUint(stateBits) ^ floatBitsToUint(valueBits)) + 0x9e3779b9u;
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return uintBitsToFloat(x);
+}
+
 #endif // SDF_CORE_KERNELS_GLSL

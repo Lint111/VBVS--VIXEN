@@ -516,6 +516,25 @@ inline std::string EmitProceduralFieldFunctionGlsl(
                 curPos = posSaveStk.back(); posSaveStk.pop_back();
                 break;
             }
+            // R322 A1: the core GLSL kernel bit-casts the float-slot payload to uint32 and back.
+            case SdfOpCode::Hash32: {
+                assert(!stk.empty() && "Hash32: emit-time value stack underflow");
+                std::string a = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Hash32(" + a + ");\n";
+                stk.push_back(t);
+                break;
+            }
+            case SdfOpCode::Hash32Combine: {
+                assert(stk.size() >= 2 && "Hash32Combine: emit-time value stack underflow");
+                std::string value = stk.back(); stk.pop_back();
+                std::string state = stk.back(); stk.pop_back();
+                std::string t = "t" + std::to_string(n++);
+                body += "  float " + t + " = SdfCore_Hash32Combine(" + state + ", " + value + ");\n";
+                stk.push_back(t);
+                break;
+            }
+
             // ── value-math lane (emit mirrors eval) ─────────────────────────
             // Unary (pop-and-replace TOS)
             case SdfOpCode::MathSin: {

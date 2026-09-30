@@ -76,6 +76,7 @@
 #include <gtest/gtest.h>
 
 #include "Recipe/RecipeParityCorpus.h"
+#include "RecipeHash32TestVectors.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
@@ -89,6 +90,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -111,6 +113,33 @@
 namespace {
 
 using Vixen::SVO::Recipe::SdfInstruction;
+
+static SdfInstruction ReadParamInstruction(uint32_t index) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadParam);
+    in.data[0] = static_cast<float>(index);
+    return in;
+}
+static SdfInstruction Hash32Instruction() {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Hash32);
+    return in;
+}
+static SdfInstruction Hash32CombineInstruction() {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Hash32Combine);
+    return in;
+}
+static std::array<SdfInstruction, 12> BodySeedFoldProgram() {
+    return {
+        ReadParamInstruction(0), Hash32Instruction(),
+        ReadParamInstruction(1), Hash32CombineInstruction(),
+        ReadParamInstruction(2), Hash32CombineInstruction(),
+        ReadParamInstruction(3), Hash32CombineInstruction(),
+        ReadParamInstruction(4), Hash32CombineInstruction(),
+        ReadParamInstruction(5), Hash32CombineInstruction(),
+    };
+}
 
 // ---------------------------------------------------------------------------
 // Tolerance helper — see file header comment for rationale.
@@ -863,6 +892,91 @@ TEST_F(RecipeGlslNumericalParityTest, GlslMatchesCpuEvalAcrossCorpus) {
     }
 }
 
+TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) {
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good()) << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+
+    const std::array<SdfInstruction, 2> hashProgram = {
+        ReadParamInstruction(0), Hash32Instruction(),
+    };
+    const std::string hashFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        hashProgram.data(), static_cast<uint32_t>(hashProgram.size()), 0);
+    const auto hashSpirv = compiler.Compile(
+        ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, hashFn), "main", opts);
+    ASSERT_TRUE(hashSpirv.success) << hashSpirv.GetFullLog();
+    ASSERT_FALSE(hashSpirv.spirv.empty());
+
+    const std::vector<glm::vec3> onePoint = {glm::vec3(0.0f)};
+    for (const auto& vector : Vixen::SVO::Recipe::TestVectors::Hash32GoldenVectors) {
+        std::array<float, 6> params{};
+        params[0] = std::bit_cast<float>(vector.input);
+        const float cpu = Vixen::SVO::Recipe::evalRecipe(
+            hashProgram.data(), static_cast<uint32_t>(hashProgram.size()), onePoint[0],
+            std::span<const float>(params.data(), params.size()));
+        EXPECT_EQ(std::bit_cast<uint32_t>(cpu), vector.expected)
+            << "CPU Hash32 input 0x" << std::hex << vector.input;
+
+        std::vector<float> gpu;
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(hashSpirv.spirv, onePoint, gpu, params));
+        ASSERT_EQ(gpu.size(), 1u);
+        EXPECT_EQ(std::bit_cast<uint32_t>(gpu[0]), vector.expected)
+            << "GPU Hash32 input 0x" << std::hex << vector.input;
+    }
+
+    const std::array<SdfInstruction, 3> combineProgram = {
+        ReadParamInstruction(0), ReadParamInstruction(1), Hash32CombineInstruction(),
+    };
+    const std::string combineFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        combineProgram.data(), static_cast<uint32_t>(combineProgram.size()), 0);
+    const auto combineSpirv = compiler.Compile(
+        ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, combineFn), "main", opts);
+    ASSERT_TRUE(combineSpirv.success) << combineSpirv.GetFullLog();
+    ASSERT_FALSE(combineSpirv.spirv.empty());
+    for (const auto& vector : Vixen::SVO::Recipe::TestVectors::Hash32CombineGoldenVectors) {
+        std::array<float, 6> params{};
+        params[0] = std::bit_cast<float>(vector.state);
+        params[1] = std::bit_cast<float>(vector.value);
+        const float cpu = Vixen::SVO::Recipe::evalRecipe(
+            combineProgram.data(), static_cast<uint32_t>(combineProgram.size()), onePoint[0],
+            std::span<const float>(params.data(), params.size()));
+        EXPECT_EQ(std::bit_cast<uint32_t>(cpu), vector.expected)
+            << "CPU Hash32Combine state 0x" << std::hex << vector.state;
+
+        std::vector<float> gpu;
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(combineSpirv.spirv, onePoint, gpu, params));
+        ASSERT_EQ(gpu.size(), 1u);
+        EXPECT_EQ(std::bit_cast<uint32_t>(gpu[0]), vector.expected)
+            << "GPU Hash32Combine state 0x" << std::hex << vector.state;
+    }
+
+    const auto foldProgram = BodySeedFoldProgram();
+    const std::string foldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        foldProgram.data(), static_cast<uint32_t>(foldProgram.size()), 0);
+    const auto foldSpirv = compiler.Compile(
+        ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, foldFn), "main", opts);
+    ASSERT_TRUE(foldSpirv.success) << foldSpirv.GetFullLog();
+    ASSERT_FALSE(foldSpirv.spirv.empty());
+    const std::array<float, 6> foldParams = {
+        std::bit_cast<float>(0x12345678u), std::bit_cast<float>(3u),
+        std::bit_cast<float>(static_cast<uint32_t>(-4)), std::bit_cast<float>(7u),
+        std::bit_cast<float>(12u), std::bit_cast<float>(0xdeadbeefu),
+    };
+    const float foldCpu = Vixen::SVO::Recipe::evalRecipe(
+        foldProgram.data(), static_cast<uint32_t>(foldProgram.size()), onePoint[0],
+        std::span<const float>(foldParams.data(), foldParams.size()));
+    EXPECT_EQ(std::bit_cast<uint32_t>(foldCpu), Vixen::SVO::Recipe::TestVectors::BodySeedFoldExpected);
+    std::vector<float> foldGpu;
+    ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(foldSpirv.spirv, onePoint, foldGpu, foldParams));
+    ASSERT_EQ(foldGpu.size(), 1u);
+    EXPECT_EQ(std::bit_cast<uint32_t>(foldGpu[0]), Vixen::SVO::Recipe::TestVectors::BodySeedFoldExpected);
+}
+
 // ---------------------------------------------------------------------------
 // Recipe-Parameterization M2 Task 7 — the harder, more important check: compile ONE
 // ReadParam/ReadParamFloat3-using program ONCE, then sweep SEVERAL DIFFERENT params[6]
@@ -1107,6 +1221,24 @@ TEST(RecipeGlslCompiles, EmittedGlslCompilesForEveryCorpusProgram) {
     }
 }
 
+TEST(RecipeGlslCompiles, Hash32AndCombineEmissionCompiles) {
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good()) << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+    const auto program = BodySeedFoldProgram();
+    const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+        program.data(), static_cast<uint32_t>(program.size()), 0);
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    ShaderManagement::ShaderCompiler compiler;
+    const auto compOut = compiler.Compile(
+        ShaderManagement::ShaderStage::Compute, ComposeComputeShader(sdfCoreGlsl, fieldFn), "main", opts);
+    ASSERT_TRUE(compOut.success) << compOut.GetFullLog() << "\n" << fieldFn;
+    EXPECT_FALSE(compOut.spirv.empty());
+}
+
 // ---------------------------------------------------------------------------
 // Opcode-coverage assertion — pure CPU, no GPU, no glslang needed. Runs on every
 // machine unconditionally (not part of the TEST_F fixture above, so it is
@@ -1148,6 +1280,12 @@ TEST(RecipeGlslOpcodeCoverage, CorpusCoversEveryValidOpcode) {
     // GPU-verified CPU/GLSL parity check — this exemption only says "not in the SHARED loop,"
     // not "untested."
     validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::InvokeRecipe));
+
+    // Hash32 results are raw uint32 float-slot payloads and often look like NaNs, so they do not
+    // belong in the corpus's approximate-float comparison loop. The dedicated bitwise golden
+    // fixture above exercises both hash opcodes on CPU and GPU.
+    validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Hash32));
+    validOpcodes.erase(static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Hash32Combine));
 
     std::vector<int> missingFromCorpus;   // valid but never exercised by the corpus
     for (uint8_t v : validOpcodes)

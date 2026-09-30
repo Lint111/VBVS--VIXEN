@@ -216,6 +216,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl" _out_recipeparams_glsl_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
+        _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp" _out_sdf_core_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h" _out_sdf_opcodes_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/recipe-opcodes.extensions" _recipe_opcode_extensions_run)
         _codegen_to_wsl_path("${_cg}/recipe-lowering.extensions" _recipe_extensions_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp" _out_recipe_simd_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
@@ -280,6 +285,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipeparams_glsl_run "${VIXEN_ROOT}/shaders/Generated/RecipeParams.glsl")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
+        set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
+        set(_out_sdf_core_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp")
+        set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
+        set(_out_sdf_opcodes_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h")
+        set(_recipe_opcode_extensions_run "${VIXEN_ROOT}/codegen/recipe-opcodes.extensions")
         set(_recipe_extensions_run "${_cg}/recipe-lowering.extensions")
         set(_out_recipe_simd_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
@@ -386,6 +396,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-simd-cpp
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
+        --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
         --recipe-extensions "${_recipe_extensions_run}"
         --out-header "${_out_recipe_simd_run}")
     add_custom_target(recipe_simd_check ALL
@@ -396,6 +407,41 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(recipe_simd_regen
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
         COMMENT "[codegen] regenerate RecipeSimd.g.hpp from kernel lowering pipeline"
+        VERBATIM)
+
+    set(_sdf_core_kernel_args
+        "${_yk_dll_run}"
+        --recipe-kernels-cpp
+        --recipe-kernels "${_recipe_kernel_source_run}"
+        --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --out-header "${_out_sdf_core_cpp_run}"
+        --out-hlsl "${_out_sdf_core_hlsl_run}")
+    add_custom_target(sdf_core_kernels_check ALL
+        JOB_POOL vixen_codegen
+        COMMAND ${_CODEGEN_RUNNER} ${_sdf_core_kernel_args} --check
+        COMMENT "[codegen] golden check: SdfCoreKernels C++/HLSL match canonical kernels"
+        VERBATIM)
+    add_custom_target(sdf_core_kernels_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_sdf_core_kernel_args}
+        COMMENT "[codegen] regenerate SdfCoreKernels C++/HLSL from canonical kernels"
+        VERBATIM)
+
+    set(_recipe_opcode_mirror_args
+        "${_yk_dll_run}"
+        --recipe-opcode-mirror
+        --recipe-opcodes "${_recipe_opcode_source_run}"
+        --recipe-kernels "${_recipe_kernel_source_run}"
+        --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-opcode-extensions "${_recipe_opcode_extensions_run}"
+        --out-header "${_out_sdf_opcodes_run}")
+    add_custom_target(recipe_opcode_mirror_check ALL
+        JOB_POOL vixen_codegen
+        COMMAND ${_CODEGEN_RUNNER} ${_recipe_opcode_mirror_args} --check
+        COMMENT "[codegen] golden check: SdfOpCodes.g.h matches canonical recipe opcodes"
+        VERBATIM)
+    add_custom_target(recipe_opcode_mirror_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_recipe_opcode_mirror_args}
+        COMMENT "[codegen] regenerate SdfOpCodes.g.h from canonical recipe opcodes"
         VERBATIM)
 
     set(_view_catalog_args)
