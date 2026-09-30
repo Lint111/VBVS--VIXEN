@@ -343,15 +343,38 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     # override in the build scripts.
     set(_codegen_linux_dotnet_cli_command "")
     if(UNIX AND NOT APPLE)
-        get_filename_component(_codegen_dotnet_real "${VIXEN_DOTNET}" REALPATH)
-        get_filename_component(_codegen_dotnet_root "${_codegen_dotnet_real}" DIRECTORY)
-        file(GLOB _codegen_dotnet_cli_runtimeconfigs
-            "${_codegen_dotnet_root}/sdk/*/dotnet.runtimeconfig.json")
+        execute_process(
+            COMMAND "${VIXEN_DOTNET}" --list-sdks
+            RESULT_VARIABLE _codegen_dotnet_sdk_list_result
+            OUTPUT_VARIABLE _codegen_dotnet_sdk_list
+            ERROR_VARIABLE _codegen_dotnet_sdk_list_error
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT _codegen_dotnet_sdk_list_result EQUAL 0)
+            message(FATAL_ERROR
+                "[codegen] cannot query SDKs through the selected .NET launcher ${VIXEN_DOTNET}: "
+                "${_codegen_dotnet_sdk_list_error}")
+        endif()
+        string(REPLACE "\r" "" _codegen_dotnet_sdk_list "${_codegen_dotnet_sdk_list}")
+        string(REPLACE "\n" ";" _codegen_dotnet_sdk_entries "${_codegen_dotnet_sdk_list}")
+        set(_codegen_dotnet_cli_runtimeconfigs "")
+        foreach(_codegen_dotnet_sdk_entry IN LISTS _codegen_dotnet_sdk_entries)
+            if(_codegen_dotnet_sdk_entry MATCHES "^([^ ]+) \\[([^]]+)\\]$")
+                set(_codegen_dotnet_sdk_version "${CMAKE_MATCH_1}")
+                set(_codegen_dotnet_sdk_root "${CMAKE_MATCH_2}")
+                set(_codegen_dotnet_sdk_runtimeconfig
+                    "${_codegen_dotnet_sdk_root}/${_codegen_dotnet_sdk_version}/dotnet.runtimeconfig.json")
+                if(EXISTS "${_codegen_dotnet_sdk_runtimeconfig}")
+                    list(APPEND _codegen_dotnet_cli_runtimeconfigs
+                        "${_codegen_dotnet_sdk_runtimeconfig}")
+                endif()
+            endif()
+        endforeach()
         list(SORT _codegen_dotnet_cli_runtimeconfigs COMPARE NATURAL ORDER DESCENDING)
         if(NOT _codegen_dotnet_cli_runtimeconfigs)
             message(FATAL_ERROR
-                "[codegen] cannot locate the .NET SDK runtimeconfig under ${_codegen_dotnet_root}/sdk; "
-                "CodegenTool needs an invariant SDK runtimeconfig on Linux hosts without ICU")
+                "[codegen] the selected .NET launcher ${VIXEN_DOTNET} reported no SDK runtimeconfig "
+                "through --list-sdks; CodegenTool needs an invariant SDK runtimeconfig on Linux "
+                "hosts without ICU (reported: ${_codegen_dotnet_sdk_list})")
         endif()
         list(GET _codegen_dotnet_cli_runtimeconfigs 0 _codegen_dotnet_cli_runtimeconfig_source)
         get_filename_component(_codegen_dotnet_sdk_dir "${_codegen_dotnet_cli_runtimeconfig_source}" DIRECTORY)
