@@ -60,17 +60,8 @@ namespace {
 // Byte-identical to BodyInstanceRayMarch.comp's PushConstants block (see
 // test_body_instance_raymarch_render.cpp's own copy for the layout derivation).
 //
-// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 92 bytes
-// (debugTargetPixel + accumFrameCount were added after this mirror was last synced --
-// see SceneBindings.glsl:239-246, dating to 47eccd64/Inc2 M2 -- well before this M2's
-// own work). A from-scratch rebuild of body_instance_raymarch_spv makes glslc emit
-// OpMemberDecorate for the FULL declared struct regardless of which members the
-// shader body actually reads, so vkCreateComputePipelines rejects the old 76-byte
-// VkPushConstantRange (VUID-VkComputePipelineCreateInfo-layout-10069) the moment this
-// SPV is rebuilt clean -- caught when M2's CMake change (-DVIXEN_GPU_TRACE_HOOKS=1)
-// forced exactly that rebuild. Fixed here at the root: sync the mirror to the real
-// struct; pcr.size/vkCmdPushConstants below already derive from sizeof(PushConstants)
-// so no other change is needed.
+// The shader payload ends at byte 92, and std430 rounds the push-constant block
+// to its 16-byte alignment. Keep this mirror and its Vulkan range at 96 bytes.
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -83,8 +74,9 @@ struct PushConstants {
                     // packs debugTargetPixel at offset 76 without this explicit filler.
     glm::ivec2 debugTargetPixel;
     uint32_t   accumFrameCount;
+    uint32_t   _pad1;  // std430 rounds the 92-byte payload up to 96 bytes
 };
-static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);

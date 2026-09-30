@@ -498,10 +498,11 @@ struct ConcatenatedOctrees {
  * concatenated octree (and thus which OctreeConfig) this instance draws.
  */
 struct BodyInstanceGpu {
-    float worldPos[3];       // 0   : body's local [0,1]^3-cube min-CORNER (world space) --
-                             //       NOT the centre, despite the name (Baked-Perf M5 Task
-                             //       5.3 finding; see InstanceSort.h's traceBoundsWorldCenterOf
-                             //       for the true occupied-region center derivation)
+    float worldPos[3];       // 0   : body's local [0,1]^3-cube min-CORNER in the active tier's
+                             //       world frame -- never a flattened AU/world position. It is
+                             //       NOT the centre (Baked-Perf M5 Task 5.3; see
+                             //       InstanceSort.h's traceBoundsWorldCenterOf for the true
+                             //       occupied-region center derivation).
     float renderScale;       // 12  : Stored: grid scale; Procedural: unused
     float color[3];          // 16  : per-instance tint
     uint32_t octreeIndex;    // 28  : Stored: index into configs[]; Procedural: unused

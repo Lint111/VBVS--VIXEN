@@ -45,6 +45,7 @@
 #include "ShellOctreeGpu.h"   // Vixen::SVO::{SerializeSdf, ConcatenatedOctrees, BodyInstanceGpu}
 #include "MipBake.h"          // Vixen::SVO::BakeAndAttachMipPool
 #include "TierRef.h"
+#include "TierAddressResolver.h"
 #include "SVOTypes.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
@@ -56,6 +57,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -79,10 +81,10 @@ namespace {
 
 // Byte-identical to BodyInstanceRayMarch.comp's PushConstants block.
 //
-// Baked-perf-pipeline M2: SceneBindings.glsl's real PushConstants struct is 92 bytes
-// (debugTargetPixel + accumFrameCount added by 47eccd64, well before this M2's own
-// work -- see test_body_instance_occlusion_reject.cpp's identical fix for the fuller
-// citation of why a from-scratch shader rebuild surfaces this mirror's staleness).
+// SceneBindings.glsl's shared PushConstants block occupies 96 bytes: its final
+// accumFrameCount field ends at byte 92, then std430 rounds the block to its
+// 16-byte alignment. Keep this mirror/range in lockstep with
+// test_body_instance_raymarch_render.cpp.
 struct PushConstants {
     glm::vec3 cameraPos;   float time;
     glm::vec3 cameraDir;   float fov;       // DEGREES
@@ -95,8 +97,9 @@ struct PushConstants {
                     // packs debugTargetPixel at offset 76 without this explicit filler.
     glm::ivec2 debugTargetPixel;
     uint32_t   accumFrameCount;
+    uint32_t   _pad1;  // std430 rounds the 92-byte payload up to 96 bytes
 };
-static_assert(sizeof(PushConstants) == 92, "PushConstants must be 92 bytes");
+static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes");
 
 // ---------------------------------------------------------------------------
 // M2c fix: this file's colorImg (binding 0) readback went permanently dark when
@@ -682,21 +685,23 @@ struct TierCrossingScene {
     uint32_t markedLeafCount = 0;
 };
 
-TierCrossingScene BuildTierCrossingScene(bool residentChild) {
+TierCrossingScene BuildTierCrossingScene(bool residentChild,
+                                         const glm::vec3& center = glm::vec3(8.0f),
+                                         float parentRadius = 6.0f,
+                                         float childRadius = 7.2f) {
     using namespace Vixen::SVO;
 
     constexpr int   kN          = 16;
     constexpr int   kBrickDepth = 3;
-    const glm::vec3 kCenter(8.0f, 8.0f, 8.0f);
 
     RecipeParams parentRp{};
-    parentRp.radius = 6.0f;
-    SdfBakeResult parentBaked = BakeRecipeToSdfWorld(RECIPE_SPHERE, kCenter, parentRp, kN, 2.0f);
+    parentRp.radius = parentRadius;
+    SdfBakeResult parentBaked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, parentRp, kN, 2.0f);
     SdfBodyOctree parentBody  = BuildSdfBodyOctree(parentBaked, kBrickDepth);
 
     RecipeParams childRp{};
-    childRp.radius = 7.2f;
-    SdfBakeResult childBaked = BakeRecipeToSdfWorld(RECIPE_SPHERE, kCenter, childRp, kN, 2.0f);
+    childRp.radius = childRadius;
+    SdfBakeResult childBaked = BakeRecipeToSdfWorld(RECIPE_SPHERE, center, childRp, kN, 2.0f);
     SdfBodyOctree childBody  = BuildSdfBodyOctree(childBaked, kBrickDepth);
 
     SerializedOctree parentSer = SerializeSdf(parentBody);
@@ -797,6 +802,78 @@ TierCrossingScene BuildTierCrossingScene(bool residentChild) {
     }
 
     return {std::move(cat), markedCount};
+}
+
+TierCrossingScene BuildThirtyAuCloseupScene() {
+    using namespace Vixen::SVO;
+
+    constexpr double kAuMeters = 149'597'870'700.0;
+    constexpr double kSystemTierSpanMeters = 120.0 * kAuMeters;
+    constexpr double kTierScale = 1.0 / 1024.0;
+    constexpr uint32_t kAddressDepth = 4;
+    const double activeTierSpanMeters = kSystemTierSpanMeters * std::pow(kTierScale, kAddressDepth);
+    const float systemChildOriginX = static_cast<float>(1.5 + 30.0 * kAuMeters / kSystemTierSpanMeters);
+
+    // Keep the proven live SDF fixture. Equal parent/child radii make the
+    // unity-scale crossing directly measurable in the active tier's frame.
+    TierCrossingScene source = BuildTierCrossingScene(
+        /*residentChild=*/true, glm::vec3(8.0f), /*parentRadius=*/6.0f, /*childRadius=*/6.0f);
+    ConcatenatedOctrees pool = std::move(source.pool);
+    const OctreeConfig parentConfig = pool.configs[0];
+    const OctreeConfig childConfig = pool.configs[1];
+    const uint32_t parentNodeCount = pool.nodeCounts[0];
+    const uint32_t parentBrickCount = pool.brickCounts[0];
+    const uint32_t childNodeCount = pool.nodeCounts[1];
+    const uint32_t childBrickCount = pool.brickCounts[1];
+    const uint32_t parentRefCount = pool.tierRefCounts[0];
+    const std::vector<TierRef> parentRefs(
+        pool.tierRefTable.begin(), pool.tierRefTable.begin() + parentRefCount);
+
+    // Each of four address hops follows an ordinary TierRef slice and shrinks
+    // the represented system by 2^-10. The first child frame is centered at
+    // +0.25 in the system's X axis (30 AU in a 120 AU-wide system tier).
+    // Tree 4 is the active camera tier; its ordinary GPU crossing enters the
+    // distinct-color child at unity scale, as in the existing live GPU fixture.
+    pool.configs.clear();
+    pool.nodeCounts.clear();
+    pool.brickCounts.clear();
+    pool.tierRefCounts.clear();
+    pool.tierRefTable.clear();
+    pool.configs.reserve(6);
+    pool.nodeCounts.reserve(6);
+    pool.brickCounts.reserve(6);
+    pool.tierRefCounts.reserve(6);
+
+    constexpr uint32_t kActiveTierIndex = kAddressDepth;
+    constexpr uint32_t kRenderedChildIndex = kAddressDepth + 1;
+    for (uint32_t tier = 0; tier <= kActiveTierIndex; ++tier) {
+        OctreeConfig config = parentConfig;
+        setTierRefTableBase(config, static_cast<uint32_t>(pool.tierRefTable.size()));
+        const uint32_t nextTree = (tier == kActiveTierIndex) ? kRenderedChildIndex : tier + 1;
+        const float childScale = (tier == kActiveTierIndex) ? 1.0f : (1.0f / 1024.0f);
+        for (TierRef ref : parentRefs) {
+            ref.childOctreeIndex = nextTree;
+            ref.childOriginLocal[0] = (tier == 0) ? systemChildOriginX : 1.5f;
+            ref.childOriginLocal[1] = 1.5f;
+            ref.childOriginLocal[2] = 1.5f;
+            ref.childScale = childScale;
+            pool.tierRefTable.push_back(ref);
+        }
+        pool.configs.push_back(config);
+        pool.nodeCounts.push_back(parentNodeCount);
+        pool.brickCounts.push_back(parentBrickCount);
+        pool.tierRefCounts.push_back(parentRefCount);
+    }
+
+    OctreeConfig child = childConfig;
+    setTierRefTableBase(child, static_cast<uint32_t>(pool.tierRefTable.size()));
+    pool.configs.push_back(child);
+    pool.nodeCounts.push_back(childNodeCount);
+    pool.brickCounts.push_back(childBrickCount);
+    pool.tierRefCounts.push_back(0u);
+    pool.count = static_cast<uint32_t>(pool.configs.size());
+
+    return {std::move(pool), source.markedLeafCount};
 }
 
 // worldPos/renderScale convention matching BuildRenderGraph.cpp's own demo exactly
@@ -1079,6 +1156,203 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
         << "expected ZERO magenta (child) pixels under a huge raySizeCoef (sub-pixel "
            "footprint should skip the crossing even though the child is resident), found "
         << magentaCount;
+
+    vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalCamera) {
+    using C = BodyOctreeSceneNodeConfig;
+    using namespace Vixen::SVO;
+
+    constexpr double kAuMeters = 149'597'870'700.0;
+    constexpr double kAddressScale = 1.0 / 1024.0;
+    constexpr uint32_t kAddressDepth = 4;
+    constexpr uint32_t kActiveTierIndex = kAddressDepth;
+    constexpr double kCameraSourceZ = 260.0 / 4.8; // proven GPU fixture eye: (64,64,300), instance origin (40,40,40)
+    constexpr double kRaySourceX = 5.0;
+    constexpr double systemSpanMeters = 120.0 * kAuMeters;
+    const double tierSpanMeters = systemSpanMeters * std::pow(kAddressScale, kAddressDepth);
+
+    TierCrossingScene scene = BuildThirtyAuCloseupScene();
+    ASSERT_GT(scene.markedLeafCount, 0u);
+
+    // The first TierRef places the body center 30 AU from the system origin.
+    // Four 2^-10 hops shrink the 120 AU system frame to about 16.3m. The
+    // scaled camera reaches the rendered surface within the requested 1-100m range.
+    EXPECT_NEAR((static_cast<double>(scene.pool.tierRefTable[0].childOriginLocal[0]) - 1.5) *
+                    systemSpanMeters,
+                30.0 * kAuMeters, 1e-3);
+    const glm::dvec3 cameraTierLocalPosition{
+        1.0 + kRaySourceX / 10.0,
+        1.0 + kRaySourceX / 10.0,
+        1.0 + kCameraSourceZ / 10.0,
+    };
+    const auto resolved = ResolveTierAddressPosition(
+        scene.pool, 0u, TierAddress{0, 0, 0, 0}, cameraTierLocalPosition);
+    ASSERT_TRUE(resolved.has_value());
+    ASSERT_EQ(resolved->octreeIndex, kActiveTierIndex);
+
+    // The addressed parent remains at its resolved slot. Point its child refs
+    // at slot 1, which aliases the same child payload, so this test isolates
+    // active-parent indexing from large child-index behavior in the harness.
+    const uint32_t activeRefBase = tierRefTableBaseOf(scene.pool.configs[kActiveTierIndex]);
+    const uint32_t activeRefCount = scene.pool.tierRefCounts[kActiveTierIndex];
+    ConcatenatedOctrees activeTierPool = scene.pool;
+    activeTierPool.configs[1] = scene.pool.configs[kActiveTierIndex + 1];
+    activeTierPool.nodeCounts[1] = scene.pool.nodeCounts[kActiveTierIndex + 1];
+    activeTierPool.brickCounts[1] = scene.pool.brickCounts[kActiveTierIndex + 1];
+    activeTierPool.tierRefCounts[1] = 0u;
+    for (uint32_t i = 0; i < activeRefCount; ++i) {
+        TierRef& ref = activeTierPool.tierRefTable[activeRefBase + i];
+        ASSERT_EQ(ref.childOctreeIndex, kActiveTierIndex + 1);
+        ref.childOctreeIndex = 1u;
+    }
+
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("tcr_30au_closeup");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    node->SetRecipePool(std::move(activeTierPool));
+    BodyInstanceGpu instance{};
+    instance.worldPos[0] = instance.worldPos[1] = instance.worldPos[2] = 40.0f;
+    instance.renderScale = static_cast<float>(tierSpanMeters / 10.0);
+    instance.color[0] = instance.color[1] = instance.color[2] = 1.0f;
+    instance.octreeIndex = resolved->octreeIndex;
+    instance.providerKind = 0u;
+    node->SetInstances({instance});
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    ASSERT_NO_THROW(node->Execute());
+
+    auto buf = [&](int slot) -> VkBuffer { return node->GetOutput(slot, 0)->GetHandle<VkBuffer>(); };
+    const VkBuffer nodesBuf = buf(C::OCTREE_NODES_BUFFER_Slot::index);
+    const VkBuffer bricksBuf = buf(C::OCTREE_BRICKS_BUFFER_Slot::index);
+    const VkBuffer materialsBuf = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
+    const VkBuffer configBuf = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
+    const VkBuffer instanceBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+    const VkBuffer tierRefBuf = buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index);
+    const VkBuffer sdfBuf = buf(C::OCTREE_SDF_BUFFER_Slot::index);
+    const VkBuffer lookupBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
+    const VkBuffer mipBuf = buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index);
+    ASSERT_NE(nodesBuf, VK_NULL_HANDLE);
+    ASSERT_NE(tierRefBuf, VK_NULL_HANDLE);
+    ASSERT_NE(sdfBuf, VK_NULL_HANDLE);
+    ASSERT_NE(lookupBuf, VK_NULL_HANDLE);
+
+    constexpr uint32_t kWidth = 501, kHeight = 501;
+    constexpr uint32_t kCenterPixel = (kHeight / 2) * kWidth + kWidth / 2;
+    const glm::vec3 eye(
+        40.0f + static_cast<float>((resolved->localPosition.x - 1.0) * tierSpanMeters),
+        40.0f + static_cast<float>((resolved->localPosition.y - 1.0) * tierSpanMeters),
+        40.0f + static_cast<float>((resolved->localPosition.z - 1.0) * tierSpanMeters));
+
+    PushConstants pc{};
+    pc.cameraPos = eye; pc.time = 0.0f;
+    pc.cameraDir = glm::vec3(0.0f, 0.0f, -1.0f); pc.fov = 45.0f;
+    pc.cameraUp = glm::vec3(0.0f, 1.0f, 0.0f); pc.aspect = 1.0f;
+    pc.cameraRight = glm::vec3(1.0f, 0.0f, 0.0f); pc.debugMode = 0;
+    pc.raySizeCoef = 0.0f;
+    pc.raySizeBias = 0.0f;
+    pc.instanceCount = 1;
+    pc.debugTargetPixel = glm::ivec2(-1, -1);
+
+    std::vector<uint32_t> iterCounts;
+    std::vector<uint8_t> rgba;
+    std::vector<HitRecordCpu> hitRecords;
+    ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        sdfBuf, lookupBuf, mipBuf, pc, kWidth, kHeight, 1u,
+        iterCounts, rgba, hitRecords));
+    ASSERT_EQ(hitRecords.size(), static_cast<size_t>(kWidth) * kHeight);
+    const HitRecordCpu& centerHit = hitRecords[kCenterPixel];
+    EXPECT_NE((centerHit.flags & kHitRecordFlagHit), 0u) << "center camera ray missed the nested body";
+    EXPECT_GE(centerHit.hitT, 1.0f) << "close-up surface must be at least 1 m away";
+    EXPECT_LE(centerHit.hitT, 100.0f) << "close-up surface must be no farther than 100 m";
+    std::printf("[TIER GPU 30 AU READBACK] eye=(%.9f,%.9f,%.9f), flags=%u, albedo=(%.6f,%.6f,%.6f), hitT=%.9f, hitPos=(%.9f,%.9f,%.9f), tag=%u\n",
+                eye.x, eye.y, eye.z, centerHit.flags,
+                centerHit.albedo[0], centerHit.albedo[1], centerHit.albedo[2], centerHit.hitT,
+                centerHit.worldPos[0], centerHit.worldPos[1], centerHit.worldPos[2], centerHit._pad0[0]);
+    EXPECT_GT(centerHit.albedo[0], 0.9f);
+    EXPECT_LT(centerHit.albedo[1], 0.1f);
+    EXPECT_GT(centerHit.albedo[2], 0.9f)
+        << "center ray should cross into the resident magenta detail tree";
+
+    constexpr double kCameraStepMeters = 1.0;
+    PushConstants steppedPc = pc;
+    steppedPc.cameraPos += steppedPc.cameraDir * static_cast<float>(kCameraStepMeters);
+    std::vector<uint32_t> steppedIterCounts;
+    std::vector<uint8_t> steppedRgba;
+    std::vector<HitRecordCpu> steppedHitRecords;
+    ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        sdfBuf, lookupBuf, mipBuf, steppedPc, kWidth, kHeight, 1u,
+        steppedIterCounts, steppedRgba, steppedHitRecords));
+    const HitRecordCpu& steppedCenterHit = steppedHitRecords[kCenterPixel];
+    EXPECT_NE((steppedCenterHit.flags & kHitRecordFlagHit), 0u);
+    EXPECT_GT(steppedCenterHit.albedo[0], 0.9f);
+    EXPECT_GT(steppedCenterHit.albedo[2], 0.9f);
+    const double measuredCameraStepMeters =
+        static_cast<double>(centerHit.hitT) - static_cast<double>(steppedCenterHit.hitT);
+    const double measuredErrorMeters = std::abs(measuredCameraStepMeters - kCameraStepMeters);
+    const double hitPointDriftMeters = glm::length(
+        glm::dvec3(centerHit.worldPos[0], centerHit.worldPos[1], centerHit.worldPos[2]) -
+        glm::dvec3(steppedCenterHit.worldPos[0], steppedCenterHit.worldPos[1], steppedCenterHit.worldPos[2]));
+    EXPECT_LT(measuredErrorMeters, 0.001)
+        << "30-AU tier-chain GPU camera-step error = " << measuredErrorMeters
+        << " m; measured 1m step=" << measuredCameraStepMeters;
+    EXPECT_LT(hitPointDriftMeters, 0.001)
+        << "same rendered surface moved " << hitPointDriftMeters << " m after a tier-local camera step";
+    std::printf("[TIER GPU 30 AU] address hops=%u, active span=%.9f m, surface range=%.9f m, "
+                "camera step=%.9f m, measured=%.9f m, error=%.12g m, hit drift=%.12g m\n",
+                kAddressDepth, tierSpanMeters, centerHit.hitT, kCameraStepMeters,
+                measuredCameraStepMeters, measuredErrorMeters, hitPointDriftMeters);
+
+    // Save an actual close-up from the live GPU HitRecord buffer. The output
+    // path is relative to the process working directory, so the test launcher
+    // controls where this raw PPM is written.
+    std::ofstream capture("aurender-30au-closeup.ppm", std::ios::binary);
+    ASSERT_TRUE(capture.good()) << "could not create aurender-30au-closeup.ppm in the test working directory";
+    capture << "P6\n" << kWidth << " " << kHeight << "\n255\n";
+    for (const HitRecordCpu& record : hitRecords) {
+        const bool hit = (record.flags & kHitRecordFlagHit) != 0u;
+        for (int channel = 0; channel < 3; ++channel) {
+            const float value = hit ? std::clamp(record.albedo[channel], 0.0f, 1.0f) : 0.0f;
+            capture.put(static_cast<char>(std::lround(value * 255.0f)));
+        }
+    }
+    capture.close();
+    ASSERT_TRUE(capture.good());
+
+    // The same live tier crossing takes its parent-tier LOD fallback when the
+    // ray footprint is coarse, while the close-up capture above takes the child.
+    PushConstants lodPc = pc;
+    lodPc.raySizeCoef = 10.0f;
+    std::vector<uint32_t> lodIterCounts;
+    std::vector<uint8_t> lodRgba;
+    std::vector<HitRecordCpu> lodRecords;
+    ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        sdfBuf, lookupBuf, mipBuf, lodPc, kWidth, kHeight, 1u,
+        lodIterCounts, lodRgba, lodRecords));
+    const auto countMagenta = [](const std::vector<HitRecordCpu>& records) {
+        return std::count_if(records.begin(), records.end(), [](const HitRecordCpu& record) {
+            return (record.flags & kHitRecordFlagHit) != 0u &&
+                   record.albedo[0] > 0.9f && record.albedo[1] < 0.1f && record.albedo[2] > 0.9f;
+        });
+    };
+    EXPECT_GT(countMagenta(hitRecords), 0) << "un-gated crossing should draw detail pixels";
+    EXPECT_EQ(countMagenta(lodRecords), 0) << "sub-pixel LOD should keep detail pixels in the parent tier";
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);
