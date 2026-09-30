@@ -29,6 +29,9 @@
 
 #ifdef VIXEN_RTQUERY_TRAVERSAL
 
+// Defined once in TraceWorld.glsl, included after this file by SceneBindings.glsl.
+bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint bestInstIdx);
+
 // #extension GL_EXT_ray_query moved to SceneBindings.glsl's file head (fix 5):
 // this file is #included ~400 lines into SceneBindings.glsl, well after other
 // includes/declarations have already emitted tokens into the translation unit
@@ -105,12 +108,11 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
 
     // GENERATE-MIN-TRACKING RULE (mandatory -- see test_rayquery_feasibility.cpp's
     // Slice-1 finding): rayQueryGenerateIntersectionEXT's tHit must lie within the
-    // CURRENT ray interval [tMin, committed t]; generating beyond the committed
-    // hit is app UB and NVIDIA implements it as an unconditional last-write-wins
-    // replace. Track a running bestT (WORLD space, matching the interval this
-    // rayQuery was initialized with) and generate ONLY on improvement.
+    // CURRENT ray interval [tMin, committed t]. Track the shared nearest-hit key
+    // (WORLD-space distance, then lower instance id) and generate only when that
+    // key improves; an equal-distance lower-id candidate is an improvement too.
     float bestT = 1e30;
-    int   bestInstIdx = -1;
+    uint  bestInstIdx = 0xFFFFFFFFu;
     int   bestOctreeIdx = -1;
     ivec3 bestCell = ivec3(0);
 
@@ -195,10 +197,10 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
         // ternary-chain convention the DDA's own axis-pick uses at its step site,
         // SceneBindings.glsl ~2030).
         const float tCellEnter = max(max(tlo.x, tlo.y), max(tlo.z, 0.0));
-        if (tCellEnter >= bestT) {
+        if (tCellEnter > bestT) {
             // ROUND-17 probe: octree-3-only tally of THIS specific reject site.
             if (oi == 3) incrFarFieldGateRejectOct3();
-            continue;  // cannot possibly beat the current best
+            continue;  // lower bound is strictly farther than the current best
         }
         int enterAxis = (tlo.x >= tlo.y) ? ((tlo.x >= tlo.z) ? 0 : 2) : ((tlo.y >= tlo.z) ? 1 : 2);
 
@@ -308,9 +310,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
             tCellEnter * pc.raySizeCoef + pc.raySizeBias >= worldCellSize) {
 #endif
             incrFarGenRectGateCross();  // batch-24 FARGEN: rect-scoped gate-cross funnel
-            if (tCellEnter < bestT) {
+            if (isCloserHit(tCellEnter, ci, bestT, bestInstIdx)) {
                 bestT = tCellEnter;
-                bestInstIdx = int(ci);
+                bestInstIdx = ci;
                 bestOctreeIdx = oi;
                 bestCell = cell;
                 hitNormal = -gridDirN;
@@ -387,9 +389,9 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
             // by tWorld instead of a local-frame t (this backend never had a separate
             // local-frame t: s IS tWorld throughout, see header).
             const float tWorld = tCellEnter + (sHit + kEntryBias) / (dirLen * gridScale);
-            if (tWorld < bestT) {
+            if (isCloserHit(tWorld, ci, bestT, bestInstIdx)) {
                 bestT = tWorld;
-                bestInstIdx = int(ci);
+                bestInstIdx = ci;
                 bestOctreeIdx = oi;
                 bestCell = cell;
                 hitNormal = nrm;
@@ -416,7 +418,7 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
     }
 
     hitT              = bestT;
-    hitInstanceIdx    = uint(bestInstIdx);
+    hitInstanceIdx    = bestInstIdx;
     // The proxy primitive identifies a compact candidate, while the shared
     // compact grid lookup remains the authoritative cell -> shell-slot map.
     // Keep this final addressing identical to the DDA twin.

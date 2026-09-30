@@ -24,38 +24,14 @@
 #define TRACEWORLD_GLSL
 
 // ============================================================================
-// isCloserHit - deterministic seam tie-break (M6b Task 6b.0, 2026-07-17)
-// ============================================================================
-// Root cause: two Cornell wall bodies are separate baked ESVO instances whose
-// slabs ABUT along a shared plane (e.g. ceiling/leftWall/backWall corner,
-// floor/rightWall corner). A ray landing exactly on that seam gets near-equal
-// hitT from both instances; raw `candidateT < bestT` float comparison then
-// flips winner per-pixel on sub-ULP noise (different traversal path length,
-// FMA fusion, etc.), reading as a checkerboard. This is the SAME junction as
-// the parity golden's documented row-21 floor/rightWall near-tie flip
-// (tools/bench/parity_thresholds.json's same_path _comment).
-//
-// Fix: within a RELATIVE epsilon band of the current best, prefer the LOWER
-// instance index deterministically instead of trusting raw float ordering.
-// Lower-instIdx-wins is an arbitrary but STABLE rule -- every pixel along a
-// seam resolves the same way regardless of float noise, so the seam becomes
-// a coherent boundary instead of a checkerboard. Epsilon is relative
-// (scaled by max(|t|,1.0)) so it stays tight at both near and far distances
-// without swallowing genuinely different depths -- 1e-4 relative is far
-// tighter than any real depth gap between non-abutting geometry in this
-// scene (Cornell box spans ~O(10) world units) but wide enough to cover the
-// float noise a seam actually produces (observed noise is sub-1e-5 relative).
-#define SEAM_TIE_EPS_REL 1e-4
-
+// Deterministic nearest-hit ordering shared by every scene and traversal path:
+// smaller distance wins; on an exact distance tie, the lower bodyInstances[]
+// slot wins. That slot is also the TLAS custom instance index and the instance
+// id written to hit records, so every path resolves the same key.
 bool isCloserHit(float candidateT, uint candidateInstIdx, float bestT, uint bestInstIdx) {
-    float tieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
-    if (abs(candidateT - bestT) <= tieBand) {
-        // Near-tie: stable tiebreaker, not raw float ordering. Lower instIdx
-        // wins. bestInstIdx == 0xFFFFFFFFu means "no winner yet" -- any
-        // candidate takes it.
-        return candidateInstIdx < bestInstIdx;
-    }
-    return candidateT < bestT;
+    if (bestInstIdx == 0xFFFFFFFFu) return true;
+    if (candidateT < bestT) return true;
+    return candidateT == bestT && candidateInstIdx < bestInstIdx;
 }
 
 // ============================================================================
@@ -152,12 +128,13 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
     uint  bestVoxelIdx    = 0u;
 #ifdef VIXEN_REGIME3_COMPOSITE
     // Compositing slice part 2: same-pass second-nearest candidate, tracked
-    // ALONGSIDE best* (never a re-trace) -- every candidate that loses
-    // isCloserHit against the CURRENT best but beats the current second
-    // becomes the new second. Only meaningful when the eventual winner is a
-    // regime-3 partial-coverage hit (WorldHit.residualT < 1.0); unused
-    // otherwise. #ifdef'd out entirely on a flag-off build -- zero cost there.
+    // ALONGSIDE best* (never a re-trace). Use the same distance/instance-slot
+    // ordering as the primary winner so equal-distance layers are deterministic.
+    // Only meaningful when the eventual winner is a regime-3 partial-coverage
+    // hit (WorldHit.residualT < 1.0); unused otherwise. #ifdef'd out entirely
+    // on a flag-off build -- zero cost there.
     float secondT     = 1e30;
+    uint  secondInstIdx = 0xFFFFFFFFu;
     vec3  secondColor = vec3(0.0);
     float bestResidualT = 1.0;  // 1.0 == no-op; overwritten only if the winner is a regime-3 hit
 #ifdef VIXEN_COMPOSITION_COUNTERS
@@ -215,8 +192,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #ifdef VIXEN_REGIME3_COMPOSITE
             // The instance we're about to displace becomes the new second-nearest
             // candidate (same-pass bookkeeping, not a re-trace -- see secondT's
-            // header comment). Only takes effect the first time a winner exists.
-            if (anyHit) { secondT = bestT; secondColor = bestColor; }
+            // header comment). Applies whenever a current winner exists.
+            if (anyHit) {
+                secondT = bestT;
+                secondInstIdx = bestInstIdx;
+                secondColor = bestColor;
+            }
 #endif
             BodyInstance rqInst = bodyInstances[rqInstIdx];
             bestT          = rqT;
@@ -326,11 +307,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     continue;  // ray misses this instance's bound sphere entirely
                 }
                 float entryT = max(-b - sqrt(disc), 0.0);
-                // M6b Task 6b.0: same relative tie-band as isCloserHit / the ESVO branch's
-                // entryTWorld reject above -- do not eliminate a candidate within the seam
-                // tie-band before it can be considered by the deterministic tiebreaker.
-                float uberEntryTieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
-                if (entryT > bestT + uberEntryTieBand) {
+                // The bound entry is a lower bound on this instance's hit distance.
+                // Keep an exact tie eligible for the shared lower-instance-id rule.
+                if (entryT > bestT) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 0u;
 #endif
@@ -384,7 +363,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             if (pHit) sourceMask |= 1u;
             if (pHit && isCloserHit(pT, uint(instIdx), bestT, bestInstIdx)) {
 #ifdef VIXEN_REGIME3_COMPOSITE
-                if (anyHit) { secondT = bestT; secondColor = bestColor; }
+                if (anyHit) {
+                    secondT = bestT;
+                    secondInstIdx = bestInstIdx;
+                    secondColor = bestColor;
+                }
 #endif
                 bestT          = pT;
                 bestColor      = inst.color;   // procedural base colour = instance tint
@@ -599,15 +582,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
             float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale +
                                 proxyOriginOffset;
-            // M6b Task 6b.0: use the SAME relative tie-band as isCloserHit's winner
-            // compare, not a raw `>`. Without this, an instance whose entry point sits
-            // within the tie-band of bestT (a seam neighbor) could be entry-rejected here
-            // before its full traversal ever runs, silently disagreeing with the
-            // deterministic lower-instIdx tiebreaker isCloserHit would otherwise apply --
-            // this reject must never eliminate a candidate the winner compare would have
-            // preferred.
-            float entryTieBand = SEAM_TIE_EPS_REL * max(abs(bestT), 1.0);
-            bool entryBehindCurrentBest = entryTWorld > bestT + entryTieBand;
+            // This entry point is a lower bound on the hit distance. Reject only
+            // when it is strictly farther, so an exact tie can reach isCloserHit.
+            bool entryBehindCurrentBest = entryTWorld > bestT;
 #ifdef VIXEN_REGIME3_COMPOSITE
             // E2-T1: the nearest-hit cull is valid for opaque winners, but a
             // partial-coverage cosmic winner consumes one farther layer. Match
@@ -743,7 +720,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         if (instHit && isCloserHit(hitT, uint(instIdx), bestT, bestInstIdx)) {
             if (instWasFarField) { incrFarFieldWon(); }  // round-7 blocker-1 probe #3
 #ifdef VIXEN_REGIME3_COMPOSITE
-            if (anyHit) { secondT = bestT; secondColor = bestColor; }
+            if (anyHit) {
+                secondT = bestT;
+                secondInstIdx = bestInstIdx;
+                secondColor = bestColor;
+            }
             bestResidualT = instResidualT;
 #endif
             bestT           = hitT;
@@ -771,14 +752,18 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #ifdef VIXEN_REGIME3_COMPOSITE
         else if (instHit) {
             // Lost isCloserHit against the current best, but still a real hit
-            // this frame -- if it's nearer than the current second, it becomes
-            // the new second (same-pass bookkeeping, not a re-trace). Not
-            // gated on THIS candidate's own residualT: the composite blend
+            // this frame -- if its (distance, instance id) key precedes the
+            // current second, it becomes the new second in this pass. The
+            // candidate's own residualT does not gate this: the composite blend
             // only ever consults secondColor when the WINNER (bestResidualT)
             // was a regime-3 partial-coverage hit, so any nearer loser is a
             // valid "what's behind the winner" candidate regardless of its
             // own kind.
-            if (hitT < secondT) { secondT = hitT; secondColor = hitColor * inst.color; }
+            if (isCloserHit(hitT, uint(instIdx), secondT, secondInstIdx)) {
+                secondT = hitT;
+                secondInstIdx = uint(instIdx);
+                secondColor = hitColor * inst.color;
+            }
         }
 #endif
     }

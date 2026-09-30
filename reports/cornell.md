@@ -46,3 +46,42 @@ Until that choice is made, deleting the active palette would change production r
 ## CONSOLIDATION ISSUES
 
 None. The CodeGraph index is absent in this worktree; no tooling workaround was used.
+
+## Run 2 — R326 shared traversal tie-break
+
+**Base SHA:** `0c7099363812757ddd2ed4e71117c680046de1ef` (`lane-cornell`). `origin/wave/authoring-convergence` was merged first and was already up to date.
+
+### Rule
+
+Replaced the Cornell-specific relative-epsilon seam behavior with one generic lexicographic hit key: **lowest world-space hit distance wins; at an exact distance tie, the lower `bodyInstances[]` slot (`instIdx`) wins.** This slot is also the TLAS custom instance index and the instance ID written to hit records, so the ESVO/procedural and RT-query paths use the same key. There is no epsilon band and no Cornell-specific branch in shared traversal.
+
+`TraceWorld.glsl` now owns the comparator. Its bound-sphere and ESVO entry culls reject only entries strictly farther than the current best, leaving exact ties eligible. Regime-3 compositing also tracks the second candidate's instance slot and uses the same key, so equal-distance behind layers are independent of traversal order. `RayQueryTraversal.glsl` declares and calls that same comparator for its far-field and marched-SDF candidates; its lower-bound cull likewise keeps exact ties. No changes were made to `Materials.glsl` or `SVORebuild.cpp`.
+
+Static grep over `TraceWorld.glsl` and `RayQueryTraversal.glsl` found no `SEAM_TIE_EPS_REL`, tie-band remnants, or Cornell-specific tie comments/branches.
+
+### Image and determinism
+
+No Cornell before/after image pair was produced, so pixel changes are unmeasured and the same-image-twice comparison remains unverified. The normal Cornell capture is window/swapchain based; this shell has neither `DISPLAY` nor `WAYLAND_DISPLAY`, and `Xvfb`/`xvfb-run` are unavailable. `HeadlessUiGraph` reads back a UI frame but does not exercise Cornell traversal. The old epsilon rule could select a lower slot even when that hit was slightly farther; the new rule always chooses the smaller distance and uses the slot only for exact ties, including equal-distance second layers in composite mode. Near- and exact-tie seam pixels are the expected places for visible differences. No image tuning was attempted.
+
+### Baseline and verification
+
+Required scope was the shared `TraceWorld` shader and its ESVO/procedural and RT-query consumers, validated by fresh shader compilation, the listed GPU/offscreen tests, and Cornell scene tests. The CodeGraph-first query was attempted before source search; no usable index/route was available, so the remaining discovery used `rg`.
+
+- **A — invocation/provisioning:** `cmake --preset vixen-wsl -DVIXEN_SCHEMA_CATALOG=/home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json` passed through the queue. The initial build's missing `spirv_reflect.h` was cleared by repeating that documented configure and rebuilding. The subsequent ICU failure was cleared for target verification with `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`.
+- Before semantic edits, the first queued full build failed at `SpirvReflector.cpp:3` because `spirv_reflect.h` was unavailable (exit 1; log `/home/liory/.local/state/undertow/undertow-box-logs/1790789136-build-baseline-build.log`). Re-running the documented queued configure and build got past that header failure.
+- **B — regenerate/check:** the next full-build attempt failed because the .NET CodegenTool could not find ICU (exit 1; log `/home/liory/.local/state/undertow/undertow-box-logs/1790789435-build-baseline-build-retry.log`). Queued CodegenTool restore/build and its documented schema `--check` passed with `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`; no generated-file diff resulted.
+- **C — isolate the remaining red:** with that recovery, the full `ALL` build reached the AppFlow schema check and failed on the unchanged Undertow catalog: `DepletionMaterialRow` declares `gaia:true` without row scope/ref-field pairing (exit 1; log `/home/liory/.local/state/undertow/undertow-box-logs/1790790064-build-baseline-build-codegen.log`). This was captured on the base SHA before edits. The check consumes the external Undertow schema and is outside the changed shader dependency graph. The fresh scoped target build and same 91-test focused set passed on the unchanged base before edits, and passed again after edits. No generated source or schema was edited.
+- After edits, the first scoped build invocation used the nonexistent target name `test_rendergraph_criticalnodes_voxelsystems` and stopped before compilation (exit 1; log `/home/liory/.local/state/undertow/undertow-box-logs/1790790923-build-r326-target-build.log`). The corrected queued build, using `test_rendergraph_voxelsystems`, passed for `test_rendergraph_criticalnodes_infra1`, `test_rendergraph_criticalnodes_gpurender1`, `test_rendergraph_criticalnodes_gpurender2`, `test_rendergraph_voxelsystems`, `test_cornell_box`, `test_ray_casting_comprehensive`, and `test_headless_ui_graph`.
+- The default and B1 shader variants compiled in that build. The optional RT-query plus regime-3 composite shader branch was separately compiled through the queue with bundled `glslc`, `--target-env=vulkan1.3`, `-DVIXEN_RTQUERY_TRAVERSAL=1`, and `-DVIXEN_REGIME3_COMPOSITE=1`; it passed.
+- The requested focused CTest regex plus Cornell/SceneGenerator tests passed **91/91** (`100% tests passed, 0 tests failed`, 31.83 s): `HeadlessUiGraph|RenderTargetNodeConfigTest|BodyInstance|EditorDocumentRender|HitRecordReadback|TierCrossing|Cornell|SceneGenerator`. This includes GPU body-instance/readback renders, tier-crossing, Cornell scene tests, and an offscreen UI capture.
+- `git diff --check` passed.
+
+No baseline STOP: the full-build AppFlow red was reproducible on the unchanged base and scoped checks passed. The Cornell image/pixel and repeated-capture witness is the remaining verification limitation.
+
+## CONSOLIDATION ISSUES
+
+- proposed: CodeGraph query route is unavailable in isolated VIXEN worktrees
+- proposed: VIXEN CodegenTool needs ICU provisioning or invariant globalization setting
+- proposed: First VIXEN configure leaves spirv-reflect header unavailable to the initial build
+- proposed: Add a registered compile check for the RTQuery traversal shader variant
+- proposed: Add an offscreen Cornell render-and-hash witness
