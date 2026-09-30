@@ -114,7 +114,7 @@ endif()
 # generated contract between configure and build.  b50d40f5 is the kernel commit
 # that produced the current AppFlow golden and includes the earlier recipe SIMD
 # contract; newer kernel-main commits are intentionally outside this engine pin.
-set(YEROKET_KERNEL_SHA "b50d40f5bbd5dd9816c25540b8aeaadcada5ba31" CACHE STRING
+set(YEROKET_KERNEL_SHA "a0ea94ea4b8058b3bc6da058750ba29ac571d033" CACHE STRING
     "Pinned Yeroket kernel commit used by VIXEN codegen checks")
 set(_yk_root "${YEROKET_ROOT}")
 set(_yk_pin_dir "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}")
