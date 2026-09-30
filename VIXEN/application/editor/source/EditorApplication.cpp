@@ -9,11 +9,11 @@
 #include "ShellOctreeGpu.h"
 #include "Nodes/UIRenderNode.h"               // AFTER the Recipe/gaia includes above
 #include "Nodes/UISelectionProviderNode.h"
-#include "Nodes/DeviceNode.h"                 // Task 3: VulkanDevice* + queue for CaptureFrameToPng
+#include "Nodes/DeviceNode.h"                 // CaptureFrameToPng's live device lookup
 #include "Nodes/CameraNode.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/RenderGraph.h"
-#include "Debug/RenderTargetReadback.h"       // Task 3: shared IRenderTarget -> PNG readback
+#include "Debug/RenderTargetReadback.h"       // shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
 #include "AppFlowBlobFile.h"                   // T1.2: external AppFlow watch/reload
 #include "generated/AppFlowCallables.g.hpp"   // Inc-4 R5c: transplanted applyToggle(mask,index)
@@ -343,16 +343,9 @@ void EditorApplication::BuildRenderGraph() {
     // then re-point the UI node at the editor's own document and replace the 3 default demo
     // bodies with the loaded VoxelDocument's single flattened recipe.
     //
-    // Inc-2b Task 3 (capture-target decision): NO capture-specific node is added here. The
-    // standard graph built above already contains a "compute_render_target" RenderTargetNode
-    // (application/main/source/graph/BuildRenderGraph.cpp's M4 render-scale-decoupling target) --
-    // the offscreen target the compute voxel-raymarch dispatch writes the scene into every frame,
-    // BEFORE the UI composite blits it up to the swapchain. It is created with
-    // VK_IMAGE_USAGE_TRANSFER_SRC_BIT (for that same blit) and follows the swapchain extent 1:1
-    // by default, so it reliably holds the full rendered body (a toggle/undo/redo is visible
-    // there exactly as it is on screen) with zero new wiring and zero overhead when
-    // VIXEN_EDITOR_CAPTURE_FRAMES is unset (the node exists either way -- capture only adds a
-    // read-back, never a build-time cost). See CaptureFrameToPng (below) and EditorApplication.h.
+    // No capture-specific node is needed. The script harness reads the existing compute target
+    // after Render(), before the HUD composite overlays the viewport. The readback only runs on
+    // requested capture ticks.
     VulkanGraphApplication::BuildRenderGraph();
 
     if (auto* ui = GetUiRenderNode()) {
@@ -463,28 +456,24 @@ bool EditorApplication::ApplyDocumentToScene() {
 }
 
 bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& err) {
-    // Live lookups every call -- never cache a node pointer (mirrors GetWindowHandle's rule;
-    // both the render target and the device node persist across recompile, but re-resolving by
-    // name is the established pattern for host-facing lookups in this app).
+    // Live lookups every call -- never cache a node pointer across graph recompiles.
     auto* graph = GetRenderGraph();
     if (!graph) {
         err = "CaptureFrameToPng: no render graph";
         return false;
     }
 
-    // See EditorApplication.h's captureFrames_/updateTick_ comment for why this reuses the
-    // standard graph's existing "compute_render_target" instance instead of adding a new one.
+    // Read the pre-composite scene image; the main_swapchain capture includes editor panels that
+    // can cover the document body and create a UI-only pixel delta.
     static constexpr const char* kCaptureTargetName = "compute_render_target";
     auto* targetInst = graph->GetInstanceByName(kCaptureTargetName);
     if (!targetInst) {
         err = std::string("CaptureFrameToPng: instance '") + kCaptureTargetName + "' not found";
         return false;
     }
-    // RENDER_TARGET is RenderTargetNodeConfig output slot 0 (IRenderTarget*); read directly off
-    // the node's bundle rather than pulling in the typed config here for one slot index.
     Resource* targetOutput = targetInst->GetOutput(0, 0);
     if (!targetOutput) {
-        err = "CaptureFrameToPng: capture target has no RENDER_TARGET output yet (graph not compiled?)";
+        err = "CaptureFrameToPng: RENDER_TARGET output is unavailable (graph not compiled?)";
         return false;
     }
     auto* renderTarget = targetOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
@@ -499,9 +488,9 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
         return false;
     }
     auto* device = deviceInst->GetVulkanDevice();
-
     return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
-        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
+        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err,
+        VK_IMAGE_LAYOUT_GENERAL);
 }
 
 bool EditorApplication::SaveDocument() {
@@ -697,12 +686,9 @@ void EditorApplication::Update() {
         }
     }
 
-    // Inc-2b Task 4: dump a capture PNG if this tick is scripted for one. Placed AFTER the
-    // dirty_ re-flatten tail so a capture on the same tick as a scripted toggle reflects the
-    // post-toggle scene. A capture failure is logged, never thrown -- CaptureFrameToPng already
-    // never crashes the frame loop, and this call site preserves that; the try/catch around this
-    // whole override body is the actual backstop (see the M3 comment above), not a claim about
-    // the base method's guard.
+    // Inc-2b Task 4: schedule a capture after this tick's dirty_ re-flatten tail. PostTick performs
+    // the readback after Render(), so the offscreen scene target contains the post-toggle image
+    // and UI overlays cannot create a false-positive pixel difference.
     for (const long captureFrame : captureFrames_) {
         if (captureFrame != updateTick_) continue;
         const std::string path = captureDir_ + "/editor_capture_" + std::to_string(updateTick_) + ".png";
@@ -710,20 +696,15 @@ void EditorApplication::Update() {
         // R6 gate's residency smoke-check knows which frame is pre- vs post-first-edit.
         logger_->Info("[EDITOR/state] capture tick=" + std::to_string(updateTick_) +
                        " mask=" + std::to_string(rt_.Layers().Mask()));
-        std::string captureErr;
-        if (!CaptureFrameToPng(path, captureErr)) {
-            logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
-        }
+        pendingCapturePath_ = path;
     }
 
     // Advanced AFTER this tick's script/capture checks above compare against it, so updateTick_
     // is 0 on the very first Update() call rather than 1 (the pre-existing ++ prefix here made a
     // scripted "@0"/capture-frame-0 entry permanently un-hittable -- found live via the M3
     // windowed gate: editor_capture_0.png never appeared even though captureFrames_ contained 0).
-    // Note frame 0 is still not a useful CAPTURE frame regardless of this fix -- Update() ticks
-    // BEFORE the render loop's first Render() call (VulkanApplicationBase::Tick(): PreTick() ->
-    // Update() -> Render() -> PostTick(), per iteration), so a tick-0 capture still reads
-    // compute_render_target before anything has ever been drawn into it (an all-black PNG).
+    // Note frame 0 is still not a useful CAPTURE frame regardless of this fix -- it is the first
+    // Render() call and the document graph has not drawn a completed frame before it.
     // Scripted ACTIONS (toggle/undo/redo) at frame 0 are unaffected by that -- they mutate the
     // mask/ActionStack regardless of what's on screen yet.
     ++updateTick_;
@@ -734,4 +715,18 @@ void EditorApplication::Update() {
         lastEditorError_ = "Update failed: unknown (non-std) exception";
         logger_->Error("[EditorApplication] Update: " + lastEditorError_);
     }
+}
+
+void EditorApplication::PostTick() {
+    // VulkanApplicationBase::Tick calls this only after Render(), when compute_render_target
+    // contains the completed scene image for the Update tick that scheduled the capture.
+    if (!pendingCapturePath_.empty()) {
+        const std::string path = std::move(pendingCapturePath_);
+        pendingCapturePath_.clear();
+        std::string captureErr;
+        if (!CaptureFrameToPng(path, captureErr)) {
+            logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
+        }
+    }
+    VulkanGraphApplication::PostTick();
 }

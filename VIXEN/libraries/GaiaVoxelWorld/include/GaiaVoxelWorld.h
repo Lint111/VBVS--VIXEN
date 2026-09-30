@@ -638,8 +638,15 @@ void GaiaVoxelWorld::setComponent(EntityID id, ComponentValueType_t<TComponent> 
         return; // Can't set component on invalid entity
     }
 
-    // Add or update component (Gaia add() overwrites existing)
-    getWorld().add<TComponent>(id, TComponent{value});
+    // Gaia's add() is only for components not yet on the entity; existing-component updates must
+    // use set() so the component version advances and change-filter queries observe the write.
+    auto& ecs = getWorld();
+    const TComponent component{value};
+    if (ecs.has<TComponent>(id)) {
+        ecs.set<TComponent>(id) = component;
+    } else {
+        ecs.add<TComponent>(id, component);
+    }
 }
 
 // ============================================================================

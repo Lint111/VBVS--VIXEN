@@ -455,8 +455,8 @@ VOXEL_COMPONENT_SCALAR(Roughness, "roughness", float, 0.5f)
 
 // View↔Model Binding Inc-B (View-Model-Binding-Inc-B-Plan-2026-07.md): the editor layer-toggle
 // datum, backed as a real Gaia component so IViewDataProvider's ReadU32/WriteU32 land on
-// getComponentValue<LayerMask>/setComponent<LayerMask> -- an ordinary set<T> auto-bumps the
-// component's chunk version AND fires the func_set hook, so the per-frame .changed<LayerMask>()
+// getComponentValue<LayerMask>/setComponent<LayerMask> -- an existing-component set<T> auto-bumps
+// the component's chunk version AND fires the func_set hook, so per-frame .changed<LayerMask>()
 // reconcile (ViewReconcileNode-equivalent, see EditorApplication) picks up ANY write, not just
 // ones that went through the ToggleLayer handler. Default all-layers-enabled (mirrors
 // LayerController's own default -- see LayerController.h).

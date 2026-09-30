@@ -13,8 +13,7 @@ namespace {
 
 // Build the canonical UTVA wire "B" — the byte-for-byte twin of the C# ToBuffer() golden
 // (Yeroket ViewWriterEmitterTests). Same known input: tick=42, bodyCount=9, activeLensName="Intel",
-// activeLensCount=3, factions=[Reds,Blues], events=[war@40], plus the T1 inspect-panel tail
-// scalars inspectSelected=1, inspectName="Reds", inspectCause="border skirmish".
+// activeLensCount=3, factions=[Reds,Blues], events=[war@40], and all restored inspect-panel fields.
 struct WB {
     std::vector<std::byte> b;
     void u8(uint8_t v)  { b.push_back(std::byte{v}); }
@@ -28,14 +27,15 @@ std::vector<std::byte> CanonicalWire(uint32_t version) {
     WB w;
     w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
     w.u32(version);
-    w.u32(9);                      // top-field count
+    w.u32(13);                     // top-field count
     w.i32(42); w.i32(9); w.str("Intel"); w.i32(3);
     w.u32(2);                      // factions
-    w.str("Reds");  w.f32(0.5f);  w.u8(1); w.u8(1); w.u8(0); w.u8(1);
-    w.str("Blues"); w.f32(0.25f); w.u8(0); w.u8(0); w.u8(1); w.u8(0);
+    w.str("Reds");  w.f32(0.5f);  w.u8(1); w.u8(1); w.u8(0); w.u8(1); w.i32(3);
+    w.str("Blues"); w.f32(0.25f); w.u8(0); w.u8(0); w.u8(1); w.u8(0); w.i32(17);
     w.u32(1);                      // events
     w.str("war"); w.i32(40);
-    w.i32(1); w.str("Reds"); w.str("border skirmish");  // inspectSelected, inspectName, inspectCause
+    w.i32(1); w.str("Reds"); w.str("border skirmish");
+    w.f32(0.625f); w.f32(0.875f); w.str("Blues"); w.f32(-0.25f);
     return w.b;
 }
 
@@ -75,9 +75,11 @@ TEST(ViewWireRoundtrip, ReadsBackEveryField) {
     EXPECT_TRUE (fac[0].cells[Elem(fdesc,"known")].b);
     EXPECT_FALSE(fac[0].cells[Elem(fdesc,"inLens")].b);
     EXPECT_TRUE (fac[0].cells[Elem(fdesc,"recentChanged")].b);
+    EXPECT_EQ(fac[0].cells[Elem(fdesc,"recentEventAge")].i, 3);
     EXPECT_EQ(fac[1].cells[Elem(fdesc,"name")].s, "Blues");
     EXPECT_FLOAT_EQ(fac[1].cells[Elem(fdesc,"grievance")].f, 0.25f);
     EXPECT_TRUE (fac[1].cells[Elem(fdesc,"inLens")].b);
+    EXPECT_EQ(fac[1].cells[Elem(fdesc,"recentEventAge")].i, 17);
 
     // events array
     int ei = Field(blob, "events");
@@ -91,6 +93,10 @@ TEST(ViewWireRoundtrip, ReadsBackEveryField) {
     EXPECT_EQ(*static_cast<int*>(store.ScalarSlotPtr(Field(blob,"inspectSelected"))), 1);
     EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectName"))), "Reds");
     EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectCause"))), "border skirmish");
+    EXPECT_FLOAT_EQ(*static_cast<float*>(store.ScalarSlotPtr(Field(blob,"inspectMaxGrievance"))), 0.625f);
+    EXPECT_FLOAT_EQ(*static_cast<float*>(store.ScalarSlotPtr(Field(blob,"inspectStrength"))), 0.875f);
+    EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectTopRelName"))), "Blues");
+    EXPECT_FLOAT_EQ(*static_cast<float*>(store.ScalarSlotPtr(Field(blob,"inspectTopRelSig"))), -0.25f);
 }
 
 TEST(ViewWireRoundtrip, VersionMismatchIsHardError) {

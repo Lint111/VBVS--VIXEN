@@ -36,15 +36,16 @@ struct WB {
 
 // Byte-for-byte identical to test_view_wire_soa_roundtrip.cpp's CanonicalSoaWire -- same fixture,
 // same decoded-value expectations (tick=7, bodyCount=12, activeLensName="Ops", activeLensCount=4,
-// factions=[Reds/0.5/T/T/F/T, ""/0/F/F/F/F, Greens/0.75/F/T/T/F], events=[war@40, truce@99]).
+// factions=[Reds/0.5/T/T/F/T/2, ""/0/F/F/F/F/255, Greens/0.75/F/T/T/F/12],
+// events=[war@40, truce@99], and all restored inspect values).
 std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     WB w;
     w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
     w.u32(version);
-    w.u32(9);                      // top-field count
+    w.u32(13);                     // top-field count
     w.i32(7); w.i32(12); w.str("Ops"); w.i32(4);
 
-    // factions: SoA, declared column order name/grievance/focused/known/inLens/recentChanged
+    // factions: SoA, declared column order name/grievance/focused/known/inLens/recentChanged/recentEventAge
     w.u32(3);                      // row count
     w.u32(0); w.u32(4); w.u32(4); w.u32(10);
     for (char ch : std::string("RedsGreens")) w.u8(static_cast<uint8_t>(ch));
@@ -53,6 +54,7 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     w.u8(1); w.u8(0); w.u8(1);
     w.u8(0); w.u8(0); w.u8(1);
     w.u8(1); w.u8(0); w.u8(0);
+    w.i32(2); w.i32(255); w.i32(12);
 
     // events: SoA, declared column order kind/tick
     w.u32(2);
@@ -60,8 +62,9 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     for (char ch : std::string("wartruce")) w.u8(static_cast<uint8_t>(ch));
     w.i32(40); w.i32(99);
 
-    // T1 inspect-panel tail scalars (top-level, decoded identically to AoS)
-    w.i32(1); w.str("Reds"); w.str("border skirmish");  // inspectSelected, inspectName, inspectCause
+    // Inspect-panel scalars (top-level, decoded identically to AoS)
+    w.i32(1); w.str("Reds"); w.str("border skirmish");
+    w.f32(0.625f); w.f32(0.875f); w.str("Blues"); w.f32(-0.25f);
 
     return w.b;
 }
@@ -93,6 +96,7 @@ TEST(TypedAccessorEmitter, GeneratedAccessorsMatchRawStoreDecodedValues) {
     EXPECT_TRUE (hud.factions_known(0));
     EXPECT_FALSE(hud.factions_inLens(0));
     EXPECT_TRUE (hud.factions_recentChanged(0));
+    EXPECT_EQ(hud.factions_recentEventAge(0), 2);
 
     EXPECT_EQ(hud.factions_name(1), "");   // non-vacuous: empty-string mid-column row
     EXPECT_FLOAT_EQ(hud.factions_grievance(1), 0.0f);
@@ -100,6 +104,7 @@ TEST(TypedAccessorEmitter, GeneratedAccessorsMatchRawStoreDecodedValues) {
     EXPECT_FALSE(hud.factions_known(1));
     EXPECT_FALSE(hud.factions_inLens(1));
     EXPECT_FALSE(hud.factions_recentChanged(1));
+    EXPECT_EQ(hud.factions_recentEventAge(1), 255);
 
     EXPECT_EQ(hud.factions_name(2), "Greens");
     EXPECT_FLOAT_EQ(hud.factions_grievance(2), 0.75f);
@@ -107,6 +112,7 @@ TEST(TypedAccessorEmitter, GeneratedAccessorsMatchRawStoreDecodedValues) {
     EXPECT_TRUE (hud.factions_known(2));
     EXPECT_TRUE (hud.factions_inLens(2));
     EXPECT_FALSE(hud.factions_recentChanged(2));
+    EXPECT_EQ(hud.factions_recentEventAge(2), 12);
 
     // events array
     ASSERT_EQ(hud.count_events(), 2u);
@@ -121,6 +127,10 @@ TEST(TypedAccessorEmitter, GeneratedAccessorsMatchRawStoreDecodedValues) {
     EXPECT_EQ(hud.inspectSelected(), 1);
     EXPECT_EQ(hud.inspectName(), "Reds");
     EXPECT_EQ(hud.inspectCause(), "border skirmish");
+    EXPECT_FLOAT_EQ(hud.inspectMaxGrievance(), 0.625f);
+    EXPECT_FLOAT_EQ(hud.inspectStrength(), 0.875f);
+    EXPECT_EQ(hud.inspectTopRelName(), "Blues");
+    EXPECT_FLOAT_EQ(hud.inspectTopRelSig(), -0.25f);
 }
 
 namespace {
