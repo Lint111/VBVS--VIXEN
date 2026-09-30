@@ -33,6 +33,9 @@
 void VulkanGraphApplication::BuildUIGraph() {
     using namespace Vixen::RenderGraph;
     const bool offscreen = presentationTarget_ == PresentationTarget::Offscreen;
+    offscreenTargetNode_ = {};
+    offscreenDeviceNode_ = {};
+    windowNode_ = {};
     mainLogger->Info(offscreen ? "Building offscreen UI render graph" : "Building windowed UI render graph");
 
     NodeHandle instanceNode    = renderGraph->AddNode<InstanceNodeType>("ui_instance");
@@ -42,9 +45,12 @@ void VulkanGraphApplication::BuildUIGraph() {
     NodeHandle renderTargetNode{};
     if (offscreen) {
         renderTargetNode = renderGraph->AddNode<RenderTargetNodeType>("ui_offscreen_target");
+        offscreenTargetNode_ = renderTargetNode;
+        offscreenDeviceNode_ = deviceNode;
     } else {
         windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
         swapChainNode = renderGraph->AddNode<SwapChainNodeType>("ui_swapchain");
+        windowNode_ = windowNode;
     }
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("ui_cmd_pool");
     NodeHandle frameSyncNode   = renderGraph->AddNode<FrameSyncNodeType>("ui_frame_sync");

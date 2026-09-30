@@ -269,14 +269,14 @@ CONSTEXPR_NODE_CONFIG(ComputeStageNodeConfig,
 
     /** @brief imageAvailable (acquire) binary semaphore array, indexed by frame. */
     INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 9,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     /** @brief renderComplete binary semaphore array, indexed by image (consumer → Present). */
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 10,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);

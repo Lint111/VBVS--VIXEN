@@ -128,7 +128,7 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
 
     /** @brief renderComplete binary semaphore array, indexed by image (this node signals it -> Present). */
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);

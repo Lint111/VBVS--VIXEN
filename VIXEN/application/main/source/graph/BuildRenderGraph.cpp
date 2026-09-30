@@ -461,15 +461,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     mainLogger->Info("Building complete render pipeline with typed connections");
 
+    const bool offscreenPresentation =
+        GetPresentationTarget() == PresentationTarget::Offscreen;
+
     // ===================================================================
     // PHASE 1: Create all nodes
     // ===================================================================
 
     // --- Infrastructure Nodes ---
     NodeHandle instanceNode = renderGraph->AddNode<InstanceNodeType>( "main_instance");  // Phase 1.1
-    NodeHandle windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
-    windowNode_ = windowNode;                        // store for GetWindowHandle() live lookup
+    NodeHandle windowNode{};
+    NodeHandle swapChainNode{};
+    NodeHandle offscreenTargetNode{};
+    NodeHandle presentNode{};
+    if (offscreenPresentation) {
+        offscreenTargetNode = renderGraph->AddNode<RenderTargetNodeType>("main_offscreen_target");
+    } else {
+        windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
+        swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
+        presentNode = renderGraph->AddNode<PresentNodeType>("present");
+    }
+    windowNode_ = windowNode;                        // null in the windowless path
+    offscreenTargetNode_ = offscreenTargetNode;
     NodeHandle deviceNode = renderGraph->AddNode<DeviceNodeType>("main_device");
+    offscreenDeviceNode_ = offscreenPresentation ? deviceNode : NodeHandle{};
     // Adapter-selection visibility: DeviceNode's NODE_LOG_INFO calls (incl. "[DeviceNode] Selected
     // GPU N: ...") are dead by default -- nodeLogger is constructed enabled=false (NodeInstance.cpp)
     // and nothing else opts this node in. Enable it so every session's GPU choice is on record.
@@ -477,10 +492,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         deviceLogger->SetEnabled(true);
         deviceLogger->SetTerminalOutput(true);
     }
-    NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
-
-    NodeHandle presentNode = renderGraph->AddNode<PresentNodeType>("present");
+    const NodeHandle presentationTargetNode = offscreenPresentation ? offscreenTargetNode : swapChainNode;
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
@@ -1363,14 +1376,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // PHASE 2: Configure node parameters
     // ===================================================================
 
-    // Window parameters
-    auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
-    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
-    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
+    // Windowed and offscreen graphs share the same render stages. Only the terminal target and
+    // its WSI setup differ; the offscreen target includes transfer-destination usage for BlitNode
+    // and transfer-source usage for the public PNG readback path.
+    auto* instance = static_cast<InstanceNode*>(renderGraph->GetInstance(instanceNode));
+    instance->SetParameter(InstanceNodeConfig::PARAM_ENABLE_PRESENTATION, !offscreenPresentation);
+    if (!offscreenPresentation) {
+        auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
+        window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
+        window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
+    } else {
+        auto* target = static_cast<RenderTargetNode*>(renderGraph->GetInstance(offscreenTargetNode));
+        target->SetParameter(RenderTargetNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
+        target->SetParameter(RenderTargetNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
+            target->SetParameter(RenderTargetNodeConfig::PARAM_IMAGE_COUNT,
+                             FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
+        target->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
+            static_cast<uint32_t>(VK_IMAGE_USAGE_STORAGE_BIT |
+                                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                  VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                  VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
+    }
 
     // Device parameters (auto-select: prefers a discrete GPU over integrated)
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
+    device->SetParameter(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, !offscreenPresentation);
 
     // M4: render-scale decoupling. VIXEN_RENDER_SCALE in (0,1] shrinks the offscreen target the
     // compute dispatch writes into relative to the swapchain; ComputeDispatchNode blits it back up.
@@ -1675,14 +1706,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
         }
     }
 
-    // Present parameters (needed for both graphics and compute)
-    auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     // Critique R6: no vkDeviceWaitIdle per present. The frame is already paced by the
     // per-flight in-flight fences + imageAvailable/renderComplete semaphores (+ per-image
     // present fences when VK_EXT_swapchain_maintenance1 is available — SwapChainNode waits
     // them after acquire). The full device drain serialized every frame and dominated frame
     // time through the WSLg paravirtualized device (~186ms/frame measured at 500x500).
-    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, false);
+    if (!offscreenPresentation) {
+        auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
+        present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, false);
+    }
 
     // Phase 0.4: Loop ID constant (connects to LoopBridgeNode) - needed for both graphics and compute
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
@@ -7522,14 +7554,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Load);   // preserve voxels
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);    // compute leaves GENERAL
-    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);   // ready for present
+    uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT,
+        offscreenPresentation ? ImageLayout::TransferSrc : ImageLayout::PresentSrc);
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
 
     auto* uiFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(uiFramebufferNode));
     uiFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
 
     auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode));
-    uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, true);
+    uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, !offscreenPresentation);
     uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
 
     // View Contract Inc-2 Task 5: wire the app's native HudView onto the now-generic UI node.
@@ -7561,69 +7594,87 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Use ConnectionBatch for atomic registration
     ConnectionBatch batch(renderGraph);
+    // ConnectionBatch source slots are compile-time typed. Keep the runtime target choice here,
+    // where each branch retains its concrete output-slot type while all consumers share one path.
+    auto connectPresentationTargetInfo = [&](NodeHandle targetNode, auto targetSlot) -> ConnectionBatch& {
+        if (offscreenPresentation) {
+            return batch.Connect(presentationTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
+                                 targetNode, targetSlot);
+        }
+        return batch.Connect(presentationTargetNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                             targetNode, targetSlot);
+    };
+    auto connectPresentationImageIndex = [&](NodeHandle targetNode, auto targetSlot) -> ConnectionBatch& {
+        if (offscreenPresentation) {
+            return batch.Connect(presentationTargetNode, RenderTargetNodeConfig::IMAGE_INDEX,
+                                 targetNode, targetSlot);
+        }
+        return batch.Connect(presentationTargetNode, SwapChainNodeConfig::IMAGE_INDEX,
+                             targetNode, targetSlot);
+    };
 
     // --- Instance → Device connection (Phase 1.1: Dependency injection) ---
     batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE,
                   deviceNode, DeviceNodeConfig::INSTANCE_IN);
 
-    // --- Device → Window connection (VkInstance passthrough) ---
-    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
-                  windowNode, WindowNodeConfig::INSTANCE);
+    if (offscreenPresentation) {
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      offscreenTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
+    } else {
+        // --- Device → Window connection (VkInstance passthrough) ---
+        batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
+                      windowNode, WindowNodeConfig::INSTANCE);
 
-    // --- Window → SwapChain connections ---
-    batch.Connect(windowNode, WindowNodeConfig::WINDOW,
-                  swapChainNode, SwapChainNodeConfig::WINDOW)
-         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
-                  swapChainNode, SwapChainNodeConfig::WIDTH)
-         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
-                  swapChainNode, SwapChainNodeConfig::HEIGHT);
+        // --- Window → SwapChain connections ---
+        batch.Connect(windowNode, WindowNodeConfig::WINDOW,
+                      swapChainNode, SwapChainNodeConfig::WINDOW)
+             .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                      swapChainNode, SwapChainNodeConfig::WIDTH)
+             .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                      swapChainNode, SwapChainNodeConfig::HEIGHT);
 
-    // --- Window → Input connection ---
-    batch.Connect(windowNode, WindowNodeConfig::WINDOW,
-                  inputNode, InputNodeConfig::WINDOW);
+        // --- Window → Input connection ---
+        batch.Connect(windowNode, WindowNodeConfig::WINDOW,
+                      inputNode, InputNodeConfig::WINDOW);
 
-    // --- Device → SwapChain connections ---
-    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
-                  swapChainNode, SwapChainNodeConfig::INSTANCE)
-         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
+        // --- Device → SwapChain connections ---
+        batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
+                      swapChainNode, SwapChainNodeConfig::INSTANCE)
+             .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
+    }
 
     // --- Device → FrameSync connection (Phase 0.2) ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
 
-    // --- FrameSync → SwapChain connections (Phase 0.4) ---
-    // Phase 0.4: Per-flight semaphores and current frame index
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
-    // Per-image in-flight fence tracking: SwapChainNode records this per-flight fence against the
-    // acquired image and waits on it before the image's command buffer/descriptor/query resources
-    // are reused (fixes the flights!=images desync — see SwapChainNode::ExecuteImpl).
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  swapChainNode, SwapChainNodeConfig::IN_FLIGHT_FENCE);
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    // FR-3: renderComplete + presentFences are now PRODUCED by swapChainNode (sized to the actual image count).
+    if (!offscreenPresentation) {
+        // --- FrameSync → SwapChain connections (Phase 0.4) ---
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
+        // Per-image in-flight fence tracking: SwapChainNode records this per-flight fence against
+        // the acquired image and waits before reusing the image's resources.
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                      swapChainNode, SwapChainNodeConfig::IN_FLIGHT_FENCE);
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                      swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    }
 
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- Device → Present device connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  presentNode, PresentNodeConfig::VULKAN_DEVICE_IN);
-
-    // --- SwapChain → Present connections (for compute-only rendering) ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
-                  presentNode, PresentNodeConfig::SWAPCHAIN)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  presentNode, PresentNodeConfig::IMAGE_INDEX);
-
-    // --- UI composite → Present semaphore connection ---
-    // The UI pass is now the frame's last submit: present waits on the UI's render-complete semaphore
-    // (not the compute's). The compute's render-complete is consumed by the UI as the compute→UI handoff.
-    batch.Connect(uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    if (!offscreenPresentation) {
+        // --- Device/SwapChain/UI → Present connections ---
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)
+             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
+                      presentNode, PresentNodeConfig::SWAPCHAIN)
+             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                      presentNode, PresentNodeConfig::IMAGE_INDEX)
+             .Connect(uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    }
 
 
     // --- Gatherer/ComputeDispatch → DebugBufferReader connections ---
@@ -7640,9 +7691,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   debugCaptureNode, DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
 
-    // --- SwapChain → Present present-fence array (FR-3: owned by swapChainNode) ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
-                  presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
+    if (!offscreenPresentation) {
+        batch.Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
+                      presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
+    }
 
     // MVP: Shader connection happens in CompileRenderGraph (after device creation)
 
@@ -7768,7 +7820,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // chain/commons/push plumbing the hand blocks wrote here is emitted
         // by the helper; the sync-hazard gatherers below stay authored (S3).
         const SdiStageCommon bucketingCommon{deviceNode, commandPoolNode,
-                                             swapChainNode, frameSyncNode};
+                                             presentationTargetNode, frameSyncNode,
+                                             offscreenPresentation, !offscreenPresentation};
         const auto provideMode = [](NodeHandle modeConstant) {
             return [modeConstant](SdiProviderRegistry& r) {
                 r.Provide("mode", modeConstant,
@@ -7859,23 +7912,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::VULKAN_DEVICE_IN)
              .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                      recipeSpecializedDispatch, MultiDispatchNodeConfig::COMMAND_POOL)
-             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                      recipeSpecializedDispatch, MultiDispatchNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                      recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_INDEX)
-             .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      recipeSpecializedDispatch, MultiDispatchNodeConfig::COMMAND_POOL);
+        connectPresentationTargetInfo(recipeSpecializedDispatch, MultiDispatchNodeConfig::SWAPCHAIN_INFO);
+        connectPresentationImageIndex(recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_INDEX);
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::CURRENT_FRAME_INDEX)
              .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::IN_FLIGHT_FENCE)
-             .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                      recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-             .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                      recipeSpecializedDispatch, MultiDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
              .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
              .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
+        if (!offscreenPresentation) {
+            batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                          recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+                 .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                          recipeSpecializedDispatch, MultiDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+        }
 
         // instanceSkipMaskBuffer is populated by PreTick (VulkanGraphApplication.cpp) through its
         // persistent frame-indexed mapping. Its frame-selected output is explicitly wired into
@@ -7915,7 +7968,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // synthesized from each stage's merged SDI (below, after the
         // providers are registered).
         const SdiStageCommon b1Common{deviceNode, commandPoolNode,
-                                      swapChainNode, frameSyncNode};
+                                      presentationTargetNode, frameSyncNode,
+                                      offscreenPresentation, !offscreenPresentation};
 
         // Semantic-wiring S1: slot indices come from the feature-tagged merged SDI
         // (generated/sdi/merged/*-SDI.h) — names, not hand-written numbers. The
@@ -8042,10 +8096,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       b2DescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
              .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                       b2DescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                      b2DescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
              .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                       b2DescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+        connectPresentationImageIndex(b2DescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
 
         // Compute-writer twin: identical four logical resources, reflected for
         // compute-stage visibility in its own descriptor layout.
@@ -8075,10 +8128,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       b2ComputeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
              .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                       b2ComputeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                      b2ComputeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
              .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                       b2ComputeDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+        connectPresentationImageIndex(b2ComputeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
 
         // Offscreen render pass/framebuffer. No depth: every intersected proxy
         // contributes to the mask; proxy depth is never an occlusion source.
@@ -8170,12 +8222,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Ray Marching Resource Connections ---
     // Camera node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  cameraNode, CameraNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  cameraNode, CameraNodeConfig::SWAPCHAIN_PUBLIC)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  cameraNode, CameraNodeConfig::IMAGE_INDEX)
-         .Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                  cameraNode, CameraNodeConfig::VULKAN_DEVICE_IN);
+    connectPresentationTargetInfo(cameraNode, CameraNodeConfig::SWAPCHAIN_PUBLIC);
+    connectPresentationImageIndex(cameraNode, CameraNodeConfig::IMAGE_INDEX);
+    batch.Connect(inputNode, InputNodeConfig::INPUT_STATE,
                   cameraNode, CameraNodeConfig::INPUT_STATE);
 
     // Selection (SEL-P2) — providers are NODES. The voxel provider node copies the crosshair texel of
@@ -8786,19 +8836,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Swapchain connections to descriptor set and dispatch
     // Pass swapchain public vars; DescriptorSetNode reads swapChainImageCount during Compile.
     // DESCRIPTOR_RESOURCES provides the actual bindings.
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+    connectPresentationTargetInfo(computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO);
+    connectPresentationImageIndex(computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
          // Frame-index the descriptor SET OBJECTS (sync-reuse fix): set ring == flight ring the
          // per-flight fence guards. Same source that feeds computeDispatch's CURRENT_FRAME_INDEX.
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
-                  computeDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX)
-         // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
+                  computeDescriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+    // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)
+    connectPresentationTargetInfo(computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+    connectPresentationImageIndex(computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
 
     // M4: render-scale decoupling. The offscreen render target follows the swapchain's extent
     // (EXTENT_SOURCE), scaled by PARAM_SCALE (set above from VIXEN_RENDER_SCALE); it rides the
@@ -8810,9 +8856,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // See PARAM_WRITES_NO_IMAGE (set above) for how the march's now-untouched SWAPCHAIN_INFO image
     // is kept safe without RENDER_TARGET_INFO.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
-                  renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE);
+                  renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
+    connectPresentationTargetInfo(renderTargetNode, RenderTargetNodeConfig::EXTENT_SOURCE);
 
     // M4.3: raySizeCoef derives from the render target's live height (rank 6) — rides the same
     // resize->recompile cascade as the render target itself.
@@ -8824,15 +8869,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   computeDispatch, ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          // P5b M1: wire FrameSyncNode timeline primitives into ComputeDispatchNode
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
                   computeDispatch, ComputeDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                   computeDispatch, ComputeDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
+    if (!offscreenPresentation) {
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                      computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+             .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                      computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    }
 
     // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
@@ -8843,24 +8890,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // one stage earlier in the chain.
     // ===================================================================
 
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, skyProjectionRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  skyProjectionRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
+    connectPresentationTargetInfo(skyProjectionRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
 
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionFramebufferNode, FramebufferNodeConfig::RENDER_PASS)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, skyProjectionFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+         .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionFramebufferNode, FramebufferNodeConfig::RENDER_PASS);
+    connectPresentationTargetInfo(skyProjectionFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
 
     // SkyProjectionNode DATA-role inputs (device/cmdpool — mirrors BodyOctreeSceneNode's exact
     // connection block) + DRAW-role inputs (swapchain-info/camera-data/render-pass/framebuffers/
     // image-index/frame-index/fence/timeline — mirrors UIRenderNode's composite-mode wiring).
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, skyProjectionNode, SkyProjectionNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, skyProjectionNode, SkyProjectionNodeConfig::COMMAND_POOL)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, skyProjectionNode, SkyProjectionNodeConfig::SWAPCHAIN_INFO)
-         .Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, skyProjectionNode, SkyProjectionNodeConfig::CAMERA_DATA)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, skyProjectionNode, SkyProjectionNodeConfig::COMMAND_POOL);
+    connectPresentationTargetInfo(skyProjectionNode, SkyProjectionNodeConfig::SWAPCHAIN_INFO);
+    batch.Connect(cameraNode, CameraNodeConfig::CAMERA_DATA, skyProjectionNode, SkyProjectionNodeConfig::CAMERA_DATA)
          .Connect(skyProjectionRenderPassNode, RenderPassNodeConfig::RENDER_PASS, skyProjectionNode, SkyProjectionNodeConfig::RENDER_PASS)
-         .Connect(skyProjectionFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, skyProjectionNode, SkyProjectionNodeConfig::FRAMEBUFFERS)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, skyProjectionNode, SkyProjectionNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, skyProjectionNode, SkyProjectionNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(skyProjectionFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, skyProjectionNode, SkyProjectionNodeConfig::FRAMEBUFFERS);
+    connectPresentationImageIndex(skyProjectionNode, SkyProjectionNodeConfig::IMAGE_INDEX);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, skyProjectionNode, SkyProjectionNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, skyProjectionNode, SkyProjectionNodeConfig::IN_FLIGHT_FENCE)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, skyProjectionNode, SkyProjectionNodeConfig::TIMELINE_FRAME_BASE_IN);
@@ -8878,28 +8926,33 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ===================================================================
 
     // UI render pass: device + swapchain format. (Color-only; no depth → LOAD/initial=General set above.)
-    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  uiRenderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
+    connectPresentationTargetInfo(uiRenderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
 
     // UI framebuffers: wrap each swapchain image view against the UI render pass.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiFramebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN)
-         .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiFramebufferNode, FramebufferNodeConfig::RENDER_PASS)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+         .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiFramebufferNode, FramebufferNodeConfig::RENDER_PASS);
+    connectPresentationTargetInfo(uiFramebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
 
     // UIRenderNode (composite) inputs — mirrors BuildUIGraph's UIRenderNode wiring.
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiCompositeNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
-         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, uiCompositeNode, UIRenderNodeConfig::COMMAND_POOL)
+    connectPresentationTargetInfo(uiCompositeNode, UIRenderNodeConfig::SWAPCHAIN_INFO);
+    batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, uiCompositeNode, UIRenderNodeConfig::COMMAND_POOL)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, uiCompositeNode, UIRenderNodeConfig::VULKAN_DEVICE)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, uiCompositeNode, UIRenderNodeConfig::IMAGE_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, uiCompositeNode, UIRenderNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiCompositeNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(uiRenderPassNode, RenderPassNodeConfig::RENDER_PASS, uiCompositeNode, UIRenderNodeConfig::RENDER_PASS)
          .Connect(uiFramebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiCompositeNode, UIRenderNodeConfig::FRAMEBUFFERS)
          // P5b M1: wire FrameSyncNode timeline primitives into UIRenderNode (consumer waits on edges)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
+    connectPresentationImageIndex(uiCompositeNode, UIRenderNodeConfig::IMAGE_INDEX);
+    if (!offscreenPresentation) {
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                      uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+             .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                      uiCompositeNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    }
 
     // ===================================================================
     // Sampled Lighting Inc3 M1 (KI-018): DirectLightingNode + BlitNode wiring. The chain is now
@@ -8961,7 +9014,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // placeholder fallback exactly as before (byte-identical both modes);
     // providing a real buffer is the capture path's own future slice.
     const SdiStageCommon lightingCommon{deviceNode, commandPoolNode,
-                                        swapChainNode, frameSyncNode};
+                                        presentationTargetNode, frameSyncNode,
+                                        offscreenPresentation, !offscreenPresentation};
     const auto dlSynth = SynthesizeComputeStage<DirectSdi::Metadata, DirectSdi::MEMBERS>(
         renderGraph, batch, "direct_lighting", directLightingShaderLib,
         directLightingNode, lightingCommon, sceneProviders, {},
@@ -9817,21 +9871,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   blitNode, BlitNodeConfig::VULKAN_DEVICE_IN)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  blitNode, BlitNodeConfig::COMMAND_POOL)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  blitNode, BlitNodeConfig::SWAPCHAIN_INFO)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  blitNode, BlitNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  blitNode, BlitNodeConfig::COMMAND_POOL);
+    connectPresentationTargetInfo(blitNode, BlitNodeConfig::SWAPCHAIN_INFO);
+    connectPresentationImageIndex(blitNode, BlitNodeConfig::IMAGE_INDEX);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   blitNode, BlitNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   blitNode, BlitNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
                   blitNode, BlitNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
-                  blitNode, BlitNodeConfig::TIMELINE_FRAME_BASE_IN)
+                  blitNode, BlitNodeConfig::TIMELINE_FRAME_BASE_IN);
+    if (!offscreenPresentation) {
+        batch.Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                      blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          // Baked-Perf M6 Task 6.1 (audit E2): BlitNode is now the real first swapchain-
          // touching submit on the writesNoImage march path (the march no longer waits
          // imageAvailable itself — see ComputeDispatchWaitsForSwapchainAcquire's doc
@@ -9839,6 +9892,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
          // IMAGE_AVAILABLE_SEMAPHORES_ARRAY slot already anticipated for exactly this.
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                   blitNode, BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    }
     batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
                   blitNode, BlitNodeConfig::IMAGE_READ, SlotRoleModifier(SlotRole::Execute));
     // Ordering-only edge (BlitNode never waits it — see BlitNodeConfig's ORDERING_WAIT_SEMAPHORE

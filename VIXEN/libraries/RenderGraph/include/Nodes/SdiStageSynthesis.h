@@ -27,6 +27,7 @@
 #include "Data/Nodes/CommandPoolNodeConfig.h"
 #include "Data/Nodes/DeviceNodeConfig.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
+#include "Data/Nodes/RenderTargetNodeConfig.h"
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include "Data/Nodes/SwapChainNodeConfig.h"
 
@@ -42,8 +43,10 @@ namespace Vixen::RenderGraph {
 struct SdiStageCommon {
     NodeHandle device;
     NodeHandle commandPool;
-    NodeHandle swapChain;
+    NodeHandle presentationTarget;
     NodeHandle frameSync;
+    bool usesOffscreenTarget = false;
+    bool hasWsiSemaphores = true;
 };
 
 /**
@@ -105,17 +108,25 @@ inline void WireSdiQuintetChain(ConnectionBatch& batch, const SdiStageCommon& co
                   pipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
                   pipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
-         // DescriptorSetNode reads swapChainImageCount at Compile to size its
-         // descriptor-set ring — SWAPCHAIN_INFO/IMAGE_INDEX are required even
-         // for stages that never touch the swapchain.
-         .Connect(common.swapChain, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-         .Connect(common.swapChain, SwapChainNodeConfig::IMAGE_INDEX,
-                  descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         // DescriptorSetNode reads target image count at Compile to size its
+         // descriptor-set ring. It receives the selected target in either mode.
          // Set ring == flight ring: without this the producer indexes by
          // IMAGE_INDEX while consumers select by frame index (sync-reuse fix).
          .Connect(common.frameSync, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   descriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
+
+    if (common.usesOffscreenTarget) {
+        batch.Connect(common.presentationTarget, RenderTargetNodeConfig::RENDER_TARGET,
+                      descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+             .Connect(common.presentationTarget, RenderTargetNodeConfig::IMAGE_INDEX,
+                      descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+    } else {
+        batch.Connect(common.presentationTarget, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                      descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+             .Connect(common.presentationTarget, SwapChainNodeConfig::IMAGE_INDEX,
+                      descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
+    }
+
 }
 
 /// A stage node's engine-common inputs.
@@ -132,22 +143,31 @@ inline void WireSdiStageCommons(ConnectionBatch& batch, const SdiStageCommon& co
                   stage, ComputeStageNodeConfig::PIPELINE_LAYOUT)
          .Connect(descriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
                   stage, ComputeStageNodeConfig::DESCRIPTOR_SETS)
-         .Connect(common.swapChain, SwapChainNodeConfig::IMAGE_INDEX,
-                  stage, ComputeStageNodeConfig::IMAGE_INDEX)
          .Connect(common.frameSync, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   stage, ComputeStageNodeConfig::CURRENT_FRAME_INDEX)
          .Connect(common.frameSync, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   stage, ComputeStageNodeConfig::IN_FLIGHT_FENCE)
-         .Connect(common.frameSync, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  stage, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-         .Connect(common.swapChain, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                  stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          .Connect(shaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   stage, ComputeStageNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(common.frameSync, FrameSyncNodeConfig::TIMELINE_SEMAPHORE,
                   stage, ComputeStageNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(common.frameSync, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                   stage, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
+
+    if (common.usesOffscreenTarget) {
+        batch.Connect(common.presentationTarget, RenderTargetNodeConfig::IMAGE_INDEX,
+                      stage, ComputeStageNodeConfig::IMAGE_INDEX);
+    } else {
+        batch.Connect(common.presentationTarget, SwapChainNodeConfig::IMAGE_INDEX,
+                      stage, ComputeStageNodeConfig::IMAGE_INDEX);
+    }
+
+    if (common.hasWsiSemaphores) {
+        batch.Connect(common.frameSync, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                      stage, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+             .Connect(common.presentationTarget, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                      stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    }
 }
 
 /// Push-constant plumbing (bundle -> gatherer; data/ranges -> stage).

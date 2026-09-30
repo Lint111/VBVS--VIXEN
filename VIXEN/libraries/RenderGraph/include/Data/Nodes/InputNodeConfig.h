@@ -48,7 +48,7 @@ CONSTEXPR_NODE_CONFIG(InputNodeConfig,
                       InputNodeCounts::ARRAY_MODE) {
     // Input: GLFWwindow* for cross-platform input polling
     INPUT_SLOT(WINDOW, GLFWwindow*, 0,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Execute,  // Need the window every frame for polling
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -77,7 +77,7 @@ CONSTEXPR_NODE_CONFIG(InputNodeConfig,
 
     // Compile-time validation
     static_assert(WINDOW_Slot::index == 0, "WINDOW must be at index 0");
-    static_assert(!WINDOW_Slot::nullable, "WINDOW must not be nullable");
+    static_assert(WINDOW_Slot::nullable, "WINDOW must be optional for headless input");
     static_assert(std::is_same_v<WINDOW_Slot::Type, GLFWwindow*>, "WINDOW must be GLFWwindow*");
 
     static_assert(INPUT_STATE_Slot::index == 0, "INPUT_STATE must be at index 0");

@@ -72,20 +72,8 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[ComputeStageNode::CompileImpl] Command pool is null/invalid");
     }
 
-    // Image count drives the per-image command-buffer array. A producer has no
-    // swapchain input, so we size from RENDER_COMPLETE_SEMAPHORES_ARRAY (sized to the
-    // exact swapchain image count by SwapChainNode), which BOTH roles have wired.
-    const std::vector<VkSemaphore>& renderComplete =
-        ctx.In(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
-    uint32_t imageCount = static_cast<uint32_t>(renderComplete.size());
-    if (imageCount == 0) {
-        throw std::runtime_error("[ComputeStageNode::CompileImpl] Image count is 0 "
-                                 "(RENDER_COMPLETE_SEMAPHORES_ARRAY empty)");
-    }
-
-    // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
-    // COMMAND_BUFFER_RING_DEPTH note above). imageCount above is still read for the image-derived
-    // arrays; the reusable command-buffer ring is sized to the flight count.
+    // Command buffers are frame-indexed at the flight-ring depth, not by WSI image count. WSI
+    // binaries are optional because an offscreen graph has neither acquire nor present handoffs.
     const uint32_t cmdBufferCount = COMMAND_BUFFER_RING_DEPTH;
     commandBuffers_.resize(cmdBufferCount);
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
@@ -119,7 +107,7 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(ComputeStageNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 
     NODE_LOG_INFO("[ComputeStageNode::CompileImpl] Allocated " + std::to_string(cmdBufferCount) +
-                  " command buffers (flight-ring depth; swapchain imageCount=" + std::to_string(imageCount) + ")");
+                  " command buffers (frame-in-flight ring depth)");
 
     // Task 0.1 (Baked-Content Perf Audit, top action #9): GPU timing via the centralized
     // GPUQueryManager, same pattern as ComputeDispatchNode/UIRenderNode — lets direct_lighting/
@@ -161,10 +149,11 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderComplete = ctx.In(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeStageNodeConfig::IN_FLIGHT_FENCE);
 
-    // Two separate bounds: the image-derived arrays are indexed by imageIndex (bounded by
-    // renderComplete size), while the command-buffer ring is frame-indexed (bounded by its own
-    // flight-ring size).
-    if (imageIndex == UINT32_MAX || imageIndex >= renderComplete.size() ||
+    // Windowed consumers index the acquire and present arrays. Offscreen graphs contain only
+    // producers, so their image index comes from RenderTargetNode and has no WSI semaphore array.
+    if (imageIndex == UINT32_MAX ||
+        (isConsumer && (imageIndex >= renderComplete.size() ||
+                        currentFrameIndex >= imageAvailable.size())) ||
         currentFrameIndex >= commandBuffers_.size()) {
         NODE_LOG_WARNING("[ComputeStageNode] Invalid image/frame index - skipping frame");
         return;
@@ -291,9 +280,11 @@ void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
         }
     }
 
-    // Output the renderComplete semaphore (consumer → Present). For a producer there is
-    // no present, but publish the per-image renderComplete anyway for a uniform contract.
-    ctx.Out(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderComplete[imageIndex]);
+    // Only WSI consumers have a presentable binary semaphore. Offscreen producers still publish
+    // the output slot, with a null handle, so downstream graph topology stays target-agnostic.
+    const VkSemaphore renderCompleteSemaphore = isConsumer
+        ? renderComplete[imageIndex] : VK_NULL_HANDLE;
+    ctx.Out(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
     ctx.Out(ComputeStageNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
 
