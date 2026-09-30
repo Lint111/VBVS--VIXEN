@@ -24,18 +24,11 @@ namespace Vixen::RenderGraph::Debug {
 // (RenderTargetNode's PARAM_USAGE) -- vkCmdCopyImageToBuffer is a spec violation otherwise, and
 // this returns false + sets err rather than letting the driver fault.
 //
-// PRECONDITION: the image's CURRENT layout must already be VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL.
-// This is deliberate, not a shortcut: ComputeDispatchNode tracks each render-target image's real
-// last-recorded layout itself (renderTargetImageLayouts_, see BlitRenderTargetToSwapchain/
-// DecideRenderTargetPriorLayoutAndUpdate — the fix for KI-007) so its NEXT frame's compute-write
-// barrier can declare the correct oldLayout. If this helper transitioned the image to/from
-// TRANSFER_SRC_OPTIMAL itself, that private tracking would go stale and reintroduce KI-007 on the
-// very next frame. For the editor's compute_render_target, the blit-to-swapchain step leaves the
-// image in TRANSFER_SRC_OPTIMAL every frame (see ComputeDispatchNode::BlitRenderTargetToSwapchain's
-// header comment) — exactly the state EditorApplication::Update() finds it in (Update() runs
-// before the current frame's Render(), so it observes the PREVIOUS frame's already-blitted
-// result). So: no layout transition here at all — just a copy from the layout it's already in,
-// and the image is left completely undisturbed for the render loop to keep using.
+// PRECONDITION: `currentLayout` must match the image's layout after the producer's last submit.
+// The default preserves the legacy ComputeDispatchNode contract (TRANSFER_SRC_OPTIMAL, tracked
+// internally by that node). Split composite graphs use BlitNode, which restores the offscreen
+// source to GENERAL; passing GENERAL makes this helper transition to TRANSFER_SRC_OPTIMAL for the
+// copy and restore GENERAL before returning, leaving BlitNode's per-image layout tracking valid.
 //
 // Blocking: submits a one-shot command buffer on `queue` and waits for it (vkQueueWaitIdle) --
 // fine for an unattended capture harness, not for a per-frame hot path.
@@ -44,7 +37,8 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
                                       VkQueue queue,
                                       uint32_t queueFamilyIndex,
                                       const std::string& path,
-                                      std::string& err) {
+                                      std::string& err,
+                                      VkImageLayout currentLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
     if (!device || !target || queue == VK_NULL_HANDLE) {
         err = "CaptureRenderTargetToPng: null device/target/queue";
         return false;
@@ -135,36 +129,44 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     }
     vkBindBufferMemory(vkDevice, hostBuf, hostMem, 0);
 
-    // --- record: a memory-only barrier (NO layout change -- see precondition above), copy, wait ---
+    // --- record: transition (if needed), copy, restore (if needed) ---
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &beginInfo);
 
-    // Same-layout barrier: orders this read-back after the prior image writer (which may be a
-    // compute/transfer producer or a color-attachment render pass) on a fresh queue submission.
-    // oldLayout == newLayout == TRANSFER_SRC_OPTIMAL, so this never changes layout tracking owned
-    // by a producer such as ComputeDispatchNode.
-    VkImageMemoryBarrier syncOnly{};
-    syncOnly.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    syncOnly.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    syncOnly.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    syncOnly.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    syncOnly.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    syncOnly.image = image;
-    syncOnly.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    syncOnly.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-    syncOnly.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    VkImageMemoryBarrier toTransfer{};
+    toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    toTransfer.oldLayout = currentLayout;
+    toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransfer.image = image;
+    toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    toTransfer.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+    toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &syncOnly);
+                         0, 0, nullptr, 0, nullptr, 1, &toTransfer);
 
     VkBufferImageCopy region{};
     region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     region.imageExtent = {w, h, 1};
     vkCmdCopyImageToBuffer(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, hostBuf, 1, &region);
 
-    // No layout restore needed -- the image is left exactly as found (TRANSFER_SRC_OPTIMAL),
-    // matching what ComputeDispatchNode's own tracking already expects for the next frame.
+    if (currentLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+        VkImageMemoryBarrier restore{};
+        restore.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        restore.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        restore.newLayout = currentLayout;
+        restore.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        restore.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        restore.image = image;
+        restore.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        restore.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        restore.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &restore);
+    }
     vkEndCommandBuffer(cmd);
 
     VkSubmitInfo submitInfo{};

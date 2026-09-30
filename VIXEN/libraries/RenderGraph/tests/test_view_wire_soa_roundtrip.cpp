@@ -15,8 +15,9 @@ namespace {
 // declared Hud model (Yeroket ViewWriterEmitterTests.ToBuffer_Produces_Canonical_Soa_Bytes).
 // Distinct values per row/column (including one EMPTY string row) so a wrong-column/wrong-row
 // bug shows up as a wrong VALUE, not just "it didn't crash": tick=7, bodyCount=12,
-// activeLensName="Ops", activeLensCount=4, factions=[Reds/0.5/T/T/F/T, ""/0/F/F/F/F,
-// Greens/0.75/F/T/T/F], events=[war@40, truce@99].
+// activeLensName="Ops", activeLensCount=4, restored faction ages and inspect fields,
+// factions=[Reds/0.5/T/T/F/T/2, ""/0/F/F/F/F/255, Greens/0.75/F/T/T/F/12],
+// events=[war@40, truce@99].
 struct WB {
     std::vector<std::byte> b;
     void u8(uint8_t v)  { b.push_back(std::byte{v}); }
@@ -30,10 +31,10 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     WB w;
     w.u8('U'); w.u8('T'); w.u8('V'); w.u8('A');
     w.u32(version);
-    w.u32(9);                      // top-field count
+    w.u32(13);                     // top-field count
     w.i32(7); w.i32(12); w.str("Ops"); w.i32(4);
 
-    // factions: SoA, declared column order name/grievance/focused/known/inLens/recentChanged
+    // factions: SoA, declared column order name/grievance/focused/known/inLens/recentChanged/recentEventAge
     w.u32(3);                      // row count
     // name column: (rows+1) offsets into THIS column's own blob + the blob itself
     w.u32(0); w.u32(4); w.u32(4); w.u32(10);
@@ -48,6 +49,8 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     w.u8(0); w.u8(0); w.u8(1);
     // recentChanged column
     w.u8(1); w.u8(0); w.u8(0);
+    // recentEventAge column
+    w.i32(2); w.i32(255); w.i32(12);
 
     // events: SoA, declared column order kind/tick
     w.u32(2);
@@ -55,8 +58,9 @@ std::vector<std::byte> CanonicalSoaWire(uint32_t version) {
     for (char ch : std::string("wartruce")) w.u8(static_cast<uint8_t>(ch));
     w.i32(40); w.i32(99);
 
-    // T1 inspect-panel tail scalars (top-level, decoded identically to AoS)
-    w.i32(1); w.str("Reds"); w.str("border skirmish");  // inspectSelected, inspectName, inspectCause
+    // Inspect-panel scalars (top-level, decoded identically to AoS)
+    w.i32(1); w.str("Reds"); w.str("border skirmish");
+    w.f32(0.625f); w.f32(0.875f); w.str("Blues"); w.f32(-0.25f);
 
     return w.b;
 }
@@ -97,6 +101,7 @@ TEST(ViewWireSoaRoundtrip, ReadsBackEveryFieldIncludingEmptyStringRow) {
     EXPECT_TRUE (fac[0].cells[Elem(fdesc,"known")].b);
     EXPECT_FALSE(fac[0].cells[Elem(fdesc,"inLens")].b);
     EXPECT_TRUE (fac[0].cells[Elem(fdesc,"recentChanged")].b);
+    EXPECT_EQ(fac[0].cells[Elem(fdesc,"recentEventAge")].i, 2);
 
     EXPECT_EQ(fac[1].cells[Elem(fdesc,"name")].s, "");
     EXPECT_FLOAT_EQ(fac[1].cells[Elem(fdesc,"grievance")].f, 0.0f);
@@ -104,6 +109,7 @@ TEST(ViewWireSoaRoundtrip, ReadsBackEveryFieldIncludingEmptyStringRow) {
     EXPECT_FALSE(fac[1].cells[Elem(fdesc,"known")].b);
     EXPECT_FALSE(fac[1].cells[Elem(fdesc,"inLens")].b);
     EXPECT_FALSE(fac[1].cells[Elem(fdesc,"recentChanged")].b);
+    EXPECT_EQ(fac[1].cells[Elem(fdesc,"recentEventAge")].i, 255);
 
     EXPECT_EQ(fac[2].cells[Elem(fdesc,"name")].s, "Greens");
     EXPECT_FLOAT_EQ(fac[2].cells[Elem(fdesc,"grievance")].f, 0.75f);
@@ -111,6 +117,7 @@ TEST(ViewWireSoaRoundtrip, ReadsBackEveryFieldIncludingEmptyStringRow) {
     EXPECT_TRUE (fac[2].cells[Elem(fdesc,"known")].b);
     EXPECT_TRUE (fac[2].cells[Elem(fdesc,"inLens")].b);
     EXPECT_FALSE(fac[2].cells[Elem(fdesc,"recentChanged")].b);
+    EXPECT_EQ(fac[2].cells[Elem(fdesc,"recentEventAge")].i, 12);
 
     // events column-decoded array
     int ei = Field(blob, "events");
@@ -126,6 +133,10 @@ TEST(ViewWireSoaRoundtrip, ReadsBackEveryFieldIncludingEmptyStringRow) {
     EXPECT_EQ(*static_cast<int*>(store.ScalarSlotPtr(Field(blob,"inspectSelected"))), 1);
     EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectName"))), "Reds");
     EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectCause"))), "border skirmish");
+    EXPECT_FLOAT_EQ(*static_cast<float*>(store.ScalarSlotPtr(Field(blob,"inspectMaxGrievance"))), 0.625f);
+    EXPECT_FLOAT_EQ(*static_cast<float*>(store.ScalarSlotPtr(Field(blob,"inspectStrength"))), 0.875f);
+    EXPECT_EQ(*static_cast<Rml::String*>(store.ScalarSlotPtr(Field(blob,"inspectTopRelName"))), "Blues");
+    EXPECT_FLOAT_EQ(*static_cast<float*>(store.ScalarSlotPtr(Field(blob,"inspectTopRelSig"))), -0.25f);
 }
 
 TEST(ViewWireSoaRoundtrip, VersionMismatchIsHardError) {

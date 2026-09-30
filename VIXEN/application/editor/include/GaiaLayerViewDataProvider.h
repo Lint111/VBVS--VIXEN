@@ -49,10 +49,9 @@ public:
 
     void WriteU32(Vixen::AppFlow::ViewNounKey key, uint32_t value) override {
         if (key.noun != Vixen::AppFlow::ViewNounId::EditorNouns_layerMask) return;
-        // setComponent<T> -> world.add<T>(id, T{value}) -- Gaia's add() overwrites an existing
-        // component AS an ordinary mutable write, so it auto-bumps the component's chunk version
-        // and fires the func_set hook (design §3/§5) exactly like a direct set<T> would. This is
-        // the write half of the loop the .changed<LayerMask>() reconcile closes.
+        // setComponent<T> adds a missing component and uses Gaia's set<T> write-back path for an
+        // existing one. Existing writes bump the component's chunk version and fire the func_set
+        // hook (design §3/§5), which is the write half of the loop .changed<LayerMask>() closes.
         world_.setComponent<Vixen::GaiaVoxel::LayerMask>(entity_, value);
     }
 

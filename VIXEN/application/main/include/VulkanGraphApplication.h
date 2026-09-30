@@ -525,9 +525,7 @@ private:
     std::vector<long> hudCaptureFrames_;   // parsed from VIXEN_HUD_CAPTURE_FRAMES
     std::string hudCaptureDir_ = "temp";   // overridable via VIXEN_HUD_CAPTURE_DIR
 
-    // Reads main_swapchain's CURRENT image back to host RGBA8 and writes it as a PNG at `path`
-    // (mirrors EditorApplication::CaptureFrameToPng's device lookup, but reads the swapchain, not
-    // compute_render_target — see the .cpp definition's comment for why).
+    // Captures main_swapchain including the HUD composite for the base app's Update() harness.
     bool CaptureHudFrameToPng(const std::string& path, std::string& err);
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
