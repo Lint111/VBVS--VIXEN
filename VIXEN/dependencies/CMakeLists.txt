@@ -403,7 +403,7 @@ endif()
 
 FetchContent_Declare(rmlui
     GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
-    GIT_TAG        6.0
+    GIT_TAG        6.3
     GIT_SHALLOW    TRUE)
 set(RMLUI_SAMPLES        OFF CACHE BOOL "" FORCE)
 set(RMLUI_LUA_BINDINGS   OFF CACHE BOOL "" FORCE)
