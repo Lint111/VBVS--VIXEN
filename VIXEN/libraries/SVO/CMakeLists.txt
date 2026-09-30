@@ -67,16 +67,18 @@ target_compile_features(SVO PUBLIC cxx_std_23)
 # Enable SSE/AVX optimizations on x64
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     if(MSVC)
-        target_compile_options(SVO PRIVATE /arch:AVX2 /fp:fast)
+        target_compile_options(SVO PRIVATE /arch:AVX2)
+        target_compile_options(SVO PUBLIC /fp:strict)
     else()
-        target_compile_options(SVO PRIVATE -mavx2 -mfma -mf16c -ffast-math)
+        target_compile_options(SVO PRIVATE -mavx2 -mfma -mf16c)
+        target_compile_options(SVO PUBLIC -fno-fast-math -ffp-contract=off)
     endif()
 endif()
 
-# The materialization evaluator is a serialization boundary: any floating-point
-# contraction or reassociation can alter the canonical octree bytes.  Keep the
-# wider SVO target's historical policy, but pin this translation unit to strict,
-# non-contracting arithmetic so scalar and SIMD4 lanes execute the same sequence.
+# Recipe hashes and the materialization evaluator are determinism boundaries: floating-point
+# contraction or fast-math assumptions must not alter raw uint32 float-slot payloads or canonical
+# octree bytes. Export the strict policy to every consumer of the header-only recipe evaluator.
+# The explicit per-source setting below remains a guard if the target-wide policy changes later.
 if(MSVC)
     set_source_files_properties(src/BulkMaterialization.cpp PROPERTIES
         COMPILE_OPTIONS "/fp:strict"

@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 #include "Recipe/SdfRecipeEval.h"
+#include "RecipeHash32TestVectors.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>   // glm::quat — for M4b Transform oracle
 #include <cmath>
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cstdint>
+#include <sstream>
 #include <span>
 using namespace Vixen::SVO::Recipe;
 
@@ -23,6 +27,9 @@ static SdfInstruction smoothUnionOp(float k) {
 }
 static SdfInstruction mirrorXOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::MirrorX; return in; }
 static SdfInstruction restorePosOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RestorePos; return in; }
+static SdfInstruction pushParam(float value) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::PushParam; in.data[0]=value; return in;
+}
 
 // --- M3b-1 instruction helpers (5 no-position leaf primitives) ---
 static SdfInstruction capsuleOp(float halfH, float r) {
@@ -98,6 +105,37 @@ static float boxRoundedDist(glm::vec3 p, glm::vec3 he, float rr) {
 static float planeDist(glm::vec3 p, glm::vec3 n, float d) {
     // mirrors SDFPrimitives.Plane:267
     return glm::dot(p, n) + d;
+}
+
+TEST(RecipeEvalParity, Hash32MatchesLowbias32GoldenVectors) {
+    for (const auto& [input, expected] : TestVectors::Hash32GoldenVectors) {
+        SCOPED_TRACE("input=0x" + [&] { std::ostringstream s; s << std::hex << input; return s.str(); }());
+        const SdfInstruction prog[] = {
+            pushParam(std::bit_cast<float>(input)),
+            [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32; return op; }(),
+        };
+        const float actual = evalRecipe(prog, 2, glm::vec3(0.0f));
+        EXPECT_EQ(std::bit_cast<uint32_t>(actual), expected);
+    }
+}
+
+TEST(RecipeEvalParity, Hash32CombineUsesDeclaredBodySeedFoldOrder) {
+    const SdfInstruction prog[] = {
+        pushParam(std::bit_cast<float>(0x12345678u)),
+        [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32; return op; }(),
+        pushParam(std::bit_cast<float>(3u)),
+        [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
+        pushParam(std::bit_cast<float>(static_cast<uint32_t>(-4))),
+        [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
+        pushParam(std::bit_cast<float>(7u)),
+        [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
+        pushParam(std::bit_cast<float>(12u)),
+        [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
+        pushParam(std::bit_cast<float>(0xdeadbeefu)),
+        [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
+    };
+    const float actual = evalRecipe(prog, static_cast<uint32_t>(sizeof(prog) / sizeof(prog[0])), glm::vec3(0.0f));
+    EXPECT_EQ(std::bit_cast<uint32_t>(actual), TestVectors::BodySeedFoldExpected);
 }
 
 TEST(RecipeEvalParity, SphereUnionMatchesAnalytic) {

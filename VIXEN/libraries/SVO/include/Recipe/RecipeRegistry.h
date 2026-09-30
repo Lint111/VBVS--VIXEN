@@ -54,6 +54,7 @@ inline bool IsValidSdfOpCode(uint8_t raw) {
         case SdfOpCode::Float3Dot: case SdfOpCode::Float3Normalize:
         case SdfOpCode::ReadParam: case SdfOpCode::ReadParamFloat3:
         case SdfOpCode::DeclarePosition: case SdfOpCode::InvokeRecipe:
+        case SdfOpCode::Hash32: case SdfOpCode::Hash32Combine:
             return true;
         default:
             return false;

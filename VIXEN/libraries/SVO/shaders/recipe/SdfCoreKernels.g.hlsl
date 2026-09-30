@@ -1,6 +1,5 @@
-// GENERATED from SdfCoreKernels.cs by the kernel-framework C++/HLSL emitter
-// Do not edit; regenerate via the Yeroket source generator (P1 automates).
-
+// GENERATED from SdfCoreKernels.cs by the kernel-framework HLSL emitter.
+// Do not edit; regenerate via --recipe-kernels-cpp.
 #ifndef SDF_CORE_KERNELS_G_HLSL
 #define SDF_CORE_KERNELS_G_HLSL
 
@@ -386,6 +385,26 @@ float3 SdfCore_Float3Normalize(float3 v) {
     float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
     float invLen = (lenSq < 1e-14 ? 0.0 : 1.0 / sqrt(lenSq));
     return v * invLen;
+}
+
+float SdfCore_Hash32(float valueBits) {
+    uint x = asuint(valueBits);
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return asfloat(x);
+}
+
+float SdfCore_Hash32Combine(float stateBits, float valueBits) {
+    uint x = (asuint(stateBits) ^ asuint(valueBits)) + 0x9e3779b9u;
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return asfloat(x);
 }
 
 

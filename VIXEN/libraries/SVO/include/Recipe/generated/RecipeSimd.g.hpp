@@ -3,6 +3,7 @@
 // Strict-FP contract: build consumers with no fast-math and FP contraction disabled.
 #include <array>
 #include <chrono>
+#include <bit>
 #include <cstring>
 #include <cstdint>
 #include <limits>
@@ -362,7 +363,7 @@ enum class RecipeGradientHazard : std::uint8_t { Smooth, Piecewise, Discontinuou
 enum class RecipeGradientCost : std::uint8_t { Same, Bounded, High, Fallback };
 enum class RecipeDerivativeRule : std::uint8_t { Body, Zero, Identity, Alias, Position, RestorePosition, Reject };
 struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; const char* name; };
-inline constexpr std::array<RecipeOpcodeMetadata, 91> RecipeOpcodeTable{{
+inline constexpr std::array<RecipeOpcodeMetadata, 93> RecipeOpcodeTable{{
     {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Sphere"},
     {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Box"},
     {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "BoxRounded"},
@@ -454,6 +455,8 @@ inline constexpr std::array<RecipeOpcodeMetadata, 91> RecipeOpcodeTable{{
     {111, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, "ReadParamFloat3"},
     {112, RecipeExecutionClass::Elementwise, RecipeControlBehavior::DeclarePosition, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 3, 0, 0, 0, "DeclarePosition"},
     {113, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::InvokeRecipe, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, "InvokeRecipe"},
+    {151, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, "Hash32"},
+    {152, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, "Hash32Combine"},
 }};
 
 inline yk::simd4::f32 SdfCore_SphereSimd4(yk::simd4::f32x3 p, glm::vec3 center, float radius) {
@@ -1325,6 +1328,25 @@ inline yk::simd4::dual3 SdfCore_Float3NormalizeGradientSimd4(yk::simd4::dual3 v)
     return yk::simd4::dual3((v.x * invLen), (v.y * invLen), (v.z * invLen));
 }
 
+inline yk::simd4::f32 SdfCore_Hash32Simd4(yk::simd4::f32 valueBits) {
+    alignas(16) float valueBits_lane[4]; valueBits.store_unaligned(valueBits_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_Hash32(valueBits_lane[lane]);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Hash32CombineSimd4(yk::simd4::f32 stateBits, yk::simd4::f32 valueBits) {
+    alignas(16) float stateBits_lane[4]; stateBits.store_unaligned(stateBits_lane);
+    alignas(16) float valueBits_lane[4]; valueBits.store_unaligned(valueBits_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_Hash32Combine(stateBits_lane[lane], valueBits_lane[lane]);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
 } // namespace Yeroket::Sdf::Generated
 namespace Vixen::SVO::Recipe {
 using Yeroket::Sdf::Generated::RecipeOpcodeMetadata;
@@ -1972,6 +1994,8 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         case Recipe::SdfOpCode::Float3Normalize: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Float3Normalize>;
         case Recipe::SdfOpCode::ReadParamFloat3: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamFloat3>;
         case static_cast<Recipe::SdfOpCode>(112): return &ExecuteRecipeOpcode<static_cast<Recipe::SdfOpCode>(112)>;
+        case Recipe::SdfOpCode::Hash32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Hash32>;
+        case Recipe::SdfOpCode::Hash32Combine: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Hash32Combine>;
         default: return nullptr;
     }
 }
