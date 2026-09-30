@@ -82,6 +82,7 @@ ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig();
  */
 class VulkanGraphApplication : public VulkanApplicationBase {
 public:
+    enum class PresentationTarget { Window, Offscreen };
     // Instantiable (AR#7): the former singleton (GetInstance + once_flag) is gone — a host
     // constructs and owns the application directly. Only main.cpp ever created it, and no
     // library code reached for the global instance, so there is nothing else to re-thread.
@@ -145,6 +146,10 @@ public:
      * @brief Build a UI-only RmlUi demo graph (S0). Gated by the VIXEN_UI_DEMO env var.
      */
     void BuildUIGraph();
+    // Select before Prepare(): the UI graph uses either a window/swapchain/present chain or an
+    // offscreen render-target/readback chain.
+    void SetPresentationTarget(PresentationTarget target) { presentationTarget_ = target; }
+    PresentationTarget GetPresentationTarget() const { return presentationTarget_; }
 
     /**
      * @brief Build an isolated instanced-cube raster demo graph (AR#31). Gated by the
@@ -251,6 +256,7 @@ private:
     Vixen::Core::EngineTime time;                    // Time management
     bool graphCompiled;                              // Graph compilation state
     int width, height;                               // Window dimensions
+    PresentationTarget presentationTarget_ = PresentationTarget::Window;
 
     // ====== Shutdown Management ======
     bool shutdownRequested = false;                  // User requested shutdown
@@ -604,6 +610,7 @@ public:
     // copy internally) — fine for a capture-then-exit tool, not for per-frame use. Returns false
     // (and logs) if the swapchain/device node isn't found or the write fails.
     bool CaptureFrameToPng(const std::string& path);
+    bool CaptureOffscreenFrameToPng(const std::string& path, std::string& err);
 
     // M4b-fix (capture-on-aborted-frame): true only when main_swapchain currently holds a VALID
     // acquired image (currentImageIndex in range). A frame that was aborted mid-flight — e.g. a

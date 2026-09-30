@@ -33,6 +33,7 @@ CONSTEXPR_NODE_CONFIG(InstanceNodeConfig,
 
     // Compile-time parameter names
     static constexpr const char* PARAM_ENABLE_VALIDATION = "enable_validation";
+    static constexpr const char* PARAM_ENABLE_PRESENTATION = "enable_presentation";
     static constexpr const char* PARAM_APP_NAME = "app_name";
     static constexpr const char* PARAM_ENGINE_NAME = "engine_name";
 

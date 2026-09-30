@@ -115,6 +115,7 @@ void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
 
     ctx.Out(RenderTargetNodeConfig::RENDER_TARGET, static_cast<IRenderTarget*>(&target_));
     ctx.Out(RenderTargetNodeConfig::CURRENT_VIEW,  target_.GetCurrentView());
+    ctx.Out(RenderTargetNodeConfig::IMAGE_INDEX,   target_.GetCurrentIndex());
     ctx.Out(RenderTargetNodeConfig::WIDTH_OUT,     width_);
     ctx.Out(RenderTargetNodeConfig::HEIGHT_OUT,    height_);
 
@@ -137,6 +138,7 @@ void RenderTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // (wrong layout at draw/dispatch time — VUID-vkCmdDraw-None-09600, visible as flicker,
     // KI-009) on every other frame.
     ctx.Out(RenderTargetNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
+    ctx.Out(RenderTargetNodeConfig::IMAGE_INDEX, target_.GetCurrentIndex());
 }
 
 void RenderTargetNode::CleanupImpl(TypedCleanupContext& ctx) {

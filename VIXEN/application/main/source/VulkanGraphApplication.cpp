@@ -43,6 +43,7 @@
 #include "Nodes/SwapChainNode.h"              // CaptureFrameToPng() downcast target (M4b)
 #include "FrameCapture.h"                      // CaptureFrameToPng(): reuse the existing readback->PNG path
 #include "Nodes/DeviceNode.h"                 // View Contract Inc-2 Task 5: VulkanDevice* for CaptureHudFrameToPng
+#include "Nodes/RenderTargetNode.h"           // R316: UI offscreen target lookup
 #include "Debug/RenderTargetReadback.h"       // View Contract Inc-2 Task 5: IRenderTarget -> PNG readback
 #include <sstream>                            // View Contract Inc-2 Task 5: VIXEN_HUD_SCRIPT/_CAPTURE_FRAMES parsing
 #include "Recipe/RecipeBounds.h"              // Lazy-Procedural-Delta-Baseline Inc0 M5: ApplyRecipeBoundsDefaults
@@ -365,10 +366,9 @@ bool VulkanGraphApplication::Render() {
     // (UNDERTOW) boundary is undefined behaviour. RenderFrame() already catches node-Execute failures
     // (2a); this guard covers anything else (the event-callback handlers fired by glfwPollEvents, etc.).
     try {
-        // Pump the OS event queue (main thread, every iteration -- including while minimized). This fires
-        // the WindowNode GLFW callbacks that publish WindowCloseEvent / WindowResizeEvent; WindowNode owns
-        // the window and its lifecycle.
-        glfwPollEvents();
+        // Pump the OS event queue only when this graph owns a window. Offscreen graph frames have no
+        // GLFW initialization, surface, or event source.
+        if (presentationTarget_ == PresentationTarget::Window) glfwPollEvents();
 
         // Render a complete frame via the graph (it internally handles event processing + deferred
         // recompilation, image acquisition, command recording, queue submission with semaphores, present).
@@ -4667,4 +4667,38 @@ bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::
 
     return Vixen::RenderGraph::Debug::CaptureSwapchainToPng(
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
+}
+
+bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path, std::string& err) {
+    if (presentationTarget_ != PresentationTarget::Offscreen) {
+        err = "CaptureOffscreenFrameToPng: graph presentation target is not offscreen";
+        return false;
+    }
+    if (!renderGraph) {
+        err = "CaptureOffscreenFrameToPng: no render graph";
+        return false;
+    }
+    auto* targetNode = renderGraph->GetInstanceByName("ui_offscreen_target");
+    if (!targetNode) {
+        err = "CaptureOffscreenFrameToPng: 'ui_offscreen_target' not found";
+        return false;
+    }
+    Resource* targetOutput = targetNode->GetOutput(0, 0);
+    if (!targetOutput) {
+        err = "CaptureOffscreenFrameToPng: target output is unavailable (graph not compiled?)";
+        return false;
+    }
+    auto* target = targetOutput->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+    if (!target) {
+        err = "CaptureOffscreenFrameToPng: target output is null";
+        return false;
+    }
+    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("ui_device"));
+    if (!deviceNode || !deviceNode->GetVulkanDevice()) {
+        err = "CaptureOffscreenFrameToPng: 'ui_device' not found or has no VulkanDevice";
+        return false;
+    }
+    auto* device = deviceNode->GetVulkanDevice();
+    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
+        device, target, device->queue, device->graphicsQueueIndex, path, err);
 }

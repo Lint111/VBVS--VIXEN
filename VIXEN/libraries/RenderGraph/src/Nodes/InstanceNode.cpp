@@ -76,20 +76,30 @@ void InstanceNode::SetupImpl(TypedSetupContext& ctx) {
     enabledExtensions = instanceExtensionNames;
     enabledLayers = layerNames;
 
-    // Cross-platform surface extensions: merge in whatever instance extensions GLFW requires to
-    // present on the current platform (VK_KHR_surface + the platform surface, e.g. win32/xlib/
-    // wayland). This replaces the previously-hardcoded VK_KHR_WIN32_SURFACE entry so the same code
-    // produces a valid instance on every OS. Deduplicated against the global list.
-    glfwInit();  // idempotent; required before glfwGetRequiredInstanceExtensions
-    uint32_t glfwExtCount = 0;
-    const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-    for (uint32_t i = 0; glfwExts && i < glfwExtCount; ++i) {
-        const bool alreadyPresent = std::any_of(
-            enabledExtensions.begin(), enabledExtensions.end(),
-            [&](const char* e) { return std::strcmp(e, glfwExts[i]) == 0; });
-        if (!alreadyPresent) {
-            enabledExtensions.push_back(glfwExts[i]);
+    const bool enablePresentation = GetParameterValue<bool>(
+        InstanceNodeConfig::PARAM_ENABLE_PRESENTATION, true);
+    if (enablePresentation) {
+        // Cross-platform surface extensions: merge in whatever instance extensions GLFW requires
+        // to present on the current platform. Headless graphs skip GLFW entirely and remove the
+        // host's surface-extension requests below.
+        glfwInit();  // idempotent; required before glfwGetRequiredInstanceExtensions
+        uint32_t glfwExtCount = 0;
+        const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+        for (uint32_t i = 0; glfwExts && i < glfwExtCount; ++i) {
+            const bool alreadyPresent = std::any_of(
+                enabledExtensions.begin(), enabledExtensions.end(),
+                [&](const char* e) { return std::strcmp(e, glfwExts[i]) == 0; });
+            if (!alreadyPresent) {
+                enabledExtensions.push_back(glfwExts[i]);
+            }
         }
+    } else {
+        enabledExtensions.erase(std::remove_if(enabledExtensions.begin(), enabledExtensions.end(),
+            [](const char* extension) {
+                return std::strcmp(extension, VK_KHR_SURFACE_EXTENSION_NAME) == 0 ||
+                       std::strcmp(extension, VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) == 0 ||
+                       std::strcmp(extension, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) == 0;
+            }), enabledExtensions.end());
     }
 
     NODE_LOG_INFO("[InstanceNode] Requested " + std::to_string(enabledExtensions.size()) + " instance extensions");

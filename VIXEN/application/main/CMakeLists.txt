@@ -221,3 +221,4 @@ include(${VIXEN_ROOT}/libraries/RenderGraph/tests/FailScenarios/test_fail_scenar
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_app_run_tick.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_hud_view.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_view_blob_equiv.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_ui_graph.cmake)

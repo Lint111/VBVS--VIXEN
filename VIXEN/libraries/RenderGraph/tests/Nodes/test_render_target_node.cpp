@@ -33,8 +33,8 @@ TEST_F(RenderTargetNodeConfigTest, InputCount) {
 }
 
 TEST_F(RenderTargetNodeConfigTest, OutputCount) {
-    EXPECT_EQ(RenderTargetNodeConfig::OUTPUT_COUNT, 4u)
-        << "RenderTargetNode must have exactly 4 outputs (RENDER_TARGET, CURRENT_VIEW, WIDTH_OUT, HEIGHT_OUT)";
+    EXPECT_EQ(RenderTargetNodeConfig::OUTPUT_COUNT, 5u)
+        << "RenderTargetNode outputs are RENDER_TARGET, CURRENT_VIEW, IMAGE_INDEX, WIDTH_OUT, HEIGHT_OUT";
 }
 
 TEST_F(RenderTargetNodeConfigTest, ArrayModeIsSingle) {
@@ -115,12 +115,21 @@ TEST_F(RenderTargetNodeConfigTest, CurrentViewTypeIsVkImageView) {
     EXPECT_TRUE(correct);
 }
 
-TEST_F(RenderTargetNodeConfigTest, WidthOutAtIndex2) {
-    EXPECT_EQ(RenderTargetNodeConfig::WIDTH_OUT_Slot::index, 2u);
+TEST_F(RenderTargetNodeConfigTest, ImageIndexAtIndex2) {
+    EXPECT_EQ(RenderTargetNodeConfig::IMAGE_INDEX_Slot::index, 2u);
 }
 
-TEST_F(RenderTargetNodeConfigTest, HeightOutAtIndex3) {
-    EXPECT_EQ(RenderTargetNodeConfig::HEIGHT_OUT_Slot::index, 3u);
+TEST_F(RenderTargetNodeConfigTest, ImageIndexTypeIsUint32) {
+    constexpr bool correct = std::is_same_v<RenderTargetNodeConfig::IMAGE_INDEX_Slot::Type, uint32_t>;
+    EXPECT_TRUE(correct);
+}
+
+TEST_F(RenderTargetNodeConfigTest, WidthOutAtIndex3) {
+    EXPECT_EQ(RenderTargetNodeConfig::WIDTH_OUT_Slot::index, 3u);
+}
+
+TEST_F(RenderTargetNodeConfigTest, HeightOutAtIndex4) {
+    EXPECT_EQ(RenderTargetNodeConfig::HEIGHT_OUT_Slot::index, 4u);
 }
 
 TEST_F(RenderTargetNodeConfigTest, WidthHeightTypeIsUint32) {
@@ -157,7 +166,7 @@ TEST_F(RenderTargetNodeConfigTest, ParamNameUsage) {
 TEST_F(RenderTargetNodeConfigTest, ConfigIsDefaultConstructible) {
     RenderTargetNodeConfig cfg;
     EXPECT_EQ(cfg.INPUT_COUNT,  2u);
-    EXPECT_EQ(cfg.OUTPUT_COUNT, 4u);
+    EXPECT_EQ(cfg.OUTPUT_COUNT, 5u);
 }
 
 TEST_F(RenderTargetNodeConfigTest, ConfigIsCopyable) {

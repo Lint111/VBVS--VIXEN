@@ -438,9 +438,13 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Composite: the compute→UI ordering is carried SOLELY by the baked timeline waitEdge (P5b M3) —
     // no binary handoff wait here. This node signals its own per-image semaphore for present. Standalone
-    // (S0, no timeline): wait imageAvailable[frame] (the acquire), signal renderComplete[image].
+    // (S0): a windowed graph waits imageAvailable[frame] and signals renderComplete[image]; an offscreen
+    // graph leaves both optional WSI arrays unconnected and closes the frame with its fence alone.
     if (composite_ && imageIndex >= uiCompleteSemaphores_.size()) return;
-    VkSemaphore signalSem = composite_ ? uiCompleteSemaphores_[imageIndex] : renderComplete[imageIndex];
+    if (!composite_ && !renderComplete.empty() && imageIndex >= renderComplete.size()) return;
+    if (!composite_ && !imageAvailable.empty() && currentFrameIndex >= imageAvailable.size()) return;
+    VkSemaphore signalSem = composite_ ? uiCompleteSemaphores_[imageIndex]
+        : (imageIndex < renderComplete.size() ? renderComplete[imageIndex] : VK_NULL_HANDLE);
 
     // This UI submit is the frame's last submit, so it resets + owns the frame fence (in composite mode
     // the upstream compute submitted with no fence). Safe: FrameSyncNode already waited on it.
@@ -469,7 +473,7 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Standalone (S0) ONLY: wait the binary WSI acquire (imageAvailable). The composite graph has no
     // imageAvailable wait here — the upstream compute waits the acquire, and compute→UI is ordered by
     // the timeline waitEdge below (P5b M3 dropped the binary compute→UI handoff).
-    if (!composite_) {
+    if (!composite_ && !imageAvailable.empty()) {
         VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         binaryWait.semaphore = imageAvailable[currentFrameIndex];
         binaryWait.value     = 0;  // binary semaphore: value ignored
@@ -500,11 +504,13 @@ void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // other three R7 sites this signal is always live (UI is the true frame-final consumer in
     // both standalone and composite mode), so the correct scope is the graphics stage, not
     // COMPUTE_SHADER_BIT.
-    VkSemaphoreSubmitInfo binSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    binSig.semaphore = signalSem;
-    binSig.value     = 0;  // binary semaphore: value ignored
-    binSig.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    signals.push_back(binSig);
+    if (signalSem != VK_NULL_HANDLE) {
+        VkSemaphoreSubmitInfo binSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        binSig.semaphore = signalSem;
+        binSig.value     = 0;  // binary semaphore: value ignored
+        binSig.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        signals.push_back(binSig);
+    }
 
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     si.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
