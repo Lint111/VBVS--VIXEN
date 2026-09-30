@@ -16,51 +16,6 @@
 
 namespace Vixen::SVO {
 
-// IsValidSdfOpCode — true for every enumerator in the generated SdfOpCode enum.
-// ponytail: switch covers all enumerators; default=false catches unknown bytes.
-inline bool IsValidSdfOpCode(uint8_t raw) {
-    using Recipe::SdfOpCode;
-    switch (static_cast<SdfOpCode>(raw)) {
-        case SdfOpCode::Sphere: case SdfOpCode::Box: case SdfOpCode::BoxRounded:
-        case SdfOpCode::Capsule: case SdfOpCode::Cylinder: case SdfOpCode::Plane:
-        case SdfOpCode::Torus: case SdfOpCode::Ellipsoid: case SdfOpCode::HollowCylinder:
-        case SdfOpCode::TaperedCylinder: case SdfOpCode::Panel: case SdfOpCode::Plank:
-        case SdfOpCode::RoundedBox: case SdfOpCode::CappedTorus: case SdfOpCode::Cone:
-        case SdfOpCode::RoundCone: case SdfOpCode::FakeRoundCone: case SdfOpCode::Segment:
-        case SdfOpCode::TriangularPrism: case SdfOpCode::Pyramid: case SdfOpCode::HexPrism:
-        case SdfOpCode::Link: case SdfOpCode::Union: case SdfOpCode::SmoothUnion:
-        case SdfOpCode::Subtract: case SdfOpCode::SmoothSubtract: case SdfOpCode::Intersect:
-        case SdfOpCode::SmoothIntersect: case SdfOpCode::Xor: case SdfOpCode::SmoothMax:
-        case SdfOpCode::SmoothUnionCubic: case SdfOpCode::SmoothSubtractCubic:
-        case SdfOpCode::SmoothIntersectCubic: case SdfOpCode::Round: case SdfOpCode::Onion:
-        case SdfOpCode::Transform: case SdfOpCode::Elongate: case SdfOpCode::Twist:
-        case SdfOpCode::Bend: case SdfOpCode::MirrorX: case SdfOpCode::MirrorY:
-        case SdfOpCode::MirrorZ: case SdfOpCode::RepeatInfinite: case SdfOpCode::RepeatLimited:
-        case SdfOpCode::Revolution: case SdfOpCode::MathSin: case SdfOpCode::MathCos:
-        case SdfOpCode::MathSmoothstep: case SdfOpCode::MathRemap: case SdfOpCode::MathAdd:
-        case SdfOpCode::MathSub: case SdfOpCode::MathMul: case SdfOpCode::MathDiv:
-        case SdfOpCode::MathMin: case SdfOpCode::MathMax: case SdfOpCode::MathClamp:
-        case SdfOpCode::MathAbs: case SdfOpCode::MathFrac: case SdfOpCode::MathPow:
-        case SdfOpCode::MathSqrt: case SdfOpCode::MathLerp: case SdfOpCode::MathNegate:
-        case SdfOpCode::PositionChannel: case SdfOpCode::Displacement: case SdfOpCode::MathStep:
-        case SdfOpCode::MathSign: case SdfOpCode::MathSaturate: case SdfOpCode::MathExp:
-        case SdfOpCode::MathLog: case SdfOpCode::MathLog2: case SdfOpCode::Select:
-        case SdfOpCode::DistanceTo: case SdfOpCode::Output: case SdfOpCode::PushParam:
-        case SdfOpCode::RestorePos: case SdfOpCode::PushFloat3: case SdfOpCode::ComposeFloat3:
-        case SdfOpCode::Passthrough: case SdfOpCode::DecomposeFloat3:
-        case SdfOpCode::Float3Add: case SdfOpCode::Float3Sub:
-        case SdfOpCode::Float3MulComponentWise: case SdfOpCode::Float3Min:
-        case SdfOpCode::Float3Max: case SdfOpCode::Float3ScalarMul:
-        case SdfOpCode::Float3Dot: case SdfOpCode::Float3Normalize:
-        case SdfOpCode::ReadParam: case SdfOpCode::ReadParamFloat3:
-        case SdfOpCode::DeclarePosition: case SdfOpCode::InvokeRecipe:
-        case SdfOpCode::Hash32: case SdfOpCode::Hash32Combine:
-            return true;
-        default:
-            return false;
-    }
-}
-
 class RecipeRegistry {
 public:
     static constexpr uint32_t kUnbakedSlot = 0xFFFFFFFFu;

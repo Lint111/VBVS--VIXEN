@@ -1521,7 +1521,7 @@ inline void ExecuteRecipeOpcode(RecipeSimdState& s, const LoweredRecipeInstructi
         if constexpr (Op == SdfOpCode::RepeatLimited) s.position=SdfCore_RepeatLimitedSimd4(s.position,in.data[0],glm::vec3(in.data[1],in.data[2],in.data[3]));
     } else if constexpr (Op == SdfOpCode::RestorePos) {
         --s.psp; s.position=s.positionStack[s.psp]; s.stack[s.sp-1]=s.stack[s.sp-1]*f32(s.distanceScaleStack[s.psp]);
-    } else if constexpr (Op == static_cast<SdfOpCode>(112)) {
+    } else if constexpr (Op == SdfOpCode::DeclarePosition) {
         s.declaredPosition=RecipePop3(s); s.position=s.position-s.declaredPosition;
 
     } else if constexpr (Op == SdfOpCode::MathSin || Op == SdfOpCode::MathCos || Op == SdfOpCode::MathSmoothstep ||
@@ -1993,7 +1993,7 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         case Recipe::SdfOpCode::Float3Dot: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Float3Dot>;
         case Recipe::SdfOpCode::Float3Normalize: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Float3Normalize>;
         case Recipe::SdfOpCode::ReadParamFloat3: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamFloat3>;
-        case static_cast<Recipe::SdfOpCode>(112): return &ExecuteRecipeOpcode<static_cast<Recipe::SdfOpCode>(112)>;
+        case Recipe::SdfOpCode::DeclarePosition: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::DeclarePosition>;
         case Recipe::SdfOpCode::Hash32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Hash32>;
         case Recipe::SdfOpCode::Hash32Combine: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Hash32Combine>;
         default: return nullptr;
@@ -2166,7 +2166,7 @@ public:
                 return false;
             }
             const SdfOpCode opcode=static_cast<SdfOpCode>(source.opCode);
-            if (opcode==static_cast<SdfOpCode>(113)) {
+            if (opcode==SdfOpCode::InvokeRecipe) {
                 error="InvokeRecipe must be unrolled before SIMD lowering";
                 instructions_.clear();
                 return false;
@@ -2180,7 +2180,7 @@ public:
             }
             sp=sp-arity.vPop+arity.vPush;
             psp=psp-arity.pPop+arity.pPush;
-            if (opcode==SdfOpCode::Output || opcode==SdfOpCode::ComposeFloat3 || opcode==SdfOpCode::Passthrough || opcode==static_cast<SdfOpCode>(113))
+            if (opcode==SdfOpCode::Output || opcode==SdfOpCode::ComposeFloat3 || opcode==SdfOpCode::Passthrough || opcode==SdfOpCode::InvokeRecipe)
                 continue;
             LoweredRecipeInstruction lowered{};
             lowered.valueBase=static_cast<std::uint8_t>(valueBase);
@@ -2404,7 +2404,7 @@ inline bool UnrollInto(const SdfInstruction* program, std::uint32_t count,
                        std::string& error) {
     for (std::uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& instruction = program[i];
-        if (static_cast<SdfOpCode>(instruction.opCode) != static_cast<Recipe::SdfOpCode>(113)) {
+        if (static_cast<SdfOpCode>(instruction.opCode) != Recipe::SdfOpCode::InvokeRecipe) {
             output.push_back(instruction);
             continue;
         }
@@ -2450,7 +2450,7 @@ inline bool UnrollRecipeInstructions(const Yeroket::Sdf::Generated::SdfInstructi
         return false;
     }
     for (const auto& instruction : output) {
-        if (static_cast<Recipe::SdfOpCode>(instruction.opCode) == static_cast<Recipe::SdfOpCode>(113)) {
+        if (static_cast<Recipe::SdfOpCode>(instruction.opCode) == Recipe::SdfOpCode::InvokeRecipe) {
             error = "internal closure failure: InvokeRecipe survived unrolling";
             output.clear();
             return false;

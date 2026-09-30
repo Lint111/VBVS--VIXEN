@@ -70,7 +70,7 @@
 #include "ComputePipelineCacher.h"             // Inc4 M3: GetOrCreate for the specialized VkPipeline
 #include "DescriptorSetLayoutCacher.h"         // Inc4 M3: BuildDescriptorSetLayoutFromReflection/ExtractPushConstantsFromReflection/CalculateDescriptorPoolSizes
 #include "Hash.h"                              // Inc4 M3: ComputeSHA256HexFromUint32Vec for the pipeline cache key
-#include <fstream>                             // Inc4 M3: reading SdfCoreKernels.glsl for the specialized shader's inlined core
+#include <fstream>                             // Inc4 M3: reading SdfCoreKernels.g.glsl for the specialized shader's inlined core
 
 // Sampled Lighting Inc3 M4: the world-transformed light-tree cut for the ReSTIR gate demo
 // (VIXEN_RESTIR_GATE_DEMO), stashed by BuildRenderGraph.cpp's demo-scene block and read by
@@ -940,15 +940,15 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // First promotion of this recipeId: compile its specialized shader now.
             std::vector<std::filesystem::path> corePaths = {
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-                std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) / "recipe" / "SdfCoreKernels.glsl",
+                std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) / "recipe" / "SdfCoreKernels.g.glsl",
 #endif
-                std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
-                std::filesystem::path("../libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
+                std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"),
+                std::filesystem::path("../libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"),
             };
             std::filesystem::path corePath;
             for (const auto& p : corePaths) { if (std::filesystem::exists(p)) { corePath = p; break; } }
             if (corePath.empty()) {
-                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] SdfCoreKernels.glsl not found, skipping recipeId=" + std::to_string(recipeId));
+                if (mainLogger) mainLogger->Error("[RecipeBucketedDispatch] SdfCoreKernels.g.glsl not found, skipping recipeId=" + std::to_string(recipeId));
                 continue;
             }
             std::ifstream coreFile(corePath);
@@ -1194,15 +1194,15 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             if (!entry) continue;
             std::vector<std::filesystem::path> corePaths = {
 #ifdef VIXEN_SVO_SHADER_SOURCE_DIR
-                std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) / "recipe" / "SdfCoreKernels.glsl",
+                std::filesystem::path(VIXEN_SVO_SHADER_SOURCE_DIR) / "recipe" / "SdfCoreKernels.g.glsl",
 #endif
-                std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
-                std::filesystem::path("../libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"),
+                std::filesystem::path("libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"),
+                std::filesystem::path("../libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"),
             };
             std::filesystem::path corePath;
             for (const auto& p : corePaths) { if (std::filesystem::exists(p)) { corePath = p; break; } }
             if (corePath.empty()) {
-                if (mainLogger) mainLogger->Error("[BucketShade] SdfCoreKernels.glsl not found, skipping shade for recipeId=" + std::to_string(shadeRecipeId));
+                if (mainLogger) mainLogger->Error("[BucketShade] SdfCoreKernels.g.glsl not found, skipping shade for recipeId=" + std::to_string(shadeRecipeId));
                 continue;
             }
             std::ifstream coreFile(corePath);

@@ -2130,7 +2130,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               // Inc0 M5: BodyInstanceRayMarch.comp #includes "recipe/SdfCoreKernels.glsl"
+               // Inc0 M5: BodyInstanceRayMarch.comp #includes "recipe/SdfCoreKernels.g.glsl"
                // under libraries/SVO/shaders — a different tree than the paths above.
                .AddIncludePath("libraries/SVO/shaders")
                .AddIncludePath("../libraries/SVO/shaders")
@@ -2416,7 +2416,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // splice the march's does (its marker precedes SceneBindings, the shader's
     // own ordering comment), so spliced sdfRecipe_<id> fields are tappable at
     // cell scale; its builder therefore carries the SVO include paths for
-    // recipe/SdfCoreKernels.glsl. The resolve is a standalone-bindings shader
+    // recipe/SdfCoreKernels.g.glsl. The resolve is a standalone-bindings shader
     // (plain lighting-family registration; the shared feature set is inert for
     // it — the ProbeApply precedent).
     if (hitAccumResolveEnabled) {

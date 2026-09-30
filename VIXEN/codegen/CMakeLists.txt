@@ -89,10 +89,9 @@ endif()
 # The engine consumes one reviewed kernel snapshot for every codegen check.  This
 # is deliberately materialized under the build tree instead of checking out the
 # user's kernel repository: a mutable main checkout must not silently change the
-# generated contract between configure and build.  b50d40f5 is the kernel commit
-# that produced the current AppFlow golden and includes the earlier recipe SIMD
-# contract; newer kernel-main commits are intentionally outside this engine pin.
-set(YEROKET_KERNEL_SHA "b50d40f5bbd5dd9816c25540b8aeaadcada5ba31" CACHE STRING
+# generated contract between configure and build. The pin tracks the kernel
+# commit that produced this engine's generated artifacts and recipe declarations.
+set(YEROKET_KERNEL_SHA "cf8ca1bd6f05a3a6b0c4f20804b74b47ea893c39" CACHE STRING
     "Pinned Yeroket kernel commit used by VIXEN codegen checks")
 set(_yk_root "${YEROKET_ROOT}")
 set(_yk_pin_dir "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}")
@@ -217,12 +216,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs" _recipe_opcode_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs" _recipe_kernel_source_run)
         _codegen_to_wsl_path("${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs" _recipe_kernel_extra_source_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs" _recipe_op_declarations_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp" _out_sdf_core_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl" _out_sdf_core_hlsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl" _out_sdf_core_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h" _out_sdf_opcodes_run)
-        _codegen_to_wsl_path("${VIXEN_ROOT}/codegen/recipe-opcodes.extensions" _recipe_opcode_extensions_run)
-        _codegen_to_wsl_path("${_cg}/recipe-lowering.extensions" _recipe_extensions_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp" _out_recipe_simd_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc" _out_recipe_eval_dispatch_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc" _out_recipe_glsl_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -286,12 +287,14 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_recipe_opcode_source_run "${_yk_root}/Packages/com.utility.graph-framework/Runtime/VM/SDFInstruction.cs")
         set(_recipe_kernel_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs")
         set(_recipe_kernel_extra_source_run "${_yk_root}/Packages/com.utility.sdf/Runtime/Kernels/DeterministicHashKernels.cs")
+        set(_recipe_op_declarations_run "${VIXEN_ROOT}/codegen/RecipeOpDeclarations.cs")
         set(_out_sdf_core_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfCoreKernels.g.hpp")
         set(_out_sdf_core_hlsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl")
+        set(_out_sdf_core_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
         set(_out_sdf_opcodes_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfOpCodes.g.h")
-        set(_recipe_opcode_extensions_run "${VIXEN_ROOT}/codegen/recipe-opcodes.extensions")
-        set(_recipe_extensions_run "${_cg}/recipe-lowering.extensions")
         set(_out_recipe_simd_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp")
+        set(_out_recipe_eval_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc")
+        set(_out_recipe_glsl_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -397,16 +400,18 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
-        --recipe-extensions "${_recipe_extensions_run}"
-        --out-header "${_out_recipe_simd_run}")
+        --recipe-kernels-extra "${_recipe_op_declarations_run}"
+        --out-header "${_out_recipe_simd_run}"
+        --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
+        --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}")
     add_custom_target(recipe_simd_check ALL
         JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
-        COMMENT "[codegen] golden check: RecipeSimd.g.hpp matches kernel lowering pipeline"
+        COMMENT "[codegen] golden check: RecipeSimd and CPU/GLSL dispatch match merged recipe declarations"
         VERBATIM)
     add_custom_target(recipe_simd_regen
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
-        COMMENT "[codegen] regenerate RecipeSimd.g.hpp from kernel lowering pipeline"
+        COMMENT "[codegen] regenerate RecipeSimd and CPU/GLSL dispatch from merged recipe declarations"
         VERBATIM)
 
     set(_sdf_core_kernel_args
@@ -414,16 +419,18 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-cpp
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
+        --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_core_cpp_run}"
-        --out-hlsl "${_out_sdf_core_hlsl_run}")
+        --out-hlsl "${_out_sdf_core_hlsl_run}"
+        --out-glsl "${_out_sdf_core_glsl_run}")
     add_custom_target(sdf_core_kernels_check ALL
         JOB_POOL vixen_codegen
         COMMAND ${_CODEGEN_RUNNER} ${_sdf_core_kernel_args} --check
-        COMMENT "[codegen] golden check: SdfCoreKernels C++/HLSL match canonical kernels"
+        COMMENT "[codegen] golden check: SdfCoreKernels C++/HLSL/GLSL match canonical kernels"
         VERBATIM)
     add_custom_target(sdf_core_kernels_regen
         COMMAND ${_CODEGEN_RUNNER} ${_sdf_core_kernel_args}
-        COMMENT "[codegen] regenerate SdfCoreKernels C++/HLSL from canonical kernels"
+        COMMENT "[codegen] regenerate SdfCoreKernels C++/HLSL/GLSL from canonical kernels"
         VERBATIM)
 
     set(_recipe_opcode_mirror_args
@@ -432,7 +439,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-opcodes "${_recipe_opcode_source_run}"
         --recipe-kernels "${_recipe_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_kernel_extra_source_run}"
-        --recipe-opcode-extensions "${_recipe_opcode_extensions_run}"
+        --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_opcodes_run}")
     add_custom_target(recipe_opcode_mirror_check ALL
         JOB_POOL vixen_codegen

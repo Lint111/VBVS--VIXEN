@@ -793,7 +793,7 @@ endif()
 # The specialized single-recipe shader (Task 5) is NOT build-time glslc-compiled: it's emitted
 # and compiled AT TEST RUNTIME via ShaderManagement::ShaderCompiler (mirrors
 # test_procedural_recipe_render.cpp's own runtime-compile pattern), so this target needs no
-# second add_custom_command — only the vendored SdfCoreKernels.glsl file PATH (inlined into the
+# second add_custom_command — only the vendored SdfCoreKernels.g.glsl file PATH (inlined into the
 # generated source at runtime, not #include-d — see SpecializedRecipeShaderGlsl.h's header
 # comment for why ShaderCompiler::Compile cannot resolve #include directives).
 # ===========================================================================
@@ -808,7 +808,7 @@ if(TARGET SVO)
 endif()
 target_compile_definitions(test_recipe_bucketed_indirect_dispatch PRIVATE
     RECIPE_BUCKETING_SPV="${_recipebucketing_spv}"
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
 if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_recipe_bucketed_indirect_dispatch PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
@@ -831,7 +831,7 @@ endif()
 # cold-path shader (this milestone's own tier-0-equivalent, see the .cpp file's header comment for
 # why the REAL BodyInstanceRayMarch.comp is out of scope here) are emitted/compiled AT TEST
 # RUNTIME via ShaderManagement::ShaderCompiler — mirrors M2's own runtime-compile pattern, no
-# second add_custom_command needed beyond the shared SdfCoreKernels.glsl path.
+# second add_custom_command needed beyond the shared SdfCoreKernels.g.glsl path.
 # ===========================================================================
 if(VIXEN_GLSLC)
 add_executable(test_recipe_multi_bucket_compositing
@@ -844,7 +844,7 @@ if(TARGET SVO)
 endif()
 target_compile_definitions(test_recipe_multi_bucket_compositing PRIVATE
     RECIPE_BUCKETING_SPV="${_recipebucketing_spv}"
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
 if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_recipe_multi_bucket_compositing PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
@@ -880,7 +880,7 @@ if(TARGET SVO)
 endif()
 target_compile_definitions(test_recipe_bucketing_perf PRIVATE
     RECIPE_BUCKETING_SPV="${_recipebucketing_spv}"
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
 if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_recipe_bucketing_perf PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
@@ -898,7 +898,7 @@ endif()
 # ===========================================================================
 # Recipe Bucketed-Dispatch Overhead Inc3 M0 — switch-cost isolation gating spike (Task 1).
 # Does NOT depend on recipe_instance_bucketing_spv (this milestone is about the tier-0 SWITCH
-# shader's own scaling, not the bucketing mechanism) — only needs SdfCoreKernels.glsl's path
+# shader's own scaling, not the bucketing mechanism) — only needs SdfCoreKernels.g.glsl's path
 # (read at runtime, same textual-inline convention M2/M3/M4 use since ShaderCompiler::Compile
 # has no #include resolution) and a runtime-compiled synthetic switch-shader per test case, via
 # ShaderManagement::ShaderCompiler. Kept inside the SAME if(VIXEN_GLSLC) guard as its siblings
@@ -914,7 +914,7 @@ if(TARGET SVO)
     target_link_libraries(test_switch_cost_isolation PRIVATE SVO)
 endif()
 target_compile_definitions(test_switch_cost_isolation PRIVATE
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl")
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl")
 if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_switch_cost_isolation PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()

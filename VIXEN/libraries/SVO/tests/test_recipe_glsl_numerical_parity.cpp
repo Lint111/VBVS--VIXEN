@@ -10,7 +10,7 @@
  *  (1) RecipeGlslCompiles (standalone TEST, no fixture) — runs on EVERY machine,
  *      CI or dev, GPU or not:
  *        - Emit GLSL via EmitProceduralFieldFunctionGlsl() for every corpus program.
- *        - Compile the composed GLSL (SdfCoreKernels.glsl + emitted function + a
+ *        - Compile the composed GLSL (SdfCoreKernels.g.glsl + emitted function + a
  *          small compute wrapper) through the REAL glslang-backed ShaderCompiler.
  *          This is pure CPU/host-side work — glslang does not touch a GPU device —
  *          so it runs unconditionally and asserts success for all 88 programs. This
@@ -180,7 +180,7 @@ std::vector<glm::vec3> BuildSamplePoints() {
 
 // ---------------------------------------------------------------------------
 // Compose the full GLSL compute shader source for one corpus program:
-//   #version 450 + SdfCoreKernels.glsl + emitted sdfRecipe_0(vec3, float[6]) + wrapper main().
+//   #version 450 + SdfCoreKernels.g.glsl + emitted sdfRecipe_0(vec3, float[6]) + wrapper main().
 //
 // Recipe-Parameterization M2 Task 7: params are read from a THIRD SSBO binding (2), not
 // baked as literals — this is what lets Task 7's dedicated sweep test below rewrite the

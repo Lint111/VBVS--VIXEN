@@ -113,10 +113,10 @@ layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupan
 // symbols (and the VIXEN_UBER_RECIPE_SPLICED define) must already be declared (GLSL has no
 // forward declaration/hoisting) by the time SceneBindings.glsl is processed.
 //
-// recipe/SdfCoreKernels.glsl (the SdfCore_* kernel set EmitProceduralFieldFunctionGlsl's output
+// recipe/SdfCoreKernels.g.glsl (the SdfCore_* kernel set EmitProceduralFieldFunctionGlsl's output
 // calls — Sphere/Box/Union/Round/... ) is included here too, for the SAME before-first-use
 // reason: the spliced sdfRecipe_<id> bodies call SdfCore_* helpers, so they must already exist.
-#include "recipe/SdfCoreKernels.glsl"
+#include "recipe/SdfCoreKernels.g.glsl"
 // VIXEN_UBER_RECIPE_SPLICE_MARKER
 
 #include "SceneBindings.glsl"   // Sampled Lighting Inc3 M1: scene SSBOs + traversal (KI-018)
