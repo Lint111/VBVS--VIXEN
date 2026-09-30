@@ -1,3 +1,8 @@
+> **⚠️ 2026-09-30 — T-1140 (`lane-aurender`) paused before implementation.** Discovery at
+> `d3316e7d` traced float instance/camera paths through upload, culling, TLAS, ray setup, and temporal
+> reprojection. The required double input/origin transport API is not specified; report and alternatives
+> are in `../../reports/aurender.md`. No product build, test, or capture was run pending that ruling.
+
 > **✅ 2026-09-07 — T-032 SVOBuilder migration implemented in `lane-t032svo`.**
 > `SVOBuilder::subdivideNode` now accepts an optional non-owning host `KernelDispatch::TaskExecutor`
 > and submits one stable root-octant wave; descendants recurse serially to prevent nested executor/TBB
