@@ -3,6 +3,7 @@
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
 #include "KernelDispatch/TaskExecutor.h"
 #include "VulkanDevice.h"
+#include "RuntimeCachePaths.h"
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
 #include <chrono>
@@ -346,7 +347,7 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 void RenderGraph::Clear() {
     // Save persistent caches BEFORE cleanup destroys resources
     if (mainCacher) {
-        std::filesystem::path cacheDir = "cache";
+        const std::filesystem::path cacheDir = Vixen::RuntimeCacheDirectory();
         GRAPH_LOG_INFO("[RenderGraph::Clear] Saving persistent caches to: " + cacheDir.string());
 
         auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
@@ -358,7 +359,7 @@ void RenderGraph::Clear() {
             // run trusts the cache. If the process is killed before this point (or the save fails),
             // the lock survives and the next run regenerates instead of loading a suspect cache.
             std::error_code lockEc;
-            std::filesystem::remove(std::filesystem::path("cache") / ".session.lock", lockEc);
+            std::filesystem::remove(Vixen::RuntimeCacheDirectory() / ".session.lock", lockEc);
         } else {
             GRAPH_LOG_WARNING("[RenderGraph::Clear] Warning: Some caches failed to save");
             // Leave the session lock in place: an incomplete save must not be trusted next run.
@@ -400,7 +401,7 @@ void RenderGraph::HandleWindowClose() {
 
     // Save persistent caches BEFORE cleanup destroys resources (async for responsiveness)
     if (mainCacher) {
-        std::filesystem::path cacheDir = "cache";
+        const std::filesystem::path cacheDir = Vixen::RuntimeCacheDirectory();
         GRAPH_LOG_INFO("[RenderGraph] Saving persistent caches asynchronously to: " + cacheDir.string());
 
         auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
@@ -1478,7 +1479,7 @@ void RenderGraph::GeneratePipelines() {
     // This ensures all cachers are registered and all PostSetup hooks have executed
     GRAPH_LOG_INFO("[GeneratePipelines] Loading persistent caches...");
     if (mainCacher) {
-        std::filesystem::path cacheDir = "cache";
+        const std::filesystem::path cacheDir = Vixen::RuntimeCacheDirectory();
         std::filesystem::path sessionLock = cacheDir / ".session.lock";
 
         // Cache session guard (dirty flag): the lock is written here at session start and removed

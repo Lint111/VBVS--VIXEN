@@ -127,7 +127,7 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 // without deleting whatever is already on disk.
 ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig() {
     ShaderManagement::ShaderCacheConfig config;
-    config.cacheDirectory = "cache/shaders";
+    config.cacheDirectory = Vixen::RuntimeCacheDirectory() / "shaders";
     if (const char* dirEnv = std::getenv("VIXEN_SHADER_CACHE_DIR")) {
         config.cacheDirectory = dirEnv;
     }

@@ -149,6 +149,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # shot instead of leaving multi-GB PDB/ILK files behind (see Worktree-Build-Artifact-
 # Accumulation-Audit-2026-07.md Fix 2). RUNTIME_OUTPUT_DIRECTORY is set per-target below.
 set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
+set(VIXEN_RUNTIME_CACHE_DIR "${CMAKE_BINARY_DIR}/runtime-cache" CACHE PATH
+    "Persistent runtime cache directory (defaults to the build tree)")
+add_compile_definitions(VIXEN_RUNTIME_CACHE_DIR="${VIXEN_RUNTIME_CACHE_DIR}")
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
