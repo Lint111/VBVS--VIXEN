@@ -336,7 +336,28 @@ glslangValidator.exe shader.comp -V -o shader.comp.spv
 
 ---
 
-## 11. Related Pages
+## 11. CodeGraph from an isolated worktree
+
+The lane worktrees under `.claude-worktrees/` do not carry CodeGraph indexes.
+Run the repository helper from any VIXEN worktree; it checks the current
+worktree and the canonical checkout, then queries the available index with
+`codegraph explore --path`:
+
+```bash
+tools/codegraph-vixen.sh "capture runtime output paths"
+```
+
+If the index lives in another VIXEN checkout, point the helper at that checkout:
+
+```bash
+VIXEN_CODEGRAPH_ROOT=/absolute/path/to/indexed/VIXEN \
+  tools/codegraph-vixen.sh "capture runtime output paths"
+```
+
+The helper does not initialize, update, or commit an index. When it selects a
+shared checkout, its results may not include uncommitted lane changes.
+
+## 12. Related Pages
 
 - [[Overview]] - Development overview
 - [[Testing]] - Test configuration
