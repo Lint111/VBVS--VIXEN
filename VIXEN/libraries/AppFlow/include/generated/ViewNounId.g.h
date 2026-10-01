@@ -21,9 +21,6 @@ enum class ViewNounId : uint32_t {
     Hud_inspectStrength = 13,
     Hud_inspectTopRelName = 14,
     Hud_inspectTopRelSig = 15,
-    UndertowTransfer_rows = 16,
-    UndertowDeepFieldCells_rows = 17,
-    UndertowPlaceStock_rows = 18,
 };
 
 }  // namespace Vixen::AppFlow
