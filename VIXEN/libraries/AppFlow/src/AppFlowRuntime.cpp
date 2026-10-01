@@ -1,34 +1,60 @@
 #include "AppFlowRuntime.h"
-#include "AppFlowLoader.h"
+#include "Logger.h"
+#include <utility>
 
 namespace Vixen::AppFlow {
 
 using namespace Generated;
+
+namespace {
+Logger& RuntimeLogger() {
+    static Logger logger("AppFlowRuntime", true);
+    return logger;
+}
+
+FlowTriggerCause ActionCause(FlowActionId action) {
+    return {FlowTriggerKind::FlowAction,
+            std::to_string(static_cast<uint16_t>(action))};
+}
+}
 
 AppFlowRuntime::AppFlowRuntime(Vixen::EventBus::MessageBus* bus, Vixen::EventBus::SenderID sender)
     : bus_(bus), sender_(sender) {}
 
 void AppFlowRuntime::Publish(AppFlowChangedEvent::Kind kind, FlowStateId state,
                               FlowActionId action, uint32_t group) {
-    if (!bus_) {
-        return;
-    }
-    AppFlowChangedEvent evt(sender_, kind, state, action, group);
-    bus_->PublishImmediate(evt);
+    if (!bus_) return;
+    AppFlowChangedEvent event(sender_, kind, state, action, group);
+    bus_->PublishImmediate(event);
 }
 
-// NOTE (Inc-1 filler-field convention — read before consuming AppFlowChangedEvent):
-// For kinds where a field isn't semantically meaningful, the publishers below pass a
-// FILLER value, NOT a sentinel: StateChanged/ActionUndone/ActionRedone pass
-// action = FlowActionId{}, which value-inits to 0 == FlowActionId::ToggleLayer (a VALID
-// id, not "none"). Inc-1 consumers key off `kind` (+ publish count) and never read
-// `.action` on those kinds, so this is safe today. A future consumer MUST key off `kind`
-// and not read `.action` on non-Action* kinds. Inc-2 should either carry the affected id
-// or add an explicit "none" sentinel (there is no reserved sentinel enumerator yet).
+void AppFlowRuntime::PublishEdge(const FlowStateChange& change, FlowTriggerCause cause) {
+    if (!bus_) return;
+    AppFlowEdgeEvent edge(sender_, change.edgeId, change.from, change.to, std::move(cause));
+    bus_->PublishImmediate(edge);
+    Publish(AppFlowChangedEvent::Kind::StateChanged, change.to, FlowActionId{}, 0);
+}
+
+void AppFlowRuntime::ReportDiagnostic(const std::string& message) {
+    RuntimeLogger().Error(message);
+    if (bus_) {
+        try {
+            AppFlowDiagnosticEvent event(sender_, message);
+            bus_->PublishImmediate(event);
+        } catch (...) {
+            RuntimeLogger().Error("AppFlow diagnostic event subscriber threw while reporting a refusal");
+        }
+    }
+    if (diagnosticHandler_) {
+        try {
+            diagnosticHandler_(message);
+        } catch (...) {
+            RuntimeLogger().Error("AppFlow diagnostic callback threw while reporting a refusal");
+        }
+    }
+}
 
 LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvider* dataProvider) {
-    // Build every reload into fresh primitives first. AppFlowLoader validates before mutating,
-    // and the temporary primitives make a failed parse/load leave the live runtime untouched.
     FlowStateMachine freshFsm;
     ActionStack freshStack;
     BindingStore freshBindings;
@@ -45,6 +71,7 @@ LoadResult AppFlowRuntime::Load(const AppFlowContainerView* view, IViewDataProvi
     inputProfile_ = std::move(freshInputProfile);
     dataTargets_ = std::move(freshDataTargets);
     dataProvider_ = dataProvider;
+    activeCause_.reset();
     handlers_.clear();
     return LoadResult::Ok;
 }
@@ -55,33 +82,70 @@ LoadResult AppFlowRuntime::Load(IViewDataProvider* dataProvider) {
 
 DispatchResult AppFlowRuntime::DispatchData(FlowActionId id, uint32_t value) {
     auto it = dataTargets_.find(uint16_t(id));
-    if (it == dataTargets_.end() || !dataProvider_) {
-        return DispatchResult::RejectedByState;
-    }
+    if (it == dataTargets_.end() || !dataProvider_) return DispatchResult::RejectedByState;
     dataProvider_->WriteU32(ViewNounKey{it->second}, value);
     return DispatchResult::Ok;
 }
 
 bool AppFlowRuntime::ReadData(FlowActionId id, uint32_t& out) const {
     auto it = dataTargets_.find(uint16_t(id));
-    if (it == dataTargets_.end() || !dataProvider_) {
-        return false;
-    }
+    if (it == dataTargets_.end() || !dataProvider_) return false;
     return dataProvider_->ReadU32(ViewNounKey{it->second}, out);
 }
 
-DispatchResult AppFlowRuntime::NavTo(FlowStateId to) {
-    const DispatchResult result = fsm_.Request(to);
+DispatchResult AppFlowRuntime::NavTo(std::string_view edgeId) {
+    if (!activeCause_) {
+        ReportDiagnostic("AppFlow rejected edge '" + std::string(edgeId) +
+                         "': direct transition requires an explicit System or Effect cause");
+        return DispatchResult::RejectedByState;
+    }
+    return NavToWithCause(edgeId, *activeCause_);
+}
+
+DispatchResult AppFlowRuntime::NavTo(std::string_view edgeId, FlowTriggerCause cause) {
+    return NavToWithCause(edgeId, cause);
+}
+
+DispatchResult AppFlowRuntime::NavToWithCause(std::string_view edgeId,
+                                              const FlowTriggerCause& cause) {
+    if (edgeId.empty() || cause.identity.empty()) {
+        ReportDiagnostic("AppFlow rejected transition: edge and typed cause identities must be declared");
+        return DispatchResult::RejectedByState;
+    }
+    FlowStateChange change;
+    const DispatchResult result = fsm_.Request(edgeId, change);
     if (result == DispatchResult::Ok) {
-        Publish(AppFlowChangedEvent::Kind::StateChanged, fsm_.Current(), FlowActionId{}, 0);
+        PublishEdge(change, cause);
+    } else if (result == DispatchResult::RejectedByState) {
+        ReportDiagnostic("AppFlow refused transition edge '" + std::string(edgeId) +
+                         "' from the current state; no declared edge matches this request");
     }
     return result;
 }
 
 DispatchResult AppFlowRuntime::NavPop() {
-    const DispatchResult result = fsm_.RequestReturn();
+    if (!activeCause_) {
+        ReportDiagnostic("AppFlow rejected return: direct transition requires an explicit System or Effect cause");
+        return DispatchResult::RejectedByState;
+    }
+    return NavPopWithCause(*activeCause_);
+}
+
+DispatchResult AppFlowRuntime::NavPop(FlowTriggerCause cause) {
+    return NavPopWithCause(cause);
+}
+
+DispatchResult AppFlowRuntime::NavPopWithCause(const FlowTriggerCause& cause) {
+    if (cause.identity.empty()) {
+        ReportDiagnostic("AppFlow rejected return: typed cause identity must be declared");
+        return DispatchResult::RejectedByState;
+    }
+    FlowStateChange change;
+    const DispatchResult result = fsm_.RequestReturn(change);
     if (result == DispatchResult::Ok) {
-        Publish(AppFlowChangedEvent::Kind::StateChanged, fsm_.Current(), FlowActionId{}, 0);
+        PublishEdge(change, cause);
+    } else if (result == DispatchResult::RejectedByState) {
+        ReportDiagnostic("AppFlow refused return from the current state: history has no unique matching declared edge");
     }
     return result;
 }
@@ -91,11 +155,23 @@ void AppFlowRuntime::RegisterHandler(FlowActionId id, Handler fn) {
 }
 
 DispatchResult AppFlowRuntime::Dispatch(FlowActionId id, const Params& params) {
+    return DispatchWithCause(id, params, ActionCause(id));
+}
+
+DispatchResult AppFlowRuntime::DispatchWithCause(FlowActionId id, const Params& params,
+                                                  FlowTriggerCause cause) {
     auto it = handlers_.find(uint16_t(id));
-    if (it == handlers_.end()) {
-        return DispatchResult::RejectedByState;  // declared-but-unwired = caught, not a silent no-op
+    if (it == handlers_.end()) return DispatchResult::RejectedByState;
+    if (cause.identity.empty()) cause = ActionCause(id);
+    auto previous = std::move(activeCause_);
+    activeCause_ = std::move(cause);
+    try {
+        it->second(params);
+    } catch (...) {
+        activeCause_ = std::move(previous);
+        throw;
     }
-    it->second(params);
+    activeCause_ = std::move(previous);
     return DispatchResult::Ok;
 }
 
@@ -105,18 +181,18 @@ DispatchResult AppFlowRuntime::DispatchById(FlowActionId id, const Params& param
 
 DispatchResult AppFlowRuntime::DispatchBySelector(const std::string& selector) {
     BoundAction bound;
-    if (!bindings_.TryGetForSelector(selector, bound)) {
-        return DispatchResult::RejectedByState;
-    }
-    return Dispatch(bound.action, bound.params);
+    if (!bindings_.TryGetForSelector(selector, bound)) return DispatchResult::RejectedByState;
+    if (bound.cause.identity.empty()) bound.cause = ActionCause(bound.action);
+    return DispatchWithCause(bound.action, bound.params, std::move(bound.cause));
 }
 
 DispatchResult AppFlowRuntime::DispatchByKey(Generated::KeyChord chord) {
     FlowActionId action{};
-    if (!inputProfile_.Resolve(chord, fsm_.Current(), action)) {
+    FlowTriggerCause cause;
+    if (!inputProfile_.Resolve(chord, fsm_.Current(), action, &cause))
         return DispatchResult::RejectedByState;
-    }
-    return Dispatch(action, {});
+    if (cause.identity.empty()) cause = ActionCause(action);
+    return DispatchWithCause(action, {}, std::move(cause));
 }
 
 } // namespace Vixen::AppFlow

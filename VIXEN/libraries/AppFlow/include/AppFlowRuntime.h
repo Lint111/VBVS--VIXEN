@@ -1,6 +1,8 @@
 #pragma once
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,24 +39,26 @@ public:
     // through it (nullptr — the default — leaves the Data leg inert, never a crash).
     LoadResult Load(const AppFlowContainerView* view = nullptr, IViewDataProvider* dataProvider = nullptr);
     LoadResult Load(IViewDataProvider* dataProvider);
+    void SetEventBus(Vixen::EventBus::MessageBus* bus, Vixen::EventBus::SenderID sender) {
+        bus_ = bus;
+        sender_ = sender;
+    }
 
-    // Pass-throughs to the fsm, exposed so a consumer (or test) can drive Inc-1's
-    // externally-set guard stub without reaching into the owned FlowStateMachine.
+    // Pass-through for the externally-set guard stub. Initial state always comes from Load().
     void SetGuardResult(Generated::FlowGuardId g, bool pass) { fsm_.SetGuardResult(g, pass); }
-    void SetCurrent(Generated::FlowStateId s) { fsm_.SetCurrent(s); }
     Generated::FlowStateId Current() const { return fsm_.Current(); }
 
-    // Delegates to the fsm; on Ok publishes AppFlowChangedEvent{StateChanged}. A navigation
-    // service, not a dispatchable verb (design §4.3 — "no special framework case" for nav is
-    // achieved by consumers wiring their OWN Return handler to call NavPop(); NavTo/NavPop
-    // stay as plain services other services, like handlers, may call).
-    DispatchResult NavTo(Generated::FlowStateId to);
+    // Navigation names a declared edge. A dispatching trigger supplies its cause implicitly;
+    // direct systems/effects pass their existing typed identity explicitly.
+    DispatchResult NavTo(std::string_view edgeId);
+    DispatchResult NavTo(std::string_view edgeId, FlowTriggerCause cause);
 
-    // Encapsulated pass-through to the fsm's entry-history pop (design §D6 — navigation
-    // "Return", distinct from ActionStack::Undo's data revert). Mirrors NavTo: publish
-    // StateChanged on Ok. Does NOT expose a raw FlowStateMachine& — the FSM stays private, as
-    // in Inc-1.
+    // History return succeeds only through one declared edge matching the history destination.
     DispatchResult NavPop();
+    DispatchResult NavPop(FlowTriggerCause cause);
+
+    using DiagnosticHandler = std::function<void(const std::string&)>;
+    void SetDiagnosticHandler(DiagnosticHandler handler) { diagnosticHandler_ = std::move(handler); }
 
     // The registry (design §4.2): the entire router. No categories, no action-name literals,
     // no undo knowledge — a declared-but-unwired id is RejectedByState, caught rather than
@@ -110,6 +114,12 @@ public:
 private:
     void Publish(AppFlowChangedEvent::Kind kind, Generated::FlowStateId state,
                  Generated::FlowActionId action, uint32_t group);
+    void PublishEdge(const FlowStateChange& change, FlowTriggerCause cause);
+    void ReportDiagnostic(const std::string& message);
+    DispatchResult DispatchWithCause(Generated::FlowActionId id, const Params& params,
+                                     FlowTriggerCause cause);
+    DispatchResult NavToWithCause(std::string_view edgeId, const FlowTriggerCause& cause);
+    DispatchResult NavPopWithCause(const FlowTriggerCause& cause);
 
     Vixen::EventBus::MessageBus* bus_;
     Vixen::EventBus::SenderID sender_;
@@ -118,6 +128,8 @@ private:
     BindingStore bindings_;
     LayerController layers_;
     InputProfile inputProfile_;
+    std::optional<FlowTriggerCause> activeCause_;
+    DiagnosticHandler diagnosticHandler_;
     // Keyed by the underlying uint16_t (mirrors BindingStore's registry_ key type) rather
     // than FlowActionId itself, since std::unordered_map has no default hash for a plain
     // enum class without <cstdint>-adjacent boilerplate.

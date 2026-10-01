@@ -9,7 +9,7 @@ namespace Vixen.AppFlow.Reference
 {
     // States — members become FlowStateId (pinned, append-only).
     [FlowStateEnum]
-    public enum FlowState { Editing = 0, Simulating = 1, Paused = 2, Settings = 3 }
+    public enum FlowState { [FlowInitialState] Editing = 0, Simulating = 1, Paused = 2, Settings = 3 }
 
     // Guards — declared predicate opcodes.
     [FlowGuardEnum]
@@ -51,7 +51,7 @@ namespace Vixen.AppFlow.Reference
     [FlowStateStruct]
     public struct LayerState { public uint enabledMask; }
 
-    // One transition table entry, declared as data. Index 0 — [FlowEdgeEffect(0)] below targets it.
+    // Declared edges are the only way to change AppFlow state.
     [FlowTransition] // from=Editing to=Simulating guard=DocumentValid
     public static class Transitions
     {
@@ -59,11 +59,6 @@ namespace Vixen.AppFlow.Reference
         public const int To = (int)FlowState.Simulating;
         public const int Guard = (int)FlowGuard.DocumentValid;
     }
-
-    // Effect-ref on transition 0 (Editing->Simulating). DESIGNED not built: nothing consumes
-    // this yet — the column exists so an edge-effect runtime has a place to read from (design §D7).
-    [FlowEdgeEffect(0)]
-    public static class T0Effect { public const string Effect = "none"; }
 
     // Element click → ToggleLayer. The element identity stays a dynamic-read string this
     // increment (design §D3/§5.2); only the extracted {index} param is typed.
@@ -92,6 +87,15 @@ namespace Vixen.AppFlow.Reference
     {
         public const int From = (int)FlowState.Editing;
         public const int To = (int)FlowState.Settings;
+        public const int Guard = (int)FlowGuard.DocumentValid;
+    }
+
+    // History returns from Settings to Editing through this declared edge.
+    [FlowTransition] // from=Settings to=Editing guard=DocumentValid
+    public static class SettingsEditingEdge
+    {
+        public const int From = (int)FlowState.Settings;
+        public const int To = (int)FlowState.Editing;
         public const int Guard = (int)FlowGuard.DocumentValid;
     }
 

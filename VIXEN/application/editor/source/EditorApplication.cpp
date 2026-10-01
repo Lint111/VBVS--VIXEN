@@ -589,13 +589,9 @@ void EditorApplication::PreTick() {
                 break;
             }
             case ScriptedAction::Kind::Settings:
-                // NavTo is a plain service call (AppFlowRuntime.h:46), not a dispatchable verb --
-                // there's no selector/key for "open settings" yet (design D15's registry only
-                // covers actions, not raw navigation), so this is the one script action that
-                // calls a runtime service directly rather than Dispatch*. Sets up the state the
-                // very next Back action needs (Settings is the only state back-button/Esc resolve
-                // Return from -- kReturnEdges, AppFlow.g.h:82).
-                rt_.NavTo(Vixen::AppFlow::Generated::FlowStateId::Settings);
+                // This scripted system request names the generated declaration and its cause.
+                rt_.NavTo(Vixen::AppFlow::Generated::FlowEdgeId::ToSettings,
+                          {Vixen::AppFlow::FlowTriggerKind::System, "EditorApplication"});
                 break;
             case ScriptedAction::Kind::Back: {
                 // The real dispatch path a back-button UI click takes: DispatchBySelector, exactly

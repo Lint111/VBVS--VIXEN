@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include "AppFlowEvents.h"
 #include "generated/AppFlow.g.h"
 
 namespace Vixen::AppFlow {
@@ -19,6 +20,7 @@ struct BoundAction {
     FlowActionId action;
     std::string on;
     std::vector<std::pair<std::string, std::string>> params;
+    FlowTriggerCause cause;
 };
 
 // Engine-owned generalization of undertow's UiActionRegistry + UiBindingTable (design
@@ -66,6 +68,7 @@ private:
 
     struct PatternBinding {
         std::string prefix, suffix, paramName;
+        std::string triggerId;
         FlowActionId action;
         std::string on;
     };

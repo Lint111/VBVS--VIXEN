@@ -4,6 +4,7 @@
 #include "LayerControllerViewDataProvider.h"
 #include "MessageBus.h"
 #include "AppFlowEvents.h"
+#include <stdexcept>
 using namespace Vixen::AppFlow;
 using namespace Vixen::AppFlow::Generated;
 
@@ -15,14 +16,52 @@ TEST(AppFlowLoader, LoadsGeneratedViewOk) {
 TEST(AppFlowRuntime, StateChangePublishesEvent) {
     Vixen::EventBus::MessageBus bus;
     int seen = 0;
+    std::string edgeId;
+    FlowStateId from{};
+    FlowStateId to{};
+    FlowTriggerCause cause;
+    bool sawEdge = false;
     bus.Subscribe(AppFlowChangedEvent::TYPE,
         [&](const Vixen::EventBus::BaseEventMessage&){ ++seen; return true; });
+    bus.Subscribe(AppFlowEdgeEvent::TYPE,
+        [&](const Vixen::EventBus::BaseEventMessage& message){
+            const auto& event = static_cast<const AppFlowEdgeEvent&>(message);
+            edgeId = event.edgeId;
+            from = event.from;
+            to = event.to;
+            cause = event.cause;
+            sawEdge = true;
+            return true;
+        });
     AppFlowRuntime rt(&bus, /*sender*/1);
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
     rt.SetGuardResult(FlowGuardId::DocumentValid, true);
-    rt.SetCurrent(FlowStateId::Editing);
-    EXPECT_EQ(rt.NavTo(FlowStateId::Simulating), DispatchResult::Ok);
+    EXPECT_EQ(rt.Current(), kInitialState);
+    EXPECT_EQ(rt.NavTo(FlowEdgeId::Transitions,
+                       {FlowTriggerKind::System, "LoaderTestSystem"}), DispatchResult::Ok);
     EXPECT_EQ(seen, 1);          // PublishImmediate — no drain needed (see Step 1 note)
+    ASSERT_TRUE(sawEdge);
+    EXPECT_STREQ(edgeId.c_str(), FlowEdgeId::Transitions);
+    EXPECT_EQ(from, FlowStateId::Editing);
+    EXPECT_EQ(to, FlowStateId::Simulating);
+    EXPECT_EQ(cause.kind, FlowTriggerKind::System);
+    EXPECT_EQ(cause.identity, "LoaderTestSystem");
+}
+
+TEST(AppFlowRuntime, UndeclaredEdgeIsRefusedAndDiagnosed) {
+    AppFlowRuntime rt(nullptr, 1);
+    ASSERT_EQ(rt.Load(), LoadResult::Ok);
+    std::string diagnostic;
+    rt.SetDiagnosticHandler([&](const std::string& message) { diagnostic = message; });
+    EXPECT_EQ(rt.NavTo("UndeclaredEdge", {FlowTriggerKind::System, "LoaderTestSystem"}),
+              DispatchResult::RejectedByState);
+    EXPECT_EQ(rt.Current(), FlowStateId::Editing);
+    EXPECT_NE(diagnostic.find("no declared edge"), std::string::npos);
+    rt.SetDiagnosticHandler([](const std::string&) { throw std::runtime_error("broken diagnostic sink"); });
+    DispatchResult refusal = DispatchResult::Ok;
+    EXPECT_NO_THROW(refusal = rt.NavTo(
+        "StillUndeclared", {FlowTriggerKind::Effect, "ExistingEffectId"}));
+    EXPECT_EQ(refusal, DispatchResult::RejectedByState);
 }
 
 // THE walking-skeleton spine, end to end: a UI selector resolves (via the generalized
@@ -78,6 +117,46 @@ TEST(AppFlowRuntime, DispatchByKeyRunsBoundActionUndoably) {
     EXPECT_EQ(rt.DispatchByKey({KeyId::A, KeyMod::None}), DispatchResult::RejectedByState);
 }
 
+TEST(AppFlowRuntime, TransitionEventCarriesDeclaredElementAndKeyCauses) {
+    auto observeCause = [](Vixen::EventBus::MessageBus& bus, FlowTriggerCause& cause) {
+        bus.Subscribe(AppFlowEdgeEvent::TYPE,
+            [&](const Vixen::EventBus::BaseEventMessage& message) {
+                cause = static_cast<const AppFlowEdgeEvent&>(message).cause;
+                return true;
+            });
+    };
+
+    {
+        Vixen::EventBus::MessageBus bus;
+        FlowTriggerCause cause;
+        observeCause(bus, cause);
+        AppFlowRuntime rt(&bus, 1);
+        ASSERT_EQ(rt.Load(), LoadResult::Ok);
+        rt.SetGuardResult(FlowGuardId::DocumentValid, true);
+        rt.RegisterHandler(FlowActionId::ToggleLayer, [&](const AppFlowRuntime::Params&) {
+            rt.NavTo(FlowEdgeId::Transitions);
+        });
+        EXPECT_EQ(rt.DispatchBySelector("layer-7-toggle"), DispatchResult::Ok);
+        EXPECT_EQ(cause.kind, FlowTriggerKind::ElementTrigger);
+        EXPECT_EQ(cause.identity, FlowElementTriggerId::ToggleLayerTrigger);
+    }
+
+    {
+        Vixen::EventBus::MessageBus bus;
+        FlowTriggerCause cause;
+        observeCause(bus, cause);
+        AppFlowRuntime rt(&bus, 1);
+        ASSERT_EQ(rt.Load(), LoadResult::Ok);
+        rt.SetGuardResult(FlowGuardId::DocumentValid, true);
+        rt.RegisterHandler(FlowActionId::Undo, [&](const AppFlowRuntime::Params&) {
+            rt.NavTo(FlowEdgeId::Transitions);
+        });
+        EXPECT_EQ(rt.DispatchByKey({KeyId::Z, KeyMod::Ctrl}), DispatchResult::Ok);
+        EXPECT_EQ(cause.kind, FlowTriggerKind::KeyDefault);
+        EXPECT_EQ(cause.identity, FlowKeyDefaultId::UndoKey);
+    }
+}
+
 // Seam M2c end-to-end: the generated Data action targets EditorNouns_layerMask; with a
 // LayerControllerViewDataProvider wired at Load(), DispatchData writes the mask through the
 // provider and ReadData reads it back — the seam closes from generated dataTarget to real mask.
@@ -113,9 +192,9 @@ TEST(AppFlowRuntime, NavPopPopsToPriorState) {
     AppFlowRuntime rt(nullptr, /*sender*/1);
     ASSERT_EQ(rt.Load(), LoadResult::Ok);
     rt.SetGuardResult(FlowGuardId::DocumentValid, true);
-    rt.SetCurrent(FlowStateId::Editing);
-    ASSERT_EQ(rt.NavTo(FlowStateId::Settings), DispatchResult::Ok);
+    ASSERT_EQ(rt.NavTo(FlowEdgeId::ToSettings,
+                       {FlowTriggerKind::System, "LoaderTestSystem"}), DispatchResult::Ok);
     EXPECT_EQ(rt.Current(), FlowStateId::Settings);
-    EXPECT_EQ(rt.NavPop(), DispatchResult::Ok);
+    EXPECT_EQ(rt.NavPop({FlowTriggerKind::System, "LoaderTestSystem"}), DispatchResult::Ok);
     EXPECT_EQ(rt.Current(), FlowStateId::Editing);
 }
