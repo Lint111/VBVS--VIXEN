@@ -391,24 +391,258 @@ inline glm::vec3 SdfCore_Float3Normalize(glm::vec3 v) {
     return v * invLen;
 }
 
-inline float SdfCore_Hash32(float valueBits) {
-    uint32_t x = std::bit_cast<std::uint32_t>(valueBits);
+inline uint32_t SdfCore_Hash32(uint32_t valueBits) {
+    uint32_t x = valueBits;
     x ^= x >> 16;
     x *= 0x7feb352du;
     x ^= x >> 15;
     x *= 0x846ca68bu;
     x ^= x >> 16;
-    return std::bit_cast<float>(x);
+    return x;
 }
 
-inline float SdfCore_Hash32Combine(float stateBits, float valueBits) {
-    uint32_t x = (std::bit_cast<std::uint32_t>(stateBits) ^ std::bit_cast<std::uint32_t>(valueBits)) + 0x9e3779b9u;
+inline uint32_t SdfCore_Hash32Combine(uint32_t stateBits, uint32_t valueBits) {
+    uint32_t x = (stateBits ^ valueBits) + 0x9e3779b9u;
     x ^= x >> 16;
     x *= 0x7feb352du;
     x ^= x >> 15;
     x *= 0x846ca68bu;
     x ^= x >> 16;
-    return std::bit_cast<float>(x);
+    return x;
+}
+
+inline uint32_t SdfCore_U32Add(uint32_t a, uint32_t b) {
+    return a + b;
+}
+
+inline uint32_t SdfCore_U32Sub(uint32_t a, uint32_t b) {
+    return a - b;
+}
+
+inline uint32_t SdfCore_U32Mul(uint32_t a, uint32_t b) {
+    return a * b;
+}
+
+inline uint32_t SdfCore_U32Min(uint32_t a, uint32_t b) {
+    return glm::min(a, b);
+}
+
+inline uint32_t SdfCore_U32Max(uint32_t a, uint32_t b) {
+    return glm::max(a, b);
+}
+
+inline uint32_t SdfCore_U32Equal(uint32_t a, uint32_t b) {
+    return (a == b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_U32NotEqual(uint32_t a, uint32_t b) {
+    return (a != b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_U32Less(uint32_t a, uint32_t b) {
+    return (a < b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_U32LessEqual(uint32_t a, uint32_t b) {
+    return (a <= b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_U32Greater(uint32_t a, uint32_t b) {
+    return (a > b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_U32GreaterEqual(uint32_t a, uint32_t b) {
+    return (a >= b ? 1u : 0u);
+}
+
+inline int32_t SdfCore_Q16Add(int32_t a, int32_t b) {
+    if (b > 0 && a > 2147483647 - b)
+    {
+        return 2147483647;
+    }
+    if (b < 0 && a < -2147483647 - 1 - b)
+    {
+        return -2147483647 - 1;
+    }
+    return a + b;
+}
+
+inline int32_t SdfCore_Q16Sub(int32_t a, int32_t b) {
+    if (b < 0 && a > 2147483647 + b)
+    {
+        return 2147483647;
+    }
+    if (b > 0 && a < -2147483647 - 1 + b)
+    {
+        return -2147483647 - 1;
+    }
+    return a - b;
+}
+
+inline int32_t SdfCore_Q16Mul(int32_t a, int32_t b) {
+    bool negative = (a < 0) != (b < 0);
+    uint32_t aMagnitude = (a < 0 ? (uint32_t)(-(a + 1)) + 1u : (uint32_t)a);
+    uint32_t bMagnitude = (b < 0 ? (uint32_t)(-(b + 1)) + 1u : (uint32_t)b);
+    uint32_t aLow = aMagnitude & 0xffffu;
+    uint32_t aHigh = aMagnitude >> 16;
+    uint32_t bLow = bMagnitude & 0xffffu;
+    uint32_t bHigh = bMagnitude >> 16;
+    uint32_t lowProduct = aLow * bLow;
+    uint32_t middle = aHigh * bLow + (lowProduct >> 16);
+    uint32_t middleLow = middle & 0xffffu;
+    uint32_t middleHigh = middle >> 16;
+    middle = aLow * bHigh + middleLow;
+    uint32_t productLow = (middle << 16) | (lowProduct & 0xffffu);
+    uint32_t productHigh = aHigh * bHigh + middleHigh + (middle >> 16);
+    uint32_t remainder = productLow & 0xffffu;
+    uint32_t roundedLow = (productHigh << 16) | (productLow >> 16);
+    uint32_t roundedHigh = productHigh >> 16;
+    if (remainder > 0x8000u || (remainder == 0x8000u && (roundedLow & 1u) != 0u))
+    {
+        roundedLow++;
+        if (roundedLow == 0u)
+        {
+            roundedHigh++;
+        }
+    }
+    uint32_t limit = (negative ? 0x80000000u : 0x7fffffffu);
+    if (roundedHigh != 0u || roundedLow > limit)
+    {
+        return (negative ? -2147483647 - 1 : 2147483647);
+    }
+    if (!negative)
+    {
+        return (int32_t)roundedLow;
+    }
+    if (roundedLow == 0x80000000u)
+    {
+        return -2147483647 - 1;
+    }
+    return -(int32_t)roundedLow;
+}
+
+inline int32_t SdfCore_Q16Min(int32_t a, int32_t b) {
+    return glm::min(a, b);
+}
+
+inline int32_t SdfCore_Q16Max(int32_t a, int32_t b) {
+    return glm::max(a, b);
+}
+
+inline uint32_t SdfCore_Q16Equal(int32_t a, int32_t b) {
+    return (a == b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_Q16NotEqual(int32_t a, int32_t b) {
+    return (a != b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_Q16Less(int32_t a, int32_t b) {
+    return (a < b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_Q16LessEqual(int32_t a, int32_t b) {
+    return (a <= b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_Q16Greater(int32_t a, int32_t b) {
+    return (a > b ? 1u : 0u);
+}
+
+inline uint32_t SdfCore_Q16GreaterEqual(int32_t a, int32_t b) {
+    return (a >= b ? 1u : 0u);
+}
+
+inline int32_t SdfCore_FloatToQ16(float value) {
+    uint32_t bits = std::bit_cast<std::uint32_t>(value);
+    bool negative = (bits & 0x80000000u) != 0u;
+    uint32_t exponent = (bits >> 23) & 0xffu;
+    uint32_t mantissa = bits & 0x7fffffu;
+    if (exponent == 0xffu)
+    {
+        if (mantissa != 0u)
+        {
+            return 0;
+        }
+        return (negative ? -2147483647 - 1 : 2147483647);
+    }
+    if (exponent == 0u)
+    {
+        return 0;
+    }
+    mantissa |= 0x800000u;
+    if (exponent >= 142u)
+    {
+        return (negative ? -2147483647 - 1 : 2147483647);
+    }
+    int32_t shift = (int32_t)exponent - 134;
+    uint32_t magnitude = 0;
+    if (shift >= 0)
+    {
+        magnitude = mantissa << (uint32_t)shift;
+    }
+    else
+    {
+        uint32_t rightShift = (uint32_t)(-shift);
+        if (rightShift > 24u)
+        {
+            magnitude = 0u;
+        }
+        else
+        {
+            uint32_t quotient = mantissa >> rightShift;
+            uint32_t remainder = mantissa & ((1u << rightShift) - 1u);
+            uint32_t halfway = 1u << (rightShift - 1u);
+            if (remainder > halfway || (remainder == halfway && (quotient & 1u) != 0u))
+            {
+                quotient++;
+            }
+            magnitude = quotient;
+        }
+    }
+    if (!negative)
+    {
+        return (int32_t)magnitude;
+    }
+    if (magnitude == 0x80000000u)
+    {
+        return -2147483647 - 1;
+    }
+    return -(int32_t)magnitude;
+}
+
+inline float SdfCore_Q16ToFloat(int32_t value) {
+    return (float)value * (1.0f / 65536.0f);
+}
+
+inline int32_t SdfCore_U32ToQ16(uint32_t value) {
+    if (value > 32767u)
+    {
+        return 2147483647;
+    }
+    return (int32_t)(value << 16);
+}
+
+inline uint32_t SdfCore_Q16ToU32(int32_t value) {
+    if (value < 0)
+    {
+        return 0u;
+    }
+    uint32_t whole = (uint32_t)value >> 16;
+    uint32_t remainder = (uint32_t)value & 0xffffu;
+    if (remainder > 0x8000u || (remainder == 0x8000u && (whole & 1u) != 0u))
+    {
+        whole++;
+    }
+    if (whole > 0xffffffffu)
+    {
+        return 0xffffffffu;
+    }
+    return whole;
+}
+
+inline float SdfCore_U32ToFloat(uint32_t value) {
+    return (float)value;
 }
 
 } // namespace Yeroket::Sdf::Generated
