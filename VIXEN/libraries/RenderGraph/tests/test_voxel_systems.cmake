@@ -44,6 +44,6 @@ target_link_libraries(test_rendergraph_voxelsystems PRIVATE
 
 # Visual Studio solution folder organization
 set_target_properties(test_rendergraph_voxelsystems PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_voxelsystems)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_voxelsystems)
 
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_voxelsystems (SceneGenerators/VoxelTraversal)")

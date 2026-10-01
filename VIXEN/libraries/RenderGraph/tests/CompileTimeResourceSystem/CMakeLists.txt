@@ -69,5 +69,8 @@ endif()
 # Use slash separators for hierarchical organization in Test Explorer
 add_test(NAME RenderGraph/CompileTimeResourceSystem/test_compile_time_resource_system COMMAND test_compile_time_resource_system)
 add_test(NAME RenderGraph/CompileTimeResourceSystem/test_recursive_validation COMMAND test_recursive_validation)
+vixen_set_suite_properties(RenderGraph TESTS
+    RenderGraph/CompileTimeResourceSystem/test_compile_time_resource_system
+    RenderGraph/CompileTimeResourceSystem/test_recursive_validation)
 
 message(STATUS "[CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)")

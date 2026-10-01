@@ -658,6 +658,24 @@ endif()
 # All application entry points and executables
 add_subdirectory(application)
 
+if(BUILD_TESTS)
+    get_property(_rendergraph_svo_build_targets GLOBAL PROPERTY VIXEN_RENDERGRAPH_SVO_BUILD_TARGETS)
+    if(_rendergraph_svo_build_targets)
+        # Capture fixture setup tests launch the real main app and editor, so the aggregate
+        # verification build includes both producers as well as the suite test executables.
+        if(TARGET VIXEN)
+            list(APPEND _rendergraph_svo_build_targets VIXEN)
+        endif()
+        if(TARGET vixen_editor)
+            list(APPEND _rendergraph_svo_build_targets vixen_editor)
+        endif()
+        list(REMOVE_DUPLICATES _rendergraph_svo_build_targets)
+        add_custom_target(rendergraph_svo_tests)
+        add_dependencies(rendergraph_svo_tests ${_rendergraph_svo_build_targets})
+        message(STATUS "RenderGraph/SVO verification target available: rendergraph_svo_tests")
+    endif()
+endif()
+
 # ============================================================================
 # TESTING INFRASTRUCTURE
 # ============================================================================

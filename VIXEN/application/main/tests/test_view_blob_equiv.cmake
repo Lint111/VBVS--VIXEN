@@ -18,6 +18,6 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_stage_assets(test_view_blob_equiv ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
 
     set_target_properties(test_view_blob_equiv PROPERTIES FOLDER "Tests/Application")
-    gtest_discover_tests(test_view_blob_equiv)
+    vixen_gtest_discover_tests(Application test_view_blob_equiv)
     message(STATUS "[Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)")
 endif()

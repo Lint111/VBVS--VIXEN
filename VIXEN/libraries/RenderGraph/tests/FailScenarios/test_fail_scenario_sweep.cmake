@@ -24,7 +24,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest)
     vixen_whole_archive_link_vixen_app(test_fail_scenario_sweep PRIVATE)
     target_link_libraries(test_fail_scenario_sweep PRIVATE GTest::gtest glfw)
     set_target_properties(test_fail_scenario_sweep PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_fail_scenario_sweep PROPERTIES TIMEOUT 300)
+    vixen_gtest_discover_tests(RenderGraph test_fail_scenario_sweep TIMEOUT 300)
     message(STATUS "✓ test_fail_scenario_sweep configured")
 endif()
 
