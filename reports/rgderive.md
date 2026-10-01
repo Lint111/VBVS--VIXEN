@@ -1,111 +1,115 @@
-# rgderive — RenderGraph derived contracts
+# rgderive run 2 — derive render-target contracts
 
-## Scope and starting state
+## Scope and result
 
-Lane: `rgderive`, branch `lane-rgderive`. Starting SHA: `e0cf083a476e5f0b2df1c36d5a69bebef8e39dbd`.
-The worktree started clean. All edits are in this worktree. No branch was created or switched and nothing was pushed.
+Worktree: `/home/liory/projects/VBVS--VIXEN/.claude-worktrees/rgderive`; branch `lane-rgderive`.
+Run-2 base: `bc2b34dd4d73b8e86e1f521e947f91260ebdb702`. Started clean at 2026-10-01 14:08:18 UTC.
+T-1507's run-1 implementation (`6bb63b128cab268780e9132476e364c73ce79c6f`) stands. Its earlier report is preserved at `bc2b34dd:reports/rgderive.md`.
+The controller's run-2 scope expansion resolves the three earlier edit-scope referrals. T-1468, T-1506 and T-1508 are completed in `c02173826757b5c64422cc93a8810e006862dd4d`; T-1507 remains complete.
+All source, temporary witnesses and report changes are inside this worktree. No branch switch, push, Undertow/kernel/KFR source edit, or edit to codegen recipes, AppFlow or CMake infrastructure.
 
-Read T-1468, T-1506, T-1507 and T-1508 through SPT, and read R316, R319, P579 and P596 in the read-only Undertow register.
-`codegraph explore RenderGraph` exited 1 because this worktree has no index; its diagnostic explicitly instructs agents to use normal discovery and not create an index. Discovery therefore used `rg` and file reads.
+Read all four SPT tasks and the read-only register rulings R316, R319, P579 and P596.
+CodeGraph FIRST: `codegraph explore RenderTargetReadback` exited 1 because the worktree has no index; its diagnostic permits ordinary discovery and prohibits agent indexing. Used `rg` after that diagnostic. The run-1 CodeGraph proposal already records this hole.
 
-Required verification scope: all 22 `test_rendergraph_*` targets, their native dependencies and generated contracts, `test_headless_cornell_graph`, VIXEN and vixen_editor, and every configured `*_check` target. Also exercise the public offscreen UI path as an affected InputNode consumer. Run the RenderGraph tests serially after fresh HUD and editor capture producers.
-
-Every configure/build/test uses the real box queue with stable agent `rgderive`. The baseline used `/home/liory/.local/bin/with-test-lock.sh`, the documented symlink to Undertow's wrapper. Before the final witness, this lane fetched and merged `origin/wave/authoring-convergence`, fast-forwarding to `6a116291224d0d77a669a0968b32d09cbaae24ba`. That wave delta only adds README queue documentation and `tools/with-test-lock.sh`; product source is unchanged. The final witness uses that local entry point, which discovers and execs the same real Undertow queue. Native builds use `nice -n 10` and at most `-j4`. No raw build/test command is used.
+Fetched and ran `git merge --no-edit origin/wave/authoring-convergence` before the final witness. It reports `Already up to date`: wave tip `6a116291224d0d77a669a0968b32d09cbaae24ba` is already an ancestor of this lane. No merge conflict or source delta.
 
 ## Tasks
 
-### T-1468 — derive readback layout
+### T-1468 — readback derives the last graph-owned layout
 
-Source finding: `VIXEN/libraries/RenderGraph/include/Debug/RenderTargetReadback.h` accepts a public `VkImageLayout currentLayout` argument, defaults it to TRANSFER_SRC_OPTIMAL, and restores that supplied layout after readback. EditorApplication passes GENERAL explicitly. ComputeDispatchNode, ComputeStageNode and BlitNode each keep private image-layout maps, while render passes can choose their final layout separately. Inferring one default from the target class would not cover those paths.
+Each physical `RenderTargetBuffer` and `SwapChainBuffer` now owns its recorded layout through `IRenderTarget`. Recreated buffers start UNDEFINED. Deleted the three private per-node image-layout maps in ComputeDispatchNode, ComputeStageNode and BlitNode; their barriers now consult the shared physical buffer's history. Blit records its actual GENERAL/PRESENT boundary rather than predicting a downstream UI transition.
 
-The task authorizes a graph render-target readback API as an alternative to deriving layout inside the helper. The implementation must retain the actual final graph-owned layout per image, including render-pass final layouts, and use that state for a blocking copy and restoration. R319 requires deleting the old layout argument and migrating its caller at `VIXEN/application/editor/source/EditorApplication.cpp:506`.
+RenderPassNode registers its compiled final layout in the graph. Geometry, UI, sky projection, proxy raster and grouped render-pass execution publish that final layout to the target. Initialization and ray-tracing transitions also record their actual layouts. Registration occurs during the existing serial compile phase; no new mutex was introduced.
 
-Status: UNFINISHED — REFER-TO-ORCHESTRATOR for edit scope, as described below. Source audit completed; no implementation was made for this item.
+The sole public PNG helper derives `GetCurrentLayout()`, rejects an image with no graph-produced contents, and restores the derived layout after its blocking transfer. Deleted the caller-supplied layout argument and the duplicate swapchain-specific readback implementation. Migrated editor and main application callers. Existing BGRA conversion remains in the shared helper.
 
-### T-1506 — derive image usage from consumers
+Evidence: two new layout-history regressions cover allocation recreation and compiled render-pass registration/clear. The production headless UI witness renders three frames and captures each twice, checking that capture preserves its TRANSFER_SRC layout. Cornell still renders five frames and captures the same image twice with identical decoded bytes and stable shared-wall seams. Window HUD capture exercises the same public helper on a WSI target.
 
-Source finding: `RenderTargetNodeConfig::PARAM_USAGE` and RenderTargetNode's setup reader own the mask. Three application graph-setup calls still declare it: `VIXEN/application/main/source/graph/BuildUIGraph.cpp:79` and `VIXEN/application/main/source/graph/BuildRenderGraph.cpp:1394,1427`. The consumer slots already expose AccessKind for several storage, attachment and transfer accesses. Descriptor gatherers, image arrays and forwarded target outputs must also contribute; graph reachability alone would overcount unrelated resources.
+### T-1506 — target allocation derives usage from consumers
 
-R319 requires deleting PARAM_USAGE, its reader and those three calls. The target must allocate the union of its actual consumers' requirements and its public readback capability, then recreate images if that derived contract changes on recompile.
+Deleted `RenderTargetNodeConfig::PARAM_USAGE`, its setup reader and all three application declarations, including the conditional proxy-attachment mask. Target compile derives the union of direct image/view consumers, descriptor binding types and explicitly forwarded image-array consumers, plus the public readback TRANSFER_SRC requirement. An extent-only dependency does not forward image provenance. Static input indices and variadic descriptor bindings are kept distinct in GraphEdge.
 
-Keep requested usage distinct from actual usage. IRenderTarget::GetImageUsageFlags reports the actual mask; swapchain negotiation can drop STORAGE for an unsupported device/format. Deriving the request must preserve SupportsStorageImage and descriptor capability checks against that actual mask.
+Consumer creation requirements supplement existing AccessKind metadata where a consumer lacks a scheduling access declaration: framebuffer and geometry attachment, blit destination and ray-tracing storage. These requirements do not alter existing submission scheduling or declare an internal blit layout as a pass boundary. Actual usage reporting and negotiated swapchain storage capability checks remain the authority for descriptor support.
 
-Status: UNFINISHED — REFER-TO-ORCHESTRATOR for edit scope, as described below. Source audit completed; no implementation was made for this item.
+Target images persist when extent and derived usage are unchanged; either change recreates them. A transfer-only allocation creates no illegal Vulkan image view. Image forwarding is available before allocation; its currently handwritten gatherer override is an SPT consolidation proposal.
 
-### T-1507 — honor optional input metadata
+Evidence: six new usage regressions cover unioning storage/blit/attachment requirements, descriptor requirements changing from sampled to storage, image-array forwarding, isolation of extent-only dependencies, transfer-destination usage and static/variadic index separation. Removed the obsolete PARAM_USAGE test. Headless UI asserts the actual allocation is precisely COLOR_ATTACHMENT | TRANSFER_SRC; Cornell asserts its derived storage and transfer-destination requirements.
 
-Source finding: WINDOW is already Optional in InputNodeConfig. ValidateInput rejects null without consulting that metadata. InputNode bypasses it through GetOptionalInput, which has exactly one code caller in this checkout.
+### T-1507 — optional slots
 
-Implemented: ValidateInput derives its null check from `SlotType::nullable`. Required inputs still throw the same descriptive error. InputNode now uses that shared validator for WINDOW. Deleted GetOptionalInput and its sole caller rather than retaining a compatibility path (R319).
+Already completed in run 1. Shared ValidateInput honors SlotType::nullable; InputNode uses it and the replaced GetOptionalInput form is deleted. All four run-1 regressions are retained in the run-2 full witness.
 
-Four regressions in the existing typed-helper suite cover an unconnected optional slot, the exact required-slot diagnostic, preservation of a connected pointer for either nullability, and production InputNode compilation without a window. The opaque connected pointer is only stored and compared; the test does not call GLFW with it.
+### T-1508 — synchronization belongs to the target contract
 
-Before witness: added and freshly built these tests against the original production validator. The first fixture build exposed an incorrect explicit forwarding-reference call to `Resource::SetHandle`; fixed the fixture to let the pointer type be deduced and rebuilt successfully. This was this lane's test-code error, not an environmental red. Logs: `1790860032-build-rgderive:nullability-regression-build.log` (failed), `1790860316-build-rgderive:nullability-regression-build-fixed.log` (passed).
+Window and offscreen target types declare WsiAcquirePresent or Offscreen once, shared by runtime IRenderTarget and their preallocation node contracts. ConnectionBatch consumes target ports through the existing connection rules. Deleted SdiStageCommon's `usesOffscreenTarget` and `hasWsiSemaphores` booleans and migrated every aggregate caller. Main and UI graph device presentation setup, target-port wiring, semaphore wiring and presentation layouts follow the selected target contract.
 
-The queued focused before run used that fresh binary, whose SHA-256 remained `84e015400e8ef7f2a1cc44da5414a20d11c178ed93a895608b5978b99653aa5c` after the production source edit; no rebuild occurred before that run. `test_rendergraph_core --gtest_filter=TypedInputValidation.*` exited 1: OptionalWindowMayBeUnconnected threw `Required input 'Window' is null`; the other three regressions passed. Log: `1790861014-test-rgderive:nullability-regression-before.log`. The full unchanged-source baseline had already passed before adding these tests.
+The common handoff resolver returns no binary WSI handoffs for an offscreen target, even if arrays were provided. A window role requiring acquire or present rejects missing, null or out-of-range handles. Producer/consumer ownership remains distinct from whether a target supports WSI. Compute, blit, geometry, ray tracing, grouped passes, sky and UI submissions use this contract. Geometry, TraceRays and PassGroup semaphore ports become optional; the resolver enforces the window-only requirement. UI creates composite present semaphores only for WSI targets. Fence and timeline ownership remains in the existing roles.
 
-After witness: complete. All four regressions pass in the merged-tree serial suite below. Implementation commit: `6bb63b128cab268780e9132476e364c73ce79c6f`.
+Evidence: six new synchronization regressions cover offscreen targets with and without arrays, frame-indexed acquire versus image-indexed present, absent/null/out-of-range window handles, producer roles needing neither handoff, and agreement between node wiring and runtime capability. Fresh window HUD and offscreen editor/headless producers exercise both production target classes.
 
-### T-1508 — target synchronization capability
+## Required verification and baseline
 
-Source finding: SdiStageCommon duplicates target identity into `usesOffscreenTarget` and `hasWsiSemaphores`. `VIXEN/application/main/source/graph/BuildRenderGraph.cpp` supplies both booleans at three aggregate-initialization sites, lines 7822, 7970 and 9016. Execution also infers WSI from semaphore-array presence in ComputeStageNode, ComputeDispatchNode, BlitNode and UIRenderNode. IRenderTarget exposes image indices and usage, but no synchronization capability. The existing shared interface and RenderTargetData are in `VIXEN/libraries/VulkanResources/include/IRenderTarget.h`, also outside the assigned edit scope.
+Required scope: all 22 RenderGraph test executables and their native/generated dependencies; `test_headless_cornell_graph`; affected `test_headless_ui_graph`; VIXEN and vixen_editor; all 22 configured `*_check` targets. Serial RenderGraph tests require fresh HUD/editor capture fixtures. No required test or check is excluded.
 
-The replacement must declare acquire/present synchronization once on the window/offscreen target contract and derive wiring and submission behavior from it. A missing semaphore on a window target must not be interpreted as an offscreen capability. R319 requires deleting both SdiStageCommon booleans and migrating the three application initializers.
+Every configure/build/test runs through the real `tools/with-test-lock.sh` entry point, stable agent `rgderive`. Native commands use `nice -n 10`, at most `-j4`, and `VIXEN_FETCHCONTENT_CACHE=<worktree>/.tmp/fetch`. GPU witnesses run under `bash -lc` with `VK_ICD_FILENAMES=$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json`.
+Queue logs below live in `/home/liory/.local/state/undertow/undertow-box-logs/`.
 
-Status: UNFINISHED — REFER-TO-ORCHESTRATOR for edit scope, as described below. Source audit completed; no implementation was made for this item.
+Before semantic edits:
 
-## Baseline and recovery
+- Configure from `VIXEN/`: `bash ../tools/with-test-lock.sh --agent rgderive --resource build --label rgderive:r2-baseline-configure -- env VIXEN_FETCHCONTENT_CACHE=<worktree>/.tmp/fetch nice -n 10 cmake --preset vixen-wsl -DVIXEN_SCHEMA_CATALOG=/home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json`; exit 0. Log `1790863775-build-rgderive:r2-baseline-configure.log`.
+- Fresh build: queued label `rgderive:r2-baseline-build`, payload `nice -n 10 cmake --build ../build/wsl -j4 --target <all test_rendergraph_* and *_check targets> test_headless_cornell_graph test_headless_ui_graph VIXEN -- -k 0`, then `nice -n 10 cmake --build ../build/wsl -j4 --target vixen_editor`; exit 0. Editor builds sequentially to avoid application asset staging overlap. Log `1790864064-build-rgderive:r2-baseline-build.log`. Target inventory is `.tmp/rgderive/run2/targets.txt`.
+- All 22 generation/check targets passed using the freshly built pinned CodegenTool. Catalogue SHA-256 `85d375534c072010ec1c50ffabc4911c5cd4de689c2ea6ceb536cec7b3eac8fd`; kernel codegen pin `769fb232bd861a7e57fe73fd12b0aed716c3adde`. No generated source changes or hand-edited goldens/pins.
+- First red: unchanged base `bc2b34dd`, queued label `rgderive:r2-baseline-captures-serial`, command `bash tools/with-test-lock.sh --agent rgderive --resource test --label rgderive:r2-baseline-captures-serial -- bash -lc 'exec bash <worktree>/.tmp/rgderive/run2/witness.sh before'`. The runner incorrectly used `VIXEN_EDITOR_EXIT_AFTER_FRAMES=120`, but the editor reads `VIXEN_EXIT_AFTER_FRAMES`. Captures were written but the producer did not exit; queue idle-hard termination after 184 seconds, wrapper exit 75, payload 143. Log `1790864259-test-rgderive:r2-baseline-captures-serial.log`.
+- Recovery A: inspected the editor's runner implementation, fixed the frame-limit variable to `VIXEN_EXIT_AFTER_FRAMES=120` and kept serial CTest output visible to the queue. Repeated queued label `rgderive:r2-baseline-captures-serial-fixed`; exit 0. Log `1790864630-test-rgderive:r2-baseline-captures-serial-fixed.log`. Recovery B: not applicable, binaries and generation checks were already fresh/green. Recovery C: unnecessary after invocation recovery; no remaining product failure needed isolation.
+- Recovered serial baseline: 994 selected, 989 passed, five skipped, zero failures, 86.33 seconds. Before-failing set: empty. JUnit and capture artifacts: `.tmp/rgderive/run2/before/`. The brief's original 988 RenderGraph cases plus four run-1 regressions and two affected headless app cases explain the selected count.
 
-No semantic source changes were made before these checks.
+Witness runner inputs, identical before/after:
 
-- Configure: from `VIXEN/`, queued `env VIXEN_FETCHCONTENT_CACHE=<worktree>/.tmp/fetch nice -n 10 cmake --preset vixen-wsl -DVIXEN_SCHEMA_CATALOG=/home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json`; exit 0. Worktree-local SDK/windowing provisioning completed. CMake printed the older “Fatal Error: glslang directory not found” diagnostic but found the SDK libraries and completed configuration. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1790856909-build-rgderive:baseline-configure.log`.
-- Generation/check contract: queued `nice -n 10 cmake --build build/wsl -j4 --target <all 22 configured *_check targets> -- -k 0`; exit 0. The pinned kernel CodegenTool was freshly built, then every check passed. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1790857132-build-rgderive:baseline-checks.log`.
-- Catalogue SHA-256: `85d375534c072010ec1c50ffabc4911c5cd4de689c2ea6ceb536cec7b3eac8fd`. Kernel codegen pin: `769fb232bd861a7e57fe73fd12b0aed716c3adde`.
-- The earlier T-1491/ViewNounId stale finding does not reproduce here: view_noun_enum_check passed. No generated source changes were required.
-- Fresh native build: all 22 `test_rendergraph_*` targets plus `test_headless_cornell_graph` passed (923 build steps); VIXEN plus `test_headless_ui_graph` passed; vixen_editor passed. Logs are `1790857382-build-rgderive:baseline-rendergraph-build.log`, `1790858128-build-rgderive:baseline-main-build.log` and `1790858278-build-rgderive:baseline-editor-build.log` in the same queue log directory above.
-- Fresh HUD producer: queued from `VIXEN/` under `bash -lc`, with `VK_ICD_FILENAMES=$HOME/.cache/vixen/wsl-vulkan/dzn_icd.json`, `DISPLAY=:0`, `VIXEN_HUD_SCRIPT=A@30,B@60`, frames `5,45,75`, absolute capture directory `<worktree>/.tmp/rgderive/baseline/hud`, `VIXEN_EXIT_AFTER_FRAMES=85` and `timeout 180 ./binaries/VIXEN`. Exit 0; all three PNGs were written. The subsequent full baseline suite passed the capture assertions.
-- First red, before semantic edits: the editor producer used the same source-side executable convention, `timeout 180 ./binaries/vixen_editor`, from `VIXEN/`. Exit 127: `timeout: failed to execute process: No such file or directory (os error 2)`. Base remained `e0cf083a`. Log: `/home/liory/.local/state/undertow/undertow-box-logs/1790858687-test-rgderive:baseline-editor-capture.log`.
-- Recovery A: checked the editor CMake runtime-output properties and both directories. The fresh executable exists at `<worktree>/build/wsl/binaries/vixen_editor`, whereas the main executable is also staged into `VIXEN/binaries/`. Reran through the real queue with that absolute CMake-built editor path, retaining `VIXEN/` as the asset working directory. The recovered producer redirects stdout/stderr to the documented `run_editor_script.log` in its capture directory. Exit 0; four fresh PNGs and the log were written. The log records masks 7 -> 3 -> 7 -> 3, correct undo/redo stack depths and afterBack=0. PNG file hashes match for frames 5/75 and 45/105 and differ between the edit states. Runner inputs: offscreen capture=1, camera=top-down, script `toggle:2@30,undo@60,redo@90,settings@100,back@110`, captures `5,45,75,105`, exit after 120 frames. Queue log: `1790858904-test-rgderive:baseline-editor-capture-recovered.log`.
-- Recovery B for that red: not applicable; the executable was already freshly built and all generation checks passed. Recovery C: not needed once the invocation is corrected; exit 127 is not a test-target or product failure.
-- The queued `ctest --show-only=json-v1` inventory succeeded. Selecting test names by owning command path yields exactly 988 cases from all 22 RenderGraph executables plus the Cornell and offscreen UI cases: 990 cases in 24 executables. The serial command uses `--tests-from-file <worktree>/.tmp/rgderive/baseline/tests.txt --output-on-failure --output-junit <worktree>/.tmp/rgderive/baseline/results.xml -j1`, with absolute fresh HUD/editor capture directories and the Dozen ICD under `bash -lc`. Exit 0: 990 selected CTest entries, 985 passed, 5 existing skips, no failures, 87.48 seconds. The before-failing set is empty. Queue log: `1790859656-test-rgderive:baseline-serial.log`.
+| Producer | Executable under `<worktree>/build/wsl/binaries/` | Environment |
+| --- | --- | --- |
+| HUD | VIXEN | DISPLAY=:0; VIXEN_HUD_SCRIPT=A@30,B@60; VIXEN_HUD_CAPTURE_FRAMES=5,45,75; VIXEN_EXIT_AFTER_FRAMES=85 |
+| Editor | vixen_editor | VIXEN_EDITOR_OFFSCREEN_CAPTURE=1; VIXEN_EDITOR_TEST_CAMERA=top-down; VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110; VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105; VIXEN_EXIT_AFTER_FRAMES=120 |
 
-Recovery ladder so far: A resolved the documented real queue and configured from the actual preset directory with an isolated FetchContent root; success. B was unnecessary because all generation checks were green and the tool was freshly built through the normal CMake dependency. C has no remaining generation failure to isolate. The required native builds and serial baseline now pass after invocation recovery. CONTINUE; no baseline STOP and no required red was excluded.
+Both use timeout 180, `VIXEN/` as the asset directory, absolute per-phase capture directories and producer logs `run_hud.log` / `run_editor_script.log`. Serial selection comes from fresh `ctest --show-only=json-v1`, matching test command owners to every `test_rendergraph_*` executable and both headless apps. Command: `ctest --test-dir <worktree>/build/wsl --tests-from-file <worktree>/.tmp/rgderive/run2/<phase>/tests.txt --output-on-failure --output-junit <worktree>/.tmp/rgderive/run2/<phase>/results.xml -j1`.
 
-## Final witness on the merged tree
+## Implementation checks and final witness
 
-Configure passed using the same preset, catalogue and worktree-local FetchContent root through the new local queue entry point. Log: `1790861561-build-rgderive:final-configure.log` in `/home/liory/.local/state/undertow/undertow-box-logs/`.
+Initial implementation build `rgderive:r2-contract-build` exited 1 on this lane's two missing complete RenderGraph includes and SkyProjection's call to a private typed raw-input accessor. Log `1790866003-build-rgderive:r2-contract-build.log`. Added the includes and changed the presence query. The next build `rgderive:r2-contract-build-fixed` exited 1 because the typed convenience input-count helper is also private; log `1790866848-build-rgderive:r2-contract-build-fixed.log`. Corrected it to the public qualified NodeInstance input-count method. These are introduced compile failures, fixed in this lane; they are not environmental or pre-existing baseline reds. Neither failed build supplies test evidence. Both completed the unchanged generated checks successfully.
 
-Build passed: all 22 RenderGraph test executables, both headless application witnesses, VIXEN, vixen_editor and all 22 configured `*_check` targets. The queued payload discovers targets from `build/wsl/build.ninja`, runs `nice -n 10 cmake --build ../build/wsl -j4 --target <RenderGraph targets> <check targets> test_headless_cornell_graph test_headless_ui_graph VIXEN -- -k 0` from `VIXEN/`, and then builds vixen_editor sequentially to avoid app asset-staging races. It rebuilt the changed production nodes and regression executable and relinked every affected executable. The pinned CodegenTool was rebuilt through CMake and every generated comparison passed. No generated source drift. Catalogue hash remains the baseline hash. Log: `1790861747-build-rgderive:final-build.log`.
+Final configure/build on the merged tree: queued label `rgderive:r2-final-build`, same worktree-local FetchContent root and catalogue. Payload from `VIXEN/`: the exact preset configure above, then the full native build/target inventory above, then the sequential editor build. Exit 0. Log `1790867468-build-rgderive:r2-final-build.log`. All 22 RenderGraph executables, both headless app witnesses, VIXEN, vixen_editor and all 22 configured check targets passed. The pinned CodegenTool built successfully with zero warnings/errors, every generated comparison passed, and the catalogue digest stayed unchanged. No generated drift or regeneration workaround.
 
-Fresh after producers passed through one queued test job, under `bash -lc`, using the same Dozen ICD, scripts, frame numbers, timeouts and capture-camera settings as the baseline. Both use the absolute rebuilt CMake target path (`build/wsl/binaries/VIXEN` and `build/wsl/binaries/vixen_editor`) with `VIXEN/` as their asset working directory. Main retains `DISPLAY=:0`; editor retains `VIXEN_EDITOR_OFFSCREEN_CAPTURE=1` and `VIXEN_EDITOR_TEST_CAMERA=top-down`. HUD wrote three new PNGs plus its log; editor wrote four new PNGs plus `run_editor_script.log`. Directories: `<worktree>/.tmp/rgderive/after/hud` and `.../after/editor`. Producer log: `1790862686-test-rgderive:final-captures.log`.
-
-The final queued test payload first runs `ctest --test-dir <worktree>/build/wsl --show-only=json-v1`, saves the inventory, and selects by owning command path exactly as at baseline. It finds 24 owners and 994 entries: the original 988 RenderGraph entries, four new regressions, and two headless application entries. It runs `ctest --test-dir <worktree>/build/wsl --tests-from-file <worktree>/.tmp/rgderive/after/tests.txt --output-on-failure --output-junit <worktree>/.tmp/rgderive/after/results.xml -j1`, with the Dozen ICD and absolute after-capture directories under a login shell. Exit 0, 139.16 seconds. Log: `1790862793-test-rgderive:final-serial.log`.
+Final GPU command: `bash tools/with-test-lock.sh --agent rgderive --resource test --label rgderive:r2-final-captures-serial -- bash -lc 'exec bash /home/liory/projects/VBVS--VIXEN/.claude-worktrees/rgderive/.tmp/rgderive/run2/witness.sh after'`; exit 0. Both capture producers completed before the serial CTest run. Log `1790867893-test-rgderive:r2-final-captures-serial.log`. Artifacts: `.tmp/rgderive/run2/after/results.xml`, `inventory.json`, `tests.txt`, `hud/`, `editor/`, and `.tmp/rgderive/run2/capture-comparison.json`.
 
 | Witness | Selected | Passed | Skipped | Failing set |
 | --- | ---: | ---: | ---: | --- |
-| Fresh original full scope | 990 | 985 | 5 | empty |
-| New regressions against original validator | 4 | 3 | 0 | OptionalWindowMayBeUnconnected |
-| Fresh final full scope | 994 | 989 | 5 | empty |
+| Fresh run-2 base | 994 | 989 | 5 | empty |
+| Fresh final merged tree | 1007 | 1002 | 5 | empty |
 
-The full before/after failing sets are empty. The four new cases all pass after the fix. The five skips are unchanged: GPUQueryManagerIntegration.Placeholder; PushConstantGathererNodeTest.RuntimeFieldDiscovery; ValidateFieldTypes; HandleNullShaderBundle; HandleEmptyPushConstantMembers. No required test was excluded to obtain green.
+Final serial time: 102.32 seconds. The count grows by 14 new regressions minus one obsolete PARAM_USAGE case. All four run-1 optional-slot regressions pass. The five skips are unchanged: GPUQueryManagerIntegration.Placeholder; PushConstantGathererNodeTest.RuntimeFieldDiscovery; ValidateFieldTypes; HandleNullShaderBundle; HandleEmptyPushConstantMembers. No test failure is hidden by a changed selection or a stale executable.
 
-HUD PNG hashes match the baseline. Editor frame 5 equals 75 and frame 45 equals 105 within each run; the edit-state images differ, and all existing pixel/state assertions passed. Editor PNG hashes differ across baseline and final runs. Decoded RGB comparison finds 94 of 250,000 pixels changed in frame 5 (maximum channel delta 63), and 1,024 in frame 45 (maximum delta 50), both bounded to (234,232)-(265,263). The cause of this cross-run variation is unclassified; this report does not claim byte-identical editor rendering. No captures or golden expectations were rewritten to clear a check. An optional Pillow comparison command failed because PIL is unavailable; standard-library struct/zlib inspection supplied the measurements, and a tooling proposal records that manual step.
+All three HUD PNGs and all four editor PNGs are byte-identical before/after. Standard-library PNG decoding also finds zero changed RGB pixels in every pair. Editor edit/undo/redo state and the existing capture pixel assertions all pass. Production headless UI passes with repeated capture across three frames; production Cornell passes its two identical readbacks and stable shared-wall seams. No capture goldens were rewritten.
 
-## Baseline findings
+Two final header comment edits document usage-triggered recreation and consumer creation requirements; they do not change compiled behavior. No semantic source changes were made after the successful native build. `git diff --check` validates those documentation edits with the complete product diff.
 
-The fresh main/HUD producer on unchanged `e0cf083a` logged `shadow_visibility_wave_desc_gatherer` errors: bindings 40 and 43 exceed `resourceArray_.size()=36`. The producer exited 0 and wrote the expected PNGs. The fresh serial baseline passed all HUD/editor pixel assertions despite these diagnostics. They are findings on unchanged source, not excluded required failures. The final producers log the same binding errors and missing vkCreateDebugReportCallbackEXT diagnostic; both complete successfully and the full required suite passes. The missing debug-report entry point also appears in both baseline producer logs, including `1790858594-test-rgderive:baseline-hud-capture.log`. No shader or descriptor plumbing has been edited by this lane.
 
-## Scope decision and remaining work
+## Findings and remaining work
 
-The brief explicitly says “stay in `libraries/RenderGraph` and its tests.” R319 deletion for T-1468, T-1506 and T-1508 also requires the small application caller migrations listed above. A narrow scope clarification was requested while baseline work continued. Without an answer, this lane retains the explicit RenderGraph-only boundary.
+The unchanged baseline capture producers log `shadow_visibility_wave_desc_gatherer` bindings 40/43 beyond resourceArray size 36 and the missing vkCreateDebugReportCallbackEXT diagnostic. They finish successfully and all required capture assertions pass. These are existing diagnostics on the recorded base, with no required gate excluded. CMake also prints the older glslang-directory diagnostic while finding SDK libraries and successfully configuring. The no-new-mutex check reports the existing two unclassified KernelDispatch inventory rows while passing its gate.
 
-REFER-TO-ORCHESTRATOR (scope), not STOPPED: baseline unobtainable. Options: authorize those mechanical application migrations and the shared target-interface change alongside RenderGraph work, or dispatch the three dependent items to a lane whose scope includes those files. Recommendation: authorize that narrow expansion. Keeping the retired argument, flags or duplicated booleans would violate R319. The task rulings settle the intended behavior; the unresolved point is edit ownership.
+No STOP or unresolved design referral. No remaining requested item. This run finishes before the three-hour checkpoint. The exact stopping point is completed implementation plus the full merged configure/build/check/capture/serial witness and committed report.
 
-Exact stopping point: T-1507 is implemented and fully witnessed; T-1468/T-1506/T-1508 have source audits and caller/interface anchors, but no semantic changes. Remaining work is to implement the three derived contracts, delete each retired form and migrate its affected callers, then rerun the same complete generation/build/capture/serial witness. No answer to the scope clarification arrived during the lane. Work is being committed before the three-hour checkpoint; nothing was abandoned because of an unrelated red.
+Read-only KFR source discovery found no callers of the retired readback/target-usage/stage-flag APIs or local IRenderTarget subclasses. No KFR edit was needed. All incidental work is recorded in the SPT inbox; its 12 entries (nine retained and three new) parse as JSON. Restored this lane's runtime-only `VIXEN/cache/global/manifest.txt` churn after captures. Implementation and proposals are committed in `c02173826757b5c64422cc93a8810e006862dd4d`; this report is committed separately. Final repository status is checked after the report commit. No push.
 
-The only product edits are the three T-1507 RenderGraph files. Restored this lane's runtime-only manifest churn after captures. `git diff --check` passed. Report and all nine SPT inbox entries are validated as artifacts and committed separately from the implementation. The queue-entry-point hole observed at the starting base is now addressed by the merged T-1477 wave change; its proposal preserves the earlier discovery record. No push.
 
 ## CONSOLIDATION ISSUES
+
+New proposals in this run; committed with the existing run-1 inbox entries:
+
+- proposed: Provide one queued capture witness entry point with the shared frame-limit knob
+- proposed: Declare image forwarding in node configs before resource allocation
+- proposed: Derive target creation requirements without duplicating missing GPU access metadata
+
+Run-1 proposals retained:
 
 - proposed: Expose the real box queue to isolated VIXEN worktrees
 - proposed: Provide CodeGraph discovery for isolated VIXEN worktrees
