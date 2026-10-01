@@ -167,7 +167,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
 set(VIXEN_RUNTIME_CACHE_DIR "${CMAKE_BINARY_DIR}/runtime-cache" CACHE PATH
     "Persistent runtime cache directory (defaults to the build tree)")
-add_compile_definitions(VIXEN_RUNTIME_CACHE_DIR="${VIXEN_RUNTIME_CACHE_DIR}")
+# Consumed only by libraries/Core/src/RuntimeCachePaths.cpp (a source-scoped definition there);
+# a global definition would put this tree's absolute path into every compile command.
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.

@@ -25,6 +25,8 @@
 #
 # The staging target is a shared build dependency, so several executables using the same assets
 # and output directory schedule one copy job instead of racing separate POST_BUILD commands.
+# The copy is stamp-gated on the staged files (re-globbed when files are added or removed), so a
+# build with no asset edits runs no staging command.
 
 function(vixen_stage_assets target src_dir)
     cmake_parse_arguments(VSA "" "DEST" "" ${ARGN})
@@ -51,11 +53,16 @@ function(vixen_stage_assets target src_dir)
     set(_stage_target "vixen_stage_assets_${_stage_hash}")
 
     if(NOT TARGET ${_stage_target})
-        add_custom_target(${_stage_target}
+        file(GLOB_RECURSE _stage_inputs CONFIGURE_DEPENDS LIST_DIRECTORIES false "${src_dir}/*")
+        set(_stage_stamp "${CMAKE_CURRENT_BINARY_DIR}/vixen_stage_assets/${_stage_hash}.stamp")
+        add_custom_command(OUTPUT "${_stage_stamp}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_dest}"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${src_dir}" "${_dest}"
+            COMMAND ${CMAKE_COMMAND} -E touch "${_stage_stamp}"
+            DEPENDS ${_stage_inputs}
             COMMENT "vixen_stage_assets: staging ${src_dir} -> ${_dest}"
             VERBATIM)
+        add_custom_target(${_stage_target} DEPENDS "${_stage_stamp}")
     endif()
 
     add_dependencies(${target} ${_stage_target})
