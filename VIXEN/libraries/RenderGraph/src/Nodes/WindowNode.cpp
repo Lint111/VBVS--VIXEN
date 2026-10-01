@@ -35,7 +35,7 @@ WindowNode* WindowNode::FromGlfw(GLFWwindow* w) {
     return reinterpret_cast<WindowNode*>(glfwGetWindowUserPointer(w));
 }
 
-void WindowNode::SetupImpl(TypedSetupContext& ctx) {
+void WindowNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Setup START");
 
     // GLFW is idempotent: glfwInit() does nothing if already initialised.
@@ -48,7 +48,7 @@ void WindowNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[WindowNode] GLFW initialised");
 }
 
-void WindowNode::CompileImpl(TypedCompileContext& ctx) {
+void WindowNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Compile START");
 
     // Get VkInstance from input slot (proper dependency injection)
@@ -130,7 +130,7 @@ bool WindowNode::PendingResizeIsSettled() const {
     return hasPendingResize_ && (glfwGetTime() - lastResizeEventTime_) >= kResizeDebounceSeconds;
 }
 
-void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void WindowNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     slotIndex = ctx.taskIndex;
 
     // Input is pumped once per frame by the application main loop: glfwPollEvents() is the global OS
@@ -326,7 +326,7 @@ size_t WindowNode::PendingEventCountForTest() const {
 }
 #endif
 
-void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
+void WindowNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Window + surface are PERSISTENT: a recompile (e.g. swapchain recreation) must NOT destroy them --
     // only the swapchain follows recompiles. Tear them down solely on final application teardown.
     if (ctx.reason != CleanupReason::FinalTeardown) {

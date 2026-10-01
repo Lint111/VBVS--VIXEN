@@ -99,7 +99,7 @@ public:
                         ShaderManagement::ShaderCacheManager* cache) const;
 
 protected:
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override;
 
 private:
     bool clearPending_ = true;

@@ -40,14 +40,14 @@ UISelectionProviderNode::UISelectionProviderNode(
     NODE_LOG_INFO("[UISelectionProvider] constructor");
 }
 
-void UISelectionProviderNode::SetupImpl(TypedSetupContext& ctx) {
+void UISelectionProviderNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[UISelectionProvider] setup");
     // Provider layer priority (UI layer = 10 by default, > the voxel world's 0 so the HUD occludes
     // the world). Read once at graph-scope setup.
     priority_ = GetParameterValue<int>(UISelectionProviderNodeConfig::PARAM_PRIORITY, 10);
 }
 
-void UISelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void UISelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // A provider emits a candidate EVERY frame so the coordinator's accumulation slot always has a
     // fresh value from this source. Default = miss; only a click-edge hit overwrites it.
     SelectionCandidate candidate{};

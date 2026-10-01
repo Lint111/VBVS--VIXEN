@@ -92,11 +92,11 @@ ReservoirConfigNode::ReservoirConfigNode(const std::string& n, NodeType* t)
 {
 }
 
-void ReservoirConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void ReservoirConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[ReservoirConfigNode] Setup (graph-scope initialization)");
 }
 
-void ReservoirConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void ReservoirConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ReservoirConfigNode] Compile START");
 
     SetDevice(ctx.In(ReservoirConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -126,7 +126,7 @@ void ReservoirConfigNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ReservoirConfigNode] Outputs published");
 }
 
-void ReservoirConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ReservoirConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(ReservoirConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -154,7 +154,7 @@ void ReservoirConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(ReservoirConfigNodeConfig::RESERVOIR_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void ReservoirConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ReservoirConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

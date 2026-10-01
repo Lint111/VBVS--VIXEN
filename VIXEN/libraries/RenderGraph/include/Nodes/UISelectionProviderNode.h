@@ -72,8 +72,8 @@ public:
     }
 
 protected:
-    void SetupImpl(TypedSetupContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void TypedSetupImpl(TypedSetupContext& ctx) override;
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override;
 
 private:
     // The UIRenderNode owning the Rml::Context to hit-test (set at wiring; null until then).

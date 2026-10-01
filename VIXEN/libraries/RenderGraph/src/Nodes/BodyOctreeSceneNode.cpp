@@ -385,12 +385,12 @@ void BodyOctreeSceneNode::DeriveResidencyDefaultIfUnset() {
                   (residencyRequested_ ? "true (eager)" : "false (lazy)"));
 }
 
-void BodyOctreeSceneNode::SetupImpl(TypedSetupContext& /*ctx*/) {
+void BodyOctreeSceneNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[BodyOctreeSceneNode] Setup (graph-scope initialization)");
 }
 
-void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
+void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[BodyOctreeSceneNode] Compile START");
 
     VulkanDevice* devicePtr = ctx.In(BodyOctreeSceneNodeConfig::VULKAN_DEVICE_IN);
@@ -480,7 +480,7 @@ void BodyOctreeSceneNode::CompileImpl(TypedCompileContext& ctx) {
     recipeDirty_ = false;
 }
 
-void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // OOC R1: a MONOTONIC per-node Execute counter is the clock for the off-tick retire/reclaim
     // ledger (Rematerialize + ReclaimRetiredBuffers). It is deliberately NOT CURRENT_FRAME_INDEX,
     // which FrameSyncNode already reduces mod MAX_FRAMES_IN_FLIGHT (it cycles 0,1,0,1…) and so
@@ -657,7 +657,7 @@ void BodyOctreeSceneNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void BodyOctreeSceneNode::CleanupImpl(TypedCleanupContext& ctx) {
+void BodyOctreeSceneNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // CRITICAL: recompile must NOT free in-flight GPU objects (WSL/Dozen VM-panic trap).
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the

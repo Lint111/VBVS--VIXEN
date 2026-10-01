@@ -45,7 +45,7 @@ BlitNode::BlitNode(const std::string& instanceName, NodeType* nodeType)
     NODE_LOG_INFO("[BlitNode] Constructor: " + instanceName);
 }
 
-void BlitNode::SetupImpl(TypedSetupContext& /*ctx*/) {
+void BlitNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {
     NODE_LOG_DEBUG("[BlitNode::SetupImpl] Graph-scope initialization");
 }
 
@@ -53,7 +53,7 @@ void BlitNode::SetupImpl(TypedSetupContext& /*ctx*/) {
 // COMPILE — allocate one command buffer per swapchain image
 // ============================================================================
 
-void BlitNode::CompileImpl(TypedCompileContext& ctx) {
+void BlitNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* devicePtr = ctx.In(BlitNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[BlitNode::CompileImpl] Vulkan device input is null");
@@ -131,7 +131,7 @@ void BlitNode::CompileImpl(TypedCompileContext& ctx) {
 // EXECUTE — record + vkQueueSubmit2 with timeline edge consumption
 // ============================================================================
 
-void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const bool leaveImageInGeneral =
         GetParameterValue<bool>(BlitNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
     // Baked-Perf M6 Task 6.3 (audit E4): centralizes the fence/present-semaphore ownership
@@ -329,7 +329,7 @@ void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t im
 // CLEANUP
 // ============================================================================
 
-void BlitNode::CleanupImpl(TypedCleanupContext& /*ctx*/) {
+void BlitNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
     if (GetDevice() && GetDevice()->device != VK_NULL_HANDLE) {
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             std::vector<VkCommandBuffer> rawHandles;

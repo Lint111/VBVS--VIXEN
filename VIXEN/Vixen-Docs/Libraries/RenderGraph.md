@@ -132,7 +132,7 @@ reason is carried in `ctx.reason` (`CleanupReason::Recompile` / `DeviceLost` / `
   `WindowNode`, `SwapChainNode`, `UIRenderNode`, `ConstantNode`.
 
 ```cpp
-void MyNode::CleanupImpl(TypedCleanupContext& ctx) {
+void MyNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (ctx.reason != CleanupReason::FinalTeardown) {
         return;  // recompile / device-loss: keep persistent resources, NO device wait
     }

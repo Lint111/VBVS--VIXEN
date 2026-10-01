@@ -142,7 +142,7 @@ InputNode::InputNode(
     keyStates[KeyCode::C] = KeyState{};
 }
 
-void InputNode::SetupImpl(TypedSetupContext& ctx) {
+void InputNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Setup");
     lastFrameTime = std::chrono::steady_clock::now();
     mouseCaptured = false;
@@ -236,7 +236,7 @@ void InputNode::ApplyCursorMode() {
     }
 }
 
-void InputNode::CompileImpl(TypedCompileContext& ctx) {
+void InputNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InputNode] Compile");
 
     // The production graph also uses InputNode to publish an empty InputState in headless mode;
@@ -340,7 +340,7 @@ void InputNode::InjectMouseButton(int button, int action) {
 }
 #endif
 
-void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void InputNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
     UpdateDeltaTime();
 
@@ -532,7 +532,7 @@ void InputNode::PopulateInputState() {
     pendingClicks_.clear();
 }
 
-void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
+void InputNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Cleanup");
 
     // Release mouse capture (restore normal cursor)

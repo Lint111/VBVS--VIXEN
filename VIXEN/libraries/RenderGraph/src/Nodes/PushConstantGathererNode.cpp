@@ -253,7 +253,7 @@ void PushConstantGathererNode::PreRegisterPushConstantFields(const std::shared_p
 // SETUP
 // ============================================================================
 
-void PushConstantGathererNode::SetupImpl(VariadicSetupContext& ctx) {
+void PushConstantGathererNode::VariadicSetupImpl(VariadicSetupContext& ctx) {
     // Minimal setup - main work happens in Compile
 }
 
@@ -261,7 +261,7 @@ void PushConstantGathererNode::SetupImpl(VariadicSetupContext& ctx) {
 // COMPILE
 // ============================================================================
 
-void PushConstantGathererNode::CompileImpl(VariadicCompileContext& ctx) {
+void PushConstantGathererNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
     // Get shader bundle input using context API
     auto shaderBundle = ctx.In(PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
     if (!shaderBundle || !shaderBundle->reflectionData) {
@@ -324,7 +324,7 @@ void PushConstantGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 // EXECUTE
 // ============================================================================
 
-void PushConstantGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
+void PushConstantGathererNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     // Pack variadic inputs into push constant buffer
     if (!pushConstantData_.empty()) {
         PackPushConstantData(ctx);
@@ -339,7 +339,7 @@ void PushConstantGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 // CLEANUP
 // ============================================================================
 
-void PushConstantGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
+void PushConstantGathererNode::VariadicCleanupImpl(VariadicCleanupContext& ctx) {
     pushConstantFields_.clear();
     pushConstantData_.clear();
     pushConstantRanges_.clear();

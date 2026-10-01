@@ -63,7 +63,7 @@ void PassGroupNode::AddRenderPass(RenderPassStep step) {
 // COMPILE
 // ============================================================================
 
-void PassGroupNode::CompileImpl(VariadicCompileContext& ctx) {
+void PassGroupNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
     NODE_LOG_INFO("[PassGroupNode::CompileImpl] Baking node-local schedule + allocating command buffers");
 
     assert(!passes_.empty() &&
@@ -127,7 +127,7 @@ void PassGroupNode::CompileImpl(VariadicCompileContext& ctx) {
 // EXECUTE
 // ============================================================================
 
-void PassGroupNode::ExecuteImpl(VariadicExecuteContext& ctx) {
+void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     // ---- Resolve FrameSync inputs (mirrors ComputeDispatchNode::ExecuteImpl:153-166) ----
     uint32_t imageIndex        = ctx.In(PassGroupNodeConfig::IMAGE_INDEX);
     uint32_t currentFrameIndex = ctx.In(PassGroupNodeConfig::CURRENT_FRAME_INDEX);
@@ -213,7 +213,7 @@ void PassGroupNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 // CLEANUP
 // ============================================================================
 
-void PassGroupNode::CleanupImpl(VariadicCleanupContext& ctx) {
+void PassGroupNode::VariadicCleanupImpl(VariadicCleanupContext& ctx) {
     NODE_LOG_INFO("[PassGroupNode::CleanupImpl] Cleaning up resources");
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {

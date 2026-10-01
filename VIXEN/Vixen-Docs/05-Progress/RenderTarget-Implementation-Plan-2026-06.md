@@ -275,10 +275,10 @@ public:
     ~RenderTargetNode() override = default;
 
 protected:
-    void SetupImpl(TypedSetupContext& ctx) override;
-    void CompileImpl(TypedCompileContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedSetupImpl(TypedSetupContext& ctx) override;
+    void TypedCompileImpl(TypedCompileContext& ctx) override;
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override;
+    void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     void CreateTarget(Vixen::Vulkan::Resources::VulkanDevice* device);
@@ -322,7 +322,7 @@ std::unique_ptr<NodeInstance> RenderTargetNodeType::CreateInstance(const std::st
 RenderTargetNode::RenderTargetNode(const std::string& n, NodeType* t)
     : TypedNode<RenderTargetNodeConfig>(n, t) {}
 
-void RenderTargetNode::SetupImpl(TypedSetupContext& ctx) {
+void RenderTargetNode::TypedSetupImpl(TypedSetupContext& ctx) {
     width_      = GetParameterValue<uint32_t>(RenderTargetNodeConfig::PARAM_WIDTH, 512);
     height_     = GetParameterValue<uint32_t>(RenderTargetNodeConfig::PARAM_HEIGHT, 512);
     format_     = static_cast<VkFormat>(GetParameterValue<uint32_t>(
@@ -333,7 +333,7 @@ void RenderTargetNode::SetupImpl(TypedSetupContext& ctx) {
                       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT));
 }
 
-void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
+void RenderTargetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     device_ = ctx.In(RenderTargetNodeConfig::VULKAN_DEVICE_IN);
     if (!device_) throw std::runtime_error("[RenderTargetNode] VULKAN_DEVICE_IN is null");
 
@@ -350,13 +350,13 @@ void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(RenderTargetNodeConfig::HEIGHT_OUT,    height_);
 }
 
-void RenderTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void RenderTargetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Advance the in-flight index so consumers read/write the right buffer this frame.
     if (target_.GetImageCount() > 0)
         target_.currentIndex = (target_.currentIndex + 1) % target_.GetImageCount();
 }
 
-void RenderTargetNode::CleanupImpl(TypedCleanupContext& ctx) {
+void RenderTargetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (ctx.reason != CleanupReason::FinalTeardown) return; // FR-7: persist across recompile
     DestroyTarget();
 }

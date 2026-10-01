@@ -313,7 +313,7 @@ void SwapChainNode::Compile() {
 ```cpp
 // ComputePipelineNode - Creates pipeline (data-driven)
 class ComputePipelineNode {
-    void CompileImpl(Context& ctx) override {
+    void TypedCompileImpl(Context& ctx) override {
         auto device = ctx.In(VULKAN_DEVICE_IN);
         auto shaderBundle = ctx.In(SHADER_DATA_BUNDLE);
 
@@ -332,7 +332,7 @@ class ComputePipelineNode {
 
 // ComputeDispatchNode - Generic dispatcher (any shader)
 class ComputeDispatchNode {
-    void CompileImpl(Context& ctx) override {
+    void TypedCompileImpl(Context& ctx) override {
         auto pipeline = ctx.In(COMPUTE_PIPELINE);
         auto descriptorSets = ctx.In(DESCRIPTOR_SETS);
 
@@ -1076,7 +1076,7 @@ if (HasExecute(descriptorRole)) {
 ```cpp
 // DescriptorSetNode splits descriptor binding across lifecycle phases
 class DescriptorSetNode {
-    void CompileImpl(Context& ctx) override {
+    void TypedCompileImpl(Context& ctx) override {
         // 1. Create descriptor resources
         CreateDescriptorSetLayout();
         CreateDescriptorPool();
@@ -1089,7 +1089,7 @@ class DescriptorSetNode {
         SetFlag(NodeFlags::NeedsInitialBind);
     }
 
-    void ExecuteImpl(Context& ctx) override {
+    void TypedExecuteImpl(Context& ctx) override {
         // 4. Bind Execute-role descriptors (transient/per-frame resources)
         if (HasFlag(NodeFlags::NeedsInitialBind)) {
             PopulateExecuteDescriptors();
@@ -1186,13 +1186,13 @@ if (IsRendering()) {
 **Implementation**:
 ```cpp
 // Before: Monolithic CompileImpl (~230 lines)
-void CompileImpl(Context& ctx) override {
+void TypedCompileImpl(Context& ctx) override {
     // 200+ lines of descriptor layout creation, pool creation,
     // descriptor set allocation, binding, UBO logic, etc.
 }
 
 // After: Focused helper methods (~80 lines in CompileImpl)
-void CompileImpl(Context& ctx) override {
+void TypedCompileImpl(Context& ctx) override {
     CreateDescriptorSetLayout();       // ~20 lines
     CreateDescriptorPool();            // ~15 lines
     AllocateDescriptorSets();          // ~10 lines
@@ -1463,7 +1463,7 @@ class ComputeDispatchNode {
     GPUTimestampQuery gpuQuery_;
     GPUPerformanceLogger gpuPerfLogger_;
 
-    void ExecuteImpl(Context& ctx) override {
+    void TypedExecuteImpl(Context& ctx) override {
         // Reset queries at frame start
         gpuQuery_.ResetQueries(cmd);
 

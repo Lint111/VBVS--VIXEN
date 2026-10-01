@@ -51,12 +51,12 @@ void BufferSyncGathererNode::PreRegisterBufferSlots(size_t count) {
 // SETUP / COMPILE / EXECUTE / CLEANUP
 // ============================================================================
 
-void BufferSyncGathererNode::SetupImpl(VariadicSetupContext& /*ctx*/) {
+void BufferSyncGathererNode::VariadicSetupImpl(VariadicSetupContext& /*ctx*/) {
     // No-op: slots are pre-registered via PreRegisterBufferSlots (graph-construction time),
     // mirroring DescriptorResourceGathererNode's own "discovery happens before Setup" note.
 }
 
-void BufferSyncGathererNode::CompileImpl(VariadicCompileContext& ctx) {
+void BufferSyncGathererNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
     size_t variadicCount = ctx.InVariadicCount();
     std::vector<VkBuffer> buffers;
     std::vector<Resource*> constituents;
@@ -87,7 +87,7 @@ void BufferSyncGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     }
 }
 
-void BufferSyncGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
+void BufferSyncGathererNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     // Re-read every frame: mirrors DescriptorResourceGathererNode's own Compile-gathers-
     // static/Execute-refreshes-transient split. The reservoir ping-pong buffers connected
     // here are Persistent (StorageBufferNode) so their handles never actually change frame-
@@ -109,7 +109,7 @@ void BufferSyncGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     ctx.Out(BufferSyncGathererNodeConfig::BUFFER_ARRAY, buffers);
 }
 
-void BufferSyncGathererNode::CleanupImpl(VariadicCleanupContext& /*ctx*/) {
+void BufferSyncGathererNode::VariadicCleanupImpl(VariadicCleanupContext& /*ctx*/) {
     // No owned resources to release — this node only gathers handles owned elsewhere.
 }
 

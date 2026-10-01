@@ -172,12 +172,12 @@ libraries/
 ```cpp
 class MyNode : public TypedNode<MyNodeConfig> {
 public:
-    void SetupImpl(Context& ctx) override {
+    void TypedSetupImpl(Context& ctx) override {
         // Subscribe to events
         eventBus->Subscribe(EventType::MyEvent, this);
     }
 
-    void CompileImpl(Context& ctx) override {
+    void TypedCompileImpl(Context& ctx) override {
         // Read inputs
         auto input = In(MyNodeConfig::INPUT_SLOT);
 
@@ -188,12 +188,12 @@ public:
         Out(MyNodeConfig::OUTPUT_SLOT, result);
     }
 
-    void ExecuteImpl(Context& ctx) override {
+    void TypedExecuteImpl(Context& ctx) override {
         // Record commands (or no-op)
         vkCmdDraw(...);
     }
 
-    void CleanupImpl(Context& ctx) override {
+    void TypedCleanupImpl(Context& ctx) override {
         // Destroy resources (reverse of Compile)
         DestroyMyResources();
     }

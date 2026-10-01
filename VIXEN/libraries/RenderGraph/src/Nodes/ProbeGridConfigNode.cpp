@@ -156,11 +156,11 @@ ProbeGridConfigNode::ProbeGridConfigNode(const std::string& n, NodeType* t)
 {
 }
 
-void ProbeGridConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void ProbeGridConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[ProbeGridConfigNode] Setup (graph-scope initialization)");
 }
 
-void ProbeGridConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void ProbeGridConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ProbeGridConfigNode] Compile START");
 
     SetDevice(ctx.In(ProbeGridConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -190,7 +190,7 @@ void ProbeGridConfigNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ProbeGridConfigNode] Outputs published");
 }
 
-void ProbeGridConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ProbeGridConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(ProbeGridConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -217,7 +217,7 @@ void ProbeGridConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void ProbeGridConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ProbeGridConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

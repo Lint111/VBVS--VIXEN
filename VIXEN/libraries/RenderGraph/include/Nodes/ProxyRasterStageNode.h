@@ -20,9 +20,9 @@ public:
     ProxyRasterStageNode(const std::string& instanceName, NodeType* nodeType);
 
 protected:
-    void CompileImpl(TypedCompileContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedCompileImpl(TypedCompileContext& ctx) override;
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override;
+    void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     void RecordCommands(TypedExecuteContext& ctx, VkCommandBuffer commandBuffer);

@@ -31,7 +31,7 @@ SwapChainNode::SwapChainNode(
 {
 }
 
-void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
+void SwapChainNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("SwapChainNode: Setup (graph-scope initialization)");
 
@@ -61,7 +61,7 @@ void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
     currentFrame = 0;
 }
 
-void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
+void SwapChainNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[SwapChainNode::Compile] ===== RECOMPILATION TRIGGERED =====");
     NODE_LOG_INFO("[SwapChainNode::Compile] START");
 #if defined(VIXEN_FAIL_SCENARIOS) && VIXEN_FAIL_SCENARIOS
@@ -141,7 +141,7 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     }
 }
 
-void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void SwapChainNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Phase 0.5: imageAvailable (per-FLIGHT) still comes from FrameSyncNode.
     const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
 
@@ -245,7 +245,7 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
     currentFrame++;
 }
 
-void SwapChainNode::CleanupImpl(TypedCleanupContext& ctx) {
+void SwapChainNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Called");
 
     // FR-3: destroy per-IMAGE sync resources owned here, alongside the swapchain destroy below

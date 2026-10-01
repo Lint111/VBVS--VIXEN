@@ -46,11 +46,11 @@ AccumulationHistoryNode::AccumulationHistoryNode(const std::string& n, NodeType*
 {
 }
 
-void AccumulationHistoryNode::SetupImpl(TypedSetupContext& ctx) {
+void AccumulationHistoryNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[AccumulationHistoryNode] Setup (graph-scope initialization)");
 }
 
-void AccumulationHistoryNode::CompileImpl(TypedCompileContext& ctx) {
+void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[AccumulationHistoryNode] Compile START");
 
     SetDevice(ctx.In(AccumulationHistoryNodeConfig::VULKAN_DEVICE_IN));
@@ -98,14 +98,14 @@ void AccumulationHistoryNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(height_) + ", R16G16B16A16_SFLOAT storage image)");
 }
 
-void AccumulationHistoryNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Not a ring -- the same persistent image/view is re-emitted every frame (the whole point of
     // "history": last frame's write must still be here for this frame to read).
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, view_);
     ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      image_);
 }
 
-void AccumulationHistoryNode::CleanupImpl(TypedCleanupContext& ctx) {
+void AccumulationHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

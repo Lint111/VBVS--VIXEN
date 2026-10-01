@@ -45,12 +45,12 @@ InstanceBufferNode::InstanceBufferNode(const std::string& n, NodeType* t)
 {
 }
 
-void InstanceBufferNode::SetupImpl(TypedSetupContext& ctx) {
+void InstanceBufferNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[InstanceBufferNode] Setup (graph-scope initialization)");
 }
 
-void InstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
+void InstanceBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InstanceBufferNode] Compile START");
 
     SetDevice(ctx.In(InstanceBufferNodeConfig::VULKAN_DEVICE_IN));
@@ -79,11 +79,11 @@ void InstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
                   ", instances=" + std::to_string(instanceCount_) + ")");
 }
 
-void InstanceBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void InstanceBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Static buffer — filled at compile time. Nothing to do per-frame.
 }
 
-void InstanceBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
+void InstanceBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // FR-7: persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)

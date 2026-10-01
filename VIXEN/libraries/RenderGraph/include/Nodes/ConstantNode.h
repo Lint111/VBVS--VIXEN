@@ -112,11 +112,11 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(TypedSetupContext& ctx) override {
+    void TypedSetupImpl(TypedSetupContext& ctx) override {
         // No setup needed - graph will allocate output Resource
     }
 
-    void CompileImpl(TypedCompileContext& ctx) override {
+    void TypedCompileImpl(TypedCompileContext& ctx) override {
         // The re-populator rebuilds the stored value; absent it, no value was ever set.
         if (!repopulateStored) {
             throw std::runtime_error("ConstantNode '" + GetInstanceName() + "': Value not set before Compile()");
@@ -163,11 +163,11 @@ protected:
         }
     }
 
-    void ExecuteImpl(TypedExecuteContext& ctx) override {
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override {
         // No execution needed - this is a data node
     }
 
-    void CleanupImpl(TypedCleanupContext& ctx) override {
+    void TypedCleanupImpl(TypedCleanupContext& ctx) override {
         // The constant's value is CPU config that must SURVIVE a rebuild (recompile / device-loss recovery)
         // so the node can re-publish it -- keep the factory and the externally-managed-resource callback
         // across non-final cleanups; release them only on final teardown. (Mirrors WindowNode keeping the

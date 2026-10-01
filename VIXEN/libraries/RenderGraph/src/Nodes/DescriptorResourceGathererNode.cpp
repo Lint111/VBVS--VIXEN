@@ -40,14 +40,14 @@ DescriptorResourceGathererNode::DescriptorResourceGathererNode(
 // GraphCompileSetup removed - cannot access connected inputs during this phase
 // Descriptor discovery happens in SetupImpl via DiscoverDescriptors(ctx)
 
-void DescriptorResourceGathererNode::SetupImpl(VariadicSetupContext& ctx) {
+void DescriptorResourceGathererNode::VariadicSetupImpl(VariadicSetupContext& ctx) {
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Setup] Node initialization (no data access)");
     // Phase C: Setup is now node initialization only
     // No input data access, no slot discovery
     // Tentative slots already created by ConnectVariadic
 }
 
-void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
+void DescriptorResourceGathererNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] START for " + GetInstanceName());
 
     // Get shader bundle to discover expected descriptor layout
@@ -181,7 +181,7 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     }
 }
 
-void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
+void DescriptorResourceGathererNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     // Execute phase: Update transient (per-frame) resources only
     // - Compile phase gathered static resources and validated against shader
     // - Execute phase refreshes transient resources (like current frame image view)
@@ -299,7 +299,7 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     ctx.Out(DescriptorResourceGathererNodeConfig::DEBUG_CAPTURE, firstDebugCapture);
 }
 
-void DescriptorResourceGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
+void DescriptorResourceGathererNode::VariadicCleanupImpl(VariadicCleanupContext& ctx) {
     descriptorSlots_.clear();
     resourceArray_.clear();
 }

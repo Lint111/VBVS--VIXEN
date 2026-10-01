@@ -46,11 +46,11 @@ StorageBufferNode::StorageBufferNode(const std::string& n, NodeType* t)
 {
 }
 
-void StorageBufferNode::SetupImpl(TypedSetupContext& ctx) {
+void StorageBufferNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[StorageBufferNode] Setup (graph-scope initialization)");
 }
 
-void StorageBufferNode::CompileImpl(TypedCompileContext& ctx) {
+void StorageBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[StorageBufferNode] Compile START");
 
     SetDevice(ctx.In(StorageBufferNodeConfig::VULKAN_DEVICE_IN));
@@ -151,7 +151,7 @@ void StorageBufferNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(static_cast<uint64_t>(sizeBytes_)) + " bytes)");
 }
 
-void StorageBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void StorageBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t frameRingSize = GetParameterValue<uint32_t>(
         StorageBufferNodeConfig::PARAM_FRAME_RING_SIZE, 0u);
     if (frameRingSize != 0u && perFrame_.IsInitialized()) {
@@ -165,7 +165,7 @@ void StorageBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void StorageBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
+void StorageBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)
