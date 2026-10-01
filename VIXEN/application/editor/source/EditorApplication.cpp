@@ -339,6 +339,13 @@ void EditorApplication::PollAppFlowFile() {
 }
 
 void EditorApplication::BuildRenderGraph() {
+    // Capture runs can use the production graph without creating a window or swapchain. This is
+    // deliberately opt-in so interactive editor sessions retain their normal presentation path.
+    if (const char* offscreenCapture = std::getenv("VIXEN_EDITOR_OFFSCREEN_CAPTURE");
+        offscreenCapture && std::string(offscreenCapture) == "1") {
+        SetPresentationTarget(PresentationTarget::Offscreen);
+    }
+
     // Build the full standard graph unmodified (window, body-octree scene, UI composite HUD),
     // then re-point the UI node at the editor's own document and replace the 3 default demo
     // bodies with the loaded VoxelDocument's single flattened recipe.
@@ -390,6 +397,14 @@ void EditorApplication::BuildRenderGraph() {
         cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Y, kBakeCenterGrid * kGridToWorld);
         cameraInst->SetParameter(CC::PARAM_ORBIT_CENTER_Z, kBakeCenterGrid * kGridToWorld);
         cameraInst->SetParameter(CC::PARAM_ORBIT_DISTANCE, 30.0f);
+
+        // The capture test asks for a top-down view so the layer toggle changes visible pixels.
+        // Leave the editor's default side view untouched for interactive sessions.
+        if (const char* captureCamera = std::getenv("VIXEN_EDITOR_TEST_CAMERA");
+            captureCamera && std::string(captureCamera) == "top-down") {
+            cameraInst->SetParameter(CC::PARAM_YAW, 0.0f);
+            cameraInst->SetParameter(CC::PARAM_PITCH, 1.45f);
+        }
     }
 
     if (!ApplyDocumentToScene()) {

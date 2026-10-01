@@ -65,17 +65,19 @@ void BlitNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[BlitNode::CompileImpl] Command pool is null/invalid");
     }
 
-    const std::vector<VkSemaphore>& renderComplete =
-        ctx.In(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
-    uint32_t imageCount = static_cast<uint32_t>(renderComplete.size());
+    Vixen::Vulkan::Resources::IRenderTarget* target =
+        ctx.In(BlitNodeConfig::SWAPCHAIN_INFO);
+    if (!target) {
+        throw std::runtime_error("[BlitNode::CompileImpl] Render target is null");
+    }
+    const uint32_t imageCount = target->GetImageCount();
     if (imageCount == 0) {
-        throw std::runtime_error("[BlitNode::CompileImpl] Image count is 0 "
-                                 "(RENDER_COMPLETE_SEMAPHORES_ARRAY empty)");
+        throw std::runtime_error("[BlitNode::CompileImpl] Render target image count is 0");
     }
 
     // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
-    // COMMAND_BUFFER_RING_DEPTH note above). imageCount above is still read for the image-derived
-    // arrays; the reusable command-buffer ring is sized to the flight count.
+    // COMMAND_BUFFER_RING_DEPTH note above). The target owns the image count in both WSI and
+    // offscreen graphs; binary WSI semaphore arrays are optional in the latter.
     const uint32_t cmdBufferCount = COMMAND_BUFFER_RING_DEPTH;
     commandBuffers_.resize(cmdBufferCount);
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
@@ -142,13 +144,16 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     VkFence inFlightFence = ctx.In(BlitNodeConfig::IN_FLIGHT_FENCE);
     const std::vector<VkSemaphore>& renderComplete = ctx.In(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     const std::vector<VkSemaphore>& imageAvailable = ctx.In(BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    Vixen::Vulkan::Resources::IRenderTarget* target = ctx.In(BlitNodeConfig::SWAPCHAIN_INFO);
+    const bool waitsForSwapchainAcquire =
+        submissionPolicy.waitsForSwapchainAcquire && !imageAvailable.empty();
 
-    // Two separate bounds: the image-derived arrays are indexed by imageIndex (bounded by
-    // renderComplete size), while the command-buffer ring is frame-indexed (bounded by its own
-    // flight-ring size, as is imageAvailable — Task 6.1 adds this third frame-indexed bound).
-    if (imageIndex == UINT32_MAX || imageIndex >= renderComplete.size() ||
+    // Target images are image-indexed; command buffers and acquire semaphores are frame-indexed.
+    // An offscreen graph has a valid target index but no WSI semaphore arrays.
+    if (!target || imageIndex == UINT32_MAX || imageIndex >= target->GetImageCount() ||
         currentFrameIndex >= commandBuffers_.size() ||
-        (submissionPolicy.waitsForSwapchainAcquire && currentFrameIndex >= imageAvailable.size())) {
+        (submissionPolicy.signalsPresentSemaphore && imageIndex >= renderComplete.size()) ||
+        (waitsForSwapchainAcquire && currentFrameIndex >= imageAvailable.size())) {
         NODE_LOG_WARNING("[BlitNode] Invalid image/frame index - skipping frame");
         return;
     }
@@ -193,7 +198,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // and no longer waits imageAvailable itself — see ComputeDispatchWaitsForSwapchainAcquire's
     // doc comment, ComputeDispatchNode.h). Consume the WSI binary at BLIT, the stage that
     // performs this node's first real access to the acquired image.
-    if (submissionPolicy.waitsForSwapchainAcquire) {
+    if (waitsForSwapchainAcquire) {
         VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         acquireWait.semaphore = imageAvailable[currentFrameIndex];
         acquireWait.value     = 0;  // binary semaphore: value ignored
@@ -256,6 +261,7 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
             throw std::runtime_error("[BlitNode::ExecuteImpl] vkQueueSubmit2 failed: " +
                                      std::to_string(result));
         }
+
     }
 
     // Baked-Perf M6 Task 6.3: publish the real semaphore only when this submit actually
@@ -266,8 +272,9 @@ void BlitNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // VK_NULL_HANDLE here (instead of a real handle this submit never signals) keeps that
     // documented "the binary semaphores they carry are INERT" claim actually true, now that
     // Task 6.3 stops signalling the handle in composite mode.
-    ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-            submissionPolicy.signalsPresentSemaphore ? renderComplete[imageIndex] : VK_NULL_HANDLE);
+    const VkSemaphore renderCompleteSemaphore = submissionPolicy.signalsPresentSemaphore
+        ? renderComplete[imageIndex] : VK_NULL_HANDLE;
+    ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
     ctx.Out(BlitNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
 

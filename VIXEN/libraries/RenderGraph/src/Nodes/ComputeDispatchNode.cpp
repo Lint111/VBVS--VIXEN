@@ -176,36 +176,33 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeDispatchNodeConfig::IN_FLIGHT_FENCE);
 
+    const bool leaveImageInGeneral =
+        GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
+    const bool writesNoImage =
+        GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_WRITES_NO_IMAGE, false);
+    const bool waitsForAcquire = ComputeDispatchWaitsForSwapchainAcquire(writesNoImage);
+    const bool signalsPresent = !leaveImageInGeneral && !writesNoImage;
+
     // Guard against the invalid-image sentinel BEFORE any per-image indexing or side effect:
-    // renderCompleteSemaphores[imageIndex] below read OOB on UINT32_MAX (the maximize crash),
-    // and skipping before the fence reset keeps the frame fence signalled so the next
-    // FrameSyncNode wait can't deadlock on a skipped frame. Two separate bounds now: the
-    // image-derived arrays are indexed by imageIndex (bounded by renderComplete size), while the
-    // command-buffer ring is frame-indexed (bounded by its own flight-ring size).
-    if (imageIndex == UINT32_MAX || imageIndex >= renderCompleteSemaphores.size() ||
-        currentFrameIndex >= commandBuffers.size()) {
+    // skipping before the fence reset keeps the frame fence signalled so the next FrameSyncNode wait
+    // can't deadlock. WSI array bounds apply only when this dispatch uses those binary handoffs.
+    if (imageIndex == UINT32_MAX || currentFrameIndex >= commandBuffers.size() ||
+        (waitsForAcquire && currentFrameIndex >= imageAvailableSemaphores.size()) ||
+        (signalsPresent && imageIndex >= renderCompleteSemaphores.size())) {
         NODE_LOG_WARNING("ComputeDispatchNode: Invalid image/frame index - skipping frame");
         return;
     }
 
-    // Two-tier indexing: imageAvailable by frame, renderComplete by image
-    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
-    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
+    // Two-tier WSI indexing when connected: imageAvailable by frame, renderComplete by image.
+    const VkSemaphore imageAvailableSemaphore = waitsForAcquire
+        ? imageAvailableSemaphores[currentFrameIndex] : VK_NULL_HANDLE;
+    const VkSemaphore renderCompleteSemaphore = signalsPresent
+        ? renderCompleteSemaphores[imageIndex] : VK_NULL_HANDLE;
 
     static int logCounter = 0;
     if (logCounter++ < 20) {
         NODE_LOG_DEBUG("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
     }
-
-    // Composite mode: when a downstream graphics pass (UI) follows, it owns the frame fence + the
-    // final present transition. The compute then submits with NO fence and leaves the image in GENERAL.
-    const bool leaveImageInGeneral =
-        GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
-
-    // Sampled Lighting Inc3 M1: this dispatch manages no presentable image at all (see
-    // PARAM_WRITES_NO_IMAGE's doc comment) — orthogonal to leaveImageInGeneral's fence ownership.
-    const bool writesNoImage =
-        GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_WRITES_NO_IMAGE, false);
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode). In
     // composite mode the downstream UI submit resets + owns the fence, so leave it alone here.
@@ -293,7 +290,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // FrameSyncNode, not this semaphore, is what actually guards this dispatch's own
     // cross-frame resource reuse). Swapchain-writing / self-blitting variants (writesNoImage
     // == false) still consume it here, unchanged.
-    if (ComputeDispatchWaitsForSwapchainAcquire(writesNoImage)) {
+    if (waitsForAcquire) {
         VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         acquireWait.semaphore = imageAvailableSemaphore;
         acquireWait.value     = 0;  // binary semaphore: value ignored
@@ -327,7 +324,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // in favour of the baked compute→UI timeline edge; signalling it there would leave an orphaned
     // per-image binary that is re-signalled each frame with no intervening wait (a binary-semaphore
     // re-signal VUID). So skip it in composite — the timeline signalEdges above carry compute→UI.
-    if (!leaveImageInGeneral) {
+    if (signalsPresent) {
         VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
         renderSig.semaphore = renderCompleteSemaphore;
         renderSig.value     = 0;  // binary semaphore: value ignored

@@ -488,6 +488,8 @@ private:
 
     NodeHandle windowNode_{};                        // stored so GetWindowHandle() can query the WindowNode live
     NodeHandle inputNode_{};                         // stored so Update() can drain InputNode's event queue live (input-rework slice 1)
+    NodeHandle offscreenTargetNode_{};               // selected graph target used by the public PNG readback path
+    NodeHandle offscreenDeviceNode_{};               // device paired with offscreenTargetNode_
     NodeHandle uiRenderNode_{};                      // stored so GetUiRenderNode() can query the composite UI node live
     NodeHandle uiSelectionProviderNode_{};           // stored so GetUiSelectionProviderNode() can drain HUD clicks live
 

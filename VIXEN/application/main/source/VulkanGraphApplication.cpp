@@ -4678,9 +4678,9 @@ bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path,
         err = "CaptureOffscreenFrameToPng: no render graph";
         return false;
     }
-    auto* targetNode = renderGraph->GetInstanceByName("ui_offscreen_target");
+    auto* targetNode = renderGraph->GetInstance(offscreenTargetNode_);
     if (!targetNode) {
-        err = "CaptureOffscreenFrameToPng: 'ui_offscreen_target' not found";
+        err = "CaptureOffscreenFrameToPng: selected offscreen render target not found";
         return false;
     }
     Resource* targetOutput = targetNode->GetOutput(0, 0);
@@ -4693,9 +4693,9 @@ bool VulkanGraphApplication::CaptureOffscreenFrameToPng(const std::string& path,
         err = "CaptureOffscreenFrameToPng: target output is null";
         return false;
     }
-    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("ui_device"));
+    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstance(offscreenDeviceNode_));
     if (!deviceNode || !deviceNode->GetVulkanDevice()) {
-        err = "CaptureOffscreenFrameToPng: 'ui_device' not found or has no VulkanDevice";
+        err = "CaptureOffscreenFrameToPng: selected offscreen device not found or has no VulkanDevice";
         return false;
     }
     auto* device = deviceNode->GetVulkanDevice();

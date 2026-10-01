@@ -239,8 +239,9 @@ void InputNode::ApplyCursorMode() {
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InputNode] Compile");
 
-    // Validate WINDOW input using helper
-    GLFWwindow* newWindow = ValidateInput<GLFWwindow*>(ctx, "WINDOW", InputNodeConfig::WINDOW);
+    // The production graph also uses InputNode to publish an empty InputState in headless mode;
+    // the optional WINDOW slot has no callbacks or polling work when it is unconnected.
+    GLFWwindow* newWindow = GetOptionalInput<GLFWwindow*>(ctx, InputNodeConfig::WINDOW);
 
     // A recompile can hand back the SAME window (WindowNode's window/surface persist across
     // recompiles by design — see WindowNode.h) or, in principle, a different one if the graph
