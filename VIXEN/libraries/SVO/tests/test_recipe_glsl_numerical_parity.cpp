@@ -96,6 +96,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <regex>
 #include <set>
@@ -113,10 +114,23 @@
 namespace {
 
 using Vixen::SVO::Recipe::SdfInstruction;
+using Vixen::SVO::Recipe::SdfOpCode;
 
 static SdfInstruction ReadParamInstruction(uint32_t index) {
     SdfInstruction in{};
     in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadParam);
+    in.data[0] = static_cast<float>(index);
+    return in;
+}
+static SdfInstruction ReadParamU32Instruction(uint32_t index) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadParamU32);
+    in.data[0] = static_cast<float>(index);
+    return in;
+}
+static SdfInstruction ReadParamQ16Instruction(uint32_t index) {
+    SdfInstruction in{};
+    in.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::ReadParamQ16);
     in.data[0] = static_cast<float>(index);
     return in;
 }
@@ -132,12 +146,12 @@ static SdfInstruction Hash32CombineInstruction() {
 }
 static std::array<SdfInstruction, 12> BodySeedFoldProgram() {
     return {
-        ReadParamInstruction(0), Hash32Instruction(),
-        ReadParamInstruction(1), Hash32CombineInstruction(),
-        ReadParamInstruction(2), Hash32CombineInstruction(),
-        ReadParamInstruction(3), Hash32CombineInstruction(),
-        ReadParamInstruction(4), Hash32CombineInstruction(),
-        ReadParamInstruction(5), Hash32CombineInstruction(),
+        ReadParamU32Instruction(0), Hash32Instruction(),
+        ReadParamU32Instruction(1), Hash32CombineInstruction(),
+        ReadParamU32Instruction(2), Hash32CombineInstruction(),
+        ReadParamU32Instruction(3), Hash32CombineInstruction(),
+        ReadParamU32Instruction(4), Hash32CombineInstruction(),
+        ReadParamU32Instruction(5), Hash32CombineInstruction(),
     };
 }
 
@@ -903,7 +917,7 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
     opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
 
     const std::array<SdfInstruction, 2> hashProgram = {
-        ReadParamInstruction(0), Hash32Instruction(),
+        ReadParamU32Instruction(0), Hash32Instruction(),
     };
     const std::string hashFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
         hashProgram.data(), static_cast<uint32_t>(hashProgram.size()), 0);
@@ -930,7 +944,7 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
     }
 
     const std::array<SdfInstruction, 3> combineProgram = {
-        ReadParamInstruction(0), ReadParamInstruction(1), Hash32CombineInstruction(),
+        ReadParamU32Instruction(0), ReadParamU32Instruction(1), Hash32CombineInstruction(),
     };
     const std::string combineFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
         combineProgram.data(), static_cast<uint32_t>(combineProgram.size()), 0);
@@ -975,6 +989,146 @@ TEST_F(RecipeGlslNumericalParityTest, Hash32GoldenVectorsMatchCpuAndGpuBitwise) 
     ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(foldSpirv.spirv, onePoint, foldGpu, foldParams));
     ASSERT_EQ(foldGpu.size(), 1u);
     EXPECT_EQ(std::bit_cast<uint32_t>(foldGpu[0]), Vixen::SVO::Recipe::TestVectors::BodySeedFoldExpected);
+}
+
+TEST_F(RecipeGlslNumericalParityTest, TypedRecipeValueGoldenVectorsMatchCpuAndGpu) {
+    enum class InputType { Float, U32, Q16, DirectU32, DirectQ16 };
+    struct Vector {
+        SdfOpCode opcode;
+        InputType inputType;
+        bool binary;
+        bool outputFloat;
+        uint32_t a;
+        uint32_t b;
+        uint32_t expectedRaw;
+        float floatInput;
+        float expectedFloat;
+    };
+    const std::vector<Vector> vectors = {
+        {SdfOpCode::ReadParamU32, InputType::DirectU32, false, false, 0xffffffffu, 0u, 0xffffffffu, 0, 0},
+        {SdfOpCode::ReadParamQ16, InputType::DirectQ16, false, false, 0x80000000u, 0u, 0x80000000u, 0, 0},
+        {SdfOpCode::U32Add, InputType::U32, true, false, 0xffffffffu, 1u, 0u, 0, 0},
+        {SdfOpCode::U32Sub, InputType::U32, true, false, 0u, 1u, 0xffffffffu, 0, 0},
+        {SdfOpCode::U32Mul, InputType::U32, true, false, 0x10000u, 0x10000u, 0u, 0, 0},
+        {SdfOpCode::U32Min, InputType::U32, true, false, 9u, 4u, 4u, 0, 0},
+        {SdfOpCode::U32Max, InputType::U32, true, false, 9u, 4u, 9u, 0, 0},
+        {SdfOpCode::U32Equal, InputType::U32, true, false, 9u, 9u, 1u, 0, 0},
+        {SdfOpCode::U32NotEqual, InputType::U32, true, false, 9u, 4u, 1u, 0, 0},
+        {SdfOpCode::U32Less, InputType::U32, true, false, 4u, 9u, 1u, 0, 0},
+        {SdfOpCode::U32LessEqual, InputType::U32, true, false, 9u, 9u, 1u, 0, 0},
+        {SdfOpCode::U32Greater, InputType::U32, true, false, 9u, 4u, 1u, 0, 0},
+        {SdfOpCode::U32GreaterEqual, InputType::U32, true, false, 9u, 9u, 1u, 0, 0},
+        {SdfOpCode::Q16Add, InputType::Q16, true, false, 0x7fffffffu, 1u, 0x7fffffffu, 0, 0},
+        {SdfOpCode::Q16Sub, InputType::Q16, true, false, 0x80000000u, 1u, 0x80000000u, 0, 0},
+        {SdfOpCode::Q16Mul, InputType::Q16, true, false, 1u, 32768u, 0u, 0, 0},
+        {SdfOpCode::Q16Mul, InputType::Q16, true, false, 3u, 32768u, 2u, 0, 0},
+        {SdfOpCode::Q16Mul, InputType::Q16, true, false, 0xffffffffu, 32768u, 0u, 0, 0},
+        {SdfOpCode::Q16Mul, InputType::Q16, true, false, 0xfffffffdu, 32768u, 0xfffffffeu, 0, 0},
+        {SdfOpCode::Q16Mul, InputType::Q16, true, false, 0x7fffffffu, 0x7fffffffu, 0x7fffffffu, 0, 0},
+        {SdfOpCode::Q16Mul, InputType::Q16, true, false, 0x80000000u, 0x7fffffffu, 0x80000000u, 0, 0},
+        {SdfOpCode::Q16Min, InputType::Q16, true, false, 0xffff0000u, 0x00020000u, 0xffff0000u, 0, 0},
+        {SdfOpCode::Q16Max, InputType::Q16, true, false, 0xffff0000u, 0x00020000u, 0x00020000u, 0, 0},
+        {SdfOpCode::Q16Equal, InputType::Q16, true, false, 0x00020000u, 0x00020000u, 1u, 0, 0},
+        {SdfOpCode::Q16NotEqual, InputType::Q16, true, false, 0x00020000u, 0xffff0000u, 1u, 0, 0},
+        {SdfOpCode::Q16Less, InputType::Q16, true, false, 0xffff0000u, 0x00020000u, 1u, 0, 0},
+        {SdfOpCode::Q16LessEqual, InputType::Q16, true, false, 0xffff0000u, 0xffff0000u, 1u, 0, 0},
+        {SdfOpCode::Q16Greater, InputType::Q16, true, false, 0x00020000u, 0xffff0000u, 1u, 0, 0},
+        {SdfOpCode::Q16GreaterEqual, InputType::Q16, true, false, 0x00020000u, 0x00020000u, 1u, 0, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0u, 0x1.0p-17f, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 2u, 0x3.0p-17f, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0u, -0x1.0p-17f, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0xfffffffeu, -0x3.0p-17f, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0x7fffffffu, 32768.0f, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0x80000000u, -32769.0f, 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0u, std::numeric_limits<float>::quiet_NaN(), 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0x7fffffffu, std::numeric_limits<float>::infinity(), 0},
+        {SdfOpCode::FloatToQ16, InputType::Float, false, false, 0, 0, 0x80000000u, -std::numeric_limits<float>::infinity(), 0},
+        {SdfOpCode::Q16ToFloat, InputType::Q16, false, true, 0xffff4000u, 0, 0, 0, -0.75f},
+        {SdfOpCode::U32ToQ16, InputType::U32, false, false, 0xffffffffu, 0, 0x7fffffffu, 0, 0},
+        {SdfOpCode::Q16ToU32, InputType::Q16, false, false, 0xffff0000u, 0, 0u, 0, 0},
+        {SdfOpCode::Q16ToU32, InputType::Q16, false, false, 0x00018000u, 0, 2u, 0, 0},
+        {SdfOpCode::Q16ToU32, InputType::Q16, false, false, 0x00028000u, 0, 2u, 0, 0},
+        {SdfOpCode::Q16ToU32, InputType::Q16, false, false, 0x7fffffffu, 0, 32768u, 0, 0},
+        {SdfOpCode::U32ToFloat, InputType::U32, false, true, 16777217u, 0, 0, 0, 16777216.0f},
+    };
+
+    std::ifstream kernelFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_TRUE(kernelFile.good()) << "Cannot open vendored GLSL: " << SDF_CORE_KERNELS_GLSL_PATH;
+    std::ostringstream kss;
+    kss << kernelFile.rdbuf();
+    const std::string sdfCoreGlsl = kss.str();
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions opts;
+    opts.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    const std::vector<glm::vec3> onePoint = {glm::vec3(0.0f)};
+    std::map<int, std::vector<uint32_t>> compiledPrograms;
+
+    auto makeProgram = [](const Vector& vector) {
+        std::vector<SdfInstruction> program;
+        if (vector.inputType == InputType::DirectU32) {
+            program.push_back(ReadParamU32Instruction(0));
+            return program;
+        }
+        if (vector.inputType == InputType::DirectQ16) {
+            program.push_back(ReadParamQ16Instruction(0));
+            return program;
+        }
+        switch (vector.inputType) {
+            case InputType::Float: program.push_back(ReadParamInstruction(0)); break;
+            case InputType::U32: program.push_back(ReadParamU32Instruction(0)); break;
+            case InputType::Q16: program.push_back(ReadParamQ16Instruction(0)); break;
+            case InputType::DirectU32:
+            case InputType::DirectQ16: break;
+        }
+        if (vector.binary) {
+            if (vector.inputType == InputType::U32)
+                program.push_back(ReadParamU32Instruction(1));
+            else
+                program.push_back(ReadParamQ16Instruction(1));
+        }
+        SdfInstruction operation{};
+        operation.opCode = static_cast<uint8_t>(vector.opcode);
+        program.push_back(operation);
+        return program;
+    };
+
+    for (const Vector& vector : vectors) {
+        const int key = static_cast<int>(vector.opcode);
+        if (!compiledPrograms.contains(key)) {
+            const std::vector<SdfInstruction> program = makeProgram(vector);
+            const std::string fieldFn = Vixen::SVO::Recipe::EmitProceduralFieldFunctionGlsl(
+                program.data(), static_cast<uint32_t>(program.size()), 0);
+            const auto compiled = compiler.Compile(
+                ShaderManagement::ShaderStage::Compute,
+                ComposeComputeShader(sdfCoreGlsl, fieldFn), "main", opts);
+            ASSERT_TRUE(compiled.success) << static_cast<int>(vector.opcode) << ": " << compiled.GetFullLog();
+            ASSERT_FALSE(compiled.spirv.empty());
+            compiledPrograms.emplace(key, compiled.spirv);
+        }
+
+        const std::vector<SdfInstruction> program = makeProgram(vector);
+        std::array<float, 6> params{};
+        params[0] = vector.inputType == InputType::Float
+            ? vector.floatInput : std::bit_cast<float>(vector.a);
+        if (vector.binary)
+            params[1] = std::bit_cast<float>(vector.b);
+        const float cpu = Vixen::SVO::Recipe::evalRecipe(
+            program.data(), static_cast<uint32_t>(program.size()), onePoint[0],
+            std::span<const float>(params.data(), params.size()));
+        std::vector<float> gpu;
+        ASSERT_NO_FATAL_FAILURE(DispatchAndReadback(compiledPrograms.at(key), onePoint, gpu, params));
+        ASSERT_EQ(gpu.size(), 1u);
+        if (vector.outputFloat) {
+            EXPECT_EQ(cpu, vector.expectedFloat) << static_cast<int>(vector.opcode);
+            EXPECT_EQ(gpu[0], vector.expectedFloat) << static_cast<int>(vector.opcode);
+            EXPECT_EQ(gpu[0], cpu) << static_cast<int>(vector.opcode);
+        } else {
+            EXPECT_EQ(std::bit_cast<uint32_t>(cpu), vector.expectedRaw) << static_cast<int>(vector.opcode);
+            EXPECT_EQ(std::bit_cast<uint32_t>(gpu[0]), vector.expectedRaw) << static_cast<int>(vector.opcode);
+            EXPECT_EQ(std::bit_cast<uint32_t>(gpu[0]), std::bit_cast<uint32_t>(cpu))
+                << static_cast<int>(vector.opcode);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

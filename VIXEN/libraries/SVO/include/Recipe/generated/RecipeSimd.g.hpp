@@ -362,101 +362,140 @@ enum class RecipeControlBehavior : std::uint8_t { None, RestorePosition, Declare
 enum class RecipeGradientHazard : std::uint8_t { Smooth, Piecewise, Discontinuous, NonDifferentiable };
 enum class RecipeGradientCost : std::uint8_t { Same, Bounded, High, Fallback };
 enum class RecipeDerivativeRule : std::uint8_t { Body, Zero, Identity, Alias, Position, RestorePosition, Reject };
-struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; const char* name; };
-inline constexpr std::array<RecipeOpcodeMetadata, 93> RecipeOpcodeTable{{
-    {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Sphere"},
-    {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Box"},
-    {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "BoxRounded"},
-    {3, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Capsule"},
-    {4, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Cylinder"},
-    {5, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Plane"},
-    {6, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Torus"},
-    {7, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Ellipsoid"},
-    {8, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "HollowCylinder"},
-    {9, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "TaperedCylinder"},
-    {10, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, "Panel"},
-    {11, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, "Plank"},
-    {12, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, "RoundedBox"},
-    {14, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "CappedTorus"},
-    {15, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Cone"},
-    {16, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "RoundCone"},
-    {17, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "FakeRoundCone"},
-    {18, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Segment"},
-    {20, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "TriangularPrism"},
-    {21, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Pyramid"},
-    {22, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "HexPrism"},
-    {23, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, "Link"},
-    {24, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Union"},
-    {25, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothUnion"},
-    {26, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Subtract"},
-    {27, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothSubtract"},
-    {28, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Intersect"},
-    {29, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothIntersect"},
-    {30, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Xor"},
-    {31, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothMax"},
-    {32, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothUnionCubic"},
-    {33, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothSubtractCubic"},
-    {34, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "SmoothIntersectCubic"},
-    {35, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "Round"},
-    {36, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "Onion"},
-    {37, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Transform"},
-    {38, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Elongate"},
-    {39, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Twist"},
-    {40, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Bend"},
-    {41, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "MirrorX"},
-    {42, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "MirrorY"},
-    {43, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "MirrorZ"},
-    {44, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "RepeatInfinite"},
-    {45, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "RepeatLimited"},
-    {46, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, "Revolution"},
-    {56, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSin"},
-    {57, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathCos"},
-    {58, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSmoothstep"},
-    {59, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathRemap"},
-    {60, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathAdd"},
-    {61, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathSub"},
-    {62, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathMul"},
-    {63, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathDiv"},
-    {64, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathMin"},
-    {65, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "MathMax"},
-    {66, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathClamp"},
-    {67, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathAbs"},
-    {68, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathFrac"},
-    {69, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathPow"},
-    {70, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSqrt"},
-    {71, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, "MathLerp"},
-    {72, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathNegate"},
-    {73, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, "PositionChannel"},
-    {74, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, "Displacement"},
-    {75, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathStep"},
-    {76, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSign"},
-    {77, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathSaturate"},
-    {78, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathExp"},
-    {79, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathLog"},
-    {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, "MathLog2"},
-    {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, "Select"},
-    {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, "DistanceTo"},
-    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, "Output"},
-    {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, "PushParam"},
-    {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, "ReadParam"},
-    {97, RecipeExecutionClass::Elementwise, RecipeControlBehavior::RestorePosition, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::RestorePosition, true, false, 1, 1, 1, 0, "RestorePos"},
-    {98, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, "PushFloat3"},
-    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, "ComposeFloat3"},
-    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 1, 1, 0, 0, "Passthrough"},
-    {101, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 3, 1, 0, 0, "DecomposeFloat3"},
-    {102, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Add"},
-    {103, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Sub"},
-    {104, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3MulComponentWise"},
-    {105, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Min"},
-    {106, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, "Float3Max"},
-    {107, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 4, 3, 0, 0, "Float3ScalarMul"},
-    {108, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 1, 0, 0, "Float3Dot"},
-    {109, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 3, 3, 0, 0, "Float3Normalize"},
-    {111, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, "ReadParamFloat3"},
-    {112, RecipeExecutionClass::Elementwise, RecipeControlBehavior::DeclarePosition, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 3, 0, 0, 0, "DeclarePosition"},
-    {113, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::InvokeRecipe, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, "InvokeRecipe"},
-    {151, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, "Hash32"},
-    {152, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, "Hash32Combine"},
+using RecipeValueType = Vixen::SVO::Recipe::RecipeValueType;
+enum class RecipeOverflowBehavior : std::uint8_t { Ieee754, Ring, SaturatingCap };
+enum class RecipeContinuityKind : std::uint8_t { Unspecified, DeclaredBound, InteriorOnly, NotSpatial };
+enum class RecipeMipFilterMode : std::uint8_t { Unspecified, NotApplicable, Mean, Min, Max, Nearest };
+struct RecipeValueTypePolicy { RecipeValueType type; RecipeOverflowBehavior overflow; std::int64_t minimumRaw; std::uint64_t maximumRaw; std::uint8_t fractionalBits; const char* storageType; };
+inline constexpr std::array<RecipeValueTypePolicy, 3> RecipeValueTypePolicies{{
+    {RecipeValueType::Float, RecipeOverflowBehavior::Ieee754, 0ll, 0ull, 0, "float"},
+    {RecipeValueType::U32, RecipeOverflowBehavior::Ring, 0ll, 4294967295ull, 0, "uint"},
+    {RecipeValueType::Q16_16, RecipeOverflowBehavior::SaturatingCap, -2147483648ll, 2147483647ull, 16, "int"},
+}};
+struct RecipeOpcodeMetadata { std::uint8_t opcode; RecipeExecutionClass execution; RecipeControlBehavior control; RecipeGradientHazard gradientHazard; RecipeGradientCost gradientCost; RecipeDerivativeRule gradientRule; bool gradientAvailable; bool eikonal; std::int8_t vpop, vpush, ppop, ppush; std::uint64_t inputTypes, outputTypes; RecipeContinuityKind continuity; RecipeMipFilterMode mipFilter; const char* name; };
+inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
+    {0, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Sphere"},
+    {1, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Box"},
+    {2, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "BoxRounded"},
+    {3, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Capsule"},
+    {4, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Cylinder"},
+    {5, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Plane"},
+    {6, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Torus"},
+    {7, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Ellipsoid"},
+    {8, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "HollowCylinder"},
+    {9, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "TaperedCylinder"},
+    {10, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Panel"},
+    {11, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Plank"},
+    {12, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Alias, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "RoundedBox"},
+    {14, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "CappedTorus"},
+    {15, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Cone"},
+    {16, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "RoundCone"},
+    {17, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "FakeRoundCone"},
+    {18, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Segment"},
+    {20, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "TriangularPrism"},
+    {21, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Pyramid"},
+    {22, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "HexPrism"},
+    {23, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Link"},
+    {24, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Union"},
+    {25, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothUnion"},
+    {26, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Subtract"},
+    {27, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothSubtract"},
+    {28, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Intersect"},
+    {29, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothIntersect"},
+    {30, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Xor"},
+    {31, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothMax"},
+    {32, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothUnionCubic"},
+    {33, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothSubtractCubic"},
+    {34, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "SmoothIntersectCubic"},
+    {35, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Round"},
+    {36, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Onion"},
+    {37, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Transform"},
+    {38, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Elongate"},
+    {39, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Twist"},
+    {40, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Bend"},
+    {41, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MirrorX"},
+    {42, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MirrorY"},
+    {43, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MirrorZ"},
+    {44, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "RepeatInfinite"},
+    {45, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "RepeatLimited"},
+    {46, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 0, 0, 0, 1, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Revolution"},
+    {56, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathSin"},
+    {57, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathCos"},
+    {58, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathSmoothstep"},
+    {59, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathRemap"},
+    {60, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathAdd"},
+    {61, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathSub"},
+    {62, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathMul"},
+    {63, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathDiv"},
+    {64, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathMin"},
+    {65, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathMax"},
+    {66, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathClamp"},
+    {67, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathAbs"},
+    {68, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathFrac"},
+    {69, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathPow"},
+    {70, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathSqrt"},
+    {71, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathLerp"},
+    {72, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathNegate"},
+    {73, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "PositionChannel"},
+    {74, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 2, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Displacement"},
+    {75, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathStep"},
+    {76, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathSign"},
+    {77, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathSaturate"},
+    {78, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathExp"},
+    {79, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathLog"},
+    {80, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "MathLog2"},
+    {81, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Discontinuous, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Select"},
+    {82, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Position, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "DistanceTo"},
+    {94, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Output"},
+    {95, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "PushParam"},
+    {96, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "ReadParam"},
+    {97, RecipeExecutionClass::Elementwise, RecipeControlBehavior::RestorePosition, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::RestorePosition, true, false, 1, 1, 1, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "RestorePos"},
+    {98, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "PushFloat3"},
+    {99, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 0, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "ComposeFloat3"},
+    {100, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 1, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Passthrough"},
+    {101, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Identity, true, false, 3, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "DecomposeFloat3"},
+    {102, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3Add"},
+    {103, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3Sub"},
+    {104, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3MulComponentWise"},
+    {105, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3Min"},
+    {106, RecipeExecutionClass::Masked, RecipeControlBehavior::None, RecipeGradientHazard::Piecewise, RecipeGradientCost::Same, RecipeDerivativeRule::Body, true, false, 6, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3Max"},
+    {107, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 4, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3ScalarMul"},
+    {108, RecipeExecutionClass::Elementwise, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Bounded, RecipeDerivativeRule::Body, true, false, 6, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3Dot"},
+    {109, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::High, RecipeDerivativeRule::Body, true, false, 3, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "Float3Normalize"},
+    {111, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::Smooth, RecipeGradientCost::Same, RecipeDerivativeRule::Zero, true, false, 0, 3, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "ReadParamFloat3"},
+    {112, RecipeExecutionClass::Elementwise, RecipeControlBehavior::DeclarePosition, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 3, 0, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "DeclarePosition"},
+    {113, RecipeExecutionClass::LoweredAway, RecipeControlBehavior::InvokeRecipe, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 0ull, RecipeContinuityKind::Unspecified, RecipeMipFilterMode::Unspecified, "InvokeRecipe"},
+    {151, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Hash32"},
+    {152, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Hash32Combine"},
+    {153, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Add"},
+    {154, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Sub"},
+    {155, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Mul"},
+    {156, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Min"},
+    {157, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Max"},
+    {158, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Equal"},
+    {159, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32NotEqual"},
+    {160, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Less"},
+    {161, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32LessEqual"},
+    {162, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32Greater"},
+    {163, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 5ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32GreaterEqual"},
+    {164, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Add"},
+    {165, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Sub"},
+    {166, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Mul"},
+    {167, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Min"},
+    {168, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Max"},
+    {169, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Equal"},
+    {170, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16NotEqual"},
+    {171, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Less"},
+    {172, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16LessEqual"},
+    {173, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16Greater"},
+    {174, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 2, 1, 0, 0, 10ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16GreaterEqual"},
+    {175, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "FloatToQ16"},
+    {176, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 2ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16ToFloat"},
+    {177, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32ToQ16"},
+    {178, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 2ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "Q16ToU32"},
+    {179, RecipeExecutionClass::ScalarLaneFallback, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 1, 1, 0, 0, 1ull, 0ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "U32ToFloat"},
+    {180, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "ReadParamU32"},
+    {181, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, "ReadParamQ16"},
 }};
 
 inline yk::simd4::f32 SdfCore_SphereSimd4(yk::simd4::f32x3 p, glm::vec3 center, float radius) {
@@ -1332,7 +1371,7 @@ inline yk::simd4::f32 SdfCore_Hash32Simd4(yk::simd4::f32 valueBits) {
     alignas(16) float valueBits_lane[4]; valueBits.store_unaligned(valueBits_lane);
     alignas(16) float out[4];
     for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Hash32(valueBits_lane[lane]);
+        uint32_t value = SdfCore_Hash32(std::bit_cast<std::uint32_t>(valueBits_lane[lane])); out[lane] = std::bit_cast<float>(value);
     }
     return yk::simd4::f32::from_lanes(out);
 }
@@ -1342,7 +1381,272 @@ inline yk::simd4::f32 SdfCore_Hash32CombineSimd4(yk::simd4::f32 stateBits, yk::s
     alignas(16) float valueBits_lane[4]; valueBits.store_unaligned(valueBits_lane);
     alignas(16) float out[4];
     for (int lane = 0; lane < 4; ++lane) {
-        out[lane] = SdfCore_Hash32Combine(stateBits_lane[lane], valueBits_lane[lane]);
+        uint32_t value = SdfCore_Hash32Combine(std::bit_cast<std::uint32_t>(stateBits_lane[lane]), std::bit_cast<std::uint32_t>(valueBits_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32AddSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Add(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32SubSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Sub(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32MulSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Mul(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32MinSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Min(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32MaxSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Max(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32EqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Equal(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32NotEqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32NotEqual(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32LessSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Less(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32LessEqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32LessEqual(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32GreaterSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32Greater(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32GreaterEqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_U32GreaterEqual(std::bit_cast<std::uint32_t>(a_lane[lane]), std::bit_cast<std::uint32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16AddSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_Q16Add(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16SubSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_Q16Sub(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16MulSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_Q16Mul(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16MinSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_Q16Min(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16MaxSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_Q16Max(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16EqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16Equal(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16NotEqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16NotEqual(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16LessSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16Less(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16LessEqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16LessEqual(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16GreaterSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16Greater(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16GreaterEqualSimd4(yk::simd4::f32 a, yk::simd4::f32 b) {
+    alignas(16) float a_lane[4]; a.store_unaligned(a_lane);
+    alignas(16) float b_lane[4]; b.store_unaligned(b_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16GreaterEqual(std::bit_cast<std::int32_t>(a_lane[lane]), std::bit_cast<std::int32_t>(b_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_FloatToQ16Simd4(yk::simd4::f32 value) {
+    alignas(16) float value_lane[4]; value.store_unaligned(value_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_FloatToQ16(value_lane[lane]); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16ToFloatSimd4(yk::simd4::f32 value) {
+    alignas(16) float value_lane[4]; value.store_unaligned(value_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_Q16ToFloat(std::bit_cast<std::int32_t>(value_lane[lane]));
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32ToQ16Simd4(yk::simd4::f32 value) {
+    alignas(16) float value_lane[4]; value.store_unaligned(value_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        int32_t value = SdfCore_U32ToQ16(std::bit_cast<std::uint32_t>(value_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_Q16ToU32Simd4(yk::simd4::f32 value) {
+    alignas(16) float value_lane[4]; value.store_unaligned(value_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        uint32_t value = SdfCore_Q16ToU32(std::bit_cast<std::int32_t>(value_lane[lane])); out[lane] = std::bit_cast<float>(value);
+    }
+    return yk::simd4::f32::from_lanes(out);
+}
+
+inline yk::simd4::f32 SdfCore_U32ToFloatSimd4(yk::simd4::f32 value) {
+    alignas(16) float value_lane[4]; value.store_unaligned(value_lane);
+    alignas(16) float out[4];
+    for (int lane = 0; lane < 4; ++lane) {
+        out[lane] = SdfCore_U32ToFloat(std::bit_cast<std::uint32_t>(value_lane[lane]));
     }
     return yk::simd4::f32::from_lanes(out);
 }
@@ -1363,6 +1667,18 @@ inline bool IsValidSdfOpCode(std::uint8_t opcode) {
 inline RecipeStackArityResult RecipeStackArity(SdfOpCode opcode) {
     const RecipeOpcodeMetadata* entry = FindRecipeOpcodeMetadata(static_cast<std::uint8_t>(opcode));
     return entry == nullptr ? RecipeStackArityResult{-1, 0, 0, 0} : RecipeStackArityResult{entry->vpop, entry->vpush, entry->ppop, entry->ppush};
+}
+inline bool RecipeApplyValueTypes(std::uint8_t opcode, std::array<RecipeValueType, 64>& valueTypes, int& sp, std::uint32_t instruction, std::string& error) {
+    const RecipeOpcodeMetadata* entry = FindRecipeOpcodeMetadata(opcode);
+    if (entry == nullptr) { error="unknown recipe opcode during type lowering: "+std::to_string(opcode); return false; }
+    if (sp<entry->vpop || sp-entry->vpop+entry->vpush>64) { error="invalid recipe value stack shape at instruction "+std::to_string(instruction); return false; }
+    for (int slot=0;slot<entry->vpop;++slot) {
+        const auto expected=static_cast<RecipeValueType>((entry->inputTypes>>(slot*2))&0x3u);
+        if (valueTypes[sp-entry->vpop+slot]!=expected) { error="recipe lowering value type mismatch at instruction "+std::to_string(instruction)+": "+entry->name+" input "+std::to_string(slot); return false; }
+    }
+    for (int slot=0;slot<entry->vpush;++slot) valueTypes[sp-entry->vpop+slot]=static_cast<RecipeValueType>((entry->outputTypes>>(slot*2))&0x3u);
+    sp=sp-entry->vpop+entry->vpush;
+    return true;
 }
 } // namespace Vixen::SVO::Recipe
 
@@ -1524,6 +1840,88 @@ inline void ExecuteRecipeOpcode(RecipeSimdState& s, const LoweredRecipeInstructi
     } else if constexpr (Op == SdfOpCode::DeclarePosition) {
         s.declaredPosition=RecipePop3(s); s.position=s.position-s.declaredPosition;
 
+    } else if constexpr (Op == SdfOpCode::Hash32) {
+        s.stack[s.sp-1]=SdfCore_Hash32Simd4(s.stack[s.sp-1]);
+    } else if constexpr (Op == SdfOpCode::Hash32Combine) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Hash32CombineSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Add) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32AddSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Sub) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32SubSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Mul) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32MulSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Min) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32MinSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Max) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32MaxSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Equal) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32EqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32NotEqual) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32NotEqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Less) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32LessSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32LessEqual) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32LessEqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32Greater) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32GreaterSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::U32GreaterEqual) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_U32GreaterEqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Add) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16AddSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Sub) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16SubSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Mul) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16MulSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Min) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16MinSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Max) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16MaxSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Equal) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16EqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16NotEqual) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16NotEqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Less) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16LessSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16LessEqual) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16LessEqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16Greater) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16GreaterSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::Q16GreaterEqual) {
+        f32 b=s.stack[--s.sp], a=s.stack[--s.sp];
+        s.stack[s.sp++]=SdfCore_Q16GreaterEqualSimd4(a,b);
+    } else if constexpr (Op == SdfOpCode::FloatToQ16) {
+        s.stack[s.sp-1]=SdfCore_FloatToQ16Simd4(s.stack[s.sp-1]);
+    } else if constexpr (Op == SdfOpCode::Q16ToFloat) {
+        s.stack[s.sp-1]=SdfCore_Q16ToFloatSimd4(s.stack[s.sp-1]);
+    } else if constexpr (Op == SdfOpCode::U32ToQ16) {
+        s.stack[s.sp-1]=SdfCore_U32ToQ16Simd4(s.stack[s.sp-1]);
+    } else if constexpr (Op == SdfOpCode::Q16ToU32) {
+        s.stack[s.sp-1]=SdfCore_Q16ToU32Simd4(s.stack[s.sp-1]);
+    } else if constexpr (Op == SdfOpCode::U32ToFloat) {
+        s.stack[s.sp-1]=SdfCore_U32ToFloatSimd4(s.stack[s.sp-1]);
+
     } else if constexpr (Op == SdfOpCode::MathSin || Op == SdfOpCode::MathCos || Op == SdfOpCode::MathSmoothstep ||
                          Op == SdfOpCode::MathRemap || Op == SdfOpCode::MathClamp || Op == SdfOpCode::MathAbs ||
                          Op == SdfOpCode::MathFrac || Op == SdfOpCode::MathPow || Op == SdfOpCode::MathSqrt ||
@@ -1568,7 +1966,8 @@ inline void ExecuteRecipeOpcode(RecipeSimdState& s, const LoweredRecipeInstructi
     } else if constexpr (Op == SdfOpCode::DistanceTo) {
         f32x3 delta=RecipeOffset(s.position,in.data,0);
         s.stack[s.sp++]=yk::simd4::sqrt_lanes(delta.yk_col0*delta.yk_col0+delta.yk_col1*delta.yk_col1+delta.yk_col2*delta.yk_col2);
-    } else if constexpr (Op == SdfOpCode::PushParam || Op == SdfOpCode::ReadParam) {
+    } else if constexpr (Op == SdfOpCode::PushParam || Op == SdfOpCode::ReadParam ||
+                         Op == SdfOpCode::ReadParamU32 || Op == SdfOpCode::ReadParamQ16) {
         s.stack[s.sp++]=f32(in.data[0]);
     } else if constexpr (Op == SdfOpCode::PushFloat3 || Op == SdfOpCode::ReadParamFloat3) {
         RecipePush3(s,RecipeConst3(in.data,0));
@@ -1996,6 +2395,35 @@ inline RecipeExecutor ResolveRecipeExecutor(std::uint8_t opcode) {
         case Recipe::SdfOpCode::DeclarePosition: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::DeclarePosition>;
         case Recipe::SdfOpCode::Hash32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Hash32>;
         case Recipe::SdfOpCode::Hash32Combine: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Hash32Combine>;
+        case Recipe::SdfOpCode::U32Add: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Add>;
+        case Recipe::SdfOpCode::U32Sub: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Sub>;
+        case Recipe::SdfOpCode::U32Mul: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Mul>;
+        case Recipe::SdfOpCode::U32Min: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Min>;
+        case Recipe::SdfOpCode::U32Max: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Max>;
+        case Recipe::SdfOpCode::U32Equal: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Equal>;
+        case Recipe::SdfOpCode::U32NotEqual: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32NotEqual>;
+        case Recipe::SdfOpCode::U32Less: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Less>;
+        case Recipe::SdfOpCode::U32LessEqual: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32LessEqual>;
+        case Recipe::SdfOpCode::U32Greater: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32Greater>;
+        case Recipe::SdfOpCode::U32GreaterEqual: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32GreaterEqual>;
+        case Recipe::SdfOpCode::Q16Add: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Add>;
+        case Recipe::SdfOpCode::Q16Sub: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Sub>;
+        case Recipe::SdfOpCode::Q16Mul: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Mul>;
+        case Recipe::SdfOpCode::Q16Min: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Min>;
+        case Recipe::SdfOpCode::Q16Max: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Max>;
+        case Recipe::SdfOpCode::Q16Equal: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Equal>;
+        case Recipe::SdfOpCode::Q16NotEqual: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16NotEqual>;
+        case Recipe::SdfOpCode::Q16Less: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Less>;
+        case Recipe::SdfOpCode::Q16LessEqual: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16LessEqual>;
+        case Recipe::SdfOpCode::Q16Greater: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16Greater>;
+        case Recipe::SdfOpCode::Q16GreaterEqual: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16GreaterEqual>;
+        case Recipe::SdfOpCode::FloatToQ16: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::FloatToQ16>;
+        case Recipe::SdfOpCode::Q16ToFloat: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16ToFloat>;
+        case Recipe::SdfOpCode::U32ToQ16: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32ToQ16>;
+        case Recipe::SdfOpCode::Q16ToU32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::Q16ToU32>;
+        case Recipe::SdfOpCode::U32ToFloat: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::U32ToFloat>;
+        case Recipe::SdfOpCode::ReadParamU32: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamU32>;
+        case Recipe::SdfOpCode::ReadParamQ16: return &ExecuteRecipeOpcode<Recipe::SdfOpCode::ReadParamQ16>;
         default: return nullptr;
     }
 }
@@ -2157,6 +2585,7 @@ public:
             return false;
         }
         int sp=0, psp=0;
+        std::array<RecipeValueType,64> valueTypes{};
         instructions_.reserve(count);
         for (std::uint32_t i=0;i<count;++i) {
             const SdfInstruction& source=program[i];
@@ -2178,7 +2607,10 @@ public:
                 instructions_.clear();
                 return false;
             }
-            sp=sp-arity.vPop+arity.vPush;
+            if (!RecipeApplyValueTypes(source.opCode,valueTypes,sp,i,error)) {
+                instructions_.clear();
+                return false;
+            }
             psp=psp-arity.pPop+arity.pPush;
             if (opcode==SdfOpCode::Output || opcode==SdfOpCode::ComposeFloat3 || opcode==SdfOpCode::Passthrough || opcode==SdfOpCode::InvokeRecipe)
                 continue;
@@ -2186,7 +2618,7 @@ public:
             lowered.valueBase=static_cast<std::uint8_t>(valueBase);
             lowered.positionBase=static_cast<std::uint8_t>(positionBase);
             std::memcpy(lowered.data,source.data,sizeof(lowered.data));
-            if (opcode==SdfOpCode::ReadParam) {
+            if (opcode==SdfOpCode::ReadParam || opcode==SdfOpCode::ReadParamU32 || opcode==SdfOpCode::ReadParamQ16) {
                 const std::size_t index=static_cast<std::size_t>(source.data[0]);
                 lowered.data[0]=index<parameters.size()?parameters[index]:0.0f;
             } else if (opcode==SdfOpCode::ReadParamFloat3) {

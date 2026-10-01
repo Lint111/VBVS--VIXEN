@@ -102,24 +102,82 @@ vec3 SdfCore_Float3Sub(vec3 a, vec3 b) {
     return a - b;
 }
 
-float SdfCore_Hash32(float valueBits) {
-    uint x = floatBitsToUint(valueBits);
-    x ^= x >> 16;
-    x *= 0x7feb352du;
-    x ^= x >> 15;
-    x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return uintBitsToFloat(x);
+int SdfCore_FloatToQ16(float value) {
+    uint bits = floatBitsToUint(value);
+    bool negative = (bits & 0x80000000u) != 0u;
+    uint exponent = (bits >> 23) & 0xffu;
+    uint mantissa = bits & 0x7fffffu;
+    if (exponent == 0xffu)
+    {
+        if (mantissa != 0u)
+        {
+            return 0;
+        }
+        return (negative ? -2147483647 - 1 : 2147483647);
+    }
+    if (exponent == 0u)
+    {
+        return 0;
+    }
+    mantissa |= 0x800000u;
+    if (exponent >= 142u)
+    {
+        return (negative ? -2147483647 - 1 : 2147483647);
+    }
+    int shift = int(exponent) - 134;
+    uint magnitude = 0;
+    if (shift >= 0)
+    {
+        magnitude = mantissa << uint(shift);
+    }
+    else
+    {
+        uint rightShift = uint((-shift));
+        if (rightShift > 24u)
+        {
+            magnitude = 0u;
+        }
+        else
+        {
+            uint quotient = mantissa >> rightShift;
+            uint remainder = mantissa & ((1u << rightShift) - 1u);
+            uint halfway = 1u << (rightShift - 1u);
+            if (remainder > halfway || (remainder == halfway && (quotient & 1u) != 0u))
+            {
+                quotient++;
+            }
+            magnitude = quotient;
+        }
+    }
+    if (!negative)
+    {
+        return int(magnitude);
+    }
+    if (magnitude == 0x80000000u)
+    {
+        return -2147483647 - 1;
+    }
+    return -int(magnitude);
 }
 
-float SdfCore_Hash32Combine(float stateBits, float valueBits) {
-    uint x = (floatBitsToUint(stateBits) ^ floatBitsToUint(valueBits)) + 0x9e3779b9u;
+uint SdfCore_Hash32(uint valueBits) {
+    uint x = valueBits;
     x ^= x >> 16;
     x *= 0x7feb352du;
     x ^= x >> 15;
     x *= 0x846ca68bu;
     x ^= x >> 16;
-    return uintBitsToFloat(x);
+    return x;
+}
+
+uint SdfCore_Hash32Combine(uint stateBits, uint valueBits) {
+    uint x = (stateBits ^ valueBits) + 0x9e3779b9u;
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
 }
 
 float SdfCore_HexPrism(vec3 p, vec2 h) {
@@ -275,6 +333,126 @@ float SdfCore_Pyramid(vec3 p, float height) {
     return sqrt((d2 + a.z * a.z) / m2) * sign(max(a.z, -q.y));
 }
 
+int SdfCore_Q16Add(int a, int b) {
+    if (b > 0 && a > 2147483647 - b)
+    {
+        return 2147483647;
+    }
+    if (b < 0 && a < -2147483647 - 1 - b)
+    {
+        return -2147483647 - 1;
+    }
+    return a + b;
+}
+
+uint SdfCore_Q16Equal(int a, int b) {
+    return (a == b ? 1u : 0u);
+}
+
+uint SdfCore_Q16Greater(int a, int b) {
+    return (a > b ? 1u : 0u);
+}
+
+uint SdfCore_Q16GreaterEqual(int a, int b) {
+    return (a >= b ? 1u : 0u);
+}
+
+uint SdfCore_Q16Less(int a, int b) {
+    return (a < b ? 1u : 0u);
+}
+
+uint SdfCore_Q16LessEqual(int a, int b) {
+    return (a <= b ? 1u : 0u);
+}
+
+int SdfCore_Q16Max(int a, int b) {
+    return max(a, b);
+}
+
+int SdfCore_Q16Min(int a, int b) {
+    return min(a, b);
+}
+
+int SdfCore_Q16Mul(int a, int b) {
+    bool negative = (a < 0) != (b < 0);
+    uint aMagnitude = (a < 0 ? uint((-(a + 1))) + 1u : uint(a));
+    uint bMagnitude = (b < 0 ? uint((-(b + 1))) + 1u : uint(b));
+    uint aLow = aMagnitude & 0xffffu;
+    uint aHigh = aMagnitude >> 16;
+    uint bLow = bMagnitude & 0xffffu;
+    uint bHigh = bMagnitude >> 16;
+    uint lowProduct = aLow * bLow;
+    uint middle = aHigh * bLow + (lowProduct >> 16);
+    uint middleLow = middle & 0xffffu;
+    uint middleHigh = middle >> 16;
+    middle = aLow * bHigh + middleLow;
+    uint productLow = (middle << 16) | (lowProduct & 0xffffu);
+    uint productHigh = aHigh * bHigh + middleHigh + (middle >> 16);
+    uint remainder = productLow & 0xffffu;
+    uint roundedLow = (productHigh << 16) | (productLow >> 16);
+    uint roundedHigh = productHigh >> 16;
+    if (remainder > 0x8000u || (remainder == 0x8000u && (roundedLow & 1u) != 0u))
+    {
+        roundedLow++;
+        if (roundedLow == 0u)
+        {
+            roundedHigh++;
+        }
+    }
+    uint limit = (negative ? 0x80000000u : 0x7fffffffu);
+    if (roundedHigh != 0u || roundedLow > limit)
+    {
+        return (negative ? -2147483647 - 1 : 2147483647);
+    }
+    if (!negative)
+    {
+        return int(roundedLow);
+    }
+    if (roundedLow == 0x80000000u)
+    {
+        return -2147483647 - 1;
+    }
+    return -int(roundedLow);
+}
+
+uint SdfCore_Q16NotEqual(int a, int b) {
+    return (a != b ? 1u : 0u);
+}
+
+int SdfCore_Q16Sub(int a, int b) {
+    if (b < 0 && a > 2147483647 + b)
+    {
+        return 2147483647;
+    }
+    if (b > 0 && a < -2147483647 - 1 + b)
+    {
+        return -2147483647 - 1;
+    }
+    return a - b;
+}
+
+float SdfCore_Q16ToFloat(int value) {
+    return float(value) * (1.0 / 65536.0);
+}
+
+uint SdfCore_Q16ToU32(int value) {
+    if (value < 0)
+    {
+        return 0u;
+    }
+    uint whole = uint(value) >> 16;
+    uint remainder = uint(value) & 0xffffu;
+    if (remainder > 0x8000u || (remainder == 0x8000u && (whole & 1u) != 0u))
+    {
+        whole++;
+    }
+    if (whole > 0xffffffffu)
+    {
+        return 0xffffffffu;
+    }
+    return whole;
+}
+
 vec3 SdfCore_RepeatInfinite(vec3 p, vec3 spacing) {
     return mod(abs(p) + spacing * 0.5, spacing) - spacing * 0.5;
 }
@@ -394,6 +572,62 @@ vec3 SdfCore_Twist(vec3 p, float k) {
     float s = sin(k * p.y);
     vec2 q = vec2(c * p.x - s * p.z, s * p.x + c * p.z);
     return vec3(q.x, p.y, q.y);
+}
+
+uint SdfCore_U32Add(uint a, uint b) {
+    return a + b;
+}
+
+uint SdfCore_U32Equal(uint a, uint b) {
+    return (a == b ? 1u : 0u);
+}
+
+uint SdfCore_U32Greater(uint a, uint b) {
+    return (a > b ? 1u : 0u);
+}
+
+uint SdfCore_U32GreaterEqual(uint a, uint b) {
+    return (a >= b ? 1u : 0u);
+}
+
+uint SdfCore_U32Less(uint a, uint b) {
+    return (a < b ? 1u : 0u);
+}
+
+uint SdfCore_U32LessEqual(uint a, uint b) {
+    return (a <= b ? 1u : 0u);
+}
+
+uint SdfCore_U32Max(uint a, uint b) {
+    return max(a, b);
+}
+
+uint SdfCore_U32Min(uint a, uint b) {
+    return min(a, b);
+}
+
+uint SdfCore_U32Mul(uint a, uint b) {
+    return a * b;
+}
+
+uint SdfCore_U32NotEqual(uint a, uint b) {
+    return (a != b ? 1u : 0u);
+}
+
+uint SdfCore_U32Sub(uint a, uint b) {
+    return a - b;
+}
+
+float SdfCore_U32ToFloat(uint value) {
+    return float(value);
+}
+
+int SdfCore_U32ToQ16(uint value) {
+    if (value > 32767u)
+    {
+        return 2147483647;
+    }
+    return int((value << 16));
 }
 
 float SdfCore_Union(float a, float b) {

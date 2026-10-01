@@ -8,6 +8,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <limits>
 #include <sstream>
 #include <span>
 using namespace Vixen::SVO::Recipe;
@@ -29,6 +30,12 @@ static SdfInstruction mirrorXOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfO
 static SdfInstruction restorePosOp() { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::RestorePos; return in; }
 static SdfInstruction pushParam(float value) {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::PushParam; in.data[0]=value; return in;
+}
+static SdfInstruction readParamU32(uint32_t index) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamU32; in.data[0]=static_cast<float>(index); return in;
+}
+static SdfInstruction readParamQ16(uint32_t index) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamQ16; in.data[0]=static_cast<float>(index); return in;
 }
 
 // --- M3b-1 instruction helpers (5 no-position leaf primitives) ---
@@ -111,10 +118,11 @@ TEST(RecipeEvalParity, Hash32MatchesLowbias32GoldenVectors) {
     for (const auto& [input, expected] : TestVectors::Hash32GoldenVectors) {
         SCOPED_TRACE("input=0x" + [&] { std::ostringstream s; s << std::hex << input; return s.str(); }());
         const SdfInstruction prog[] = {
-            pushParam(std::bit_cast<float>(input)),
+            readParamU32(0),
             [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32; return op; }(),
         };
-        const float actual = evalRecipe(prog, 2, glm::vec3(0.0f));
+        const std::array<float, 1> params{std::bit_cast<float>(input)};
+        const float actual = evalRecipe(prog, 2, glm::vec3(0.0f), params);
         EXPECT_EQ(std::bit_cast<uint32_t>(actual), expected);
     }
 }
@@ -123,32 +131,137 @@ TEST(RecipeEvalParity, Hash32CombineMatchesGoldenVectors) {
     for (const auto& [state, value, expected] : TestVectors::Hash32CombineGoldenVectors) {
         SCOPED_TRACE("state=0x" + [&] { std::ostringstream s; s << std::hex << state; return s.str(); }());
         const SdfInstruction prog[] = {
-            pushParam(std::bit_cast<float>(state)),
-            pushParam(std::bit_cast<float>(value)),
+            readParamU32(0),
+            readParamU32(1),
             [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
         };
-        const float actual = evalRecipe(prog, 3, glm::vec3(0.0f));
+        const std::array<float, 2> params{std::bit_cast<float>(state), std::bit_cast<float>(value)};
+        const float actual = evalRecipe(prog, 3, glm::vec3(0.0f), params);
         EXPECT_EQ(std::bit_cast<uint32_t>(actual), expected);
     }
 }
 
 TEST(RecipeEvalParity, Hash32CombineUsesDeclaredBodySeedFoldOrder) {
     const SdfInstruction prog[] = {
-        pushParam(std::bit_cast<float>(0x12345678u)),
+        readParamU32(0),
         [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32; return op; }(),
-        pushParam(std::bit_cast<float>(3u)),
+        readParamU32(1),
         [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
-        pushParam(std::bit_cast<float>(static_cast<uint32_t>(-4))),
+        readParamU32(2),
         [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
-        pushParam(std::bit_cast<float>(7u)),
+        readParamU32(3),
         [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
-        pushParam(std::bit_cast<float>(12u)),
+        readParamU32(4),
         [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
-        pushParam(std::bit_cast<float>(0xdeadbeefu)),
+        readParamU32(5),
         [] { SdfInstruction op{}; op.opCode=(uint8_t)SdfOpCode::Hash32Combine; return op; }(),
     };
-    const float actual = evalRecipe(prog, static_cast<uint32_t>(sizeof(prog) / sizeof(prog[0])), glm::vec3(0.0f));
+    const std::array<float, 6> params{
+        std::bit_cast<float>(0x12345678u), std::bit_cast<float>(3u),
+        std::bit_cast<float>(static_cast<uint32_t>(-4)), std::bit_cast<float>(7u),
+        std::bit_cast<float>(12u), std::bit_cast<float>(0xdeadbeefu),
+    };
+    const float actual = evalRecipe(prog, static_cast<uint32_t>(sizeof(prog) / sizeof(prog[0])), glm::vec3(0.0f), params);
     EXPECT_EQ(std::bit_cast<uint32_t>(actual), TestVectors::BodySeedFoldExpected);
+}
+
+TEST(RecipeEvalParity, TypedIntegerArithmeticMatchesGoldenVectors) {
+    struct BinaryVector {
+        SdfOpCode opcode;
+        bool q16Inputs;
+        uint32_t a;
+        uint32_t b;
+        uint32_t expected;
+    };
+    const BinaryVector vectors[] = {
+        {SdfOpCode::U32Add, false, 0xffffffffu, 1u, 0u},
+        {SdfOpCode::U32Sub, false, 0u, 1u, 0xffffffffu},
+        {SdfOpCode::U32Mul, false, 0x10000u, 0x10000u, 0u},
+        {SdfOpCode::U32Min, false, 9u, 4u, 4u},
+        {SdfOpCode::U32Max, false, 9u, 4u, 9u},
+        {SdfOpCode::U32Equal, false, 9u, 9u, 1u},
+        {SdfOpCode::U32NotEqual, false, 9u, 4u, 1u},
+        {SdfOpCode::U32Less, false, 4u, 9u, 1u},
+        {SdfOpCode::U32LessEqual, false, 9u, 9u, 1u},
+        {SdfOpCode::U32Greater, false, 9u, 4u, 1u},
+        {SdfOpCode::U32GreaterEqual, false, 9u, 9u, 1u},
+        {SdfOpCode::Q16Add, true, 0x7fffffffu, 1u, 0x7fffffffu},
+        {SdfOpCode::Q16Sub, true, 0x80000000u, 1u, 0x80000000u},
+        {SdfOpCode::Q16Mul, true, 1u, 32768u, 0u},
+        {SdfOpCode::Q16Mul, true, 3u, 32768u, 2u},
+        {SdfOpCode::Q16Mul, true, 0xffffffffu, 32768u, 0u},
+        {SdfOpCode::Q16Mul, true, 0xfffffffdu, 32768u, 0xfffffffeu},
+        {SdfOpCode::Q16Mul, true, 0x7fffffffu, 0x7fffffffu, 0x7fffffffu},
+        {SdfOpCode::Q16Mul, true, 0x80000000u, 0x7fffffffu, 0x80000000u},
+        {SdfOpCode::Q16Min, true, 0xffff0000u, 0x00020000u, 0xffff0000u},
+        {SdfOpCode::Q16Max, true, 0xffff0000u, 0x00020000u, 0x00020000u},
+        {SdfOpCode::Q16Equal, true, 0x00020000u, 0x00020000u, 1u},
+        {SdfOpCode::Q16NotEqual, true, 0x00020000u, 0xffff0000u, 1u},
+        {SdfOpCode::Q16Less, true, 0xffff0000u, 0x00020000u, 1u},
+        {SdfOpCode::Q16LessEqual, true, 0xffff0000u, 0xffff0000u, 1u},
+        {SdfOpCode::Q16Greater, true, 0x00020000u, 0xffff0000u, 1u},
+        {SdfOpCode::Q16GreaterEqual, true, 0x00020000u, 0x00020000u, 1u},
+    };
+
+    for (const BinaryVector& vector : vectors) {
+        SCOPED_TRACE(static_cast<int>(vector.opcode));
+        const SdfInstruction readA = vector.q16Inputs ? readParamQ16(0) : readParamU32(0);
+        const SdfInstruction readB = vector.q16Inputs ? readParamQ16(1) : readParamU32(1);
+        SdfInstruction operation{};
+        operation.opCode = static_cast<uint8_t>(vector.opcode);
+        const SdfInstruction program[] = {readA, readB, operation};
+        const std::array<float, 2> params{
+            std::bit_cast<float>(vector.a), std::bit_cast<float>(vector.b)};
+        const float actual = evalRecipe(program, 3, glm::vec3(0.0f), params);
+        EXPECT_EQ(std::bit_cast<uint32_t>(actual), vector.expected);
+    }
+}
+
+TEST(RecipeEvalParity, TypedConversionsMatchGoldenVectors) {
+    struct FloatToQ16Vector { float input; uint32_t expected; };
+    const FloatToQ16Vector floatToQ16[] = {
+        {0x1.0p-17f, 0u}, {0x3.0p-17f, 2u},
+        {-0x1.0p-17f, 0u}, {-0x3.0p-17f, 0xfffffffeu},
+        {32768.0f, 0x7fffffffu}, {-32769.0f, 0x80000000u},
+        {std::numeric_limits<float>::quiet_NaN(), 0u},
+        {std::numeric_limits<float>::infinity(), 0x7fffffffu},
+        {-std::numeric_limits<float>::infinity(), 0x80000000u},
+    };
+    for (const auto& vector : floatToQ16) {
+        const SdfInstruction program[] = {
+            [] { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParam; return in; }(),
+            [] { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::FloatToQ16; return in; }(),
+        };
+        const std::array<float, 1> params{vector.input};
+        const float actual = evalRecipe(program, 2, glm::vec3(0.0f), params);
+        EXPECT_EQ(std::bit_cast<uint32_t>(actual), vector.expected);
+    }
+
+    struct RawConversionVector { SdfOpCode opcode; bool inputQ16; uint32_t input; uint32_t expected; bool outputFloat; float expectedFloat; };
+    const RawConversionVector conversions[] = {
+        {SdfOpCode::Q16ToFloat, true, 0xffff4000u, 0u, true, -0.75f},
+        {SdfOpCode::U32ToQ16, false, 0xffffffffu, 0x7fffffffu, false, 0.0f},
+        {SdfOpCode::Q16ToU32, true, 0xffff0000u, 0u, false, 0.0f},
+        {SdfOpCode::Q16ToU32, true, 0x00018000u, 2u, false, 0.0f},
+        {SdfOpCode::Q16ToU32, true, 0x00028000u, 2u, false, 0.0f},
+        {SdfOpCode::Q16ToU32, true, 0x7fffffffu, 32768u, false, 0.0f},
+        {SdfOpCode::U32ToFloat, false, 16777217u, 0u, true, 16777216.0f},
+    };
+    for (const auto& vector : conversions) {
+        const SdfInstruction program[] = {
+            vector.inputQ16 ? readParamQ16(0) : readParamU32(0),
+            [] { SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Q16ToFloat; return in; }(),
+        };
+        SdfInstruction operation = program[1];
+        operation.opCode = static_cast<uint8_t>(vector.opcode);
+        const SdfInstruction typedProgram[] = {program[0], operation};
+        const std::array<float, 1> params{std::bit_cast<float>(vector.input)};
+        const float actual = evalRecipe(typedProgram, 2, glm::vec3(0.0f), params);
+        if (vector.outputFloat)
+            EXPECT_EQ(actual, vector.expectedFloat);
+        else
+            EXPECT_EQ(std::bit_cast<uint32_t>(actual), vector.expected);
+    }
 }
 
 TEST(RecipeEvalParity, SphereUnionMatchesAnalytic) {

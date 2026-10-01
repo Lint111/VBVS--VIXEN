@@ -289,6 +289,14 @@ inline SdfInstruction readParamOp(int idx) {
 inline SdfInstruction readParamFloat3Op(int idx) {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamFloat3; in.paramMask=1;
     in.data[0]=(float)idx; return in; }
+inline SdfInstruction readParamU32Op(int idx) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamU32; in.paramMask=1;
+    in.data[0]=(float)idx; return in; }
+inline SdfInstruction readParamQ16Op(int idx) {
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamQ16; in.paramMask=1;
+    in.data[0]=(float)idx; return in; }
+inline SdfInstruction typedValueOp(SdfOpCode opcode) {
+    SdfInstruction in{}; in.opCode=(uint8_t)opcode; return in; }
 
 // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype. VIXEN-only
 // opcode (see SdfOpCodes.g.h) — pops a float3 already on the value stack (declared world
@@ -875,6 +883,45 @@ inline std::vector<SdfInstruction> Make_M2_ReadParamFloat3_MatchesIndexedRead() 
     };
 }
 
+// Typed recipe-value opcode coverage for the shared CPU/GLSL parity loop. The dedicated
+// TypedRecipeValueGoldenVectorsMatchCpuAndGpu test owns the per-op expected values and edge
+// cases; this stack program ensures every typed opcode also passes through the common corpus
+// emitter/evaluator path. Comparisons produce u32, so convert their results back to Q16.16
+// before continuing the fixed-point chain. It finishes as float for the existing field harness.
+inline std::vector<SdfInstruction> Make_TypedRecipeValues_OpcodeCoverage() {
+    std::vector<SdfInstruction> program;
+    program.push_back(readParamU32Op(0));
+    for (SdfOpCode opcode : {
+            SdfOpCode::U32Add, SdfOpCode::U32Sub, SdfOpCode::U32Mul,
+            SdfOpCode::U32Min, SdfOpCode::U32Max, SdfOpCode::U32Equal,
+            SdfOpCode::U32NotEqual, SdfOpCode::U32Less, SdfOpCode::U32LessEqual,
+            SdfOpCode::U32Greater, SdfOpCode::U32GreaterEqual}) {
+        program.push_back(readParamU32Op(1));
+        program.push_back(typedValueOp(opcode));
+    }
+
+    program.push_back(typedValueOp(SdfOpCode::U32ToQ16));
+    for (SdfOpCode opcode : {
+            SdfOpCode::Q16Add, SdfOpCode::Q16Sub, SdfOpCode::Q16Mul,
+            SdfOpCode::Q16Min, SdfOpCode::Q16Max}) {
+        program.push_back(readParamQ16Op(0));
+        program.push_back(typedValueOp(opcode));
+    }
+    for (SdfOpCode opcode : {
+            SdfOpCode::Q16Equal, SdfOpCode::Q16NotEqual, SdfOpCode::Q16Less,
+            SdfOpCode::Q16LessEqual, SdfOpCode::Q16Greater, SdfOpCode::Q16GreaterEqual}) {
+        program.push_back(readParamQ16Op(0));
+        program.push_back(typedValueOp(opcode));
+        program.push_back(typedValueOp(SdfOpCode::U32ToQ16));
+    }
+
+    program.push_back(typedValueOp(SdfOpCode::Q16ToFloat));
+    program.push_back(typedValueOp(SdfOpCode::FloatToQ16));
+    program.push_back(typedValueOp(SdfOpCode::Q16ToU32));
+    program.push_back(typedValueOp(SdfOpCode::U32ToFloat));
+    return program;
+}
+
 // Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype corpus
 // entry. Meta segment (ReadParamFloat3 + DeclarePosition) computes a ReadParam-sourced world
 // position; resolve segment (Sphere at local center=0) renders at that declared position.
@@ -980,6 +1027,7 @@ inline std::vector<CorpusProgram> GetAll() {
         { "M5_CompositionAll_IndependentOracle", Make_M5_CompositionAll_IndependentOracle() },
         { "M2_ReadParam_MatchesIndexedRead", Make_M2_ReadParam_MatchesIndexedRead() },
         { "M2_ReadParamFloat3_MatchesIndexedRead", Make_M2_ReadParamFloat3_MatchesIndexedRead() },
+        { "TypedRecipeValues_OpcodeCoverage", Make_TypedRecipeValues_OpcodeCoverage() },
     };
 }
 

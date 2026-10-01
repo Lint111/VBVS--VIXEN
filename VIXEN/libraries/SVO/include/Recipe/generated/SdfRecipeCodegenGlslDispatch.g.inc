@@ -785,17 +785,274 @@ case SdfOpCode::Hash32: {
     assert(stk.size() >= 1 && "Hash32: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 1;
     std::string t = "t" + std::to_string(n++);
-    body += "  float " + t + " = SdfCore_Hash32(" + stk[recipeStackBase + 0] + ");\n";
+    body += "  uint " + t + " = SdfCore_Hash32(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ");\n";
     stk.resize(recipeStackBase);
-    stk.push_back(t);
+    stk.push_back("uintBitsToFloat(" + t + ")");
     break;
 }
 case SdfOpCode::Hash32Combine: {
     assert(stk.size() >= 2 && "Hash32Combine: emit-time value stack underflow");
     const std::size_t recipeStackBase = stk.size() - 2;
     std::string t = "t" + std::to_string(n++);
-    body += "  float " + t + " = SdfCore_Hash32Combine(" + stk[recipeStackBase + 0] + ", " + stk[recipeStackBase + 1] + ");\n";
+    body += "  uint " + t + " = SdfCore_Hash32Combine(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Add: {
+    assert(stk.size() >= 2 && "U32Add: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Add(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Sub: {
+    assert(stk.size() >= 2 && "U32Sub: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Sub(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Mul: {
+    assert(stk.size() >= 2 && "U32Mul: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Mul(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Min: {
+    assert(stk.size() >= 2 && "U32Min: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Min(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Max: {
+    assert(stk.size() >= 2 && "U32Max: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Max(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Equal: {
+    assert(stk.size() >= 2 && "U32Equal: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Equal(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32NotEqual: {
+    assert(stk.size() >= 2 && "U32NotEqual: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32NotEqual(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Less: {
+    assert(stk.size() >= 2 && "U32Less: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Less(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32LessEqual: {
+    assert(stk.size() >= 2 && "U32LessEqual: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32LessEqual(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32Greater: {
+    assert(stk.size() >= 2 && "U32Greater: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32Greater(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32GreaterEqual: {
+    assert(stk.size() >= 2 && "U32GreaterEqual: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_U32GreaterEqual(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToUint(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Add: {
+    assert(stk.size() >= 2 && "Q16Add: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_Q16Add(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Sub: {
+    assert(stk.size() >= 2 && "Q16Sub: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_Q16Sub(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Mul: {
+    assert(stk.size() >= 2 && "Q16Mul: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_Q16Mul(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Min: {
+    assert(stk.size() >= 2 && "Q16Min: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_Q16Min(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Max: {
+    assert(stk.size() >= 2 && "Q16Max: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_Q16Max(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Equal: {
+    assert(stk.size() >= 2 && "Q16Equal: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16Equal(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16NotEqual: {
+    assert(stk.size() >= 2 && "Q16NotEqual: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16NotEqual(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Less: {
+    assert(stk.size() >= 2 && "Q16Less: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16Less(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16LessEqual: {
+    assert(stk.size() >= 2 && "Q16LessEqual: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16LessEqual(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16Greater: {
+    assert(stk.size() >= 2 && "Q16Greater: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16Greater(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16GreaterEqual: {
+    assert(stk.size() >= 2 && "Q16GreaterEqual: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 2;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16GreaterEqual(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ", " + "floatBitsToInt(" + stk[recipeStackBase + 1] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::FloatToQ16: {
+    assert(stk.size() >= 1 && "FloatToQ16: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 1;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_FloatToQ16(" + stk[recipeStackBase + 0] + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16ToFloat: {
+    assert(stk.size() >= 1 && "Q16ToFloat: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 1;
+    std::string t = "t" + std::to_string(n++);
+    body += "  float " + t + " = SdfCore_Q16ToFloat(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ");\n";
     stk.resize(recipeStackBase);
     stk.push_back(t);
+    break;
+}
+case SdfOpCode::U32ToQ16: {
+    assert(stk.size() >= 1 && "U32ToQ16: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 1;
+    std::string t = "t" + std::to_string(n++);
+    body += "  int " + t + " = SdfCore_U32ToQ16(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("intBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::Q16ToU32: {
+    assert(stk.size() >= 1 && "Q16ToU32: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 1;
+    std::string t = "t" + std::to_string(n++);
+    body += "  uint " + t + " = SdfCore_Q16ToU32(" + "floatBitsToInt(" + stk[recipeStackBase + 0] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::U32ToFloat: {
+    assert(stk.size() >= 1 && "U32ToFloat: emit-time value stack underflow");
+    const std::size_t recipeStackBase = stk.size() - 1;
+    std::string t = "t" + std::to_string(n++);
+    body += "  float " + t + " = SdfCore_U32ToFloat(" + "floatBitsToUint(" + stk[recipeStackBase + 0] + ")" + ");\n";
+    stk.resize(recipeStackBase);
+    stk.push_back(t);
+    break;
+}
+case SdfOpCode::ReadParamU32: {
+    std::string t = "t" + std::to_string(n++);
+    const int parameterIndex = static_cast<int>(in.data[0]);
+    body += "  uint " + t + " = floatBitsToUint(params[" + std::to_string(parameterIndex) + "]);\n";
+    stk.push_back("uintBitsToFloat(" + t + ")");
+    break;
+}
+case SdfOpCode::ReadParamQ16: {
+    std::string t = "t" + std::to_string(n++);
+    const int parameterIndex = static_cast<int>(in.data[0]);
+    body += "  int " + t + " = floatBitsToInt(params[" + std::to_string(parameterIndex) + "]);\n";
+    stk.push_back("intBitsToFloat(" + t + ")");
     break;
 }

@@ -680,15 +680,241 @@ case SdfOpCode::Hash32: {
     assert(sp >= 1 && "Hash32: value stack underflow");
     assert(sp - 1 + 1 <= 64 && "Hash32: value stack overflow");
     const int recipeStackBase = sp - 1;
-    float recipeValue = SdfCore_Hash32(stack[recipeStackBase + 0]);
+    uint32_t recipeValue = SdfCore_Hash32(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]));
     sp = recipeStackBase;
-    stack[sp++] = recipeValue;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
 } break;
 case SdfOpCode::Hash32Combine: {
     assert(sp >= 2 && "Hash32Combine: value stack underflow");
     assert(sp - 2 + 1 <= 64 && "Hash32Combine: value stack overflow");
     const int recipeStackBase = sp - 2;
-    float recipeValue = SdfCore_Hash32Combine(stack[recipeStackBase + 0], stack[recipeStackBase + 1]);
+    uint32_t recipeValue = SdfCore_Hash32Combine(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Add: {
+    assert(sp >= 2 && "U32Add: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Add: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Add(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Sub: {
+    assert(sp >= 2 && "U32Sub: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Sub: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Sub(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Mul: {
+    assert(sp >= 2 && "U32Mul: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Mul: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Mul(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Min: {
+    assert(sp >= 2 && "U32Min: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Min: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Min(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Max: {
+    assert(sp >= 2 && "U32Max: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Max: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Max(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Equal: {
+    assert(sp >= 2 && "U32Equal: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Equal: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Equal(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32NotEqual: {
+    assert(sp >= 2 && "U32NotEqual: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32NotEqual: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32NotEqual(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Less: {
+    assert(sp >= 2 && "U32Less: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Less: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Less(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32LessEqual: {
+    assert(sp >= 2 && "U32LessEqual: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32LessEqual: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32LessEqual(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32Greater: {
+    assert(sp >= 2 && "U32Greater: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32Greater: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32Greater(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32GreaterEqual: {
+    assert(sp >= 2 && "U32GreaterEqual: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "U32GreaterEqual: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_U32GreaterEqual(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::uint32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Add: {
+    assert(sp >= 2 && "Q16Add: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Add: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    int32_t recipeValue = SdfCore_Q16Add(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Sub: {
+    assert(sp >= 2 && "Q16Sub: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Sub: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    int32_t recipeValue = SdfCore_Q16Sub(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Mul: {
+    assert(sp >= 2 && "Q16Mul: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Mul: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    int32_t recipeValue = SdfCore_Q16Mul(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Min: {
+    assert(sp >= 2 && "Q16Min: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Min: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    int32_t recipeValue = SdfCore_Q16Min(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Max: {
+    assert(sp >= 2 && "Q16Max: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Max: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    int32_t recipeValue = SdfCore_Q16Max(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Equal: {
+    assert(sp >= 2 && "Q16Equal: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Equal: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_Q16Equal(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16NotEqual: {
+    assert(sp >= 2 && "Q16NotEqual: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16NotEqual: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_Q16NotEqual(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Less: {
+    assert(sp >= 2 && "Q16Less: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Less: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_Q16Less(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16LessEqual: {
+    assert(sp >= 2 && "Q16LessEqual: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16LessEqual: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_Q16LessEqual(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16Greater: {
+    assert(sp >= 2 && "Q16Greater: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16Greater: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_Q16Greater(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16GreaterEqual: {
+    assert(sp >= 2 && "Q16GreaterEqual: value stack underflow");
+    assert(sp - 2 + 1 <= 64 && "Q16GreaterEqual: value stack overflow");
+    const int recipeStackBase = sp - 2;
+    uint32_t recipeValue = SdfCore_Q16GreaterEqual(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]), std::bit_cast<std::int32_t>(stack[recipeStackBase + 1]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::FloatToQ16: {
+    assert(sp >= 1 && "FloatToQ16: value stack underflow");
+    assert(sp - 1 + 1 <= 64 && "FloatToQ16: value stack overflow");
+    const int recipeStackBase = sp - 1;
+    int32_t recipeValue = SdfCore_FloatToQ16(stack[recipeStackBase + 0]);
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16ToFloat: {
+    assert(sp >= 1 && "Q16ToFloat: value stack underflow");
+    assert(sp - 1 + 1 <= 64 && "Q16ToFloat: value stack overflow");
+    const int recipeStackBase = sp - 1;
+    float recipeValue = SdfCore_Q16ToFloat(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]));
     sp = recipeStackBase;
     stack[sp++] = recipeValue;
+} break;
+case SdfOpCode::U32ToQ16: {
+    assert(sp >= 1 && "U32ToQ16: value stack underflow");
+    assert(sp - 1 + 1 <= 64 && "U32ToQ16: value stack overflow");
+    const int recipeStackBase = sp - 1;
+    int32_t recipeValue = SdfCore_U32ToQ16(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::Q16ToU32: {
+    assert(sp >= 1 && "Q16ToU32: value stack underflow");
+    assert(sp - 1 + 1 <= 64 && "Q16ToU32: value stack overflow");
+    const int recipeStackBase = sp - 1;
+    uint32_t recipeValue = SdfCore_Q16ToU32(std::bit_cast<std::int32_t>(stack[recipeStackBase + 0]));
+    sp = recipeStackBase;
+    stack[sp++] = std::bit_cast<float>(recipeValue);
+} break;
+case SdfOpCode::U32ToFloat: {
+    assert(sp >= 1 && "U32ToFloat: value stack underflow");
+    assert(sp - 1 + 1 <= 64 && "U32ToFloat: value stack overflow");
+    const int recipeStackBase = sp - 1;
+    float recipeValue = SdfCore_U32ToFloat(std::bit_cast<std::uint32_t>(stack[recipeStackBase + 0]));
+    sp = recipeStackBase;
+    stack[sp++] = recipeValue;
+} break;
+case SdfOpCode::ReadParamU32: {
+    assert(sp < 64 && "typed parameter read: value stack overflow");
+    const size_t typedParameterIndex = static_cast<size_t>(in.data[0]);
+    stack[sp++] = typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f;
+} break;
+case SdfOpCode::ReadParamQ16: {
+    assert(sp < 64 && "typed parameter read: value stack overflow");
+    const size_t typedParameterIndex = static_cast<size_t>(in.data[0]);
+    stack[sp++] = typedParameterIndex < params.size() ? params[typedParameterIndex] : 0.0f;
 } break;
