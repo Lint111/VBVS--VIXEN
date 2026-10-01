@@ -60,10 +60,10 @@ public:
     void SetLightTreeCut(std::vector<Vixen::SVO::LightTreeNode> cut);
 
 protected:
-    void SetupImpl(TypedSetupContext&    ctx) override;
-    void CompileImpl(TypedCompileContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl(TypedCleanupContext& ctx) override;
+    void TypedSetupImpl(TypedSetupContext&    ctx) override;
+    void TypedCompileImpl(TypedCompileContext& ctx) override;
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override;
+    void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT

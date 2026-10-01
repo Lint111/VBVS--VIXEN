@@ -26,7 +26,7 @@ void PhotonCellClearNode::RegisterShader(
                                  "PhotonCellClear.comp", Metadata::PROGRAM_NAME);
 }
 
-void PhotonCellClearNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void PhotonCellClearNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // VIXEN_PHOTON_CELLS_CLEAR is an explicit reset request, not a steady-state
     // table clear.  Keep this state in the node so the application/graph builder
     // never carries clear lifecycle logic.  ComputeStageNode still submits the

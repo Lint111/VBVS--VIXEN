@@ -34,7 +34,7 @@ CameraNode::CameraNode(
     NODE_LOG_INFO("CameraNode constructor");
 }
 
-void CameraNode::SetupImpl(TypedSetupContext& ctx) {
+void CameraNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("CameraNode setup");
 
     // Read parameters (always update FOV, near/far planes, and grid resolution)
@@ -127,7 +127,7 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("CameraNode using modern polling-based input");
 }
 
-void CameraNode::CompileImpl(TypedCompileContext& ctx) {
+void CameraNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("CameraNode compile");
 
     // Validate inputs using helpers
@@ -203,7 +203,7 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Camera data initialized successfully");
 }
 
-void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void CameraNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Get swapchain info for aspect ratio
     Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
     if (!swapchainInfo) {
@@ -406,7 +406,7 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     }
 }
 
-void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
+void CameraNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
     // No resources to cleanup since we're outputting a struct now

@@ -53,7 +53,7 @@ InstanceNode::~InstanceNode() {
     DestroyVulkanInstance();
 }
 
-void InstanceNode::SetupImpl(TypedSetupContext& ctx) {
+void InstanceNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[InstanceNode] Setup: Preparing instance creation");
 
     // Get parameters
@@ -108,7 +108,7 @@ void InstanceNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[InstanceNode] Setup complete");
 }
 
-void InstanceNode::CompileImpl(TypedCompileContext& ctx) {
+void InstanceNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Idempotent: the VkInstance is PERSISTENT across a recompile / device-loss rebuild (see CleanupImpl).
     // Only create it the first time; on a rebuild the existing instance is reused so downstream nodes —
     // and the WindowNode surface created from it — stay valid. Always (re)publish the handle.
@@ -127,12 +127,12 @@ void InstanceNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InstanceNode] Instance output set");
 }
 
-void InstanceNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void InstanceNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // InstanceNode has no per-frame execution logic
     // Instance is created during Compile and remains valid
 }
 
-void InstanceNode::CleanupImpl(TypedCleanupContext& ctx) {
+void InstanceNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // The VkInstance is instance-level and SURVIVES a device loss (only the device + its children are
     // rebuilt). Keep it across a recompile / device-loss rebuild — exactly like WindowNode keeps the
     // window+surface. The surface is created FROM this instance, so destroying it here while WindowNode

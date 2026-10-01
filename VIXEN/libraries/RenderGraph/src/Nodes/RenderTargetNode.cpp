@@ -48,7 +48,7 @@ RenderTargetNode::RenderTargetNode(const std::string& n, NodeType* t)
 {
 }
 
-void RenderTargetNode::SetupImpl(TypedSetupContext& ctx) {
+void RenderTargetNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[RenderTargetNode] Setup START");
 
     width_  = GetParameterValue<uint32_t>(RenderTargetNodeConfig::PARAM_WIDTH,  512);
@@ -75,7 +75,7 @@ VkExtent2D RenderTargetNode::ComputeFollowExtent(VkExtent2D source, float scale)
     return { std::max(w, 1u), std::max(h, 1u) };
 }
 
-void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
+void RenderTargetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[RenderTargetNode] Compile START");
 
     device_ = ctx.In(RenderTargetNodeConfig::VULKAN_DEVICE_IN);
@@ -123,7 +123,7 @@ void RenderTargetNode::CompileImpl(TypedCompileContext& ctx) {
                   ", height=" + std::to_string(height_) + ")");
 }
 
-void RenderTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void RenderTargetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Advance the in-flight index so consumers read/write the right buffer this frame.
     if (target_.GetImageCount() > 0) {
         target_.currentIndex = (target_.currentIndex + 1) % target_.GetImageCount();
@@ -141,7 +141,7 @@ void RenderTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(RenderTargetNodeConfig::IMAGE_INDEX, target_.GetCurrentIndex());
 }
 
-void RenderTargetNode::CleanupImpl(TypedCleanupContext& ctx) {
+void RenderTargetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // FR-7: persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)

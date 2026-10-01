@@ -64,10 +64,10 @@ public:
     void PreRegisterImageSlots(size_t count);
 
 protected:
-    void SetupImpl(VariadicSetupContext& ctx) override;
-    void CompileImpl(VariadicCompileContext& ctx) override;
-    void ExecuteImpl(VariadicExecuteContext& ctx) override;
-    void CleanupImpl(VariadicCleanupContext& ctx) override;
+    void VariadicSetupImpl(VariadicSetupContext& ctx) override;
+    void VariadicCompileImpl(VariadicCompileContext& ctx) override;
+    void VariadicExecuteImpl(VariadicExecuteContext& ctx) override;
+    void VariadicCleanupImpl(VariadicCleanupContext& ctx) override;
 };
 
 } // namespace Vixen::RenderGraph

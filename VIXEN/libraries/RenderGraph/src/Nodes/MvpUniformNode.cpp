@@ -44,12 +44,12 @@ MvpUniformNode::MvpUniformNode(const std::string& n, NodeType* t)
 {
 }
 
-void MvpUniformNode::SetupImpl(TypedSetupContext& ctx) {
+void MvpUniformNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[MvpUniformNode] Setup (graph-scope initialization)");
 }
 
-void MvpUniformNode::CompileImpl(TypedCompileContext& ctx) {
+void MvpUniformNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[MvpUniformNode] Compile START");
 
     SetDevice(ctx.In(MvpUniformNodeConfig::VULKAN_DEVICE_IN));
@@ -77,11 +77,11 @@ void MvpUniformNode::CompileImpl(TypedCompileContext& ctx) {
                   ", cameraDistance=" + std::to_string(cameraDistance_) + ")");
 }
 
-void MvpUniformNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void MvpUniformNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Static UBO — filled at compile time. Nothing to do per-frame.
 }
 
-void MvpUniformNode::CleanupImpl(TypedCleanupContext& ctx) {
+void MvpUniformNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // FR-7: persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)

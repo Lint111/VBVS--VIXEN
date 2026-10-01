@@ -56,13 +56,13 @@ VoxelSelectionProviderNode::VoxelSelectionProviderNode(
     NODE_LOG_INFO("[VoxelSelectionProvider] constructor");
 }
 
-void VoxelSelectionProviderNode::SetupImpl(TypedSetupContext& ctx) {
+void VoxelSelectionProviderNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[VoxelSelectionProvider] setup");
     // Provider layer priority (world layer = 0 by default). Read once at graph-scope setup.
     priority_ = GetParameterValue<int>(VoxelSelectionProviderNodeConfig::PARAM_PRIORITY, 0);
 }
 
-void VoxelSelectionProviderNode::CompileImpl(TypedCompileContext& ctx) {
+void VoxelSelectionProviderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Cache the compile-stable Dependency handles (the ID-image ring, device and command pool are
     // valid for the cached scene's lifetime). The device lives in the base NodeInstance (SetDevice
     // now, GetDevice() in Execute/Cleanup) per the device convention — no private device member.
@@ -87,7 +87,7 @@ void VoxelSelectionProviderNode::CompileImpl(TypedCompileContext& ctx) {
                          : "INERT (missing device/pool/ID image)"));
 }
 
-void VoxelSelectionProviderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // A provider emits a candidate EVERY frame so the coordinator's accumulation slot always has a
     // fresh value from this source. Default = miss; only a click-edge hit overwrites it.
     SelectionCandidate candidate{};
@@ -376,7 +376,7 @@ void VoxelSelectionProviderNode::DestroyStagingBuffer() {
     stagingCapacity_ = 0;
 }
 
-void VoxelSelectionProviderNode::CleanupImpl(TypedCleanupContext& ctx) {
+void VoxelSelectionProviderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[VoxelSelectionProvider] cleanup");
     // Release the host-visible staging buffer we own (RAII). The device lives in the base
     // NodeInstance and is re-set every CompileImpl via SetDevice(), so it is intentionally not

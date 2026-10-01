@@ -67,7 +67,7 @@ public:
     void SetValue(std::int32_t v) { value_ = v; }
 
 protected:
-    void ExecuteImpl(TypedExecuteContext& ctx) override {
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override {
         ctx.Out(ValueProducerConfig::VALUE, value_);
     }
 
@@ -123,7 +123,7 @@ public:
     std::vector<std::int32_t> gathered;
 
 protected:
-    void ExecuteImpl(TypedExecuteContext& ctx) override {
+    void TypedExecuteImpl(TypedExecuteContext& ctx) override {
         gathered = ctx.InAll(GatherConsumerConfig::VALUES);
     }
 };

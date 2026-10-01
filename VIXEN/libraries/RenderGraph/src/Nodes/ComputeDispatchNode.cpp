@@ -51,7 +51,7 @@ ComputeDispatchNode::ComputeDispatchNode(
 // SETUP
 // ============================================================================
 
-void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
+void ComputeDispatchNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_INFO("[ComputeDispatchNode::SetupImpl] Graph-scope initialization");
 
@@ -70,7 +70,7 @@ void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
 // COMPILE
 // ============================================================================
 
-void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
+void ComputeDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers");
 
     // Access device input (compile-time dependency)
@@ -164,7 +164,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 // EXECUTE
 // ============================================================================
 
-void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = ctx.In(ComputeDispatchNodeConfig::IMAGE_INDEX);
 
@@ -656,7 +656,7 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
 // CLEANUP
 // ============================================================================
 
-void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ComputeDispatchNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[ComputeDispatchNode::CleanupImpl] Cleaning up resources");
 
     // GPU resources (QueryPools) will be automatically released by GPUQueryManager destructor

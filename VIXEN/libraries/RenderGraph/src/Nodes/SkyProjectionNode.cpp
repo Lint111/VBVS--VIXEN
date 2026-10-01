@@ -103,7 +103,7 @@ std::unique_ptr<NodeInstance> SkyProjectionNodeType::CreateInstance(const std::s
 SkyProjectionNode::SkyProjectionNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<SkyProjectionNodeConfig>(instanceName, nodeType) {}
 
-void SkyProjectionNode::SetupImpl(TypedSetupContext& /*ctx*/) {
+void SkyProjectionNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {
     NODE_LOG_DEBUG("[SkyProjectionNode] Setup (graph-scope initialization)");
 }
 
@@ -374,7 +374,7 @@ void SkyProjectionNode::DestroyPipeline() {
     descriptorSet_ = VK_NULL_HANDLE;  // freed implicitly with the pool
 }
 
-void SkyProjectionNode::CompileImpl(TypedCompileContext& ctx) {
+void SkyProjectionNode::TypedCompileImpl(TypedCompileContext& ctx) {
     Vixen::Vulkan::Resources::VulkanDevice* device = ctx.In(SkyProjectionNodeConfig::VULKAN_DEVICE_IN);
     if (!device) throw std::runtime_error("[SkyProjectionNode] VULKAN_DEVICE_IN is null");
     SetDevice(device);
@@ -472,7 +472,7 @@ void SkyProjectionNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuff
     vkEndCommandBuffer(cmd);
 }
 
-void SkyProjectionNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void SkyProjectionNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t imageIndex = ctx.In(SkyProjectionNodeConfig::IMAGE_INDEX);
     const uint32_t currentFrameIndex = ctx.In(SkyProjectionNodeConfig::CURRENT_FRAME_INDEX);
     const std::vector<VkFramebuffer>& framebuffers = ctx.In(SkyProjectionNodeConfig::FRAMEBUFFERS);
@@ -580,7 +580,7 @@ void SkyProjectionNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(SkyProjectionNodeConfig::RENDER_COMPLETE_SEMAPHORE, static_cast<VkSemaphore>(VK_NULL_HANDLE));
 }
 
-void SkyProjectionNode::CleanupImpl(TypedCleanupContext& ctx) {
+void SkyProjectionNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (ctx.reason == CleanupReason::Recompile) {
         NODE_LOG_INFO("[SkyProjectionNode] Cleanup (recompile) - keeping persistent resources");
         return;

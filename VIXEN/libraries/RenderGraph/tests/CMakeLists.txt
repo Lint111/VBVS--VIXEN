@@ -41,8 +41,17 @@ add_executable(test_rendergraph_core
     test_multiple_producers.cpp
     test_typednode_helpers.cpp
     test_executeonly_behavior.cpp
+    test_typed_node_lifecycle.cpp
     test_lightingconfig_parity.cpp
 )
+
+# Keep this consumer fixture strict: its typed callback names must never hide
+# NodeInstance's untyped lifecycle overloads. These flags mirror the public-header
+# probe that found the regression; they apply only to this translation unit.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(test_typed_node_lifecycle.cpp PROPERTIES
+        COMPILE_OPTIONS "-Woverloaded-virtual;-Werror")
+endif()
 
 # Ensure tests can include generated headers and centralized test mocks
 # (Allows includes like <generated/sdi/Name.h> and <RenderGraph/tests/TestMocks.h>)

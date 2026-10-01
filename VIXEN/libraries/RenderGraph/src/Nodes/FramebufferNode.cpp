@@ -28,12 +28,12 @@ FramebufferNode::FramebufferNode(
 {
 }
 
-void FramebufferNode::SetupImpl(TypedSetupContext& ctx) {
+void FramebufferNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("FramebufferNode: Setup (graph-scope initialization)");
 }
 
-void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
+void FramebufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Validate and set up device
@@ -91,11 +91,11 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 }
 
-void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void FramebufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // No-op - framebuffers are created in Compile phase
 }
 
-void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
+void FramebufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (!framebuffers.empty() && device != nullptr) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 

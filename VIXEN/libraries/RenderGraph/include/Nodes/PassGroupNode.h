@@ -59,9 +59,9 @@ public:
     [[nodiscard]] size_t PassCount() const { return passes_.size(); }
 
 protected:
-    void CompileImpl(VariadicCompileContext& ctx) override;
-    void ExecuteImpl(VariadicExecuteContext& ctx) override;
-    void CleanupImpl(VariadicCleanupContext& ctx) override;
+    void VariadicCompileImpl(VariadicCompileContext& ctx) override;
+    void VariadicExecuteImpl(VariadicExecuteContext& ctx) override;
+    void VariadicCleanupImpl(VariadicCleanupContext& ctx) override;
 
 private:
     std::vector<PassStep>  passes_;

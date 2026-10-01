@@ -35,11 +35,11 @@ HitAccumParamsConfigNode::HitAccumParamsConfigNode(const std::string& n, NodeTyp
 {
 }
 
-void HitAccumParamsConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void HitAccumParamsConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[HitAccumParamsConfigNode] Setup (graph-scope initialization)");
 }
 
-void HitAccumParamsConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void HitAccumParamsConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[HitAccumParamsConfigNode] Compile START");
 
     SetDevice(ctx.In(HitAccumParamsConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -67,7 +67,7 @@ void HitAccumParamsConfigNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[HitAccumParamsConfigNode] Outputs published");
 }
 
-void HitAccumParamsConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void HitAccumParamsConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     // Content is written by VulkanGraphApplication::PreTick (before this
     // Execute pass runs), via MapCurrentForWrite(frameIndex) with the SAME
@@ -82,7 +82,7 @@ void* HitAccumParamsConfigNode::MapCurrentForWrite(uint32_t frameIndex) const {
     return perFrame_.GetUniformBufferMapped(frameIndex % kRingSize);
 }
 
-void HitAccumParamsConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void HitAccumParamsConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

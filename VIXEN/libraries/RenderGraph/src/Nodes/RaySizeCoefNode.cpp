@@ -14,11 +14,11 @@ RaySizeCoefNode::RaySizeCoefNode(const std::string& n, NodeType* t)
 {
 }
 
-void RaySizeCoefNode::SetupImpl(TypedSetupContext& ctx) {
+void RaySizeCoefNode::TypedSetupImpl(TypedSetupContext& ctx) {
     fovDegrees_ = GetParameterValue<float>(RaySizeCoefNodeConfig::PARAM_FOV_DEGREES, 45.0f);
 }
 
-void RaySizeCoefNode::CompileImpl(TypedCompileContext& ctx) {
+void RaySizeCoefNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Recomputed every Compile — this node is a transitive dependent of whatever publishes
     // HEIGHT (RenderTargetNode::HEIGHT_OUT), so a resize drives this via the standard
     // recompile cascade with no per-frame checks anywhere.
@@ -39,11 +39,11 @@ void RaySizeCoefNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(RaySizeCoefNodeConfig::RAY_SIZE_COEF, raySizeCoef);
 }
 
-void RaySizeCoefNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void RaySizeCoefNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Value is Compile-derived and stable across a frame's Executes; nothing to do here.
 }
 
-void RaySizeCoefNode::CleanupImpl(TypedCleanupContext& ctx) {
+void RaySizeCoefNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // No resources to release.
 }
 

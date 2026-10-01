@@ -62,7 +62,7 @@ struct {{NodeName}}Config {
 ### 4.1 Setup
 
 ```cpp
-void SetupImpl(Context& ctx) override {
+void TypedSetupImpl(Context& ctx) override {
     // Subscribe to events
     eventBus->Subscribe(EventType::ResourceChanged, this);
 }
@@ -71,7 +71,7 @@ void SetupImpl(Context& ctx) override {
 ### 4.2 Compile
 
 ```cpp
-void CompileImpl(Context& ctx) override {
+void TypedCompileImpl(Context& ctx) override {
     auto device = In(Config::DEVICE);
     auto input = In(Config::INPUT_IMAGE);
 
@@ -85,7 +85,7 @@ void CompileImpl(Context& ctx) override {
 ### 4.3 Execute
 
 ```cpp
-void ExecuteImpl(Context& ctx) override {
+void TypedExecuteImpl(Context& ctx) override {
     // Record commands or no-op
 }
 ```
@@ -93,7 +93,7 @@ void ExecuteImpl(Context& ctx) override {
 ### 4.4 Cleanup
 
 ```cpp
-void CleanupImpl(Context& ctx) override {
+void TypedCleanupImpl(Context& ctx) override {
     // Destroy resources (reverse of Compile)
 }
 ```

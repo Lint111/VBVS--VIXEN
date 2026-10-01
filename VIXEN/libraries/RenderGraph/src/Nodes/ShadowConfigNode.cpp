@@ -58,11 +58,11 @@ ShadowConfigNode::ShadowConfigNode(const std::string& n, NodeType* t)
 {
 }
 
-void ShadowConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void ShadowConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[ShadowConfigNode] Setup (graph-scope initialization)");
 }
 
-void ShadowConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void ShadowConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ShadowConfigNode] Compile START");
 
     SetDevice(ctx.In(ShadowConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -92,7 +92,7 @@ void ShadowConfigNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ShadowConfigNode] Outputs published");
 }
 
-void ShadowConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ShadowConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(ShadowConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -111,7 +111,7 @@ void ShadowConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(ShadowConfigNodeConfig::SHADOW_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void ShadowConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ShadowConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

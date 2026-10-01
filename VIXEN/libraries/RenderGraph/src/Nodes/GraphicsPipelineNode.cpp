@@ -41,7 +41,7 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 {
 }
 
-void GraphicsPipelineNode::SetupImpl(TypedSetupContext& ctx) {
+void GraphicsPipelineNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("GraphicsPipelineNode: Setup (graph-scope initialization)");
 
@@ -54,7 +54,7 @@ void GraphicsPipelineNode::SetupImpl(TypedSetupContext& ctx) {
     }
 }
 
-void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
+void GraphicsPipelineNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.5: Start compile timing (RAII - records on scope exit)
     auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
@@ -186,12 +186,12 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void GraphicsPipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void GraphicsPipelineNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }
 
-void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
+void GraphicsPipelineNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // If we have a cached pipeline wrapper, just release the shared_ptr
     // The cacher owns VkPipeline, VkPipelineLayout, and VkPipelineCache - will destroy when appropriate
     if (cachedPipelineWrapper) {

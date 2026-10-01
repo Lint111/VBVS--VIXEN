@@ -84,11 +84,11 @@ PhotonCellConfiguration PhotonCellParamsConfigNode::ReadConfiguration() {
     return configuration;
 }
 
-void PhotonCellParamsConfigNode::SetupImpl(TypedSetupContext&) {
+void PhotonCellParamsConfigNode::TypedSetupImpl(TypedSetupContext&) {
     NODE_LOG_DEBUG("[PhotonCellParamsConfigNode] Setup");
 }
 
-void PhotonCellParamsConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void PhotonCellParamsConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     SetDevice(ctx.In(PhotonCellParamsConfigNodeConfig::VULKAN_DEVICE_IN));
     if (!GetDevice()) {
         throw std::runtime_error(
@@ -106,7 +106,7 @@ void PhotonCellParamsConfigNode::CompileImpl(TypedCompileContext& ctx) {
             perFrame_.GetUniformBuffer(0));
 }
 
-void PhotonCellParamsConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void PhotonCellParamsConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t frameIndex =
         ctx.In(PhotonCellParamsConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
     ctx.Out(PhotonCellParamsConfigNodeConfig::PHOTON_CELL_PARAMS_BUFFER,
@@ -147,7 +147,7 @@ bool PhotonCellParamsConfigNode::DiagnosticDue(uint64_t frameNumber) const {
            frameNumber >= configuration_.diagnosticFrame && diagnosticGeneration_ != 0;
 }
 
-void PhotonCellParamsConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void PhotonCellParamsConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (ctx.reason == CleanupReason::Recompile) return;
     perFrame_.Cleanup();
 }

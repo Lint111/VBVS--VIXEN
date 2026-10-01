@@ -31,7 +31,7 @@ TextureLoaderNode::TextureLoaderNode(
 {
 }
 
-void TextureLoaderNode::SetupImpl(TypedSetupContext& ctx) {
+void TextureLoaderNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("TextureLoaderNode: Setup (graph-scope initialization)");
 
@@ -44,7 +44,7 @@ void TextureLoaderNode::SetupImpl(TypedSetupContext& ctx) {
     }
 }
 
-void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
+void TextureLoaderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Sprint 6.5: Start compile timing (RAII - records on scope exit)
     auto compileSample = compileProfile_ ? compileProfile_->Sample() : ITaskProfile::Sampler(nullptr);
 
@@ -82,7 +82,7 @@ void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
             ImageSamplerPair{textureView, textureSampler});
 }
 
-void TextureLoaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void TextureLoaderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     
@@ -90,7 +90,7 @@ void TextureLoaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // If we need to transition to a different layout, we would do it here
 }
 
-void TextureLoaderNode::CleanupImpl(TypedCleanupContext& ctx) {
+void TextureLoaderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Release cached wrappers - cachers own all Vulkan resources
     if (cachedTextureWrapper) {
         NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached texture wrapper");

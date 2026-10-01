@@ -715,8 +715,8 @@ protected:
      *
      * @param ctx Compile context with phase-specific capabilities
      *
-     * NOTE: TypedNode overrides this with TypedCompileContext variant.
-     * Default: no-op (TypedNode provides implementation).
+     * TypedNode dispatches the compile phase through TypedCompileImpl(TypedCompileContext&).
+     * Default: no-op (TypedNode provides typed dispatch).
      */
     virtual void CompileImpl(CompileContext& /*ctx*/) {
         // Default: no-op (TypedNode hierarchy provides override)
@@ -750,8 +750,8 @@ protected:
      *
      * @param ctx Execute context with task-bound input/output access
      *
-     * NOTE: TypedNode overrides this with TypedExecuteContext variant.
-     * Default: no-op (TypedNode provides implementation).
+     * TypedNode dispatches the execute phase through TypedExecuteImpl(TypedExecuteContext&).
+     * Default: no-op (TypedNode provides typed dispatch).
      */
     virtual void ExecuteImpl(ExecuteContext& /*ctx*/) {
         // Default: no-op (TypedNode hierarchy provides override)

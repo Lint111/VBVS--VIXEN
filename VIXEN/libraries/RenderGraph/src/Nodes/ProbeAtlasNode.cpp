@@ -46,7 +46,7 @@ ProbeAtlasNode::ProbeAtlasNode(const std::string& n, NodeType* t)
 {
 }
 
-void ProbeAtlasNode::SetupImpl(TypedSetupContext& ctx) {
+void ProbeAtlasNode::TypedSetupImpl(TypedSetupContext& ctx) {
     width_  = GetParameterValue<uint32_t>(ProbeAtlasNodeConfig::PARAM_WIDTH,  0u);
     height_ = GetParameterValue<uint32_t>(ProbeAtlasNodeConfig::PARAM_HEIGHT, 0u);
     format_ = static_cast<VkFormat>(GetParameterValue<uint32_t>(
@@ -57,7 +57,7 @@ void ProbeAtlasNode::SetupImpl(TypedSetupContext& ctx) {
                    std::to_string(height_) + " format=" + std::to_string(static_cast<int>(format_)));
 }
 
-void ProbeAtlasNode::CompileImpl(TypedCompileContext& ctx) {
+void ProbeAtlasNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ProbeAtlasNode] Compile START");
 
     device_ = ctx.In(ProbeAtlasNodeConfig::VULKAN_DEVICE_IN);
@@ -95,7 +95,7 @@ void ProbeAtlasNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(height_) + ")");
 }
 
-void ProbeAtlasNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ProbeAtlasNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Not a ring — the same persistent image is re-emitted every frame (mirrors
     // AccumulationHistoryNode::ExecuteImpl's own rationale: DDGI's hysteresis blend needs last
     // frame's atlas content still present, so currentIndex never advances).
@@ -103,7 +103,7 @@ void ProbeAtlasNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(ProbeAtlasNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 }
 
-void ProbeAtlasNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ProbeAtlasNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

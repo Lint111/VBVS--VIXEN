@@ -52,12 +52,12 @@ void ImageSyncGathererNode::PreRegisterImageSlots(size_t count) {
 // SETUP / COMPILE / EXECUTE / CLEANUP
 // ============================================================================
 
-void ImageSyncGathererNode::SetupImpl(VariadicSetupContext& /*ctx*/) {
+void ImageSyncGathererNode::VariadicSetupImpl(VariadicSetupContext& /*ctx*/) {
     // No-op: slots are pre-registered via PreRegisterImageSlots (graph-construction time),
     // mirroring BufferSyncGathererNode's own "discovery happens before Setup" note.
 }
 
-void ImageSyncGathererNode::CompileImpl(VariadicCompileContext& ctx) {
+void ImageSyncGathererNode::VariadicCompileImpl(VariadicCompileContext& ctx) {
     size_t variadicCount = ctx.InVariadicCount();
     std::vector<Vixen::Vulkan::Resources::IRenderTarget*> images;
     std::vector<Resource*> constituents;
@@ -87,7 +87,7 @@ void ImageSyncGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     }
 }
 
-void ImageSyncGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
+void ImageSyncGathererNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     // Re-read every frame — mirrors BufferSyncGathererNode::ExecuteImpl's own rationale:
     // hazardConstituents_ is set ONLY at Compile (the tracker/scheduler bake the schedule
     // from the Compile-time graph shape), re-setting it here every frame would be
@@ -104,7 +104,7 @@ void ImageSyncGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     ctx.Out(ImageSyncGathererNodeConfig::IMAGE_ARRAY, images);
 }
 
-void ImageSyncGathererNode::CleanupImpl(VariadicCleanupContext& /*ctx*/) {
+void ImageSyncGathererNode::VariadicCleanupImpl(VariadicCleanupContext& /*ctx*/) {
     // No owned resources to release — this node only gathers handles owned elsewhere.
 }
 

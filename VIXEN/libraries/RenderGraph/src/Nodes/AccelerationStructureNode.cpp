@@ -36,7 +36,7 @@ AccelerationStructureNode::AccelerationStructureNode(
     NODE_LOG_INFO("AccelerationStructureNode constructor (Phase K - using AccelerationStructureCacher)");
 }
 
-void AccelerationStructureNode::SetupImpl(TypedSetupContext& ctx) {
+void AccelerationStructureNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[AccelerationStructureNode::SetupImpl] ENTERED");
 
     // Read build parameters
@@ -65,7 +65,7 @@ void AccelerationStructureNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[AccelerationStructureNode::SetupImpl] COMPLETED");
 }
 
-void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
+void AccelerationStructureNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[AccelerationStructureNode::CompileImpl] ENTERED");
     NODE_LOG_INFO("=== AccelerationStructureNode::CompileImpl START ===");
 
@@ -144,7 +144,7 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[AccelerationStructureNode::CompileImpl] COMPLETED");
 }
 
-void AccelerationStructureNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void AccelerationStructureNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Pass through BLAS data (always valid from cacher)
     ctx.Out(AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA, &accelData_);
 
@@ -179,7 +179,7 @@ void AccelerationStructureNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void AccelerationStructureNode::CleanupImpl(TypedCleanupContext& ctx) {
+void AccelerationStructureNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("AccelerationStructureNode cleanup");
     DestroyAccelerationStructures();
 }
