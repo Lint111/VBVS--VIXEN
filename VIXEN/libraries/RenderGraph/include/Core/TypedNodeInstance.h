@@ -133,12 +133,12 @@ using AccumulationElement_t = typename AccumulationElement<SlotTypeRaw>::type;
  * class WindowNode : public TypedNode<WindowNodeConfig> {
  *     using Ctx = typename TypedNode<WindowNodeConfig>::Context;
  *
- *     void CompileImpl() override {
+ *     void TypedCompileImpl(TypedCompileContext& ctx) override {
  *         CreateSurface();
  *         Out(WindowNodeConfig::SURFACE) = surface;
  *     }
  *
- *     void ExecuteImpl(Ctx& ctx) override {
+ *     void TypedExecuteImpl(Ctx& ctx) override {
  *         auto device = ctx.In(WindowNodeConfig::DEVICE);
  *         auto surface = ctx.In(WindowNodeConfig::SURFACE);
  *         // ctx.In/Out are bound to this task's index automatically
@@ -163,9 +163,9 @@ public:
      * - Parallelization: each task has independent context
      * - Type safety: leverages ConfigType's slot definitions
      *
-     * Usage in ExecuteImpl:
+     * Usage in TypedExecuteImpl:
      * ```cpp
-     * void ExecuteImpl(Context& ctx) override {
+     * void TypedExecuteImpl(Context& ctx) override {
      *     auto input = ctx.In(MyConfig::INPUT_SLOT);
      *     ctx.Out(MyConfig::OUTPUT_SLOT, result);
      * }
@@ -483,14 +483,31 @@ public:
     // LIFECYCLE ORCHESTRATION - Override to create typed contexts
     // ============================================================================
     // TypedNode overrides the no-parameter lifecycle methods to create typed contexts
-    // and call the typed *Impl(TypedContext&) methods. This avoids object slicing
+    // and call the Typed*Impl(TypedContext&) methods. This avoids object slicing
     // that would occur if we relied on virtual CreateContext() methods returning by value.
+
+protected:
+    // These are the untyped orchestration overloads. Keep them visible inside TypedNode;
+    // concrete typed callbacks use Typed*Impl names and do not need using-declarations.
+    using NodeInstance::SetupImpl;
+    using NodeInstance::CompileImpl;
+    using NodeInstance::ExecuteImpl;
+    using NodeInstance::CleanupImpl;
+
+public:
+    void SetupImpl() override {
+        const uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            TypedSetupContext ctx = CreateSetupContext(taskIndex);
+            TypedSetupImpl(ctx);
+        }
+    }
 
     void CompileImpl() override {
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             TypedCompileContext ctx(this, taskIndex);
-            CompileImpl(ctx);
+            TypedCompileImpl(ctx);
         }
     }
 
@@ -499,31 +516,40 @@ public:
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             TypedExecuteContext ctx(this, taskIndex);
-            ExecuteImpl(ctx);
+            TypedExecuteImpl(ctx);
+        }
+    }
+
+    void CleanupImpl() override {
+        const uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            TypedCleanupContext ctx = CreateCleanupContext(taskIndex);
+            ctx.reason = cleanupReason_;
+            TypedCleanupImpl(ctx);
         }
     }
 
 protected:
     /**
-     * @brief SetupImpl with TypedSetupContext - override this in derived classes
+     * @brief TypedSetupImpl with TypedSetupContext - override this in derived classes
      *
      * Called during Setup phase. No I/O access in Setup.
      *
      * @param ctx Setup context (no I/O access)
      */
-    virtual void SetupImpl(TypedSetupContext& ctx) {}
+    virtual void TypedSetupImpl(TypedSetupContext& ctx) {}
 
     /**
-     * @brief CompileImpl with TypedCompileContext - override this in derived classes
+     * @brief TypedCompileImpl with TypedCompileContext - override this in derived classes
      *
      * Called during Compile phase. Context provides typed In()/Out() access.
      *
      * @param ctx Compile context with typed slot accessors
      */
-    virtual void CompileImpl(TypedCompileContext& ctx) {}
+    virtual void TypedCompileImpl(TypedCompileContext& ctx) {}
 
     /**
-     * @brief ExecuteImpl with TypedExecuteContext - override this in derived classes
+     * @brief TypedExecuteImpl with TypedExecuteContext - override this in derived classes
      *
      * **Phase F: Context-based execution.**
      *
@@ -532,7 +558,7 @@ protected:
      *
      * Example:
      * ```cpp
-     * void MyNode::ExecuteImpl(TypedExecuteContext& ctx) override {
+     * void MyNode::TypedExecuteImpl(TypedExecuteContext& ctx) override {
      *     auto device = ctx.In(MyConfig::DEVICE);
      *     auto input = ctx.In(MyConfig::INPUT_DATA);
      *     auto result = Process(device, input);
@@ -542,12 +568,12 @@ protected:
      *
      * @param ctx Execute context with typed slot accessors
      */
-    virtual void ExecuteImpl(TypedExecuteContext& ctx) {
+    virtual void TypedExecuteImpl(TypedExecuteContext& ctx) {
         // Default: no-op (VariadicTypedNode and concrete nodes provide override)
     }
 
     /**
-     * @brief CleanupImpl with TypedCleanupContext - override this in derived classes
+     * @brief TypedCleanupImpl with TypedCleanupContext - override this in derived classes
      *
      * Called during Cleanup phase. No I/O access during cleanup.
      *
@@ -560,10 +586,10 @@ protected:
      *
      * @param ctx Cleanup context (no I/O access; carries `reason`)
      */
-    virtual void CleanupImpl(TypedCleanupContext& ctx) {}
+    virtual void TypedCleanupImpl(TypedCleanupContext& ctx) {}
 
     // Task orchestration is handled at NodeInstance level
-    // TypedNode only provides *Impl(Context&) virtual methods for downstream nodes
+    // TypedNode only provides Typed*Impl(Context&) virtual methods for downstream nodes
 
 private:
     // ===== INDEX-BASED ACCESS =====

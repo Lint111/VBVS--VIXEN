@@ -155,7 +155,7 @@ void MultiDispatchNode::ClearQueue() {
 // SETUP
 // ============================================================================
 
-void MultiDispatchNode::SetupImpl(TypedSetupContext& ctx) {
+void MultiDispatchNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[MultiDispatchNode::SetupImpl] Graph-scope initialization");
 
     // Read configuration parameters
@@ -186,7 +186,7 @@ void MultiDispatchNode::SetupImpl(TypedSetupContext& ctx) {
 // COMPILE
 // ============================================================================
 
-void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
+void MultiDispatchNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[MultiDispatchNode::CompileImpl] Allocating per-image command buffers");
 
     // Access device input (compile-time dependency)
@@ -310,7 +310,7 @@ void MultiDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 // EXECUTE
 // ============================================================================
 
-void MultiDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void MultiDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Get current indices
     uint32_t imageIndex = ctx.In(MultiDispatchNodeConfig::IMAGE_INDEX);
     uint32_t currentFrameIndex = ctx.In(MultiDispatchNodeConfig::CURRENT_FRAME_INDEX);
@@ -795,7 +795,7 @@ void MultiDispatchNode::RecordBarrier(
 // CLEANUP
 // ============================================================================
 
-void MultiDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
+void MultiDispatchNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[MultiDispatchNode::CleanupImpl] Cleaning up resources");
 
     // Sprint 6.3: Phase 2.2 - Free GPU query slot

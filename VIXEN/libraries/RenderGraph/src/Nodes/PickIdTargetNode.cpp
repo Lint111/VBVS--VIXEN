@@ -47,12 +47,12 @@ PickIdTargetNode::PickIdTargetNode(const std::string& n, NodeType* t)
 {
 }
 
-void PickIdTargetNode::SetupImpl(TypedSetupContext& ctx) {
+void PickIdTargetNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[PickIdTargetNode] Setup (graph-scope initialization)");
 }
 
-void PickIdTargetNode::CompileImpl(TypedCompileContext& ctx) {
+void PickIdTargetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[PickIdTargetNode] Compile START");
 
     SetDevice(ctx.In(PickIdTargetNodeConfig::VULKAN_DEVICE_IN));
@@ -107,7 +107,7 @@ void PickIdTargetNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(height_) + ", " + std::to_string(imageCount_) + " R32_UINT images)");
 }
 
-void PickIdTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void PickIdTargetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Ring: select this frame's image by the engine frame-in-flight index, then re-emit its
     // view/image (mirrors how producer nodes re-publish their current buffer each Execute, so the
     // DescriptorResourceGatherer refreshes binding 9 with the right view).
@@ -120,7 +120,7 @@ void PickIdTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(PickIdTargetNodeConfig::ID_IMAGE,      images_[currentIndex_].image);
 }
 
-void PickIdTargetNode::CleanupImpl(TypedCleanupContext& ctx) {
+void PickIdTargetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // FR-7: persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)

@@ -47,11 +47,11 @@ DepthTargetNode::DepthTargetNode(const std::string& n, NodeType* t)
 {
 }
 
-void DepthTargetNode::SetupImpl(TypedSetupContext& ctx) {
+void DepthTargetNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[DepthTargetNode] Setup (graph-scope initialization)");
 }
 
-void DepthTargetNode::CompileImpl(TypedCompileContext& ctx) {
+void DepthTargetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     SetDevice(ctx.In(DepthTargetNodeConfig::VULKAN_DEVICE_IN));
     if (!GetDevice()) {
         throw std::runtime_error("[DepthTargetNode] VULKAN_DEVICE_IN is null");
@@ -89,14 +89,14 @@ void DepthTargetNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(DepthTargetNodeConfig::DEPTH_READ_VIEW,  views_[1]);
 }
 
-void DepthTargetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DepthTargetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t frame = ctx.In(DepthTargetNodeConfig::CURRENT_FRAME_INDEX);
     const uint32_t writeSlot = frame & 1u;
     ctx.Out(DepthTargetNodeConfig::DEPTH_WRITE_VIEW, views_[writeSlot]);
     ctx.Out(DepthTargetNodeConfig::DEPTH_READ_VIEW,  views_[writeSlot ^ 1u]);
 }
 
-void DepthTargetNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DepthTargetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Same persist-across-recompile / DeviceLost guard as WorldPosHistoryNode.
     if (ctx.reason == CleanupReason::Recompile) {
         NODE_LOG_INFO("[DepthTargetNode] Cleanup (recompile) - keeping depth ping-pong pair");

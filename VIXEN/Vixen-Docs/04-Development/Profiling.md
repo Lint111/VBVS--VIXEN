@@ -37,7 +37,7 @@ public:
 ### 1.2 Usage Pattern
 
 ```cpp
-void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
+void ComputeDispatchNode::TypedExecuteImpl(Context& ctx) {
     // Reset queries at frame start
     gpuQuery_.ResetQueries(cmd);
 

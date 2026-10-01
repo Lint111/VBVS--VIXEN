@@ -36,7 +36,7 @@ RayTracingPipelineNode::RayTracingPipelineNode(
     NODE_LOG_INFO("RayTracingPipelineNode constructor (Phase K)");
 }
 
-void RayTracingPipelineNode::SetupImpl(TypedSetupContext& ctx) {
+void RayTracingPipelineNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[RayTracingPipelineNode::SetupImpl] ENTERED");
 
     maxRayRecursion_ = GetParameterValue<uint32_t>(
@@ -60,7 +60,7 @@ void RayTracingPipelineNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[RayTracingPipelineNode::SetupImpl] COMPLETED");
 }
 
-void RayTracingPipelineNode::CompileImpl(TypedCompileContext& ctx) {
+void RayTracingPipelineNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[RayTracingPipelineNode::CompileImpl] ENTERED");
     NODE_LOG_INFO("=== RayTracingPipelineNode::CompileImpl START ===");
 
@@ -170,12 +170,12 @@ void RayTracingPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[RayTracingPipelineNode::CompileImpl] COMPLETED");
 }
 
-void RayTracingPipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void RayTracingPipelineNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Pipeline is static, just pass through
     ctx.Out(RayTracingPipelineNodeConfig::RT_PIPELINE_DATA, &pipelineData_);
 }
 
-void RayTracingPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
+void RayTracingPipelineNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("RayTracingPipelineNode cleanup");
     DestroyPipeline();
     DestroyShaderModules();

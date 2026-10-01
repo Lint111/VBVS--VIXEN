@@ -32,11 +32,11 @@ PrevCameraConfigNode::PrevCameraConfigNode(const std::string& n, NodeType* t)
 {
 }
 
-void PrevCameraConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void PrevCameraConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[PrevCameraConfigNode] Setup (graph-scope initialization)");
 }
 
-void PrevCameraConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void PrevCameraConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[PrevCameraConfigNode] Compile START");
 
     SetDevice(ctx.In(PrevCameraConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -66,7 +66,7 @@ void PrevCameraConfigNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[PrevCameraConfigNode] Outputs published");
 }
 
-void PrevCameraConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void PrevCameraConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(PrevCameraConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -85,7 +85,7 @@ void PrevCameraConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(PrevCameraConfigNodeConfig::PREV_CAMERA_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void PrevCameraConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void PrevCameraConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

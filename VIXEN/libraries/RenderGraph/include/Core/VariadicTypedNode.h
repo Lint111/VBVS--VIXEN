@@ -90,7 +90,7 @@ public:
  * Usage:
  * ```cpp
  * class MyNode : public VariadicTypedNode<MyNodeConfig> {
- *     void CompileImpl(Context& ctx) override {
+ *     void VariadicCompileImpl(Context& ctx) override {
  *         // Access regular typed slots
  *         auto bundle = INPUT(SHADER_DATA_BUNDLE);
  *
@@ -592,14 +592,29 @@ protected:
     // ============================================================================
     // LIFECYCLE ORCHESTRATION - Override to create variadic contexts
     // ============================================================================
+    // Keep the untyped orchestration overloads visible in this provider base. Derived consumers
+    // use Variadic*Impl names and never need using-declarations.
+    using Base::SetupImpl;
+    using Base::CompileImpl;
+    using Base::ExecuteImpl;
+    using Base::CleanupImpl;
+
     // VariadicTypedNode overrides the no-parameter lifecycle methods to create variadic contexts
-    // and call the variadic *Impl(VariadicContext&) methods. This avoids object slicing.
+    // and call the Variadic*Impl(VariadicContext&) methods. This avoids object slicing.
+
+    void SetupImpl() override {
+        const uint32_t taskCount = this->DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            VariadicSetupContext ctx = this->CreateSetupContext(taskIndex);
+            VariadicSetupImpl(ctx);
+        }
+    }
 
     void CompileImpl() override {
         uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             VariadicCompileContext ctx(this, taskIndex);
-            CompileImpl(ctx);
+            VariadicCompileImpl(ctx);
         }
     }
 
@@ -608,7 +623,16 @@ protected:
         uint32_t taskCount = this->DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             VariadicExecuteContext ctx(this, taskIndex);
-            ExecuteImpl(ctx);
+            VariadicExecuteImpl(ctx);
+        }
+    }
+
+    void CleanupImpl() override {
+        const uint32_t taskCount = this->DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            VariadicCleanupContext ctx = this->CreateCleanupContext(taskIndex);
+            ctx.reason = this->cleanupReason_;
+            VariadicCleanupImpl(ctx);
         }
     }
 
@@ -617,32 +641,32 @@ protected:
     // ============================================================================
 
     /**
-     * @brief SetupImpl - override in derived classes
+     * @brief VariadicSetupImpl - override in derived classes
      *
      * @param ctx Setup context (no I/O access, no variadic extensions needed)
      */
-    virtual void SetupImpl(VariadicSetupContext& ctx) {}
+    virtual void VariadicSetupImpl(VariadicSetupContext& ctx) {}
 
     /**
-     * @brief CompileImpl with variadic-extended Context - override in derived classes
+     * @brief VariadicCompileImpl with variadic-extended Context - override in derived classes
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void CompileImpl(VariadicCompileContext& ctx) {}
+    virtual void VariadicCompileImpl(VariadicCompileContext& ctx) {}
 
     /**
-     * @brief ExecuteImpl with variadic-extended Context - override in derived classes
+     * @brief VariadicExecuteImpl with variadic-extended Context - override in derived classes
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void ExecuteImpl(VariadicExecuteContext& ctx) = 0;
+    virtual void VariadicExecuteImpl(VariadicExecuteContext& ctx) = 0;
 
     /**
-     * @brief CleanupImpl - override in derived classes
+     * @brief VariadicCleanupImpl - override in derived classes
      *
      * @param ctx Cleanup context (no I/O access, no variadic extensions needed)
      */
-    virtual void CleanupImpl(VariadicCleanupContext& ctx) {}
+    virtual void VariadicCleanupImpl(VariadicCleanupContext& ctx) {}
 
     // Variadic input count constraints
     size_t minVariadicInputs_ = 0;         // Minimum required (default: none)

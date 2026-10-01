@@ -30,7 +30,7 @@ public:
     using NodeInstance::SetInput; // expose for tests
 
 protected:
-    void ExecuteImpl(Context& ctx) override {}
+    void TypedExecuteImpl(Context& ctx) override {}
 };
 
 // A tiny dummy NodeType so we can construct instances

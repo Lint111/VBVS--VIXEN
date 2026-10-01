@@ -357,7 +357,7 @@ vkCmdPipelineBarrier(
 ```cpp
 // Generator node creates 3 dispatch passes for horizontal, vertical, and final blur
 class BlurPassGenerator : public TypedNode<BlurGenConfig> {
-    void CompileImpl(TypedCompileContext& ctx) override {
+    void TypedCompileImpl(TypedCompileContext& ctx) override {
         std::vector<DispatchPass> passes;
 
         // Horizontal blur pass (group 0)
@@ -397,7 +397,7 @@ batch.Connect(blurGen, BlurGenConfig::DISPATCH_PASS,
 ### Example 2: Dynamic Dispatch (Legacy)
 
 ```cpp
-void MyNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void MyNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     auto* multiDispatch = graph->GetNode<MultiDispatchNode>("dispatcher");
 
     // Queue dispatches dynamically

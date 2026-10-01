@@ -89,7 +89,7 @@ VoxelGridNode::VoxelGridNode(
     NODE_LOG_INFO("VoxelGridNode constructor");
 }
 
-void VoxelGridNode::SetupImpl(TypedSetupContext& ctx) {
+void VoxelGridNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::SetupImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     NODE_LOG_INFO("VoxelGridNode setup");
 
@@ -110,7 +110,7 @@ void VoxelGridNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::SetupImpl] COMPLETED");
 }
 
-void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
+void VoxelGridNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     NODE_LOG_INFO("=== VoxelGridNode::CompileImpl START ===");
 
@@ -316,7 +316,7 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
 }
 
-void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void VoxelGridNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     // Re-output persistent resources every frame for variadic connections
     // When swapchain recompiles, descriptor gatherer re-queries these outputs
@@ -420,7 +420,7 @@ const Debug::GPUShaderCounters* VoxelGridNode::ReadShaderCounters() {
     return &shaderCountersResource_->GetCounters();
 }
 
-void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
+void VoxelGridNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Destroying octree buffers");
 
     // CRITICAL: Release GPU resources (QueryPools) BEFORE device operations.

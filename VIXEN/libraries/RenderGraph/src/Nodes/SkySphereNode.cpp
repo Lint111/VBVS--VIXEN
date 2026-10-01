@@ -46,7 +46,7 @@ SkySphereNode::SkySphereNode(const std::string& n, NodeType* t)
 {
 }
 
-void SkySphereNode::SetupImpl(TypedSetupContext& ctx) {
+void SkySphereNode::TypedSetupImpl(TypedSetupContext& ctx) {
     width_  = GetParameterValue<uint32_t>(SkySphereNodeConfig::PARAM_WIDTH,  0u);
     height_ = GetParameterValue<uint32_t>(SkySphereNodeConfig::PARAM_HEIGHT, 0u);
     format_ = static_cast<VkFormat>(GetParameterValue<uint32_t>(
@@ -60,7 +60,7 @@ void SkySphereNode::SetupImpl(TypedSetupContext& ctx) {
                    " refreshCadenceFrames=" + std::to_string(refreshCadenceFrames_));
 }
 
-void SkySphereNode::CompileImpl(TypedCompileContext& ctx) {
+void SkySphereNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[SkySphereNode] Compile START");
 
     device_ = ctx.In(SkySphereNodeConfig::VULKAN_DEVICE_IN);
@@ -96,14 +96,14 @@ void SkySphereNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(height_) + ")");
 }
 
-void SkySphereNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void SkySphereNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Scaffold: pure passthrough, no accumulate-pass dispatch this slice (see file header —
     // wiring is next batch). dirty_/refreshCadenceFrames_ are carried but not consulted yet.
     ctx.Out(SkySphereNodeConfig::SKY_SPHERE, static_cast<IRenderTarget*>(&target_));
     ctx.Out(SkySphereNodeConfig::CURRENT_VIEW, target_.GetCurrentView());
 }
 
-void SkySphereNode::CleanupImpl(TypedCleanupContext& ctx) {
+void SkySphereNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final teardown — mirrors ProbeAtlasNode's own
     // KI-004-class guard (stale handles after DeviceLost must not be kept).
     if (ctx.reason == CleanupReason::Recompile) {

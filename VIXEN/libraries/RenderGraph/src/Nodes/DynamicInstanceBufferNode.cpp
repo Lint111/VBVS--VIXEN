@@ -30,12 +30,12 @@ DynamicInstanceBufferNode::DynamicInstanceBufferNode(const std::string& n, NodeT
 {
 }
 
-void DynamicInstanceBufferNode::SetupImpl(TypedSetupContext& ctx) {
+void DynamicInstanceBufferNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access).
     NODE_LOG_DEBUG("[DynamicInstanceBufferNode] Setup (graph-scope initialization)");
 }
 
-void DynamicInstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
+void DynamicInstanceBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DynamicInstanceBufferNode] Compile START");
 
     SetDevice(ctx.In(DynamicInstanceBufferNodeConfig::VULKAN_DEVICE_IN));
@@ -77,7 +77,7 @@ void DynamicInstanceBufferNode::CompileImpl(TypedCompileContext& ctx) {
                   ", rotationSpeed=" + std::to_string(rotationSpeed_) + ")");
 }
 
-void DynamicInstanceBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DynamicInstanceBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(DynamicInstanceBufferNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -116,7 +116,7 @@ void DynamicInstanceBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(DynamicInstanceBufferNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void DynamicInstanceBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DynamicInstanceBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // FR-7: persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)

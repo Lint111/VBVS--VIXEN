@@ -46,7 +46,7 @@ DeviceNode::DeviceNode(
 {
 }
 
-void DeviceNode::SetupImpl(TypedSetupContext& ctx) {
+void DeviceNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup: Preparing device creation");
 
     // Note: VkInstance will be read from input during CompileImpl
@@ -70,7 +70,7 @@ void DeviceNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup complete");
 }
 
-void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
+void DeviceNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
 
     // Read VkInstance from input slot (dependency injection from InstanceNode)
@@ -139,11 +139,11 @@ void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }
 
-void DeviceNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DeviceNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // DeviceNode doesn't record commands - it just provides the device
 }
 
-void DeviceNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DeviceNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Cleanup: Cleaning device-dependent caches");
 
     // Cleanup all device-dependent caches BEFORE destroying the device

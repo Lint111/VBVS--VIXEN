@@ -38,12 +38,12 @@ GeometryRenderNode::GeometryRenderNode(
     clearDepthStencil.depthStencil.stencil = 0;
 }
 
-void GeometryRenderNode::SetupImpl(TypedSetupContext& ctx) {
+void GeometryRenderNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("GeometryRenderNode: Setup (graph-scope initialization)");
 }
 
-void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
+void GeometryRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Access device and command pool inputs (compile-time dependencies)
     VulkanDevice* vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
@@ -141,7 +141,7 @@ void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
     }
 }
 
-void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = ctx.In(GeometryRenderNodeConfig::IMAGE_INDEX);
 
@@ -263,7 +263,7 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
-void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
+void GeometryRenderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // GPU resources (QueryPools) will be automatically released by GPUQueryManager destructor
 
     // Free command buffers

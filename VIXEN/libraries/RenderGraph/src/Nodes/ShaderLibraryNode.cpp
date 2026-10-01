@@ -35,7 +35,7 @@ ShaderLibraryNode::ShaderLibraryNode(
 {
 }
 
-void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
+void ShaderLibraryNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Called - graph-scope initialization");
 
     // Subscribe to DeviceMetadataEvent for shader version validation
@@ -73,7 +73,7 @@ void ShaderLibraryNode::RegisterShaderBuilder(
                   std::to_string(shaderBuilderFuncs.size()) + ")");
 }
 
-void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
+void ShaderLibraryNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Compile: START - Phase G shader builder");
 
     // Sprint 6.5: Start compile timing (RAII - records on scope exit)
@@ -111,11 +111,11 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }
 
-void ShaderLibraryNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ShaderLibraryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Intentional no-op: shader compilation happens in CompileImpl; nothing to do per-frame.
 }
 
-void ShaderLibraryNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ShaderLibraryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode - releasing resources");
 
     // Release shared_ptrs (cacher owns the VkShaderModule handles and will destroy them)

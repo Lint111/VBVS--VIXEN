@@ -35,18 +35,18 @@ SelectionCoordinatorNode::SelectionCoordinatorNode(
     NODE_LOG_INFO("[SelectionCoordinator] constructor");
 }
 
-void SelectionCoordinatorNode::SetupImpl(TypedSetupContext& ctx) {
+void SelectionCoordinatorNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[SelectionCoordinator] setup");
     selectionCount_ = 0;
 }
 
-void SelectionCoordinatorNode::CompileImpl(TypedCompileContext& ctx) {
+void SelectionCoordinatorNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Nothing to cache: the coordinator no longer owns providers or any Vulkan resource. Provider
     // NODES do the GPU work and feed candidates via the MultiConnect PROVIDER_CANDIDATES slot.
     NODE_LOG_INFO("[SelectionCoordinator] compile: candidate-gathering coordinator (providers are nodes)");
 }
 
-void SelectionCoordinatorNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void SelectionCoordinatorNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Pull per-frame inputs. Guard nulls.
     InputStatePtr input = ctx.In(SelectionCoordinatorNodeConfig::INPUT_STATE);
 
@@ -143,7 +143,7 @@ void SelectionCoordinatorNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void SelectionCoordinatorNode::CleanupImpl(TypedCleanupContext& ctx) {
+void SelectionCoordinatorNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[SelectionCoordinator] cleanup");
     // Nothing to reset: the click edge now lives in InputState.clicksThisFrame (owned by InputNode),
     // not this node — the duplicate-fire-after-recompile bug (a private edge reset losing track of

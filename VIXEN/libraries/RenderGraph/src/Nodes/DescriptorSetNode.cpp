@@ -49,7 +49,7 @@ DescriptorSetNode::DescriptorSetNode(
 {
 }
 
-void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
+void DescriptorSetNode::TypedSetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("DescriptorSetNode: Setup (graph-scope initialization)");
 
@@ -221,7 +221,7 @@ void DescriptorSetNode::AllocateDescriptorSets(uint32_t imageCount) {
     NODE_LOG_INFO("[DescriptorSetNode::AllocateSets] Allocated " + std::to_string(imageCount) + " descriptor sets (per-image)");
 }
 
-void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
+void DescriptorSetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
     // Setup device and get shader bundle
@@ -310,7 +310,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Outputs set successfully");
 }
 
-void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DescriptorSetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Skip execution during swapchain recreation to prevent descriptor access violations
     if (IsPaused()) {
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Skipping frame (rendering paused)");
@@ -1007,7 +1007,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     return writes;
 }
 
-void DescriptorSetNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DescriptorSetNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: DescriptorSetNode");
 
     // Destroy descriptor pool (this also frees descriptor sets)

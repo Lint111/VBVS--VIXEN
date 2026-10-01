@@ -52,7 +52,7 @@ ComputeStageNode::ComputeStageNode(const std::string& instanceName, NodeType* no
     NODE_LOG_INFO("[ComputeStageNode] Constructor: " + instanceName);
 }
 
-void ComputeStageNode::SetupImpl(TypedSetupContext& /*ctx*/) {
+void ComputeStageNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {
     NODE_LOG_DEBUG("[ComputeStageNode::SetupImpl] Graph-scope initialization");
 }
 
@@ -60,7 +60,7 @@ void ComputeStageNode::SetupImpl(TypedSetupContext& /*ctx*/) {
 // COMPILE — allocate one command buffer per swapchain image
 // ============================================================================
 
-void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
+void ComputeStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* devicePtr = ctx.In(ComputeStageNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[ComputeStageNode::CompileImpl] Vulkan device input is null");
@@ -140,7 +140,7 @@ void ComputeStageNode::CompileImpl(TypedCompileContext& ctx) {
 // EXECUTE — record + vkQueueSubmit2 with timeline edge consumption
 // ============================================================================
 
-void ComputeStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const bool isConsumer = GetParameterValue<bool>(ComputeStageNodeConfig::PARAM_IS_CONSUMER, false);
 
     const uint32_t imageIndex        = ctx.In(ComputeStageNodeConfig::IMAGE_INDEX);
@@ -506,7 +506,7 @@ void ComputeStageNode::SetPushConstants(Context& ctx, VkCommandBuffer cmd, VkPip
 // CLEANUP
 // ============================================================================
 
-void ComputeStageNode::CleanupImpl(TypedCleanupContext& /*ctx*/) {
+void ComputeStageNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
     if (GetDevice() && GetDevice()->device != VK_NULL_HANDLE) {
         if (!commandBuffers_.empty() && commandPool_ != VK_NULL_HANDLE) {
             std::vector<VkCommandBuffer> rawHandles;

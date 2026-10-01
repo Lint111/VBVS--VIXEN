@@ -86,7 +86,7 @@ std::unique_ptr<NodeInstance> UIRenderNodeType::CreateInstance(const std::string
 UIRenderNode::UIRenderNode(const std::string& instanceName, NodeType* nodeType)
     : TypedNode<UIRenderNodeConfig>(instanceName, nodeType) {}
 
-void UIRenderNode::SetupImpl(TypedSetupContext& /*ctx*/) {}
+void UIRenderNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {}
 
 void UIRenderNode::ConfigureHudHotReload() {
     const char* hotReloadEnv = std::getenv("VIXEN_HOTRELOAD_HUD");
@@ -238,7 +238,7 @@ void UIRenderNode::FreeCommandBuffers() {
     commandBuffers_.clear();
 }
 
-void UIRenderNode::CompileImpl(TypedCompileContext& ctx) {
+void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* device = ctx.In(UIRenderNodeConfig::VULKAN_DEVICE);
     Vixen::Vulkan::Resources::IRenderTarget* sc = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
     commandPool_ = ctx.In(UIRenderNodeConfig::COMMAND_POOL);
@@ -424,7 +424,7 @@ void UIRenderNode::RecordFrame(VkCommandBuffer cmd, VkFramebuffer framebuffer, u
     vkEndCommandBuffer(cmd);
 }
 
-void UIRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t imageIndex = ctx.In(UIRenderNodeConfig::IMAGE_INDEX);
     const uint32_t currentFrameIndex = ctx.In(UIRenderNodeConfig::CURRENT_FRAME_INDEX);
     const std::vector<VkSemaphore>& imageAvailable = ctx.In(UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
@@ -655,7 +655,7 @@ bool UIRenderNode::IsMounted(MountHandle handle) const {
     return it != mounts_.end() && it->second.doc != nullptr;
 }
 
-void UIRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
+void UIRenderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (device_ == VK_NULL_HANDLE) return;
 
     // The per-image command buffers AND the composite present semaphores are PERSISTENT across a

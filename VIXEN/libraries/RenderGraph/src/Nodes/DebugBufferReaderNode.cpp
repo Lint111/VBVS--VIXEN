@@ -34,7 +34,7 @@ DebugBufferReaderNode::DebugBufferReaderNode(
 ) : TypedNode<DebugBufferReaderNodeConfig>(instanceName, nodeType) {
 }
 
-void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
+void DebugBufferReaderNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::SetupImpl");
 
     // Read parameters
@@ -53,7 +53,7 @@ void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("  exportFormat: " + std::to_string(static_cast<int>(exportFormat)));
 }
 
-void DebugBufferReaderNode::CompileImpl(TypedCompileContext& ctx) {
+void DebugBufferReaderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::CompileImpl");
     // Get device wrapper reference for later use
     VulkanDevice* vulkanDevice = ctx.In(DebugBufferReaderNodeConfig::VULKAN_DEVICE_IN);
@@ -64,7 +64,7 @@ void DebugBufferReaderNode::CompileImpl(TypedCompileContext& ctx) {
     SetDevice(vulkanDevice);
 }
 
-void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DebugBufferReaderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_DEBUG("DebugBufferReaderNode::ExecuteImpl");
 
     if (GetDevice() == nullptr) {
@@ -153,7 +153,7 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void DebugBufferReaderNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DebugBufferReaderNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::CleanupImpl");
     rayTraces.clear();
 }

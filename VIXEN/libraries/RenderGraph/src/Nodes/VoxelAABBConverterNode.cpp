@@ -32,7 +32,7 @@ VoxelAABBConverterNode::VoxelAABBConverterNode(
     NODE_LOG_INFO("VoxelAABBConverterNode constructor (Phase K - using VoxelAABBCacher)");
 }
 
-void VoxelAABBConverterNode::SetupImpl(TypedSetupContext& ctx) {
+void VoxelAABBConverterNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::SetupImpl] ENTERED");
 
     // Read parameters
@@ -65,7 +65,7 @@ void VoxelAABBConverterNode::EnsureCacherRegistered() {
     }
 }
 
-void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
+void VoxelAABBConverterNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] ENTERED");
 
     NODE_LOG_INFO("=== VoxelAABBConverterNode::CompileImpl START ===");
@@ -151,7 +151,7 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] COMPLETED");
 }
 
-void VoxelAABBConverterNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void VoxelAABBConverterNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // AABB data is static (created during compile via cacher)
     // Just pass through the cached data pointers
     if (cachedAABBData_) {
@@ -162,7 +162,7 @@ void VoxelAABBConverterNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {
+void VoxelAABBConverterNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("VoxelAABBConverterNode cleanup - releasing cacher reference");
 
     // Release our shared_ptr reference to the cached data

@@ -74,11 +74,11 @@ LightingConfigNode::LightingConfigNode(const std::string& n, NodeType* t)
 {
 }
 
-void LightingConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void LightingConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[LightingConfigNode] Setup (graph-scope initialization)");
 }
 
-void LightingConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void LightingConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[LightingConfigNode] Compile START");
 
     SetDevice(ctx.In(LightingConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -108,7 +108,7 @@ void LightingConfigNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[LightingConfigNode] Outputs published");
 }
 
-void LightingConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(LightingConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -133,7 +133,7 @@ void LightingConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(LightingConfigNodeConfig::LIGHTING_CONFIG_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void LightingConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void LightingConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (the old '!= FinalTeardown' guard)

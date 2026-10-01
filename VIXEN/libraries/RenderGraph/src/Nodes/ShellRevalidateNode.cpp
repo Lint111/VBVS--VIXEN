@@ -130,7 +130,7 @@ ShellRevalidateNode::~ShellRevalidateNode() {
 // SETUP
 // ============================================================================
 
-void ShellRevalidateNode::SetupImpl(TypedSetupContext& /*ctx*/) {
+void ShellRevalidateNode::TypedSetupImpl(TypedSetupContext& /*ctx*/) {
     NODE_LOG_INFO("[ShellRevalidateNode::SetupImpl] Graph-scope initialization");
 }
 
@@ -138,7 +138,7 @@ void ShellRevalidateNode::SetupImpl(TypedSetupContext& /*ctx*/) {
 // COMPILE
 // ============================================================================
 
-void ShellRevalidateNode::CompileImpl(TypedCompileContext& ctx) {
+void ShellRevalidateNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ShellRevalidateNode::CompileImpl] Building compute pipeline");
 
     VulkanDevice* devicePtr = ctx.In(ShellRevalidateNodeConfig::VULKAN_DEVICE_IN);
@@ -356,7 +356,7 @@ void ShellRevalidateNode::RecordDispatch(VkCommandBuffer cmd, uint32_t brickCoun
 // EXECUTE
 // ============================================================================
 
-void ShellRevalidateNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ShellRevalidateNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     VkBuffer sourcePool  = ctx.In(ShellRevalidateNodeConfig::SOURCE_POOL_BUFFER);
     VkBuffer brickLookup = ctx.In(ShellRevalidateNodeConfig::BRICK_LOOKUP_BUFFER);
     VkBuffer config      = ctx.In(ShellRevalidateNodeConfig::CONFIG_BUFFER);
@@ -392,7 +392,7 @@ void ShellRevalidateNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // CLEANUP
 // ============================================================================
 
-void ShellRevalidateNode::CleanupImpl(TypedCleanupContext& /*ctx*/) {
+void ShellRevalidateNode::TypedCleanupImpl(TypedCleanupContext& /*ctx*/) {
     NODE_LOG_INFO("[ShellRevalidateNode::CleanupImpl] Cleaning up resources");
 
     if (vulkanDevice_ && vulkanDevice_->device != VK_NULL_HANDLE) {

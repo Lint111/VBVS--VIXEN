@@ -39,11 +39,11 @@ void LightTreeBufferNode::SetLightTreeCut(std::vector<Vixen::SVO::LightTreeNode>
                   std::to_string(cut_.size()) + " nodes staged for next Execute");
 }
 
-void LightTreeBufferNode::SetupImpl(TypedSetupContext& ctx) {
+void LightTreeBufferNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[LightTreeBufferNode] Setup (graph-scope initialization)");
 }
 
-void LightTreeBufferNode::CompileImpl(TypedCompileContext& ctx) {
+void LightTreeBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[LightTreeBufferNode] Compile START");
 
     SetDevice(ctx.In(LightTreeBufferNodeConfig::VULKAN_DEVICE_IN));
@@ -70,7 +70,7 @@ void LightTreeBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[LightTreeBufferNode] Outputs published");
 }
 
-void LightTreeBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void LightTreeBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t frameIndex = ctx.In(LightTreeBufferNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
     Vixen::Gpu::LightTreeBuffer gpuBuf{};
@@ -106,7 +106,7 @@ void LightTreeBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(LightTreeBufferNodeConfig::LIGHT_TREE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
 }
 
-void LightTreeBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
+void LightTreeBufferNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     if (ctx.reason == CleanupReason::Recompile) {
         NODE_LOG_INFO("[LightTreeBufferNode] Cleanup (recompile) - keeping persistent ring buffers");
         return;

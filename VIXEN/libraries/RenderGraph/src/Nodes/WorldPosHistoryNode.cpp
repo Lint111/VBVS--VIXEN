@@ -45,11 +45,11 @@ WorldPosHistoryNode::WorldPosHistoryNode(const std::string& n, NodeType* t)
 {
 }
 
-void WorldPosHistoryNode::SetupImpl(TypedSetupContext& ctx) {
+void WorldPosHistoryNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[WorldPosHistoryNode] Setup (graph-scope initialization)");
 }
 
-void WorldPosHistoryNode::CompileImpl(TypedCompileContext& ctx) {
+void WorldPosHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[WorldPosHistoryNode] Compile START");
 
     SetDevice(ctx.In(WorldPosHistoryNodeConfig::VULKAN_DEVICE_IN));
@@ -94,14 +94,14 @@ void WorldPosHistoryNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(height_) + ", R32G32B32A32_SFLOAT storage image)");
 }
 
-void WorldPosHistoryNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void WorldPosHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Not a ring -- the same persistent image/view is re-emitted every frame (last frame's write
     // must still be here for this frame's reproject branch to read).
     ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW, view_);
     ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE,      image_);
 }
 
-void WorldPosHistoryNode::CleanupImpl(TypedCleanupContext& ctx) {
+void WorldPosHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown. Keep persistent
     // resources ONLY across a Recompile (the device survives) -- on DeviceLost the device and
     // every child object are gone (KI-004 class), mirrors AccumulationHistoryNode's guard.

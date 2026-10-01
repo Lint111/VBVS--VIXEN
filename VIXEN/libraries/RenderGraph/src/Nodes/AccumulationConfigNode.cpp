@@ -92,11 +92,11 @@ AccumulationConfigNode::AccumulationConfigNode(const std::string& n, NodeType* t
 {
 }
 
-void AccumulationConfigNode::SetupImpl(TypedSetupContext& ctx) {
+void AccumulationConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[AccumulationConfigNode] Setup (graph-scope initialization)");
 }
 
-void AccumulationConfigNode::CompileImpl(TypedCompileContext& ctx) {
+void AccumulationConfigNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[AccumulationConfigNode] Compile START");
 
     SetDevice(ctx.In(AccumulationConfigNodeConfig::VULKAN_DEVICE_IN));
@@ -144,7 +144,7 @@ constexpr float kAccumPosEpsilon = 1e-4f;
 constexpr float kAccumDirEpsilon = 1e-5f;
 }  // namespace
 
-void AccumulationConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void AccumulationConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(AccumulationConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
@@ -214,7 +214,7 @@ void AccumulationConfigNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(AccumulationConfigNodeConfig::FRAME_COUNTER, accumFrameCounter_);
 }
 
-void AccumulationConfigNode::CleanupImpl(TypedCleanupContext& ctx) {
+void AccumulationConfigNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     // Persist across recompile; release only on final application teardown.
     // Keep persistent resources ONLY across a Recompile (the device survives). On DeviceLost the
     // device and every child object are gone — keeping them (KI-004 class) left stale handles

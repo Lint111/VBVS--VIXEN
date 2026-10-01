@@ -41,7 +41,7 @@ ProxyRasterStageNode::ProxyRasterStageNode(const std::string& instanceName,
                                            NodeType* nodeType)
     : TypedNode<ProxyRasterStageNodeConfig>(instanceName, nodeType) {}
 
-void ProxyRasterStageNode::CompileImpl(TypedCompileContext& ctx) {
+void ProxyRasterStageNode::TypedCompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* device = ctx.In(ProxyRasterStageNodeConfig::VULKAN_DEVICE);
     if (!device || device->device == VK_NULL_HANDLE) {
         throw std::runtime_error("[ProxyRasterStageNode] Vulkan device is null");
@@ -95,7 +95,7 @@ void ProxyRasterStageNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(ProxyRasterStageNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void ProxyRasterStageNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ProxyRasterStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t frameIndex = ctx.In(ProxyRasterStageNodeConfig::CURRENT_FRAME_INDEX);
     if (frameIndex >= commandBuffers_.size()) {
         throw std::runtime_error("[ProxyRasterStageNode] frame index outside command-buffer ring");
@@ -315,7 +315,7 @@ void ProxyRasterStageNode::RecordCommands(TypedExecuteContext& ctx,
     }
 }
 
-void ProxyRasterStageNode::CleanupImpl(TypedCleanupContext&) {
+void ProxyRasterStageNode::TypedCleanupImpl(TypedCleanupContext&) {
     if (GetDevice() && GetDevice()->device != VK_NULL_HANDLE &&
         commandPool_ != VK_NULL_HANDLE && !commandBuffers_.empty()) {
         std::vector<VkCommandBuffer> buffers;

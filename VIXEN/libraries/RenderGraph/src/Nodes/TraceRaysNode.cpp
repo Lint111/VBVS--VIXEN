@@ -35,7 +35,7 @@ TraceRaysNode::TraceRaysNode(
     NODE_LOG_INFO("TraceRaysNode constructor (Phase K)");
 }
 
-void TraceRaysNode::SetupImpl(TypedSetupContext& ctx) {
+void TraceRaysNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[TraceRaysNode::SetupImpl] ENTERED");
 
     width_ = GetParameterValue<uint32_t>(TraceRaysNodeConfig::PARAM_WIDTH, 1920u);
@@ -48,7 +48,7 @@ void TraceRaysNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[TraceRaysNode::SetupImpl] COMPLETED");
 }
 
-void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
+void TraceRaysNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[TraceRaysNode::CompileImpl] ENTERED");
     NODE_LOG_INFO("=== TraceRaysNode::CompileImpl START ===");
 
@@ -137,7 +137,7 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("[TraceRaysNode::CompileImpl] COMPLETED");
 }
 
-void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Get frame info
     Vixen::Vulkan::Resources::IRenderTarget* swapchainInfo = ctx.In(TraceRaysNodeConfig::SWAPCHAIN_INFO);
     uint32_t imageIndex = ctx.In(TraceRaysNodeConfig::IMAGE_INDEX);
@@ -390,7 +390,7 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORE, signalSemaphores[0]);
 }
 
-void TraceRaysNode::CleanupImpl(TypedCleanupContext& ctx) {
+void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("TraceRaysNode cleanup");
 
     // Release GPU resources (QueryPools) while device is still valid.

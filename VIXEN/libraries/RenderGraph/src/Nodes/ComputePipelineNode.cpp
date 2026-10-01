@@ -39,7 +39,7 @@ ComputePipelineNode::ComputePipelineNode(
     NODE_LOG_DEBUG("[ComputePipelineNode] Constructor called for " + instanceName);
 }
 
-void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
+void ComputePipelineNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Graph-scope initialization...");
 
     // Create specialized performance logger (disabled by default)
@@ -62,7 +62,7 @@ void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Setup complete");
 }
 
-void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
+void ComputePipelineNode::TypedCompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Compiling compute pipeline...");
 
     // Sprint 6.5: Start compile timing (RAII - records on scope exit)
@@ -116,12 +116,12 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Pipeline created successfully");
 }
 
-void ComputePipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ComputePipelineNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // No-op: Pipeline is compile-time only resource
     // ComputeDispatchNode will use the pipeline during Execute phase
 }
 
-void ComputePipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ComputePipelineNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Cleaning up...");
 
     if (shaderModule_ != VK_NULL_HANDLE) {
