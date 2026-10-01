@@ -71,6 +71,7 @@ if(USE_CCACHE)
     # provisioning. Sets VIXEN_PROVISIONED_CCACHE_PROGRAM when a usable ccache is available
     # (system or provisioned); a no-op on non-Windows or if provisioning is disabled/fails.
     include("${VIXEN_ROOT}/cmake/ProvisionCcache.cmake" OPTIONAL)
+    find_program(CCACHE_PROGRAM ccache)
     find_program(SCCACHE_PROGRAM sccache)
 
     if(VIXEN_PROVISIONED_CCACHE_PROGRAM)
@@ -78,6 +79,11 @@ if(USE_CCACHE)
         set(_vixen_compiler_cache_env "CCACHE_DIR")
         set(_vixen_compiler_cache_kind "ccache")
         message(STATUS "Using ccache: ${VIXEN_PROVISIONED_CCACHE_PROGRAM} (preferred over sccache - caches MSVC PCH)")
+    elseif(CCACHE_PROGRAM)
+        set(_vixen_compiler_cache_program "${CCACHE_PROGRAM}")
+        set(_vixen_compiler_cache_env "CCACHE_DIR")
+        set(_vixen_compiler_cache_kind "ccache")
+        message(STATUS "Using system ccache: ${CCACHE_PROGRAM}")
     elseif(SCCACHE_PROGRAM)
         set(_vixen_compiler_cache_program "${SCCACHE_PROGRAM}")
         set(_vixen_compiler_cache_env "SCCACHE_DIR")
@@ -91,9 +97,19 @@ if(USE_CCACHE)
         set(_vixen_compiler_cache_path "${VIXEN_COMPILER_CACHE_DIR}/${_vixen_compiler_cache_kind}")
         set(_vixen_compiler_launcher
             "${CMAKE_COMMAND};-E;env;${_vixen_compiler_cache_env}=${_vixen_compiler_cache_path};${_vixen_compiler_cache_program}")
-        set(CMAKE_C_COMPILER_LAUNCHER "${_vixen_compiler_launcher}")
-        set(CMAKE_CXX_COMPILER_LAUNCHER "${_vixen_compiler_launcher}")
-        message(STATUS "VIXEN compiler cache data: ${_vixen_compiler_cache_path}")
+        if(NOT WIN32)
+            # Linux/macOS ccache discovery should honor the caller's environment
+            # and ccache configuration (generic sharing policy is owned by T-1584).
+            set(_vixen_compiler_launcher "${_vixen_compiler_cache_program}")
+        endif()
+        foreach(_language C CXX)
+            if(NOT DEFINED CMAKE_${_language}_COMPILER_LAUNCHER)
+                set(CMAKE_${_language}_COMPILER_LAUNCHER "${_vixen_compiler_launcher}")
+            endif()
+        endforeach()
+        if(WIN32)
+            message(STATUS "VIXEN compiler cache data: ${_vixen_compiler_cache_path}")
+        endif()
     endif()
 endif()
 
@@ -151,7 +167,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
 set(VIXEN_RUNTIME_CACHE_DIR "${CMAKE_BINARY_DIR}/runtime-cache" CACHE PATH
     "Persistent runtime cache directory (defaults to the build tree)")
-add_compile_definitions(VIXEN_RUNTIME_CACHE_DIR="${VIXEN_RUNTIME_CACHE_DIR}")
+# Consumed only by libraries/Core/src/RuntimeCachePaths.cpp (a source-scoped definition there);
+# a global definition would put this tree's absolute path into every compile command.
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
@@ -526,6 +543,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     message(STATUS "FetchContent base directory: ${FETCHCONTENT_BASE_DIR}")
 endif()
 
+# Normalize file/debug/macro paths before both dependencies and engine targets
+# are declared. Cache location/base_dir/limits stay caller-controlled.
+include("${VIXEN_ROOT}/cmake/VixenCompilerPaths.cmake")
+vixen_configure_compiler_paths()
+
 # All FetchContent and external library setup moved to dependencies/
 add_subdirectory(dependencies)
 
@@ -602,19 +624,29 @@ if(VIXEN_CODEGEN_GATE)
     add_subdirectory(codegen)
 endif()
 
-# No-new-mutex declaration gate (lock-free federation phase 0, design §5 / OD-11): every build runs
+# No-new-mutex declaration gate (lock-free federation phase 0, design §5 / OD-11): changed inputs run
 # scripts/check-no-new-mutex.sh, which fails when libraries/ or application/ gains a mutex declaration
 # not pinned (with its inventory family) in scripts/no-new-mutex.allowlist. Needs bash + python3;
 # silently skipped where either is absent (a plain MSVC shell) — run it from WSL/CI there.
-option(VIXEN_NO_NEW_MUTEX_GATE "Run the no-new-mutex declaration gate on every build" ON)
+option(VIXEN_NO_NEW_MUTEX_GATE "Check changed sources for undeclared mutex declarations" ON)
 if(VIXEN_NO_NEW_MUTEX_GATE)
     find_program(VIXEN_GATE_BASH NAMES bash)
     find_program(VIXEN_GATE_PYTHON3 NAMES python3)
     if(VIXEN_GATE_BASH AND VIXEN_GATE_PYTHON3)
-        add_custom_target(no_new_mutex_check ALL
+        include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
+        set(_mutex_inputs)
+        foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
+            file(GLOB_RECURSE _mutex_sources CONFIGURE_DEPENDS
+                "${VIXEN_ROOT}/libraries/*.${_extension}"
+                "${VIXEN_ROOT}/application/*.${_extension}")
+            list(FILTER _mutex_sources EXCLUDE REGEX "/tests/")
+            list(APPEND _mutex_inputs ${_mutex_sources})
+        endforeach()
+        vixen_add_checked_target(no_new_mutex_check ALL
             COMMAND ${VIXEN_GATE_BASH} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-no-new-mutex.sh"
                     --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            DEPENDS ${_mutex_inputs} "${VIXEN_ROOT}/scripts/check-no-new-mutex.sh"
+                "${VIXEN_ROOT}/scripts/no-new-mutex.allowlist"
             COMMENT "no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)"
             VERBATIM)
     else()
@@ -695,6 +727,9 @@ if(BUILD_TESTS)
 else()
     message(STATUS "Unit tests disabled - use -DBUILD_TESTS=ON to enable")
 endif()
+# PCH declarations are complete now, including the application and test targets.
+vixen_cache_compatible_pch("${VIXEN_ROOT}")
+
 # ============================================================================
 # Code Coverage Target (for VS Code Coverage Gutters)
 # ============================================================================

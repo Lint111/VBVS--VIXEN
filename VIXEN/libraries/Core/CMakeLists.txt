@@ -8,7 +8,16 @@ project(Core VERSION 1.0.0 LANGUAGES CXX)
 # Library sources
 add_library(Core STATIC
     src/MortonEncoding.cpp
+    src/RuntimeCachePaths.cpp
 )
+
+# The absolute runtime-cache root differs per build tree. Scope it to the one source that reads
+# it (and keep that source out of the PCH) so no other compile command embeds a tree path.
+if(DEFINED VIXEN_RUNTIME_CACHE_DIR)
+    set_source_files_properties(src/RuntimeCachePaths.cpp PROPERTIES
+        COMPILE_DEFINITIONS "VIXEN_RUNTIME_CACHE_DIR=\"${VIXEN_RUNTIME_CACHE_DIR}\""
+        SKIP_PRECOMPILE_HEADERS ON)
+endif()
 
 # Include directories
 target_include_directories(Core

@@ -108,54 +108,13 @@ if(NOT DEFINED YEROKET_ROOT)
     set(YEROKET_ROOT "${_yk_root}" CACHE PATH "Yeroket repo root (kernel-codegen tool)")
 endif()
 
-# The engine consumes one reviewed kernel snapshot for every codegen check.  This
-# is deliberately materialized under the build tree instead of checking out the
-# user's kernel repository: a mutable main checkout must not silently change the
-# generated contract between configure and build. The pin tracks the kernel
-# commit that produced this engine's generated artifacts and recipe declarations.
+# Every drift guard consumes the reviewed, immutable kernel pin. Reuse a locked
+# archive outside tracked directories; never check out the user's kernel clone.
+include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
+include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
 set(YEROKET_KERNEL_SHA "b3621c23621f2fe3f8b0dc49dbbe42f602ae3a27" CACHE STRING
     "Pinned Yeroket kernel commit used by VIXEN codegen checks")
-set(_yk_root "${YEROKET_ROOT}")
-set(_yk_pin_dir "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}")
-set(_yk_pin_stamp "${_yk_pin_dir}/.archive-complete")
-if(NOT EXISTS "${_yk_pin_stamp}")
-    find_program(_yk_git NAMES git)
-    if(NOT _yk_git)
-        message(FATAL_ERROR "[codegen] pinned Yeroket kernel ${YEROKET_KERNEL_SHA} requires git, but git was not found")
-    endif()
-    execute_process(
-        COMMAND "${_yk_git}" -C "${YEROKET_ROOT}" cat-file -e "${YEROKET_KERNEL_SHA}^{commit}"
-        RESULT_VARIABLE _yk_pin_exists
-        OUTPUT_QUIET
-        ERROR_VARIABLE _yk_pin_error)
-    if(NOT _yk_pin_exists EQUAL 0)
-        message(FATAL_ERROR "[codegen] pinned Yeroket kernel ${YEROKET_KERNEL_SHA} is unavailable from ${YEROKET_ROOT} "
-            "(${_yk_pin_error}); pass -DYEROKET_ROOT=<clone containing the pin>")
-    endif()
-    set(_yk_pin_archive "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}.tar")
-    execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_yk_pin_dir}"
-        RESULT_VARIABLE _yk_pin_mkdir)
-    execute_process(
-        COMMAND "${_yk_git}" -C "${YEROKET_ROOT}" archive --format=tar --output "${_yk_pin_archive}" "${YEROKET_KERNEL_SHA}"
-        RESULT_VARIABLE _yk_pin_archive_result
-        ERROR_VARIABLE _yk_pin_archive_error)
-    if(NOT _yk_pin_mkdir EQUAL 0 OR NOT _yk_pin_archive_result EQUAL 0)
-        message(FATAL_ERROR "[codegen] could not archive pinned Yeroket kernel ${YEROKET_KERNEL_SHA} "
-            "(${_yk_pin_archive_error})")
-    endif()
-    execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E tar xf "${_yk_pin_archive}"
-        WORKING_DIRECTORY "${_yk_pin_dir}"
-        RESULT_VARIABLE _yk_pin_extract
-        ERROR_VARIABLE _yk_pin_extract_error)
-    if(NOT _yk_pin_extract EQUAL 0)
-        message(FATAL_ERROR "[codegen] could not extract pinned Yeroket kernel ${YEROKET_KERNEL_SHA} "
-            "(${_yk_pin_extract_error})")
-    endif()
-    file(WRITE "${_yk_pin_stamp}" "${YEROKET_KERNEL_SHA}\n")
-endif()
-set(_yk_root "${_yk_pin_dir}")
+vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
 if(EXISTS "${_yk_tool}/CodegenTool.csproj")
@@ -339,7 +298,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_CODEGEN_RUNNER ${VIXEN_DOTNET})
     endif()
 
-    # Build the CodegenTool ONCE per build, then invoke the produced dll directly (task #29,
+    # Build the CodegenTool once per pinned snapshot/SDK, then invoke its local dll (task #29,
     # mirroring vixen/codegen/CMakeLists.txt's undertow_codegen_tool pattern). `dotnet run
     # --project` re-enters MSBuild to evaluate + up-to-date-check the tool project on EVERY
     # invocation -- 17 check + 17 regen targets here each paid that toll independently, AND
@@ -399,41 +358,67 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             runtimeOptions configProperties System.Globalization.Invariant true)
         set(_codegen_dotnet_cli_runtimeconfig_path
             "${CMAKE_CURRENT_BINARY_DIR}/dotnet-cli-invariant.runtimeconfig.json")
-        file(WRITE "${_codegen_dotnet_cli_runtimeconfig_path}" "${_codegen_dotnet_cli_runtimeconfig}\n")
+        vixen_write_if_different("${_codegen_dotnet_cli_runtimeconfig_path}" "${_codegen_dotnet_cli_runtimeconfig}\n")
         set(_codegen_linux_dotnet_cli_command
             "${VIXEN_DOTNET}" exec
             --runtimeconfig "${_codegen_dotnet_cli_runtimeconfig_path}"
             "${_codegen_dotnet_cli_dll}" build)
     endif()
-    if(_codegen_need_wsl_bridge)
-        add_custom_target(engine_codegen_tool
-            COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj" -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
-            COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
-            JOB_POOL msbuild
-            VERBATIM)
-    elseif(UNIX AND NOT APPLE)
-        add_custom_target(engine_codegen_tool
-            COMMAND ${_codegen_linux_dotnet_cli_command} "${_yk_tool}/CodegenTool.csproj"
-                -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
-            COMMENT "[codegen] building the kernel CodegenTool once with invariant globalization"
-            JOB_POOL msbuild
-            VERBATIM)
-    else()
-        add_custom_target(engine_codegen_tool
-            COMMAND ${VIXEN_DOTNET} build "${_yk_tool}/CodegenTool.csproj" -c Release -m:1 -nodeReuse:false -p:InvariantGlobalization=true
-            COMMENT "[codegen] building the kernel CodegenTool once (all engine emitter invocations reuse the dll)"
-            JOB_POOL msbuild
-            VERBATIM)
-    endif()
-    # TFM read from the csproj (not hardcoded) so a kernel retarget doesn't silently point every
-    # emitter at a path that no longer exists -- same reasoning as undertow's identical read.
+    # Isolate SDK intermediates as well as binaries. The cache key includes the
+    # kernel pin, host/SDK identity and build recipe, not the client build path.
     file(READ "${_yk_tool}/CodegenTool.csproj" _yk_csproj)
     if(_yk_csproj MATCHES "<TargetFramework>([^<]+)</TargetFramework>")
         set(_yk_tfm "${CMAKE_MATCH_1}")
     else()
-        set(_yk_tfm "net8.0")
+        message(FATAL_ERROR "[codegen] CodegenTool must declare its TargetFramework")
     endif()
-    set(_yk_dll "${_yk_tool}/bin/Release/${_yk_tfm}/CodegenTool.dll")
+    if(_codegen_need_wsl_bridge)
+        execute_process(COMMAND ${WSL_EXE} -e "${_wsl_dotnet}" --list-sdks
+            OUTPUT_VARIABLE _codegen_dotnet_sdk_list RESULT_VARIABLE _sdk_result)
+    else()
+        execute_process(COMMAND "${VIXEN_DOTNET}" --list-sdks
+            OUTPUT_VARIABLE _codegen_dotnet_sdk_list RESULT_VARIABLE _sdk_result)
+    endif()
+    if(NOT _sdk_result EQUAL 0)
+        message(FATAL_ERROR "[codegen] cannot identify the SDK for the CodegenTool cache")
+    endif()
+    file(SHA256 "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake" _build_recipe)
+    string(SHA256 _tool_key
+        "${YEROKET_KERNEL_SHA}|${CMAKE_HOST_SYSTEM_NAME}|${CMAKE_HOST_SYSTEM_PROCESSOR}|${_codegen_need_wsl_bridge}|${VIXEN_DOTNET}|${_codegen_dotnet_sdk_list}|${_yk_tfm}|Release|invariant|${_build_recipe}|artifacts-v1")
+    set(_tool_cache "${VIXEN_KERNEL_CACHE_DIR}/tools/${_tool_key}")
+    set(_tool_cached_bin "${_tool_cache}/bin")
+    set(_tool_local_bin "${CMAKE_CURRENT_BINARY_DIR}/tool")
+    set(_tool_stamp "${_tool_local_bin}/.complete")
+    set(_tool_config "${CMAKE_CURRENT_BINARY_DIR}/tool-build.cmake")
+    if(_codegen_need_wsl_bridge)
+        _codegen_to_wsl_path("${_tool_cached_bin}" _tool_cached_bin_run)
+        _codegen_to_wsl_path("${_tool_cache}/artifacts" _tool_artifacts_run)
+        set(_tool_build_command ${WSL_EXE} -e "${_wsl_dotnet}" build "${_yk_tool_run}/CodegenTool.csproj")
+    elseif(UNIX AND NOT APPLE)
+        set(_tool_cached_bin_run "${_tool_cached_bin}")
+        set(_tool_artifacts_run "${_tool_cache}/artifacts")
+        set(_tool_build_command ${_codegen_linux_dotnet_cli_command} "${_yk_tool}/CodegenTool.csproj")
+    else()
+        set(_tool_cached_bin_run "${_tool_cached_bin}")
+        set(_tool_artifacts_run "${_tool_cache}/artifacts")
+        set(_tool_build_command "${VIXEN_DOTNET}" build "${_yk_tool}/CodegenTool.csproj")
+    endif()
+    list(APPEND _tool_build_command -c Release -m:1 -nodeReuse:false
+        -p:InvariantGlobalization=true --artifacts-path "${_tool_artifacts_run}"
+        --output "${_tool_cached_bin_run}")
+    vixen_codegen_build_config("${_tool_config}" "${_tool_cache}"
+        "${_tool_cached_bin}" "${_tool_local_bin}" "${_tool_stamp}" ${_tool_build_command})
+    set(_yk_dll "${_tool_local_bin}/CodegenTool.dll")
+    add_custom_command(OUTPUT "${_tool_stamp}"
+        BYPRODUCTS "${_yk_dll}" "${_tool_local_bin}/CodegenTool.deps.json"
+            "${_tool_local_bin}/CodegenTool.runtimeconfig.json"
+        COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CODEGEN_BUILD_CONFIG=${_tool_config}"
+            -P "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake"
+        DEPENDS "${_tool_config}" "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake"
+            "${_yk_root}/.archive-complete"
+        COMMENT "[codegen] materializing cached kernel CodegenTool"
+        JOB_POOL msbuild VERBATIM)
+    add_custom_target(engine_codegen_tool DEPENDS "${_tool_stamp}" "${_yk_dll}")
     if(_codegen_need_wsl_bridge)
         _codegen_to_wsl_path("${_yk_dll}" _yk_dll_run)
     else()
@@ -445,11 +430,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct OctreeConfig
         --out-cpp  "${_out_octreeconfig_cpp_run}"
         --out-glsl "${_out_octreeconfig_glsl_run}")
-    add_custom_target(octreeconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(octreeconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args} --check
         COMMENT "[codegen] golden check: OctreeConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(octreeconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_oc_args}
@@ -469,11 +452,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct-precision RecipeParams
         --out-cpp  "${_out_recipeparams_cpp_run}"
         --out-glsl "${_out_recipeparams_glsl_run}")
-    add_custom_target(recipeparams_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(recipeparams_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_rp_args} --check
         COMMENT "[codegen] golden check: RecipeParams.g.h/.glsl match canonical (Yeroket tool, --struct-precision)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(recipeparams_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rp_args}
@@ -494,8 +475,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-header "${_out_recipe_simd_run}"
         --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
         --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}")
-    add_custom_target(recipe_simd_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(recipe_simd_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
         COMMENT "[codegen] golden check: RecipeSimd and CPU/GLSL dispatch match merged recipe declarations"
         VERBATIM)
@@ -514,8 +494,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --out-header "${_out_sdf_core_cpp_run}"
         --out-hlsl "${_out_sdf_core_hlsl_run}"
         --out-glsl "${_out_sdf_core_glsl_run}")
-    add_custom_target(sdf_core_kernels_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(sdf_core_kernels_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_sdf_core_kernel_args} --check
         COMMENT "[codegen] golden check: SdfCoreKernels C++/HLSL/GLSL match canonical kernels"
         VERBATIM)
@@ -533,8 +512,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-extra "${_recipe_value_kernel_source_run}"
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_sdf_opcodes_run}")
-    add_custom_target(recipe_opcode_mirror_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(recipe_opcode_mirror_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_opcode_mirror_args} --check
         COMMENT "[codegen] golden check: SdfOpCodes.g.h matches canonical recipe opcodes"
         VERBATIM)
@@ -560,11 +538,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct LightingConfig
         --out-cpp  "${_out_lightingconfig_cpp_run}"
         --out-glsl "${_out_lightingconfig_glsl_run}")
-    add_custom_target(lightingconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(lightingconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args} --check
         COMMENT "[codegen] golden check: LightingConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(lightingconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_lc_args}
@@ -580,11 +556,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct ShadowConfig
         --out-cpp  "${_out_shadowconfig_cpp_run}"
         --out-glsl "${_out_shadowconfig_glsl_run}")
-    add_custom_target(shadowconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(shadowconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_sc_args} --check
         COMMENT "[codegen] golden check: ShadowConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(shadowconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_sc_args}
@@ -600,11 +574,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct AccumulationConfig
         --out-cpp  "${_out_accumulationconfig_cpp_run}"
         --out-glsl "${_out_accumulationconfig_glsl_run}")
-    add_custom_target(accumulationconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(accumulationconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_ac_args} --check
         COMMENT "[codegen] golden check: AccumulationConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(accumulationconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_ac_args}
@@ -620,11 +592,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct PrevCameraConfig
         --out-cpp  "${_out_prevcameraconfig_cpp_run}"
         --out-glsl "${_out_prevcameraconfig_glsl_run}")
-    add_custom_target(prevcameraconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(prevcameraconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_pcc_args} --check
         COMMENT "[codegen] golden check: PrevCameraConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(prevcameraconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_pcc_args}
@@ -643,11 +613,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct ReservoirConfig
         --out-cpp  "${_out_reservoirconfig_cpp_run}"
         --out-glsl "${_out_reservoirconfig_glsl_run}")
-    add_custom_target(reservoirconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(reservoirconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_rc_args} --check
         COMMENT "[codegen] golden check: ReservoirConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(reservoirconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rc_args}
@@ -665,11 +633,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct ProbeGridConfig
         --out-cpp  "${_out_probegridconfig_cpp_run}"
         --out-glsl "${_out_probegridconfig_glsl_run}")
-    add_custom_target(probegridconfig_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(probegridconfig_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_pgc_args} --check
         COMMENT "[codegen] golden check: ProbeGridConfig.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(probegridconfig_regen
         COMMAND ${_CODEGEN_RUNNER} ${_pgc_args}
@@ -687,11 +653,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct LightTreeBuffer
         --out-cpp  "${_out_lighttreebuffer_cpp_run}"
         --out-glsl "${_out_lighttreebuffer_glsl_run}")
-    add_custom_target(lighttreebuffer_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(lighttreebuffer_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_ltb_args} --check
         COMMENT "[codegen] golden check: LightTreeBuffer.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(lighttreebuffer_regen
         COMMAND ${_CODEGEN_RUNNER} ${_ltb_args}
@@ -708,11 +672,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_config_run}" --struct ReservoirRecord
         --out-cpp  "${_out_reservoirrecord_cpp_run}"
         --out-glsl "${_out_reservoirrecord_glsl_run}")
-    add_custom_target(reservoirrecord_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(reservoirrecord_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_rr_args} --check
         COMMENT "[codegen] golden check: ReservoirRecord.g.h/.glsl match canonical (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(reservoirrecord_regen
         COMMAND ${_CODEGEN_RUNNER} ${_rr_args}
@@ -727,11 +689,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view Hud
         --out-header "${_out_hud_header_run}")
-    add_custom_target(view_hud_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(view_hud_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_args} --check
         COMMENT "[codegen] golden check: Hud.g.h matches canonical [View] schema (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_args}
@@ -747,11 +707,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view EditorLayers
         --out-header "${_out_editor_layers_header_run}")
-    add_custom_target(view_editor_layers_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(view_editor_layers_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args} --check
         COMMENT "[codegen] golden check: EditorLayers.g.h matches canonical [View] schema (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_editor_layers_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_editor_layers_args}
@@ -768,11 +726,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view-markup Hud
         --out-rml "${_out_hud_rml_run}")
-    add_custom_target(view_hud_markup_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(view_hud_markup_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args} --check
         COMMENT "[codegen] golden check: Hud.view.rml matches canonical [View] schema (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_markup_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_markup_args}
@@ -788,11 +744,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --schema "${_schema_view_run}" --view-blob Hud
         --out-header  "${_out_hud_blob_header_run}"
         --out-datafile "${_out_hud_blob_data_run}")
-    add_custom_target(view_hud_blob_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(view_hud_blob_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args} --check
         COMMENT "[codegen] golden check: Hud.blob.g.h + hud.viewblob match canonical [View] schema"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_blob_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_blob_args}
@@ -809,11 +763,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         "${_yk_dll_run}"
         --schema "${_schema_view_run}" --view-writer Hud
         --out-cs "${_out_hud_writer_cs_run}")
-    add_custom_target(view_hud_writer_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(view_hud_writer_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args} --check
         COMMENT "[codegen] golden check: Hud.view.g.cs matches canonical [View] schema (Yeroket tool)"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(view_hud_writer_regen
         COMMAND ${_CODEGEN_RUNNER} ${_view_writer_args}
@@ -846,11 +798,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             --exclude UndertowBuildingLabor
             --out-header "${_out_appflow_hdr_run}"
             --out-datafile "${_out_appflow_data_run}")
-        add_custom_target(appflow_check ALL
-            JOB_POOL vixen_codegen
+        vixen_add_codegen_check(appflow_check ALL
             COMMAND ${_CODEGEN_RUNNER} ${_appflow_args} --check
             COMMENT "[codegen] golden check: AppFlow.g.h + AppFlow.appflow match canonical AppFlowReference schema"
-            JOB_POOL msbuild
             VERBATIM)
         add_custom_target(appflow_regen
             COMMAND ${_CODEGEN_RUNNER} ${_appflow_args}
@@ -876,11 +826,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             --exclude UndertowBuildingPower
             --exclude UndertowBuildingLabor
             --out-header "${_out_view_noun_hdr_run}")
-        add_custom_target(view_noun_enum_check ALL
-            JOB_POOL vixen_codegen
+        vixen_add_codegen_check(view_noun_enum_check ALL
             COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args} --check
             COMMENT "[codegen] golden check: ViewNounId.g.h matches the [View] schema nouns"
-            JOB_POOL msbuild
             VERBATIM)
         add_custom_target(view_noun_enum_regen
             COMMAND ${_CODEGEN_RUNNER} ${_view_noun_args}
@@ -898,11 +846,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         "${_yk_dll_run}"
         --schema "${_schema_callables_run}" --callable-cpp
         --out-header "${_out_callables_hdr_run}")
-    add_custom_target(callables_check ALL
-        JOB_POOL vixen_codegen
+    vixen_add_codegen_check(callables_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args} --check
         COMMENT "[codegen] golden check: AppFlowCallables.generated.g.hpp matches canonical [KernelCallable] schema"
-        JOB_POOL msbuild
         VERBATIM)
     add_custom_target(callables_regen
         COMMAND ${_CODEGEN_RUNNER} ${_callables_args}

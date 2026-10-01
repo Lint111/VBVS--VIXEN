@@ -24,6 +24,8 @@
 #
 # Runs at CMake CONFIGURE time so the generated file is ready before any target needs it.
 
+include("${CMAKE_CURRENT_LIST_DIR}/VixenWriteIfDifferent.cmake")
+
 function(vixen_generate_node_manifest out_file)
     cmake_parse_arguments(VGNM "" "" "SOURCES" ${ARGN})
 
@@ -60,7 +62,7 @@ function(vixen_generate_node_manifest out_file)
     endforeach()
     string(APPEND _content ")\n")
 
-    file(WRITE "${out_file}" "${_content}")
+    vixen_write_if_different("${out_file}" "${_content}")
 
     list(LENGTH _node_types _node_count)
     message(STATUS "vixen_generate_node_manifest: wrote ${_node_count} node type(s) to ${out_file}")
