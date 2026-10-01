@@ -37,6 +37,9 @@ private:
     std::deque<std::vector<Generated::FlowParamSchema>> paramArrays_;
     std::vector<Generated::AppFlowActionDecl> actions_;
     std::vector<Generated::AppFlowTransition> transitions_;
+    std::vector<Generated::FlowStateId> states_;
+    Generated::FlowStateId initialState_{};
+    std::vector<Generated::FlowStateId> terminalStates_;
     std::vector<Generated::AppFlowElementTrigger> elementTriggers_;
     std::vector<Generated::AppFlowKeyDefault> keyDefaults_;
     std::vector<Generated::AppFlowReturnEdge> returnEdges_;

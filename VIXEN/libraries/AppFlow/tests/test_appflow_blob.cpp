@@ -44,16 +44,25 @@ void ExpectViewMatchesCompiled(const AppFlowContainerView& actual) {
     for (std::size_t i = 0; i < actual.transitionTable().size(); ++i) {
         const auto& got = actual.transitionTable()[i];
         const auto& want = expected.transitions()[i];
+        EXPECT_STREQ(got.id, want.id);
         EXPECT_EQ(got.from, want.from);
         EXPECT_EQ(got.to, want.to);
         EXPECT_EQ(got.guard, want.guard);
-        EXPECT_STREQ(got.effect, want.effect);
     }
+
+    ASSERT_EQ(actual.stateTable().size(), expected.stateTable().size());
+    for (std::size_t i = 0; i < actual.stateTable().size(); ++i)
+        EXPECT_EQ(actual.stateTable()[i], expected.stateTable()[i]);
+    EXPECT_EQ(actual.initialState(), expected.initialState());
+    ASSERT_EQ(actual.terminalStateTable().size(), expected.terminalStateTable().size());
+    for (std::size_t i = 0; i < actual.terminalStateTable().size(); ++i)
+        EXPECT_EQ(actual.terminalStateTable()[i], expected.terminalStateTable()[i]);
 
     ASSERT_EQ(actual.elementTriggerTable().size(), expected.elementTriggers().size());
     for (std::size_t i = 0; i < actual.elementTriggerTable().size(); ++i) {
         const auto& got = actual.elementTriggerTable()[i];
         const auto& want = expected.elementTriggers()[i];
+        EXPECT_STREQ(got.id, want.id);
         EXPECT_STREQ(got.elementPattern, want.elementPattern);
         EXPECT_EQ(got.action, want.action);
         EXPECT_STREQ(got.paramName, want.paramName);
@@ -64,6 +73,7 @@ void ExpectViewMatchesCompiled(const AppFlowContainerView& actual) {
     for (std::size_t i = 0; i < actual.keyDefaultTable().size(); ++i) {
         const auto& got = actual.keyDefaultTable()[i];
         const auto& want = expected.keyDefaults()[i];
+        EXPECT_STREQ(got.id, want.id);
         EXPECT_EQ(got.action, want.action);
         EXPECT_EQ(got.chord.key, want.chord.key);
         EXPECT_EQ(got.chord.mods, want.chord.mods);
@@ -75,6 +85,7 @@ void ExpectViewMatchesCompiled(const AppFlowContainerView& actual) {
     for (std::size_t i = 0; i < actual.returnEdgeTable().size(); ++i) {
         const auto& got = actual.returnEdgeTable()[i];
         const auto& want = expected.returnEdges()[i];
+        EXPECT_STREQ(got.id, want.id);
         EXPECT_EQ(got.from, want.from);
         EXPECT_EQ(got.trigger.key, want.trigger.key);
         EXPECT_EQ(got.trigger.mods, want.trigger.mods);
@@ -105,10 +116,9 @@ TEST(AppFlowBlob, BlobMatchesCompiledContainerAndRuntimeBehavior) {
 
     compiled.SetGuardResult(FlowGuardId::DocumentValid, true);
     loaded.SetGuardResult(FlowGuardId::DocumentValid, true);
-    compiled.SetCurrent(FlowStateId::Editing);
-    loaded.SetCurrent(FlowStateId::Editing);
-    EXPECT_EQ(compiled.NavTo(FlowStateId::Simulating), DispatchResult::Ok);
-    EXPECT_EQ(loaded.NavTo(FlowStateId::Simulating), DispatchResult::Ok);
+    const FlowTriggerCause cause{FlowTriggerKind::System, "AppFlowBlobTest"};
+    EXPECT_EQ(compiled.NavTo(FlowEdgeId::Transitions, cause), DispatchResult::Ok);
+    EXPECT_EQ(loaded.NavTo(FlowEdgeId::Transitions, cause), DispatchResult::Ok);
     EXPECT_EQ(loaded.Current(), compiled.Current());
 }
 
@@ -147,8 +157,12 @@ TEST(AppFlowBlob, ReloadedRuntimeOwnsParsedBlobStorage) {
 }
 
 TEST(AppFlowBlob, ShapeHashMismatchRejectsAndRuntimeFallsBack) {
-    const std::string shapeEdit = ReplaceOnce(
-        ReadGeneratedBlob(), "shape 0x113F6528", "shape 0x00000000");
+    std::string shapeEdit = ReadGeneratedBlob();
+    const std::size_t shapeStart = shapeEdit.find("shape 0x");
+    ASSERT_NE(shapeStart, std::string::npos);
+    const std::size_t hashEnd = shapeEdit.find('\n', shapeStart);
+    ASSERT_NE(hashEnd, std::string::npos);
+    shapeEdit.replace(shapeStart, hashEnd - shapeStart, "shape 0x00000000");
     auto blob = AppFlowBlobFile::Parse(shapeEdit);
     EXPECT_FALSE(blob.has_value());
 

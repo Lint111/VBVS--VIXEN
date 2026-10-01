@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <unordered_map>
+#include "AppFlowEvents.h"
 #include "generated/AppFlow.g.h"
 
 namespace Vixen::AppFlow {
@@ -15,14 +16,17 @@ using Generated::FlowScope; using Generated::FlowStateId; using Generated::FlowA
 // timing/sequence qualifier extends the chord without a resolver rewrite (design §D8).
 class InputProfile {
 public:
-    void Bind(FlowScope scope, FlowStateId state, KeyChord chord, FlowActionId action);
-    bool Resolve(KeyChord chord, FlowStateId active, FlowActionId& out) const;
+    void Bind(FlowScope scope, FlowStateId state, KeyChord chord, FlowActionId action,
+              FlowTriggerCause cause = {});
+    bool Resolve(KeyChord chord, FlowStateId active, FlowActionId& out,
+                 FlowTriggerCause* cause = nullptr) const;
 
 private:
+    struct Binding { FlowActionId action; FlowTriggerCause cause; };
     // key = packed (KeyId<<8 | KeyMod); one map per scope tier.
     static uint32_t Pack(KeyChord c) { return (uint32_t(uint16_t(c.key)) << 8) | uint8_t(c.mods); }
-    std::unordered_map<uint32_t, FlowActionId> global_;
-    std::unordered_map<uint64_t, FlowActionId> byState_;    // (stateId<<32 | packedChord)
+    std::unordered_map<uint32_t, Binding> global_;
+    std::unordered_map<uint64_t, Binding> byState_;    // (stateId<<32 | packedChord)
 };
 
 }  // namespace Vixen::AppFlow

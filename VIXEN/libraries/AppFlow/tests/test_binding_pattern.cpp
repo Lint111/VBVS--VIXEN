@@ -7,7 +7,9 @@ using namespace Vixen::AppFlow::Generated;
 TEST(BindingPattern, ExtractsTypedParamFromSelector) {
     BindingStore s;
     s.RegisterActions(std::span<const AppFlowActionDecl>(kActionDecls, std::size(kActionDecls)));
-    AppFlowElementTrigger trig{"layer-{index}-toggle", FlowActionId::ToggleLayer, "layerIndex", "click"};
+    AppFlowElementTrigger trig{FlowElementTriggerId::ToggleLayerTrigger,
+                               "layer-{index}-toggle", FlowActionId::ToggleLayer,
+                               "layerIndex", "click"};
     s.AddElementTrigger(trig);
 
     BoundAction out;

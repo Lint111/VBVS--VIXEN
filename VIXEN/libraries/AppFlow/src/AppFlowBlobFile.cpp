@@ -74,6 +74,9 @@ AppFlowBlobFile::AppFlowBlobFile(AppFlowBlobFile&& other) noexcept
       paramArrays_(std::move(other.paramArrays_)),
       actions_(std::move(other.actions_)),
       transitions_(std::move(other.transitions_)),
+      states_(std::move(other.states_)),
+      initialState_(other.initialState_),
+      terminalStates_(std::move(other.terminalStates_)),
       elementTriggers_(std::move(other.elementTriggers_)),
       keyDefaults_(std::move(other.keyDefaults_)),
       returnEdges_(std::move(other.returnEdges_)),
@@ -88,6 +91,9 @@ AppFlowBlobFile& AppFlowBlobFile::operator=(AppFlowBlobFile&& other) noexcept {
     paramArrays_ = std::move(other.paramArrays_);
     actions_ = std::move(other.actions_);
     transitions_ = std::move(other.transitions_);
+    states_ = std::move(other.states_);
+    initialState_ = other.initialState_;
+    terminalStates_ = std::move(other.terminalStates_);
     elementTriggers_ = std::move(other.elementTriggers_);
     keyDefaults_ = std::move(other.keyDefaults_);
     returnEdges_ = std::move(other.returnEdges_);
@@ -99,7 +105,8 @@ AppFlowBlobFile& AppFlowBlobFile::operator=(AppFlowBlobFile&& other) noexcept {
 
 void AppFlowBlobFile::RebindView() noexcept {
     view_ = Generated::AppFlowContainerView(
-        actions_, transitions_, elementTriggers_, keyDefaults_, returnEdges_, dataTargets_);
+        actions_, transitions_, elementTriggers_, keyDefaults_, returnEdges_, dataTargets_,
+        states_, initialState_, terminalStates_);
 }
 
 std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
@@ -109,6 +116,7 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
         std::string raw;
         bool haveModel = false;
         bool haveShape = false;
+        bool haveInitial = false;
         struct ActionRow { uint32_t id; uint32_t footprint; bool hasInvert; };
         std::vector<ActionRow> actionRows;
         std::unordered_map<uint32_t, std::vector<Generated::FlowParamSchema>> paramsByAction;
@@ -130,7 +138,23 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
             } else if (directive == "shape") {
                 if (!ReadHex32(line, file.shapeHash_)) return std::nullopt;
                 haveShape = true;
-            } else if (directive == "state" || directive == "guard" || directive == "action" ||
+            } else if (directive == "state") {
+                std::string name; uint32_t value;
+                if (!(line >> name) || !ReadU32(line, value, "state id")) return std::nullopt;
+                Generated::FlowStateId state;
+                if (!Narrow(value, state, "state id")) return std::nullopt;
+                file.states_.push_back(state);
+            } else if (directive == "initial") {
+                uint32_t value;
+                if (haveInitial || !ReadU32(line, value, "initial state")) return std::nullopt;
+                if (!Narrow(value, file.initialState_, "initial state")) return std::nullopt;
+                haveInitial = true;
+            } else if (directive == "terminal") {
+                uint32_t value; Generated::FlowStateId state;
+                if (!ReadU32(line, value, "terminal state") ||
+                    !Narrow(value, state, "terminal state")) return std::nullopt;
+                file.terminalStates_.push_back(state);
+            } else if (directive == "guard" || directive == "action" ||
                        directive == "paramtype" || directive == "key" || directive == "mod") {
                 std::string name; uint32_t value;
                 if (!(line >> name) || !ReadU32(line, value, "enum value")) return std::nullopt;
@@ -149,23 +173,24 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
                 if (!Narrow(type, paramType, "param type")) return std::nullopt;
                 paramsByAction[action].push_back({intern(name), paramType});
             } else if (directive == "transition") {
-                uint32_t from, to, guard; std::string effect;
-                if (!ReadU32(line, from, "transition from") || !ReadU32(line, to, "transition to") ||
-                    !ReadU32(line, guard, "transition guard") || !(line >> effect)) return std::nullopt;
+                uint32_t from, to, guard; std::string id;
+                if (!(line >> id) || !ReadU32(line, from, "transition from") || !ReadU32(line, to, "transition to") ||
+                    !ReadU32(line, guard, "transition guard")) return std::nullopt;
                 Generated::FlowStateId fromId, toId; Generated::FlowGuardId guardId;
                 if (!Narrow(from, fromId, "transition from") || !Narrow(to, toId, "transition to") ||
                     !Narrow(guard, guardId, "transition guard")) return std::nullopt;
-                file.transitions_.push_back({fromId, toId, guardId, intern(effect)});
+                file.transitions_.push_back({intern(id), fromId, toId, guardId});
             } else if (directive == "trigger") {
-                uint32_t action; std::string element, param, on;
-                if (!(line >> element) || !ReadU32(line, action, "trigger action") ||
+                uint32_t action; std::string id, element, param, on;
+                if (!(line >> id >> element) || !ReadU32(line, action, "trigger action") ||
                     !(line >> param >> on)) return std::nullopt;
                 if (param == "-") param.clear();
                 Generated::FlowActionId actionId;
                 if (!Narrow(action, actionId, "trigger action")) return std::nullopt;
-                file.elementTriggers_.push_back({intern(element), actionId, intern(param), intern(on)});
+                file.elementTriggers_.push_back({intern(id), intern(element), actionId, intern(param), intern(on)});
             } else if (directive == "keydefault") {
-                uint32_t action, key, mods, scope, state;
+                uint32_t action, key, mods, scope, state; std::string id;
+                if (!(line >> id)) return std::nullopt;
                 if (!ReadU32(line, action, "key action") || !ReadU32(line, key, "key id") ||
                     !ReadU32(line, mods, "key mods") || !ReadU32(line, scope, "key scope") ||
                     !ReadU32(line, state, "key state")) return std::nullopt;
@@ -174,15 +199,16 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
                 if (!Narrow(action, actionId, "key action") || !Narrow(key, keyId, "key id") ||
                     !Narrow(mods, modId, "key mods") || !Narrow(scope, scopeId, "key scope") ||
                     !Narrow(state, stateId, "key state")) return std::nullopt;
-                file.keyDefaults_.push_back({actionId, {keyId, modId}, scopeId, stateId});
+                file.keyDefaults_.push_back({intern(id), actionId, {keyId, modId}, scopeId, stateId});
             } else if (directive == "return") {
-                uint32_t from, key, mods;
+                uint32_t from, key, mods; std::string id;
+                if (!(line >> id)) return std::nullopt;
                 if (!ReadU32(line, from, "return state") || !ReadU32(line, key, "return key") ||
                     !ReadU32(line, mods, "return mods")) return std::nullopt;
                 Generated::FlowStateId fromId; Generated::KeyId keyId; Generated::KeyMod modId;
                 if (!Narrow(from, fromId, "return state") || !Narrow(key, keyId, "return key") ||
                     !Narrow(mods, modId, "return mods")) return std::nullopt;
-                file.returnEdges_.push_back({fromId, {keyId, modId}});
+                file.returnEdges_.push_back({intern(id), fromId, {keyId, modId}});
             } else if (directive == "data") {
                 uint32_t action, ordinal; std::string noun;
                 if (!ReadU32(line, action, "data action") || !ReadU32(line, ordinal, "data noun ordinal") ||
@@ -196,8 +222,8 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
             }
         }
 
-        if (!haveModel || !haveShape || actionRows.empty()) {
-            Error("missing model/shape or empty action table");
+        if (!haveModel || !haveShape || actionRows.empty() || file.states_.empty() || !haveInitial) {
+            Error("missing model/shape/state markers or empty action table");
             return std::nullopt;
         }
         for (const auto& row : actionRows) {
@@ -214,7 +240,8 @@ std::optional<AppFlowBlobFile> AppFlowBlobFile::Parse(std::string_view text) {
 
         file.view_ = Generated::AppFlowContainerView(
             file.actions_, file.transitions_, file.elementTriggers_, file.keyDefaults_,
-            file.returnEdges_, file.dataTargets_);
+            file.returnEdges_, file.dataTargets_, file.states_, file.initialState_,
+            file.terminalStates_);
         if (file.shapeHash_ != Generated::kAppFlowShapeHash) {
             Error("shape hash mismatch: this facade change alters the interface/graph → rebuild required");
             return std::nullopt;

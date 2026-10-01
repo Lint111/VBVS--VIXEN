@@ -41,7 +41,7 @@ bool BindingStore::AddBinding(const BindingSpec& spec, std::string& warn) {
         return false;
     }
 
-    bindings_.emplace(spec.selector, BoundAction{spec.action, spec.on, spec.params});
+    bindings_.emplace(spec.selector, BoundAction{spec.action, spec.on, spec.params, {}});
     return true;
 }
 
@@ -57,7 +57,8 @@ bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& o
         if (selector.compare(selector.size() - p.suffix.size(), p.suffix.size(), p.suffix) != 0) continue;
         std::string mid = selector.substr(p.prefix.size(), selector.size() - p.prefix.size() - p.suffix.size());
         if (mid.empty()) continue;
-        out = BoundAction{p.action, p.on, {{p.paramName, mid}}};
+        out = BoundAction{p.action, p.on, {{p.paramName, mid}},
+                          {FlowTriggerKind::ElementTrigger, p.triggerId}};
         return true;
     }
     return false;
@@ -71,7 +72,9 @@ void BindingStore::AddElementTrigger(const Generated::AppFlowElementTrigger& tri
         // No {placeholder} -> the pattern is a literal selector ("back-button"): exact-match,
         // no extracted param. First-win, same as AddBinding (never overwrite).
         if (!pat.empty() && !bindings_.contains(pat)) {
-            bindings_.emplace(pat, BoundAction{trig.action, trig.on, {}});
+            bindings_.emplace(pat, BoundAction{trig.action, trig.on, {},
+                                                {FlowTriggerKind::ElementTrigger,
+                                                 trig.id ? trig.id : ""}});
         }
         return;
     }
@@ -79,7 +82,8 @@ void BindingStore::AddElementTrigger(const Generated::AppFlowElementTrigger& tri
         return;   // malformed pattern -> inert (never a wrong dispatch)
     }
     // Split "layer-{index}-toggle" into prefix="layer-", suffix="-toggle".
-    patterns_.push_back({pat.substr(0, lb), pat.substr(rb + 1), trig.paramName, trig.action, trig.on});
+    patterns_.push_back({pat.substr(0, lb), pat.substr(rb + 1), trig.paramName,
+                          trig.id ? trig.id : "", trig.action, trig.on});
 }
 
 } // namespace Vixen::AppFlow
