@@ -149,6 +149,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # shot instead of leaving multi-GB PDB/ILK files behind (see Worktree-Build-Artifact-
 # Accumulation-Audit-2026-07.md Fix 2). RUNTIME_OUTPUT_DIRECTORY is set per-target below.
 set(VIXEN_BINARIES_DIR ${CMAKE_BINARY_DIR}/binaries)
+set(VIXEN_RUNTIME_CACHE_DIR "${CMAKE_BINARY_DIR}/runtime-cache" CACHE PATH
+    "Persistent runtime cache directory (defaults to the build tree)")
+add_compile_definitions(VIXEN_RUNTIME_CACHE_DIR="${VIXEN_RUNTIME_CACHE_DIR}")
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
@@ -235,6 +238,7 @@ include(cmake/ProvisionGdb.cmake)
 
 # Reusable runtime-asset staging helper (vixen_stage_assets) for apps + consumers.
 include(cmake/VixenAssets.cmake)
+include(cmake/VixenTesting.cmake)
 
 # Configure-time AddNode<T>-call-site scan (vixen_generate_node_manifest) — drives scoped
 # per-app RenderGraph node linkage (Graph-Derived-Node-Linkage-Spec-2026-07).
@@ -487,27 +491,47 @@ endif()
 # ============================================================================
 # Third-Party Dependencies
 # ============================================================================
-# Share FetchContent's clone+build output across all worktrees/presets of this repo instead of
-# each one re-cloning/rebuilding the same ~12 third-party libs (several built from source: TBB,
-# RmlUi, freetype, glfw, googletest) into its own build/<preset>/_deps. This is the single
-# largest driver of disk growth in a multi-worktree workflow — see Worktree-Build-Artifact-
-# Accumulation-Audit-2026-07.md Fix 1. Only set it when VIXEN is the top-level project: a parent
-# super-build (e.g. UNDERTOW's vixen/ add_subdirectory) already controls this cache-wide setting
-# and must not be overridden by an inner add_subdirectory. Override with VIXEN_FETCHCONTENT_CACHE
-# env var for machines where C:/vixen-fetchcontent-cache isn't appropriate (e.g. non-Windows).
+# Keep FetchContent in the build tree by default so a fresh worktree has isolated dependency
+# sources and build outputs. A shared cache is an explicit opt-in through either environment
+# variable or an existing -DFETCHCONTENT_BASE_DIR cache entry. Only set it when VIXEN is the
+# top-level project: a parent super-build (e.g. UNDERTOW's vixen/ add_subdirectory) already owns
+# this cache-wide setting and must not be overridden by an inner add_subdirectory.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    if(DEFINED ENV{VIXEN_FETCHCONTENT_CACHE})
-        set(FETCHCONTENT_BASE_DIR "$ENV{VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "Shared FetchContent cache" FORCE)
-    elseif(WIN32)
-        set(FETCHCONTENT_BASE_DIR "C:/vixen-fetchcontent-cache" CACHE PATH "Shared FetchContent cache" FORCE)
+    if(DEFINED ENV{VIXEN_FETCHCONTENT_CACHE} AND NOT "$ENV{VIXEN_FETCHCONTENT_CACHE}" STREQUAL "")
+        set(FETCHCONTENT_BASE_DIR "$ENV{VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "FetchContent base directory" FORCE)
+    elseif(DEFINED ENV{FETCHCONTENT_BASE_DIR} AND NOT "$ENV{FETCHCONTENT_BASE_DIR}" STREQUAL "")
+        set(FETCHCONTENT_BASE_DIR "$ENV{FETCHCONTENT_BASE_DIR}" CACHE PATH "FetchContent base directory" FORCE)
     else()
-        set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/vixen-fetchcontent-cache" CACHE PATH "Shared FetchContent cache" FORCE)
+        if(DEFINED CACHE{FETCHCONTENT_BASE_DIR})
+            get_property(_vixen_fetchcontent_existing CACHE FETCHCONTENT_BASE_DIR PROPERTY VALUE)
+        else()
+            set(_vixen_fetchcontent_existing "")
+        endif()
+
+        # Migrate the historical implicit shared-cache default once. An explicit cache value
+        # (including a local path) survives later CMake regeneration unchanged.
+        if(WIN32)
+            set(_vixen_legacy_fetchcontent_default "C:/vixen-fetchcontent-cache")
+        else()
+            set(_vixen_legacy_fetchcontent_default "$ENV{HOME}/.cache/vixen-fetchcontent-cache")
+        endif()
+        if(NOT DEFINED CACHE{FETCHCONTENT_BASE_DIR} OR
+           "${_vixen_fetchcontent_existing}" STREQUAL "${_vixen_legacy_fetchcontent_default}")
+            set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
+                "Worktree-local FetchContent source and build directory" FORCE)
+        endif()
     endif()
-    message(STATUS "FetchContent shared cache: ${FETCHCONTENT_BASE_DIR}")
+    unset(_vixen_fetchcontent_existing)
+    unset(_vixen_legacy_fetchcontent_default)
+    message(STATUS "FetchContent base directory: ${FETCHCONTENT_BASE_DIR}")
 endif()
 
 # All FetchContent and external library setup moved to dependencies/
 add_subdirectory(dependencies)
+
+# Set CTest's Vulkan loader environment from the same paths configure selected for builds. The
+# suite helpers below apply these values to discovered cases, avoiding caller-side exports.
+vixen_configure_ctest_gpu_environment(VIXEN_CTEST_GPU_ENVIRONMENT)
 
 # enable_testing() must precede any add_subdirectory() that calls add_test(),
 # or CMake silently drops those tests from CTest — libraries/ and application/
@@ -633,6 +657,24 @@ endif()
 # ============================================================================
 # All application entry points and executables
 add_subdirectory(application)
+
+if(BUILD_TESTS)
+    get_property(_rendergraph_svo_build_targets GLOBAL PROPERTY VIXEN_RENDERGRAPH_SVO_BUILD_TARGETS)
+    if(_rendergraph_svo_build_targets)
+        # Capture fixture setup tests launch the real main app and editor, so the aggregate
+        # verification build includes both producers as well as the suite test executables.
+        if(TARGET VIXEN)
+            list(APPEND _rendergraph_svo_build_targets VIXEN)
+        endif()
+        if(TARGET vixen_editor)
+            list(APPEND _rendergraph_svo_build_targets vixen_editor)
+        endif()
+        list(REMOVE_DUPLICATES _rendergraph_svo_build_targets)
+        add_custom_target(rendergraph_svo_tests)
+        add_dependencies(rendergraph_svo_tests ${_rendergraph_svo_build_targets})
+        message(STATUS "RenderGraph/SVO verification target available: rendergraph_svo_tests")
+    endif()
+endif()
 
 # ============================================================================
 # TESTING INFRASTRUCTURE

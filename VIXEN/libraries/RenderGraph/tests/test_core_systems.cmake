@@ -58,7 +58,7 @@ target_link_libraries(test_rendergraph_coresystems_a PRIVATE
 # Visual Studio solution folder organization
 set_target_properties(test_rendergraph_coresystems_a PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_coresystems_a)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_coresystems_a)
 
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer/ResourceDependencyTracker/RecompileDedup)")
 
@@ -99,7 +99,7 @@ target_link_libraries(test_rendergraph_coresystems_b PRIVATE
 # Visual Studio solution folder organization
 set_target_properties(test_rendergraph_coresystems_b PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_coresystems_b)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_coresystems_b)
 
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)")
 
@@ -141,6 +141,6 @@ target_link_libraries(test_rendergraph_coresystems_c PRIVATE
 # Visual Studio solution folder organization
 set_target_properties(test_rendergraph_coresystems_c PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_coresystems_c)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_coresystems_c)
 
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_coresystems_c (NodeLogging/GPUQueryManagerIntegration/TimelineCapacityTracker)")

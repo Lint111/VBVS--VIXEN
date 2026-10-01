@@ -127,7 +127,7 @@ std::vector<Vixen::SVO::LightTreeNode>* g_ddgiEditLoopWorldCut = nullptr;
 // without deleting whatever is already on disk.
 ShaderManagement::ShaderCacheConfig MakeShaderCacheConfig() {
     ShaderManagement::ShaderCacheConfig config;
-    config.cacheDirectory = "cache/shaders";
+    config.cacheDirectory = Vixen::RuntimeCacheDirectory() / "shaders";
     if (const char* dirEnv = std::getenv("VIXEN_SHADER_CACHE_DIR")) {
         config.cacheDirectory = dirEnv;
     }
@@ -3639,10 +3639,10 @@ void VulkanGraphApplication::Update() {
         // View Contract Inc-2 Task 5: dump a capture PNG if this tick is scripted for one. Placed
         // at the tail of Update() — Update() ticks BEFORE the render loop's first Render() call
         // (VulkanApplicationBase::Tick(): PreTick -> Update -> Render -> PostTick), so a capture
-        // here reads main_swapchain's PREVIOUS frame result (the compute-blit + UI-composite HUD
-        // draw already landed on it), same timing as EditorApplication's CaptureFrameToPng call
-        // site; a capture at tick 0 would read the target before anything has ever been drawn into
-        // it (an all-black PNG) — never schedule frame 0.
+        // here reads the selected presentation target's PREVIOUS frame result (the compute-blit +
+        // UI-composite HUD draw already landed on it), same timing as the editor capture call site;
+        // a capture at tick 0 would read the target before anything has been drawn (an all-black
+        // PNG) — never schedule frame 0.
         for (const long captureFrame : hudCaptureFrames_) {
             if (captureFrame != hudUpdateTick_) continue;
             const std::string path = hudCaptureDir_ + "/hud_capture_" + std::to_string(hudUpdateTick_) + ".png";
@@ -4627,6 +4627,10 @@ bool VulkanGraphApplication::SwapchainImageIsValid() const {
 }
 
 bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::string& err) {
+    if (presentationTarget_ == PresentationTarget::Offscreen) {
+        return CaptureOffscreenFrameToPng(path, err);
+    }
+
     // Live lookups every call (mirrors EditorApplication::CaptureFrameToPng / GetWindowHandle's
     // rule) -- the target and device node persist across recompile, but re-resolving by name is
     // this codebase's established pattern for host-facing capture lookups.

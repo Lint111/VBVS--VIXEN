@@ -41,7 +41,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_svo_builder)
+vixen_gtest_discover_tests(SVO test_svo_builder)
 
 # ===========================================================================
 # Voxel Injection Tests
@@ -71,7 +71,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_voxel_injection)
+vixen_gtest_discover_tests(SVO test_voxel_injection)
 
 add_executable(test_bulk_materialization_dispatch
     test_bulk_materialization_dispatch.cpp
@@ -84,7 +84,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_bulk_materialization_dispatch>
         COMMENT "Copying TBB DLL for test_bulk_materialization_dispatch")
 endif()
-gtest_discover_tests(test_bulk_materialization_dispatch)
+vixen_gtest_discover_tests(SVO test_bulk_materialization_dispatch)
 
 # ===========================================================================
 # Data Structures Tests
@@ -113,7 +113,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_svo_types)
+vixen_gtest_discover_tests(SVO test_svo_types)
 
 add_executable(test_sdf_recipes
     test_sdf_recipes.cpp
@@ -123,7 +123,7 @@ if(TARGET SVO)
 else()
     target_link_libraries(test_sdf_recipes PRIVATE GTest::gtest_main)
 endif()
-gtest_discover_tests(test_sdf_recipes)
+vixen_gtest_discover_tests(SVO test_sdf_recipes)
 
 add_executable(test_lod_ladder
     test_lod_ladder.cpp
@@ -134,7 +134,7 @@ else()
     target_link_libraries(test_lod_ladder PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_lod_ladder PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_lod_ladder)
+vixen_gtest_discover_tests(SVO test_lod_ladder)
 
 # ===========================================================================
 # BodyFootprintRegime Tests — body-scale classifier and LOD integration
@@ -148,7 +148,7 @@ else()
     target_link_libraries(test_body_footprint_regime PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_body_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_body_footprint_regime)
+vixen_gtest_discover_tests(SVO test_body_footprint_regime)
 
 # ===========================================================================
 # Multi-body Rendering Tests — registry, per-body LOD, skip handling, and draw order
@@ -162,7 +162,7 @@ else()
     target_link_libraries(test_multi_body_renderer PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_multi_body_renderer PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_multi_body_renderer)
+vixen_gtest_discover_tests(SVO test_multi_body_renderer)
 
 add_executable(test_recipe_composition
     test_recipe_composition.cpp
@@ -173,7 +173,7 @@ else()
     target_link_libraries(test_recipe_composition PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_composition PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_composition)
+vixen_gtest_discover_tests(SVO test_recipe_composition)
 
 # ===========================================================================
 # SoA-SDF Serialize Tests  (Inc2 M2 — SoA-SDF brick + grid-lookup + descriptor)
@@ -192,7 +192,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_sdf_serialize>
         COMMENT "Copying TBB DLL for test_soa_sdf_serialize")
 endif()
-gtest_discover_tests(test_soa_sdf_serialize)
+vixen_gtest_discover_tests(SVO test_soa_sdf_serialize)
 
 # ===========================================================================
 # SoA-Mip Serialize Tests  (Sparse-Mip ESVO LOD Inc1 M1 Task 3 — MipPool
@@ -212,7 +212,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_soa_mip_serialize>
         COMMENT "Copying TBB DLL for test_soa_mip_serialize")
 endif()
-gtest_discover_tests(test_soa_mip_serialize)
+vixen_gtest_discover_tests(SVO test_soa_mip_serialize)
 
 # ===========================================================================
 # TierRefTable Tests  (Tiered ESVO Inc2 M1 Tasks 2-3 — TierRefTable
@@ -233,7 +233,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_ref_table>
         COMMENT "Copying TBB DLL for test_tier_ref_table")
 endif()
-gtest_discover_tests(test_tier_ref_table)
+vixen_gtest_discover_tests(SVO test_tier_ref_table)
 
 # ===========================================================================
 # Tier-Crossing Construction Tests  (Tiered ESVO Inc2 M2 Tasks 4-5 —
@@ -255,7 +255,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_construction>
         COMMENT "Copying TBB DLL for test_tier_crossing_construction")
 endif()
-gtest_discover_tests(test_tier_crossing_construction)
+vixen_gtest_discover_tests(SVO test_tier_crossing_construction)
 
 # ===========================================================================
 # Tier-Crossing Mirror Parity Tests  (Tiered ESVO Inc2 M4 Task 10 sync — a
@@ -278,7 +278,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_crossing_mirror_parity>
         COMMENT "Copying TBB DLL for test_tier_crossing_mirror_parity")
 endif()
-gtest_discover_tests(test_tier_crossing_mirror_parity)
+vixen_gtest_discover_tests(SVO test_tier_crossing_mirror_parity)
 
 # ===========================================================================
 # Stored-SDF March Mirror Tests  (gpu-shader-debug — CPU mirror of StoredSdf.glsl
@@ -299,7 +299,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_stored_sdf_march_mirror>
         COMMENT "Copying TBB DLL for test_stored_sdf_march_mirror")
 endif()
-gtest_discover_tests(test_stored_sdf_march_mirror)
+vixen_gtest_discover_tests(SVO test_stored_sdf_march_mirror)
 
 # ===========================================================================
 # Channel Format Tests  (Inc3 M1 — VIXEN channel vocabulary + OctreeConfig table)
@@ -318,7 +318,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_channel_format>
         COMMENT "Copying TBB DLL for test_channel_format")
 endif()
-gtest_discover_tests(test_channel_format)
+vixen_gtest_discover_tests(SVO test_channel_format)
 
 # ===========================================================================
 # Mip Sample Filter Tests  (Sparse-Mip ESVO LOD Inc1 M1 Task 1 — pure math,
@@ -338,7 +338,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_sample_filter>
         COMMENT "Copying TBB DLL for test_mip_sample_filter")
 endif()
-gtest_discover_tests(test_mip_sample_filter)
+vixen_gtest_discover_tests(SVO test_mip_sample_filter)
 
 # ===========================================================================
 # Mip Sample Bake Tests  (Sparse-Mip ESVO LOD Inc1 M1 Task 2 — bottom-up
@@ -358,7 +358,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_sample_bake>
         COMMENT "Copying TBB DLL for test_mip_sample_bake")
 endif()
-gtest_discover_tests(test_mip_sample_bake)
+vixen_gtest_discover_tests(SVO test_mip_sample_bake)
 
 # ===========================================================================
 # Mip Aniso Pool Tests (Deep-Field Mip Policy — anisotropic coarse mips,
@@ -379,7 +379,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_mip_aniso_pool>
         COMMENT "Copying TBB DLL for test_mip_aniso_pool")
 endif()
-gtest_discover_tests(test_mip_aniso_pool)
+vixen_gtest_discover_tests(SVO test_mip_aniso_pool)
 
 # ===========================================================================
 # Light Tree Tests  (Sampled Lighting Inc3 M3 — mip-cut light-tree: bounded
@@ -400,7 +400,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_light_tree>
         COMMENT "Copying TBB DLL for test_light_tree")
 endif()
-gtest_discover_tests(test_light_tree)
+vixen_gtest_discover_tests(SVO test_light_tree)
 
 # ===========================================================================
 # Reservoir Mirror Tests  (Sampled Lighting Inc3 M4 — CPU mirror of the RIS/
@@ -415,7 +415,7 @@ else()
     target_link_libraries(test_reservoir_mirror PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_reservoir_mirror PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_reservoir_mirror)
+vixen_gtest_discover_tests(SVO test_reservoir_mirror)
 
 # ===========================================================================
 # Hit-Accumulation Mirror Tests  (Wavefront W3a — CPU mirror of the
@@ -432,7 +432,7 @@ else()
     target_link_libraries(test_hit_accumulation_mirror PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_hit_accumulation_mirror PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_hit_accumulation_mirror)
+vixen_gtest_discover_tests(SVO test_hit_accumulation_mirror)
 
 # ===========================================================================
 # Photon world-cell cache witness (C0/C1) — headless mirror of the
@@ -450,7 +450,7 @@ if(TARGET glm::glm)
 endif()
 enable_recipe_strict_fp(test_photon_cells_mirror)
 set_target_properties(test_photon_cells_mirror PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_photon_cells_mirror)
+vixen_gtest_discover_tests(SVO test_photon_cells_mirror)
 
 # ===========================================================================
 # Resolvable-Level Formula Tests  (Sparse-Mip ESVO LOD Inc1 M4a Task 10 part 1
@@ -471,7 +471,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_resolvable_level>
         COMMENT "Copying TBB DLL for test_resolvable_level")
 endif()
-gtest_discover_tests(test_resolvable_level)
+vixen_gtest_discover_tests(SVO test_resolvable_level)
 
 # ===========================================================================
 # CellFootprintRegime Tests  (E6-T1 — the shared CellFootprintRegime classifier: CPU
@@ -487,14 +487,14 @@ else()
     target_link_libraries(test_cell_footprint_regime PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_cell_footprint_regime PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_cell_footprint_regime)
+vixen_gtest_discover_tests(SVO test_cell_footprint_regime)
 
 add_executable(test_wholesale_availability test_wholesale_availability.cpp)
 target_compile_features(test_wholesale_availability PRIVATE cxx_std_17)
 target_include_directories(test_wholesale_availability PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(test_wholesale_availability PRIVATE GTest::gtest_main)
 set_target_properties(test_wholesale_availability PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_wholesale_availability)
+vixen_gtest_discover_tests(SVO test_wholesale_availability)
 
 # Out-of-core R0: the declared residency rows (ResidencyRow.h / ResidencyTier.h) —
 # header-only, dependency-free like the wholesale ledger above.
@@ -503,14 +503,14 @@ target_compile_features(test_residency_row PRIVATE cxx_std_17)
 target_include_directories(test_residency_row PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(test_residency_row PRIVATE GTest::gtest_main)
 set_target_properties(test_residency_row PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_residency_row)
+vixen_gtest_discover_tests(SVO test_residency_row)
 
 add_executable(test_wholesale_capacity_arena test_wholesale_capacity_arena.cpp)
 target_compile_features(test_wholesale_capacity_arena PRIVATE cxx_std_17)
 target_include_directories(test_wholesale_capacity_arena PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(test_wholesale_capacity_arena PRIVATE GTest::gtest_main)
 set_target_properties(test_wholesale_capacity_arena PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_wholesale_capacity_arena)
+vixen_gtest_discover_tests(SVO test_wholesale_capacity_arena)
 
 # ===========================================================================
 # Frustum Cull Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, frustum piece
@@ -531,7 +531,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_frustum_cull>
         COMMENT "Copying TBB DLL for test_frustum_cull")
 endif()
-gtest_discover_tests(test_frustum_cull)
+vixen_gtest_discover_tests(SVO test_frustum_cull)
 
 # ===========================================================================
 # TierAddress Tests  (Tiered ESVO Inc1 M1 Task 1 — pure type/math, no
@@ -551,7 +551,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_address>
         COMMENT "Copying TBB DLL for test_tier_address")
 endif()
-gtest_discover_tests(test_tier_address)
+vixen_gtest_discover_tests(SVO test_tier_address)
 
 # ===========================================================================
 # Tier Math Tests  (Tiered ESVO Inc1 M1 Task 2 — pure math, no octree/GPU
@@ -571,7 +571,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_math>
         COMMENT "Copying TBB DLL for test_tier_math")
 endif()
-gtest_discover_tests(test_tier_math)
+vixen_gtest_discover_tests(SVO test_tier_math)
 
 # ===========================================================================
 # TierRef Tests  (Tiered ESVO Inc2 M1 Task 1 — pure data/layout, no
@@ -592,7 +592,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_ref>
         COMMENT "Copying TBB DLL for test_tier_ref")
 endif()
-gtest_discover_tests(test_tier_ref)
+vixen_gtest_discover_tests(SVO test_tier_ref)
 
 # ===========================================================================
 # Tier Direction Tests  (Tiered ESVO Inc1 M2 Task 3 — pure math, no
@@ -613,7 +613,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_direction>
         COMMENT "Copying TBB DLL for test_tier_direction")
 endif()
-gtest_discover_tests(test_tier_direction)
+vixen_gtest_discover_tests(SVO test_tier_direction)
 
 # ===========================================================================
 # Tier Magnitude Tests  (Tiered ESVO Inc1 M2 Task 4 — pure math, no
@@ -634,7 +634,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_tier_magnitude>
         COMMENT "Copying TBB DLL for test_tier_magnitude")
 endif()
-gtest_discover_tests(test_tier_magnitude)
+vixen_gtest_discover_tests(SVO test_tier_magnitude)
 
 # ===========================================================================
 # Instance Sort Tests  (Sparse-Mip ESVO LOD Inc1 M4b Task 10 part 2, occlusion piece
@@ -654,7 +654,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_instance_sort>
         COMMENT "Copying TBB DLL for test_instance_sort")
 endif()
-gtest_discover_tests(test_instance_sort)
+vixen_gtest_discover_tests(SVO test_instance_sort)
 
 # ===========================================================================
 # Residency Trigger Tests  (Sparse-Mip ESVO LOD Inc1 M4c Task 10 part 3 —
@@ -675,7 +675,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_trigger>
         COMMENT "Copying TBB DLL for test_residency_trigger")
 endif()
-gtest_discover_tests(test_residency_trigger)
+vixen_gtest_discover_tests(SVO test_residency_trigger)
 
 # ===========================================================================
 # CPU-Side Residency Occlusion Gate Tests  (Sparse-Mip ESVO LOD Inc2 M3 — deferred
@@ -696,7 +696,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_occlusion_gate>
         COMMENT "Copying TBB DLL for test_occlusion_gate")
 endif()
-gtest_discover_tests(test_occlusion_gate)
+vixen_gtest_discover_tests(SVO test_occlusion_gate)
 
 # ===========================================================================
 # SDF Bake Tests  (Inc2 M1 — recipe → narrow-band SDF voxels + body octree)
@@ -715,7 +715,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_sdf_bake>
         COMMENT "Copying TBB DLL for test_sdf_bake")
 endif()
-gtest_discover_tests(test_sdf_bake)
+vixen_gtest_discover_tests(SVO test_sdf_bake)
 
 # ===========================================================================
 # Shell Derive Tests (Surface-Shell ESVO cache — CPU classifier source of truth)
@@ -734,7 +734,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_derive>
         COMMENT "Copying TBB DLL for test_shell_derive")
 endif()
-gtest_discover_tests(test_shell_derive)
+vixen_gtest_discover_tests(SVO test_shell_derive)
 
 # ===========================================================================
 # Recipe Codegen Tests (P2.2 M1 — instruction→HLSL emitter + SPIR-V compile gate)
@@ -759,7 +759,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_codegen>
         COMMENT "Copying TBB DLL for test_recipe_codegen")
 endif()
-gtest_discover_tests(test_recipe_codegen)
+vixen_gtest_discover_tests(SVO test_recipe_codegen)
 
 # ===========================================================================
 # SdfCore generated GLSL artifact check (recipe kernel codegen freshness is checked by CMake)
@@ -773,7 +773,7 @@ if(TARGET sdf_core_kernels_check)
     add_dependencies(test_sdf_core_glsl sdf_core_kernels_check)
 endif()
 set_target_properties(test_sdf_core_glsl PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_sdf_core_glsl)
+vixen_gtest_discover_tests(SVO test_sdf_core_glsl)
 
 # ===========================================================================
 # GLSL field-function emitter smoke tests (Inc1 M4 Task 8)
@@ -785,7 +785,7 @@ else()
     target_link_libraries(test_recipe_codegen_glsl PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_codegen_glsl PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_codegen_glsl)
+vixen_gtest_discover_tests(SVO test_recipe_codegen_glsl)
 
 # ===========================================================================
 # Recipe parity fixture EXPORTER (task #26 cross-repo gate) — env-gated:
@@ -800,7 +800,7 @@ else()
     target_link_libraries(test_recipe_parity_fixture_export PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_parity_fixture_export PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_parity_fixture_export)
+vixen_gtest_discover_tests(SVO test_recipe_parity_fixture_export)
 
 # ===========================================================================
 # Recipe GLSL Numerical Parity Tests (Lazy-Procedural-Delta-Baseline Inc1 M4
@@ -830,7 +830,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_glsl_numerical_parity>
         COMMENT "Copying TBB DLL for test_recipe_glsl_numerical_parity")
 endif()
-gtest_discover_tests(test_recipe_glsl_numerical_parity)
+vixen_gtest_discover_tests(SVO test_recipe_glsl_numerical_parity)
 
 # ===========================================================================
 # Recipe-compiler uplift S1 step 4 (task #26, 2026-08-04): CPU-side compile-
@@ -850,7 +850,7 @@ target_compile_definitions(test_recipe_kernel_glsl_roundtrip PRIVATE
     SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
 set_target_properties(test_recipe_kernel_glsl_roundtrip PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_kernel_glsl_roundtrip)
+vixen_gtest_discover_tests(SVO test_recipe_kernel_glsl_roundtrip)
 
 # ===========================================================================
 # Recipe-Nested-Invocation-Unroll-AB-Direction-2026-07 M1 — InvokeRecipe opcode
@@ -878,7 +878,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_nested_invocation>
         COMMENT "Copying TBB DLL for test_recipe_nested_invocation")
 endif()
-gtest_discover_tests(test_recipe_nested_invocation)
+vixen_gtest_discover_tests(SVO test_recipe_nested_invocation)
 
 # ===========================================================================
 # W-RT Slice 1 feasibility spike (2026-08-07) — standalone proof that VK_KHR_ray_query works
@@ -902,7 +902,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_rayquery_feasibility>
         COMMENT "Copying TBB DLL for test_rayquery_feasibility")
 endif()
-gtest_discover_tests(test_rayquery_feasibility)
+vixen_gtest_discover_tests(SVO test_rayquery_feasibility)
 
 # ===========================================================================
 # Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype's
@@ -934,7 +934,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_declared_position_render>
         COMMENT "Copying TBB DLL for test_recipe_declared_position_render")
 endif()
-gtest_discover_tests(test_recipe_declared_position_render)
+vixen_gtest_discover_tests(SVO test_recipe_declared_position_render)
 
 # ===========================================================================
 # Uber-Shader Splice Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11 —
@@ -960,7 +960,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_uber_shader_splice>
         COMMENT "Copying TBB DLL for test_uber_shader_splice")
 endif()
-gtest_discover_tests(test_uber_shader_splice)
+vixen_gtest_discover_tests(SVO test_uber_shader_splice)
 
 # ===========================================================================
 # Recipe Bake Parity Tests (P2.1 M1 — recipe-sphere bake == analytic-sphere bake)
@@ -979,7 +979,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake>
         COMMENT "Copying TBB DLL for test_recipe_bake")
 endif()
-gtest_discover_tests(test_recipe_bake)
+vixen_gtest_discover_tests(SVO test_recipe_bake)
 
 # ===========================================================================
 # Recipe Bake Center Test (Inc2a Task 1 — proves BakeRecipeInstructionsToSdfWorld
@@ -999,7 +999,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_bake_center>
         COMMENT "Copying TBB DLL for test_recipe_bake_center")
 endif()
-gtest_discover_tests(test_recipe_bake_center)
+vixen_gtest_discover_tests(SVO test_recipe_bake_center)
 
 # ===========================================================================
 # Recipe Eval Parity Tests (P0 T4 — CPU stack-VM parity vs analytic golden)
@@ -1011,7 +1011,7 @@ else()
     target_link_libraries(test_recipe_eval_parity PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_eval_parity PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_eval_parity)
+vixen_gtest_discover_tests(SVO test_recipe_eval_parity)
 
 # ===========================================================================
 # Recipe Container Parity Test (I1.6 — C# writer blob round-trips via generated C++ reader)
@@ -1027,7 +1027,7 @@ target_compile_definitions(test_recipe_container_parity PRIVATE
     RECIPE_CONTAINER_FIXTURE_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/tests/fixtures/recipe-container/sphere26.vrc"
 )
 set_target_properties(test_recipe_container_parity PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_container_parity)
+vixen_gtest_discover_tests(SVO test_recipe_container_parity)
 
 # ===========================================================================
 # Recipe Registry Tests (I2.1+I2.2 — RecipeRegistry core + StackOverflow guard)
@@ -1039,7 +1039,7 @@ else()
     target_link_libraries(test_recipe_registry PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_registry PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_registry)
+vixen_gtest_discover_tests(SVO test_recipe_registry)
 
 # ===========================================================================
 # Recipe Bounds Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 10 —
@@ -1052,7 +1052,7 @@ else()
     target_link_libraries(test_recipe_bounds PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_bounds PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_bounds)
+vixen_gtest_discover_tests(SVO test_recipe_bounds)
 
 # ===========================================================================
 # Recipe Occupancy Grid Tests (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 —
@@ -1067,7 +1067,7 @@ else()
     target_link_libraries(test_recipe_occupancy PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_occupancy PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_occupancy)
+vixen_gtest_discover_tests(SVO test_recipe_occupancy)
 
 # ===========================================================================
 # Recipe Manifest Tests (I2.3 — RecipeManifest model + validation)
@@ -1079,7 +1079,7 @@ else()
     target_link_libraries(test_recipe_manifest PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_manifest PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_manifest)
+vixen_gtest_discover_tests(SVO test_recipe_manifest)
 
 # ===========================================================================
 # Recipe Ingest Tests (I2.4 — IngestBlob consumes the vendored reader)
@@ -1091,7 +1091,7 @@ else()
     target_link_libraries(test_recipe_ingest PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_recipe_ingest PROPERTIES FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_ingest)
+vixen_gtest_discover_tests(SVO test_recipe_ingest)
 
 # ===========================================================================
 # Recipe Boot Ingest Tests (Spec B I3/Task 6 — host packed buffer -> registry+bake, fail-loud)
@@ -1109,7 +1109,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_boot_ingest>
         COMMENT "Copying TBB DLL for test_recipe_boot_ingest")
 endif()
-gtest_discover_tests(test_recipe_boot_ingest)
+vixen_gtest_discover_tests(SVO test_recipe_boot_ingest)
 
 # ===========================================================================
 # Recipe Pack Loader Tests (I2.5 — manifest+blobs->registry, fail-loud)
@@ -1127,7 +1127,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_pack_loader>
         COMMENT "Copying TBB DLL for test_recipe_pack_loader")
 endif()
-gtest_discover_tests(test_recipe_pack_loader)
+vixen_gtest_discover_tests(SVO test_recipe_pack_loader)
 
 # ===========================================================================
 # Voxel Document Flatten Tests (Voxel-Authoring Inc1 M3 — VoxelDocumentFlattener,
@@ -1149,7 +1149,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_voxel_document_flatten>
         COMMENT "Copying TBB DLL for test_voxel_document_flatten")
 endif()
-gtest_discover_tests(test_voxel_document_flatten)
+vixen_gtest_discover_tests(SVO test_voxel_document_flatten)
 
 # ===========================================================================
 # Octree Pool Tests (I3.1 — dynamic-N pool + I3.2 config-size formula)
@@ -1168,7 +1168,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_octree_pool>
         COMMENT "Copying TBB DLL for test_octree_pool")
 endif()
-gtest_discover_tests(test_octree_pool)
+vixen_gtest_discover_tests(SVO test_octree_pool)
 
 # ===========================================================================
 # Recipe Baker Tests (I3.3 — BakeRegistryToPool, memory-budgeted fail-loud)
@@ -1187,7 +1187,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_baker>
         COMMENT "Copying TBB DLL for test_recipe_baker")
 endif()
-gtest_discover_tests(test_recipe_baker)
+vixen_gtest_discover_tests(SVO test_recipe_baker)
 
 # ===========================================================================
 # Generation-Cost Benchmark (Lazy-Procedural-Delta-Baseline Inc0 M3, Task 6)
@@ -1206,7 +1206,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_generation_cost_benchmark>
         COMMENT "Copying TBB DLL for test_generation_cost_benchmark")
 endif()
-gtest_discover_tests(test_generation_cost_benchmark)
+vixen_gtest_discover_tests(SVO test_generation_cost_benchmark)
 
 add_executable(benchmark_materialization_simd benchmark_materialization_simd.cpp)
 target_link_libraries(benchmark_materialization_simd PRIVATE
@@ -1221,7 +1221,7 @@ target_link_libraries(test_recipe_simd_parity PRIVATE
 enable_recipe_strict_fp(test_recipe_simd_parity)
 set_target_properties(test_recipe_simd_parity PROPERTIES
     FOLDER "Tests/SVO Tests")
-gtest_discover_tests(test_recipe_simd_parity)
+vixen_gtest_discover_tests(SVO test_recipe_simd_parity)
 
 add_executable(test_residency_default test_residency_default.cpp)
 if(TARGET SVO)
@@ -1237,7 +1237,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_residency_default>
         COMMENT "Copying TBB DLL for test_residency_default")
 endif()
-gtest_discover_tests(test_residency_default)
+vixen_gtest_discover_tests(SVO test_residency_default)
 
 # ===========================================================================
 # Sampler Tests
@@ -1266,7 +1266,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_samplers)
+vixen_gtest_discover_tests(SVO test_samplers)
 
 # ===========================================================================
 # Octree Query Interface Tests
@@ -1295,7 +1295,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_octree_queries)
+vixen_gtest_discover_tests(SVO test_octree_queries)
 
 # ===========================================================================
 # BrickView Tests (Converted from Legacy BrickStorage)
@@ -1331,7 +1331,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_brick_view)
+vixen_gtest_discover_tests(SVO test_brick_view)
 
 # ===========================================================================
 # EntityBrickView Tests (Spatial View Pattern)
@@ -1366,7 +1366,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_entity_brick_view)
+vixen_gtest_discover_tests(SVO test_entity_brick_view)
 
 # ===========================================================================
 # Comprehensive Ray Casting Tests
@@ -1397,7 +1397,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_ray_casting_comprehensive)
+vixen_gtest_discover_tests(SVO test_ray_casting_comprehensive)
 
 # ===========================================================================
 # Brick Creation Tests
@@ -1428,7 +1428,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_brick_creation)
+vixen_gtest_discover_tests(SVO test_brick_creation)
 
 # ===========================================================================
 # AttributeRegistry Integration Tests
@@ -1461,7 +1461,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_attribute_registry_integration)
+vixen_gtest_discover_tests(SVO test_attribute_registry_integration)
 
 # ===========================================================================
 # Brick Traversal Tests
@@ -1492,7 +1492,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_brick_traversal)
+vixen_gtest_discover_tests(SVO test_brick_traversal)
 
 # ===========================================================================
 # Rebuild Hierarchy Tests
@@ -1522,7 +1522,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_rebuild_hierarchy)
+vixen_gtest_discover_tests(SVO test_rebuild_hierarchy)
 
 # ===========================================================================
 # Cornell Box Tests
@@ -1554,7 +1554,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_cornell_box)
+vixen_gtest_discover_tests(SVO test_cornell_box)
 
 # ===========================================================================
 # Screen-Space LOD Tests (Phase B.2)
@@ -1586,7 +1586,7 @@ if(TARGET TBB::tbb)
     )
 endif()
 
-gtest_discover_tests(test_lod)
+vixen_gtest_discover_tests(SVO test_lod)
 
 # ===========================================================================
 # Shell Octree Tests  (SP1 — surface-shell voxelizer + body octree)
@@ -1605,7 +1605,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree>
         COMMENT "Copying TBB DLL for test_shell_octree")
 endif()
-gtest_discover_tests(test_shell_octree)
+vixen_gtest_discover_tests(SVO test_shell_octree)
 
 # ===========================================================================
 # Shell Octree GPU Serialization Tests  (SP2 Task 5a — CPU byte format)
@@ -1624,7 +1624,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_shell_octree_gpu>
         COMMENT "Copying TBB DLL for test_shell_octree_gpu")
 endif()
-gtest_discover_tests(test_shell_octree_gpu)
+vixen_gtest_discover_tests(SVO test_shell_octree_gpu)
 
 # ===========================================================================
 # GPU Parity Tests  (castRay vs the GpuTraversalMirror oracle — NO Vulkan/GPU)
@@ -1649,7 +1649,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_gpu_parity>
         COMMENT "Copying TBB DLL for test_gpu_parity")
 endif()
-gtest_discover_tests(test_gpu_parity)
+vixen_gtest_discover_tests(SVO test_gpu_parity)
 
 # ===========================================================================
 # CPU Body Render Tool  (headless visual check — pure castRay, NO Vulkan/GPU)
@@ -1734,3 +1734,5 @@ if(TARGET SVO AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../render/star
 else()
     message(STATUS "[SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)")
 endif()
+
+vixen_register_verification_targets("${CMAKE_CURRENT_BINARY_DIR}")

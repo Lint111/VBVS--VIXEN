@@ -7,7 +7,7 @@ if(TARGET GTest::gtest_main)
     target_include_directories(test_fail_scenario_registry PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
     target_link_libraries(test_fail_scenario_registry PRIVATE GTest::gtest_main RenderGraph)
     set_target_properties(test_fail_scenario_registry PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_fail_scenario_registry)
+    vixen_gtest_discover_tests(RenderGraph test_fail_scenario_registry)
     message(STATUS "✓ test_fail_scenario_registry configured")
 endif()
 

@@ -67,6 +67,7 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
         set_tests_properties(ArrayTypeValidation PROPERTIES
             PASS_REGULAR_EXPRESSION "All tests passed"
         )
+        vixen_set_suite_properties(RenderGraph TESTS ArrayTypeValidation)
     endif()
 
     # MSVC: Enable /FS for parallel compilation

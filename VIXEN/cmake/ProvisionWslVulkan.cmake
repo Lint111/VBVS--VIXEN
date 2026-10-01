@@ -14,6 +14,7 @@ include_guard(GLOBAL)
 option(VIXEN_AUTO_PROVISION_WSL_VULKAN "Build Mesa Dozen for GPU Vulkan on WSL2" ON)
 
 set(VIXEN_WSL_DZN_ICD "" CACHE INTERNAL "Path to the provisioned Dozen ICD json (empty = none)")
+set(VIXEN_WSL_DZN_LIBRARY_DIR "" CACHE INTERNAL "Directory containing the provisioned Dozen ICD library (empty = none)")
 
 if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
     if(DEFINED ENV{XDG_CACHE_HOME})
@@ -27,6 +28,7 @@ if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
     if(EXISTS "${_dzn_so}" AND EXISTS "${_dzn_icd}")
         message(STATUS "[ProvisionWslVulkan] cache hit: ${_dzn_so}")
         set(VIXEN_WSL_DZN_ICD "${_dzn_icd}" CACHE INTERNAL "" FORCE)
+        set(VIXEN_WSL_DZN_LIBRARY_DIR "${_wsl_cache}/mesa/build/src/microsoft/vulkan" CACHE INTERNAL "" FORCE)
     else()
         message(STATUS "[ProvisionWslVulkan] WSL2 GPU detected; building Mesa Dozen (first time, "
                        "a few minutes) into ${_wsl_cache} ...")
@@ -36,6 +38,7 @@ if(VIXEN_AUTO_PROVISION_WSL_VULKAN AND EXISTS "/dev/dxg")
         if(_dzn_rc EQUAL 0 AND EXISTS "${_dzn_icd}")
             message(STATUS "[ProvisionWslVulkan] Dozen ready: ${_dzn_icd}")
             set(VIXEN_WSL_DZN_ICD "${_dzn_icd}" CACHE INTERNAL "" FORCE)
+            set(VIXEN_WSL_DZN_LIBRARY_DIR "${_wsl_cache}/mesa/build/src/microsoft/vulkan" CACHE INTERNAL "" FORCE)
         else()
             message(WARNING "[ProvisionWslVulkan] Dozen provision failed (rc=${_dzn_rc}); the "
                             "runtime selector will require VK_ICD_FILENAMES or "

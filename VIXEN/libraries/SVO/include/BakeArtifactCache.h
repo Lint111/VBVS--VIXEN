@@ -19,6 +19,7 @@
 #include "ShellOctreeGpu.h"   // ConcatenatedOctrees, SerializedOctree
 #include "LightTree.h"        // LightTreeNode
 #include "Recipe/SdfInstruction.h"  // SdfInstruction (132B POD, hashed verbatim)
+#include "RuntimeCachePaths.h"
 
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -146,12 +147,12 @@ bool readPodVec(std::ifstream& f, std::vector<T>& v) {
 
 }  // namespace detail
 
-// Default cache root: cache/global/BakeArtifactCache/, mirroring the existing
-// cache/global/ + cache/devices/<id>/*.cache convention already in this repo
+// Default cache root: <runtime-cache>/global/BakeArtifactCache/, mirroring the existing
+// global + device cache split without writing runtime data into the source tree.
 // (ShaderCacheManager's own cacheDirectory idiom) -- global, not per-device,
 // because a bake artifact has no GPU-specific content.
 inline std::filesystem::path DefaultBakeArtifactCacheDir() {
-    return std::filesystem::path("cache") / "global" / "BakeArtifactCache";
+    return Vixen::RuntimeCacheDirectory() / "global" / "BakeArtifactCache";
 }
 
 inline std::filesystem::path BakeArtifactCacheFilePath(
