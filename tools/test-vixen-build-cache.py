@@ -107,4 +107,34 @@ for index in range(2):
     assert (local / "bin" / "CodegenTool.dll").read_text() == "cached bytes"
 assert (cache / "builds.count").read_text() == "1"
 print("PASS: two concurrent clients build once; deleted local binaries restore from cache", flush=True)
+# Snapshot clients must share a fully extracted immutable tree, not a live clone.
+origin = root / "kernel-origin"
+origin.mkdir()
+run("git", "init", "-q", str(origin))
+(origin / "kernel.cs").write_text("pinned kernel source")
+run("git", "-C", str(origin), "add", "kernel.cs")
+run("git", "-C", str(origin), "-c", "user.name=Cache Fixture", "-c", "user.email=fixture@example.invalid",
+    "commit", "-qm", "fixture pin")
+sha = run("git", "-C", str(origin), "rev-parse", "HEAD").strip()
+snapshot_setup = root / "snapshot.cmake"
+snapshot_setup.write_text(f"""set(VIXEN_KERNEL_CACHE_DIR "{root}/snapshots")
+include("{module}/VixenKernelSnapshot.cmake")
+vixen_kernel_snapshot("{origin}" "{sha}" snapshot)
+file(READ "${{snapshot}}/kernel.cs" contents)
+if(NOT contents STREQUAL "pinned kernel source")
+    message(FATAL_ERROR "snapshot has incorrect bytes")
+endif()
+""")
+clients = [subprocess.Popen(["cmake", "-P", str(snapshot_setup)], text=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT) for _ in range(2)]
+for client in clients:
+    output, _ = client.communicate()
+    assert client.returncode == 0, output
+snapshot = root / "snapshots" / "sources" / f"yeroket-{sha}"
+initial_stamp = (snapshot / ".archive-complete").stat().st_mtime_ns
+(origin / "kernel.cs").write_text("mutable checkout changed")
+run("cmake", "-P", str(snapshot_setup))
+assert (snapshot / ".archive-complete").stat().st_mtime_ns == initial_stamp
+assert not snapshot.with_suffix(".partial").exists()
+print("PASS: concurrent snapshot extraction publishes pinned bytes once; live clone changes do not leak", flush=True)
 print(f"Evidence: {root}", flush=True)
