@@ -84,6 +84,23 @@ Header-only / SDK-less environments can configure with `-DVULKAN_TRIMMED_BUILD=O
 cd VIXEN && cmake -B build && start build/VIXEN.sln
 ```
 
+### Shared build queue (Linux/WSL workstation)
+
+Heavy builds and GPU tests on the shared workstation go through the Undertow build queue.
+`tools/with-test-lock.sh` in this repository is a thin forwarder that finds that queue and runs it,
+so lanes never name a machine-specific path. Run it from the repository root; arguments and the
+working directory pass through unchanged:
+
+```bash
+bash tools/with-test-lock.sh --agent <lane> --resource build --label <lane>:<step> -- <command>
+bash tools/with-test-lock.sh --help        # the full queue manual
+```
+
+It looks for the queue in this order: `UT_QUEUE_SCRIPT` (path to the wrapper), `UNDERTOW_ROOT`
+(an Undertow checkout), `with-test-lock.sh` on `PATH`, then `~/projects/undertow` and
+`~/Github/undertow`. A variable you set that points at nothing usable is an error, not a fallback.
+The forwarder holds no queue logic; admission, history and status all live in the Undertow copy.
+
 ## Architecture Overview
 
 ```
