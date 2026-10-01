@@ -49,10 +49,12 @@ if(_vixen_x11_sys)
 endif()
 
 set(_vk_cache_hdr "${VIXEN_WINDOWING_CACHE_DIR}/usr/include/X11/Xlib.h")
+set(_vk_cache_keysyms "${VIXEN_WINDOWING_CACHE_DIR}/usr/lib/${_arch}/libxcb-keysyms.so.1")
 
-# 2) Not cached yet? auto-provision via apt-get download (Debian/Ubuntu; other distros: install the
-#    -dev packages yourself, or this silently leaves the null backend).
-if(NOT EXISTS "${_vk_cache_hdr}" AND VIXEN_AUTO_PROVISION_WINDOWING)
+# 2) Not cached yet, or missing the Dozen ICD's XCB keysyms runtime dependency? Auto-provision via
+#    apt-get download (Debian/Ubuntu; other distros: install the -dev packages yourself, or this
+#    silently leaves the null backend).
+if((NOT EXISTS "${_vk_cache_hdr}" OR NOT EXISTS "${_vk_cache_keysyms}") AND VIXEN_AUTO_PROVISION_WINDOWING)
     find_program(_vixen_apt apt-get)
     find_program(_vixen_dpkg dpkg-deb)
     if(_vixen_apt AND _vixen_dpkg)
@@ -62,8 +64,9 @@ if(NOT EXISTS "${_vk_cache_hdr}" AND VIXEN_AUTO_PROVISION_WINDOWING)
             COMMAND ${_vixen_apt} download
                 libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
                 libxext-dev libxfixes-dev libxrender-dev libxau-dev libxdmcp-dev libxcb1-dev x11proto-dev
+                libxcb-keysyms1-dev
                 libx11-6 libxrandr2 libxinerama1 libxcursor1 libxi6 libxext6 libxfixes3 libxrender1
-                libxau6 libxdmcp6 libxcb1
+                libxau6 libxdmcp6 libxcb1 libxcb-keysyms1
             WORKING_DIRECTORY "${VIXEN_WINDOWING_CACHE_DIR}/_dl"
             RESULT_VARIABLE _vixen_dlrc OUTPUT_QUIET ERROR_QUIET)
         file(GLOB _vixen_debs "${VIXEN_WINDOWING_CACHE_DIR}/_dl/*.deb")
@@ -86,11 +89,17 @@ if(EXISTS "${_vk_cache_hdr}")
         set(CMAKE_LIBRARY_ARCHITECTURE "${_arch}")
     endif()
     message(STATUS "VIXEN: X11 dev provisioned at ${VIXEN_WINDOWING_CACHE_DIR}; GLFW X11 backend enabled.")
+    if(NOT EXISTS "${_vk_cache_keysyms}")
+        message(WARNING "VIXEN: provisioned X11 cache is missing libxcb-keysyms.so.1; the Dozen ICD may fail to load.")
+    endif()
 else()
     set(GLFW_BUILD_X11 OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
     message(STATUS "VIXEN: X11 dev unavailable — GLFW null backend (engine compiles, no window).")
 endif()
+
+unset(_vk_cache_hdr)
+unset(_vk_cache_keysyms)
 
 if(NOT TARGET vixen-uninstall-windowing)
     add_custom_target(vixen-uninstall-windowing
