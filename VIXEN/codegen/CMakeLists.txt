@@ -418,8 +418,11 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     vixen_codegen_build_config("${_tool_config}" "${_tool_cache}"
         "${_tool_cached_bin}" "${_tool_local_bin}" "${_tool_stamp}" ${_tool_build_command})
     set(_yk_dll "${_tool_local_bin}/CodegenTool.dll")
-    add_custom_command(OUTPUT "${_tool_stamp}"
-        BYPRODUCTS "${_yk_dll}" "${_tool_local_bin}/CodegenTool.deps.json"
+    # The DLL is a direct dependency of the tool/check targets, so declare it as
+    # an OUTPUT alongside the completion stamp. Makefiles do not infer a rule for
+    # a file that is only listed as another command's BYPRODUCT.
+    add_custom_command(OUTPUT "${_tool_stamp}" "${_yk_dll}"
+        BYPRODUCTS "${_tool_local_bin}/CodegenTool.deps.json"
             "${_tool_local_bin}/CodegenTool.runtimeconfig.json"
         COMMAND "${CMAKE_COMMAND}" "-DVIXEN_CODEGEN_BUILD_CONFIG=${_tool_config}"
             -P "${VIXEN_ROOT}/cmake/VixenBuildCodegen.cmake"
