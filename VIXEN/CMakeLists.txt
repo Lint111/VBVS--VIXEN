@@ -487,23 +487,39 @@ endif()
 # ============================================================================
 # Third-Party Dependencies
 # ============================================================================
-# Share FetchContent's clone+build output across all worktrees/presets of this repo instead of
-# each one re-cloning/rebuilding the same ~12 third-party libs (several built from source: TBB,
-# RmlUi, freetype, glfw, googletest) into its own build/<preset>/_deps. This is the single
-# largest driver of disk growth in a multi-worktree workflow — see Worktree-Build-Artifact-
-# Accumulation-Audit-2026-07.md Fix 1. Only set it when VIXEN is the top-level project: a parent
-# super-build (e.g. UNDERTOW's vixen/ add_subdirectory) already controls this cache-wide setting
-# and must not be overridden by an inner add_subdirectory. Override with VIXEN_FETCHCONTENT_CACHE
-# env var for machines where C:/vixen-fetchcontent-cache isn't appropriate (e.g. non-Windows).
+# Keep FetchContent in the build tree by default so a fresh worktree has isolated dependency
+# sources and build outputs. A shared cache is an explicit opt-in through either environment
+# variable or an existing -DFETCHCONTENT_BASE_DIR cache entry. Only set it when VIXEN is the
+# top-level project: a parent super-build (e.g. UNDERTOW's vixen/ add_subdirectory) already owns
+# this cache-wide setting and must not be overridden by an inner add_subdirectory.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    if(DEFINED ENV{VIXEN_FETCHCONTENT_CACHE})
-        set(FETCHCONTENT_BASE_DIR "$ENV{VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "Shared FetchContent cache" FORCE)
-    elseif(WIN32)
-        set(FETCHCONTENT_BASE_DIR "C:/vixen-fetchcontent-cache" CACHE PATH "Shared FetchContent cache" FORCE)
+    if(DEFINED ENV{VIXEN_FETCHCONTENT_CACHE} AND NOT "$ENV{VIXEN_FETCHCONTENT_CACHE}" STREQUAL "")
+        set(FETCHCONTENT_BASE_DIR "$ENV{VIXEN_FETCHCONTENT_CACHE}" CACHE PATH "FetchContent base directory" FORCE)
+    elseif(DEFINED ENV{FETCHCONTENT_BASE_DIR} AND NOT "$ENV{FETCHCONTENT_BASE_DIR}" STREQUAL "")
+        set(FETCHCONTENT_BASE_DIR "$ENV{FETCHCONTENT_BASE_DIR}" CACHE PATH "FetchContent base directory" FORCE)
     else()
-        set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/vixen-fetchcontent-cache" CACHE PATH "Shared FetchContent cache" FORCE)
+        if(DEFINED CACHE{FETCHCONTENT_BASE_DIR})
+            get_property(_vixen_fetchcontent_existing CACHE FETCHCONTENT_BASE_DIR PROPERTY VALUE)
+        else()
+            set(_vixen_fetchcontent_existing "")
+        endif()
+
+        # Migrate the historical implicit shared-cache default once. An explicit cache value
+        # (including a local path) survives later CMake regeneration unchanged.
+        if(WIN32)
+            set(_vixen_legacy_fetchcontent_default "C:/vixen-fetchcontent-cache")
+        else()
+            set(_vixen_legacy_fetchcontent_default "$ENV{HOME}/.cache/vixen-fetchcontent-cache")
+        endif()
+        if(NOT DEFINED CACHE{FETCHCONTENT_BASE_DIR} OR
+           "${_vixen_fetchcontent_existing}" STREQUAL "${_vixen_legacy_fetchcontent_default}")
+            set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH
+                "Worktree-local FetchContent source and build directory" FORCE)
+        endif()
     endif()
-    message(STATUS "FetchContent shared cache: ${FETCHCONTENT_BASE_DIR}")
+    unset(_vixen_fetchcontent_existing)
+    unset(_vixen_legacy_fetchcontent_default)
+    message(STATUS "FetchContent base directory: ${FETCHCONTENT_BASE_DIR}")
 endif()
 
 # All FetchContent and external library setup moved to dependencies/
