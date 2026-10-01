@@ -30,7 +30,7 @@ endfunction()
 
 function(vixen_add_codegen_check name)
     cmake_parse_arguments(CHECK "ALL;VERBATIM" "COMMENT;JOB_POOL" "COMMAND" ${ARGN})
-    set(_inputs "${_yk_dll}" engine_codegen_tool)
+    set(_inputs "${_yk_dll}" "${_tool_stamp}" engine_codegen_tool)
     foreach(_argument IN LISTS CHECK_COMMAND)
         set(_path "${_argument}")
         if(_codegen_need_wsl_bridge AND _argument MATCHES "^/")

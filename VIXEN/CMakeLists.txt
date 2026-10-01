@@ -578,19 +578,29 @@ if(VIXEN_CODEGEN_GATE)
     add_subdirectory(codegen)
 endif()
 
-# No-new-mutex declaration gate (lock-free federation phase 0, design §5 / OD-11): every build runs
+# No-new-mutex declaration gate (lock-free federation phase 0, design §5 / OD-11): changed inputs run
 # scripts/check-no-new-mutex.sh, which fails when libraries/ or application/ gains a mutex declaration
 # not pinned (with its inventory family) in scripts/no-new-mutex.allowlist. Needs bash + python3;
 # silently skipped where either is absent (a plain MSVC shell) — run it from WSL/CI there.
-option(VIXEN_NO_NEW_MUTEX_GATE "Run the no-new-mutex declaration gate on every build" ON)
+option(VIXEN_NO_NEW_MUTEX_GATE "Check changed sources for undeclared mutex declarations" ON)
 if(VIXEN_NO_NEW_MUTEX_GATE)
     find_program(VIXEN_GATE_BASH NAMES bash)
     find_program(VIXEN_GATE_PYTHON3 NAMES python3)
     if(VIXEN_GATE_BASH AND VIXEN_GATE_PYTHON3)
-        add_custom_target(no_new_mutex_check ALL
+        include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
+        set(_mutex_inputs)
+        foreach(_extension h hpp hxx cpp c cc cxx inl ipp ixx)
+            file(GLOB_RECURSE _mutex_sources CONFIGURE_DEPENDS
+                "${VIXEN_ROOT}/libraries/*.${_extension}"
+                "${VIXEN_ROOT}/application/*.${_extension}")
+            list(FILTER _mutex_sources EXCLUDE REGEX "/tests/")
+            list(APPEND _mutex_inputs ${_mutex_sources})
+        endforeach()
+        vixen_add_checked_target(no_new_mutex_check ALL
             COMMAND ${VIXEN_GATE_BASH} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-no-new-mutex.sh"
                     --root "${CMAKE_CURRENT_SOURCE_DIR}/.."
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            DEPENDS ${_mutex_inputs} "${VIXEN_ROOT}/scripts/check-no-new-mutex.sh"
+                "${VIXEN_ROOT}/scripts/no-new-mutex.allowlist"
             COMMENT "no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)"
             VERBATIM)
     else()
