@@ -23,6 +23,14 @@ public:
         : TypedNodeType<SwapChainNodeConfig>(typeName) {}
     virtual ~SwapChainNodeType() = default;
 
+    std::optional<PresentationTargetContract> GetPresentationTargetContract() const override {
+        return PresentationTargetContract{
+            SlotInfo::FromOutputSlot<SwapChainNodeConfig::SWAPCHAIN_PUBLIC_Slot>("SWAPCHAIN_PUBLIC"),
+            SlotInfo::FromOutputSlot<SwapChainNodeConfig::IMAGE_INDEX_Slot>("IMAGE_INDEX"),
+            SwapChainPublicVariables::Synchronization,
+            SlotInfo::FromOutputSlot<SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot>("RENDER_COMPLETE_SEMAPHORES_ARRAY")};
+    }
+
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName
     ) const override;

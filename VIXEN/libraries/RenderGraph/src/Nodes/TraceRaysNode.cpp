@@ -1,3 +1,4 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/TraceRaysNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -179,6 +180,12 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
                       std::to_string(imageIndex) + " (frame " + std::to_string(currentFrame) + ")");
     }
 
+    if (!swapchainInfo || imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size() ||
+        imageIndex >= swapchainInfo->GetImageCount()) return;
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        swapchainInfo, imageAvailableSemaphores, renderCompleteSemaphores,
+        currentFrame, imageIndex, true, true);
+
     VkDevice device = vulkanDevice_->device;
 
     // Reset fence before submitting (fence was already waited on by FrameSyncNode)
@@ -237,7 +244,7 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // If validation complains about layout mismatch, the real issue is elsewhere.
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;  // Discard previous contents
+    barrier.oldLayout = swapchainInfo->GetImageLayout(imageIndex);
     barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -334,7 +341,8 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Transition image to PRESENT_SRC
     barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.newLayout = swapchainInfo->UsesWsiSynchronization()
+        ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     barrier.dstAccessMask = 0;
 
@@ -348,24 +356,25 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         1, &barrier
     );
 
+    swapchainInfo->SetImageLayout(imageIndex, barrier.newLayout);
     VkResult endResult = vkEndCommandBuffer(cmdBuffer);
     if (endResult != VK_SUCCESS) {
         throw std::runtime_error("[TraceRaysNode::ExecuteImpl] Failed to end command buffer: " + std::to_string(endResult));
     }
 
     // Submit command buffer
-    VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+    VkSemaphore waitSemaphores[] = { handoffs.acquire };
     VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR };
-    VkSemaphore signalSemaphores[] = { renderCompleteSemaphores[imageIndex] };
+    VkSemaphore signalSemaphores[] = { handoffs.present };
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.waitSemaphoreCount = handoffs.acquire != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
-    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.signalSemaphoreCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
     VkResult result;

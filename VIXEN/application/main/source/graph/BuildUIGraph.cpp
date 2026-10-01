@@ -57,14 +57,18 @@ void VulkanGraphApplication::BuildUIGraph() {
     NodeHandle renderPassNode  = renderGraph->AddNode<RenderPassNodeType>("ui_render_pass");
     NodeHandle framebufferNode = renderGraph->AddNode<FramebufferNodeType>("ui_framebuffer");
     NodeHandle uiRenderNode    = renderGraph->AddNode<UIRenderNodeType>("ui_render");
+    ConnectionBatch batch(renderGraph);
+    const NodeHandle presentationNode = offscreen ? renderTargetNode : swapChainNode;
+    const auto targetContract = batch.GetPresentationTargetContract(presentationNode);
+    const bool usesWsi = targetContract.synchronization == Vixen::Vulkan::Resources::TargetSynchronization::WsiAcquirePresent;
     NodeHandle presentNode{};
-    if (!offscreen) presentNode = renderGraph->AddNode<PresentNodeType>("ui_present");
+    if (usesWsi) presentNode = renderGraph->AddNode<PresentNodeType>("ui_present");
 
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
-    device->SetParameter(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, !offscreen);
+    device->SetParameter(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, usesWsi);
     auto* instance = static_cast<InstanceNode*>(renderGraph->GetInstance(instanceNode));
-    instance->SetParameter(InstanceNodeConfig::PARAM_ENABLE_PRESENTATION, !offscreen);
+    instance->SetParameter(InstanceNodeConfig::PARAM_ENABLE_PRESENTATION, usesWsi);
     if (!offscreen) {
         auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
         window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
@@ -76,8 +80,6 @@ void VulkanGraphApplication::BuildUIGraph() {
         target->SetParameter(RenderTargetNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
         target->SetParameter(RenderTargetNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
         target->SetParameter(RenderTargetNodeConfig::PARAM_IMAGE_COUNT, FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
-        target->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
-            static_cast<uint32_t>(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
     }
 
     // Color-only render pass (no depth): clear → store. The selected target owns the image ring;
@@ -87,12 +89,10 @@ void VulkanGraphApplication::BuildUIGraph() {
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT,
-        offscreen ? ImageLayout::TransferSrc : ImageLayout::PresentSrc);
+        usesWsi ? ImageLayout::PresentSrc : ImageLayout::TransferSrc);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
     auto* framebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferNode));
     framebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
-
-    ConnectionBatch batch(renderGraph);
 
     // --- Shared Vulkan infrastructure ---
     batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE, deviceNode, DeviceNodeConfig::INSTANCE_IN);
@@ -103,9 +103,7 @@ void VulkanGraphApplication::BuildUIGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, framebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN);
     batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, framebufferNode, FramebufferNodeConfig::RENDER_PASS);
     if (offscreen) {
-        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN)
-             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET, renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO)
-             .Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET, framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+        batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, renderTargetNode, RenderTargetNodeConfig::VULKAN_DEVICE_IN);
     } else {
         batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT, windowNode, WindowNodeConfig::INSTANCE)
              .Connect(windowNode, WindowNodeConfig::WINDOW, swapChainNode, SwapChainNodeConfig::WINDOW)
@@ -115,10 +113,11 @@ void VulkanGraphApplication::BuildUIGraph() {
              .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN)
              .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX, swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX)
              .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, swapChainNode, SwapChainNodeConfig::IN_FLIGHT_FENCE)
-             .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
+             .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     }
+
+    batch.ConnectOutput(presentationNode, targetContract.target, renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO)
+         .ConnectOutput(presentationNode, targetContract.target, framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO);
 
     // --- UIRenderNode draws into the selected target ---
     batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL, uiRenderNode, UIRenderNodeConfig::COMMAND_POOL)
@@ -127,18 +126,15 @@ void VulkanGraphApplication::BuildUIGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE, uiRenderNode, UIRenderNodeConfig::IN_FLIGHT_FENCE)
          .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS, uiRenderNode, UIRenderNodeConfig::RENDER_PASS)
          .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS, uiRenderNode, UIRenderNodeConfig::FRAMEBUFFERS);
-    if (offscreen) {
-        batch.Connect(renderTargetNode, RenderTargetNodeConfig::RENDER_TARGET, uiRenderNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
-             .Connect(renderTargetNode, RenderTargetNodeConfig::IMAGE_INDEX, uiRenderNode, UIRenderNodeConfig::IMAGE_INDEX);
-    } else {
-        batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC, uiRenderNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
-             .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, uiRenderNode, UIRenderNodeConfig::IMAGE_INDEX)
-             .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-             .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    batch.ConnectOutput(presentationNode, targetContract.target, uiRenderNode, UIRenderNodeConfig::SWAPCHAIN_INFO)
+         .ConnectOutput(presentationNode, targetContract.imageIndex, uiRenderNode, UIRenderNodeConfig::IMAGE_INDEX);
+    if (usesWsi) {
+        batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, uiRenderNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+             .ConnectOutput(presentationNode, *targetContract.renderComplete, uiRenderNode, UIRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     }
 
     // --- Window-only present ---
-    if (!offscreen) {
+    if (usesWsi) {
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT, presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)
          // Use the raw VkSwapchainKHR output (SWAPCHAIN_HANDLE), NOT SWAPCHAIN_PUBLIC: the
          // SwapChainPublicVariables*->VkSwapchainKHR implicit conversion is not invoked across the typed

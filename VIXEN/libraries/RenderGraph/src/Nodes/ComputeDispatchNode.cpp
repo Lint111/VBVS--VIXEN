@@ -1,3 +1,4 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/ComputeDispatchNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"
@@ -180,24 +181,19 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_LEAVE_IMAGE_IN_GENERAL, false);
     const bool writesNoImage =
         GetParameterValue<bool>(ComputeDispatchNodeConfig::PARAM_WRITES_NO_IMAGE, false);
-    const bool waitsForAcquire = ComputeDispatchWaitsForSwapchainAcquire(writesNoImage);
-    const bool signalsPresent = !leaveImageInGeneral && !writesNoImage;
-
-    // Guard against the invalid-image sentinel BEFORE any per-image indexing or side effect:
-    // skipping before the fence reset keeps the frame fence signalled so the next FrameSyncNode wait
-    // can't deadlock. WSI array bounds apply only when this dispatch uses those binary handoffs.
-    if (imageIndex == UINT32_MAX || currentFrameIndex >= commandBuffers.size() ||
-        (waitsForAcquire && currentFrameIndex >= imageAvailableSemaphores.size()) ||
-        (signalsPresent && imageIndex >= renderCompleteSemaphores.size())) {
+    auto* target = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+    if (!target || imageIndex == UINT32_MAX || imageIndex >= target->GetImageCount() ||
+        currentFrameIndex >= commandBuffers.size()) {
         NODE_LOG_WARNING("ComputeDispatchNode: Invalid image/frame index - skipping frame");
         return;
     }
-
-    // Two-tier WSI indexing when connected: imageAvailable by frame, renderComplete by image.
-    const VkSemaphore imageAvailableSemaphore = waitsForAcquire
-        ? imageAvailableSemaphores[currentFrameIndex] : VK_NULL_HANDLE;
-    const VkSemaphore renderCompleteSemaphore = signalsPresent
-        ? renderCompleteSemaphores[imageIndex] : VK_NULL_HANDLE;
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        target, imageAvailableSemaphores, renderCompleteSemaphores, currentFrameIndex, imageIndex,
+        ComputeDispatchWaitsForSwapchainAcquire(writesNoImage), !leaveImageInGeneral && !writesNoImage);
+    const bool waitsForAcquire = handoffs.acquire != VK_NULL_HANDLE;
+    const bool signalsPresent = handoffs.present != VK_NULL_HANDLE;
+    const VkSemaphore imageAvailableSemaphore = handoffs.acquire;
+    const VkSemaphore renderCompleteSemaphore = handoffs.present;
 
     static int logCounter = 0;
     if (logCounter++ < 20) {
@@ -454,20 +450,21 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     // node-managed in Tier-1. The render target's FIRST write to a given image handle is
     // UNDEFINED->GENERAL (fresh/recreated image); every subsequent write to that SAME handle
     // follows a blit that left it TRANSFER_SRC_OPTIMAL, so the barrier's declared oldLayout must
-    // match the image's ACTUAL last-recorded layout (renderTargetImageLayouts_ tracks it exactly,
+    // match the image's ACTUAL last-recorded layout (the target buffer tracks it exactly,
     // not a seen/not-seen guess — see KI-007 and DecideRenderTargetPriorLayoutAndUpdate's comment;
     // RenderTargetNode's persistent-across-same-extent-recompile lifecycle means "new Compile"
     // does NOT imply "new image").
     if (renderTargetInfo) {
         VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
-            renderTargetImageLayouts_, writeImage, VK_IMAGE_LAYOUT_GENERAL);
+            *renderTargetInfo, renderTargetInfo->GetCurrentIndex(), VK_IMAGE_LAYOUT_GENERAL);
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage, priorLayout);
     } else if (!writesNoImage) {
         // Sampled Lighting Inc3 M1: skip entirely when this dispatch manages no presentable image
         // (writesNoImage) — writeImage would otherwise alias the swapchain image, which this
         // dispatch never actually writes; transitioning it here would race a later pass's own
         // transition of the SAME handle (see PARAM_WRITES_NO_IMAGE's doc comment).
-        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage);
+        const VkImageLayout prior = DecideRenderTargetPriorLayoutAndUpdate(*swapchainInfo, imageIndex, VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmdBuffer, writeImage, prior);
     }
     // Additionally replay any scheduler-baked INTER-PASS entry barriers for this group
     // (no-op on the single-pass voxel path; active for future multi-pass chains).
@@ -498,10 +495,9 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         // transitions, ending in the same layout contract the non-render-target path applies below.
         // Sampled Lighting Inc3 M1: calls the shared free function (SwapchainBarriers.h) instead of
         // the old private method — same logic, now reusable by BlitNode too.
-        SwapchainBarriers::BlitRenderTargetToSwapchain(GetDevice(), renderTargetImageLayouts_, cmdBuffer,
-                                                        renderTargetInfo, swapchainImage,
-                                                        swapchainInfo->GetExtent(), leaveImageInGeneral);
-    } else if (!leaveImageInGeneral && !writesNoImage) {
+        SwapchainBarriers::BlitRenderTargetToSwapchain(GetDevice(), cmdBuffer,
+                                                        renderTargetInfo, swapchainInfo, imageIndex, leaveImageInGeneral);
+    } else if (!leaveImageInGeneral && !writesNoImage && swapchainInfo->UsesWsiSynchronization()) {
         // Voxel-only, no render target: compute is the last writer, so hand the image to present.
         // Composite: leave it in GENERAL — the downstream UI render pass loads from GENERAL and owns
         // the →PRESENT_SRC transition. Note: the GENERAL→PRESENT_SRC transition is NOT yet baked into
@@ -510,6 +506,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         // transition's comment above; a no-image dispatch must not touch the swapchain image's
         // layout at all, present-bound or not.
         SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmdBuffer, swapchainImage);
+        swapchainInfo->SetImageLayout(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     }
 
     // End command buffer
@@ -553,6 +550,7 @@ void ComputeDispatchNode::ReplayEntryBarriers(
             ib.image           = swapchainInfo->GetImage(imageIndex);
             ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
             imageBarriers.push_back(ib);
+            swapchainInfo->SetImageLayout(imageIndex, ib.newLayout);
         } else {
             VkMemoryBarrier2 mb{};
             mb.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;

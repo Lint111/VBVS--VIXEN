@@ -8,6 +8,7 @@
 #include "Data/BasicDataTypes.h"
 #include "Data/ParameterDataTypes.h"
 #include "Data/LayerAndExtensionRequirementData.h"
+#include "Core/PresentationTargetContract.h"
 
 namespace Vixen::RenderGraph {
 
@@ -56,6 +57,7 @@ public:
     // Slot information
     virtual size_t GetInputCount() const { return inputSchema.size(); }
     virtual size_t GetOutputCount() const { return outputSchema.size(); }
+    virtual std::optional<PresentationTargetContract> GetPresentationTargetContract() const { return std::nullopt; }
     size_t GetParameterCount() const { return parameterBundle.size(); }
 
     const ResourceDescriptor* GetInputDescriptor(uint32_t slotIndex) const;

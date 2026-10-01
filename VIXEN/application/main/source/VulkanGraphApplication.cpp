@@ -4635,8 +4635,7 @@ bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::
     // offscreen compute_render_target INTO the swapchain, and UIRenderNode's composite pass then
     // LOADs and draws the HUD directly onto that SAME swapchain image (see BuildRenderGraph.cpp's
     // UI-composite-pass comment) -- compute_render_target is a physically separate VkImage that
-    // never receives the HUD draw. CaptureSwapchainToPng (unlike the offscreen-target helper)
-    // handles the PRESENT_SRC_KHR<->TRANSFER_SRC_OPTIMAL round-trip this capture needs.
+    // never receives the HUD draw. Readback derives and restores the composite target's layout.
     if (!renderGraph) {
         err = "CaptureHudFrameToPng: no render graph";
         return false;
@@ -4665,7 +4664,7 @@ bool VulkanGraphApplication::CaptureHudFrameToPng(const std::string& path, std::
     }
     auto* device = deviceInst->GetVulkanDevice();
 
-    return Vixen::RenderGraph::Debug::CaptureSwapchainToPng(
+    return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
         device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
 }
 

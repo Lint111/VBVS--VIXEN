@@ -45,8 +45,6 @@ struct SdiStageCommon {
     NodeHandle commandPool;
     NodeHandle presentationTarget;
     NodeHandle frameSync;
-    bool usesOffscreenTarget = false;
-    bool hasWsiSemaphores = true;
 };
 
 /**
@@ -115,17 +113,11 @@ inline void WireSdiQuintetChain(ConnectionBatch& batch, const SdiStageCommon& co
          .Connect(common.frameSync, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   descriptorSet, DescriptorSetNodeConfig::CURRENT_FRAME_INDEX);
 
-    if (common.usesOffscreenTarget) {
-        batch.Connect(common.presentationTarget, RenderTargetNodeConfig::RENDER_TARGET,
-                      descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(common.presentationTarget, RenderTargetNodeConfig::IMAGE_INDEX,
-                      descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
-    } else {
-        batch.Connect(common.presentationTarget, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                      descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
-             .Connect(common.presentationTarget, SwapChainNodeConfig::IMAGE_INDEX,
-                      descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
-    }
+    const auto target = batch.GetPresentationTargetContract(common.presentationTarget);
+    batch.ConnectOutput(common.presentationTarget, target.target,
+                        descriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_INFO)
+         .ConnectOutput(common.presentationTarget, target.imageIndex,
+                        descriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX);
 
 }
 
@@ -154,19 +146,15 @@ inline void WireSdiStageCommons(ConnectionBatch& batch, const SdiStageCommon& co
          .Connect(common.frameSync, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                   stage, ComputeStageNodeConfig::TIMELINE_FRAME_BASE_IN);
 
-    if (common.usesOffscreenTarget) {
-        batch.Connect(common.presentationTarget, RenderTargetNodeConfig::IMAGE_INDEX,
-                      stage, ComputeStageNodeConfig::IMAGE_INDEX);
-    } else {
-        batch.Connect(common.presentationTarget, SwapChainNodeConfig::IMAGE_INDEX,
-                      stage, ComputeStageNodeConfig::IMAGE_INDEX);
-    }
-
-    if (common.hasWsiSemaphores) {
+    const auto target = batch.GetPresentationTargetContract(common.presentationTarget);
+    batch.ConnectOutput(common.presentationTarget, target.imageIndex,
+                        stage, ComputeStageNodeConfig::IMAGE_INDEX);
+    if (target.synchronization == Vixen::Vulkan::Resources::TargetSynchronization::WsiAcquirePresent) {
+        if (!target.renderComplete) throw std::runtime_error("Window target contract has no present semaphore output");
         batch.Connect(common.frameSync, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                       stage, ComputeStageNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
-             .Connect(common.presentationTarget, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
-                      stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+             .ConnectOutput(common.presentationTarget, *target.renderComplete,
+                            stage, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     }
 }
 

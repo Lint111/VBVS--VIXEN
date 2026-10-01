@@ -1,3 +1,4 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // Sampled Lighting Inc3 M1 (KI-018): presentation-only render-target->swapchain blit node.
 //
@@ -145,18 +146,15 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderComplete = ctx.In(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     const std::vector<VkSemaphore>& imageAvailable = ctx.In(BlitNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     Vixen::Vulkan::Resources::IRenderTarget* target = ctx.In(BlitNodeConfig::SWAPCHAIN_INFO);
-    const bool waitsForSwapchainAcquire =
-        submissionPolicy.waitsForSwapchainAcquire && !imageAvailable.empty();
-
-    // Target images are image-indexed; command buffers and acquire semaphores are frame-indexed.
-    // An offscreen graph has a valid target index but no WSI semaphore arrays.
     if (!target || imageIndex == UINT32_MAX || imageIndex >= target->GetImageCount() ||
-        currentFrameIndex >= commandBuffers_.size() ||
-        (submissionPolicy.signalsPresentSemaphore && imageIndex >= renderComplete.size()) ||
-        (waitsForSwapchainAcquire && currentFrameIndex >= imageAvailable.size())) {
+        currentFrameIndex >= commandBuffers_.size()) {
         NODE_LOG_WARNING("[BlitNode] Invalid image/frame index - skipping frame");
         return;
     }
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        target, imageAvailable, renderComplete, currentFrameIndex, imageIndex,
+        submissionPolicy.waitsForSwapchainAcquire, submissionPolicy.signalsPresentSemaphore);
+    const bool waitsForSwapchainAcquire = handoffs.acquire != VK_NULL_HANDLE;
 
     // Fence ownership mirrors ComputeDispatchNode's leaveImageInGeneral convention exactly: the
     // per-flight in-flight fence must be reset+signalled by EXACTLY ONE submit per frame. When a
@@ -200,7 +198,7 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // performs this node's first real access to the acquired image.
     if (waitsForSwapchainAcquire) {
         VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        acquireWait.semaphore = imageAvailable[currentFrameIndex];
+        acquireWait.semaphore = handoffs.acquire;
         acquireWait.value     = 0;  // binary semaphore: value ignored
         acquireWait.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
         waits.push_back(acquireWait);
@@ -230,9 +228,9 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Stage mask scoped to BLIT (this node's only queue-side work in a compute-only app),
     // not ALL_COMMANDS_BIT (audit pattern R7) -- a terminal blit's last GPU-side access to
     // anything Present cares about is the blit itself.
-    if (submissionPolicy.signalsPresentSemaphore) {
+    if (handoffs.present != VK_NULL_HANDLE) {
         VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        renderSig.semaphore = renderComplete[imageIndex];
+        renderSig.semaphore = handoffs.present;
         renderSig.value     = 0;  // binary: value ignored
         renderSig.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
         signals.push_back(renderSig);
@@ -272,8 +270,7 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // VK_NULL_HANDLE here (instead of a real handle this submit never signals) keeps that
     // documented "the binary semaphores they carry are INERT" claim actually true, now that
     // Task 6.3 stops signalling the handle in composite mode.
-    const VkSemaphore renderCompleteSemaphore = submissionPolicy.signalsPresentSemaphore
-        ? renderComplete[imageIndex] : VK_NULL_HANDLE;
+    const VkSemaphore renderCompleteSemaphore = handoffs.present;
     ctx.Out(BlitNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
     ctx.Out(BlitNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
@@ -303,7 +300,6 @@ void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t im
         throw std::runtime_error("[BlitNode::RecordBlitCommands] SWAPCHAIN_INFO is null");
     }
 
-    VkImage swapchainImage = swapchainInfo->GetImage(imageIndex);
 
     // Reuses the SAME logic ComputeDispatchNode's own render-scale blit uses (extracted,
     // Sampled Lighting Inc3 M1) — see SwapchainBarriers::BlitRenderTargetToSwapchain's doc
@@ -311,9 +307,8 @@ void BlitNode::RecordBlitCommands(Context& ctx, VkCommandBuffer cmd, uint32_t im
     // entry (the upstream ComputeStageNode's IMAGE_WRITE role leaves it there); this call
     // transitions it to TRANSFER_SRC_OPTIMAL, blits, and hands the swapchain image to the
     // same leaveImageInGeneral-gated contract every other blit consumer in this codebase uses.
-    SwapchainBarriers::BlitRenderTargetToSwapchain(GetDevice(), layoutTracking_, cmd,
-                                                   imageReadTarget, swapchainImage,
-                                                   swapchainInfo->GetExtent(), leaveImageInGeneral);
+    SwapchainBarriers::BlitRenderTargetToSwapchain(GetDevice(), cmd,
+                                                   imageReadTarget, swapchainInfo, imageIndex, leaveImageInGeneral);
 
     if (gpuPerfLogger_) {
         VkExtent2D extent = swapchainInfo->GetExtent();

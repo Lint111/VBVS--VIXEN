@@ -19,16 +19,9 @@
 
 namespace Vixen::RenderGraph::Debug {
 
-// Copies `target`'s CURRENT image (GetCurrentImage()) to a host buffer and writes it as an RGB
-// PNG at `path`. The target's image MUST have been created with VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-// (RenderTargetNode's PARAM_USAGE) -- vkCmdCopyImageToBuffer is a spec violation otherwise, and
-// this returns false + sets err rather than letting the driver fault.
-//
-// PRECONDITION: `currentLayout` must match the image's layout after the producer's last submit.
-// The default preserves the legacy ComputeDispatchNode contract (TRANSFER_SRC_OPTIMAL, tracked
-// internally by that node). Split composite graphs use BlitNode, which restores the offscreen
-// source to GENERAL; passing GENERAL makes this helper transition to TRANSFER_SRC_OPTIMAL for the
-// copy and restore GENERAL before returning, leaving BlitNode's per-image layout tracking valid.
+// Copies the current graph-produced image to RGB PNG. The target owns its last recorded layout;
+// this blocking copy restores it before returning, so capture can repeat or rendering can resume.
+// Undefined images have no produced contents and cannot be captured.
 //
 // Blocking: submits a one-shot command buffer on `queue` and waits for it (vkQueueWaitIdle) --
 // fine for an unattended capture harness, not for a per-frame hot path.
@@ -37,8 +30,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
                                       VkQueue queue,
                                       uint32_t queueFamilyIndex,
                                       const std::string& path,
-                                      std::string& err,
-                                      VkImageLayout currentLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+                                      std::string& err) {
     if (!device || !target || queue == VK_NULL_HANDLE) {
         err = "CaptureRenderTargetToPng: null device/target/queue";
         return false;
@@ -47,6 +39,11 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
     const VkImage image = target->GetCurrentImage();
     if (image == VK_NULL_HANDLE) {
         err = "CaptureRenderTargetToPng: target's current image is VK_NULL_HANDLE";
+        return false;
+    }
+    const VkImageLayout currentLayout = target->GetCurrentLayout();
+    if (currentLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
+        err = "CaptureRenderTargetToPng: current image has no graph-produced layout";
         return false;
     }
     if (!(target->GetImageUsageFlags() & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
@@ -188,7 +185,7 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
         void* mapped = nullptr;
         if (vkMapMemory(vkDevice, hostMem, 0, bufSize, 0, &mapped) == VK_SUCCESS) {
             // Swap R and B for BGRA-family formats so the PNG matches on-screen colors (see
-            // CaptureSwapchainToPng below for the full rationale). No-op for this helper's
+            // the swapchain channel-order contract). No-op for this helper's
             // usual RGBA offscreen targets (VK_FORMAT_R8G8B8A8_*).
             const VkFormat fmt = target->GetFormat();
             const bool swapRB = (fmt == VK_FORMAT_B8G8R8A8_UNORM ||
@@ -214,210 +211,6 @@ inline bool CaptureRenderTargetToPng(Vixen::Vulkan::Resources::VulkanDevice* dev
         }
     } else {
         err = "CaptureRenderTargetToPng: vkQueueSubmit failed";
-    }
-
-    vkDestroyBuffer(vkDevice, hostBuf, nullptr);
-    vkFreeMemory(vkDevice, hostMem, nullptr);
-    vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
-    return ok;
-}
-
-// View Contract Inc-2 Task 5: like CaptureRenderTargetToPng, but for a SWAPCHAIN image (e.g. the
-// main app's "main_swapchain"), which is the composite target that actually carries the UI layer --
-// the compute dispatch blits its offscreen render-target INTO the swapchain, then UIRenderNode's
-// composite pass draws the HUD directly onto that SAME swapchain image (see BuildRenderGraph.cpp's
-// UI-composite-pass comment) and transitions it to PRESENT_SRC_KHR for present. compute_render_target
-// (the offscreen target CaptureRenderTargetToPng normally reads) is a physically SEPARATE VkImage
-// that never receives the HUD draw, so a HUD capture must read the swapchain instead.
-//
-// Unlike CaptureRenderTargetToPng (which deliberately does NOT transition layout, to avoid
-// disturbing ComputeDispatchNode's own private per-image layout tracking for its offscreen target),
-// this helper DOES transition the swapchain image PRESENT_SRC_KHR -> TRANSFER_SRC_OPTIMAL -> back to
-// PRESENT_SRC_KHR around the copy. That round-trip is safe here because presentation (not any node's
-// internal tracking) is the sole owner of a swapchain image's layout contract between frames, and a
-// capture is a one-shot, out-of-band read between two already-completed frames — restoring
-// PRESENT_SRC_KHR before returning leaves the next vkQueuePresentKHR exactly as it expects.
-inline bool CaptureSwapchainToPng(Vixen::Vulkan::Resources::VulkanDevice* device,
-                                   Vixen::Vulkan::Resources::IRenderTarget* target,
-                                   VkQueue queue,
-                                   uint32_t queueFamilyIndex,
-                                   const std::string& path,
-                                   std::string& err) {
-    if (!device || !target || queue == VK_NULL_HANDLE) {
-        err = "CaptureSwapchainToPng: null device/target/queue";
-        return false;
-    }
-    const VkDevice vkDevice = device->device;
-    const VkImage image = target->GetCurrentImage();
-    if (image == VK_NULL_HANDLE) {
-        err = "CaptureSwapchainToPng: target's current image is VK_NULL_HANDLE";
-        return false;
-    }
-    if (!(target->GetImageUsageFlags() & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
-        err = "CaptureSwapchainToPng: target was not created with VK_IMAGE_USAGE_TRANSFER_SRC_BIT";
-        return false;
-    }
-
-    const VkExtent2D extent = target->GetExtent();
-    const uint32_t w = extent.width, h = extent.height;
-    if (w == 0 || h == 0) {
-        err = "CaptureSwapchainToPng: target has zero extent";
-        return false;
-    }
-
-    VkCommandPool cmdPool = VK_NULL_HANDLE;
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    poolInfo.queueFamilyIndex = queueFamilyIndex;
-    if (vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &cmdPool) != VK_SUCCESS) {
-        err = "CaptureSwapchainToPng: vkCreateCommandPool failed";
-        return false;
-    }
-
-    VkCommandBufferAllocateInfo cbAlloc{};
-    cbAlloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbAlloc.commandPool = cmdPool;
-    cbAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbAlloc.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(vkDevice, &cbAlloc, &cmd) != VK_SUCCESS) {
-        err = "CaptureSwapchainToPng: vkAllocateCommandBuffers failed";
-        vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
-        return false;
-    }
-
-    const VkDeviceSize bufSize = VkDeviceSize(w) * h * 4;
-    VkBuffer hostBuf = VK_NULL_HANDLE;
-    VkDeviceMemory hostMem = VK_NULL_HANDLE;
-    VkBufferCreateInfo bufInfo{};
-    bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufInfo.size = bufSize;
-    bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (vkCreateBuffer(vkDevice, &bufInfo, nullptr, &hostBuf) != VK_SUCCESS) {
-        err = "CaptureSwapchainToPng: vkCreateBuffer failed";
-        vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
-        return false;
-    }
-    VkMemoryRequirements memReq{};
-    vkGetBufferMemoryRequirements(vkDevice, hostBuf, &memReq);
-    uint32_t memTypeIndex = UINT32_MAX;
-    const VkMemoryPropertyFlags hostFlags =
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    for (uint32_t i = 0; i < device->gpuMemoryProperties.memoryTypeCount; ++i) {
-        if ((memReq.memoryTypeBits & (1u << i)) &&
-            (device->gpuMemoryProperties.memoryTypes[i].propertyFlags & hostFlags) == hostFlags) {
-            memTypeIndex = i;
-            break;
-        }
-    }
-    if (memTypeIndex == UINT32_MAX) {
-        err = "CaptureSwapchainToPng: no host-visible/coherent memory type found";
-        vkDestroyBuffer(vkDevice, hostBuf, nullptr);
-        vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
-        return false;
-    }
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memReq.size;
-    allocInfo.memoryTypeIndex = memTypeIndex;
-    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &hostMem) != VK_SUCCESS) {
-        err = "CaptureSwapchainToPng: vkAllocateMemory failed";
-        vkDestroyBuffer(vkDevice, hostBuf, nullptr);
-        vkDestroyCommandPool(vkDevice, cmdPool, nullptr);
-        return false;
-    }
-    vkBindBufferMemory(vkDevice, hostBuf, hostMem, 0);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &beginInfo);
-
-    // PRESENT_SRC_KHR -> TRANSFER_SRC_OPTIMAL (the round-trip this helper owns, see file comment).
-    VkImageMemoryBarrier toTransferSrc{};
-    toTransferSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toTransferSrc.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    toTransferSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    toTransferSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toTransferSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toTransferSrc.image = image;
-    toTransferSrc.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    toTransferSrc.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;  // presentation engine's prior access
-    toTransferSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &toTransferSrc);
-
-    VkBufferImageCopy region{};
-    region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    region.imageExtent = {w, h, 1};
-    vkCmdCopyImageToBuffer(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, hostBuf, 1, &region);
-
-    // TRANSFER_SRC_OPTIMAL -> back to PRESENT_SRC_KHR (restore for the next vkQueuePresentKHR).
-    VkImageMemoryBarrier toPresentSrc{};
-    toPresentSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toPresentSrc.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    toPresentSrc.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    toPresentSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toPresentSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toPresentSrc.image = image;
-    toPresentSrc.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    toPresentSrc.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    toPresentSrc.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &toPresentSrc);
-
-    vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmd;
-    bool submitOk;
-    {
-        // Externally synchronized per Vulkan spec (audit V-M11).
-        std::lock_guard submitLock(device->SubmitMutex(queue));
-        submitOk = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) == VK_SUCCESS;
-        if (submitOk) {
-            vkQueueWaitIdle(queue);
-        }
-    }
-
-    bool ok = submitOk;
-    if (ok) {
-        void* mapped = nullptr;
-        if (vkMapMemory(vkDevice, hostMem, 0, bufSize, 0, &mapped) == VK_SUCCESS) {
-            // The swapchain image stores raw bytes in its native channel order. On a
-            // BGRA-family surface format (VK_FORMAT_B8G8R8A8_* — the format Dozen/D3D12
-            // selects on WSL2, see VulkanSwapChain.cpp) byte 0 is BLUE and byte 2 is RED,
-            // so a straight byte->RGB copy writes B into the PNG's R slot (reds render as
-            // blues). Swap R and B for those formats so the PNG matches what is presented on
-            // screen — same correction FrameCapture.cpp already applies for the same reason.
-            const VkFormat fmt = target->GetFormat();
-            const bool swapRB = (fmt == VK_FORMAT_B8G8R8A8_UNORM ||
-                                 fmt == VK_FORMAT_B8G8R8A8_SRGB  ||
-                                 fmt == VK_FORMAT_B8G8R8A8_SNORM ||
-                                 fmt == VK_FORMAT_B8G8R8A8_UINT  ||
-                                 fmt == VK_FORMAT_B8G8R8A8_SINT);
-            const uint32_t rIdx = swapRB ? 2u : 0u;
-            const uint32_t bIdx = swapRB ? 0u : 2u;
-            std::vector<uint8_t> rgb(size_t(w) * h * 3);
-            const auto* rgba = static_cast<const uint8_t*>(mapped);
-            for (uint32_t i = 0; i < w * h; ++i) {
-                rgb[i * 3 + 0] = rgba[i * 4 + rIdx];
-                rgb[i * 3 + 1] = rgba[i * 4 + 1];
-                rgb[i * 3 + 2] = rgba[i * 4 + bIdx];
-            }
-            vkUnmapMemory(vkDevice, hostMem);
-            ok = stbi_write_png(path.c_str(), int(w), int(h), 3, rgb.data(), int(w) * 3) != 0;
-            if (!ok) err = "CaptureSwapchainToPng: stbi_write_png failed for " + path;
-        } else {
-            ok = false;
-            err = "CaptureSwapchainToPng: vkMapMemory failed";
-        }
-    } else {
-        err = "CaptureSwapchainToPng: vkQueueSubmit failed";
     }
 
     vkDestroyBuffer(vkDevice, hostBuf, nullptr);

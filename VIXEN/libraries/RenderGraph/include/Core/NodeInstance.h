@@ -96,6 +96,12 @@ public:
     // Identity
     const std::string& GetInstanceName() const { return instanceName; }
     NodeType* GetNodeType() const { return nodeType; }
+
+    // Forwarding nodes identify the outputs containing the same image inputs. Ordinary
+    // dependencies (extent, format, camera) do not forward an image and contribute no usage.
+    virtual std::vector<uint32_t> GetForwardedImageOutputs(uint32_t, bool) const {
+        return {};
+    }
     NodeTypeId GetTypeId() const;
     // Backwards-compatible accessor used in multiple places (legacy GetType calls)
     NodeType* GetType() const { return nodeType; }

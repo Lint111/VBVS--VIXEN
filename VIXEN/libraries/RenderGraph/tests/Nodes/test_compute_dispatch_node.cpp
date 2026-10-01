@@ -1,77 +1,69 @@
-/**
- * @file test_compute_dispatch_node.cpp
- * @brief Unit tests for ComputeDispatchNode's KI-007 fix (DecideRenderTargetPriorLayoutAndUpdate).
- *
- * DecideRenderTargetPriorLayoutAndUpdate is a pure function (no device needed) that tracks the
- * ACTUAL last-recorded layout of a render-target VkImage handle, replacing a prior seen/not-seen
- * guess that assumed every handle strictly alternates GENERAL<->TRANSFER_SRC_OPTIMAL in lockstep --
- * an assumption that breaks once multiple frames are in flight and a command buffer can be
- * re-recorded against a ring slot whose actual last transition doesn't match the guess, producing
- * a real oldLayout mismatch (VUID-vkCmdDraw-None-09600) and visibly corrupt/flickering frames.
- */
-
 #include <gtest/gtest.h>
-
 #include "Nodes/ComputeDispatchNode.h"
+#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
+
+#include "Nodes/Common/PresentationSynchronization.h"
+#include "Nodes/RenderTargetNode.h"
+#include "Nodes/SwapChainNode.h"
 
 using namespace Vixen::RenderGraph;
-
-// VkImage is a dispatchable-handle typedef (opaque pointer); fake distinct "handles" via
-// reinterpret_cast of small integers -- never dereferenced, only compared/hashed as map keys.
-static VkImage FakeImage(uintptr_t id) { return reinterpret_cast<VkImage>(id); }
+using Vixen::Vulkan::Resources::RenderTargetData;
 
 TEST(DecideRenderTargetPriorLayoutAndUpdate, FirstUseOfAHandleIsUndefined) {
-    std::unordered_map<VkImage, VkImageLayout> tracked;
-    const VkImage img = FakeImage(1);
-
-    const VkImageLayout prior = DecideRenderTargetPriorLayoutAndUpdate(tracked, img, VK_IMAGE_LAYOUT_GENERAL);
-
-    EXPECT_EQ(prior, VK_IMAGE_LAYOUT_UNDEFINED) << "a never-seen handle must report UNDEFINED (fresh/recreated image)";
+    RenderTargetData target;
+    target.buffers.resize(1);
+    EXPECT_EQ(DecideRenderTargetPriorLayoutAndUpdate(target, 0, VK_IMAGE_LAYOUT_GENERAL),
+              VK_IMAGE_LAYOUT_UNDEFINED);
 }
 
 TEST(DecideRenderTargetPriorLayoutAndUpdate, SecondUseReportsTheActualTrackedLayoutNotAGuess) {
-    std::unordered_map<VkImage, VkImageLayout> tracked;
-    const VkImage img = FakeImage(1);
-
-    DecideRenderTargetPriorLayoutAndUpdate(tracked, img, VK_IMAGE_LAYOUT_GENERAL);          // compute write
-    tracked[img] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;                                    // simulates the blit's exit barrier
-    const VkImageLayout prior = DecideRenderTargetPriorLayoutAndUpdate(tracked, img, VK_IMAGE_LAYOUT_GENERAL);
-
-    EXPECT_EQ(prior, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-        << "must report the image's REAL last-recorded layout, not a hardcoded second-use guess";
+    RenderTargetData target;
+    target.buffers.resize(1);
+    DecideRenderTargetPriorLayoutAndUpdate(target, 0, VK_IMAGE_LAYOUT_GENERAL);
+    // A different writer can leave a different layout on the same physical buffer.
+    target.SetImageLayout(0, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    EXPECT_EQ(DecideRenderTargetPriorLayoutAndUpdate(target, 0, VK_IMAGE_LAYOUT_GENERAL),
+              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 }
 
 TEST(DecideRenderTargetPriorLayoutAndUpdate, DistinctRingSlotsAreTrackedIndependently) {
-    // This is the actual KI-007 regression: a std::set<VkImage> (seen/not-seen) cannot distinguish
-    // "this ring slot was last a blit source" from "this ring slot was last something else" once
-    // MULTIPLE distinct handles are in play -- each handle needs its OWN tracked state.
-    std::unordered_map<VkImage, VkImageLayout> tracked;
-    const VkImage slotA = FakeImage(1);
-    const VkImage slotB = FakeImage(2);
-
-    DecideRenderTargetPriorLayoutAndUpdate(tracked, slotA, VK_IMAGE_LAYOUT_GENERAL);
-    tracked[slotA] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;  // slotA has been blitted once
-
-    // slotB is a DIFFERENT physical image that has never been touched -- must still report
-    // UNDEFINED even though slotA (a different handle) is already past its first use.
-    const VkImageLayout priorB = DecideRenderTargetPriorLayoutAndUpdate(tracked, slotB, VK_IMAGE_LAYOUT_GENERAL);
-    EXPECT_EQ(priorB, VK_IMAGE_LAYOUT_UNDEFINED) << "a fresh handle must not inherit another handle's history";
-
-    // slotA's own history must be unaffected by slotB's insertion.
-    tracked[slotA] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    const VkImageLayout priorA = DecideRenderTargetPriorLayoutAndUpdate(tracked, slotA, VK_IMAGE_LAYOUT_GENERAL);
-    EXPECT_EQ(priorA, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    RenderTargetData target;
+    target.buffers.resize(2);
+    DecideRenderTargetPriorLayoutAndUpdate(target, 0, VK_IMAGE_LAYOUT_GENERAL);
+    target.SetImageLayout(0, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    EXPECT_EQ(DecideRenderTargetPriorLayoutAndUpdate(target, 1, VK_IMAGE_LAYOUT_GENERAL),
+              VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_EQ(target.GetImageLayout(0), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 }
 
 TEST(DecideRenderTargetPriorLayoutAndUpdate, UpdatesTrackedStateToTheNewLayout) {
-    std::unordered_map<VkImage, VkImageLayout> tracked;
-    const VkImage img = FakeImage(1);
+    RenderTargetData target;
+    target.buffers.resize(1);
+    DecideRenderTargetPriorLayoutAndUpdate(target, 0, VK_IMAGE_LAYOUT_GENERAL);
+    EXPECT_EQ(target.GetCurrentLayout(), VK_IMAGE_LAYOUT_GENERAL);
+}
 
-    DecideRenderTargetPriorLayoutAndUpdate(tracked, img, VK_IMAGE_LAYOUT_GENERAL);
+TEST(RenderTargetLayout, RecreatedBufferDoesNotInheritTheOldAllocationLayout) {
+    RenderTargetData target;
+    target.buffers.resize(1);
+    target.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
+    target.buffers.clear();
+    target.buffers.resize(1);
+    EXPECT_EQ(target.GetCurrentLayout(), VK_IMAGE_LAYOUT_UNDEFINED);
+}
 
-    ASSERT_NE(tracked.find(img), tracked.end());
-    EXPECT_EQ(tracked.at(img), VK_IMAGE_LAYOUT_GENERAL)
-        << "the map must be updated to the layout just transitioned to, not left at the old value";
+TEST(RenderTargetLayout, RenderPassFinalLayoutComesFromTheCompiledPass) {
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    const auto pass = reinterpret_cast<VkRenderPass>(uintptr_t{1});
+    EXPECT_THROW(graph.GetRenderPassFinalLayout(pass), std::runtime_error);
+    graph.RegisterRenderPassFinalLayout(pass, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    EXPECT_EQ(graph.GetRenderPassFinalLayout(pass), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    graph.RegisterRenderPassFinalLayout(pass, VK_IMAGE_LAYOUT_GENERAL);
+    EXPECT_EQ(graph.GetRenderPassFinalLayout(pass), VK_IMAGE_LAYOUT_GENERAL);
+    graph.Clear();
+    EXPECT_THROW(graph.GetRenderPassFinalLayout(pass), std::runtime_error);
 }
 
 // Baked-Perf M6 Task 6.1 (audit E2): ComputeDispatchWaitsForSwapchainAcquire decides whether
@@ -89,4 +81,61 @@ TEST(ComputeDispatchAcquirePolicy, SwapchainWritingPassConsumesSwapchainAcquire)
         << "a dispatch that DOES write the swapchain/render-target image (voxel-only or "
            "self-blitting variants) is the first real swapchain touch and must still consume "
            "the acquire wait itself, unchanged from before Task 6.1";
+}
+
+
+static VkSemaphore FakeSemaphore(uintptr_t id) { return reinterpret_cast<VkSemaphore>(id); }
+
+TEST(TargetSynchronization, OffscreenNeverUsesWsiHandoffsEvenIfArraysAreProvided) {
+    RenderTargetData target;
+    const auto result = ResolveTargetSemaphoreHandoffs(&target, {FakeSemaphore(1)}, {FakeSemaphore(2)}, 0, 0, true, true);
+    EXPECT_EQ(result.acquire, VK_NULL_HANDLE);
+    EXPECT_EQ(result.present, VK_NULL_HANDLE);
+    EXPECT_NO_THROW(ResolveTargetSemaphoreHandoffs(&target, {}, {}, 3, 4, true, true));
+}
+
+TEST(TargetSynchronization, WindowIndexesAcquireByFrameAndPresentByImage) {
+    SwapChainPublicVariables target{};
+    const auto result = ResolveTargetSemaphoreHandoffs(&target,
+        {FakeSemaphore(1), FakeSemaphore(2)}, {FakeSemaphore(3), FakeSemaphore(4), FakeSemaphore(5)}, 1, 2, true, true);
+    EXPECT_EQ(result.acquire, FakeSemaphore(2));
+    EXPECT_EQ(result.present, FakeSemaphore(5));
+}
+
+TEST(TargetSynchronization, MissingWindowAcquireIsAnError) {
+    SwapChainPublicVariables target{};
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(&target, {}, {FakeSemaphore(1)}, 0, 0, true, true), std::runtime_error);
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(&target, {VK_NULL_HANDLE}, {}, 0, 0, true, false), std::runtime_error);
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(&target, {FakeSemaphore(1)}, {}, 1, 0, true, false), std::runtime_error);
+}
+
+TEST(TargetSynchronization, MissingWindowPresentIsAnError) {
+    SwapChainPublicVariables target{};
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(&target, {FakeSemaphore(1)}, {}, 0, 0, true, true), std::runtime_error);
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(&target, {}, {VK_NULL_HANDLE}, 0, 0, false, true), std::runtime_error);
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(&target, {}, {FakeSemaphore(1)}, 0, 1, false, true), std::runtime_error);
+}
+
+TEST(TargetSynchronization, ProducerDoesNotRequireUnusedWindowHandoffs) {
+    SwapChainPublicVariables target{};
+    EXPECT_NO_THROW(ResolveTargetSemaphoreHandoffs(&target, {}, {}, 0, 0, false, false));
+    EXPECT_NO_THROW(ResolveTargetSemaphoreHandoffs(nullptr, {}, {}, 0, 0, false, false));
+    EXPECT_THROW(ResolveTargetSemaphoreHandoffs(nullptr, {}, {}, 0, 0, true, false), std::runtime_error);
+}
+
+TEST(TargetSynchronization, NodeWiringAndRuntimeUseTheSameCapability) {
+    RenderTargetNodeType offscreenType;
+    SwapChainNodeType windowType;
+    RenderTargetData offscreen;
+    SwapChainPublicVariables window{};
+    const auto offscreenContract = offscreenType.GetPresentationTargetContract();
+    const auto windowContract = windowType.GetPresentationTargetContract();
+    ASSERT_TRUE(offscreenContract);
+    ASSERT_TRUE(windowContract);
+    EXPECT_EQ(offscreenContract->synchronization, offscreen.GetSynchronization());
+    EXPECT_EQ(windowContract->synchronization, window.GetSynchronization());
+    EXPECT_FALSE(offscreenContract->renderComplete);
+    EXPECT_TRUE(windowContract->renderComplete);
+    EXPECT_EQ(offscreenContract->target.index, RenderTargetNodeConfig::RENDER_TARGET.index);
+    EXPECT_EQ(windowContract->target.index, SwapChainNodeConfig::SWAPCHAIN_PUBLIC.index);
 }

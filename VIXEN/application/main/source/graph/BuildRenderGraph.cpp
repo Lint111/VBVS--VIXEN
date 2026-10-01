@@ -494,6 +494,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
     const NodeHandle presentationTargetNode = offscreenPresentation ? offscreenTargetNode : swapChainNode;
+    ConnectionBatch batch(renderGraph);
+    const auto targetContract = batch.GetPresentationTargetContract(presentationTargetNode);
+    const bool usesWsi = targetContract.synchronization == Vixen::Vulkan::Resources::TargetSynchronization::WsiAcquirePresent;
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
@@ -1377,11 +1380,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ===================================================================
 
     // Windowed and offscreen graphs share the same render stages. Only the terminal target and
-    // its WSI setup differ; the offscreen target includes transfer-destination usage for BlitNode
-    // and transfer-source usage for the public PNG readback path.
+    // its WSI setup differ; target usage derives from consumers and public readback.
     auto* instance = static_cast<InstanceNode*>(renderGraph->GetInstance(instanceNode));
-    instance->SetParameter(InstanceNodeConfig::PARAM_ENABLE_PRESENTATION, !offscreenPresentation);
-    if (!offscreenPresentation) {
+    instance->SetParameter(InstanceNodeConfig::PARAM_ENABLE_PRESENTATION, usesWsi);
+    if (usesWsi) {
         auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
         window->SetParameter(WindowNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
         window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
@@ -1389,19 +1391,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
         auto* target = static_cast<RenderTargetNode*>(renderGraph->GetInstance(offscreenTargetNode));
         target->SetParameter(RenderTargetNodeConfig::PARAM_WIDTH, static_cast<uint32_t>(width));
         target->SetParameter(RenderTargetNodeConfig::PARAM_HEIGHT, static_cast<uint32_t>(height));
-            target->SetParameter(RenderTargetNodeConfig::PARAM_IMAGE_COUNT,
+        target->SetParameter(RenderTargetNodeConfig::PARAM_IMAGE_COUNT,
                              FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT);
-        target->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
-            static_cast<uint32_t>(VK_IMAGE_USAGE_STORAGE_BIT |
-                                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                                  VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                                  VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
     }
 
     // Device parameters (auto-select: prefers a discrete GPU over integrated)
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, DeviceNodeConfig::GPU_INDEX_AUTO);
-    device->SetParameter(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, !offscreenPresentation);
+    device->SetParameter(DeviceNodeConfig::PARAM_ENABLE_PRESENTATION, usesWsi);
 
     // M4: render-scale decoupling. VIXEN_RENDER_SCALE in (0,1] shrinks the offscreen target the
     // compute dispatch writes into relative to the swapchain; ComputeDispatchNode blits it back up.
@@ -1419,13 +1416,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
-    // STORAGE for the compute imageStore; TRANSFER_SRC for the blit-to-swapchain source.
-    // B2 additionally rasterizes proxy boxes into this same ring before the march.
-    VkImageUsageFlags renderTargetUsage =
-        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    if (b2ProxyPrepassEnabled) renderTargetUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_USAGE,
-                               static_cast<uint32_t>(renderTargetUsage));
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
@@ -1711,7 +1701,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // present fences when VK_EXT_swapchain_maintenance1 is available — SwapChainNode waits
     // them after acquire). The full device drain serialized every frame and dominated frame
     // time through the WSLg paravirtualized device (~186ms/frame measured at 500x500).
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
         present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, false);
     }
@@ -7555,14 +7545,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::General);    // compute leaves GENERAL
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT,
-        offscreenPresentation ? ImageLayout::TransferSrc : ImageLayout::PresentSrc);
+        usesWsi ? ImageLayout::PresentSrc : ImageLayout::TransferSrc);
     uiRenderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
 
     auto* uiFramebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(uiFramebufferNode));
     uiFramebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
 
     auto* uiComposite = static_cast<UIRenderNode*>(renderGraph->GetInstance(uiCompositeNode));
-    uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, !offscreenPresentation);
+    uiComposite->SetParameter(UIRenderNodeConfig::PARAM_COMPOSITE, usesWsi);
     uiComposite->SetParameter(UIRenderNodeConfig::RML_DOCUMENT_PATH, std::string("assets/ui/hud.rml"));
 
     // View Contract Inc-2 Task 5: wire the app's native HudView onto the now-generic UI node.
@@ -7593,24 +7583,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     mainLogger->Info("Wiring node connections using TypedConnection API");
 
     // Use ConnectionBatch for atomic registration
-    ConnectionBatch batch(renderGraph);
-    // ConnectionBatch source slots are compile-time typed. Keep the runtime target choice here,
-    // where each branch retains its concrete output-slot type while all consumers share one path.
     auto connectPresentationTargetInfo = [&](NodeHandle targetNode, auto targetSlot) -> ConnectionBatch& {
-        if (offscreenPresentation) {
-            return batch.Connect(presentationTargetNode, RenderTargetNodeConfig::RENDER_TARGET,
-                                 targetNode, targetSlot);
-        }
-        return batch.Connect(presentationTargetNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                             targetNode, targetSlot);
+        return batch.ConnectOutput(presentationTargetNode, targetContract.target, targetNode, targetSlot);
     };
     auto connectPresentationImageIndex = [&](NodeHandle targetNode, auto targetSlot) -> ConnectionBatch& {
-        if (offscreenPresentation) {
-            return batch.Connect(presentationTargetNode, RenderTargetNodeConfig::IMAGE_INDEX,
-                                 targetNode, targetSlot);
-        }
-        return batch.Connect(presentationTargetNode, SwapChainNodeConfig::IMAGE_INDEX,
-                             targetNode, targetSlot);
+        return batch.ConnectOutput(presentationTargetNode, targetContract.imageIndex, targetNode, targetSlot);
     };
 
     // --- Instance → Device connection (Phase 1.1: Dependency injection) ---
@@ -7648,7 +7625,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
 
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         // --- FrameSync → SwapChain connections (Phase 0.4) ---
         batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                       swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
@@ -7664,7 +7641,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         // --- Device/SwapChain/UI → Present connections ---
         batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                       presentNode, PresentNodeConfig::VULKAN_DEVICE_IN)
@@ -7691,7 +7668,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   debugCaptureNode, DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
 
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         batch.Connect(swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY,
                       presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
     }
@@ -7820,8 +7797,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // chain/commons/push plumbing the hand blocks wrote here is emitted
         // by the helper; the sync-hazard gatherers below stay authored (S3).
         const SdiStageCommon bucketingCommon{deviceNode, commandPoolNode,
-                                             presentationTargetNode, frameSyncNode,
-                                             offscreenPresentation, !offscreenPresentation};
+                                             presentationTargetNode, frameSyncNode};
         const auto provideMode = [](NodeHandle modeConstant) {
             return [modeConstant](SdiProviderRegistry& r) {
                 r.Provide("mode", modeConstant,
@@ -7923,7 +7899,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
              .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                       recipeSpecializedDispatch, MultiDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
-        if (!offscreenPresentation) {
+        if (usesWsi) {
             batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                           recipeSpecializedDispatch, MultiDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
                  .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
@@ -7968,8 +7944,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // synthesized from each stage's merged SDI (below, after the
         // providers are registered).
         const SdiStageCommon b1Common{deviceNode, commandPoolNode,
-                                      presentationTargetNode, frameSyncNode,
-                                      offscreenPresentation, !offscreenPresentation};
+                                      presentationTargetNode, frameSyncNode};
 
         // Semantic-wiring S1: slot indices come from the feature-tagged merged SDI
         // (generated/sdi/merged/*-SDI.h) — names, not hand-written numbers. The
@@ -8874,7 +8849,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                   computeDispatch, ComputeDispatchNodeConfig::TIMELINE_FRAME_BASE_IN);
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                       computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
              .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
@@ -8947,7 +8922,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_SEMAPHORE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE, uiCompositeNode, UIRenderNodeConfig::TIMELINE_FRAME_BASE_IN);
     connectPresentationImageIndex(uiCompositeNode, UIRenderNodeConfig::IMAGE_INDEX);
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
                       uiCompositeNode, UIRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
              .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
@@ -9014,8 +8989,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // placeholder fallback exactly as before (byte-identical both modes);
     // providing a real buffer is the capture path's own future slice.
     const SdiStageCommon lightingCommon{deviceNode, commandPoolNode,
-                                        presentationTargetNode, frameSyncNode,
-                                        offscreenPresentation, !offscreenPresentation};
+                                        presentationTargetNode, frameSyncNode};
     const auto dlSynth = SynthesizeComputeStage<DirectSdi::Metadata, DirectSdi::MEMBERS>(
         renderGraph, batch, "direct_lighting", directLightingShaderLib,
         directLightingNode, lightingCommon, sceneProviders, {},
@@ -9882,7 +9856,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   blitNode, BlitNodeConfig::TIMELINE_SEMAPHORE_IN)
          .Connect(frameSyncNode, FrameSyncNodeConfig::TIMELINE_FRAME_BASE,
                   blitNode, BlitNodeConfig::TIMELINE_FRAME_BASE_IN);
-    if (!offscreenPresentation) {
+    if (usesWsi) {
         batch.Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                       blitNode, BlitNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
          // Baked-Perf M6 Task 6.1 (audit E2): BlitNode is now the real first swapchain-

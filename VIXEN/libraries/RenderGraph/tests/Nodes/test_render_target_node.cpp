@@ -16,6 +16,15 @@
 #include "Nodes/RenderTargetNode.h"
 #include "Data/Nodes/RenderTargetNodeConfig.h"
 
+#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
+#include "Core/ImageUsage.h"
+#include "Nodes/ComputeStageNode.h"
+#include "Nodes/BlitNode.h"
+#include "Nodes/FramebufferNode.h"
+#include "Nodes/DescriptorResourceGathererNode.h"
+#include "Nodes/ImageSyncGathererNode.h"
+
 // Centralized Vulkan global name definitions (avoids duplicate strong symbols across TUs)
 #include <VulkanGlobalNames.h>
 
@@ -157,10 +166,6 @@ TEST_F(RenderTargetNodeConfigTest, ParamNameImageCount) {
     EXPECT_STREQ(RenderTargetNodeConfig::PARAM_IMAGE_COUNT, "imageCount");
 }
 
-TEST_F(RenderTargetNodeConfigTest, ParamNameUsage) {
-    EXPECT_STREQ(RenderTargetNodeConfig::PARAM_USAGE, "usage");
-}
-
 // ----- Config constructibility -----
 
 TEST_F(RenderTargetNodeConfigTest, ConfigIsDefaultConstructible) {
@@ -276,3 +281,116 @@ TEST(RenderTargetNodeFollowExtent, MinimumExtentIsOneByOne) {
  * Blocked on: standalone headless InstanceNode/DeviceNode lifecycle
  * (test_device_node.cpp uses the same placeholder strategy).
  */
+
+
+TEST(RenderTargetUsage, UnionsStorageBlitAndAttachmentConsumers) {
+    RenderTargetNodeType targetType;
+    ComputeStageNodeType computeType;
+    BlitNodeType blitType;
+    FramebufferNodeType framebufferType;
+    auto target = targetType.CreateInstance("target");
+    auto compute = computeType.CreateInstance("write");
+    auto blit = blitType.CreateInstance("blit");
+    auto framebuffer = framebufferType.CreateInstance("framebuffer");
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    auto& topology = graph.GetTopology();
+    topology.AddEdge({target.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                      compute.get(), ComputeStageNodeConfig::IMAGE_WRITE.index});
+    topology.AddEdge({target.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                      blit.get(), BlitNodeConfig::IMAGE_READ.index});
+    topology.AddEdge({target.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                      framebuffer.get(), FramebufferNodeConfig::SWAPCHAIN_INFO.index});
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::RENDER_TARGET.index}),
+              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+}
+
+TEST(RenderTargetUsage, DescriptorViewBindingDerivesSampledUsageAndTracksContractChanges) {
+    RenderTargetNodeType targetType;
+    DescriptorResourceGathererNodeType gatherType;
+    auto target = targetType.CreateInstance("target");
+    auto gather = gatherType.CreateInstance("descriptors");
+    auto* variadic = dynamic_cast<IVariadicNode*>(gather.get());
+    ASSERT_NE(variadic, nullptr);
+    VariadicSlotInfo slot;
+    slot.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    variadic->UpdateVariadicSlot(0, slot);
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    graph.GetTopology().AddEdge({target.get(), RenderTargetNodeConfig::CURRENT_VIEW.index,
+                                gather.get(), 0, true});
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::CURRENT_VIEW.index}),
+              VK_IMAGE_USAGE_SAMPLED_BIT);
+    slot.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    variadic->UpdateVariadicSlot(0, slot);
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::CURRENT_VIEW.index}),
+              VK_IMAGE_USAGE_STORAGE_BIT);
+}
+
+TEST(RenderTargetUsage, ForwardedImageArraysContributeConsumerUsage) {
+    RenderTargetNodeType targetType;
+    ImageSyncGathererNodeType arrayType;
+    ComputeStageNodeType computeType;
+    auto target = targetType.CreateInstance("target");
+    auto array = arrayType.CreateInstance("array");
+    auto compute = computeType.CreateInstance("consumer");
+    static_cast<ImageSyncGathererNode*>(array.get())->PreRegisterImageSlots(1);
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    graph.GetTopology().AddEdge({target.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                                array.get(), 0, true});
+    graph.GetTopology().AddEdge({array.get(), ImageSyncGathererNodeConfig::IMAGE_ARRAY.index,
+                                compute.get(), ComputeStageNodeConfig::IMAGE_READ_ARRAY.index});
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::RENDER_TARGET.index}),
+              VK_IMAGE_USAGE_STORAGE_BIT);
+}
+
+TEST(RenderTargetUsage, ExtentDependencyDoesNotInheritAnotherTargetsConsumers) {
+    RenderTargetNodeType targetType;
+    ComputeStageNodeType computeType;
+    auto first = targetType.CreateInstance("first");
+    auto second = targetType.CreateInstance("second");
+    auto compute = computeType.CreateInstance("consumer");
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    graph.GetTopology().AddEdge({first.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                                second.get(), RenderTargetNodeConfig::EXTENT_SOURCE.index});
+    graph.GetTopology().AddEdge({second.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                                compute.get(), ComputeStageNodeConfig::IMAGE_WRITE.index});
+    EXPECT_EQ(graph.DeriveImageUsage(first.get(), {RenderTargetNodeConfig::RENDER_TARGET.index}), 0u);
+    EXPECT_EQ(graph.DeriveImageUsage(second.get(), {RenderTargetNodeConfig::RENDER_TARGET.index}),
+              VK_IMAGE_USAGE_STORAGE_BIT);
+}
+
+TEST(RenderTargetUsage, BlitDestinationRequiresTransferDestinationUsage) {
+    RenderTargetNodeType targetType;
+    BlitNodeType blitType;
+    auto target = targetType.CreateInstance("target");
+    auto blit = blitType.CreateInstance("blit");
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    graph.GetTopology().AddEdge({target.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                                blit.get(), BlitNodeConfig::SWAPCHAIN_INFO.index});
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::RENDER_TARGET.index}),
+              VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+}
+
+TEST(RenderTargetUsage, StaticInputAndBindingAtSameIndexRemainDistinct) {
+    RenderTargetNodeType targetType;
+    DescriptorResourceGathererNodeType gatherType;
+    auto target = targetType.CreateInstance("target");
+    auto gather = gatherType.CreateInstance("descriptors");
+    VariadicSlotInfo slot;
+    slot.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    dynamic_cast<IVariadicNode*>(gather.get())->UpdateVariadicSlot(0, slot);
+    NodeTypeRegistry registry;
+    Vixen::RenderGraph::RenderGraph graph(&registry);
+    graph.GetTopology().AddEdge({target.get(), RenderTargetNodeConfig::RENDER_TARGET.index,
+                                gather.get(), 0, false});
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::RENDER_TARGET.index}), 0u);
+    graph.GetTopology().AddEdge({target.get(), RenderTargetNodeConfig::CURRENT_VIEW.index,
+                                gather.get(), 0, true});
+    EXPECT_EQ(graph.GetTopology().GetEdgeCount(), 2u);
+    EXPECT_EQ(graph.DeriveImageUsage(target.get(), {RenderTargetNodeConfig::CURRENT_VIEW.index}),
+              VK_IMAGE_USAGE_STORAGE_BIT);
+}

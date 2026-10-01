@@ -34,13 +34,10 @@ CONSTEXPR_NODE_CONFIG(UIRenderNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* RML_DOCUMENT_PATH = "rmlDocumentPath";
     static constexpr const char* FONT_PATH = "fontPath";
-    // Composite mode (default false): when true this UI pass is layered OVER an upstream producer (the
-    // voxel compute) that wrote the swapchain image and signalled the per-IMAGE semaphore wired into
-    // IMAGE_AVAILABLE_SEMAPHORES_ARRAY. The node then waits on that array indexed by IMAGE (the
-    // compute→UI handoff), signals its own per-image "ui complete" semaphore (output via
-    // RENDER_COMPLETE_SEMAPHORE for present), and owns the frame fence. False = standalone UI graph
-    // (S0 demo): wait imageAvailable[frame], signal renderComplete[image]. If both WSI arrays are
-    // unconnected, the same render pass runs offscreen and only the frame fence is signaled.
+    // Composite mode (default false): layer over an upstream producer, ordered by the graph's
+    // timeline edges. A window target signals this node's own per-image completion semaphore
+    // for present; standalone window UI also consumes imageAvailable[frame]. The target's
+    // synchronization capability selects WSI handoffs; offscreen UI owns only the frame fence.
     static constexpr const char* PARAM_COMPOSITE = "composite";
 
     // ===== INPUTS (8) =====

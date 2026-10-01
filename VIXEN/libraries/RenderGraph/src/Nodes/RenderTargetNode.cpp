@@ -57,10 +57,6 @@ void RenderTargetNode::TypedSetupImpl(TypedSetupContext& ctx) {
                   RenderTargetNodeConfig::PARAM_FORMAT,
                   static_cast<uint32_t>(VK_FORMAT_R8G8B8A8_UNORM)));
     imageCount_ = GetParameterValue<uint32_t>(RenderTargetNodeConfig::PARAM_IMAGE_COUNT, 0u);
-    usage_  = static_cast<VkImageUsageFlags>(GetParameterValue<uint32_t>(
-                  RenderTargetNodeConfig::PARAM_USAGE,
-                  static_cast<uint32_t>(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                                        VK_IMAGE_USAGE_SAMPLED_BIT)));
     scale_  = GetParameterValue<float>(RenderTargetNodeConfig::PARAM_SCALE, 1.0f);
 
     NODE_LOG_INFO("[RenderTargetNode] Setup complete: " +
@@ -100,12 +96,20 @@ void RenderTargetNode::TypedCompileImpl(TypedCompileContext& ctx) {
         imageCount_ = DEFAULT_FRAMES_IN_FLIGHT;
     }
 
+    // Public graph-target readback is an intrinsic transfer-source consumer. All GPU usage
+    // comes from connected image/view consumers, including forwarded image arrays.
+    const VkImageUsageFlags derivedUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+        GetOwningGraph()->DeriveImageUsage(this, {RenderTargetNodeConfig::RENDER_TARGET.index,
+                                                RenderTargetNodeConfig::CURRENT_VIEW.index});
+    const bool usageChanged = usage_ != derivedUsage;
+    usage_ = derivedUsage;
+
     // FR-7: images are persistent across recompile — only (re)create when first-time or the
-    // computed extent actually changed.
+    // computed extent or derived consumer usage actually changed.
     if (target_.buffers.empty()) {
         CreateTarget(device_);
-    } else if (extentChanged) {
-        NODE_LOG_INFO("[RenderTargetNode] EXTENT_SOURCE extent changed — recreating offscreen target at " +
+    } else if (extentChanged || usageChanged) {
+        NODE_LOG_INFO("[RenderTargetNode] Extent or consumer usage changed — recreating offscreen target at " +
                       std::to_string(width_) + "x" + std::to_string(height_));
         DestroyTarget();
         CreateTarget(device_);
@@ -208,6 +212,13 @@ void RenderTargetNode::CreateTarget(VulkanDevice* device) {
         }
 
         vkBindImageMemory(vkDevice, b.image, b.memory, 0);
+
+        // A readback-only allocation has no view consumer. Vulkan forbids creating a view
+        // for transfer-only images; any declared descriptor/attachment consumer adds its bit.
+        const VkImageUsageFlags viewUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+            VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        if (!(usage_ & viewUsage)) continue;
 
         // --- Create image view ---
         VkImageViewCreateInfo viewInfo{};

@@ -1,8 +1,10 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // auto-sync P4 M3: PassGroupNode — generic multi-pass node (one cmd buf + one submit)
 
 #include "Nodes/PassGroupNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"
 #include "Core/PassGroupSchedule.h"   // BuildPassGroupSchedule
 #include "Core/PassRecorder.h"        // RecordPassGroup
 #include "Core/NodeLogging.h"
@@ -146,9 +148,12 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
         return;
     }
 
-    // Two-tier indexing: imageAvailable by frame, renderComplete by image
-    VkSemaphore imageAvailableSemaphore  = imageAvailableSemaphores[currentFrameIndex];
-    VkSemaphore renderCompleteSemaphore  = renderCompleteSemaphores[imageIndex];
+    auto* target = ctx.In(PassGroupNodeConfig::SWAPCHAIN_INFO);
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        target, imageAvailableSemaphores, renderCompleteSemaphores,
+        currentFrameIndex, imageIndex, true, true);
+    VkSemaphore imageAvailableSemaphore = handoffs.acquire;
+    VkSemaphore renderCompleteSemaphore = handoffs.present;
 
     VkCommandBuffer cmd = commandBuffers_.GetValue(imageIndex);
 
@@ -170,6 +175,12 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     RecordPassGroup(cmd, passes_, intraSchedule_, imageIndex,
                     GetDevice()->fpCmdPipelineBarrier2);  // per-device barrier2 entry point (injected)
 
+    for (const auto& step : passes_) {
+        if (const auto* render = std::get_if<RenderPassStep>(&step)) {
+            target->SetImageLayout(imageIndex, GetOwningGraph()->GetRenderPassFinalLayout(render->renderPass));
+        }
+    }
+
     // ---- End command buffer ----
     result = vkEndCommandBuffer(cmd);
     if (result != VK_SUCCESS) {
@@ -183,14 +194,14 @@ void PassGroupNode::VariadicExecuteImpl(VariadicExecuteContext& ctx) {
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    submitInfo.waitSemaphoreCount  = 1;
+    submitInfo.waitSemaphoreCount  = handoffs.acquire != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pWaitSemaphores     = &imageAvailableSemaphore;
     submitInfo.pWaitDstStageMask   = &waitStage;
 
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &cmd;
 
-    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.signalSemaphoreCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pSignalSemaphores    = &renderCompleteSemaphore;
 
     {

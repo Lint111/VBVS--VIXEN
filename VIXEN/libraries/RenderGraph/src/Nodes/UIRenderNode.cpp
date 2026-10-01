@@ -1,3 +1,4 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/UIRenderNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/RenderGraph.h"           // GetOwningGraph()->GetFrameSyncSchedule()
@@ -338,7 +339,8 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // carries its own pause+recreation), so guarding on it makes the steady state a no-op while still
     // rebuilding correctly on an actual resize.
     const uint32_t imageCount = sc->GetImageCount();
-    const bool rebuildSync = (imageCount != syncImageCount_) || commandBuffers_.empty();
+    const bool usesWsi = sc->UsesWsiSynchronization();
+    const bool rebuildSync = (imageCount != syncImageCount_) || (usesWsi != syncUsesWsi_) || commandBuffers_.empty();
     if (rebuildSync) {
         FreeCommandBuffers();
         // Command buffers are frame-indexed at the flight-ring depth, NOT imageCount (see
@@ -357,7 +359,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
         // semaphore — kept distinct from the per-image compute→UI handoff this node waits on, since a
         // binary semaphore is one-signal/one-wait.
         DestroyCompositeSemaphores();
-        if (composite_) {
+        if (composite_ && sc->UsesWsiSynchronization()) {
             uiCompleteSemaphores_.resize(imageCount);
             VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             for (auto& sem : uiCompleteSemaphores_) {
@@ -365,6 +367,7 @@ void UIRenderNode::TypedCompileImpl(TypedCompileContext& ctx) {
             }
         }
         syncImageCount_ = imageCount;
+        syncUsesWsi_ = usesWsi;
     }
 }
 
@@ -436,15 +439,11 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // frame-indexed (currentFrameIndex, bounded by its own flight-ring size).
     if (imageIndex == UINT32_MAX || currentFrameIndex >= commandBuffers_.size() || imageIndex >= framebuffers.size()) return;
 
-    // Composite: the compute→UI ordering is carried SOLELY by the baked timeline waitEdge (P5b M3) —
-    // no binary handoff wait here. This node signals its own per-image semaphore for present. Standalone
-    // (S0): a windowed graph waits imageAvailable[frame] and signals renderComplete[image]; an offscreen
-    // graph leaves both optional WSI arrays unconnected and closes the frame with its fence alone.
-    if (composite_ && imageIndex >= uiCompleteSemaphores_.size()) return;
-    if (!composite_ && !renderComplete.empty() && imageIndex >= renderComplete.size()) return;
-    if (!composite_ && !imageAvailable.empty() && currentFrameIndex >= imageAvailable.size()) return;
-    VkSemaphore signalSem = composite_ ? uiCompleteSemaphores_[imageIndex]
-        : (imageIndex < renderComplete.size() ? renderComplete[imageIndex] : VK_NULL_HANDLE);
+    auto* target = ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO);
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        target, imageAvailable, composite_ ? uiCompleteSemaphores_ : renderComplete,
+        currentFrameIndex, imageIndex, !composite_, true);
+    const VkSemaphore signalSem = handoffs.present;
 
     // This UI submit is the frame's last submit, so it resets + owns the frame fence (in composite mode
     // the upstream compute submitted with no fence). Safe: FrameSyncNode already waited on it.
@@ -460,6 +459,8 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // already waited; the framebuffer it renders into stays imageIndex-selected.
     VkCommandBuffer cmd = commandBuffers_[currentFrameIndex];
     RecordFrame(cmd, framebuffers[imageIndex], currentFrameIndex);
+    ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO)->SetImageLayout(
+        imageIndex, GetOwningGraph()->GetRenderPassFinalLayout(renderPass_));
 
     // P5b M1: read timeline primitives (Optional — VK_NULL_HANDLE / 0 if not wired)
     VkSemaphore timelineSem = ctx.In(UIRenderNodeConfig::TIMELINE_SEMAPHORE_IN);
@@ -473,9 +474,9 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Standalone (S0) ONLY: wait the binary WSI acquire (imageAvailable). The composite graph has no
     // imageAvailable wait here — the upstream compute waits the acquire, and compute→UI is ordered by
     // the timeline waitEdge below (P5b M3 dropped the binary compute→UI handoff).
-    if (!composite_ && !imageAvailable.empty()) {
+    if (handoffs.acquire != VK_NULL_HANDLE) {
         VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        binaryWait.semaphore = imageAvailable[currentFrameIndex];
+        binaryWait.semaphore = handoffs.acquire;
         binaryWait.value     = 0;  // binary semaphore: value ignored
         binaryWait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         waits.push_back(binaryWait);

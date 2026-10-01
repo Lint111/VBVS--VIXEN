@@ -63,6 +63,11 @@ public:
      */
     void PreRegisterImageSlots(size_t count);
 
+    std::vector<uint32_t> GetForwardedImageOutputs(uint32_t, bool isVariadic) const override {
+        return isVariadic ? std::vector<uint32_t>{ImageSyncGathererNodeConfig::IMAGE_ARRAY.index}
+                          : std::vector<uint32_t>{};
+    }
+
 protected:
     void VariadicSetupImpl(VariadicSetupContext& ctx) override;
     void VariadicCompileImpl(VariadicCompileContext& ctx) override;

@@ -156,6 +156,31 @@ public:
         : graph(graph)
         , registry_(ConnectionRuleRegistry::CreateDefault()) {}
 
+    // A target contract supplies a runtime output port while the consumer keeps its typed slot.
+    // Use the same connection rules, validation and lifetime propagation as Connect().
+    template<typename TargetSlot>
+    ConnectionBatch& ConnectOutput(NodeHandle source, const SlotInfo& output,
+                                   NodeHandle target, TargetSlot) {
+        PendingConnection pending;
+        pending.context.sourceNode = graph->GetInstance(source);
+        pending.context.targetNode = graph->GetInstance(target);
+        pending.context.graph = graph;
+        pending.context.sourceSlot = output;
+        pending.context.targetSlot = SlotInfo::FromInputSlot<TargetSlot>("");
+        PopulateSourceLifetime(pending.context, output.index);
+        pending.rule = registry_.FindRule(pending.context.sourceSlot, pending.context.targetSlot);
+        if (!pending.rule) throw std::runtime_error("Presentation target output has no compatible connection rule");
+        pendingConnections_.push_back(std::move(pending));
+        return *this;
+    }
+
+    PresentationTargetContract GetPresentationTargetContract(NodeHandle target) const {
+        const auto* instance = graph->GetInstance(target);
+        const auto contract = instance ? instance->GetNodeType()->GetPresentationTargetContract() : std::nullopt;
+        if (!contract) throw std::runtime_error("Node has no presentation-target contract");
+        return *contract;
+    }
+
     // ========================================================================
     // UNIFIED CONNECT API
     // ========================================================================

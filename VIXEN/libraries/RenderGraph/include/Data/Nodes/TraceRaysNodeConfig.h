@@ -102,13 +102,13 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 8,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 9,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -168,6 +168,7 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
 
         HandleDescriptor swapchainDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainDesc);
+        inputs[SWAPCHAIN_INFO.index].imageUsage = VK_IMAGE_USAGE_STORAGE_BIT;
 
         HandleDescriptor uint32Desc{"uint32_t"};
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, uint32Desc);

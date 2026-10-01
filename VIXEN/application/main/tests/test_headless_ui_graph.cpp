@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "Nodes/RenderTargetNode.h"
 
 #include <gtest/gtest.h>
 
@@ -30,8 +31,15 @@ public:
             captureError_ = "offscreen graph contains the wrong terminal nodes";
             return false;
         }
+        auto* target = graph->GetInstanceByName("ui_offscreen_target")->GetOutput(0)->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+        EXPECT_EQ(target->GetCurrentLayout(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        EXPECT_EQ(target->GetImageUsageFlags(), VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        EXPECT_FALSE(target->UsesWsiSynchronization());
         const char* path = std::getenv("VIXEN_HEADLESS_UI_CAPTURE");
         if (!path || !CaptureOffscreenFrameToPng(path, captureError_)) return false;
+        EXPECT_EQ(target->GetCurrentLayout(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        // Repeated readback preserves the layout; the next frame renders another ring slot.
+        if (!CaptureOffscreenFrameToPng(path, captureError_)) return false;
         captured_ = true;
         return true;
     }
@@ -51,7 +59,7 @@ TEST(HeadlessUiGraph, RendersAndReadsBackAnOffscreenFrame) {
     std::filesystem::remove(path, ec);
 
     HeadlessUiApplication app;
-    const int result = app.Run(RunOptions{.exitAfterFrames = 1});
+    const int result = app.Run(RunOptions{.exitAfterFrames = 3});
     ASSERT_EQ(result, 0) << app.CaptureError();
     ASSERT_TRUE(app.Captured()) << app.CaptureError();
 

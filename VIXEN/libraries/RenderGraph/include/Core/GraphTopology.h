@@ -16,12 +16,13 @@ struct GraphEdge {
     uint32_t sourceOutputIndex = 0;
     NodeInstance* target = nullptr;
     uint32_t targetInputIndex = 0;
+    bool isVariadic = false; // binding indices occupy a separate namespace from static slots
 
     bool operator==(const GraphEdge& other) const {
         return source == other.source &&
                sourceOutputIndex == other.sourceOutputIndex &&
                target == other.target &&
-               targetInputIndex == other.targetInputIndex;
+               targetInputIndex == other.targetInputIndex && isVariadic == other.isVariadic;
     }
 };
 

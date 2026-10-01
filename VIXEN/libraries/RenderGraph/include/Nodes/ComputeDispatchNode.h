@@ -8,7 +8,6 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
-#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
@@ -128,19 +127,6 @@ private:
 
     // Task profile for cost estimation (Sprint 6.5: Profile integration)
     ITaskProfile* gpuProfile_ = nullptr;
-
-    // M4 (KI-007 fix): tracks the LAST KNOWN layout of each render-target VkImage handle (the ring
-    // has imageCount_ of them, cycling per in-flight frame). RenderTargetNode keeps its images
-    // persistent across a same-extent recompile (FR-7), so a new Compile does NOT imply new
-    // handles. A plain seen/not-seen set (the pre-fix scheme) assumed every handle alternates
-    // UNDEFINED->GENERAL->[blit]->TRANSFER_SRC_OPTIMAL->GENERAL->... in lockstep, which breaks once
-    // multiple frames are in flight: a command buffer can be RE-RECORDED against a ring slot
-    // whose actual last real transition doesn't match that two-state guess, producing a genuine
-    // oldLayout mismatch (VUID-vkCmdDraw-None-09600) and visibly corrupt/flickering frames on real
-    // hardware, not just validation noise. Tracking the actual last-recorded layout per handle
-    // (updated at both the compute-write barrier and the post-blit transition) is exact instead of
-    // guessed. See DecideRenderTargetPriorLayout (free function, unit-testable without a device).
-    std::unordered_map<VkImage, VkImageLayout> renderTargetImageLayouts_;
 
 public:
     /// Get GPU performance logger for external metrics extraction

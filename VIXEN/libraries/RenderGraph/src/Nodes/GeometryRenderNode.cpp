@@ -1,5 +1,7 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/GeometryRenderNode.h"
 #include "Core/NodeRegistration.h"
+#include "Core/RenderGraph.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include <cstring>
@@ -161,17 +163,12 @@ void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
-    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
-    //
-    // - imageAvailable: Indexed by FRAME index (per-flight) - tracks CPU-GPU pacing
-    // - renderComplete: Indexed by IMAGE index (per-image) - tracks presentation engine usage
-    //
-    // This prevents "semaphore still in use by swapchain" errors because each image
-    // gets its own renderComplete semaphore that won't be reused until that specific
-    // image is acquired again.
-    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
-    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
+    auto* presentationTarget = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        presentationTarget, imageAvailableSemaphores, renderCompleteSemaphores,
+        currentFrameIndex, imageIndex, true, true);
+    VkSemaphore imageAvailableSemaphore = handoffs.acquire;
+    VkSemaphore renderCompleteSemaphore = handoffs.present;
 
     static int logCounter = 0;
     if (logCounter++ < 20) {
@@ -229,13 +226,16 @@ void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         commandBuffers.MarkReady(imageIndex);
     }
 
+    auto* target = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    target->SetImageLayout(imageIndex, GetOwningGraph()->GetRenderPassFinalLayout(currentRenderPass));
+
     // Submit command buffer to graphics queue
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     // Wait for image to be available before writing to it
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.waitSemaphoreCount = handoffs.acquire != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
     submitInfo.pWaitDstStageMask = &waitStage;
 
@@ -244,7 +244,7 @@ void GeometryRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.pCommandBuffers = &cmdBuffer;
 
     // Phase 0.2: Signal the per-flight render complete semaphore from FrameSyncNode
-    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.signalSemaphoreCount = handoffs.present != VK_NULL_HANDLE ? 1u : 0u;
     submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
 
     // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)

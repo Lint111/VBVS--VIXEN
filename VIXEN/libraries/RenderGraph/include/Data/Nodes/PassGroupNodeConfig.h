@@ -83,7 +83,7 @@ CONSTEXPR_NODE_CONFIG(PassGroupNodeConfig,
 
     /** @brief Image available semaphore array (indexed by CURRENT_FRAME_INDEX) */
     INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 4,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -104,7 +104,7 @@ CONSTEXPR_NODE_CONFIG(PassGroupNodeConfig,
 
     /** @brief Render complete semaphore array (indexed by IMAGE_INDEX) */
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);

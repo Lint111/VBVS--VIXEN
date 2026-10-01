@@ -504,8 +504,7 @@ bool EditorApplication::CaptureFrameToPng(const std::string& path, std::string& 
     }
     auto* device = deviceInst->GetVulkanDevice();
     return Vixen::RenderGraph::Debug::CaptureRenderTargetToPng(
-        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err,
-        VK_IMAGE_LAYOUT_GENERAL);
+        device, renderTarget, device->queue, device->graphicsQueueIndex, path, err);
 }
 
 bool EditorApplication::SaveDocument() {

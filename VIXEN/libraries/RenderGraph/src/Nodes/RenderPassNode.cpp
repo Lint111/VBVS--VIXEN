@@ -131,6 +131,7 @@ void RenderPassNode::TypedCompileImpl(TypedCompileContext& ctx) {
     );
 
     renderPass = cachedRenderPassWrapper->renderPass;
+    GetOwningGraph()->RegisterRenderPassFinalLayout(renderPass, cacheParams.finalLayout);
 
     // Set typed outputs
     ctx.Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
