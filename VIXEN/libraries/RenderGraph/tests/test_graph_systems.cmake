@@ -60,7 +60,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_slot_task PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_slot_task)
+    vixen_gtest_discover_tests(RenderGraph test_slot_task)
 
     message(STATUS "✓ test_slot_task configured (Phase C budget-aware execution)")
 else()

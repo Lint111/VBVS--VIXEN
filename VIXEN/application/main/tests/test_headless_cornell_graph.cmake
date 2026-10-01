@@ -8,9 +8,8 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     vixen_whole_archive_link_vixen_app(test_headless_cornell_graph PRIVATE)
     target_link_libraries(test_headless_cornell_graph PRIVATE GTest::gtest_main stb)
     set_target_properties(test_headless_cornell_graph PROPERTIES FOLDER "Tests/Application")
-    gtest_discover_tests(test_headless_cornell_graph
-        PROPERTIES ENVIRONMENT
-            "VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX=${CMAKE_BINARY_DIR}/headless-cornell-frame"
-            ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1")
+    vixen_gtest_discover_tests(Application test_headless_cornell_graph
+        TEST_ENVIRONMENT "VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX=${CMAKE_BINARY_DIR}/headless-cornell-frame"
+        TEST_ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1")
     message(STATUS "[Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)")
 endif()

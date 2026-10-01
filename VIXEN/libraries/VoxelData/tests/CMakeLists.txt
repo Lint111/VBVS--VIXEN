@@ -24,7 +24,7 @@ set_target_properties(test_block_compressor PROPERTIES
     FOLDER "Tests/VoxelData Tests"
 )
 
-gtest_discover_tests(test_block_compressor)
+vixen_gtest_discover_tests(VoxelData test_block_compressor)
 
 # ===========================================================================
 # Attribute Storage Tests
@@ -45,7 +45,7 @@ set_target_properties(test_attribute_storage PROPERTIES
     FOLDER "Tests/VoxelData Tests"
 )
 
-gtest_discover_tests(test_attribute_storage)
+vixen_gtest_discover_tests(VoxelData test_attribute_storage)
 
 # ===========================================================================
 # Attribute Registry Tests
@@ -66,4 +66,4 @@ set_target_properties(test_attribute_registry PROPERTIES
     FOLDER "Tests/VoxelData Tests"
 )
 
-gtest_discover_tests(test_attribute_registry)
+vixen_gtest_discover_tests(VoxelData test_attribute_registry)

@@ -12,7 +12,7 @@ if(TARGET GTest::gtest_main)
     )
     target_link_libraries(test_rendergraph_subgraph PRIVATE GTest::gtest_main RenderGraph)
     set_target_properties(test_rendergraph_subgraph PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_rendergraph_subgraph)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_subgraph)
     message(STATUS "✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)")
 else()
     message(STATUS "⊗ test_rendergraph_subgraph skipped (GoogleTest not available)")
@@ -68,7 +68,7 @@ endif()
 # Visual Studio solution folder organization
 set_target_properties(test_rendergraph_core PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_core)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_core)
 
 # ===========================================================================
 # RenderGraph Shader Mirrors (PDB-consolidation Milestone 1, 2026-07)
@@ -102,13 +102,14 @@ endif()
 
 set_target_properties(test_rendergraph_shadermirrors PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_rendergraph_shadermirrors)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_shadermirrors)
 
 # HDR3 CPU mirror of ExposureMeter.comp's deterministic sun/cosmic percentile clamp.
 add_executable(test_exposure_meter_mirror Nodes/test_exposure_meter_mirror.cpp)
 target_compile_features(test_exposure_meter_mirror PRIVATE cxx_std_17)
 set_target_properties(test_exposure_meter_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
 add_test(NAME test_exposure_meter_mirror COMMAND test_exposure_meter_mirror)
+vixen_set_suite_properties(RenderGraph TESTS test_exposure_meter_mirror)
 
 # ===========================================================================
 # Sampling.glsl SPIR-V Compile Gate (Sampled Lighting Inc0 M4 — proves
@@ -131,7 +132,7 @@ target_compile_definitions(test_sampling_compile_gate PRIVATE
 
 set_target_properties(test_sampling_compile_gate PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-gtest_discover_tests(test_sampling_compile_gate)
+vixen_gtest_discover_tests(RenderGraph test_sampling_compile_gate)
 
 # UI hit-mask math (Ui/UiHitMask.h) — pure CPU, no RmlUi/Vulkan/GPU. The pngwrite TU compiles
 # stb_image_write for the Image round-trip (the read side comes from RenderGraph's link closure).
@@ -148,7 +149,7 @@ if(TARGET RenderGraph)
 
     set_target_properties(test_ui_hit_mask PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_ui_hit_mask)
+    vixen_gtest_discover_tests(RenderGraph test_ui_hit_mask)
 
     message(STATUS "✓ test_ui_hit_mask configured (UI hit-mask math)")
 else()
@@ -240,7 +241,7 @@ if(TARGET GTest::gtest_main)
         target_link_libraries(test_descriptor_gatherer_comprehensive PRIVATE Vulkan::Vulkan)
     endif()
 
-    gtest_discover_tests(test_descriptor_gatherer_comprehensive)
+    vixen_gtest_discover_tests(RenderGraph test_descriptor_gatherer_comprehensive)
 
     message(STATUS "✓ test_descriptor_gatherer_comprehensive configured")
 else()
@@ -295,7 +296,7 @@ if(TARGET GTest::gtest_main)
     # Visual Studio solution folder organization
     set_target_properties(test_rendergraph_nodeconn PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_rendergraph_nodeconn)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_nodeconn)
 
     message(STATUS "✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)")
 else()
@@ -330,7 +331,7 @@ if(TARGET GTest::gtest_main)
         RenderGraph
     )
     set_target_properties(test_sdi_stage_wiring PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_sdi_stage_wiring)
+    vixen_gtest_discover_tests(RenderGraph test_sdi_stage_wiring)
     message(STATUS "✓ test_sdi_stage_wiring configured (Semantic Wiring S2)")
 endif()
 
@@ -348,7 +349,7 @@ if(TARGET GTest::gtest_main)
     # Visual Studio solution folder organization
     set_target_properties(test_connection_concepts PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_connection_concepts)
+    vixen_gtest_discover_tests(RenderGraph test_connection_concepts)
 
     message(STATUS "✓ test_connection_concepts configured (Sprint 6.0.1)")
 else()
@@ -391,7 +392,7 @@ if(TARGET GTest::gtest_main)
     # Visual Studio solution folder organization
     set_target_properties(test_connection_rule PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_connection_rule)
+    vixen_gtest_discover_tests(RenderGraph test_connection_rule)
 
     message(STATUS "✓ test_connection_rule configured (Sprint 6.0.1)")
 else()
@@ -436,7 +437,7 @@ if(TARGET GTest::gtest_main)
         endif()
     endif()
 
-    gtest_discover_tests(test_graph_lifecycle_hooks)
+    vixen_gtest_discover_tests(RenderGraph test_graph_lifecycle_hooks)
 
     message(STATUS "✓ test_graph_lifecycle_hooks configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
 else()
@@ -479,7 +480,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_rendergraph_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_rendergraph_dispatch)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_dispatch)
 
     message(STATUS "✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)")
 else()
@@ -510,7 +511,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_rendergraph_tracking PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_rendergraph_tracking)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_tracking)
 
     message(STATUS "✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)")
 else()
@@ -580,7 +581,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_ui_hud_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_ui_hud_smoke)
+    vixen_gtest_discover_tests(RenderGraph test_ui_hud_smoke)
 
     message(STATUS "✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)")
 else()
@@ -621,7 +622,7 @@ if(TARGET GTest::gtest_main)
         )
     endif()
     set_target_properties(test_ui_composition_host PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_ui_composition_host)
+    vixen_gtest_discover_tests(RenderGraph test_ui_composition_host)
     message(STATUS "✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)")
 else()
     message(STATUS "⊗ test_ui_composition_host skipped (GoogleTest not available)")
@@ -654,7 +655,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_view_hud_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_view_hud_golden)
+    vixen_gtest_discover_tests(RenderGraph test_view_hud_golden)
 
     message(STATUS "✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)")
 else()
@@ -690,7 +691,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_view_editor_layers_golden PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_view_editor_layers_golden)
+    vixen_gtest_discover_tests(RenderGraph test_view_editor_layers_golden)
 
     message(STATUS "✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)")
 else()
@@ -725,7 +726,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_view_editor_layers_reconcile PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_view_editor_layers_reconcile)
+    vixen_gtest_discover_tests(RenderGraph test_view_editor_layers_reconcile)
 
     message(STATUS "✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)")
 else()
@@ -760,7 +761,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_view_selection_provider PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_view_selection_provider)
+    vixen_gtest_discover_tests(RenderGraph test_view_selection_provider)
 
     message(STATUS "✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)")
 else()
@@ -792,7 +793,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_set_mutation_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
-    gtest_discover_tests(test_set_mutation_dispatch)
+    vixen_gtest_discover_tests(RenderGraph test_set_mutation_dispatch)
 
     message(STATUS "✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)")
 else()
@@ -803,7 +804,7 @@ endif()
 # RenderGraph View/Blob Contract (PDB-consolidation Milestone 1, 2026-07)
 # ===========================================================================
 # Merges 4 formerly-separate bare-link-surface targets into one executable.
-# All 4 originals used gtest_discover_tests(... DISCOVERY_MODE PRE_TEST
+# All 4 originals used vixen_gtest_discover_tests(RenderGraph ... DISCOVERY_MODE PRE_TEST
 # DISCOVERY_TIMEOUT 60) — preserved on the merged target's single discover call.
 # The other View Contract targets below (wire_roundtrip, wire_soa_roundtrip,
 # typed_accessor_emitter, view_container_builder) are NOT included here — they
@@ -834,7 +835,7 @@ if(TARGET GTest::gtest_main)
     )
     target_link_libraries(test_rendergraph_viewblob PRIVATE GTest::gtest_main RenderGraph)
     set_target_properties(test_rendergraph_viewblob PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_rendergraph_viewblob DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_viewblob DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
     message(STATUS "✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)")
 else()
     message(STATUS "⊗ test_rendergraph_viewblob skipped (GoogleTest not available)")
@@ -858,7 +859,7 @@ if(TARGET GTest::gtest_main)
     target_include_directories(test_view_wire_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     set_target_properties(test_view_wire_roundtrip PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_view_wire_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    vixen_gtest_discover_tests(RenderGraph test_view_wire_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
     message(STATUS "✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)")
 else()
     message(STATUS "⊗ test_view_wire_roundtrip skipped (GoogleTest not available)")
@@ -883,7 +884,7 @@ if(TARGET GTest::gtest_main)
     target_include_directories(test_view_wire_soa_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     set_target_properties(test_view_wire_soa_roundtrip PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_view_wire_soa_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    vixen_gtest_discover_tests(RenderGraph test_view_wire_soa_roundtrip DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
     message(STATUS "✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)")
 else()
     message(STATUS "⊗ test_view_wire_soa_roundtrip skipped (GoogleTest not available)")
@@ -908,7 +909,7 @@ if(TARGET GTest::gtest_main)
     target_include_directories(test_typed_accessor_emitter PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     set_target_properties(test_typed_accessor_emitter PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_typed_accessor_emitter DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    vixen_gtest_discover_tests(RenderGraph test_typed_accessor_emitter DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
     message(STATUS "✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)")
 else()
     message(STATUS "⊗ test_typed_accessor_emitter skipped (GoogleTest not available)")
@@ -939,7 +940,7 @@ if(TARGET GTest::gtest_main)
     target_include_directories(test_view_container_builder PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include)
 
     set_target_properties(test_view_container_builder PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_view_container_builder DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
+    vixen_gtest_discover_tests(RenderGraph test_view_container_builder DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
     message(STATUS "✓ test_view_container_builder configured (View Contract Inc-5b Milestone 2.5: writer-side UTVC round-trip)")
 else()
     message(STATUS "⊗ test_view_container_builder skipped (GoogleTest not available)")
@@ -990,7 +991,7 @@ if(TARGET GTest::gtest_main)
     endif()
 
     set_target_properties(test_rendergraph_syncbarrier PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_rendergraph_syncbarrier)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_syncbarrier)
     message(STATUS "✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)")
 else()
     message(STATUS "⊗ test_rendergraph_syncbarrier skipped (GoogleTest not available)")
@@ -1025,7 +1026,7 @@ endforeach()
 target_compile_definitions(test_node_self_registration PRIVATE
     RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT=${RENDERGRAPH_EXPECTED_NODE_TYPE_COUNT})
 set_target_properties(test_node_self_registration PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_node_self_registration)
+vixen_gtest_discover_tests(RenderGraph test_node_self_registration)
 
 # ===========================================================================
 # Photon cell node pluggability witness (C0/C1)
@@ -1040,7 +1041,7 @@ else()
     target_link_libraries(test_photon_cell_nodes PRIVATE GTest::gtest_main)
 endif()
 set_target_properties(test_photon_cell_nodes PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_photon_cell_nodes)
+vixen_gtest_discover_tests(RenderGraph test_photon_cell_nodes)
 
 # ===========================================================================
 # PassGroupNode Smoke Test (auto-sync P4 M3)
@@ -1055,7 +1056,7 @@ if(TARGET GTest::gtest_main)
         target_link_libraries(test_pass_group_node_smoke PRIVATE GTest::gtest_main)
     endif()
     set_target_properties(test_pass_group_node_smoke PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_pass_group_node_smoke)
+    vixen_gtest_discover_tests(RenderGraph test_pass_group_node_smoke)
     message(STATUS "✓ test_pass_group_node_smoke configured (auto-sync P4 M3)")
 else()
     message(STATUS "⊗ test_pass_group_node_smoke skipped (GoogleTest not available)")
@@ -1100,7 +1101,7 @@ if(TARGET GTest::gtest_main)
         target_link_libraries(test_rendergraph_nodes PRIVATE GTest::gtest_main)
     endif()
     set_target_properties(test_rendergraph_nodes PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_rendergraph_nodes)
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_nodes)
     message(STATUS "✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)")
 else()
     message(STATUS "⊗ test_rendergraph_nodes skipped (GoogleTest not available)")
@@ -1113,3 +1114,5 @@ endif()
 # Moved from root CMakeLists.txt for proper organization.
 
 add_subdirectory(CompileTimeResourceSystem)
+
+vixen_register_verification_targets("${CMAKE_CURRENT_BINARY_DIR}")

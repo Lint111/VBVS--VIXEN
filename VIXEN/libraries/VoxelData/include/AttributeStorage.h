@@ -93,6 +93,7 @@ private:
     std::vector<bool> m_slotOccupied;  // Which slots are allocated
     std::queue<size_t> m_freeSlots;    // Reusable slots
     size_t m_allocatedSlots;           // Count of allocated slots
+    size_t m_nextSlotIndex;            // Next never-before-used slot (distinct from reserved capacity)
 
     // Helper: grow storage if needed
     void growIfNeeded();

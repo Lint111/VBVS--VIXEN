@@ -3,6 +3,7 @@
 #include "Headers.h"
 
 #include "CacherBase.h"
+#include "RuntimeCachePaths.h"
 #include "TypeRegistry.h"
 #include "TypedCacher.h"
 #include "DeviceIdentifier.h"
@@ -206,7 +207,7 @@ public:
 
             // Lazy deserialization: Load from disk if cache file exists
             std::string cacheName(typedCacher->name());
-            std::filesystem::path cacheDir = std::filesystem::path("cache") / "devices" / deviceRegistry.GetDeviceIdentifier().GetDescription();
+            std::filesystem::path cacheDir = Vixen::RuntimeCacheDirectory() / "devices" / deviceRegistry.GetDeviceIdentifier().GetDescription();
             std::filesystem::path cacheFile = cacheDir / (cacheName + ".cache");
 
             if (std::filesystem::exists(cacheFile)) {

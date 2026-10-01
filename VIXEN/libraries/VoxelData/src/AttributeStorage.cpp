@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AttributeStorage.h"
+#include <algorithm>
 #include <stdexcept>
 #include <cstring>
 
@@ -11,6 +12,7 @@ AttributeStorage::AttributeStorage(std::string name, AttributeType type, std::an
     , m_defaultValue(std::move(defaultValue))
     , m_elementSize(getAttributeSize(type))
     , m_allocatedSlots(0)
+    , m_nextSlotIndex(0)
 {
     // Start with capacity for 1024 bricks
     reserve(1024);
@@ -24,9 +26,11 @@ size_t AttributeStorage::allocateSlot() {
         slotIndex = m_freeSlots.front();
         m_freeSlots.pop();
     } else {
-        // Allocate new slot
-        slotIndex = m_slotOccupied.size();
-        growIfNeeded();
+        // Reserved vector size is capacity, not the number of slot IDs already assigned.
+        if (m_nextSlotIndex >= m_slotOccupied.size()) {
+            growIfNeeded();
+        }
+        slotIndex = m_nextSlotIndex++;
     }
 
     m_slotOccupied[slotIndex] = true;
@@ -49,14 +53,15 @@ void AttributeStorage::freeSlot(size_t slotIndex) {
 }
 
 void AttributeStorage::reserve(size_t maxBricks) {
-    size_t requiredBytes = maxBricks * VOXELS_PER_BRICK * m_elementSize;
+    const size_t targetSlots = std::max(maxBricks, m_slotOccupied.size());
+    const size_t requiredBytes = targetSlots * VOXELS_PER_BRICK * m_elementSize;
 
-    if (m_data.capacity() < requiredBytes) {
-        m_data.reserve(requiredBytes);
+    if (m_data.size() < requiredBytes) {
+        m_data.resize(requiredBytes);
     }
 
-    if (m_slotOccupied.size() < maxBricks) {
-        m_slotOccupied.resize(maxBricks, false);
+    if (m_slotOccupied.size() < targetSlots) {
+        m_slotOccupied.resize(targetSlots, false);
     }
 }
 
@@ -80,7 +85,6 @@ const void* AttributeStorage::getSlotData(size_t slotIndex) const {
 
 void AttributeStorage::growIfNeeded() {
     size_t currentCapacity = m_slotOccupied.size();
-    size_t newSlotIndex = currentCapacity;
 
     // Double capacity
     size_t newCapacity = currentCapacity == 0 ? 1024 : currentCapacity * 2;
