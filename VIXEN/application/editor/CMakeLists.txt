@@ -64,3 +64,41 @@ endif()
 # in libraries/RenderGraph/assets/ui) next to the executable, same helper + same source dir as
 # application/main so VIXEN_UI_ASSET_SOURCE_DIR's compiled-in fallback and the staged copy agree.
 vixen_stage_assets(vixen_editor ${VIXEN_ROOT}/libraries/RenderGraph/assets DEST assets)
+
+# CTest fixtures produce the live editor and main-app captures before their file-assertion cases.
+# Both output directories are absolute build-tree paths so the runners need no source-tree CWD or
+# DISPLAY. The shared application test environment supplies Dozen and its loader paths.
+if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
+    set(VIXEN_EDITOR_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/editor")
+    set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
+    file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}" "${VIXEN_HUD_CAPTURE_DIR}")
+
+    add_test(NAME vixen_editor_capture_producer
+        COMMAND bash -c
+            "exec \"$<TARGET_FILE:vixen_editor>\" > \"${VIXEN_EDITOR_CAPTURE_DIR}/run_editor_script.log\" 2>&1")
+    set_tests_properties(vixen_editor_capture_producer PROPERTIES
+        FIXTURES_SETUP VixenEditorCapture
+        WORKING_DIRECTORY "${VIXEN_BINARIES_DIR}"
+        TIMEOUT 180)
+    vixen_set_suite_properties(RenderGraph TESTS vixen_editor_capture_producer
+        TEST_ENVIRONMENT
+            "VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110"
+            "VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105"
+            "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_EDITOR_CAPTURE_DIR}"
+            "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1"
+            "VIXEN_EDITOR_TEST_CAMERA=top-down"
+            "VIXEN_EXIT_AFTER_FRAMES=120")
+
+    add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
+    set_tests_properties(vixen_hud_capture_producer PROPERTIES
+        FIXTURES_SETUP VixenHudCapture
+        WORKING_DIRECTORY "${VIXEN_BINARIES_DIR}"
+        TIMEOUT 180)
+    vixen_set_suite_properties(RenderGraph TESTS vixen_hud_capture_producer
+        TEST_ENVIRONMENT
+            "VIXEN_HUD_SCRIPT=A@30,B@60"
+            "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
+            "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
+            "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
+            "VIXEN_EXIT_AFTER_FRAMES=85")
+endif()

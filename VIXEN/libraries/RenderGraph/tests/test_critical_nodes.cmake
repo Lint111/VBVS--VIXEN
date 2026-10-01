@@ -24,7 +24,7 @@
 # main()/RUN_ALL_TESTS() among the group's files (all bare gtest_main), and
 # identical POST_BUILD/custom-command/compile-definition requirements (a
 # strict, cheap-to-apply union where a subset of the group needs an extra
-# conditional lib/define). gtest_discover_tests() DISCOVERY_MODE/
+# conditional lib/define). vixen_gtest_discover_tests(RenderGraph ) DISCOVERY_MODE/
 # DISCOVERY_TIMEOUT is preserved unchanged on every resulting group that
 # needs it.
 # ===========================================================================
@@ -73,7 +73,7 @@ add_executable(test_rendergraph_criticalnodes_infra1
 )
 target_link_libraries(test_rendergraph_criticalnodes_infra1 PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 set_target_properties(test_rendergraph_criticalnodes_infra1 PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_infra1)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_infra1)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)")
 
 # ===========================================================================
@@ -103,7 +103,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_rendergraph_criticalnodes_infra2 PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_rendergraph_criticalnodes_infra2 PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_infra2)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_infra2)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)")
 
 # ===========================================================================
@@ -120,7 +120,7 @@ add_executable(test_rendergraph_criticalnodes_pushconstant
 )
 target_link_libraries(test_rendergraph_criticalnodes_pushconstant PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
 set_target_properties(test_rendergraph_criticalnodes_pushconstant PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_pushconstant)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_pushconstant)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)")
 
 add_executable(test_rendergraph_criticalnodes_descriptorgatherer
@@ -129,7 +129,7 @@ add_executable(test_rendergraph_criticalnodes_descriptorgatherer
 )
 target_link_libraries(test_rendergraph_criticalnodes_descriptorgatherer PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
 set_target_properties(test_rendergraph_criticalnodes_descriptorgatherer PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_descriptorgatherer)
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_descriptorgatherer)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)")
 
 # ===========================================================================
@@ -279,6 +279,7 @@ add_test(NAME test_body_instance_raymarch_rtquery_compile
         "${_brm_src}"
         -o "${_brm_spv_rtquery}"
 )
+vixen_set_suite_properties(RenderGraph TESTS test_body_instance_raymarch_rtquery_compile)
 
 # ===========================================================================
 # Group 5: test_rendergraph_criticalnodes_gpurender1 — real-shader GPU render
@@ -329,7 +330,7 @@ set_target_properties(test_rendergraph_criticalnodes_gpurender1 PROPERTIES FOLDE
 # DISCOVERY_MODE PRE_TEST: defer the --gtest_list_tests invocation to ctest run-time,
 # not POST_BUILD. This prevents the Vulkan-init timeout from making the build "FAILED"
 # (the known MSB3073 / 5s discovery timeout flake — see friction log 2026-06-13).
-gtest_discover_tests(test_rendergraph_criticalnodes_gpurender1
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_gpurender1
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -358,7 +359,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_recipe_pool_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_recipe_pool_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_recipe_pool_render
+vixen_gtest_discover_tests(RenderGraph test_recipe_pool_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)")
@@ -385,7 +386,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_mip_fallback_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_mip_fallback_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_mip_fallback_render
+vixen_gtest_discover_tests(RenderGraph test_mip_fallback_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)")
@@ -423,7 +424,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_baked_vs_virtual_parity PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_baked_vs_virtual_parity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_baked_vs_virtual_parity
+vixen_gtest_discover_tests(RenderGraph test_baked_vs_virtual_parity
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)")
@@ -470,7 +471,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_rendergraph_criticalnodes_gpurender2 PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_rendergraph_criticalnodes_gpurender2 PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_gpurender2
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_gpurender2
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -492,7 +493,7 @@ target_include_directories(test_editor_document_model_preview PRIVATE
 target_compile_definitions(test_editor_document_model_preview PRIVATE
     VXD_GOLDEN_PATH="${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd")
 set_target_properties(test_editor_document_model_preview PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_editor_document_model_preview)
+vixen_gtest_discover_tests(RenderGraph test_editor_document_model_preview)
 message(STATUS "[RenderGraph Tests] Added: test_editor_document_model_preview (direct flatten/VRC1 parity)")
 
 # ===========================================================================
@@ -530,7 +531,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_rendergraph_criticalnodes_gpurender2b PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_rendergraph_criticalnodes_gpurender2b PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_gpurender2b
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_gpurender2b
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)")
@@ -566,7 +567,7 @@ if(VIXEN_WSL_DZN_ICD)
     target_compile_definitions(test_appflow_editor_toggle_render PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
 endif()
 set_target_properties(test_appflow_editor_toggle_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_appflow_editor_toggle_render
+vixen_gtest_discover_tests(RenderGraph test_appflow_editor_toggle_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)")
@@ -602,7 +603,7 @@ endif()
 target_compile_definitions(test_rendergraph_criticalnodes_sdiparity PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
 set_target_properties(test_rendergraph_criticalnodes_sdiparity PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_sdiparity
+vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_sdiparity
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)")
@@ -632,7 +633,15 @@ else()
         "${stb_SOURCE_DIR}")
 endif()
 set_target_properties(test_rendergraph_criticalnodes_windowedcapture PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_rendergraph_criticalnodes_windowedcapture)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_windowedcapture
+        FIXTURES_REQUIRED "VixenEditorCapture;VixenHudCapture"
+        TEST_ENVIRONMENT
+            "VIXEN_EDITOR_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/editor"
+            "VIXEN_HUD_CAPTURE_DIR=${CMAKE_BINARY_DIR}/runtime-captures/hud")
+else()
+    vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_windowedcapture)
+endif()
 message(STATUS "[RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)")
 
 # ===========================================================================
@@ -688,7 +697,7 @@ endif()
 set_target_properties(test_procedural_recipe_render PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
 # PRE_TEST discovery to avoid Vulkan-init timeout during build (same as raymarch render test).
-gtest_discover_tests(test_procedural_recipe_render
+vixen_gtest_discover_tests(RenderGraph test_procedural_recipe_render
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -744,7 +753,7 @@ if(VIXEN_WSL_DZN_ICD)
 endif()
 
 set_target_properties(test_shell_revalidate_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_shell_revalidate_node
+vixen_gtest_discover_tests(RenderGraph test_shell_revalidate_node
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -793,7 +802,7 @@ if(VIXEN_WSL_DZN_ICD)
 endif()
 
 set_target_properties(test_recipe_instance_bucketing PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_recipe_instance_bucketing
+vixen_gtest_discover_tests(RenderGraph test_recipe_instance_bucketing
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -830,7 +839,7 @@ if(VIXEN_WSL_DZN_ICD)
 endif()
 
 set_target_properties(test_recipe_bucketed_indirect_dispatch PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_recipe_bucketed_indirect_dispatch
+vixen_gtest_discover_tests(RenderGraph test_recipe_bucketed_indirect_dispatch
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -866,7 +875,7 @@ if(VIXEN_WSL_DZN_ICD)
 endif()
 
 set_target_properties(test_recipe_multi_bucket_compositing PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_recipe_multi_bucket_compositing
+vixen_gtest_discover_tests(RenderGraph test_recipe_multi_bucket_compositing
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -902,7 +911,7 @@ if(VIXEN_WSL_DZN_ICD)
 endif()
 
 set_target_properties(test_recipe_bucketing_perf PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_recipe_bucketing_perf
+vixen_gtest_discover_tests(RenderGraph test_recipe_bucketing_perf
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -936,7 +945,7 @@ if(VIXEN_WSL_DZN_ICD)
 endif()
 
 set_target_properties(test_switch_cost_isolation PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_switch_cost_isolation
+vixen_gtest_discover_tests(RenderGraph test_switch_cost_isolation
     DISCOVERY_MODE PRE_TEST
     DISCOVERY_TIMEOUT 120)
 
@@ -955,7 +964,7 @@ add_executable(test_hiz_downsample_mirror
 )
 target_link_libraries(test_hiz_downsample_mirror PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 set_target_properties(test_hiz_downsample_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_hiz_downsample_mirror)
+vixen_gtest_discover_tests(RenderGraph test_hiz_downsample_mirror)
 message(STATUS "[RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)")
 
 # ---------------------------------------------------------------------------
@@ -968,7 +977,7 @@ add_executable(test_proxy_interval_prepass_mirror
 )
 target_link_libraries(test_proxy_interval_prepass_mirror PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 set_target_properties(test_proxy_interval_prepass_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_proxy_interval_prepass_mirror)
+vixen_gtest_discover_tests(RenderGraph test_proxy_interval_prepass_mirror)
 message(STATUS "[RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)")
 
 # glslc-validate the mirrored shader at build time (same VIXEN_GLSLC resolved
@@ -1002,7 +1011,7 @@ add_executable(test_instance_occlusion_cull_mirror
 )
 target_link_libraries(test_instance_occlusion_cull_mirror PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 set_target_properties(test_instance_occlusion_cull_mirror PROPERTIES FOLDER "Tests/RenderGraph Tests")
-gtest_discover_tests(test_instance_occlusion_cull_mirror)
+vixen_gtest_discover_tests(RenderGraph test_instance_occlusion_cull_mirror)
 message(STATUS "[RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)")
 
 # ---------------------------------------------------------------------------
@@ -1087,7 +1096,7 @@ if(VIXEN_GLSLC)
     endif()
     set_target_properties(test_proxy_interval_prepass_device
         PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_proxy_interval_prepass_device
+    vixen_gtest_discover_tests(RenderGraph test_proxy_interval_prepass_device
         DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 120)
     message(STATUS "[RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)")
@@ -1122,7 +1131,7 @@ if(VIXEN_GLSLC)
         target_compile_definitions(test_instance_occlusion_cull_device PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
     endif()
     set_target_properties(test_instance_occlusion_cull_device PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_instance_occlusion_cull_device
+    vixen_gtest_discover_tests(RenderGraph test_instance_occlusion_cull_device
         DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 120)
     message(STATUS "[RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)")
@@ -1162,7 +1171,7 @@ if(VIXEN_GLSLC)
         target_compile_definitions(test_b1_occlusion_ab PRIVATE VIXEN_WSL_DZN_ICD="${VIXEN_WSL_DZN_ICD}")
     endif()
     set_target_properties(test_b1_occlusion_ab PROPERTIES FOLDER "Tests/RenderGraph Tests")
-    gtest_discover_tests(test_b1_occlusion_ab
+    vixen_gtest_discover_tests(RenderGraph test_b1_occlusion_ab
         DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 120)
     message(STATUS "[RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)")

@@ -416,6 +416,12 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 }  // namespace
 
 void VulkanGraphApplication::BuildRenderGraph() {
+    // The unattended HUD capture runner can exercise the production graph without DISPLAY or a
+    // swapchain. Keep ordinary app launches on the window presentation path.
+    if (envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE")) {
+        SetPresentationTarget(PresentationTarget::Offscreen);
+    }
+
     const bool hdrExposureEnabled = envFlagEnabled("VIXEN_HDR_EXPOSURE");
     const RtLightingMode rtLightingMode = ParseRtLightingMode();
     const bool waveSlotSwizzleEnabled = envFlagEnabled("VIXEN_WAVE_SLOT_SWIZZLE");
