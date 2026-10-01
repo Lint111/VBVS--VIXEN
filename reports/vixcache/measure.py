@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run inside with-test-lock.sh; isolate ccache counters and retain raw evidence."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,13 @@ subprocess.run(["ccache", "-z"], env=env, check=True)
 log = output / f"{args.name}.log"
 start = time.monotonic()
 commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+logic_files = {Path(name) for name in tracked if name.endswith(".cmake") or Path(name).name == "CMakeLists.txt"}
+logic_files.update(Path("VIXEN/cmake").glob("*.cmake"))
+logic_hash = hashlib.sha256()
+for path in sorted(logic_files):
+    logic_hash.update(str(path).encode() + b"\0" + path.read_bytes() + b"\0")
+working_tree = subprocess.check_output(["git", "status", "--porcelain"], text=True).splitlines()
 finished = threading.Event()
 
 
@@ -53,6 +61,8 @@ units = [line for line in lines if re.match(r"^\[[1-9]\d*/\d+\] ", line)]
 record = {
     "name": args.name,
     "commit": commit,
+    "working_tree": working_tree,
+    "build_logic_sha256": logic_hash.hexdigest(),
     "command": command,
     "environment": {key: value for key, value in env.items() if key.startswith("CCACHE_")},
     "wall_seconds": round(elapsed, 3),
