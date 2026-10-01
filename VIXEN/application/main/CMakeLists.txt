@@ -110,7 +110,7 @@ target_compile_definitions(VixenApp PRIVATE
     VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
     VIXEN_SHADER_OUTPUT_DIR="${APP_SHADER_OUTPUT_DIR}"
     VIXEN_SDI_OUTPUT_DIR="${APP_SDI_OUTPUT_DIR}"
-    # Inc0 M5: BodyInstanceRayMarch.comp's #include "recipe/SdfCoreKernels.glsl" resolves
+    # Inc0 M5: BodyInstanceRayMarch.comp's #include "recipe/SdfCoreKernels.g.glsl" resolves
     # under libraries/SVO/shaders (a DIFFERENT tree than VIXEN_SHADER_SOURCE_DIR above, which
     # points at the top-level shaders/ directory) — its own absolute compile-time define,
     # same convention. Use VIXEN_ROOT (NOT CMAKE_SOURCE_DIR) per the engine-root rule in the

@@ -762,14 +762,16 @@ endif()
 gtest_discover_tests(test_recipe_codegen)
 
 # ===========================================================================
-# SdfCore GLSL name-set drift-guard (Lazy-Procedural-Delta-Baseline Inc1 M4 Task 7)
+# SdfCore generated GLSL artifact check (recipe kernel codegen freshness is checked by CMake)
 # ===========================================================================
 add_executable(test_sdf_core_glsl test_sdf_core_glsl.cpp)
 target_link_libraries(test_sdf_core_glsl PRIVATE GTest::gtest_main)
 target_compile_definitions(test_sdf_core_glsl PRIVATE
-    SDF_CORE_KERNELS_HLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.hlsl"
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
+if(TARGET sdf_core_kernels_check)
+    add_dependencies(test_sdf_core_glsl sdf_core_kernels_check)
+endif()
 set_target_properties(test_sdf_core_glsl PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_sdf_core_glsl)
 
@@ -819,7 +821,7 @@ else()
     target_link_libraries(test_recipe_glsl_numerical_parity PRIVATE GTest::gtest_main)
 endif()
 target_compile_definitions(test_recipe_glsl_numerical_parity PRIVATE
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
 set_target_properties(test_recipe_glsl_numerical_parity PROPERTIES FOLDER "Tests/SVO Tests")
 if(TARGET TBB::tbb)
@@ -845,7 +847,7 @@ else()
     target_link_libraries(test_recipe_kernel_glsl_roundtrip PRIVATE GTest::gtest_main)
 endif()
 target_compile_definitions(test_recipe_kernel_glsl_roundtrip PRIVATE
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
 set_target_properties(test_recipe_kernel_glsl_roundtrip PROPERTIES FOLDER "Tests/SVO Tests")
 gtest_discover_tests(test_recipe_kernel_glsl_roundtrip)
@@ -867,7 +869,7 @@ else()
     target_link_libraries(test_recipe_nested_invocation PRIVATE GTest::gtest_main)
 endif()
 target_compile_definitions(test_recipe_nested_invocation PRIVATE
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
 set_target_properties(test_recipe_nested_invocation PROPERTIES FOLDER "Tests/SVO Tests")
 if(TARGET TBB::tbb)
@@ -923,7 +925,7 @@ else()
     target_include_directories(test_recipe_declared_position_render PRIVATE "${stb_SOURCE_DIR}")
 endif()
 target_compile_definitions(test_recipe_declared_position_render PRIVATE
-    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.glsl"
+    SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
 )
 set_target_properties(test_recipe_declared_position_render PROPERTIES FOLDER "Tests/SVO Tests")
 if(TARGET TBB::tbb)

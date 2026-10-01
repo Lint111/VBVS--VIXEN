@@ -8,7 +8,7 @@
 // This test proves those kernel-emitted functions round-trip VIXEN's ACTUAL
 // glslang-backed ShaderCompiler — the real acceptance criterion, not a
 // generic glslang: composed exactly the way production composes (version
-// header + SdfCoreKernels.glsl + function + wrapper main), one program per
+// header + SdfCoreKernels.g.glsl + function + wrapper main), one program per
 // compile, pure host-side, no GPU.
 //
 // Env-gated like the fixture exporter: without VIXEN_S1_EMITTED_GLSL=<json>

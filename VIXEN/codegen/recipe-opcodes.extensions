@@ -1,3 +1,0 @@
-# Explicit VIXEN-only bytecode operations. Values are reserved in the Yeroket SDFOpCode ABI.
-112 | DeclarePosition = 112, // pops a declared float3 position and offsets the remainder of the recipe
-113 | InvokeRecipe = 113, // invokes a registered nested recipe by ID

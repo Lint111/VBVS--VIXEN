@@ -20,7 +20,7 @@ namespace Vixen::SVO::Recipe {
 // [{"name":"recipe_<id>", "text":"float sdfRecipe_0(vec3 p, float params[6]) {...}"}],
 // keyed by real VIXEN recipeId per team-lead's ruling), the two specialized emitters below
 // source a hot recipe's body from the kernel's Lower<T> -> GlslAstVisitor pipeline instead
-// of this file's own walk — same signature, same SdfCoreKernels.glsl deps, proven
+// of this file's own walk — same signature, same SdfCoreKernels.g.glsl deps, proven
 // byte-compileable in phases B/C. Loud fail-soft: a missing/unset env or an unmapped
 // recipeId returns empty (never throws), so both call sites fall back to the local emitter
 // and log which one won — never a silent divergence.
@@ -112,7 +112,7 @@ inline std::string TryGetKernelEmittedRecipeGlsl(uint32_t recipeId) {
 // PushConstants for the ray-gen math), and the shared HitRecord SSBO (binding 18, the SAME binding
 // the tier-0 path writes, so both paths composite into ONE shared per-pixel record).
 //
-// `sdfCoreKernelsGlsl` is the VERBATIM content of libraries/SVO/shaders/recipe/SdfCoreKernels.glsl
+// `sdfCoreKernelsGlsl` is the VERBATIM content of libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl
 // (the SdfCore_* kernel set the emitted field function calls), passed in and textually inlined
 // rather than #include-d — mirrors EmitProceduralComputeShader's (SdfRecipeCodegen.h) own
 // sdfCoreHlsl-as-parameter convention exactly. This is required, not stylistic:
