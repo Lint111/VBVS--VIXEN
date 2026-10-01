@@ -113,7 +113,7 @@ endif()
 # user's kernel repository: a mutable main checkout must not silently change the
 # generated contract between configure and build. The pin tracks the kernel
 # commit that produced this engine's generated artifacts and recipe declarations.
-set(YEROKET_KERNEL_SHA "4171060ade411b2f0f0bcf9bdeeaef0c82fc0eb3" CACHE STRING
+set(YEROKET_KERNEL_SHA "b3621c23621f2fe3f8b0dc49dbbe42f602ae3a27" CACHE STRING
     "Pinned Yeroket kernel commit used by VIXEN codegen checks")
 set(_yk_root "${YEROKET_ROOT}")
 set(_yk_pin_dir "${CMAKE_BINARY_DIR}/_vixen/yeroket-${YEROKET_KERNEL_SHA}")
