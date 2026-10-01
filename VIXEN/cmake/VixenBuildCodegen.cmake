@@ -1,0 +1,36 @@
+# Invoked by a queued native build, never at configure time. The shared binary
+# entry is immutable after publication; build-tree copies are normal byproducts.
+include("${VIXEN_CODEGEN_BUILD_CONFIG}")
+file(MAKE_DIRECTORY "${VIXEN_CODEGEN_CACHE_DIR}")
+file(LOCK "${VIXEN_CODEGEN_CACHE_DIR}/build.lock" GUARD PROCESS TIMEOUT 900 RESULT_VARIABLE _lock)
+if(NOT _lock STREQUAL "0")
+    message(FATAL_ERROR "[codegen] cannot lock cached CodegenTool: ${_lock}")
+endif()
+set(_ready "${VIXEN_CODEGEN_CACHE_DIR}/.build-complete")
+if(NOT EXISTS "${_ready}" OR NOT EXISTS "${VIXEN_CODEGEN_CACHED_BIN}/CodegenTool.dll"
+        OR NOT EXISTS "${VIXEN_CODEGEN_CACHED_BIN}/CodegenTool.deps.json"
+        OR NOT EXISTS "${VIXEN_CODEGEN_CACHED_BIN}/CodegenTool.runtimeconfig.json")
+    execute_process(COMMAND ${VIXEN_CODEGEN_BUILD_COMMAND} RESULT_VARIABLE _result)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR "[codegen] cached CodegenTool build failed: ${_result}")
+    endif()
+    if(NOT EXISTS "${VIXEN_CODEGEN_CACHED_BIN}/CodegenTool.dll")
+        message(FATAL_ERROR "[codegen] CodegenTool build did not produce ${VIXEN_CODEGEN_CACHED_BIN}/CodegenTool.dll")
+    endif()
+    file(WRITE "${_ready}" "complete\n")
+    message(STATUS "[codegen] built shared CodegenTool: ${VIXEN_CODEGEN_CACHED_BIN}")
+else()
+    message(STATUS "[codegen] reused shared CodegenTool: ${VIXEN_CODEGEN_CACHED_BIN}")
+endif()
+file(GLOB_RECURSE _binaries RELATIVE "${VIXEN_CODEGEN_CACHED_BIN}" "${VIXEN_CODEGEN_CACHED_BIN}/*")
+foreach(_binary IN LISTS _binaries)
+    get_filename_component(_subdir "${_binary}" DIRECTORY)
+    file(MAKE_DIRECTORY "${VIXEN_CODEGEN_LOCAL_BIN}/${_subdir}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${VIXEN_CODEGEN_CACHED_BIN}/${_binary}" "${VIXEN_CODEGEN_LOCAL_BIN}/${_binary}"
+        RESULT_VARIABLE _copied)
+    if(NOT _copied EQUAL 0)
+        message(FATAL_ERROR "[codegen] failed to copy cached tool binary: ${_binary}")
+    endif()
+endforeach()
+file(WRITE "${VIXEN_CODEGEN_LOCAL_STAMP}" "complete\n")
