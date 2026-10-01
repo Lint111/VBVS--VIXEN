@@ -112,8 +112,17 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(YEROKET_KERNEL_SHA "b3621c23621f2fe3f8b0dc49dbbe42f602ae3a27" CACHE STRING
-    "Pinned Yeroket kernel commit used by VIXEN codegen checks")
+set(_vixen_tracked_yeroket_kernel_sha "b3621c23621f2fe3f8b0dc49dbbe42f602ae3a27")
+unset(YEROKET_KERNEL_SHA CACHE)
+set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
+    "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
+if(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE)
+    set(YEROKET_KERNEL_SHA "${VIXEN_YEROKET_KERNEL_SHA_OVERRIDE}")
+    message(STATUS "[codegen] using per-build-tree kernel pin override: ${YEROKET_KERNEL_SHA}")
+else()
+    set(YEROKET_KERNEL_SHA "${_vixen_tracked_yeroket_kernel_sha}")
+    message(STATUS "[codegen] using tracked Yeroket kernel pin: ${YEROKET_KERNEL_SHA}")
+endif()
 vixen_kernel_snapshot("${YEROKET_ROOT}" "${YEROKET_KERNEL_SHA}" _yk_root)
 
 set(_yk_tool "${_yk_root}/Packages/com.yeroket.utility.kernel-framework/CodegenTool~")
