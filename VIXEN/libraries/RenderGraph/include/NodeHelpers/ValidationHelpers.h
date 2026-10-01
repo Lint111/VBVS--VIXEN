@@ -22,7 +22,8 @@ void ValidateAndSetDevice(const typename NodeConfig::ContextType& ctx, NodeType*
     node->SetDevice(devicePtr);
 }
 
-/// Generic typed input validation. Throws with descriptive error.
+/// Typed input validation derived from the slot's declared nullability.
+/// Required null inputs throw with a descriptive error; optional inputs may be null.
 /// Usage: auto ptr = ValidateInput<MyPtrType>(ctx, "MyInput", inputSlot);
 template <typename T, typename ContextType, typename SlotType>
 inline T ValidateInput(
@@ -31,10 +32,12 @@ inline T ValidateInput(
     const SlotType& inputSlot
 ) {
     auto ptr = ctx.In(inputSlot);  // Let auto deduce, then cast if needed
-    if (!ptr) {
-        throw std::runtime_error(
-            "Required input '" + inputName + "' is null"
-        );
+    if constexpr (!SlotType::nullable) {
+        if (!ptr) {
+            throw std::runtime_error(
+                "Required input '" + inputName + "' is null"
+            );
+        }
     }
     return ptr;
 }
@@ -50,18 +53,6 @@ inline void ValidateVulkanResult(
             operation + " failed with VkResult: " + std::to_string(result)
         );
     }
-}
-
-/// Safely retrieves optional input, returns default if null
-/// Usage: auto ptr = GetOptionalInput<MyPtrType>(ctx, inputSlot, nullptr);
-template <typename T, typename ContextType, typename SlotType>
-inline T GetOptionalInput(
-    const ContextType& ctx,
-    const SlotType& inputSlot,
-    T defaultValue = nullptr
-) {
-    auto ptr = ctx.In(inputSlot);  // Let auto deduce
-    return ptr ? ptr : defaultValue;
 }
 
 } // namespace RenderGraph::NodeHelpers

@@ -155,6 +155,7 @@ ConnectionResult VariadicConnectionRule::Resolve(ConnectionContext& ctx) const {
         edge.target = ctx.targetNode;
         edge.sourceOutputIndex = ctx.sourceSlot.index;
         edge.targetInputIndex = bindingIndex;
+        edge.isVariadic = true;
         ctx.graph->GetTopology().AddEdge(edge);
 
         // Register PostCompile hook for resource population

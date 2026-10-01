@@ -119,8 +119,7 @@ namespace ComputeStageNodeCounts {
  * direct reading, not assumed: zero ResourceType/VkBuffer-specific logic anywhere in
  * the tracker or FrameSyncScheduler — so no tracker/scheduler changes were needed,
  * only this new slot + ImageSyncGathererNode + the RecordComputeCommands barrier loop
- * (ComputeStageNode.cpp; imageWriteLayouts_ is already a std::unordered_map<VkImage,
- * VkImageLayout>, already multi-entry-capable with zero type changes).
+ * (ComputeStageNode.cpp; each target buffer owns its recorded layout).
  *
  * Deliberately ADDITIVE, NOT a replacement: the original single-image IMAGE_WRITE
  * slot (index 18) is completely untouched — Inc3's shipped single-IMAGE_WRITE

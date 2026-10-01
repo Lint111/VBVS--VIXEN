@@ -259,6 +259,7 @@ void ProbeAtlasNode::TransitionToGeneral(VkCommandPool commandPool) {
         vkQueueWaitIdle(device_->queue);
     }
 
+    target_.SetImageLayout(0, VK_IMAGE_LAYOUT_GENERAL);
     vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 }
 

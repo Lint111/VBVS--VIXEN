@@ -214,6 +214,14 @@ public:
      */
     void Compile();
 
+    // Registered during compile, read during execution, including command-buffer reuse.
+    void RegisterRenderPassFinalLayout(VkRenderPass pass, VkImageLayout layout);
+    VkImageLayout GetRenderPassFinalLayout(VkRenderPass pass) const;
+
+    // Union the requirements of consumers of these image/view outputs, before allocation.
+    VkImageUsageFlags DeriveImageUsage(NodeInstance* producer,
+                                      const std::vector<uint32_t>& outputs) const;
+
     /**
      * @brief Register a callback to be executed after each node compiles
      *
@@ -847,6 +855,7 @@ public:
     bool PublishSubmit(NodeInstance* producer, SubmitRecord&& record);
 
 private:
+    std::unordered_map<VkRenderPass, VkImageLayout> renderPassFinalLayouts_;
     /// Queue owner: issue the submits published by the nodes in `wave`, in canonical ordinal order,
     /// on the graph caller thread after the wave barrier (design §2.5). Called from ExecuteLoweredFrame.
     void DrainSubmitWave(const std::vector<KernelDispatch::TaskId>& wave);

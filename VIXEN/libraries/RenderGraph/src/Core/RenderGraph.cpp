@@ -1,3 +1,5 @@
+#include "Core/ImageUsage.h"
+#include "Core/VariadicTypedNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/IGraphCompilable.h"
 #include "Core/ICommandBufferPreallocator.h"  // Capability interface — command-buffer pre-allocation without concrete-node coupling (AR#3/#4)
@@ -345,6 +347,7 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 }
 
 void RenderGraph::Clear() {
+    renderPassFinalLayouts_.clear();
     // Save persistent caches BEFORE cleanup destroys resources
     if (mainCacher) {
         const std::filesystem::path cacheDir = Vixen::RuntimeCacheDirectory();
@@ -518,6 +521,47 @@ void RenderGraph::SetDeviceBudgetManager(std::shared_ptr<DeviceBudgetManager> ma
 
     GRAPH_LOG_INFO("[RenderGraph] DeviceBudgetManager " +
         std::string(deviceBudgetManager_ ? "configured" : "cleared"));
+}
+
+VkImageUsageFlags RenderGraph::DeriveImageUsage(NodeInstance* producer,
+                                               const std::vector<uint32_t>& outputs) const {
+    using Port = std::pair<NodeInstance*, uint32_t>;
+    std::set<Port> visited;
+    std::vector<Port> pending;
+    for (uint32_t output : outputs) pending.emplace_back(producer, output);
+    VkImageUsageFlags usage = 0;
+    while (!pending.empty()) {
+        const auto port = pending.back();
+        pending.pop_back();
+        if (!visited.insert(port).second) continue;
+        for (const auto& edge : topology.GetOutgoingEdges(port.first)) {
+            if (edge.sourceOutputIndex != port.second) continue;
+            if (edge.isVariadic) {
+                const auto* variadic = dynamic_cast<const IVariadicNode*>(edge.target);
+                const auto* slot = variadic ? variadic->GetVariadicSlotInfo(edge.targetInputIndex) : nullptr;
+                if (!slot) throw std::runtime_error("Image consumer has no variadic slot metadata");
+                usage |= ImageUsageForDescriptor(slot->descriptorType);
+            } else if (const auto* desc = edge.target->GetNodeType()->GetInputDescriptor(edge.targetInputIndex)) {
+                usage |= desc->imageUsage | ImageUsageForAccess(desc->accessKind);
+            }
+            for (uint32_t output : edge.target->GetForwardedImageOutputs(edge.targetInputIndex, edge.isVariadic)) {
+                pending.emplace_back(edge.target, output);
+            }
+        }
+    }
+    return usage;
+}
+
+void RenderGraph::RegisterRenderPassFinalLayout(VkRenderPass pass, VkImageLayout layout) {
+    renderPassFinalLayouts_[pass] = layout;
+}
+
+VkImageLayout RenderGraph::GetRenderPassFinalLayout(VkRenderPass pass) const {
+    auto it = renderPassFinalLayouts_.find(pass);
+    if (it == renderPassFinalLayouts_.end()) {
+        throw std::runtime_error("Render pass has no graph-owned final layout");
+    }
+    return it->second;
 }
 
 void RenderGraph::Compile() {

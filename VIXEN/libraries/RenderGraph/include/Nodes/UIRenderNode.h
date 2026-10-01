@@ -104,6 +104,7 @@ private:
     VkRenderPass renderPass_ = VK_NULL_HANDLE;   // consumed from RenderPassNode (not owned)
     VkExtent2D extent_{};
     std::vector<VkCommandBuffer> commandBuffers_;  // one per swapchain image (owned)
+    bool syncUsesWsi_ = false; // capability of the currently allocated sync objects
     uint32_t syncImageCount_ = 0;  // image count the owned cmd buffers + composite semaphores were sized to
 
     // Composite mode (compositing over the voxel compute): layered over an upstream producer. The

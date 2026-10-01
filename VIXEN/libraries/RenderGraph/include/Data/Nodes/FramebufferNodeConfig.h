@@ -97,6 +97,8 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
             swapchainInfoDesc
         );
 
+        inputs[SWAPCHAIN_INFO.index].imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
         INIT_INPUT_DESC(DEPTH_ATTACHMENT, "depth_attachment",
             ResourceLifetime::Transient,
             BufferDescription{}

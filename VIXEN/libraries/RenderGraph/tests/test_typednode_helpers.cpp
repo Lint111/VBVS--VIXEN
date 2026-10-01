@@ -2,6 +2,8 @@
 
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
+#include "Nodes/InputNode.h"
+#include "NodeHelpers/ValidationHelpers.h"
 
 using namespace Vixen::RenderGraph;
 
@@ -75,4 +77,63 @@ TEST(TypedNode_ActiveBundleIndex, MarkInputUsedRespectsActiveIndex) {
 
     delete r0;
     delete r1;
+}
+
+namespace {
+
+class InputValidationProbe : public InputNode {
+public:
+    using InputNode::InputNode;
+    using NodeInstance::SetInput;
+};
+
+// Use the same pointer type and slot index to isolate the declared nullability.
+using RequiredWindowSlot = ResourceSlot<GLFWwindow*, 0, SlotNullability::Required, SlotRole::Execute>;
+
+} // namespace
+
+TEST(TypedInputValidation, OptionalWindowMayBeUnconnected) {
+    InputNodeType type;
+    InputNode node("headless_input", &type);
+    InputNode::TypedCompileContext ctx(&node, 0);
+
+    EXPECT_EQ(::RenderGraph::NodeHelpers::ValidateInput<GLFWwindow*>(
+                  ctx, "Window", InputNodeConfig::WINDOW), nullptr);
+}
+
+TEST(TypedInputValidation, RequiredNullInputKeepsItsDiagnostic) {
+    InputNodeType type;
+    InputNode node("required_input", &type);
+    InputNode::TypedCompileContext ctx(&node, 0);
+
+    try {
+        ::RenderGraph::NodeHelpers::ValidateInput<GLFWwindow*>(ctx, "Window", RequiredWindowSlot{});
+        FAIL() << "An absent required input must fail validation";
+    } catch (const std::runtime_error& error) {
+        EXPECT_STREQ(error.what(), "Required input 'Window' is null");
+    }
+}
+
+TEST(TypedInputValidation, ConnectedPointerIsPreservedForEitherNullability) {
+    InputNodeType type;
+    Resource windowResource;
+    InputValidationProbe node("connected_input", &type);
+    // This opaque handle is only stored and compared; no GLFW operation runs.
+    auto* window = reinterpret_cast<GLFWwindow*>(uintptr_t{1});
+    windowResource.SetHandle(window);
+    node.SetInput(0, 0, &windowResource);
+    InputNode::TypedCompileContext ctx(&node, 0);
+
+    EXPECT_EQ(::RenderGraph::NodeHelpers::ValidateInput<GLFWwindow*>(
+                  ctx, "Window", InputNodeConfig::WINDOW), window);
+    EXPECT_EQ(::RenderGraph::NodeHelpers::ValidateInput<GLFWwindow*>(
+                  ctx, "Window", RequiredWindowSlot{}), window);
+}
+
+TEST(TypedInputValidation, ProductionInputNodeCompilesWithoutAWindow) {
+    InputNodeType type;
+    InputNode node("headless_input", &type);
+
+    ASSERT_NO_THROW(node.Setup());
+    EXPECT_NO_THROW(node.Compile());
 }

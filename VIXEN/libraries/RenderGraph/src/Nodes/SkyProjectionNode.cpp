@@ -1,3 +1,4 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 #include "Nodes/SkyProjectionNode.h"
 #include "Core/NodeRegistration.h"
 #include "Core/NodeLogging.h"
@@ -484,8 +485,14 @@ void SkyProjectionNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
+    const std::vector<VkSemaphore>& imageAvailable = ctx.In(SkyProjectionNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        swapchainInfo, imageAvailable, {}, currentFrameIndex, imageIndex,
+        NodeInstance::GetInputCount(SkyProjectionNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY.index) > 0, false);
+
     VkCommandBuffer cmd = commandBuffers_[imageIndex];
     RecordFrame(cmd, framebuffers[imageIndex], swapchainInfo->GetExtent(), camera, currentFrameIndex);
+    swapchainInfo->SetImageLayout(imageIndex, GetOwningGraph()->GetRenderPassFinalLayout(renderPass_));
 
     VkCommandBufferSubmitInfo cmdInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
     cmdInfo.commandBuffer = cmd;
@@ -497,10 +504,9 @@ void SkyProjectionNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // the live composite pipeline this input is left unconnected — ordering vs. the upstream
     // compute is carried solely by the timeline waitEdge below (mirrors UIRenderNode's P5b M3
     // convention exactly: composite mode drops the binary handoff wait entirely).
-    const std::vector<VkSemaphore>& imageAvailable = ctx.In(SkyProjectionNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    if (!imageAvailable.empty() && currentFrameIndex < imageAvailable.size()) {
+    if (handoffs.acquire != VK_NULL_HANDLE) {
         VkSemaphoreSubmitInfo binaryWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        binaryWait.semaphore = imageAvailable[currentFrameIndex];
+        binaryWait.semaphore = handoffs.acquire;
         binaryWait.value = 0;
         binaryWait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         waits.push_back(binaryWait);

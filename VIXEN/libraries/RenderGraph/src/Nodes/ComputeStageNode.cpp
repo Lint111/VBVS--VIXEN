@@ -1,3 +1,4 @@
+#include "Nodes/Common/PresentationSynchronization.h"
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
 // auto-sync FrameGraph P5b M2: generic single-compute-pass submit node.
 //
@@ -149,15 +150,14 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderComplete = ctx.In(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeStageNodeConfig::IN_FLIGHT_FENCE);
 
-    // Windowed consumers index the acquire and present arrays. Offscreen graphs contain only
-    // producers, so their image index comes from RenderTargetNode and has no WSI semaphore array.
-    if (imageIndex == UINT32_MAX ||
-        (isConsumer && (imageIndex >= renderComplete.size() ||
-                        currentFrameIndex >= imageAvailable.size())) ||
-        currentFrameIndex >= commandBuffers_.size()) {
+    auto* target = ctx.In(ComputeStageNodeConfig::SWAPCHAIN_INFO);
+    if (imageIndex == UINT32_MAX || currentFrameIndex >= commandBuffers_.size() ||
+        (target && imageIndex >= target->GetImageCount())) {
         NODE_LOG_WARNING("[ComputeStageNode] Invalid image/frame index - skipping frame");
         return;
     }
+    const auto handoffs = ResolveTargetSemaphoreHandoffs(
+        target, imageAvailable, renderComplete, currentFrameIndex, imageIndex, isConsumer, isConsumer);
 
     // Consumer is the frame's last submit: it resets + owns the in-flight fence (the
     // producers submit with NO fence). FrameSyncNode already waited on it.
@@ -199,12 +199,12 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     std::vector<VkSemaphoreSubmitInfo> waits, signals;
 
     if (isConsumer) {
-        // Consumer waits the binary acquire (imageAvailable, indexed by frame).
-        VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        acquireWait.semaphore = imageAvailable[currentFrameIndex];
-        acquireWait.value     = 0;  // binary: value ignored
-        acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-        waits.push_back(acquireWait);
+        if (handoffs.acquire != VK_NULL_HANDLE) {
+            VkSemaphoreSubmitInfo acquireWait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+            acquireWait.semaphore = handoffs.acquire;
+            acquireWait.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            waits.push_back(acquireWait);
+        }
 
         // Timeline WAITS: one per baked waitEdge. This is the genuine fan-in — the
         // consumer waits each producer's signalled completion value (NO binary handoff
@@ -227,11 +227,12 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // Baked-Perf M6 Task 6.3 (audit pattern R7): scoped to COMPUTE_SHADER_BIT, matching
         // the acquire wait's and the consumer's own timeline wait stage masks above (this
         // node's only queue-side work is the compute dispatch), not ALL_COMMANDS_BIT.
-        VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        renderSig.semaphore = renderComplete[imageIndex];
-        renderSig.value     = 0;  // binary: value ignored
-        renderSig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-        signals.push_back(renderSig);
+        if (handoffs.present != VK_NULL_HANDLE) {
+            VkSemaphoreSubmitInfo renderSig{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+            renderSig.semaphore = handoffs.present;
+            renderSig.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            signals.push_back(renderSig);
+        }
     } else {
         // Producer: timeline SIGNALS only. A group signals its OWN completion value once.
         // All of a producer's signalEdges carry the same timelineOffset (== producer
@@ -282,8 +283,7 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Only WSI consumers have a presentable binary semaphore. Offscreen producers still publish
     // the output slot, with a null handle, so downstream graph topology stays target-agnostic.
-    const VkSemaphore renderCompleteSemaphore = isConsumer
-        ? renderComplete[imageIndex] : VK_NULL_HANDLE;
+    const VkSemaphore renderCompleteSemaphore = handoffs.present;
     ctx.Out(ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
     ctx.Out(ComputeStageNodeConfig::VULKAN_DEVICE_OUT, GetDevice());
 }
@@ -393,7 +393,8 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // Consumer: acquire-side transition of the swapchain image into GENERAL for the
     // storage write (WSI lifecycle — node-managed in Tier-1).
     if (isConsumer && swapchainInfo) {
-        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
+        const VkImageLayout prior = DecideRenderTargetPriorLayoutAndUpdate(*swapchainInfo, imageIndex, VK_IMAGE_LAYOUT_GENERAL);
+        SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex), prior);
     }
 
     // Image-write (Sampled Lighting Inc3 M1): transitions imageWriteTarget's CURRENT
@@ -406,20 +407,18 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     // whether or not it is also the SWAPCHAIN_INFO consumer.
     if (imageWriteTarget) {
         VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
-            imageWriteLayouts_, imageWriteTarget->GetCurrentImage(), VK_IMAGE_LAYOUT_GENERAL);
+            *imageWriteTarget, imageWriteTarget->GetCurrentIndex(), VK_IMAGE_LAYOUT_GENERAL);
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd,
             imageWriteTarget->GetCurrentImage(), priorLayout);
     }
 
     // Sampled Lighting Inc4 M1: IMAGE_WRITE_ARRAY — identical per-target barrier logic to
-    // the single-slot case above, looped. imageWriteLayouts_ is keyed by VkImage (not by
-    // slot/index), so mixing IMAGE_WRITE + IMAGE_WRITE_ARRAY targets on the same node (not
-    // expected in practice, but not disallowed) still tracks each image's own layout
-    // independently with no collision.
+    // the single-slot case above, looped. Each physical buffer owns its own history,
+    // including when another recording node previously wrote the same target.
     for (Vixen::Vulkan::Resources::IRenderTarget* target : imageWriteArrayTargets) {
         if (!target) continue;
         VkImageLayout priorLayout = DecideRenderTargetPriorLayoutAndUpdate(
-            imageWriteLayouts_, target->GetCurrentImage(), VK_IMAGE_LAYOUT_GENERAL);
+            *target, target->GetCurrentIndex(), VK_IMAGE_LAYOUT_GENERAL);
         SwapchainBarriers::TransitionImageToGeneralBarrier2(GetDevice(), cmd,
             target->GetCurrentImage(), priorLayout);
     }
@@ -445,12 +444,13 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     }
 
     // Consumer is the last writer of the swapchain image → hand it to Present.
-    if (isConsumer && swapchainInfo) {
+    if (isConsumer && swapchainInfo && swapchainInfo->UsesWsiSynchronization()) {
         SwapchainBarriers::TransitionImageToPresentBarrier2(GetDevice(), cmd, swapchainInfo->GetImage(imageIndex));
+        swapchainInfo->SetImageLayout(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     }
 
     // IMAGE_WRITE deliberately does NOT transition on exit — it stays GENERAL (the
-    // compute storage-write's own end state, already recorded in imageWriteLayouts_ by
+    // compute storage-write's own end state, already recorded in the target buffer by
     // DecideRenderTargetPriorLayoutAndUpdate's own update above). The next consumer
     // (another IMAGE_WRITE producer re-entering this same handle, or a
     // presentation-only blit node reading it via TRANSFER_SRC) owns whatever comes

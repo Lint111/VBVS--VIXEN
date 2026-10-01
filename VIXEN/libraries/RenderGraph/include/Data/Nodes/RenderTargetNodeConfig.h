@@ -35,7 +35,7 @@ namespace RenderTargetNodeCounts {
  *   - IMAGE_INDEX   (uint32_t)       - Current image ring index
  *   - WIDTH_OUT     (uint32_t)       - Render target width
  *   - HEIGHT_OUT    (uint32_t)       - Render target height
- * Parameters: width, height, format, imageCount, usage, scale
+ * Parameters: width, height, format, imageCount, scale. Image usage derives from consumers.
  */
 CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
                       RenderTargetNodeCounts::INPUTS,
@@ -84,7 +84,6 @@ CONSTEXPR_NODE_CONFIG(RenderTargetNodeConfig,
     static constexpr const char* PARAM_HEIGHT      = "height";
     static constexpr const char* PARAM_FORMAT      = "format";       // VkFormat stored as uint32_t
     static constexpr const char* PARAM_IMAGE_COUNT = "imageCount";   // 0 => use MAX_FRAMES_IN_FLIGHT
-    static constexpr const char* PARAM_USAGE       = "usage";        // VkImageUsageFlags as uint32_t
     // Only used when EXTENT_SOURCE is connected: target extent = ceil(sourceExtent * scale),
     // clamped to (0,1]. Default 1.0 = same resolution as the source (render-scale disabled).
     static constexpr const char* PARAM_SCALE       = "scale";

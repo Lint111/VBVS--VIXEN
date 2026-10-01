@@ -1341,6 +1341,7 @@ struct ResourceDescriptor {
     bool nullable = false;
     SlotMutability mutability = SlotMutability::ReadOnly;  // Auto-sync P1: ReadWrite inputs count as writers
     AccessKind accessKind = AccessKind::None;              // Auto-sync P3: declared per-slot access semantics
+    VkImageUsageFlags imageUsage = 0; // consumer creation requirements beyond the scheduling access kind
 
     // Constructor for compatibility
     ResourceDescriptor() = default;

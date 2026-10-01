@@ -10,7 +10,6 @@
 #include "Data/Nodes/BlitNodeConfig.h"
 #include "Core/FrameSyncSchedule.h"
 #include "Nodes/Common/SwapchainBarriers.h"
-#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
@@ -90,12 +89,6 @@ private:
 
     // Per-swapchain-image command buffers with dirty-state tracking.
     StatefulContainer<VkCommandBuffer> commandBuffers_;
-
-    // Sampled Lighting Inc3 M1: tracks the LAST KNOWN layout of every VkImage handle this
-    // node touches (both the render-target source and the swapchain destination — same
-    // KI-007-fix pattern ComputeDispatchNode's own renderTargetImageLayouts_ uses, and the
-    // same map SwapchainBarriers::BlitRenderTargetToSwapchain expects a caller to own).
-    std::unordered_map<VkImage, VkImageLayout> layoutTracking_;
 
     // Task 0.1 (Baked-Content Perf Audit, top action #9): GPU timing for the presentation
     // blit, same centralized-GPUQueryManager pattern as every other timed node.

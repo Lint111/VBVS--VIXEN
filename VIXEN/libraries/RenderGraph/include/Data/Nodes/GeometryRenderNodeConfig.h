@@ -145,13 +145,13 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 13,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 14,
-        SlotNullability::Required,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -221,6 +221,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
             ResourceLifetime::Persistent,
             swapchainInfoDesc
         );
+        inputs[SWAPCHAIN_INFO.index].imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool",
             ResourceLifetime::Persistent,
@@ -330,10 +331,10 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(!IN_FLIGHT_FENCE_Slot::nullable, "IN_FLIGHT_FENCE is required");
 
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 13, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 13");
-    static_assert(!IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY is required");
+    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::nullable, "WSI acquire is conditional on the target");
 
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 14, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 14");
-    static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY is required");
+    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "WSI present is conditional on the target");
 
     static_assert(PUSH_CONSTANT_DATA_Slot::index == 15, "PUSH_CONSTANT_DATA must be at index 15");
     static_assert(PUSH_CONSTANT_DATA_Slot::nullable, "PUSH_CONSTANT_DATA is optional");

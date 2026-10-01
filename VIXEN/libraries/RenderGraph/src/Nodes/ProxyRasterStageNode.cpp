@@ -296,6 +296,7 @@ void ProxyRasterStageNode::RecordCommands(TypedExecuteContext& ctx,
         vkCmdDraw(commandBuffer, kProxyCubeVertexCount,
                   static_cast<uint32_t>(drawInstanceCount), 0u, 0u);
         vkCmdEndRenderPass(commandBuffer);
+        target->SetImageLayout(target->GetCurrentIndex(), GetOwningGraph()->GetRenderPassFinalLayout(renderBegin.renderPass));
     } else if (bodyCount > 0u && proxyCount > 0u) {
         const VkPipeline pipeline = ctx.In(ProxyRasterStageNodeConfig::COMPUTE_PIPELINE);
         const VkPipelineLayout layout =

@@ -15,6 +15,7 @@ class VulkanRenderer;
 struct SwapChainBuffer {
     VkImage image;
     VkImageView view;
+    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
 
@@ -45,6 +46,7 @@ struct SwapChainPrivateVariables {
 };
 
 struct SwapChainPublicVariables : public Vixen::Vulkan::Resources::IRenderTarget {
+    static constexpr auto Synchronization = Vixen::Vulkan::Resources::TargetSynchronization::WsiAcquirePresent;
     // The logical platform dependent surface object
     VkSurfaceKHR surface;
 
@@ -85,6 +87,9 @@ struct SwapChainPublicVariables : public Vixen::Vulkan::Resources::IRenderTarget
     VkFormat    GetFormat()   const override { return Format; }
     VkExtent2D  GetExtent()   const override { return Extent; }
     VkImageUsageFlags GetImageUsageFlags() const override { return ImageUsageFlags; }
+    Vixen::Vulkan::Resources::TargetSynchronization GetSynchronization() const override { return Synchronization; }
+    VkImageLayout GetImageLayout(uint32_t i) const override { return colorBuffers.at(i).layout; }
+    void SetImageLayout(uint32_t i, VkImageLayout layout) override { colorBuffers.at(i).layout = layout; }
 
     operator VkSurfaceKHR() const {
         return surface;

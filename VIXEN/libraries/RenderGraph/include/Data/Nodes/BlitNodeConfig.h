@@ -201,6 +201,7 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
         HandleDescriptor renderTargetDesc{"IRenderTarget*"};
         INIT_INPUT_DESC(IMAGE_READ, "image_read", ResourceLifetime::Persistent, renderTargetDesc);
         INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, renderTargetDesc);
+        inputs[SWAPCHAIN_INFO.index].imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         HandleDescriptor uint32Desc{"uint32_t"};
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, uint32Desc);

@@ -86,6 +86,11 @@ public:
             return false;
         }
 
+        auto* target = graph->GetInstanceByName("main_offscreen_target")->GetOutput(0)->GetHandle<Vixen::Vulkan::Resources::IRenderTarget*>();
+        EXPECT_EQ(target->GetCurrentLayout(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        EXPECT_TRUE(target->GetImageUsageFlags() & VK_IMAGE_USAGE_STORAGE_BIT);
+        EXPECT_TRUE(target->GetImageUsageFlags() & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        EXPECT_FALSE(target->UsesWsiSynchronization());
         const char* prefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
         if (!prefix) {
             captureError_ = "CMake did not configure the Cornell capture prefix";

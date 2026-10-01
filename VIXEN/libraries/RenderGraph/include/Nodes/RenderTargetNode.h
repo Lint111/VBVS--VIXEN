@@ -17,6 +17,14 @@ public:
         : TypedNodeType<RenderTargetNodeConfig>(typeName) {}
     virtual ~RenderTargetNodeType() = default;
 
+    std::optional<PresentationTargetContract> GetPresentationTargetContract() const override {
+        return PresentationTargetContract{
+            SlotInfo::FromOutputSlot<RenderTargetNodeConfig::RENDER_TARGET_Slot>("RENDER_TARGET"),
+            SlotInfo::FromOutputSlot<RenderTargetNodeConfig::IMAGE_INDEX_Slot>("IMAGE_INDEX"),
+            Vixen::Vulkan::Resources::RenderTargetData::Synchronization,
+            std::nullopt};
+    }
+
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
@@ -24,11 +32,11 @@ public:
  * @brief Allocates an offscreen color render target (color-only; compose with DepthBufferNode +
  * FramebufferNode like the swapchain path). Outputs an IRenderTarget* (its RenderTargetData).
  *
- * FR-7 lifecycle: images persist across graph recompile; only released on FinalTeardown.
+ * FR-7 lifecycle: images persist across graph recompile while extent and derived usage are unchanged.
  *
  * Sizing: explicit width/height (PARAM_WIDTH/PARAM_HEIGHT) by default. When EXTENT_SOURCE is
  * connected, follow-swapchain mode takes over: extent = ceil(sourceExtent * PARAM_SCALE),
- * recomputed every Compile and the image recreated only when the computed extent changes. See
+ * recomputed every Compile; extent or consumer-usage changes recreate the images. See
  * AR#28 follow-ups / Widescreen-Perf-Fix-Plan-2026-07.md M4.1.
  */
 class RenderTargetNode : public TypedNode<RenderTargetNodeConfig> {
@@ -58,7 +66,7 @@ private:
     uint32_t           height_     = 0;
     uint32_t           imageCount_ = 0;
     VkFormat           format_     = VK_FORMAT_R8G8B8A8_UNORM;
-    VkImageUsageFlags  usage_      = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    VkImageUsageFlags  usage_      = 0;
     float              scale_      = 1.0f;
 };
 
