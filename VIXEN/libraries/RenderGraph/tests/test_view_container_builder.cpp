@@ -1,7 +1,6 @@
 #include "Ui/ViewWireReaderSoa.h"
 #include "Ui/ViewStore.h"
-// The legacy UndertowHud read-model family was retired when its [View] roots migrated to
-// schema-catalog queries. Keep this fixture focused on the surviving Bodies/Recipes wire faces.
+// Keep this native reader fixture focused on the Bodies/Recipes section faces.
 #include "Generated/UndertowBodies.blob.g.h"
 #include "Generated/UndertowBodies.typed.g.h"
 #include "Generated/UndertowRecipes.blob.g.h"
@@ -12,38 +11,15 @@
 #include <cstring>
 #include <vector>
 
-// View Contract Inc-5b Milestone 2.5 (writer-side wiring) -- C#-side/isolated round-trip proof,
-// per the plan's explicit scope ("do NOT claim the real C++ seam works yet -- that's Milestone
-// 3's live-gate"). This does NOT touch undertow's real C++ reader (view_contract.h/main.cpp) --
-// it proves the NEW writer path (HostSession.ViewBuffer -> ViewWriterAdapter -> the Yeroket
-// <Model>ViewWriter.ToBuffer() calls -> ViewContainerBuilder.Build's new UTVC container) produces
-// bytes that decode correctly through the EXISTING C++ decode substrate (ViewWireReaderSoa::Apply
-// + the Milestone-2/2.4-generated typed accessors), against a REAL captured SimFrame's REAL values.
+// Seed-7 UTVC golden fixture for the native section-container reader. The test checks that the
+// section table and typed accessors decode the expected values from a real SimFrame projection.
 //
-// The exact bytes below are the VERBATIM output of running the real undertow C# writer path
-// (Undertow.View.ViewWriterAdapter + Undertow.View.ViewContainerBuilder.Build) against
-// `new UndertowSim(); sim.NewCampaign(7); sim.ProjectObserverFrame();` -- the same real,
-// already-exercised production sim-projection fixture ViewContractTests.cs uses (captured via a
-// standalone C# harness, not hand-encoded). The expected values asserted below were read directly
-// off that same real SimFrame (see the harness output) -- this proves the writer's actual output,
-// not a synthetic fixture.
-//
-// Milestone 0 (recipe-split, View-ReadModel-Codegen-Plan-2026-07.md) re-captured these bytes
-// against the POST-SPLIT schema: UndertowBodyRow now carries recipeId+radiusAu (radiusAu replacing
-// recipeProvider, which moved to the new UndertowRecipeRow), and a 6th section (Recipes, one row
-// per distinct recipeId in use -- 2 distinct recipes across the 7 real bodies this frame) is
-// appended after Bodies. Bodies.Position IS now asserted here: rather than fight the Vector-kind
-// STRUCT-ARRAY-ELEMENT emitter gap (ViewWriterEmitter.cs/TypedAccessorEmitter.cs null-ref on it),
-// the a88e483f fix decomposed the per-body Vec3f into three plain float columns (posX/posY/posZ),
-// the same sidestep already used for radiusAu -- so the real seed-7 on-rails positions round-trip
-// and are checked against their captured values below.
+// The seed-7 fixture has nine UTVC sections. This native test decodes the Bodies and Recipes
+// sections while preserving the table offsets for the other fixture entries.
 
 namespace {
 
-// The real UTVC container bytes produced by the actual C# writer path against the real seed-7
-// ProjectObserverFrame() SimFrame (slice6: 9 sections -- the 6 Milestone-0 sections plus the 3
-// now-retired building-relation sections). The captured fixture retains those bytes so the
-// surviving Bodies/Recipes section offsets remain unchanged; retired sections are not decoded.
+// Checked-in UTVC v2 bytes from a seed-7 projection; Bodies and Recipes are decoded below.
 const uint8_t kRealUtvcBytes[] = {
     0x55, 0x54, 0x56, 0x43, 0x02, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x78, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x94, 0x00, 0x00, 0x00,
@@ -607,10 +583,8 @@ struct Cursor {
     uint32_t U32() { uint32_t v = p[at] | (p[at+1]<<8) | (p[at+2]<<16) | (p[at+3]<<24); at += 4; return v; }
 };
 
-// Manual UTVC unwrap (proving OUR OWN container format round-trips -- Milestone 3's job is to
-// wire this into the real C++ reader; this is a standalone decode matching
-// ViewContainerBuilder.Build's exact layout: magic(4) + count(u32) + count*(offset u32, length u32)
-// TOC + concatenated sub-buffers, no padding).
+// Manual UTVC v2 unwrap of the checked-in fixture: magic(4) + version(u32) + count(u32) +
+// count*(id, offset, length) TOC + concatenated sub-buffers, with no padding.
 std::vector<std::vector<std::byte>> UnwrapUtvc(const uint8_t* buf, size_t len) {
     Cursor c{buf, len};
     EXPECT_EQ(buf[0], 'U'); EXPECT_EQ(buf[1], 'T'); EXPECT_EQ(buf[2], 'V'); EXPECT_EQ(buf[3], 'C');
@@ -638,7 +612,7 @@ std::vector<std::vector<std::byte>> UnwrapUtvc(const uint8_t* buf, size_t len) {
 
 using namespace Vixen::RenderGraph;
 
-TEST(ViewContainerBuilder, RealSimFrameRoundTripsThroughUtvcAndSurvivingSections) {
+TEST(ViewContainerReader, CapturedUtvcFixtureDecodesBodiesAndRecipes) {
     auto sections = UnwrapUtvc(kRealUtvcBytes, sizeof(kRealUtvcBytes));
     ASSERT_EQ(sections.size(), 9u);
 
@@ -691,7 +665,7 @@ TEST(ViewContainerBuilder, RealSimFrameRoundTripsThroughUtvcAndSurvivingSections
     }
 
     // --- Recipes (Milestone 0: one row per DISTINCT recipeId across the 7 real bodies -- 2 rows,
-    // recipeId 0 and 1, deduped by ViewWriterAdapter.Recipes) ---
+    // recipeId 0 and 1, deduplicated by recipe id in the fixture) ---
     {
         ViewStore store(Vixen::Views::kUndertowRecipesBlob, Vixen::Views::kUndertowRecipesBlob.version);
         ASSERT_TRUE(ViewWireReaderSoa::Apply(sections[5], store));
