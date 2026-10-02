@@ -371,7 +371,10 @@ env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build --output-on-failure \
 
 The test writes three HUD PNGs and four editor PNGs under
 `build/runtime-captures/native/` and keeps each process log beside them. The
-existing CTest producer fixtures continue to use offscreen capture.
+runner receives each executable's runtime directory and filename from CMake's
+target generator expressions, so it follows the active build configuration.
+The existing CTest producer fixtures continue to use offscreen capture and use
+their targets' runtime directories as their working directories.
 
 ## 13. Related Pages
 

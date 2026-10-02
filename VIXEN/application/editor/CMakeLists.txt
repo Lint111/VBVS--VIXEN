@@ -78,7 +78,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "exec \"$<TARGET_FILE:vixen_editor>\" > \"${VIXEN_EDITOR_CAPTURE_DIR}/run_editor_script.log\" 2>&1")
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
-        WORKING_DIRECTORY "${VIXEN_BINARIES_DIR}"
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
         TIMEOUT 180)
     vixen_set_suite_properties(RenderGraph TESTS vixen_editor_capture_producer
         TEST_ENVIRONMENT
@@ -92,7 +92,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
     add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
     set_tests_properties(vixen_hud_capture_producer PROPERTIES
         FIXTURES_SETUP VixenHudCapture
-        WORKING_DIRECTORY "${VIXEN_BINARIES_DIR}"
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         TIMEOUT 180)
     vixen_set_suite_properties(RenderGraph TESTS vixen_hud_capture_producer
         TEST_ENVIRONMENT
@@ -113,9 +113,11 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
         set(VIXEN_NATIVE_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/native")
         add_test(NAME vixen_wsl_capture_witness
             COMMAND bash "${VIXEN_ROOT}/../tools/run-vixen-windowed-captures.sh"
-                "${VIXEN_BINARIES_DIR}" "${VIXEN_NATIVE_CAPTURE_DIR}")
+                "$<TARGET_FILE_DIR:VIXEN>" "$<TARGET_FILE_NAME:VIXEN>"
+                "$<TARGET_FILE_DIR:vixen_editor>" "$<TARGET_FILE_NAME:vixen_editor>"
+                "${VIXEN_NATIVE_CAPTURE_DIR}")
         set_tests_properties(vixen_wsl_capture_witness PROPERTIES
-            WORKING_DIRECTORY "${VIXEN_BINARIES_DIR}"
+            WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
             TIMEOUT 300
             LABELS "VIXENCapture;WSL"
             ENVIRONMENT "DISPLAY=:0;${VIXEN_CTEST_GPU_ENVIRONMENT}")
