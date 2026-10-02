@@ -102,3 +102,22 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
             "VIXEN_EXIT_AFTER_FRAMES=85")
 endif()
+
+# The native windowed witness is WSLg-specific. Keep its display contract in
+# CTest so callers can run the test with DISPLAY unset, while ordinary capture
+# fixtures above remain offscreen and display-independent.
+if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGET vixen_editor
+        AND EXISTS "/proc/sys/kernel/osrelease")
+    file(READ "/proc/sys/kernel/osrelease" _vixen_kernel_release)
+    if(_vixen_kernel_release MATCHES "[Mm]icrosoft" AND EXISTS "/tmp/.X11-unix/X0")
+        set(VIXEN_NATIVE_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/native")
+        add_test(NAME vixen_wsl_capture_witness
+            COMMAND bash "${VIXEN_ROOT}/../tools/run-vixen-windowed-captures.sh"
+                "${VIXEN_BINARIES_DIR}" "${VIXEN_NATIVE_CAPTURE_DIR}")
+        set_tests_properties(vixen_wsl_capture_witness PROPERTIES
+            WORKING_DIRECTORY "${VIXEN_BINARIES_DIR}"
+            TIMEOUT 300
+            LABELS "VIXENCapture;WSL"
+            ENVIRONMENT "DISPLAY=:0;${VIXEN_CTEST_GPU_ENVIRONMENT}")
+    endif()
+endif()

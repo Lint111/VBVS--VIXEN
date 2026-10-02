@@ -357,7 +357,23 @@ VIXEN_CODEGRAPH_ROOT=/absolute/path/to/indexed/VIXEN \
 The helper does not initialize, update, or commit an index. When it selects a
 shared checkout, its results may not include uncommitted lane changes.
 
-## 12. Related Pages
+## 12. WSL windowed capture witness
+
+On WSL2 with an active WSLg `X0` socket, CMake registers
+`vixen_wsl_capture_witness`. CTest declares `DISPLAY=:0` and the configured
+Vulkan loader environment for the test, so invoke it with the caller's display
+environment unset:
+
+```bash
+env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build --output-on-failure \
+  -R '^vixen_wsl_capture_witness$'
+```
+
+The test writes three HUD PNGs and four editor PNGs under
+`build/runtime-captures/native/` and keeps each process log beside them. The
+existing CTest producer fixtures continue to use offscreen capture.
+
+## 13. Related Pages
 
 - [[Overview]] - Development overview
 - [[Testing]] - Test configuration
