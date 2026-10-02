@@ -365,8 +365,10 @@ Vulkan loader environment for the test, so invoke it with the caller's display
 environment unset:
 
 ```bash
-env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build --output-on-failure \
-  -R '^vixen_wsl_capture_witness$'
+bash tools/with-test-lock.sh --agent AGENT_ID --resource test \
+  --label native-capture-witness -- \
+  env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build \
+  --output-on-failure -R '^vixen_wsl_capture_witness$'
 ```
 
 The test writes three HUD PNGs and four editor PNGs under
@@ -376,7 +378,27 @@ target generator expressions, so it follows the active build configuration.
 The existing CTest producer fixtures continue to use offscreen capture and use
 their targets' runtime directories as their working directories.
 
-## 13. Related Pages
+## 13. Compare native captures
+
+Save one native run, repeat the witness, and compare the paired PNGs:
+
+```bash
+cp -a build/runtime-captures/native build/runtime-captures/before
+bash tools/with-test-lock.sh --agent AGENT_ID --resource test \
+  --label native-capture-after -- \
+  env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build \
+  --output-on-failure -R '^vixen_wsl_capture_witness$'
+python3 tools/compare-capture-pixels.py \
+  build/runtime-captures/before build/runtime-captures/native
+```
+
+The comparator reports per-file byte differences and decoded pixel differences.
+Its default exit code is `0` when paired pixels match, `1` for missing or
+different captures, and `2` for unreadable or unsupported PNG data. Use
+`--max-differing-pixels N` and `--channel-tolerance N` for a pixel tolerance;
+`--require-byte-identical` also makes a PNG byte difference fail the command.
+
+## 14. Related Pages
 
 - [[Overview]] - Development overview
 - [[Testing]] - Test configuration
