@@ -77,11 +77,28 @@ else()
                 "VIXEN_SCHEMA_CATALOG does not exist: ${VIXEN_SCHEMA_CATALOG}")
         endif()
     else()
-        foreach(_schema_catalog_candidate IN ITEMS
-                "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
-                "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+        set(_schema_catalog_candidates "")
+        if(DEFINED ENV{UNDERTOW_ROOT} AND NOT "$ENV{UNDERTOW_ROOT}" STREQUAL "")
+            list(APPEND _schema_catalog_candidates
+                "$ENV{UNDERTOW_ROOT}/core/src/Undertow.Authoring/Schema/schemas.json")
+        endif()
+        list(APPEND _schema_catalog_candidates
+            "${_cg}/../../../../core/src/Undertow.Authoring/Schema/schemas.json"
+            "${_cg}/../../../../../../core/src/Undertow.Authoring/Schema/schemas.json")
+        foreach(_h IN LISTS _home_candidates)
+            if(_h)
+                list(APPEND _schema_catalog_candidates
+                    "${_h}/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json"
+                    "${_h}/Github/undertow/core/src/Undertow.Authoring/Schema/schemas.json"
+                    "${_h}/undertow/core/src/Undertow.Authoring/Schema/schemas.json")
+            endif()
+        endforeach()
+        list(REMOVE_DUPLICATES _schema_catalog_candidates)
+        foreach(_schema_catalog_candidate IN LISTS _schema_catalog_candidates)
             if(EXISTS "${_schema_catalog_candidate}")
-                set(_schema_catalog_source "${_schema_catalog_candidate}")
+                get_filename_component(_schema_catalog_source "${_schema_catalog_candidate}" REALPATH)
+                message(STATUS
+                    "[codegen] using discovered Undertow schema catalogue: ${_schema_catalog_source}")
                 break()
             endif()
         endforeach()
@@ -130,7 +147,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     if(NOT _schema_catalog_source AND NOT VIXEN_RENDERER_PROVIDER_MODE)
         message(FATAL_ERROR
             "[codegen] AppFlow/ViewNounId checks require Undertow's schema catalogue; "
-            "pass -DVIXEN_SCHEMA_CATALOG=<path>/schemas.json for a standalone VIXEN configure")
+            "set UNDERTOW_ROOT to an Undertow checkout or pass "
+            "-DVIXEN_SCHEMA_CATALOG=<path>/schemas.json for a standalone VIXEN configure")
     endif()
     # All drift guards invoke the same CodegenTool project. Parallel `dotnet run`
     # processes race while MSBuild copies the shared output DLLs, so serialize

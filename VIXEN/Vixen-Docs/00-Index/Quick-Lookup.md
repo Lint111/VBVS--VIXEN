@@ -73,6 +73,7 @@ Fast-access reference for Claude Code. Read this file first for any documentatio
 | Add logging | [[../Libraries/Logger]] |
 | Write tests | [[../04-Development/Testing]] |
 | Coding standards | [[../04-Development/Coding-Standards]] |
+| Explore code from an isolated worktree | `tools/codegraph-vixen.sh` |
 
 ---
 

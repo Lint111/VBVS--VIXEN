@@ -77,6 +77,13 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_UNITY_BUILD=ON
 | BUILD_SPV_ON_COMPILE_TIME | ON | Runtime GLSL compilation |
 | USE_UNITY_BUILD | OFF | Unity builds for speed |
 | ENABLE_COVERAGE | OFF | LCOV coverage generation |
+| VIXEN_SCHEMA_CATALOG | Auto-detected | Optional `schemas.json` input for AppFlow/ViewNounId codegen checks |
+
+Standalone configures discover the catalogue from `UNDERTOW_ROOT`, repository
+layout paths, or common Undertow checkouts under the current home directory.
+Set `UNDERTOW_ROOT` or pass `-DVIXEN_SCHEMA_CATALOG=<path>/schemas.json` when
+the Undertow checkout is elsewhere. Discovery is configure-time and does not
+store the detected path in the CMake cache.
 
 ---
 
@@ -336,7 +343,69 @@ glslangValidator.exe shader.comp -V -o shader.comp.spv
 
 ---
 
-## 11. Related Pages
+## 11. CodeGraph from an isolated worktree
+
+The lane worktrees under `.claude-worktrees/` do not carry CodeGraph indexes.
+Run the repository helper from any VIXEN worktree; it checks the current
+worktree and the canonical checkout, then queries the available index with
+`codegraph explore --path`:
+
+```bash
+tools/codegraph-vixen.sh "capture runtime output paths"
+```
+
+If the index lives in another VIXEN checkout, point the helper at that checkout:
+
+```bash
+VIXEN_CODEGRAPH_ROOT=/absolute/path/to/indexed/VIXEN \
+  tools/codegraph-vixen.sh "capture runtime output paths"
+```
+
+The helper does not initialize, update, or commit an index. When it selects a
+shared checkout, its results may not include uncommitted lane changes.
+
+## 12. WSL windowed capture witness
+
+On WSL2 with an active WSLg `X0` socket, CMake registers
+`vixen_wsl_capture_witness`. CTest declares `DISPLAY=:0` and the configured
+Vulkan loader environment for the test, so invoke it with the caller's display
+environment unset:
+
+```bash
+bash tools/with-test-lock.sh --agent AGENT_ID --resource test \
+  --label native-capture-witness -- \
+  env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build \
+  --output-on-failure -R '^vixen_wsl_capture_witness$'
+```
+
+The test writes three HUD PNGs and four editor PNGs under
+`build/runtime-captures/native/` and keeps each process log beside them. The
+runner receives each executable's runtime directory and filename from CMake's
+target generator expressions, so it follows the active build configuration.
+The existing CTest producer fixtures continue to use offscreen capture and use
+their targets' runtime directories as their working directories.
+
+## 13. Compare native captures
+
+Save one native run, repeat the witness, and compare the paired PNGs:
+
+```bash
+cp -a build/runtime-captures/native build/runtime-captures/before
+bash tools/with-test-lock.sh --agent AGENT_ID --resource test \
+  --label native-capture-after -- \
+  env -u DISPLAY -u WAYLAND_DISPLAY ctest --test-dir build \
+  --output-on-failure -R '^vixen_wsl_capture_witness$'
+python3 tools/compare-capture-pixels.py \
+  build/runtime-captures/before build/runtime-captures/native
+```
+
+The comparator reports per-file byte differences and decoded pixel differences.
+Its default exit code is `0` when paired pixels match, `1` for missing or
+different captures, and `2` for unreadable or unsupported PNG data. Use
+`--max-differing-pixels N` and `--channel-tolerance N` for a pixel tolerance;
+`--require-byte-identical` also makes a PNG byte difference fail the command.
+
+## 14. Related Pages
 
 - [[Overview]] - Development overview
 - [[Testing]] - Test configuration
