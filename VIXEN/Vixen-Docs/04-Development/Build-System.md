@@ -77,6 +77,13 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_UNITY_BUILD=ON
 | BUILD_SPV_ON_COMPILE_TIME | ON | Runtime GLSL compilation |
 | USE_UNITY_BUILD | OFF | Unity builds for speed |
 | ENABLE_COVERAGE | OFF | LCOV coverage generation |
+| VIXEN_SCHEMA_CATALOG | Auto-detected | Optional `schemas.json` input for AppFlow/ViewNounId codegen checks |
+
+Standalone configures discover the catalogue from `UNDERTOW_ROOT`, repository
+layout paths, or common Undertow checkouts under the current home directory.
+Set `UNDERTOW_ROOT` or pass `-DVIXEN_SCHEMA_CATALOG=<path>/schemas.json` when
+the Undertow checkout is elsewhere. Discovery is configure-time and does not
+store the detected path in the CMake cache.
 
 ---
 
