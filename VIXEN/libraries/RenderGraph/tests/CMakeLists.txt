@@ -916,16 +916,10 @@ else()
 endif()
 
 # ===========================================================================
-# View Contract Inc-5b Milestone 2.5: writer-side wiring + UTVC container proof
+# Native UTVC multi-section container decode proof
 # ===========================================================================
-# C#-side/isolated round-trip proof (per the plan's explicit scope -- does NOT touch undertow's
-# real C++ reader/live seam, that is Milestone 3's job). The embedded byte array is the VERBATIM
-# output of the real undertow C# writer path (Undertow.View.ViewWriterAdapter +
-# Undertow.View.ViewContainerBuilder.Build) run against a REAL captured SimFrame
-# (new UndertowSim(); sim.NewCampaign(7); sim.ProjectObserverFrame()) -- manually unwraps the new
-# UTVC multi-section container, then decodes each of the 5 sub-buffers via
-# ViewWireReaderSoa::Apply + the Milestone-2/2.4-generated typed accessors, asserting decoded
-# values match the real SimFrame's real values exactly.
+# The seed-7 golden container exercises the native reader's section table, sub-buffer offsets, and
+# typed accessors against values captured from a SimFrame projection.
 
 if(TARGET GTest::gtest_main)
     add_executable(test_view_container_builder test_view_container_builder.cpp)
@@ -941,7 +935,7 @@ if(TARGET GTest::gtest_main)
 
     set_target_properties(test_view_container_builder PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_view_container_builder DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60)
-    message(STATUS "✓ test_view_container_builder configured (View Contract Inc-5b Milestone 2.5: writer-side UTVC round-trip)")
+    message(STATUS "✓ test_view_container_builder configured (native UTVC container decode)")
 else()
     message(STATUS "⊗ test_view_container_builder skipped (GoogleTest not available)")
 endif()

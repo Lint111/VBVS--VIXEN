@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "e9e6ee0da98a82a9d74a420550a8c3ce96416776")
+set(_vixen_tracked_yeroket_kernel_sha "a2b2d6b9e1e93b37b1adc0d7dd99e1c63bf96bad")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
@@ -554,8 +554,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     set(_view_catalog_args)
     if(_schema_catalog_source)
         set(_view_catalog_args
-            --schema-json "${_schema_catalog_run}"
-            --view-executor-consumer Undertow.View)
+            --schema-json "${_schema_catalog_run}")
     endif()
 
     # --- LightingConfig via the same Yeroket tool (Sampled Lighting Inc0 M1: lights
@@ -815,10 +814,9 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             --view-schema "${_schema_view_run}"
             ${_view_catalog_args}
             --exclude VectorProof
-            # viewrestore: HudSections.cs holds the VIXEN-side [View] MIRRORS of undertow's live wire
-            # sections (so --view-blob/--typed-accessor-cpp can emit their C++ decode faces). They carry
-            # the SAME names as the catalogue's derived-query sections, so they must be excluded from the
-            # noun/AppFlow sweep or the enum gets duplicate enumerators. They are decode faces, not nouns.
+            # HudSections.cs supplies VIXEN's native per-section decode faces. Their names mirror
+            # catalogue-derived sections, so exclude them from noun/AppFlow enumeration to avoid
+            # duplicate enumerators.
             --exclude UndertowHud
             --exclude UndertowHudFactions
             --exclude UndertowHudEvents
@@ -838,16 +836,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
             JOB_POOL msbuild
             VERBATIM)
 
-        # --- ViewNounId enum: one full catalogue-derived noun space. Native [View] fields retain the
-        # prefix in native schema order; every selected derived query and every runtime-state view facet
-        # follows in catalogue declaration order. AppFlow above consumes this identical model.
+        # --- ViewNounId enum: one ordered noun space. Native [View] fields retain the prefix in native
+        # schema order; selected derived queries and runtime-state view facets follow in catalogue order.
+        # AppFlow above consumes this identical model.
         set(_view_noun_args
             "${_yk_dll_run}"
             --view-noun-enum --schema "${_schema_view_run}"
             ${_view_catalog_args}
             --exclude VectorProof
-            # viewrestore: exclude the HudSections.cs section-decode MIRRORS (see the appflow_check note
-            # above) — same-named catalogue derived queries already carry these nouns.
+            # Exclude HudSections.cs native decode faces (see appflow_check above); they are not nouns.
             --exclude UndertowHud
             --exclude UndertowHudFactions
             --exclude UndertowHudEvents
