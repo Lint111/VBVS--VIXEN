@@ -110,6 +110,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Data/Nodes/PrevCameraConfigNodeConfig.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Data/Nodes/ReservoirConfigNodeConfig.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Data/Nodes/LightTreeBufferNodeConfig.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Data/Nodes/MiningBeamBufferNodeConfig.h"
 #include "Data/Nodes/ProbeGridConfigNodeConfig.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Data/Nodes/ProbeAtlasNodeConfig.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
 #include "Data/Nodes/ImageSyncGathererNodeConfig.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
@@ -162,6 +163,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Nodes/PrevCameraConfigNode.h"     // Sampled Lighting Inc2 M3: prev-frame camera matrix upload ring
 #include "Nodes/ReservoirConfigNode.h"      // Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
 #include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
+#include "Nodes/MiningBeamBufferNode.h"
 #include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
 #include "Nodes/DepthTargetNode.h"          // Raster-proxy B1 M4: occlusion depth ping-pong pair
@@ -665,6 +667,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // node seam, mirrors BodyOctreeSceneNode::SetInstances); empty by default (byte-identity
     // escape hatch -- no cut pushed means nodeCount=0, DirectLighting.comp's RIS loop is a no-op).
     NodeHandle lightTreeBufferNode = renderGraph->AddNode<LightTreeBufferNodeType>("light_tree_buffer");
+
+    // Empty and disabled by default; callers can update the beam list at runtime.
+    NodeHandle miningBeamBufferNode =
+        renderGraph->AddNode<MiningBeamBufferNodeType>("mining_beam_buffer");
 
     // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs (bindings 25/26) --
     // one Vixen::Gpu::ReservoirRecord (16B) per pixel of the offscreen render target, same
@@ -2266,12 +2272,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
         // kFeaturePolicyStencil's own broad share above).
         lightingShaderFeatures.push_back(kFeaturePolicyStencilTiles.define);
     }
-    const auto registerLightingFamily = [this, lightingShaderFeatures](
-                                            NodeHandle libHandle,
-                                            std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+    const auto registerLightingFamilyWithFeatures = [this](
+        NodeHandle libHandle,
+        std::shared_ptr<ShaderManagement::ShaderFamily> family,
+        std::vector<std::string> shaderFeatures) {
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
-        libNode->RegisterShaderBuilder([this, family, lightingShaderFeatures](int vulkanVer, int spirvVer) {
-            auto builder = family->MakeBuilder(lightingShaderFeatures);
+        libNode->RegisterShaderBuilder([this, family, shaderFeatures](int vulkanVer, int spirvVer) {
+            auto builder = family->MakeBuilder(shaderFeatures);
             builder.SetTargetVulkanVersion(vulkanVer)
                    .SetTargetSpirvVersion(spirvVer)
                    .AddIncludePath("shaders")
@@ -2282,6 +2289,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .EnableCaching(&shaderCacheManager_);
             return builder;
         });
+    };
+    const auto registerLightingFamily = [registerLightingFamilyWithFeatures, lightingShaderFeatures](
+                                            NodeHandle libHandle,
+                                            std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        registerLightingFamilyWithFeatures(libHandle, std::move(family), lightingShaderFeatures);
     };
     // rtperf S1: the shadow wave is the first lighting consumer selected by
     // the RayQueryLighting capability. Its interface plan is kept in lock-step
@@ -2337,27 +2349,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // W-LEAN L3: under the resolve opt-in the shade compiles its CELL-RESOLVE
     // variant (the retired standalone HitAccumResolve stage as a tail — the
     // wave's own dual-registration shape).
-    if (hitAccumResolveEnabled) {
-        auto srsFusedFamily = makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade");
-        auto srsFusedFeatures = lightingShaderFeatures;
-        srsFusedFeatures.push_back(kFeatureSrsCellResolve.define);
-        auto* srsLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(spatialReuseShaderLib));
-        srsLibNode->RegisterShaderBuilder([this, srsFusedFamily, srsFusedFeatures](int vulkanVer, int spirvVer) {
-            auto builder = srsFusedFamily->MakeBuilder(srsFusedFeatures);
-            builder.SetTargetVulkanVersion(vulkanVer)
-                   .SetTargetSpirvVersion(spirvVer)
-                   .AddIncludePath("shaders")
-                   .AddIncludePath("../shaders")
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                   .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
-#endif
-                   .EnableCaching(&shaderCacheManager_);
-            return builder;
-        });
-    } else {
-        registerLightingFamily(spatialReuseShaderLib,
-                               makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"));
-    }
+    auto srsShaderFeatures = lightingShaderFeatures;
+    srsShaderFeatures.push_back(kFeatureMiningBeam.define);
+    if (hitAccumResolveEnabled) srsShaderFeatures.push_back(kFeatureSrsCellResolve.define);
+    registerLightingFamilyWithFeatures(
+        spatialReuseShaderLib, makeLightingFamily("SpatialReuseShade.comp", "SpatialReuseShade"),
+        std::move(srsShaderFeatures));
 
     auto exposureFamily = makeLightingFamily("ExposureTonemap.comp", "ExposureTonemap");
     if (hdrExposureEnabled) static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(exposureShaderLib))
@@ -8386,6 +8383,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
                   lightTreeBufferNode, LightTreeBufferNodeConfig::CURRENT_FRAME_INDEX);
 
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  miningBeamBufferNode, MiningBeamBufferNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  miningBeamBufferNode, MiningBeamBufferNodeConfig::CURRENT_FRAME_INDEX);
+
     // Sampled Lighting Inc4 M2: probe grid config node connections (same ring pattern as
     // reservoirConfigNode above). M2 scaffolding only -- no shader consumes this buffer yet.
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -9117,6 +9119,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // synthesis (the shade's cell-resolve fold; the wave synthesizes later) —
     // the providers-before-synthesis rule, third application.
     SdiFeatureSet srsSdiFeatures;
+    srsSdiFeatures.Enable(kFeatureMiningBeam);
     if (hitAccumEnabled) {
         sceneProviders.Provide("HitAccumTable", hitAccumTableBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
@@ -9136,6 +9139,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
         sceneProviders.Provide("HitAccumCellRadiance", hitAccumCellRadianceBuffer,
                                StorageBufferNodeConfig::STORAGE_BUFFER, SlotRole::Execute);
     }
+    sceneProviders.Provide("MiningBeamBodyInstanceBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("MiningBeamBufferSSBO", miningBeamBufferNode,
+                           MiningBeamBufferNodeConfig::MINING_BEAM_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
     const auto reuseSynth = SynthesizeComputeStage<ReuseSdi::Metadata, ReuseSdi::MEMBERS>(
         renderGraph, batch, "spatial_reuse", spatialReuseShaderLib,
         spatialReuseNode, lightingCommon, sceneProviders, srsSdiFeatures,

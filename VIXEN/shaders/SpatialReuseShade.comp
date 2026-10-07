@@ -199,6 +199,44 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
     DDGILeakGateDebugShade ddgiLeakGateDebugShade;
 };
 
+#ifndef VIXEN_SHADOW_DBG
+#if defined(VIXEN_SRS_CELL_RESOLVE) || defined(VIXEN_MINING_BEAM)
+struct BodyInstance {
+    vec3  worldPos;
+    float renderScale;
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
+};
+#endif
+#endif
+
+#ifdef VIXEN_SRS_CELL_RESOLVE
+#ifndef VIXEN_SHADOW_DBG
+layout(std430, binding = 39) readonly buffer BodyInstanceBuffer {
+    BodyInstance bodyInstances[];
+};
+#endif
+#endif
+
+#ifdef VIXEN_MINING_BEAM
+#ifndef VIXEN_SHADOW_DBG
+#include "Generated/OctreeConfig.glsl"
+layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
+    OctreeConfig configs[];
+};
+#endif
+#include "Generated/MiningBeamBuffer.glsl"
+layout(std430, binding = 44) readonly buffer MiningBeamBufferSSBO {
+    MiningBeamBuffer miningBeamBuffer;
+};
+layout(std430, binding = 45) readonly buffer MiningBeamBodyInstanceBuffer {
+    BodyInstance miningBeamInstances[];
+};
+#endif
+
 // ============================================================================
 // CELL-RESOLVE FOLD (bindings 36/37/38, gated) — W-LEAN L3: the standalone
 // HitAccumResolve stage folded into this pass (the W3c-1 fusion argument: this
@@ -211,25 +249,6 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
 // ============================================================================
 #ifdef VIXEN_SRS_CELL_RESOLVE
 #include "HitAccumulationCommon.glsl"
-#ifndef VIXEN_SHADOW_DBG
-// Standalone instance declaration (SceneBindings' binding-10 copy — this pass
-// includes SceneBindings only under the SHADOW_DBG arm; the fold needs ONLY
-// recipeId, so the full scene set stays out. std430, 64 B — byte-for-byte the
-// SceneBindings.glsl layout; guarded so the DBG+fold combo doesn't
-// double-declare).
-struct BodyInstance {
-    vec3  worldPos;
-    float renderScale;
-    vec3  color;
-    uint  octreeIndex;
-    uint  providerKind;
-    uint  recipeId;
-    float recipeParams[6];
-};
-layout(std430, binding = 39) readonly buffer BodyInstanceBuffer {
-    BodyInstance bodyInstances[];
-};
-#endif
 layout(std430, binding = 36) readonly buffer HitAccumTable {
     HitAccumEntryGpu accumEntries[];
 };
@@ -374,6 +393,74 @@ vec3 gatherIndirectDiffuse(vec3 shadingPos) {
     }
     return result;
 }
+
+#ifdef VIXEN_MINING_BEAM
+bool ResolveMiningBeamEndpoint(uint instanceIndex, vec3 localPoint, out vec3 worldPoint) {
+    worldPoint = vec3(0.0);
+    if (instanceIndex >= uint(miningBeamInstances.length())) return false;
+
+    BodyInstance instance = miningBeamInstances[instanceIndex];
+    if (instance.providerKind == 0u) {
+        if (instance.octreeIndex >= uint(configs.length())) return false;
+        vec3 octreePoint =
+            (configs[instance.octreeIndex].localToWorld * vec4(localPoint, 1.0)).xyz;
+        worldPoint = instance.worldPos + octreePoint * instance.renderScale;
+        return true;
+    }
+    if (instance.providerKind == 1u) {
+        // Procedural bodies are world-aligned and use worldPos as their center;
+        // renderScale is unused by the procedural renderer.
+        worldPoint = instance.worldPos + localPoint;
+        return true;
+    }
+    return false;
+}
+
+void CompositeMiningBeams(inout vec4 outputRadiance, vec3 rayOrigin, vec3 rayDirection,
+                          bool sceneHit, float sceneDistance) {
+    if (miningBeamBuffer.enabled == 0u || miningBeamBuffer.beamCount == 0u) return;
+
+    uint beamCount = min(miningBeamBuffer.beamCount, 16u);
+    float rayLengthSq = dot(rayDirection, rayDirection);
+    for (uint i = 0u; i < beamCount; ++i) {
+        MiningBeamGpu beam = miningBeamBuffer.beams[i];
+        vec3 startPoint;
+        vec3 endPoint;
+        if (!ResolveMiningBeamEndpoint(beam.sourceInstanceIndex, beam.sourceLocalOffset, startPoint) ||
+            !ResolveMiningBeamEndpoint(beam.targetInstanceIndex, beam.targetLocalOffset, endPoint)) {
+            continue;
+        }
+
+        vec3 segment = endPoint - startPoint;
+        float segmentLengthSq = dot(segment, segment);
+        if (segmentLengthSq <= 1e-8) continue;
+
+        // Closest points between the camera ray and this finite beam segment.
+        vec3 rayToStart = rayOrigin - startPoint;
+        float raySegment = dot(rayDirection, segment);
+        float rayStart = dot(rayDirection, rayToStart);
+        float segmentStart = dot(segment, rayToStart);
+        float denominator = segmentLengthSq * rayLengthSq - raySegment * raySegment;
+        float segmentT = denominator > 1e-8
+            ? clamp((segmentStart * rayLengthSq - raySegment * rayStart) / denominator, 0.0, 1.0)
+            : clamp(-segmentStart / segmentLengthSq, 0.0, 1.0);
+        vec3 beamPoint = startPoint + segmentT * segment;
+        float rayT = max(dot(beamPoint - rayOrigin, rayDirection) / rayLengthSq, 0.0);
+        float distanceToBeam = length(rayOrigin + rayT * rayDirection - beamPoint);
+
+        // Geometry in front of the beam remains visible. A small surface
+        // tolerance keeps endpoints placed directly on a target visible.
+        if (sceneHit && rayT > sceneDistance + max(beam.radius, 0.02)) continue;
+
+        float haloRadius = beam.radius * 4.0;
+        if (distanceToBeam >= haloRadius) continue;
+        float core = 1.0 - smoothstep(beam.radius * 0.35, beam.radius, distanceToBeam);
+        float halo = 1.0 - smoothstep(beam.radius, haloRadius, distanceToBeam);
+        float emission = beam.luminosity * (1.6 * core + 0.8 * beam.purposeScale * halo);
+        outputRadiance.rgb += beam.color * emission;
+    }
+}
+#endif
 
 // W2a: lightTreeNodePHat + spatialNeighborOffset moved to SpatialReuseGather.comp
 // with the fold — the shade never evaluates p_hat or draws neighbors anymore.
@@ -672,30 +759,28 @@ void main() {
         }
 #ifdef VIXEN_SRS_CELL_RESOLVE
         // W-LEAN L3: outputImage gets the composite; history stays pre-composite.
-        {
-            vec3 cellMean; float cellW;
-            vec4 outStore = blended;
-            if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
-                outStore.rgb = mix(outStore.rgb, cellMean, cellW);
-            }
-            imageStore(sceneRadianceImage, pixelCoords, outStore);
+        vec4 outStore = blended;
+        vec3 cellMean; float cellW;
+        if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
+            outStore.rgb = mix(outStore.rgb, cellMean, cellW);
         }
 #else
-        imageStore(sceneRadianceImage, pixelCoords, blended);
+        vec4 outStore = blended;
 #endif
+#ifdef VIXEN_MINING_BEAM
+        CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
+#endif
+        imageStore(sceneRadianceImage, pixelCoords, outStore);
         imageStore(sceneRadianceHistory, pixelCoords, blended);
     } else {
         vec4 historyStore = vec4(outColor, 1.0);
+        vec4 outStore = vec4(outColor, 1.0);
 #ifdef VIXEN_SRS_CELL_RESOLVE
         vec3 cellMean; float cellW;
-        vec4 outStore = vec4(outColor, 1.0);
         if (anyHitRT && CellResolveLookup(recReadback, cellMean, cellW)) {
             outStore.rgb = mix(outStore.rgb, cellMean, cellW);
         }
         historyStore = outStore;
-        imageStore(sceneRadianceImage, pixelCoords, outStore);
-#else
-        imageStore(sceneRadianceImage, pixelCoords, vec4(outColor, 1.0));
 #endif
         // The display-transform path consumes the persistent HDR history even when
         // temporal accumulation is disabled (the default). Keep the history image
@@ -705,6 +790,10 @@ void main() {
 #else
         imageStore(sceneRadianceHistory, pixelCoords, historyStore);
 #endif
+#ifdef VIXEN_MINING_BEAM
+        CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
+#endif
+        imageStore(sceneRadianceImage, pixelCoords, outStore);
     }
 
     // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the
