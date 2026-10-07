@@ -18,6 +18,7 @@
 #define LIGHTING_GLSL
 
 #include "Brdf.glsl"
+#include "LightEvaluation.glsl"
 
 // ============================================================================
 // LAMBERT + GGX PHYSICALLY-BASED LIGHTING
@@ -49,21 +50,19 @@ vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir) {
     return computeLighting(color, normal, rayDir, 0.5);
 }
 
-// Data-driven overload: shades against every light in a LightingConfig record
-// (kind 0 = directional: direction_or_position is a normalized direction away
-// from the surface toward the light, matching the hardcoded overload's
-// convention; kind 1 = point, unused by any content this increment). No
-// shadowing (Inc1). ambientIntensity replaces the hardcoded overload's fixed
-// 0.3; each light's radiance is summed, matching a single directional light's
-// output exactly when lightCount == 1.
-vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir, float roughness, LightingConfig lighting) {
+// Data-driven overload: shades against every light in the shared config.
+// worldPos is needed to evaluate point-light direction and range falloff.
+vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir, float roughness,
+                     LightingConfig lighting, vec3 worldPos) {
     vec3 viewDir = normalize(-rayDir);
 
     vec3 Lo = lighting.ambientIntensity * color;
     for (uint i = 0u; i < lighting.lightCount; ++i) {
         Light light = lighting.lights[i];
-        vec3 lightDir = normalize(light.direction_or_position);
-        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance;
+        float distanceToLight;
+        vec3 lightDir = lightDirectionAt(light, worldPos, distanceToLight);
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance *
+              lightRangeAttenuation(light, distanceToLight);
     }
     return Lo;
 }

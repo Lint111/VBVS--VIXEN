@@ -53,6 +53,7 @@ struct PhotonCellParams {
 // interface blocks are dead-stripped by SPIR-V reflection, so clear/fold only
 // expose the table/params bindings while deposit exposes the complete set.
 #include "Generated/LightingConfig.glsl"
+#include "LightEvaluation.glsl"
 #include "HitRecord.glsl"
 #include "Generated/ShadowConfig.glsl"
 layout(std430, binding = 0) buffer PhotonCellTable {
@@ -207,13 +208,15 @@ vec3 PhotonCellClampedDiffuseFlux(HitRecord rec) {
     uint lightCount = min(lightingConfig.lightCount, 4u);
     for (uint i = 0u; i < lightCount; ++i) {
         Light light = lightingConfig.lights[i];
-        vec3 lightDir = normalize(light.direction_or_position);
+        float distanceToLight;
+        vec3 lightDir = lightDirectionAt(light, rec.worldPos, distanceToLight);
+        float attenuation = lightRangeAttenuation(light, distanceToLight);
         float ndotl = max(dot(rec.worldNormal, lightDir), 0.0);
         float visibility = 1.0;
         if (shadowConfig.enabled != 0u) {
             visibility = ((rec._pad0[2] >> i) & 1u) != 0u ? 1.0 : 0.0;
         }
-        flux += visibility * ndotl * (rec.albedo / kPhotonCellPi) * light.radiance;
+        flux += visibility * attenuation * ndotl * (rec.albedo / kPhotonCellPi) * light.radiance;
     }
     return clamp(flux, vec3(0.0), vec3(photonCellParams.misc0.y));
 }
