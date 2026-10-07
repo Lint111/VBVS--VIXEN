@@ -123,8 +123,21 @@ struct LightingConfigCpu {
     float ambientIntensity;
     uint8_t _pad0[8];
     LightCpu lights[4];
+    float celSpillPurposeScales[4];
+    uint32_t shadingMode;
+    uint32_t celBandCount;
+    float celShadowThreshold;
+    float celLitThreshold;
+    float celRampSoftness;
+    float celLitHueShiftDegrees;
+    float celShadowHueShiftDegrees;
+    float celBandFalloffStart;
+    float celBandFalloffEnd;
+    float celLightSpillScale;
+    float _celTailPadding0;
+    float _celTailPadding1;
 };
-static_assert(sizeof(LightingConfigCpu) == 144, "LightingConfigCpu std430 mirror size");
+static_assert(sizeof(LightingConfigCpu) == 208, "LightingConfigCpu std430 mirror size");
 
 // Host-side mirror of Generated/ShadowConfig.g.h (Sampled Lighting Inc1 M4).
 struct ShadowConfigCpu {

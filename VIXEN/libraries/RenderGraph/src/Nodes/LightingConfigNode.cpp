@@ -43,7 +43,18 @@ Vixen::Gpu::LightingConfig MakeDefaultLightingConfig() {
     cfg.lights[0].radianceY = 1.0f;
     cfg.lights[0].radianceZ = 1.0f;
     cfg.lights[0].range     = 0.0f;  // unused for directional
+    cfg.celSpillPurposeScales[0] = 1.0f;
     return cfg;
+}
+
+float FiniteOr(float value, float fallback) {
+    return std::isfinite(value) ? value : fallback;
+}
+
+float ReadClampedFloat(const LightingConfigNode& node, const char* parameter,
+                       float fallback, float low, float high) {
+    return std::clamp(FiniteOr(node.GetParameterValue<float>(parameter, fallback), fallback),
+                      low, high);
 }
 
 // M11.1: the Cornell demo authors its own light -- the ceiling area-emitter
@@ -76,13 +87,19 @@ LightingConfigNode::LightingConfigNode(const std::string& n, NodeType* t)
 }
 
 void LightingConfigNode::SetLights(const std::vector<Vixen::Gpu::Light>& lights,
-                                   float ambientIntensity) {
+                                   float ambientIntensity,
+                                   const std::vector<float>& celSpillPurposeScales) {
     customLighting_ = {};
     customLighting_.ambientIntensity = ambientIntensity;
     customLighting_.lightCount = static_cast<uint32_t>(
         std::min(lights.size(), std::size(customLighting_.lights)));
     for (uint32_t i = 0; i < customLighting_.lightCount; ++i) {
         customLighting_.lights[i] = lights[i];
+        const float requestedPurposeScale = i < celSpillPurposeScales.size()
+            ? celSpillPurposeScales[i]
+            : 1.0f;
+        customLighting_.celSpillPurposeScales[i] = std::clamp(
+            FiniteOr(requestedPurposeScale, 1.0f), 0.0f, 4.0f);
     }
     hasCustomLighting_ = true;
 }
@@ -125,7 +142,7 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(LightingConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
-    // Re-upload the current shared light set each frame (144 B); this keeps
+    // Re-upload the current shared light set each frame (208 B); this keeps
     // SetLights() updates live without graph rewiring.
     Vixen::Gpu::LightingConfig cfg = hasCustomLighting_
         ? customLighting_
@@ -136,6 +153,50 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         // baseline (not the blotching source -- see IsCornellDemo() comment).
         cfg.lightCount = 0u;
     }
+
+    const uint32_t requestedMode = GetParameterValue<uint32_t>(
+        LightingConfigNodeConfig::PARAM_SHADING_MODE,
+        LightingConfigNodeConfig::SHADING_MODE_CEL);
+    cfg.shadingMode = requestedMode == LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX
+        ? LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX
+        : LightingConfigNodeConfig::SHADING_MODE_CEL;
+    cfg.celBandCount = std::clamp(GetParameterValue<uint32_t>(
+        LightingConfigNodeConfig::PARAM_CEL_BAND_COUNT,
+        LightingConfigNodeConfig::DEFAULT_CEL_BAND_COUNT), 2u, 5u);
+    cfg.celShadowThreshold = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_CEL_SHADOW_THRESHOLD,
+        LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_THRESHOLD, 0.0f, 1.0f);
+    cfg.celLitThreshold = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_CEL_LIT_THRESHOLD,
+        LightingConfigNodeConfig::DEFAULT_CEL_LIT_THRESHOLD, 0.0f, 1.0f);
+    if (cfg.celLitThreshold <= cfg.celShadowThreshold) {
+        cfg.celShadowThreshold = LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_THRESHOLD;
+        cfg.celLitThreshold = LightingConfigNodeConfig::DEFAULT_CEL_LIT_THRESHOLD;
+    }
+    cfg.celRampSoftness = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_CEL_RAMP_SOFTNESS,
+        LightingConfigNodeConfig::DEFAULT_CEL_RAMP_SOFTNESS, 0.0f, 0.5f);
+    cfg.celLitHueShiftDegrees = std::remainder(FiniteOr(GetParameterValue<float>(
+        LightingConfigNodeConfig::PARAM_CEL_LIT_HUE_SHIFT_DEGREES,
+        LightingConfigNodeConfig::DEFAULT_CEL_LIT_HUE_SHIFT_DEGREES),
+        LightingConfigNodeConfig::DEFAULT_CEL_LIT_HUE_SHIFT_DEGREES), 360.0f);
+    cfg.celShadowHueShiftDegrees = std::remainder(FiniteOr(GetParameterValue<float>(
+        LightingConfigNodeConfig::PARAM_CEL_SHADOW_HUE_SHIFT_DEGREES,
+        LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_HUE_SHIFT_DEGREES),
+        LightingConfigNodeConfig::DEFAULT_CEL_SHADOW_HUE_SHIFT_DEGREES), 360.0f);
+    cfg.celBandFalloffStart = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_START,
+        LightingConfigNodeConfig::DEFAULT_CEL_BAND_FALLOFF_START, 0.0f, 1000000.0f);
+    cfg.celBandFalloffEnd = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_END,
+        LightingConfigNodeConfig::DEFAULT_CEL_BAND_FALLOFF_END, 0.0f, 1000000.0f);
+    if (cfg.celBandFalloffEnd <= cfg.celBandFalloffStart) {
+        cfg.celBandFalloffStart = 0.0f;
+        cfg.celBandFalloffEnd = 0.0f;
+    }
+    cfg.celLightSpillScale = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_CEL_LIGHT_SPILL_SCALE,
+        LightingConfigNodeConfig::DEFAULT_CEL_LIGHT_SPILL_SCALE, 0.0f, 0.25f);
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

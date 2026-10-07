@@ -15,7 +15,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             --gtest_filter=HeadlessStarfieldGraph.CaptureSingleRun)
     set_tests_properties(HeadlessStarfieldGraph.CaptureFirst PROPERTIES
         ENVIRONMENT "VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}"
-        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1"
+        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
         LABELS "Application"
         RUN_SERIAL TRUE)
 
@@ -24,7 +24,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             --gtest_filter=HeadlessStarfieldGraph.CaptureSingleRun)
     set_tests_properties(HeadlessStarfieldGraph.CaptureSecond PROPERTIES
         ENVIRONMENT "VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}-repeat"
-        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1"
+        ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
         LABELS "Application"
         RUN_SERIAL TRUE)
 
@@ -33,6 +33,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             --gtest_filter=HeadlessStarfieldGraph.IndependentRunsHaveIdenticalPixelsAndToggleChangesOnlyBackground)
     set_tests_properties(HeadlessStarfieldGraph.CompareIndependentCaptures PROPERTIES
         ENVIRONMENT "VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}"
+        ENVIRONMENT_MODIFICATION "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
         DEPENDS "HeadlessStarfieldGraph.CaptureFirst;HeadlessStarfieldGraph.CaptureSecond"
         LABELS "Application"
         RUN_SERIAL TRUE)

@@ -21,11 +21,11 @@ namespace LightingConfigNodeCounts {
  * canonical [GpuStruct] — see Generated/LightingConfig.g.h) into a
  * ring-buffered, host-visible storage buffer (via PerFrameResources), one
  * SSBO per frame-in-flight, mirroring DynamicInstanceBufferNode's ring
- * pattern. Content is static this increment (no UI/authoring — see the
- * Sampled Lighting Inc0 design doc §4): a single directional light matching
- * Lighting.glsl's previously-hardcoded default. Re-uploaded every Execute
- * (cheap — 144 B) so a future milestone can mutate it via SetLights()
- * without any node-graph rewiring.
+ * pattern. The default content is one directional light matching
+ * Lighting.glsl's previously-hardcoded default. Cel shading is tuned through
+ * this node's runtime parameters, and hosts may replace the shared light set
+ * through SetLights() without node-graph rewiring. Re-uploaded every Execute
+ * (208 B) so parameter and light changes take effect immediately.
  *
  * Inputs: 2
  *   - VULKAN_DEVICE_IN     (VulkanDevice*) - Device for allocation (Dependency)
@@ -38,6 +38,31 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
                       LightingConfigNodeCounts::INPUTS,
                       LightingConfigNodeCounts::OUTPUTS,
                       LightingConfigNodeCounts::ARRAY_MODE) {
+
+    // Runtime tuning parameters read by LightingConfigNode::TypedExecuteImpl.
+    // Lambert+GGX remains selectable with mode 0; cel is the node default (1).
+    static constexpr const char* PARAM_SHADING_MODE = "shadingMode";
+    static constexpr const char* PARAM_CEL_BAND_COUNT = "celBandCount";
+    static constexpr const char* PARAM_CEL_SHADOW_THRESHOLD = "celShadowThreshold";
+    static constexpr const char* PARAM_CEL_LIT_THRESHOLD = "celLitThreshold";
+    static constexpr const char* PARAM_CEL_RAMP_SOFTNESS = "celRampSoftness";
+    static constexpr const char* PARAM_CEL_LIT_HUE_SHIFT_DEGREES = "celLitHueShiftDegrees";
+    static constexpr const char* PARAM_CEL_SHADOW_HUE_SHIFT_DEGREES = "celShadowHueShiftDegrees";
+    static constexpr const char* PARAM_CEL_BAND_FALLOFF_START = "celBandFalloffStart";
+    static constexpr const char* PARAM_CEL_BAND_FALLOFF_END = "celBandFalloffEnd";
+    static constexpr const char* PARAM_CEL_LIGHT_SPILL_SCALE = "celLightSpillScale";
+
+    static constexpr uint32_t SHADING_MODE_LAMBERT_GGX = 0u;
+    static constexpr uint32_t SHADING_MODE_CEL = 1u;
+    static constexpr uint32_t DEFAULT_CEL_BAND_COUNT = 3u;
+    static constexpr float DEFAULT_CEL_SHADOW_THRESHOLD = 0.16f;
+    static constexpr float DEFAULT_CEL_LIT_THRESHOLD = 0.86f;
+    static constexpr float DEFAULT_CEL_RAMP_SOFTNESS = 0.08f;
+    static constexpr float DEFAULT_CEL_LIT_HUE_SHIFT_DEGREES = 18.0f;
+    static constexpr float DEFAULT_CEL_SHADOW_HUE_SHIFT_DEGREES = -18.0f;
+    static constexpr float DEFAULT_CEL_BAND_FALLOFF_START = 0.0f;
+    static constexpr float DEFAULT_CEL_BAND_FALLOFF_END = 0.0f;
+    static constexpr float DEFAULT_CEL_LIGHT_SPILL_SCALE = 0.012f;
 
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,

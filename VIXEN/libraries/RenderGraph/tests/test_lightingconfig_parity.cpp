@@ -32,7 +32,8 @@ using Vixen::Gpu::LightingConfig;
 
 // ---------------------------------------------------------------------------
 // Light (std430, 32 bytes): direction_or_position@0 (vec3, stored as 3 floats
-// in C++), kind@12, radiance@16 (vec3), range@28.
+// in C++), kind@12, radiance@16 (vec3), range@28. The legacy array stride is
+// preserved; cel spill-purpose scales live in a parallel LightingConfig array.
 // ---------------------------------------------------------------------------
 
 TEST(LightingConfigParity, LightStd430Layout) {
@@ -48,18 +49,27 @@ TEST(LightingConfigParity, LightStd430Layout) {
 }
 
 // ---------------------------------------------------------------------------
-// LightingConfig (std430, 144 bytes): lightCount@0, ambientIntensity@4,
-// lights[4]@16 (Light is 16-aligned via its Float3 members, so the array
-// itself starts at offset 16, not 8 — the 8 bytes from @8..@16 are implicit
-// std430 padding).
+// LightingConfig (std430, 208 bytes): lightCount@0, ambientIntensity@4,
+// lights[4]@16, per-light spill-purpose scales@144, cel settings@160.
 // ---------------------------------------------------------------------------
 
 TEST(LightingConfigParity, LightingConfigStd430Layout) {
-    EXPECT_EQ(sizeof(LightingConfig), 144u) << "LightingConfig std430 size drifted from the documented 144 B";
+    EXPECT_EQ(sizeof(LightingConfig), 208u) << "LightingConfig std430 size drifted from the documented 208 B";
     EXPECT_EQ(offsetof(LightingConfig, lightCount), 0u);
     EXPECT_EQ(offsetof(LightingConfig, ambientIntensity), 4u);
     EXPECT_EQ(offsetof(LightingConfig, lights), 16u)
         << "lights[] must sit at offset 16 (std430 16-byte alignment of the nested Light struct)";
+    EXPECT_EQ(offsetof(LightingConfig, celSpillPurposeScales), 144u);
+    EXPECT_EQ(offsetof(LightingConfig, shadingMode), 160u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandCount), 164u);
+    EXPECT_EQ(offsetof(LightingConfig, celShadowThreshold), 168u);
+    EXPECT_EQ(offsetof(LightingConfig, celLitThreshold), 172u);
+    EXPECT_EQ(offsetof(LightingConfig, celRampSoftness), 176u);
+    EXPECT_EQ(offsetof(LightingConfig, celLitHueShiftDegrees), 180u);
+    EXPECT_EQ(offsetof(LightingConfig, celShadowHueShiftDegrees), 184u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffStart), 188u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffEnd), 192u);
+    EXPECT_EQ(offsetof(LightingConfig, celLightSpillScale), 196u);
 }
 
 TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {

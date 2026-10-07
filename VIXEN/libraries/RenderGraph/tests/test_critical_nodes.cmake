@@ -219,6 +219,26 @@ add_custom_command(
     VERBATIM)
 add_custom_target(body_instance_raymarch_spv DEPENDS ${_brm_spv})
 
+# The LightingConfig cel-mode parity test must reflect the shader that consumes
+# the new fields. BodyInstanceRayMarch.comp keeps LightingConfig as plumbing and
+# optimizes those unused members out of SPIR-V, so compile the active shade pass
+# as a separate reflection input.
+set(_cel_shade_src "${_brm_shader_dir}/SpatialReuseShade.comp")
+set(_cel_shade_spv "${CMAKE_CURRENT_BINARY_DIR}/SpatialReuseShadeCelParity.spv")
+add_custom_command(
+    OUTPUT ${_cel_shade_spv}
+    COMMAND ${VIXEN_GLSLC}
+            -fshader-stage=compute
+            -I ${_brm_shader_dir}
+            -I ${CMAKE_SOURCE_DIR}/libraries/SVO/shaders
+            --target-env=vulkan1.3
+            ${_cel_shade_src}
+            -o ${_cel_shade_spv}
+    DEPENDS ${_cel_shade_src} ${_brm_includes}
+    COMMENT "Compiling SpatialReuseShade.comp -> SPIR-V for LightingConfig layout reflection"
+    VERBATIM)
+add_custom_target(spatial_reuse_shade_cel_parity_spv DEPENDS ${_cel_shade_spv})
+
 # Raster-proxy B1 M2/M4: a SECOND SPV variant with VIXEN_B1_OCCLUSION_CULL defined —
 # the depthDistanceImage declaration+store (binding 36) is #ifdef-gated in the shader
 # (production injects the define only when the env flag is set). ONLY gpurender1's
@@ -595,13 +615,17 @@ add_executable(test_rendergraph_criticalnodes_sdiparity
     Nodes/test_prevcameraconfig_sdi_parity.cpp
     Nodes/test_reservoirconfig_layout.cpp
 )
-add_dependencies(test_rendergraph_criticalnodes_sdiparity body_instance_raymarch_spv)
+add_dependencies(test_rendergraph_criticalnodes_sdiparity
+    body_instance_raymarch_spv
+    spatial_reuse_shade_cel_parity_spv)
 target_link_libraries(test_rendergraph_criticalnodes_sdiparity PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 if(TARGET SVO)
     target_link_libraries(test_rendergraph_criticalnodes_sdiparity PRIVATE SVO)
 endif()
 target_compile_definitions(test_rendergraph_criticalnodes_sdiparity PRIVATE
     GLSL_RAYMARCH_SPV="${_brm_spv}")
+set_source_files_properties(Nodes/test_lightingconfig_sdi_parity.cpp PROPERTIES
+    COMPILE_DEFINITIONS GLSL_CEL_SHADE_SPV="${_cel_shade_spv}")
 set_target_properties(test_rendergraph_criticalnodes_sdiparity PROPERTIES FOLDER "Tests/RenderGraph Tests")
 vixen_gtest_discover_tests(RenderGraph test_rendergraph_criticalnodes_sdiparity
     DISCOVERY_MODE PRE_TEST

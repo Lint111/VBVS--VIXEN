@@ -44,7 +44,9 @@ public:
 
     // Replace the shared light set. Excess entries are clipped to the generated
     // four-light capacity; an empty list is valid and leaves ambient lighting.
-    void SetLights(const std::vector<Vixen::Gpu::Light>& lights, float ambientIntensity = 0.3f);
+    // Missing purpose scales default to 1.0; excess scales are ignored.
+    void SetLights(const std::vector<Vixen::Gpu::Light>& lights, float ambientIntensity = 0.3f,
+                   const std::vector<float>& celSpillPurposeScales = {});
 
 protected:
     void TypedSetupImpl(TypedSetupContext&    ctx) override;
