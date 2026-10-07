@@ -31,3 +31,4 @@ None. The SVO opcode-94 result is the accepted pre-existing T-1449 finding descr
 ## CONSOLIDATION ISSUES
 
 - proposed: Document aggregate CMake targets for GPU test sources
+- proposed: Document native VIXEN executable build target
