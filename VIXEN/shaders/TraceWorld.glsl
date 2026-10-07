@@ -825,7 +825,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 //
 // Returns true the moment a confirmed occluder is found within [tmin, tmax];
 // false if every instance was checked and none occluded (ray is lit).
-bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
+bool isPointLightSourceInstance(BodyInstance inst, vec3 sourcePosition) {
+    if (inst.recipeParams[3] <= 0.0) return false;
+    vec3 instanceOrigin = inst.worldPos;
+    vec3 instanceCenter = instanceOrigin + vec3(0.5 * inst.renderScale);
+    return all(lessThanEqual(abs(instanceOrigin - sourcePosition), vec3(1e-3))) ||
+           all(lessThanEqual(abs(instanceCenter - sourcePosition), vec3(1e-3)));
+}
+
+bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
+                          bool skipPointLightSource, vec3 pointLightPosition) {
     vec3 rayOrigin = origin;
     vec3 rayDir    = dir;
     g_lastShadowCompositionRegime = 1u;
@@ -840,7 +849,8 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
     // straight through, WORLD-space, no per-instance renderScale division (unlike
     // the loop's own instTmin/instTmax below, which feed the ESVO/DDA de-instanced
     // frame).
-    if (traverseRayQueryWorldAnyHit(rayOrigin, normalize(rayDir), tmin, tmax)) {
+    if (traverseRayQueryWorldAnyHit(rayOrigin, normalize(rayDir), tmin, tmax,
+                                    skipPointLightSource, pointLightPosition)) {
         return true;
     }
 #endif
@@ -856,6 +866,9 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
         }
 
         BodyInstance inst = bodyInstances[instIdx];
+        if (skipPointLightSource && isPointLightSourceInstance(inst, pointLightPosition)) {
+            continue;
+        }
 
 #ifdef VIXEN_SHADOW_DBG
         if (g_shadowDbgArm != 0) g_shadowDbgCurInst = instIdx;
@@ -1028,6 +1041,15 @@ bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
     }
 
     return false;  // no occluder found in [tmin, tmax] across any instance -- lit
+}
+
+bool TraceWorldShadow(vec3 origin, vec3 dir, float tmin, float tmax) {
+    return TraceWorldShadowImpl(origin, dir, tmin, tmax, false, vec3(0.0));
+}
+
+bool TraceWorldShadowToPoint(vec3 origin, vec3 dir, float tmin, float tmax,
+                             vec3 pointLightPosition) {
+    return TraceWorldShadowImpl(origin, dir, tmin, tmax, true, pointLightPosition);
 }
 
 #endif // TRACEWORLD_GLSL

@@ -3222,6 +3222,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           "the grid's near region from above; the full grid may extend beyond frame "
                           "at high N, which the live-run gate accounts for");
     }
+    if (envFlagEnabled("VIXEN_STARLIGHT_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 110.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_STARLIGHT_DEMO: framed star and three orbiting bodies");
+    }
     // Sampled Lighting Cornell Box Demo M1: shared camera preset (ONE source, both
     // VIXEN_DDGI_CORNELL_BAKED_DEMO and M2's VIXEN_DDGI_CORNELL_VIRTUAL_DEMO read the SAME
     // CornellBoxSceneDefinition.h constants). BuildRenderGraph.cpp's own stale "Camera presets
@@ -5670,6 +5678,55 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
+            }
+        } else if (envFlagEnabled("VIXEN_STARLIGHT_DEMO")) {
+            // T-1139 witness scene: the emissive procedural sphere also authors
+            // one entry in the existing shared LightingConfig light set.
+            const glm::vec3 starCenter(64.0f, 64.0f, 64.0f);
+            const glm::vec3 starColor(1.0f, 0.72f, 0.24f);
+            constexpr float kStarRadius = 8.0f;
+            constexpr float kStarEmission = 16.0f;
+            constexpr float kStarLightRange = 100.0f;
+            auto makeSphere = [](glm::vec3 center, float radius, glm::vec3 color, float emission) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = center.x; inst.worldPos[1] = center.y; inst.worldPos[2] = center.z;
+                inst.renderScale = 1.0f;
+                inst.color[0] = color.x; inst.color[1] = color.y; inst.color[2] = color.z;
+                inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                inst.recipeId = 0u;      // sphere
+                inst.recipeParams[0] = radius;
+                inst.recipeParams[3] = emission;
+                return inst;
+            };
+
+            std::vector<Vixen::SVO::BodyInstanceGpu> starBodies = {
+                makeSphere(starCenter, kStarRadius, starColor, kStarEmission),
+                // Keep the bodies clear of the default HUD panels in the capture frame.
+                makeSphere(starCenter + glm::vec3(-23.0f, 12.0f, -25.0f), 5.0f,
+                           glm::vec3(0.25f, 0.55f, 0.95f), 0.0f),
+                makeSphere(starCenter + glm::vec3(23.0f, 12.0f, -25.0f), 5.0f,
+                           glm::vec3(0.9f, 0.28f, 0.18f), 0.0f),
+                makeSphere(starCenter + glm::vec3(23.0f, -14.0f, -25.0f), 5.0f,
+                           glm::vec3(0.25f, 0.82f, 0.36f), 0.0f),
+            };
+
+            const Vixen::SVO::BodyInstanceGpu& star = starBodies.front();
+            Vixen::Gpu::Light starLight{};
+            starLight.direction_or_positionX = star.worldPos[0];
+            starLight.direction_or_positionY = star.worldPos[1];
+            starLight.direction_or_positionZ = star.worldPos[2];
+            starLight.kind = 1u;  // point
+            starLight.radianceX = star.color[0] * star.recipeParams[3];
+            starLight.radianceY = star.color[1] * star.recipeParams[3];
+            starLight.radianceZ = star.color[2] * star.recipeParams[3];
+            starLight.range = kStarLightRange;
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(starBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_STARLIGHT_DEMO: seeded one emissive star and three bodies");
+            }
+            if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
+                lighting->SetLights({starLight}, 0.04f);
             }
         } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).

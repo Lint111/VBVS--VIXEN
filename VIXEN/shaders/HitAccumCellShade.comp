@@ -54,6 +54,7 @@ layout(std430, binding = 16) readonly buffer OccupancyGridBuffer { float occupan
 #include "SceneBindings.glsl"   // scene SSBOs + TraceWorldShadow (the wave's own set)
 
 #include "Generated/LightingConfig.glsl"
+#include "LightEvaluation.glsl"
 layout(std430, binding = 17) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
 };
@@ -160,15 +161,24 @@ void main() {
     vec3 shadowOrigin = rc.avgPos + normal * max(shadowConfig.biasEpsilon, 0.5 * cellSize);
     for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
         Light light = lightingConfig.lights[i];
-        vec3 lightDir = normalize(light.direction_or_position);
+        float distanceToLight;
+        vec3 lightDir = lightDirectionAt(light, rc.avgPos, distanceToLight);
+        float attenuation = lightRangeAttenuation(light, distanceToLight);
         float NdotL = max(dot(normal, lightDir), 0.0);
-        if (NdotL <= 0.0) continue;
+        if (NdotL <= 0.0 || attenuation <= 0.0) continue;
         float vis = 1.0;
         if (shadowConfig.enabled != 0u) {
-            vis = TraceWorldShadow(shadowOrigin, lightDir, cellSize, shadowConfig.maxShadowDistance) ? 0.0 : 1.0;
+            float maxShadowDistance = light.kind == 1u
+                ? min(shadowConfig.maxShadowDistance, distanceToLight)
+                : shadowConfig.maxShadowDistance;
+            bool occluded = light.kind == 1u
+                ? TraceWorldShadowToPoint(shadowOrigin, lightDir, cellSize, maxShadowDistance,
+                                          light.direction_or_position)
+                : TraceWorldShadow(shadowOrigin, lightDir, cellSize, maxShadowDistance);
+            vis = occluded ? 0.0 : 1.0;
         }
         if (vis > 0.0) {
-            Lo += evalBRDF(albedo, roughness, normal, V, lightDir) * light.radiance;
+            Lo += evalBRDF(albedo, roughness, normal, V, lightDir) * light.radiance * attenuation;
         }
     }
 

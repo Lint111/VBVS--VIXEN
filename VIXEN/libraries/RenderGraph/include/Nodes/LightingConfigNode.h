@@ -4,7 +4,10 @@
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
 #include "Data/Nodes/LightingConfigNodeConfig.h"
+#include "Generated/LightingConfig.g.h"
+#include <iterator>
 #include <memory>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 
@@ -25,11 +28,9 @@ public:
  * host-visible storage buffer — one SSBO per frame-in-flight (mirrors
  * DynamicInstanceBufferNode's PerFrameResources ring pattern).
  *
- * Content is static this increment (Sampled Lighting Inc0 M3): a single
- * directional light matching Lighting.glsl's previously-hardcoded default
- * (direction normalize(1,1,-1), white radiance, ambientIntensity 0.3).
- * Re-uploaded every Execute (144 B, negligible) so a future milestone can
- * mutate the light list via SetLights() with no graph rewiring.
+ * The default content is a single directional light matching Lighting.glsl's
+ * previously-hardcoded default. Hosts can replace the shared light set through
+ * SetLights() without graph rewiring; the fixed generated capacity remains four.
  *
  * Lifecycle: the ring buffers persist across graph recompile; released on
  * FinalTeardown (see CleanupImpl).
@@ -41,6 +42,10 @@ public:
     LightingConfigNode(const std::string& instanceName, NodeType* nodeType);
     ~LightingConfigNode() override = default;
 
+    // Replace the shared light set. Excess entries are clipped to the generated
+    // four-light capacity; an empty list is valid and leaves ambient lighting.
+    void SetLights(const std::vector<Vixen::Gpu::Light>& lights, float ambientIntensity = 0.3f);
+
 protected:
     void TypedSetupImpl(TypedSetupContext&    ctx) override;
     void TypedCompileImpl(TypedCompileContext& ctx) override;
@@ -51,6 +56,8 @@ private:
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;
+    Vixen::Gpu::LightingConfig customLighting_{};
+    bool hasCustomLighting_ = false;
 };
 
 } // namespace Vixen::RenderGraph
