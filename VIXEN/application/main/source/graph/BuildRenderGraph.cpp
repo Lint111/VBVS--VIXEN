@@ -112,6 +112,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Data/Nodes/LightTreeBufferNodeConfig.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
 #include "Data/Nodes/ProbeGridConfigNodeConfig.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Data/Nodes/ProbeAtlasNodeConfig.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Data/Nodes/SkySphereNodeConfig.h"             // T-1138: procedural background cache
 #include "Data/Nodes/ImageSyncGathererNodeConfig.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Data/Nodes/StorageBufferNodeConfig.h"        // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs
 #include "Data/Nodes/MultiDispatchNodeConfig.h"        // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
@@ -164,6 +165,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
 #include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Nodes/SkySphereNode.h"            // T-1138: procedural background cache
 #include "Nodes/DepthTargetNode.h"          // Raster-proxy B1 M4: occlusion depth ping-pong pair
 #include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
@@ -589,6 +591,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+    NodeHandle skySphereNode = renderGraph->AddNode<SkySphereNodeType>("sky_sphere");
 
     NodeHandle sceneRadianceNode = renderGraph->AddNode<SceneRadianceNodeType>("scene_radiance");
     NodeHandle exposureShaderLib{};
@@ -1445,6 +1448,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, kProbeVisibilityAtlasHeight);
     probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
         static_cast<uint32_t>(VK_FORMAT_R16G16_SFLOAT));
+
+    // T-1138 defaults off to preserve the existing background exactly. Enable at runtime by
+    // setting `enabled` on the `sky_sphere` node; seed and brightness are live node parameters.
+    auto* skySphere = static_cast<SkySphereNode*>(renderGraph->GetInstance(skySphereNode));
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_WIDTH, 1024u);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_HEIGHT, 512u);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_FORMAT,
+        static_cast<uint32_t>(VK_FORMAT_R16G16B16A16_SFLOAT));
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_ENABLED, 0u);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_SEED, 0x5a17f13du);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_BRIGHTNESS, 0.45f);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_REFRESH_CADENCE_FRAMES, 0u);
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] DDGI probe atlases: irradiance " +
@@ -2962,10 +2977,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(probeAtlasGatherer))->PreRegisterImageSlots(2);
 
-    // Sampled Lighting Inc4 M5: read-side atlas gatherer -- same 2 entries, feeding
-    // spatialReuseNode's IMAGE_READ_ARRAY (see spatialReuseProbeAtlasReadGatherer's own
-    // declaration comment above).
-    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(2);
+    // Read-side image gatherer: two DDGI atlases and the sky cache, all read by SpatialReuseShade.
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(3);
 
     // Raster-proxy B1 M4: one tile image each side (HiZ write / cull read), one skip-mask
     // buffer entry on the cull's write side.
@@ -8407,6 +8420,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   probeVisibilityAtlasNode, ProbeAtlasNodeConfig::COMMAND_POOL);
 
+    // T-1138: the cache uses a fixed world-space source-independent image. The optional
+    // STAR_LIST slot is deliberately unconnected while owner question Q7 remains open.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  skySphereNode, SkySphereNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  skySphereNode, SkySphereNodeConfig::COMMAND_POOL);
+
     // Sampled Lighting Inc4 M2: gather both atlas IRenderTarget* handles into one
     // IMAGE_WRITE_ARRAY-shaped array (Inc4 M1's ImageSyncGathererNode). No ComputeStageNode
     // consumes IMAGE_ARRAY yet this milestone (that's M3's probe-update pass) -- these
@@ -8429,6 +8449,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   spatialReuseProbeAtlasReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
                   spatialReuseProbeAtlasReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(skySphereNode, SkySphereNodeConfig::SKY_SPHERE,
+                  spatialReuseProbeAtlasReadGatherer, 2,
+                  SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs — device +
     // extent-driven sizing from renderTargetNode's own RENDER_TARGET output, same
@@ -9103,6 +9126,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("probeVisibilityAtlasRead", probeVisibilityAtlasNode,
                            ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("skySphereImage", skySphereNode,
+                           SkySphereNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("ProbeGridConfigReadSSBO", probeGridConfigNode,
                            ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
