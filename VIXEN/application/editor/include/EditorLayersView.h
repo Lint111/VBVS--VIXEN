@@ -31,7 +31,7 @@ namespace Vixen::App {
 
 // The editor's layer-list view. Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md): gives the
 // editor layer view a real RmlUi data-model — the first model->view path anywhere in the editor
-// — so editor.rml's checkboxes reflect LayerController's mask via a data binding instead of
+// — so editor.rml's checkboxes reflect the document's enabled mask via a data binding instead of
 // static "checked" markup. Mirrors Vixen::App::HudView (graph/HudView.h): owns its storage,
 // registers the model via the generated BindEditorLayersModel, and projects the mask into it.
 //
@@ -50,15 +50,14 @@ public:
         model_ = c.GetModelHandle();
     }
 
-    // Rebuilds the bound row array from LayerController's mask. Inc-Ovr (View-Model-Binding-
+    // Rebuilds the bound row array from EditorDocumentModel's enabled mask. Inc-Ovr (View-Model-Binding-
     // Inc-Ovr-Plan-2026-07.md Task 3): isChecked's bit-decomposition is no longer a hand-written
     // shift here -- it is the schema-declared Projection on EditorLayerRow.isChecked
     // (codegen/view-schemas/EditorLayers.cs), generated as
     // Vixen::Views::ComputeEditorLayerRow_isChecked (Generated/EditorLayers.g.h), which itself
     // calls the transplanted [KernelCallable] Vixen::AppFlow::Generated::bitAt -- the same
-    // transform EditorApplication's ToggleLayer handler's applyToggle is the write-side inverse
-    // of. name/op/elementId come from the document model (LayerController itself carries no
-    // names — see EditorDocumentModel). Dirties "layers" so an already-loaded model picks up the
+    // transform the EditorDocumentModel operation used by EditorApplication's ToggleLayer handler.
+    // name/op/elementId come from the document model. Dirties "layers" so an already-loaded model picks up the
     // change (initial population calls this before the document loads, so the dirty is a no-op
     // there; a later re-population, e.g. after the optional same-frame echo, needs it).
     void PopulateFromMask(uint32_t mask, uint32_t layerCount,
