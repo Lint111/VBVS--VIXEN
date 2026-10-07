@@ -42,10 +42,8 @@ layout(std430, binding = 0) buffer HitRecordBuffer {
 // Standalone instance declaration — SpatialReuseShade.comp's own gated
 // standalone-BodyInstance shape (binding 39 there), copied here since this
 // pass needs ONLY recipeId and traversal-agnostic leanness is the point.
-// std430, 64 B — byte-for-byte the SceneBindings.glsl BodyInstance layout.
+// std430, 48 B — byte-for-byte the SceneBindings.glsl cold material record.
 struct BodyInstance {
-    vec3  worldPos;
-    float renderScale;
     vec3  color;
     uint  octreeIndex;
     uint  providerKind;

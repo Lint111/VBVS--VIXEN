@@ -120,6 +120,21 @@ bool IsLifetimeMessage(const std::string& m) {
     return false;
 }
 
+TEST(BodyInstanceRtTransform, CopiesLocalToWorldRowsWithoutTranspose) {
+    Vixen::SVO::Affine3x4Gpu localToWorld{};
+    for (uint32_t row = 0; row < 3u; ++row) {
+        for (uint32_t column = 0; column < 4u; ++column) {
+            localToWorld.rows[row][column] = static_cast<float>(row * 4u + column) + 0.25f;
+        }
+    }
+    const Vixen::SVO::Affine3x4Gpu identityChild{};
+    const Vixen::SVO::Affine3x4Gpu composed = Vixen::SVO::ComposeAffine(localToWorld, identityChild);
+    const VkTransformMatrixKHR rtTransform = ToVkTransformMatrix(composed);
+
+    EXPECT_EQ(std::memcmp(rtTransform.matrix, localToWorld.rows, sizeof(localToWorld.rows)), 0)
+        << "VkTransformMatrixKHR must receive localToWorld's row-major 3x4 bytes directly";
+}
+
 // ---------------------------------------------------------------------------
 // Lifetime-test harness fixture
 // ---------------------------------------------------------------------------
@@ -382,14 +397,14 @@ protected:
     static std::vector<Vixen::SVO::BodyInstanceGpu> MakeInstances(uint32_t n, float salt) {
         std::vector<Vixen::SVO::BodyInstanceGpu> v(n);
         for (uint32_t i = 0; i < n; ++i) {
-            v[i].worldPos[0] = static_cast<float>(i) + salt;
-            v[i].worldPos[1] = salt;
-            v[i].worldPos[2] = -static_cast<float>(i);
-            v[i].renderScale = 1.0f + 0.01f * static_cast<float>(i);
-            v[i].color[0]    = 0.5f;
-            v[i].color[1]    = 0.25f;
-            v[i].color[2]    = 0.75f;
-            v[i].octreeIndex = i % 3u;  // valid octree selector (3 shells built)
+            Vixen::SVO::SetInstanceTranslationComponent(v[i], 0, static_cast<float>(i) + salt);
+            Vixen::SVO::SetInstanceTranslationComponent(v[i], 1, salt);
+            Vixen::SVO::SetInstanceTranslationComponent(v[i], 2, -static_cast<float>(i));
+            Vixen::SVO::SetInstanceUniformScale(v[i], 1.0f + 0.01f * static_cast<float>(i));
+            v[i].material.color[0]    = 0.5f;
+            v[i].material.color[1]    = 0.25f;
+            v[i].material.color[2]    = 0.75f;
+            v[i].material.octreeIndex = i % 3u;  // valid octree selector (3 shells built)
         }
         return v;
     }
@@ -659,10 +674,10 @@ TEST_F(BodyOctreeLifetimeTest, ReadParamValueSweepNeverMarksNodeNeedsRecompile) 
     // VIXEN_PROCEDURAL_UBER_DEMO's own instance shape (BuildRenderGraph.cpp M3 Task 8).
     auto makeReadParamInstance = [&](float paramValue) {
         Vixen::SVO::BodyInstanceGpu inst{};
-        inst.renderScale     = 1.0f;
-        inst.providerKind    = 1u;   // PROVIDER_PROCEDURAL
-        inst.recipeId        = kReadParamRecipeId;
-        inst.recipeParams[0] = paramValue;
+        Vixen::SVO::SetInstanceUniformScale(inst, 1.0f);
+        inst.material.providerKind    = 1u;   // PROVIDER_PROCEDURAL
+        inst.material.recipeId        = kReadParamRecipeId;
+        inst.material.recipeParams[0] = paramValue;
         return inst;
     };
 
@@ -793,13 +808,13 @@ TEST_F(BodyOctreeLifetimeTest, DiversityStressParamSweepAtScaleNeverMarksNodeNee
 
     auto makeDiversityInstance = [&](uint32_t i, float shapeParam, const glm::vec3& declaredPos) {
         Vixen::SVO::BodyInstanceGpu inst{};
-        inst.renderScale     = 1.0f;
-        inst.providerKind    = 1u;  // PROVIDER_PROCEDURAL
-        inst.recipeId        = 100u + i;
-        inst.recipeParams[0] = declaredPos.x;
-        inst.recipeParams[1] = declaredPos.y;
-        inst.recipeParams[2] = declaredPos.z;
-        inst.recipeParams[3] = shapeParam;
+        Vixen::SVO::SetInstanceUniformScale(inst, 1.0f);
+        inst.material.providerKind    = 1u;  // PROVIDER_PROCEDURAL
+        inst.material.recipeId        = 100u + i;
+        inst.material.recipeParams[0] = declaredPos.x;
+        inst.material.recipeParams[1] = declaredPos.y;
+        inst.material.recipeParams[2] = declaredPos.z;
+        inst.material.recipeParams[3] = shapeParam;
         return inst;
     };
 

@@ -240,6 +240,24 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         }
 
         BodyInstance inst = bodyInstances[instIdx];
+        const uint instanceIndex = uint(instIdx);
+        const bool axisAlignedUniform = instanceIsAxisAlignedUniformScale(instanceIndex);
+        const bool preserveLegacyProcedural = axisAlignedUniform &&
+            instanceUniformAxisScale(instanceIndex) == 1.0 && inst.recipeId < 2u;
+        const vec3 worldRayDirection = normalize(rayDir);
+        const vec3 instOrigin = instanceWorldToLocalPoint(instanceIndex, rayOrigin);
+        const vec3 instRayVector = axisAlignedUniform
+            ? worldRayDirection
+            : instanceWorldToLocalVector(instanceIndex, worldRayDirection);
+        const float instRayScale = axisAlignedUniform ? 1.0 : length(instRayVector);
+        if (instRayScale <= 1e-20) continue;  // singular/degenerate instance transform
+        const vec3 instDir = axisAlignedUniform ? worldRayDirection : instRayVector / instRayScale;
+        const float worldUnitsPerInstUnit = axisAlignedUniform
+            ? instanceUniformAxisScale(instanceIndex)
+            : 1.0 / instRayScale;
+        const float conservativeSdfStepScale = axisAlignedUniform
+            ? 1.0
+            : min(instanceMinimumAxisScale(instanceIndex) * instRayScale, 1.0);
 
 #ifdef VIXEN_B2_PROXY_PREPASS
         // Proxy AABBs exist for stored/octree bodies. Procedural providers keep
@@ -280,10 +298,16 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             // this translation unit (see BodyInstanceRayMarch.comp's splice-marker comment) —
             // so this branch never references an undeclared identifier in an unspliced build.
             if (inst.recipeId < 2u) {
-                vec3 pCenter = inst.worldPos;
                 vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
-                pHit = traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                           pNormal, pT);
+                if (preserveLegacyProcedural) {
+                    pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
+                                               pParams, rayOrigin, rayDir, 1.0,
+                                               pNormal, pT);
+                } else {
+                    pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
+                                               instOrigin, instDir, conservativeSdfStepScale,
+                                               pNormal, pT);
+                }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
             else {
@@ -296,8 +320,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // OTHER instance already recorded this pixel. instanceIterCount stays 0u for
                 // a rejected instance (same "zero traversal iterations, not just a discarded
                 // result" proof the ESVO branch relies on for its own gate test).
-                vec3  oc   = rayOrigin - boundCenter;
-                float b    = dot(oc, rayDir);
+                vec3  oc   = instOrigin - boundCenter;
+                float b    = dot(oc, instDir);
                 float c    = dot(oc, oc) - boundRadius * boundRadius;
                 float disc = b * b - c;
                 if (disc < 0.0) {
@@ -307,9 +331,10 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                     continue;  // ray misses this instance's bound sphere entirely
                 }
                 float entryT = max(-b - sqrt(disc), 0.0);
+                float entryTWorld = entryT * worldUnitsPerInstUnit;
                 // The bound entry is a lower bound on this instance's hit distance.
                 // Keep an exact tie eligible for the shared lower-instance-id rule.
-                if (entryT > bestT) {
+                if (entryTWorld > bestT) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
                     instanceIterCount[instIdx] = 0u;
 #endif
@@ -327,7 +352,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                 // e.g. the M4/M5 offscreen harnesses) never take this path.
                 bool farSubPixel = false;
                 if (pc.raySizeCoef > 0.0) {
-                    float footprint = entryT * pc.raySizeCoef + pc.raySizeBias;
+                    float footprint = entryTWorld * pc.raySizeCoef + pc.raySizeBias;
                     farSubPixel = footprint >= 2.0 * boundRadius;
                 }
 
@@ -337,7 +362,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
                     pHit    = true;
                     pT      = entryT;
-                    pNormal = normalize(-rayDir);  // face the camera — cheapest plausible normal for a sub-pixel blob
+                    pNormal = normalize(-instDir);  // local-space normal; transformed after the march
                 } else {
                     uint pSteps;
                     // Recipe-Parameterization M2 Task 6: read inst.recipeParams[] out of the
@@ -348,7 +373,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
                         inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                         inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                     pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                               rayOrigin, rayDir, uberParams, pNormal, pT, pSteps);
+                                               instOrigin, instDir, conservativeSdfStepScale,
+                                               uberParams, pNormal, pT, pSteps);
                     // Task 12 evidence (c): a non-rejected instance always writes its real march
                     // step count (>=1, even on a miss that exhausted MAX_STEPS or exited tFar) —
                     // only the two continue-above paths leave this 0u, so "0 here" means "the
@@ -361,7 +387,11 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
 
             if (pHit) sourceMask |= 1u;
-            if (pHit && isCloserHit(pT, uint(instIdx), bestT, bestInstIdx)) {
+            if (pHit && !preserveLegacyProcedural) {
+                pT *= worldUnitsPerInstUnit;
+                pNormal = instanceLocalToWorldNormal(instanceIndex, pNormal);
+            }
+            if (pHit && isCloserHit(pT, instanceIndex, bestT, bestInstIdx)) {
 #ifdef VIXEN_REGIME3_COMPOSITE
                 if (anyHit) {
                     secondT = bestT;
@@ -371,7 +401,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 #endif
                 bestT          = pT;
                 bestColor      = inst.color;   // procedural base colour = instance tint
-                bestNormal     = pNormal;      // smooth SDF-gradient normal
+                bestNormal     = pNormal;      // inverse-transpose transformed SDF-gradient normal
                 bestBrickIndex = 0u;
                 bestVoxelIdx   = 0u;
                 bestInstIdx    = uint(instIdx);
@@ -406,7 +436,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // World → instance-local ray transform (single consistent frame)
         //
         // The instance places the body at inst.worldPos, scaled by
-        // inst.renderScale.  Serialize emits the BASE (un-instanced) octree
+        // worldUnitsPerInstUnit.  Serialize emits the BASE (un-instanced) octree
         // mapping in configs[oi]: worldToLocal maps the base octree's world
         // frame → its [0,1]^3 grid (it already folds in the gridMin/gridMax
         // centre — we must NOT re-apply a centre offset here).
@@ -448,9 +478,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             proxyOriginOffset = tmin;
         }
 #endif
-        vec3  instanceRayOrigin = rayOrigin + rayDir * proxyOriginOffset;
-        vec3  instOrigin = (instanceRayOrigin - inst.worldPos) / inst.renderScale;
-        vec3  instDir    = normalize(rayDir);   // UNIT — see the M5b note above
+        vec3 instanceRayOrigin = rayOrigin + rayDir * proxyOriginOffset;
+        vec3 instOriginForTraversal = instanceWorldToLocalPoint(instanceIndex, instanceRayOrigin);
 
         // Quick AABB cull in the base octree's [0,1]^3 grid (same transform the
         // traversal uses internally), before paying for full ESVO descent.
@@ -481,7 +510,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // traversal actually needs. This still gets the fast-reject win (skip full ESVO
         // descent for rays that miss the tight box) without touching where the
         // traversal itself begins.
-        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOrigin, 1.0)).xyz;
+        vec3 localRayOrigin = (configs[oi].worldToLocal * vec4(instOriginForTraversal, 1.0)).xyz;
         vec3 localRayDir    = mat3(configs[oi].worldToLocal) * instDir;
         vec3 traceBoundsMin, traceBoundsMax;
         getOctreeTraceBounds(oi, traceBoundsMin, traceBoundsMax);
@@ -501,8 +530,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // bounds the useful segment after the origin shift; no traversal can
         // contribute once the intervals cease to overlap.
         if (pc.proxyAabbCount > 0u && g_b2HasCandidates) {
-            const float segmentEnter = max(tightRejectT.x, 0.0) * inst.renderScale;
-            const float segmentExit = tightRejectT.y * inst.renderScale;
+            const float segmentEnter = max(tightRejectT.x, 0.0) * worldUnitsPerInstUnit;
+            const float segmentExit = tightRejectT.y * worldUnitsPerInstUnit;
             const float unionRemainingExit = tmax - proxyOriginOffset;
             if (segmentExit < 0.0 || segmentEnter > unionRemainingExit) {
 #ifdef VIXEN_GPU_TRACE_HOOKS
@@ -529,9 +558,9 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         int compositionBpa = configs[oi].bricksPerAxis;
         if (compositionDirLen >= 1e-12 && compositionBpa > 0) {
             float compositionWorldDist =
-                0.5 * (max(gridT.x, 0.0) + gridT.y) * inst.renderScale;
+                0.5 * (max(gridT.x, 0.0) + gridT.y) * worldUnitsPerInstUnit;
             float compositionCellWorldSize =
-                ((1.0 / float(compositionBpa)) / compositionDirLen) * inst.renderScale;
+                ((1.0 / float(compositionBpa)) / compositionDirLen) * worldUnitsPerInstUnit;
             g_lastFootprintRegime = classifyCellFootprintRegime(
                 compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
         }
@@ -571,7 +600,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // in the de-instanced (÷renderScale) frame, so length(entryPointWorldInstSpace
         // - instOrigin) is a Euclidean distance in that shrunk frame — the SAME
         // shrunk-frame-distance quantity the ESVO traversal's hitT now is (instDir
-        // is UNIT, see above). Multiplying by inst.renderScale converts it to true
+        // is UNIT, see above). Multiplying by worldUnitsPerInstUnit converts it to true
         // world distance, matching bestT (which accumulates real hitT values, also
         // *renderScale below). Verified numerically against a live GPU readback
         // (HitRecord.worldPos): without this factor, a renderScale=3.2 body reported
@@ -580,8 +609,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
             vec3 entryPointWorldInstSpace =
                 (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
-            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale +
-                                proxyOriginOffset;
+            float entryTWorld = length(entryPointWorldInstSpace - instOriginForTraversal) *
+                                worldUnitsPerInstUnit + proxyOriginOffset;
             // This entry point is a lower bound on the hit distance. Reject only
             // when it is strictly farther, so an exact tie can reach isCloserHit.
             bool entryBehindCurrentBest = entryTWorld > bestT;
@@ -643,10 +672,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         uint  hitBrick;
         uint  hitVoxel;
 
-        // Pass the de-instanced ray: origin ÷renderScale, direction UNIT (M5b
-        // fix — see the instOrigin/instDir block above). traverseOctreeInstanced
-        // returns hitT as a Euclidean distance in the de-instanced (shrunk) frame;
-        // multiply by inst.renderScale below to recover true world-distance units
+        // Pass the affine-transformed ray with a unit local direction. Traversal
+        // returns distance in instance-local units; convert it back to world below.
         // before it's used for the cross-instance nearest-hit test or
         // HitRecord.worldPos reconstruction (BodyInstanceRayMarch.comp's
         // rayOrigin + rayDir*hitT). Every scene before backWall used renderScale=1,
@@ -664,7 +691,8 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // instances never reach this call site anymore (skipped above, covered by
         // the hoisted traverseRayQueryWorld search before the loop) -- only
         // FORMAT_BINARY instances land here, same as the flag-off ESVO path.
-        bool instHit = traverseOctreeInstanced(instOrigin, instDir,
+        g_instanceSdfStepScale = conservativeSdfStepScale;
+        bool instHit = traverseOctreeInstanced(instOriginForTraversal, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness, hitEmission,
@@ -676,19 +704,20 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         // header). FORMAT_BINARY falls back to the ESVO path at runtime per-
         // instance -- its brickLookup binding is a 1-byte placeholder.
         bool instHit = (configs[oi].formatId == FORMAT_STORED_SDF)
-            ? traverseCoarseGridInstancedSdf(instOrigin, instDir,
+            ? traverseCoarseGridInstancedSdf(instOriginForTraversal, instDir,
                                            localRayOrigin, localRayDir, gridT,
-                                           inst.renderScale,
+                                           worldUnitsPerInstUnit,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg)
-            : traverseOctreeInstanced(instOrigin, instDir,
+            : traverseOctreeInstanced(instOriginForTraversal, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness, hitEmission,
                                            hitBrick, hitVoxel, dbg);
 #else
-        bool instHit = traverseOctreeInstanced(instOrigin, instDir,
+        g_instanceSdfStepScale = conservativeSdfStepScale;
+        bool instHit = traverseOctreeInstanced(instOriginForTraversal, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            hitColor, hitNormal, hitT,
                                            hitRoughness, hitEmission,
@@ -705,7 +734,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         float instResidualT = g_lastRegime3ResidualT;
         g_lastRegime3ResidualT = 1.0;
 #endif
-        hitT *= inst.renderScale;  // shrunk-frame distance -> true world distance (unit instDir; see comment above)
+        hitT *= worldUnitsPerInstUnit;  // local ray distance -> true world distance
         hitT += proxyOriginOffset; // B2 shifts only stored-instance traversal origin; 0 otherwise
 #ifdef VIXEN_B2_PROXY_PREPASS
         if (pc.proxyAabbCount > 0u && g_b2HasCandidates && hitT > tmax) {
@@ -730,7 +759,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestT           = hitT;
             // Tint by instance colour (multiply LOD-grey or material colour)
             bestColor       = hitColor * inst.color;
-            bestNormal      = hitNormal;
+                bestNormal      = instanceLocalToWorldNormal(instanceIndex, hitNormal);
             bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
@@ -825,10 +854,10 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
 //
 // Returns true the moment a confirmed occluder is found within [tmin, tmax];
 // false if every instance was checked and none occluded (ray is lit).
-bool isPointLightSourceInstance(BodyInstance inst, vec3 sourcePosition) {
+bool isPointLightSourceInstance(uint instanceIndex, BodyInstance inst, vec3 sourcePosition) {
     if (inst.recipeParams[3] <= 0.0) return false;
-    vec3 instanceOrigin = inst.worldPos;
-    vec3 instanceCenter = instanceOrigin + vec3(0.5 * inst.renderScale);
+    vec3 instanceOrigin = instanceLocalToWorldPoint(instanceIndex, vec3(0.0));
+    vec3 instanceCenter = instanceLocalToWorldPoint(instanceIndex, vec3(0.5));
     return all(lessThanEqual(abs(instanceOrigin - sourcePosition), vec3(1e-3))) ||
            all(lessThanEqual(abs(instanceCenter - sourcePosition), vec3(1e-3)));
 }
@@ -866,9 +895,27 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         }
 
         BodyInstance inst = bodyInstances[instIdx];
-        if (skipPointLightSource && isPointLightSourceInstance(inst, pointLightPosition)) {
+        const uint instanceIndex = uint(instIdx);
+        if (skipPointLightSource && isPointLightSourceInstance(instanceIndex, inst, pointLightPosition)) {
             continue;
         }
+        const bool axisAlignedUniform = instanceIsAxisAlignedUniformScale(instanceIndex);
+        const bool preserveLegacyProcedural = axisAlignedUniform &&
+            instanceUniformAxisScale(instanceIndex) == 1.0 && inst.recipeId < 2u;
+        const vec3 worldRayDirection = normalize(rayDir);
+        vec3 instOrigin = instanceWorldToLocalPoint(instanceIndex, rayOrigin);
+        vec3 instRayVector = axisAlignedUniform
+            ? worldRayDirection
+            : instanceWorldToLocalVector(instanceIndex, worldRayDirection);
+        float instRayScale = axisAlignedUniform ? 1.0 : length(instRayVector);
+        if (instRayScale <= 1e-20) continue;
+        vec3 instDir = axisAlignedUniform ? worldRayDirection : instRayVector / instRayScale;
+        float worldUnitsPerInstUnit = axisAlignedUniform
+            ? instanceUniformAxisScale(instanceIndex)
+            : 1.0 / instRayScale;
+        float conservativeSdfStepScale = axisAlignedUniform
+            ? 1.0
+            : min(instanceMinimumAxisScale(instanceIndex) * instRayScale, 1.0);
 
 #ifdef VIXEN_SHADOW_DBG
         if (g_shadowDbgArm != 0) g_shadowDbgCurInst = instIdx;
@@ -885,10 +932,16 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
             bool pHit = false;
 
             if (inst.recipeId < 2u) {
-                vec3 pCenter = inst.worldPos;
                 vec3 pParams = vec3(inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
-                pHit = traceProceduralBody(inst.recipeId, pCenter, pParams, rayOrigin, rayDir,
-                                           pNormal, pT);
+                if (preserveLegacyProcedural) {
+                    pHit = traceProceduralBody(inst.recipeId, instanceTranslation(instanceIndex),
+                                               pParams, rayOrigin, rayDir, 1.0,
+                                               pNormal, pT);
+                } else {
+                    pHit = traceProceduralBody(inst.recipeId, vec3(0.0), pParams,
+                                               instOrigin, instDir, conservativeSdfStepScale,
+                                               pNormal, pT);
+                }
             }
 #ifdef VIXEN_UBER_RECIPE_SPLICED
             else {
@@ -901,10 +954,15 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                     inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2],
                     inst.recipeParams[3], inst.recipeParams[4], inst.recipeParams[5]);
                 pHit = traceUberRecipeBody(inst.recipeId, boundCenter, boundRadius, relaxation,
-                                           rayOrigin, rayDir, uberParams, pNormal, pT, pSteps);
+                                           instOrigin, instDir, conservativeSdfStepScale,
+                                           uberParams, pNormal, pT, pSteps);
             }
 #endif
 
+            if (pHit && !preserveLegacyProcedural) {
+                pT *= worldUnitsPerInstUnit;
+                pNormal = instanceLocalToWorldNormal(instanceIndex, pNormal);
+            }
             if (pHit && pT >= tmin && pT <= tmax) {
 #ifdef VIXEN_COMPOSITION_COUNTERS
                 g_lastShadowCompositionSourceMask |= 1u;
@@ -935,9 +993,6 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         // placing the occluder renderScale× too far; occlusion at renderScale≠1
         // was consequently wrong). hitT *= renderScale below converts the
         // shrunk-frame distance to true world. No-op for renderScale==1.
-        vec3  instOrigin = (rayOrigin - inst.worldPos) / inst.renderScale;
-        vec3  instDir    = normalize(rayDir);   // UNIT — see the M5b note in TraceWorld
-
         // Quick AABB cull in the base octree's [0,1]^3 grid, before paying for
         // full ESVO descent. Tight-bounds fast-reject, same as TraceWorld's identical
         // block (see there for the full derivation).
@@ -962,9 +1017,9 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         int compositionBpa = configs[oi].bricksPerAxis;
         if (compositionDirLen >= 1e-12 && compositionBpa > 0) {
             float compositionWorldDist =
-                0.5 * (max(gridT.x, 0.0) + gridT.y) * inst.renderScale;
+                0.5 * (max(gridT.x, 0.0) + gridT.y) * worldUnitsPerInstUnit;
             float compositionCellWorldSize =
-                ((1.0 / float(compositionBpa)) / compositionDirLen) * inst.renderScale;
+                ((1.0 / float(compositionBpa)) / compositionDirLen) * worldUnitsPerInstUnit;
             instCompositionRegime = classifyCellFootprintRegime(
                 compositionWorldDist, compositionCellWorldSize, pc.raySizeCoef, pc.raySizeBias, pc.cosmicK);
         }
@@ -995,7 +1050,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
             vec3 entryPointLocal = localRayOrigin + localRayDir * (gridT.x + EPSILON);
             vec3 entryPointWorldInstSpace =
                 (configs[oi].localToWorld * vec4(entryPointLocal, 1.0)).xyz;
-            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * inst.renderScale;
+            float entryTWorld = length(entryPointWorldInstSpace - instOrigin) * worldUnitsPerInstUnit;
             if (entryTWorld > tmax) {
                 continue;  // no occluder in this instance can be nearer than the light itself
             }
@@ -1005,10 +1060,10 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
         // DebugRaySample threading (TraceWorldShadow has no pixel/dbg concept to snapshot --
         // see traverseOctreeInstancedAnyHit's own header). tmin/tmax are converted into the
         // SAME de-instanced (÷renderScale) shrunk frame traverseOctreeInstanced's hitT lives
-        // in before its own `*= inst.renderScale` conversion below -- i.e. divide, not
+        // in before its own `*= worldUnitsPerInstUnit` conversion below -- i.e. divide, not
         // multiply, the world-space [tmin,tmax] by renderScale to match.
-        float instTmin = tmin / inst.renderScale;
-        float instTmax = tmax / inst.renderScale;
+        float instTmin = tmin / worldUnitsPerInstUnit;
+        float instTmax = tmax / worldUnitsPerInstUnit;
 #ifdef VIXEN_RTQUERY_TRAVERSAL
         // W-RTQUERY Slice A round 3 -- THE HOIST REDESIGN: FORMAT_STORED_SDF
         // instances never reach this call site anymore (skipped above, covered by
@@ -1019,6 +1074,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                                            instTmin, instTmax);
 #elif defined(VIXEN_BRICKMAP_TRAVERSAL)
         // Round 3: retargeted to FORMAT_STORED_SDF -- see the closest-hit call site above.
+        g_instanceSdfStepScale = conservativeSdfStepScale;
         bool instHit = (configs[oi].formatId == FORMAT_STORED_SDF)
             ? traverseCoarseGridInstancedSdfAnyHit(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
@@ -1027,6 +1083,7 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
                                            localRayOrigin, localRayDir, gridT,
                                            instTmin, instTmax);
 #else
+        g_instanceSdfStepScale = conservativeSdfStepScale;
         bool instHit = traverseOctreeInstancedAnyHit(instOrigin, instDir,
                                            localRayOrigin, localRayDir, gridT,
                                            instTmin, instTmax);

@@ -205,8 +205,6 @@ layout(std430, binding = 31) buffer DDGILeakGateDebugShadeSSBO {
 #ifndef VIXEN_SHADOW_DBG
 #if defined(VIXEN_SRS_CELL_RESOLVE) || defined(VIXEN_MINING_BEAM)
 struct BodyInstance {
-    vec3  worldPos;
-    float renderScale;
     vec3  color;
     uint  octreeIndex;
     uint  providerKind;
@@ -238,6 +236,15 @@ layout(std430, binding = 44) readonly buffer MiningBeamBufferSSBO {
 layout(std430, binding = 45) readonly buffer MiningBeamBodyInstanceBuffer {
     BodyInstance miningBeamInstances[];
 };
+#ifndef VIXEN_SHADOW_DBG
+struct MiningBeamInstanceTransform {
+    vec4 localToWorldRows[3];
+    vec4 worldToLocalRows[3];
+};
+layout(std430, binding = 46) readonly buffer MiningBeamInstanceTransformBuffer {
+    MiningBeamInstanceTransform miningBeamInstanceTransforms[];
+};
+#endif
 #endif
 
 // ============================================================================
@@ -407,13 +414,28 @@ bool ResolveMiningBeamEndpoint(uint instanceIndex, vec3 localPoint, out vec3 wor
         if (instance.octreeIndex >= uint(configs.length())) return false;
         vec3 octreePoint =
             (configs[instance.octreeIndex].localToWorld * vec4(localPoint, 1.0)).xyz;
-        worldPoint = instance.worldPos + octreePoint * instance.renderScale;
+#ifdef VIXEN_SHADOW_DBG
+        worldPoint = instanceLocalToWorldPoint(instanceIndex, octreePoint);
+#else
+        vec4 hp = vec4(octreePoint, 1.0);
+        MiningBeamInstanceTransform transform = miningBeamInstanceTransforms[instanceIndex];
+        worldPoint = vec3(dot(transform.localToWorldRows[0], hp),
+                          dot(transform.localToWorldRows[1], hp),
+                          dot(transform.localToWorldRows[2], hp));
+#endif
         return true;
     }
     if (instance.providerKind == 1u) {
-        // Procedural bodies are world-aligned and use worldPos as their center;
-        // renderScale is unused by the procedural renderer.
-        worldPoint = instance.worldPos + localPoint;
+        // Procedural endpoints use the same instance-local affine as their ray march.
+#ifdef VIXEN_SHADOW_DBG
+        worldPoint = instanceLocalToWorldPoint(instanceIndex, localPoint);
+#else
+        vec4 hp = vec4(localPoint, 1.0);
+        MiningBeamInstanceTransform transform = miningBeamInstanceTransforms[instanceIndex];
+        worldPoint = vec3(dot(transform.localToWorldRows[0], hp),
+                          dot(transform.localToWorldRows[1], hp),
+                          dot(transform.localToWorldRows[2], hp));
+#endif
         return true;
     }
     return false;

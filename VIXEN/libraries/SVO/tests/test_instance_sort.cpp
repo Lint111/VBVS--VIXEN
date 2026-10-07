@@ -1,7 +1,7 @@
 // test_instance_sort.cpp — Sparse-Mip ESVO LOD Inc1, M4b (Task 10 part 2, occlusion piece).
 //
 // Pure math test for SortInstancesFrontToBack — no octree/GPU needed. A minimal
-// stand-in struct with a `float worldPos[3]` member exercises the template without
+// stand-in struct with a row-major affine exercises the template without
 // pulling in the full BodyInstanceGpu (ShellOctreeGpu.h) dependency chain.
 
 #include <gtest/gtest.h>
@@ -11,15 +11,22 @@
 using namespace Vixen::SVO;
 
 namespace {
+struct FakeAffine3x4 { float rows[3][4]; };
+struct FakeTransform { FakeAffine3x4 localToWorld; };
 struct FakeInstance {
-    float worldPos[3];
+    FakeTransform transform;
     int id;  // identity marker so post-sort order is checkable
 };
 
 FakeInstance MakeInst(int id, float x, float y, float z) {
     FakeInstance i{};
     i.id = id;
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
+    i.transform.localToWorld.rows[0][0] = 1.0f;
+    i.transform.localToWorld.rows[1][1] = 1.0f;
+    i.transform.localToWorld.rows[2][2] = 1.0f;
+    i.transform.localToWorld.rows[0][3] = x;
+    i.transform.localToWorld.rows[1][3] = y;
+    i.transform.localToWorld.rows[2][3] = z;
     return i;
 }
 }  // namespace

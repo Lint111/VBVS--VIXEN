@@ -353,7 +353,8 @@ protected:
     // test_body_instance_occlusion_reject.cpp's own RenderAndReadIterCounts, needed
     // for a genuine (not placeholder) tier-crossing scene.
     void RenderAndReadIterCounts(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
-                                 VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer tierRefTableBuf,
+                                 VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer instanceTransformBuf,
+                                 VkBuffer tierRefTableBuf,
                                  VkBuffer sdfChannelPoolBuf, VkBuffer brickLookupBuf, VkBuffer mipPoolBuf,
                                  const PushConstants& pc, uint32_t w, uint32_t h,
                                  uint32_t maxInstances,
@@ -434,7 +435,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 16> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 17> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -451,6 +452,7 @@ protected:
             bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // M4: TierRefTableBuffer
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // InstanceTransformBuffer
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -478,7 +480,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -501,6 +503,7 @@ protected:
         VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo instanceTransformInfo{instanceTransformBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{sdfBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{lookupBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{mipBuf, 0, VK_WHOLE_SIZE};
@@ -523,7 +526,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 16> writes = {
+        const std::array<VkWriteDescriptorSet, 17> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -540,6 +543,7 @@ protected:
             wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
             wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
             wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wBuf(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instanceTransformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -914,14 +918,14 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         node->SetRecipePool(std::move(scene.pool));
 
         Vixen::SVO::BodyInstanceGpu inst{};
-        inst.worldPos[0]  = 64.0f - kHalf;
-        inst.worldPos[1]  = 64.0f - kHalf;
-        inst.worldPos[2]  = 64.0f - kHalf;
-        inst.renderScale  = kRenderScale;
-        inst.color[0] = inst.color[1] = inst.color[2] = 1.0f;
-        inst.octreeIndex  = 0u;
-        inst.providerKind = 0u;
-        inst.recipeId     = 0u;
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 0, 64.0f - kHalf);
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 1, 64.0f - kHalf);
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 2, 64.0f - kHalf);
+        Vixen::SVO::SetInstanceUniformScale(inst, kRenderScale);
+        inst.material.color[0] = inst.material.color[1] = inst.material.color[2] = 1.0f;
+        inst.material.octreeIndex  = 0u;
+        inst.material.providerKind = 0u;
+        inst.material.recipeId     = 0u;
         node->SetInstances({inst});
         node->Setup();
         ASSERT_NO_THROW(node->Compile());
@@ -934,6 +938,7 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         VkBuffer materialsBuf= buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
         VkBuffer configBuf   = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
         VkBuffer instanceBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+        VkBuffer instanceTransformBuf = buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index);
         VkBuffer tierRefBuf  = buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index);
         // FIX: this scene is FORMAT_STORED_SDF (SerializeSdf) -- handleLeafHitInstancedSdf
         // reads real color/density data from these, unlike the binary-body sibling test this
@@ -964,7 +969,7 @@ TEST_F(TierCrossingLodResidencyTest, NonResidentChildNeverCrossesResidentChildDo
         pc.debugTargetPixel = glm::ivec2(-1, -1);  // (-1,-1) disables (see PushConstants comment)
 
         ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-            nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+            nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf, tierRefBuf,
             sdfBuf, lookupBuf, mipBuf,
             pc, kW, kH, 1u, iterCounts, rgba, hitRecords));
 
@@ -1047,14 +1052,14 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     node->SetRecipePool(std::move(scene.pool));
 
     Vixen::SVO::BodyInstanceGpu inst{};
-    inst.worldPos[0]  = 64.0f - kHalf;
-    inst.worldPos[1]  = 64.0f - kHalf;
-    inst.worldPos[2]  = 64.0f - kHalf;
-    inst.renderScale  = kRenderScale;
-    inst.color[0] = inst.color[1] = inst.color[2] = 1.0f;
-    inst.octreeIndex  = 0u;
-    inst.providerKind = 0u;
-    inst.recipeId     = 0u;
+    Vixen::SVO::SetInstanceTranslationComponent(inst, 0, 64.0f - kHalf);
+    Vixen::SVO::SetInstanceTranslationComponent(inst, 1, 64.0f - kHalf);
+    Vixen::SVO::SetInstanceTranslationComponent(inst, 2, 64.0f - kHalf);
+    Vixen::SVO::SetInstanceUniformScale(inst, kRenderScale);
+    inst.material.color[0] = inst.material.color[1] = inst.material.color[2] = 1.0f;
+    inst.material.octreeIndex  = 0u;
+    inst.material.providerKind = 0u;
+    inst.material.recipeId     = 0u;
     node->SetInstances({inst});
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
@@ -1067,6 +1072,7 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     VkBuffer materialsBuf = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
     VkBuffer configBuf    = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
     VkBuffer instanceBuf  = buf(C::INSTANCE_BUFFER_Slot::index);
+    VkBuffer instanceTransformBuf = buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index);
     VkBuffer tierRefBuf   = buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index);
     // FIX: this scene is FORMAT_STORED_SDF (SerializeSdf) -- shadeFromMipSample /
     // handleLeafHitInstancedSdf both read real data from these, unlike the binary-body
@@ -1113,7 +1119,7 @@ TEST_F(TierCrossingLodResidencyTest, SubPixelFootprintSkipsCrossingEvenWhenChild
     std::vector<uint8_t> rgba;
     std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf, tierRefBuf,
         sdfBuf, lookupBuf, mipBuf,
         pc, kW, kH, 1u, iterCounts, rgba, hitRecords));
 
@@ -1224,11 +1230,11 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
 
     node->SetRecipePool(std::move(activeTierPool));
     BodyInstanceGpu instance{};
-    instance.worldPos[0] = instance.worldPos[1] = instance.worldPos[2] = 40.0f;
-    instance.renderScale = static_cast<float>(tierSpanMeters / 10.0);
-    instance.color[0] = instance.color[1] = instance.color[2] = 1.0f;
-    instance.octreeIndex = resolved->octreeIndex;
-    instance.providerKind = 0u;
+    Vixen::SVO::SetInstanceTranslationScale(
+        instance, glm::vec3(40.0f), static_cast<float>(tierSpanMeters / 10.0));
+    instance.material.color[0] = instance.material.color[1] = instance.material.color[2] = 1.0f;
+    instance.material.octreeIndex = resolved->octreeIndex;
+    instance.material.providerKind = 0u;
     node->SetInstances({instance});
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
@@ -1241,6 +1247,7 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
     const VkBuffer materialsBuf = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
     const VkBuffer configBuf = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
     const VkBuffer instanceBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+    const VkBuffer instanceTransformBuf = buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index);
     const VkBuffer tierRefBuf = buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index);
     const VkBuffer sdfBuf = buf(C::OCTREE_SDF_BUFFER_Slot::index);
     const VkBuffer lookupBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
@@ -1271,7 +1278,7 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
     std::vector<uint8_t> rgba;
     std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf, tierRefBuf,
         sdfBuf, lookupBuf, mipBuf, pc, kWidth, kHeight, 1u,
         iterCounts, rgba, hitRecords));
     ASSERT_EQ(hitRecords.size(), static_cast<size_t>(kWidth) * kHeight);
@@ -1295,7 +1302,7 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
     std::vector<uint8_t> steppedRgba;
     std::vector<HitRecordCpu> steppedHitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf, tierRefBuf,
         sdfBuf, lookupBuf, mipBuf, steppedPc, kWidth, kHeight, 1u,
         steppedIterCounts, steppedRgba, steppedHitRecords));
     const HitRecordCpu& steppedCenterHit = steppedHitRecords[kCenterPixel];
@@ -1342,7 +1349,7 @@ TEST_F(TierCrossingLodResidencyTest, ThirtyAuAddressRendersCloseupFromTierLocalC
     std::vector<uint8_t> lodRgba;
     std::vector<HitRecordCpu> lodRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, tierRefBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf, tierRefBuf,
         sdfBuf, lookupBuf, mipBuf, lodPc, kWidth, kHeight, 1u,
         lodIterCounts, lodRgba, lodRecords));
     const auto countMagenta = [](const std::vector<HitRecordCpu>& records) {

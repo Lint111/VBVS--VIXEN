@@ -3578,16 +3578,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     constexpr float kRenderScale = 4.8f;
                     constexpr float kHalf = 5.0f * kRenderScale;  // = 24.0f (half of the [0,10] span)
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0]  = 64.0f - kHalf;
-                    inst.worldPos[1]  = 64.0f - kHalf;
-                    inst.worldPos[2]  = 64.0f - kHalf;
-                    inst.renderScale  = kRenderScale;
-                    inst.color[0]     = 1.0f;
-                    inst.color[1]     = 1.0f;
-                    inst.color[2]     = 1.0f;
-                    inst.octreeIndex  = 0u;    // parent tree
-                    inst.providerKind = 0u;    // PROVIDER_STORED
-                    inst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf), kRenderScale);
+                    inst.material.color[0]     = 1.0f;
+                    inst.material.color[1]     = 1.0f;
+                    inst.material.color[2]     = 1.0f;
+                    inst.material.octreeIndex  = 0u;    // parent tree
+                    inst.material.providerKind = 0u;    // PROVIDER_STORED
+                    inst.material.recipeId     = 0u;
 
                     bodyScene->SetInstances({inst});
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CROSSING_DEMO: parent leaf ("
@@ -3743,19 +3740,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
 
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
-                inst.renderScale = 1.0f;   // unused by Procedural
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f);
                 const glm::vec3& tint = kColors[shape];
-                inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
-                inst.octreeIndex = 0u;    // unused by Procedural
-                inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
-                inst.recipeId = recipeId; // >=2 -> routes through the spliced uber path
+                inst.material.color[0] = tint.x; inst.material.color[1] = tint.y; inst.material.color[2] = tint.z;
+                inst.material.octreeIndex = 0u;    // unused by Procedural
+                inst.material.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                inst.material.recipeId = recipeId; // >=2 -> routes through the spliced uber path
                 // Recipe-Parameterization M2 Task 6: seed a real per-instance varying value
                 // (not the previous all-zero placeholder) so a future ReadParam-using recipe
                 // (M3's live demo) has something live to read; none of these N demo programs
                 // use ReadParam yet, so this is inert today but proves the SSBO carries a
                 // genuinely varying value end-to-end per instance.
-                inst.recipeParams[0] = static_cast<float>(i % 10);
+                inst.material.recipeParams[0] = static_cast<float>(i % 10);
                 uberBodies.push_back(inst);
             }
 
@@ -3804,12 +3800,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                      std::to_string(static_cast<int>(rpRegResult)));
                 } else {
                     Vixen::SVO::BodyInstanceGpu rpInst{};
-                    rpInst.renderScale  = 1.0f;   // unused by Procedural
-                    rpInst.color[0] = 1.0f; rpInst.color[1] = 0.85f; rpInst.color[2] = 0.2f;  // gold tint, visually distinct
-                    rpInst.octreeIndex  = 0u;     // unused by Procedural
-                    rpInst.providerKind = 1u;     // PROVIDER_PROCEDURAL
-                    rpInst.recipeId     = readParamRecipeId;
-                    rpInst.recipeParams[0] = 0.0f;  // PreTick's sweep overwrites this every frame
+                    Vixen::SVO::SetInstanceUniformScale(rpInst, 1.0f);   // unused by Procedural
+                    rpInst.material.color[0] = 1.0f; rpInst.material.color[1] = 0.85f; rpInst.material.color[2] = 0.2f;  // gold tint, visually distinct
+                    rpInst.material.octreeIndex  = 0u;     // unused by Procedural
+                    rpInst.material.providerKind = 1u;     // PROVIDER_PROCEDURAL
+                    rpInst.material.recipeId     = readParamRecipeId;
+                    rpInst.material.recipeParams[0] = 0.0f;  // PreTick's sweep overwrites this every frame
                     uberBodies.push_back(rpInst);
                     mainLogger->Info("[BuildRenderGraph] VIXEN_PROCEDURAL_UBER_DEMO: registered "
                                      "ReadParam demo body recipeId=" + std::to_string(readParamRecipeId) +
@@ -3891,17 +3887,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
                 for (int k = 0; k < instanceCount; ++k) {
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.renderScale = 1.0f;
-                    inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
-                    inst.octreeIndex = 0u;
-                    inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
-                    inst.recipeId = recipeId;
+                    inst.material.color[0] = tint.x; inst.material.color[1] = tint.y; inst.material.color[2] = tint.z;
+                    inst.material.octreeIndex = 0u;
+                    inst.material.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                    inst.material.recipeId = recipeId;
                     // Each instance's own world Z offset so N>1 instances of one recipe are
                     // screen-space-separated rather than perfectly overlapping (still all within
                     // the recipe's shared boundCenter/boundRadius footprint above -- overlapping
                     // bound SPHERES are fine, that's just conservative bucketing coverage).
-                    inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f;
-                    inst.worldPos[2] = static_cast<float>(k) * 3.0f;
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f, 0.0f, static_cast<float>(k) * 3.0f), 1.0f);
                     hotColdBodies.push_back(inst);
                     ++totalInstances;
                 }
@@ -4193,22 +4187,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
                 if (i < diversityInstantiated) {
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
-                    inst.renderScale = 1.0f;   // unused by Procedural
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f);
                     const glm::vec3& tint = kColors[shape];
-                    inst.color[0] = tint.x; inst.color[1] = tint.y; inst.color[2] = tint.z;
-                    inst.octreeIndex = 0u;    // unused by Procedural
-                    inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
-                    inst.recipeId = recipeId;
+                    inst.material.color[0] = tint.x; inst.material.color[1] = tint.y; inst.material.color[2] = tint.z;
+                    inst.material.octreeIndex = 0u;    // unused by Procedural
+                    inst.material.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                    inst.material.recipeId = recipeId;
                     // recipeParams[0..2] = the declared world position, sourced via
                     // ReadParamFloat3(idx=0) inside the recipe above -- M2 supplies this ONCE at
                     // scene setup (a static-per-run spatial layout, per the prompt's own "does
                     // not need to animate every frame" scope note); M3 will later mutate this
                     // same field per-frame via the identical SetInstances() path, not a new one.
-                    inst.recipeParams[0] = declaredPos.x;
-                    inst.recipeParams[1] = declaredPos.y;
-                    inst.recipeParams[2] = declaredPos.z;
-                    inst.recipeParams[3] = 0.0f;  // M3: PreTick's per-frame sweep overwrites this
+                    inst.material.recipeParams[0] = declaredPos.x;
+                    inst.material.recipeParams[1] = declaredPos.y;
+                    inst.material.recipeParams[2] = declaredPos.z;
+                    inst.material.recipeParams[3] = 0.0f;  // M3: PreTick's per-frame sweep overwrites this
                     diversityBodies.push_back(inst);
                 }
             }
@@ -4395,16 +4388,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     constexpr float kRenderScale = 4.8f;
                     constexpr float kHalf = 5.0f * kRenderScale;
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0]  = 64.0f - kHalf;
-                    inst.worldPos[1]  = 64.0f - kHalf;
-                    inst.worldPos[2]  = 64.0f - kHalf;
-                    inst.renderScale  = kRenderScale;
-                    inst.color[0]     = 1.0f;
-                    inst.color[1]     = 1.0f;
-                    inst.color[2]     = 1.0f;
-                    inst.octreeIndex  = 0u;    // parent (T0) tree
-                    inst.providerKind = 0u;    // PROVIDER_STORED
-                    inst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf), kRenderScale);
+                    inst.material.color[0]     = 1.0f;
+                    inst.material.color[1]     = 1.0f;
+                    inst.material.color[2]     = 1.0f;
+                    inst.material.octreeIndex  = 0u;    // parent (T0) tree
+                    inst.material.providerKind = 0u;    // PROVIDER_STORED
+                    inst.material.recipeId     = 0u;
 
                     bodyScene->SetInstances({inst});
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_CHAIN_DEMO: T0 leaf ("
@@ -4671,16 +4661,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     constexpr float kRenderScale = 4.8f;
                     constexpr float kHalf = 5.0f * kRenderScale;
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0]  = 64.0f - kHalf;
-                    inst.worldPos[1]  = 64.0f - kHalf;
-                    inst.worldPos[2]  = 64.0f - kHalf;
-                    inst.renderScale  = kRenderScale;
-                    inst.color[0]     = 1.0f;
-                    inst.color[1]     = 1.0f;
-                    inst.color[2]     = 1.0f;
-                    inst.octreeIndex  = 0u;    // parent (T0) tree
-                    inst.providerKind = 0u;    // PROVIDER_STORED
-                    inst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf), kRenderScale);
+                    inst.material.color[0]     = 1.0f;
+                    inst.material.color[1]     = 1.0f;
+                    inst.material.color[2]     = 1.0f;
+                    inst.material.octreeIndex  = 0u;    // parent (T0) tree
+                    inst.material.providerKind = 0u;    // PROVIDER_STORED
+                    inst.material.recipeId     = 0u;
 
                     bodyScene->SetInstances({inst});
                     mainLogger->Info("[BuildRenderGraph] VIXEN_TIER_EARTH_DEMO: T0 leaf ("
@@ -5103,16 +5090,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     constexpr float kObsRenderScale = 0.1f;
                     constexpr float kObsHalf = 5.0f * kObsRenderScale;  // = 0.5f
                     Vixen::SVO::BodyInstanceGpu obsInst{};
-                    obsInst.worldPos[0]  = 64.0f - kObsHalf;
-                    obsInst.worldPos[1]  = 64.0f - kObsHalf;
-                    obsInst.worldPos[2]  = 64.0f - kObsHalf;
-                    obsInst.renderScale  = kObsRenderScale;
-                    obsInst.color[0]     = 1.0f;
-                    obsInst.color[1]     = 1.0f;
-                    obsInst.color[2]     = 1.0f;
-                    obsInst.octreeIndex  = 0u;
-                    obsInst.providerKind = 0u;
-                    obsInst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(
+                        obsInst, glm::vec3(64.0f - kObsHalf), kObsRenderScale);
+                    obsInst.material.color[0] = 1.0f;
+                    obsInst.material.color[1] = 1.0f;
+                    obsInst.material.color[2] = 1.0f;
+                    obsInst.material.octreeIndex = 0u;
 
                     std::vector<Vixen::SVO::BodyInstanceGpu> obsInstances{obsInst};
                     if (obsAddFarSibling) {
@@ -5128,16 +5111,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         }
                         const float kFarHalf = 5.0f * kFarRenderScale;
                         Vixen::SVO::BodyInstanceGpu obsFarInst{};
-                        obsFarInst.worldPos[0]  = 64.0f - kFarHalf;
-                        obsFarInst.worldPos[1]  = 64.0f - kFarHalf;
-                        obsFarInst.worldPos[2]  = 64.0f - kFarHalf;
-                        obsFarInst.renderScale  = kFarRenderScale;
-                        obsFarInst.color[0]     = 1.0f;
-                        obsFarInst.color[1]     = 0.5f;
-                        obsFarInst.color[2]     = 0.0f;
-                        obsFarInst.octreeIndex  = static_cast<uint32_t>(obsFarOctreeIndex);
-                        obsFarInst.providerKind = 0u;
-                        obsFarInst.recipeId     = 0u;
+                        Vixen::SVO::SetInstanceTranslationScale(
+                            obsFarInst, glm::vec3(64.0f - kFarHalf), kFarRenderScale);
+                        obsFarInst.material.color[0] = 1.0f;
+                        obsFarInst.material.color[1] = 0.5f;
+                        obsFarInst.material.color[2] = 0.0f;
+                        obsFarInst.material.octreeIndex = static_cast<uint32_t>(obsFarOctreeIndex);
                         obsInstances.push_back(obsFarInst);
                     }
                     if (obsAddNearSibling) {
@@ -5147,16 +5126,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         constexpr float kNearInstRenderScale = 2.0f;
                         constexpr float kNearInstHalf = 5.0f * kNearInstRenderScale;
                         Vixen::SVO::BodyInstanceGpu obsNearInst{};
-                        obsNearInst.worldPos[0]  = 64.0f - kNearInstHalf;
-                        obsNearInst.worldPos[1]  = 64.0f - kNearInstHalf;
-                        obsNearInst.worldPos[2]  = 64.0f - kNearInstHalf;
-                        obsNearInst.renderScale  = kNearInstRenderScale;
-                        obsNearInst.color[0]     = 0.5f;
-                        obsNearInst.color[1]     = 0.0f;
-                        obsNearInst.color[2]     = 1.0f;
-                        obsNearInst.octreeIndex  = static_cast<uint32_t>(obsNearOctreeIndex);
-                        obsNearInst.providerKind = 0u;
-                        obsNearInst.recipeId     = 0u;
+                        Vixen::SVO::SetInstanceTranslationScale(
+                            obsNearInst, glm::vec3(64.0f - kNearInstHalf), kNearInstRenderScale);
+                        obsNearInst.material.color[0] = 0.5f;
+                        obsNearInst.material.color[1] = 0.0f;
+                        obsNearInst.material.color[2] = 1.0f;
+                        obsNearInst.material.octreeIndex = static_cast<uint32_t>(obsNearOctreeIndex);
                         obsInstances.push_back(obsNearInst);
                     }
                     if (obsAddStructure) {
@@ -5173,16 +5148,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                         constexpr float kStructRenderScale = 4.8f;
                         constexpr float kStructHalf = 5.0f * kStructRenderScale;
                         Vixen::SVO::BodyInstanceGpu obsStructInst{};
-                        obsStructInst.worldPos[0]  = 64.0f - kStructHalf;
-                        obsStructInst.worldPos[1]  = 64.0f - kStructHalf;
-                        obsStructInst.worldPos[2]  = 64.0f - kStructHalf;
-                        obsStructInst.renderScale  = kStructRenderScale;
-                        obsStructInst.color[0]     = 0.0f;
-                        obsStructInst.color[1]     = 1.0f;
-                        obsStructInst.color[2]     = 1.0f;
-                        obsStructInst.octreeIndex  = static_cast<uint32_t>(obsStructOctreeIndex);
-                        obsStructInst.providerKind = 0u;
-                        obsStructInst.recipeId     = 0u;
+                        Vixen::SVO::SetInstanceTranslationScale(
+                            obsStructInst, glm::vec3(64.0f - kStructHalf), kStructRenderScale);
+                        obsStructInst.material.color[0] = 0.0f;
+                        obsStructInst.material.color[1] = 1.0f;
+                        obsStructInst.material.color[2] = 1.0f;
+                        obsStructInst.material.octreeIndex = static_cast<uint32_t>(obsStructOctreeIndex);
                         obsInstances.push_back(obsStructInst);
                     }
                     bodyScene->SetInstances(std::move(obsInstances));
@@ -5304,16 +5275,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 constexpr float kRenderScale = 4.8f;
                 constexpr float kHalf = 5.0f * kRenderScale;
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0]  = 64.0f - kHalf;
-                inst.worldPos[1]  = 64.0f - kHalf;
-                inst.worldPos[2]  = 64.0f - kHalf;
-                inst.renderScale  = kRenderScale;
-                inst.color[0]     = 1.0f;
-                inst.color[1]     = 1.0f;
-                inst.color[2]     = 1.0f;
-                inst.octreeIndex  = 0u;
-                inst.providerKind = 0u;  // PROVIDER_STORED
-                inst.recipeId     = 0u;
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf), kRenderScale);
+                inst.material.color[0]     = 1.0f;
+                inst.material.color[1]     = 1.0f;
+                inst.material.color[2]     = 1.0f;
+                inst.material.octreeIndex  = 0u;
+                inst.material.providerKind = 0u;  // PROVIDER_STORED
+                inst.material.recipeId     = 0u;
                 bodyScene->SetInstances({inst});
                 mainLogger->Info("[BuildRenderGraph] VIXEN_RESTIR_GATE_DEMO: seeded 1 Stored-SDF body instance");
             }
@@ -5544,16 +5512,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     constexpr float kRenderScale = 4.8f;
                     constexpr float kHalf = 5.0f * kRenderScale;
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0]  = 64.0f - kHalf;
-                    inst.worldPos[1]  = 64.0f - kHalf;
-                    inst.worldPos[2]  = 64.0f - kHalf;
-                    inst.renderScale  = kRenderScale;
-                    inst.color[0]     = 1.0f;
-                    inst.color[1]     = 1.0f;
-                    inst.color[2]     = 1.0f;
-                    inst.octreeIndex  = 0u;
-                    inst.providerKind = 0u;
-                    inst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(64.0f - kHalf, 64.0f - kHalf, 64.0f - kHalf), kRenderScale);
+                    inst.material.color[0]     = 1.0f;
+                    inst.material.color[1]     = 1.0f;
+                    inst.material.color[2]     = 1.0f;
+                    inst.material.octreeIndex  = 0u;
+                    inst.material.providerKind = 0u;
+                    inst.material.recipeId     = 0u;
 
                     bodyScene->SetInstances({inst});
 
@@ -5643,15 +5608,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
             auto placeProceduralSphere = [&](float cx, float cy, float cz, float radius,
                                              float r, float g, float b) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0] = cx; inst.worldPos[1] = cy; inst.worldPos[2] = cz;
-                inst.renderScale = 1.0f;
-                inst.color[0] = r; inst.color[1] = g; inst.color[2] = b;
-                inst.octreeIndex = 0u;
-                inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
-                inst.recipeId = 0u;      // sphere
-                inst.recipeParams[0] = radius;
-                inst.recipeParams[1] = 0.0f;
-                inst.recipeParams[2] = 0.0f;
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(cx, cy, cz), 1.0f);
+                inst.material.color[0] = r; inst.material.color[1] = g; inst.material.color[2] = b;
+                inst.material.octreeIndex = 0u;
+                inst.material.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                inst.material.recipeId = 0u;      // sphere
+                inst.material.recipeParams[0] = radius;
+                inst.material.recipeParams[1] = 0.0f;
+                inst.material.recipeParams[2] = 0.0f;
                 return inst;
             };
             const glm::vec3 targetCenter(64.0f, 64.0f, 64.0f);
@@ -5686,13 +5650,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
             constexpr float kStarLightRange = 100.0f;
             auto makeSphere = [](glm::vec3 center, float radius, glm::vec3 color, float emission) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0] = center.x; inst.worldPos[1] = center.y; inst.worldPos[2] = center.z;
-                inst.renderScale = 1.0f;
-                inst.color[0] = color.x; inst.color[1] = color.y; inst.color[2] = color.z;
-                inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
-                inst.recipeId = 0u;      // sphere
-                inst.recipeParams[0] = radius;
-                inst.recipeParams[3] = emission;
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(center.x, center.y, center.z), 1.0f);
+                inst.material.color[0] = color.x; inst.material.color[1] = color.y; inst.material.color[2] = color.z;
+                inst.material.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                inst.material.recipeId = 0u;      // sphere
+                inst.material.recipeParams[0] = radius;
+                inst.material.recipeParams[3] = emission;
                 return inst;
             };
 
@@ -5709,13 +5672,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
             const Vixen::SVO::BodyInstanceGpu& star = starBodies.front();
             Vixen::Gpu::Light starLight{};
-            starLight.direction_or_positionX = star.worldPos[0];
-            starLight.direction_or_positionY = star.worldPos[1];
-            starLight.direction_or_positionZ = star.worldPos[2];
+            const glm::vec3 starPosition = Vixen::SVO::TransformPoint(
+                star.transform.localToWorld, glm::vec3(0.0f));
+            starLight.direction_or_positionX = starPosition.x;
+            starLight.direction_or_positionY = starPosition.y;
+            starLight.direction_or_positionZ = starPosition.z;
             starLight.kind = 1u;  // point
-            starLight.radianceX = star.color[0] * star.recipeParams[3];
-            starLight.radianceY = star.color[1] * star.recipeParams[3];
-            starLight.radianceZ = star.color[2] * star.recipeParams[3];
+            starLight.radianceX = star.material.color[0] * star.material.recipeParams[3];
+            starLight.radianceY = star.material.color[1] * star.material.recipeParams[3];
+            starLight.radianceZ = star.material.color[2] * star.material.recipeParams[3];
             starLight.range = kStarLightRange;
 
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
@@ -5804,14 +5769,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
             };
             // Bake each body with a FLAT WHITE per-voxel color (Cornell M3 round 7 fix):
             // BakeSdfWorld's DEFAULT per-voxel color is a debug rainbow (SdfBake.h
-            // DefaultBandColor), which the STORED shading path multiplies by inst.color
-            // (TraceWorld.glsl: bestColor = hitColor*inst.color) -- rendering every wall as
+            // DefaultBandColor), which the STORED shading path multiplies by inst.material.color
+            // (TraceWorld.glsl: bestColor = hitColor*inst.material.color) -- rendering every wall as
             // garish rainbow*tint blotches instead of a flat per-wall color. Baking WHITE
-            // (1,1,1) makes hitColor*inst.color == inst.color, i.e. the STORED path now
+            // (1,1,1) makes hitColor*inst.material.color == inst.material.color, i.e. the STORED path now
             // yields EXACTLY the same flat per-wall tint the virtual/PROCEDURAL variant
-            // already shows (bestColor = inst.color; that path has no baked voxel channel).
+            // already shows (bestColor = inst.material.color; that path has no baked voxel channel).
             // White (not the per-body tint) is deliberate: the tint is already applied ONCE
-            // via inst.color, so baking the tint too would square it (darken). Passing the
+            // via inst.material.color, so baking the tint too would square it (darken). Passing the
             // color as the ColorFn (rather than overwriting the serialized channelPool
             // post-bake) fixes BOTH the brick channelPool and the mip pool consistently, and
             // touches the shared BakeSdfWorld only via its additive, default-preserving
@@ -6281,15 +6246,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 auto makeInstance = [&](uint32_t octreeIdx, glm::vec3 color, glm::vec3 worldPos,
                                         float renderScale, float emissionIntensity = 0.0f) {
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.worldPos[0] = worldPos.x;
-                    inst.worldPos[1] = worldPos.y;
-                    inst.worldPos[2] = worldPos.z;
-                    inst.renderScale = renderScale;
-                    inst.color[0] = color.x; inst.color[1] = color.y; inst.color[2] = color.z;
-                    inst.octreeIndex = octreeIdx;
-                    inst.providerKind = 0u;  // PROVIDER_STORED
-                    inst.recipeId = 0u;
-                    inst.recipeParams[3] = emissionIntensity;
+                    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(worldPos.x, worldPos.y, worldPos.z), renderScale);
+                    inst.material.color[0] = color.x; inst.material.color[1] = color.y; inst.material.color[2] = color.z;
+                    inst.material.octreeIndex = octreeIdx;
+                    inst.material.providerKind = 0u;  // PROVIDER_STORED
+                    inst.material.recipeId = 0u;
+                    inst.material.recipeParams[3] = emissionIntensity;
                     return inst;
                 };
                 const float kWallRenderScale  = bodyRenderScale(kWallN, kWallSubdiv);
@@ -6454,19 +6416,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 }
 
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
-                inst.renderScale = 1.0f;  // unused by Procedural
-                inst.color[0] = b.color.x; inst.color[1] = b.color.y; inst.color[2] = b.color.z;
-                inst.octreeIndex = 0u;    // unused by Procedural
-                inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
-                inst.recipeId = recipeId;
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f);
+                inst.material.color[0] = b.color.x; inst.material.color[1] = b.color.y; inst.material.color[2] = b.color.z;
+                inst.material.octreeIndex = 0u;    // unused by Procedural
+                inst.material.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                inst.material.recipeId = recipeId;
                 // M11.2: recipeParams[3..5] are unconditionally zero-initialized above and
                 // never written elsewhere in this loop (every body here "samples world p
                 // directly", per this block's own header comment) -- genuinely spare, so the
                 // light body's emission intensity rides in recipeParams[3] rather than a new
                 // BodyInstance field. Every other body stays 0.0 (non-emissive).
                 if (std::string(b.name) == "light") {
-                    inst.recipeParams[3] = kLightEmissionIntensity;
+                    inst.material.recipeParams[3] = kLightEmissionIntensity;
                 }
                 virtualBodies.push_back(inst);
             }
@@ -6687,15 +6648,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     for (size_t i = 0; i < worldBodies.size(); ++i) {
                         const CornellWorldSpaceBody& b = worldBodies[i];
                         Vixen::SVO::BodyInstanceGpu inst{};
-                        inst.color[0] = b.color.x; inst.color[1] = b.color.y; inst.color[2] = b.color.z;
+                        inst.material.color[0] = b.color.x; inst.material.color[1] = b.color.y; inst.material.color[2] = b.color.z;
 
                         if (i == kHoleWallIdx) {
                             const glm::vec3 wp = bodyWorldPos(b.worldCenter, kWallN, kWallSubdiv);
-                            inst.worldPos[0] = wp.x; inst.worldPos[1] = wp.y; inst.worldPos[2] = wp.z;
-                            inst.renderScale = bodyRenderScale(kWallN, kWallSubdiv);
-                            inst.octreeIndex = 0u;
-                            inst.providerKind = 0u;  // PROVIDER_STORED
-                            inst.recipeId = 0u;
+                            Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(wp.x, wp.y, wp.z), bodyRenderScale(kWallN, kWallSubdiv));
+                            inst.material.octreeIndex = 0u;
+                            inst.material.providerKind = 0u;  // PROVIDER_STORED
+                            inst.material.recipeId = 0u;
                         } else {
                             const uint32_t recipeId = static_cast<uint32_t>(2 + i);  // 2..9, mirrors M2's own convention
                             Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
@@ -6709,11 +6669,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                                  std::to_string(static_cast<int>(regResult)));
                                 allRegistered = false;
                             }
-                            inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
-                            inst.renderScale = 1.0f;  // unused by Procedural
-                            inst.octreeIndex = 0u;    // unused by Procedural
-                            inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
-                            inst.recipeId = recipeId;
+                            Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f);
+                            inst.material.octreeIndex = 0u;    // unused by Procedural
+                            inst.material.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                            inst.material.recipeId = recipeId;
                         }
                         instances.push_back(inst);
                     }
@@ -6877,16 +6836,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 for (size_t i = 0; i < worldBodies.size(); ++i) {
                     const CornellWorldSpaceBody& b = worldBodies[i];
                     Vixen::SVO::BodyInstanceGpu inst{};
-                    inst.color[0] = b.color.x; inst.color[1] = b.color.y; inst.color[2] = b.color.z;
+                    inst.material.color[0] = b.color.x; inst.material.color[1] = b.color.y; inst.material.color[2] = b.color.z;
 
                     if (isStored[i]) {
                         auto [n, subdiv] = gridParamsFor(i);
                         const glm::vec3 wp = bodyWorldPos(b.worldCenter, n, subdiv);
-                        inst.worldPos[0] = wp.x; inst.worldPos[1] = wp.y; inst.worldPos[2] = wp.z;
-                        inst.renderScale = bodyRenderScale(n, subdiv);
-                        inst.octreeIndex = storedOctreeIndexOf[i];
-                        inst.providerKind = 0u;  // PROVIDER_STORED
-                        inst.recipeId = 0u;
+                        Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(wp.x, wp.y, wp.z), bodyRenderScale(n, subdiv));
+                        inst.material.octreeIndex = storedOctreeIndexOf[i];
+                        inst.material.providerKind = 0u;  // PROVIDER_STORED
+                        inst.material.recipeId = 0u;
                     } else {
                         const uint32_t recipeId = static_cast<uint32_t>(2 + i);  // 2..9, mirrors M2's own convention
                         Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
@@ -6900,11 +6858,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                              std::to_string(static_cast<int>(regResult)));
                             allRegistered = false;
                         }
-                        inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;  // unused: field samples world p directly
-                        inst.renderScale = 1.0f;  // unused by Procedural
-                        inst.octreeIndex = 0u;    // unused by Procedural
-                        inst.providerKind = 1u;   // PROVIDER_PROCEDURAL
-                        inst.recipeId = recipeId;
+                        Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f);
+                        inst.material.octreeIndex = 0u;    // unused by Procedural
+                        inst.material.providerKind = 1u;   // PROVIDER_PROCEDURAL
+                        inst.material.recipeId = recipeId;
                     }
                     instances.push_back(inst);
                 }
@@ -7153,24 +7110,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
                 if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                     Vixen::SVO::BodyInstanceGpu sourceInst{};
-                    sourceInst.worldPos[0]  = sourceWorldPos.x;
-                    sourceInst.worldPos[1]  = sourceWorldPos.y;
-                    sourceInst.worldPos[2]  = sourceWorldPos.z;
-                    sourceInst.renderScale  = kRenderScale;
-                    sourceInst.color[0]     = 1.0f; sourceInst.color[1] = 1.0f; sourceInst.color[2] = 1.0f;
-                    sourceInst.octreeIndex  = 0u;
-                    sourceInst.providerKind = 0u;  // PROVIDER_STORED
-                    sourceInst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(sourceInst, sourceWorldPos, kRenderScale);
+                    sourceInst.material.color[0] = 1.0f;
+                    sourceInst.material.color[1] = 1.0f;
+                    sourceInst.material.color[2] = 1.0f;
+                    sourceInst.material.octreeIndex = 0u;
 
                     Vixen::SVO::BodyInstanceGpu wallInst{};
-                    wallInst.worldPos[0]  = sourceWorldPos.x;  // SAME grid->world transform as sourceInst
-                    wallInst.worldPos[1]  = sourceWorldPos.y;
-                    wallInst.worldPos[2]  = sourceWorldPos.z;
-                    wallInst.renderScale  = kRenderScale;
-                    wallInst.color[0]     = 0.7f; wallInst.color[1] = 0.7f; wallInst.color[2] = 0.7f;
-                    wallInst.octreeIndex  = 1u;
-                    wallInst.providerKind = 0u;  // PROVIDER_STORED
-                    wallInst.recipeId     = 0u;
+                    Vixen::SVO::SetInstanceTranslationScale(wallInst, sourceWorldPos, kRenderScale);
+                    wallInst.material.color[0] = 0.7f;
+                    wallInst.material.color[1] = 0.7f;
+                    wallInst.material.color[2] = 0.7f;
+                    wallInst.material.octreeIndex = 1u;
 
                     bodyScene->SetRecipePool(std::move(cat));
                     bodyScene->SetInstances({sourceInst, wallInst});
@@ -7348,16 +7299,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                        uint32_t octreeIdx,
                                        float renderScale) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0]  = cx - 5.0f * renderScale;
-                inst.worldPos[1]  = cy - 5.0f * renderScale;
-                inst.worldPos[2]  = cz - 5.0f * renderScale;
-                inst.renderScale  = renderScale;
-                inst.color[0]     = r;
-                inst.color[1]     = g;
-                inst.color[2]     = b;
-                inst.octreeIndex  = octreeIdx;
-                inst.providerKind = 0u;  // PROVIDER_STORED: octree path (formatId==FORMAT_STORED_SDF here)
-                inst.recipeId     = 0u;
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(cx - 5.0f * renderScale, cy - 5.0f * renderScale, cz - 5.0f * renderScale), renderScale);
+                inst.material.color[0]     = r;
+                inst.material.color[1]     = g;
+                inst.material.color[2]     = b;
+                inst.material.octreeIndex  = octreeIdx;
+                inst.material.providerKind = 0u;  // PROVIDER_STORED: octree path (formatId==FORMAT_STORED_SDF here)
+                inst.material.recipeId     = 0u;
                 return inst;
             };
             // Round 12 (far-field default-coef parity, plan ledger 2026-08-04
@@ -7477,16 +7425,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                    float r, float g, float b,
                                    uint32_t octreeIdx) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0]  = cx - kHalf;  // worldPos = center - 3.75 per axis
-                inst.worldPos[1]  = cy - kHalf;
-                inst.worldPos[2]  = cz - kHalf;
-                inst.renderScale  = kRenderScale;
-                inst.color[0]     = r;
-                inst.color[1]     = g;
-                inst.color[2]     = b;
-                inst.octreeIndex  = octreeIdx;    // selects configs[k] (incl. formatId)
-                inst.providerKind = 0u;           // PROVIDER_STORED: octree/Stored path
-                inst.recipeId     = 0u;           // unused by Stored path
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(cx - kHalf, cy - kHalf, cz - kHalf), kRenderScale);
+                inst.material.color[0]     = r;
+                inst.material.color[1]     = g;
+                inst.material.color[2]     = b;
+                inst.material.octreeIndex  = octreeIdx;    // selects configs[k] (incl. formatId)
+                inst.material.providerKind = 0u;           // PROVIDER_STORED: octree/Stored path
+                inst.material.recipeId     = 0u;           // unused by Stored path
                 return inst;
             };
             std::vector<Vixen::SVO::BodyInstanceGpu> storedBodies = {
@@ -7508,19 +7453,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
                                        float r, float g, float b,
                                        uint32_t recipeId, float amp, float freq) {
                 Vixen::SVO::BodyInstanceGpu inst{};
-                inst.worldPos[0] = cx;
-                inst.worldPos[1] = cy;
-                inst.worldPos[2] = cz;
-                inst.renderScale = 1.0f;            // unused by Procedural
-                inst.color[0]    = r;
-                inst.color[1]    = g;
-                inst.color[2]    = b;
-                inst.octreeIndex = 0u;              // unused by Procedural
-                inst.providerKind = 1u;             // PROVIDER_PROCEDURAL
-                inst.recipeId     = recipeId;       // 0 = sphere, 1 = displaced sphere
-                inst.recipeParams[0] = kRadius;
-                inst.recipeParams[1] = amp;
-                inst.recipeParams[2] = freq;
+                Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(cx, cy, cz), 1.0f);
+                inst.material.color[0]    = r;
+                inst.material.color[1]    = g;
+                inst.material.color[2]    = b;
+                inst.material.octreeIndex = 0u;              // unused by Procedural
+                inst.material.providerKind = 1u;             // PROVIDER_PROCEDURAL
+                inst.material.recipeId     = recipeId;       // 0 = sphere, 1 = displaced sphere
+                inst.material.recipeParams[0] = kRadius;
+                inst.material.recipeParams[1] = amp;
+                inst.material.recipeParams[2] = freq;
                 return inst;
             };
             std::vector<Vixen::SVO::BodyInstanceGpu> defaultBodies = {
@@ -7804,6 +7746,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         bucketingProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
                                    BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
                                    SlotRole::Dependency | SlotRole::Execute);
+        bucketingProviders.Provide("BodyInstanceTransformBuffer", bodyOctreeSceneNode,
+                                   BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
+                                   SlotRole::Dependency | SlotRole::Execute);
         bucketingProviders.Provide("RecipeBoundSphereBuffer", recipeBoundSphereBuffer,
                                    StorageBufferNodeConfig::FRAME_STORAGE_BUFFER,
                                    SlotRole::Dependency | SlotRole::Execute);
@@ -8052,6 +7997,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         b1Providers.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
                             BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
                             SlotRole::Dependency | SlotRole::Execute);
+        b1Providers.Provide("BodyInstanceTransformBuffer", bodyOctreeSceneNode,
+                            BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
+                            SlotRole::Dependency | SlotRole::Execute);
         b1Providers.Provide("OctreeConfigsSSBO", bodyOctreeSceneNode,
                             BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                             SlotRole::Dependency | SlotRole::Execute);
@@ -8132,6 +8080,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
         batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                       b2DescGatherer, 2,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
+                      b2DescGatherer, 4,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(b2CandidateBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                       b2DescGatherer, 3,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
@@ -8163,6 +8114,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,
                       b2ComputeDescGatherer, 2,
+                      SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+        batch.Connect(bodyOctreeSceneNode, BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
+                      b2ComputeDescGatherer, 4,
                       SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(b2CandidateBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
                       b2ComputeDescGatherer, 3,
@@ -8752,6 +8706,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER, kSceneRoles);
     sceneProviders.Provide("BodyInstanceBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, kSceneRoles);
+    sceneProviders.Provide("BodyInstanceTransformBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER, kSceneRoles);
     sceneProviders.Provide("ChannelPoolBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::SHELL_DATA_BUFFER, kSceneRoles);
     sceneProviders.Provide("BrickLookupBuffer", bodyOctreeSceneNode,
@@ -9223,6 +9179,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     sceneProviders.Provide("MiningBeamBodyInstanceBuffer", bodyOctreeSceneNode,
                            BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+                           SlotRole::Dependency | SlotRole::Execute);
+    sceneProviders.Provide("MiningBeamInstanceTransformBuffer", bodyOctreeSceneNode,
+                           BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);
     sceneProviders.Provide("MiningBeamBufferSSBO", miningBeamBufferNode,
                            MiningBeamBufferNodeConfig::MINING_BEAM_BUFFER,

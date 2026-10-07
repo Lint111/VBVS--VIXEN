@@ -313,17 +313,17 @@ struct HitAccumCellRadiance {
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
  */
 struct BodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -353,17 +353,37 @@ struct MiningBeamBufferSSBO {
  * @brief MiningBeamBodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xb5a46f12166d4353 (for runtime discovery)
+ * Layout VixenHash: 0xb22cabdb7641e2c3 (for runtime discovery)
  */
 struct MiningBeamBodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xb5a46f12166d4353ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xb22cabdb7641e2c3ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief MiningBeamInstanceTransformBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x4864789073b89d18 (for runtime discovery)
+ */
+struct MiningBeamInstanceTransformBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x4864789073b89d18ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "MiningBeamInstanceTransform";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -724,6 +744,23 @@ namespace Set0 {
         using DataType = MiningBeamBodyInstanceBuffer;
     };
 
+    /**
+     * @brief MiningBeamInstanceTransformBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_MINING_BEAM
+     */
+    struct Binding46 {
+        static constexpr const char* NAME = "MiningBeamInstanceTransformBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 46;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
+        using DataType = MiningBeamInstanceTransformBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -751,6 +788,7 @@ using HitAccumCellRadiance = Set0::Binding38;
 using BodyInstanceBuffer = Set0::Binding39;
 using MiningBeamBufferSSBO = Set0::Binding44;
 using MiningBeamBodyInstanceBuffer = Set0::Binding45;
+using MiningBeamInstanceTransformBuffer = Set0::Binding46;
 } // namespace Bind
 
 namespace Push {
@@ -893,6 +931,7 @@ inline constexpr const char* const kFeatures_Set0_Binding38[] = {"VIXEN_SRS_CELL
 inline constexpr const char* const kFeatures_Set0_Binding39[] = {"VIXEN_SRS_CELL_RESOLVE"};
 inline constexpr const char* const kFeatures_Set0_Binding44[] = {"VIXEN_MINING_BEAM"};
 inline constexpr const char* const kFeatures_Set0_Binding45[] = {"VIXEN_MINING_BEAM"};
+inline constexpr const char* const kFeatures_Set0_Binding46[] = {"VIXEN_MINING_BEAM"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"sceneRadianceImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
@@ -918,6 +957,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"BodyInstanceBuffer", false, 0, 39, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding39},
     {"MiningBeamBufferSSBO", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
     {"MiningBeamBodyInstanceBuffer", false, 0, 45, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding45},
+    {"MiningBeamInstanceTransformBuffer", false, 0, 46, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding46},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -953,7 +993,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 37;
+    static constexpr uint32_t NUM_MEMBERS = 38;
     static constexpr uint32_t NUM_FEATURES = 3;
 };
 
