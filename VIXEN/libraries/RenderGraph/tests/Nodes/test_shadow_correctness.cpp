@@ -1572,7 +1572,7 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightPickReturnsTheLitBodyInstance) {
     constexpr float kStarEmission = 16.0f;
     constexpr float kLightRange = 100.0f;
     auto star = MakeProceduralSphere(starCenter, 8.0f, starColor.x, starColor.y, starColor.z);
-    star.recipeParams[3] = kStarEmission;
+    star.material.recipeParams[3] = kStarEmission;
     const glm::vec3 bodyCenter = starCenter + glm::vec3(-23.0f, 12.0f, -25.0f);
     const LightingConfigCpu lighting = MakePointLighting(
         starCenter, starColor * kStarEmission, kLightRange, 0.04f);

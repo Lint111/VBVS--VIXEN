@@ -242,10 +242,19 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
         BodyInstance inst = bodyInstances[instIdx];
         const uint instanceIndex = uint(instIdx);
         const bool axisAlignedUniform = instanceIsAxisAlignedUniformScale(instanceIndex);
-        const bool preserveLegacyProcedural = axisAlignedUniform &&
-            instanceUniformAxisScale(instanceIndex) == 1.0 && inst.recipeId < 2u;
-        const vec3 worldRayDirection = normalize(rayDir);
-        const vec3 instOrigin = instanceWorldToLocalPoint(instanceIndex, rayOrigin);
+        // Preserve world-space-authored procedural paths on their original ray
+        // sequence: legacy recipes 0/1 carry their former worldPos as translation,
+        // while identity Cornell recipes retain world-space bounds. Localizing
+        // either path can move thresholded capture pixels through rounding alone.
+        const bool preserveLegacyProcedural = inst.providerKind == PROVIDER_PROCEDURAL &&
+            axisAlignedUniform &&
+            instanceUniformAxisScale(instanceIndex) == 1.0 &&
+            (inst.recipeId < 2u ||
+             all(equal(instanceTranslation(instanceIndex), vec3(0.0))));
+        const vec3 worldRayDirection = preserveLegacyProcedural ? rayDir : normalize(rayDir);
+        const vec3 instOrigin = preserveLegacyProcedural
+            ? rayOrigin
+            : instanceWorldToLocalPoint(instanceIndex, rayOrigin);
         const vec3 instRayVector = axisAlignedUniform
             ? worldRayDirection
             : instanceWorldToLocalVector(instanceIndex, worldRayDirection);
@@ -759,7 +768,7 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestT           = hitT;
             // Tint by instance colour (multiply LOD-grey or material colour)
             bestColor       = hitColor * inst.color;
-                bestNormal      = instanceLocalToWorldNormal(instanceIndex, hitNormal);
+            bestNormal      = instanceLocalToWorldNormal(instanceIndex, hitNormal);
             bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;
@@ -900,10 +909,16 @@ bool TraceWorldShadowImpl(vec3 origin, vec3 dir, float tmin, float tmax,
             continue;
         }
         const bool axisAlignedUniform = instanceIsAxisAlignedUniformScale(instanceIndex);
-        const bool preserveLegacyProcedural = axisAlignedUniform &&
-            instanceUniformAxisScale(instanceIndex) == 1.0 && inst.recipeId < 2u;
-        const vec3 worldRayDirection = normalize(rayDir);
-        vec3 instOrigin = instanceWorldToLocalPoint(instanceIndex, rayOrigin);
+        // Match the primary trace's preserved world-space procedural sequences.
+        const bool preserveLegacyProcedural = inst.providerKind == PROVIDER_PROCEDURAL &&
+            axisAlignedUniform &&
+            instanceUniformAxisScale(instanceIndex) == 1.0 &&
+            (inst.recipeId < 2u ||
+             all(equal(instanceTranslation(instanceIndex), vec3(0.0))));
+        const vec3 worldRayDirection = preserveLegacyProcedural ? rayDir : normalize(rayDir);
+        vec3 instOrigin = preserveLegacyProcedural
+            ? rayOrigin
+            : instanceWorldToLocalPoint(instanceIndex, rayOrigin);
         vec3 instRayVector = axisAlignedUniform
             ? worldRayDirection
             : instanceWorldToLocalVector(instanceIndex, worldRayDirection);

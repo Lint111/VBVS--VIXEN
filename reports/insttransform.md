@@ -22,12 +22,28 @@ The VIXEN CodeGraph helper reported that this worktree and its canonical checkou
 
 The KFR follow-up belongs in `/home/liory/projects/KernelFederationRenderer/app/src/session_renderer.cpp`. `SessionRenderer::BuildRenderGraph()` at line 28 is where the production graph is assembled, and `SessionRenderer::PreTick()` at line 86 is the per-frame write site for the transform stream. KFR was not edited. T-1123 remains open for the other half of the sim-to-render contract; this lane does not design the view snapshot.
 
-## SPT disposition
+## Run 2 — authoring-convergence merge and re-witness
 
-T-1150 should close at landing as replaced by R424, with the batch retaining only the base-proven T-1449 SVO finding. T-1170 should close at landing because the merged mining-beam path and rotated-endpoint witness pass. T-1123 remains open for the view-snapshot half of the sim-to-render contract.
+Merged `origin/wave/authoring-convergence` at `fc69e0c33be2321f52c0c1fb3c260d42a7de88a4` in merge commit `0f45bd4de89ca0eb6f0af971ca63ed74c247961d`. Git reported no textual conflicts. The overlapping `SpatialReuseShade.comp` change auto-merged; review confirmed the affine hot transform stream feeds the Cel shading path, normals use the inverse-transpose, light positions remain world-space, and the minebeam endpoint path transforms both endpoints. No generated `.g.` header was hand-merged.
+
+Ran `sdi_tool merge-variants` from the merged schemas, regenerating 15 interfaces. Five tracked merged SDI headers changed: `BodyInstanceRayMarch-SDI.g.h`, `DirectLighting-SDI.g.h`, `HitAccumCellShade-SDI.g.h`, `ShadowVisibilityWave-SDI.g.h`, and `SpatialReuseShade-SDI.g.h`. `sdi_tool merge-variants --check` passed. The split material record also required updating the existing shadow test to read `star.material.recipeParams[3]`; this preserves its emission setup.
+
+Identity-transform capture parity required preserving the old procedural ray arithmetic where the affine transform is identity-equivalent. `TraceWorld.glsl` applies that path to unit-scale procedural instances with either a legacy sphere recipe or zero translation; transformed instances still use the affine inverse and inverse-transpose normal path. `SdfRecipes.glsl` skips the conservative step multiplication when the scale is exactly 1, preserving the old march sequence. The combined guard covers both legacy sphere captures and the zero-translation Cornell recipes without changing transformed-body behavior.
+
+CodegenTool restore/build and MiningBeamBuffer `--check` passed (`build/insttransform-logs/run2-codegen.log`, `run2-codegen-check.log`). SDI regeneration and `sdi_tool merge-variants --check` passed (`run2-sdi-regen.log`). The archived-base configure with `-DVIXEN_AUTO_PROVISION_VULKAN=OFF` failed because the archive omits ignored SDK files (exit 1); retrying with `-DVIXEN_AUTO_PROVISION_VULKAN=ON -DVIXEN_VULKAN_CACHE_DIR=$PWD/VIXEN/.vulkan-sdk` reused the cached SDK and configured successfully (`run2-fc69-configure.log`, `run2-fc69-configure-retry.log`). The fresh full build (`cmake --build build/insttransform-run2 --parallel 3`) compiled and linked 552 of 557 targets before `appflow_check` failed with `RuntimeState 'Undertow.Content.Core.Systems.Diplomacy.Leveraged' index 'Source' must be unique with owner visibility` (`run2-identity-path-build.log`, exit 1). Running `cmake --build build/insttransform-fc69-base --target appflow_check --parallel 3` produced the exact same diagnostic on archived base `fc69e0c3` (`run2-fc69-appflow-check.log`, exit 1); its external Undertow schema SHA-256 was `bc343205c9cc45486d77426a1778fec59b093c23c63ccb24a69270f7c3b273ab`. This is a proven base red outside the affine/Cel shading scope.
+
+The full RenderGraph engine suite passed 1,340/1,340 with five registered skips and zero failures (`run2-rendergraph-full-final-union.log`). The full SVO suite passed 749/750; its sole failure was `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, diagnostic `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94` (`run2-svo-full-after-identity-fix.log`, exit 8). The exact `fc69e0c3` base reproduces that test and diagnostic in its targeted witness (`run2-fc69-witness.log`, exit 8); this remains the known T-1449 finding outside this lane.
+
+The final selected rerun passed 25/25 (`run2-focused-captures-r424-final.log`): all six focused R424 witnesses (`CopiesLocalToWorldRowsWithoutTranspose`, `RenderStoredSdfBodiesNoHoles`, `PickSelectionReturnsInstanceForTwoBodiesAndNoneForBackground`, `EmissivePointLightFacesThreeBodiesTowardTheStar`, `RenderRecipeBakedBody`, and production Cornell), the four editor and three HUD checks, three starfield checks, both capture producers, and all seven Cel tests. The six Cel PNGs, seven editor/HUD PNGs, and six shared headless Cornell/starfield PNGs are byte-identical to the archived `fc69e0c3` captures; this includes the legacy Lambert+GGX capture. The comparison used `tools/compare-capture-pixels.py --require-byte-identical`, with direct SHA-256 equality checks for the six headless files. There is no Cel appearance stop. The final queued target rebuild reported `ninja: no work to do` (zero units; `run2-final-target-rebuild.log`). Both baseline and merged CMake trees shared a worktree-wide FetchContent build directory, so the merged build rebuilt 557 units; this environment workaround is filed in SPT.
+
+## SPT DISPOSITION
+
+T-1150 CLOSE by replacement (R424); T-1170 CLOSE (minebeam, merged here).
 
 ## CONSOLIDATION ISSUES
 
 - Use the configured CTest environment for WSL captures.
 - Use non-destructive unique paths for queued witness status files.
 - Generate identity-equivalent affine SDF shader specialization.
+- Isolate FetchContent build outputs for archived baseline witnesses.
+- Provision Vulkan SDK for archived baseline witnesses.

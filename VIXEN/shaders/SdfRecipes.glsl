@@ -205,7 +205,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         float gridBound = sampleRecipeOccupancy(gridOffset, gridDim, gridAabbMin, gridCellSize, p);
         float step = (gridDim != 0u) ? max(d * relaxation, min(gridBound, d * relaxation * 8.0))
                                       : d * relaxation;
-        step *= clamp(conservativeStepScale, 0.0, 1.0);
+        // Preserve the identity-scale stepping sequence used by legacy instances.
+        float stepScale = clamp(conservativeStepScale, 0.0, 1.0);
+        if (stepScale < 1.0) step *= stepScale;
         t += step;
         if (t > tFar) return false;
     }
