@@ -134,13 +134,13 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Read back the pixel under the actual cursor position of the current frame's pick-ID image.
+    // Read back the pixel under the actual cursor position of the current frame's pick target.
     //
     // Which frame's image: PickIdTargetNode re-emits images_[frameIndex % count] as ID_IMAGE each
     // Execute and binds that same slot at binding 9, so the configured idImage_ is exactly the image
-    // this frame's dispatch wrote. We record our copy on a one-shot command buffer and fence IT (not
-    // vkQueueWaitIdle), submitting on device->queue: the queue is FIFO, so the copy is ordered after
-    // every dispatch already submitted to the queue and our fence guarantees that work has completed
+    // this frame's dispatch wrote. We record both RG32_UINT channels on a one-shot command buffer and
+    // wait on its fence rather than calling vkQueueWaitIdle. Submitting on device->queue preserves
+    // order after earlier dispatches, and the fence guarantees that work has completed
     // before we map. The 4-deep ID-image ring means the slot we read is never being written
     // concurrently (it is not reused until MAX_FRAMES_IN_FLIGHT frames later), so even in the worst
     // ordering (this frame's dispatch not yet submitted) we read a complete, recent pickID — never a
@@ -152,8 +152,8 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t targetX = static_cast<uint32_t>(glm::clamp(clickX, 0.0f, float(width) - 1.0f));
     const uint32_t targetY = static_cast<uint32_t>(glm::clamp(clickY, 0.0f, float(height) - 1.0f));
 
-    uint32_t pickID = kMissSentinel;
-    if (!ReadPixelAt(width, height, targetX, targetY, pickID) || pickID == kMissSentinel) {
+    PickTargetPixel pixel{kMissSentinel, kMissSentinel};
+    if (!ReadPixelAt(width, height, targetX, targetY, pixel) || pixel.address == kMissSentinel) {
         // Readback failed (see prior error log) or empty space under the cursor — report a miss.
         NODE_LOG_INFO("[VoxelSelectionProvider] click — miss (empty space under cursor) pixel=(" +
                       std::to_string(targetX) + "," + std::to_string(targetY) + ")");
@@ -163,17 +163,22 @@ void VoxelSelectionProviderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Hit. payload carries the packed pickID (brick = id >> 10, voxel = id & 0x3FF). World position
     // from brick/voxel is deferred (needs the brick->world inverse — see design "Out of scope"), so
-    // depth = 0 and worldPos = (0,0,0) for now.
+    // depth = 0 and worldPos = (0,0,0) for now. A sentinel in channel G represents no instance
+    // (legacy non-instanced raymarch); expose that as an empty optional, never as an id.
     candidate.hit      = true;
-    candidate.id       = SelectionId{ ProviderKind::Voxel, static_cast<uint64_t>(pickID) };
+    candidate.id       = SelectionId{ ProviderKind::Voxel, static_cast<uint64_t>(pixel.address) };
+    if (pixel.instanceIndex != kMissSentinel) {
+        candidate.instanceIndex = pixel.instanceIndex;
+    }
     candidate.depth    = 0.0f;
     candidate.worldPos = glm::vec3(0.0f);
 
-    const uint32_t brickIndex     = pickID >> kBrickIdxShift;
-    const uint32_t voxelLinearIdx = pickID & kVoxelIdxMask;
-    NODE_LOG_INFO("[VoxelSelectionProvider] click — HIT pickID=" + std::to_string(pickID) +
+    const uint32_t brickIndex     = pixel.address >> kBrickIdxShift;
+    const uint32_t voxelLinearIdx = pixel.address & kVoxelIdxMask;
+    NODE_LOG_INFO("[VoxelSelectionProvider] click — HIT pickID=" + std::to_string(pixel.address) +
                   " brick=" + std::to_string(brickIndex) +
                   " voxel=" + std::to_string(voxelLinearIdx) +
+                  " instance=" + (candidate.instanceIndex ? std::to_string(*candidate.instanceIndex) : "none") +
                   " priority=" + std::to_string(priority_) +
                   " pixel=(" + std::to_string(targetX) + "," + std::to_string(targetY) + ")");
 
@@ -241,12 +246,12 @@ bool VoxelSelectionProviderNode::EnsureStagingBuffer(VkDeviceSize bytesNeeded) {
 
 bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
                                              uint32_t targetX, uint32_t targetY,
-                                             uint32_t& pickIDOut) {
+                                             PickTargetPixel& pixelOut) {
     // KI-012: a queue family with minImageTransferGranularity=(0,0,0) only accepts whole-image
     // copies at offset (0,0,0) -- the single-texel sub-region copy below is a spec violation
     // there. Fall back to copying the whole id image and indexing the center texel on the CPU.
     const VkDeviceSize bytesNeeded = requiresFullImageTransfers_
-        ? static_cast<VkDeviceSize>(width) * height * sizeof(uint32_t)
+        ? static_cast<VkDeviceSize>(width) * height * sizeof(PickTargetPixel)
         : kSingleTexelSize;
 
     if (!EnsureStagingBuffer(bytesNeeded)) {
@@ -300,6 +305,23 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
         region.imageExtent = { 1, 1, 1 };
     }
 
+    // The dispatch writes this storage image; make those writes visible to the transfer readback.
+    // Queue submission order alone orders execution but does not provide the image memory dependency.
+    VkImageMemoryBarrier imageToCopy{};
+    imageToCopy.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageToCopy.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    imageToCopy.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    imageToCopy.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageToCopy.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imageToCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageToCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageToCopy.image = idImage_;
+    imageToCopy.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &imageToCopy);
+
     vkCmdCopyImageToBuffer(cmd, idImage_, VK_IMAGE_LAYOUT_GENERAL, stagingBuffer_, 1, &region);
 
     if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
@@ -337,7 +359,7 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
     vkWaitForFences(vkDevice, 1, &fence, VK_TRUE, UINT64_MAX);
 
     // --- Map the staging memory and read the pickID. On the full-image path (KI-012), the
-    // staging buffer holds the WHOLE image and the center texel must be indexed on the CPU. ---
+    // staging buffer holds the WHOLE image and the target texel must be indexed on the CPU. ---
     void* mapped = nullptr;
     if (vkMapMemory(vkDevice, stagingMemory_, 0, bytesNeeded, 0, &mapped) != VK_SUCCESS) {
         vkDestroyFence(vkDevice, fence, nullptr);
@@ -345,11 +367,11 @@ bool VoxelSelectionProviderNode::ReadPixelAt(uint32_t width, uint32_t height,
         return false;
     }
     if (requiresFullImageTransfers_) {
-        const uint32_t* pixels = static_cast<const uint32_t*>(mapped);
+        const PickTargetPixel* pixels = static_cast<const PickTargetPixel*>(mapped);
         const size_t targetIdx = static_cast<size_t>(targetY) * width + targetX;
-        pickIDOut = pixels[targetIdx];
+        pixelOut = pixels[targetIdx];
     } else {
-        std::memcpy(&pickIDOut, mapped, sizeof(uint32_t));
+        std::memcpy(&pixelOut, mapped, sizeof(PickTargetPixel));
     }
     vkUnmapMemory(vkDevice, stagingMemory_);
 
