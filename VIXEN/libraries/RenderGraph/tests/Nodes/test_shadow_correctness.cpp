@@ -685,7 +685,7 @@ protected:
         UploadHostBuffer(probeGridMem, &probeGrid, sizeof(ProbeGridConfigCpu));
 
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
-        const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
+        const VkFormat kIdFmt    = VK_FORMAT_R32G32_UINT;
         VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE;
         VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, colorImg, colorMem));

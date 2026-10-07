@@ -3,6 +3,7 @@
 #include "Message.h"
 #include "SelectionId.h"
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace Vixen::EventBus {
@@ -32,16 +33,19 @@ struct SelectionChangedEvent : public BaseEventMessage {
 
     std::vector<SelectionId> selection;  ///< Snapshot of the full current selection set.
     SelectionId primary;                 ///< Most-recently affected id (kInvalidSelectionId if now empty).
+    std::optional<uint32_t> primaryInstanceIndex; ///< Body-instance index paired with primary, when present.
     uint32_t count;                      ///< selection.size() (convenience mirror).
 
     SelectionChangedEvent(
         SenderID sender,
         std::vector<SelectionId> currentSelection,
-        SelectionId primaryId = kInvalidSelectionId
+        SelectionId primaryId = kInvalidSelectionId,
+        std::optional<uint32_t> instanceIndex = std::nullopt
     )
         : BaseEventMessage(CATEGORY, TYPE, sender)
         , selection(std::move(currentSelection))
         , primary(primaryId)
+        , primaryInstanceIndex(instanceIndex)
         , count(static_cast<uint32_t>(selection.size()))
     {}
 };

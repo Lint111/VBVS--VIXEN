@@ -472,7 +472,7 @@ protected:
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyPrevCam, dummyPrevCamMem, true);
 
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
-        const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
+        const VkFormat kIdFmt    = VK_FORMAT_R32G32_UINT;
         VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE, historyImg = VK_NULL_HANDLE;
         VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE, historyMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, VK_IMAGE_USAGE_TRANSFER_SRC_BIT, colorImg, colorMem));

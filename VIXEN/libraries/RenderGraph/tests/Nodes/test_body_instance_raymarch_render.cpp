@@ -34,7 +34,9 @@
 #include <gtest/gtest.h>
 
 #include "Nodes/BodyOctreeSceneNode.h"
+#include "Nodes/VoxelSelectionProviderNode.h"
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
+#include "Data/Nodes/VoxelSelectionProviderNodeConfig.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "Core/NodeContext.h"
@@ -246,6 +248,14 @@ protected:
 
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
         deviceShell_->device = logicalDevice_;
+        deviceShell_->queue = queue_;
+        deviceShell_->graphicsQueueIndex = queueFamily_;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &deviceShell_->gpuMemoryProperties);
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount, nullptr);
+        deviceShell_->queueFamilyProperties.resize(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount,
+                                                  deviceShell_->queueFamilyProperties.data());
     }
 
     void TearDown() override {
@@ -343,6 +353,47 @@ protected:
 
     template<typename T>
     static void SetHandleVal(Resource& res, T value) { res.SetHandle<T>(std::move(value)); }
+
+    void ReadSelectionPixels(VkImage idImage, uint32_t width, uint32_t height,
+                             const std::vector<uint32_t>& pixelIndices,
+                             std::vector<SelectionCandidate>& outCandidates) {
+        VoxelSelectionProviderNodeType providerType;
+        VoxelSelectionProviderNode provider("test_pick_provider", &providerType);
+        InputState input;
+
+        Resource inputRes; SetHandleVal<InputStatePtr>(inputRes, &input);
+        Resource imageRes; SetHandleVal<VkImage>(imageRes, idImage);
+        Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+        Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+        Resource frameRes; SetHandleVal<uint32_t>(frameRes, 0u);
+        Resource widthRes; SetHandleVal<uint32_t>(widthRes, width);
+        Resource heightRes; SetHandleVal<uint32_t>(heightRes, height);
+        Resource candidateRes; candidateRes.SetHandle<SelectionCandidate>(SelectionCandidate{});
+
+        provider.SetInput(VoxelSelectionProviderNodeConfig::INPUT_STATE_Slot::index, 0, &inputRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::ID_IMAGE_Slot::index, 0, &imageRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::VULKAN_DEVICE_Slot::index, 0, &deviceRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::COMMAND_POOL_Slot::index, 0, &poolRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH_Slot::index, 0, &widthRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT_Slot::index, 0, &heightRes);
+        static_cast<INodeWiring&>(provider).SetOutput(
+            VoxelSelectionProviderNodeConfig::CANDIDATE_Slot::index, 0, &candidateRes);
+
+        provider.Setup();
+        provider.Compile();
+        outCandidates.clear();
+        outCandidates.reserve(pixelIndices.size());
+        for (uint32_t pixelIndex : pixelIndices) {
+            ASSERT_LT(pixelIndex, width * height);
+            input.clicksThisFrame = {{static_cast<int>(Vixen::EventBus::MouseButton::Left), true,
+                                      static_cast<float>(pixelIndex % width),
+                                      static_cast<float>(pixelIndex / width)}};
+            provider.Execute();
+            outCandidates.push_back(candidateRes.GetHandle<SelectionCandidate>());
+        }
+        provider.Cleanup(CleanupReason::FinalTeardown);
+    }
 
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags required) {
         VkPhysicalDeviceMemoryProperties memProps{};
@@ -476,7 +527,8 @@ protected:
                       // (binding 36, R32F euclidean hitT, miss = 1e30) as w*h floats. The image
                       // is canary-cleared to -1 before dispatch so an unwritten binding is
                       // unmistakable in assertions.
-                      std::vector<float>* outDepthDistances = nullptr) {
+                      std::vector<float>* outDepthDistances = nullptr,
+                      std::vector<SelectionCandidate>* outSelections = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
@@ -590,9 +642,9 @@ protected:
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyAccum, dummyAccumMem, true);
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyPrevCam, dummyPrevCamMem, true);
 
-        // Offscreen output images: rgba8 colour (0) + r32ui id (9) + rgba8 history (21).
+        // Offscreen output images: rgba8 colour (0) + rg32ui pick target (9) + rgba8 history (21).
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
-        const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
+        const VkFormat kIdFmt    = VK_FORMAT_R32G32_UINT;
         VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE, historyImg = VK_NULL_HANDLE;
         VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE, historyMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, colorImg, colorMem));
@@ -894,6 +946,28 @@ protected:
             outDepthDistances->assign(static_cast<size_t>(w) * h, 0.0f);
             std::memcpy(outDepthDistances->data(), dMapped, static_cast<size_t>(depthRbSize));
             vkUnmapMemory(logicalDevice_, depthRbMem);
+        }
+
+        if (outSelections != nullptr) {
+            ASSERT_NE(outHitRecords, nullptr)
+                << "selection witness needs HitRecord instance indices to choose known pixels";
+            std::array<uint32_t, 3> selectedPixels{UINT32_MAX, UINT32_MAX, UINT32_MAX};
+            for (uint32_t i = 0; i < outHitRecords->size(); ++i) {
+                const HitRecordCpu& record = (*outHitRecords)[i];
+                if ((record.flags & kHitRecordFlagHit) != 0u) {
+                    const uint32_t instanceIndex = record._pad0[0];
+                    if (instanceIndex < 2 && selectedPixels[instanceIndex] == UINT32_MAX) {
+                        selectedPixels[instanceIndex] = i;
+                    }
+                } else if (selectedPixels[2] == UINT32_MAX) {
+                    selectedPixels[2] = i;
+                }
+            }
+            ASSERT_NE(selectedPixels[0], UINT32_MAX) << "render contained no covered pixel for instance 0";
+            ASSERT_NE(selectedPixels[1], UINT32_MAX) << "render contained no covered pixel for instance 1";
+            ASSERT_NE(selectedPixels[2], UINT32_MAX) << "render contained no background pixel";
+            const std::vector<uint32_t> pixelIndices(selectedPixels.begin(), selectedPixels.end());
+            ReadSelectionPixels(idImg, w, h, pixelIndices, *outSelections);
         }
 
         vkDeviceWaitIdle(logicalDevice_);
@@ -1301,6 +1375,82 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
     EXPECT_GT(grayPixels,  500) << "kind 2 (octreeIndex 2) body did not render — stride fix regressed";
 
     vkDeviceWaitIdle(logicalDevice_);
+    node->Cleanup(CleanupReason::FinalTeardown);
+    nodeBase.reset();
+}
+
+// GPU pick witness for T-1126. The HitRecord's instance index is the independent oracle;
+// clicks are then run through the production VoxelSelectionProviderNode against the live
+// RG32_UINT image. The packed voxel address remains the SelectionId payload, and a miss
+// must yield no instance optional.
+TEST_F(BodyInstanceRayMarchRenderTest, PickSelectionReturnsInstanceForTwoBodiesAndNoneForBackground) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    using C = BodyOctreeSceneNodeConfig;
+    BodyOctreeSceneNodeType nodeType("BodyOctreeScene");
+    auto nodeBase = nodeType.CreateInstance("body_render_pick_instances");
+    auto* node = dynamic_cast<BodyOctreeSceneNode*>(nodeBase.get());
+    ASSERT_NE(node, nullptr);
+
+    Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+    Resource poolRes;   SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+    Resource frameRes;  uint32_t frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->SetInput(C::VULKAN_DEVICE_IN_Slot::index,    0, &deviceRes);
+    node->SetInput(C::COMMAND_POOL_Slot::index,        0, &poolRes);
+    node->SetInput(C::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+
+    const float scale = kBaseRadiusAu * 2.0f;
+    const float radius = 0.5f * kWorldGridSize * scale;
+    const float separation = radius * 3.0f;
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        MakeInstance(-separation, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),
+        MakeInstance( separation, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),
+    };
+    node->SetInstances(instances);
+    node->Setup();
+    ASSERT_NO_THROW(node->Compile());
+    ASSERT_NO_THROW(node->Execute());
+
+    NodeBuffers buffers;
+    buffers.nodes     = node->GetOutput(C::OCTREE_NODES_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    buffers.bricks    = node->GetOutput(C::OCTREE_BRICKS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    buffers.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    buffers.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    buffers.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+
+    constexpr uint32_t kW = 768, kH = 256;
+    const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
+    const glm::vec3 c1 = ShaderBodyCentre(instances[1]);
+    const glm::vec3 centre = 0.5f * (c0 + c1);
+    const float spanX = std::abs(c1.x - c0.x) + 2.0f * radius;
+    const float halfFov = glm::radians(45.0f) * 0.5f;
+    const float aspect = static_cast<float>(kW) / static_cast<float>(kH);
+    const float distance = (0.5f * spanX) / (std::tan(halfFov) * aspect) * 1.35f;
+    const glm::vec3 eye = centre + glm::vec3(0.0f, 0.15f, 1.0f) * distance;
+    const PushConstants pc = MakeCamera(eye, centre, kW, kH, static_cast<int32_t>(instances.size()));
+
+    std::vector<uint8_t> rgba;
+    std::vector<HitRecordCpu> hitRecords;
+    std::vector<SelectionCandidate> selections;
+    double renderMs = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(
+        buffers.nodes, buffers.bricks, buffers.materials, buffers.config, buffers.instance,
+        VK_NULL_HANDLE, VK_NULL_HANDLE, pc, kW, kH, rgba, renderMs,
+        &hitRecords, nullptr, nullptr, nullptr, &selections));
+
+    ASSERT_EQ(selections.size(), 3u);
+    for (uint32_t expectedInstance = 0; expectedInstance < 2; ++expectedInstance) {
+        const SelectionCandidate& selected = selections[expectedInstance];
+        ASSERT_TRUE(selected.hit) << "covered instance " << expectedInstance << " became a miss";
+        ASSERT_TRUE(selected.instanceIndex.has_value());
+        EXPECT_EQ(*selected.instanceIndex, expectedInstance);
+        EXPECT_EQ(selected.id.kind, ProviderKind::Voxel);
+        EXPECT_NE(selected.id.payload, static_cast<uint64_t>(kInvalidSelectionId.payload));
+    }
+    EXPECT_FALSE(selections[2].hit);
+    EXPECT_FALSE(selections[2].instanceIndex.has_value());
+    EXPECT_EQ(selections[2].id, kInvalidSelectionId);
+
     node->Cleanup(CleanupReason::FinalTeardown);
     nodeBase.reset();
 }

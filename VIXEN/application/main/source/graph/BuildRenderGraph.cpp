@@ -1260,7 +1260,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
 
-    // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
+    // --- Pick ID Target (AR#35 GPU picking: RG32_UINT storage-image ring at binding 9) ---
     NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
 
     // --- Voxel Selection Provider (SEL-P2: providers are nodes) — on a click edge it reads back the
@@ -8253,7 +8253,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES,
                   ConnectionMeta{}.With<AccumulationSortConfig>(1));
 
-    // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
+    // Pick ID target (AR#35 GPU picking): allocate the RG32_UINT storage-image ring sized to the
     // RENDER extent (M4.4 — was the window; the compute shader now writes the offscreen render
     // target, not the swapchain, so the pick-ID image must match ITS resolution or the shader's
     // per-pixel idOutputImage writes go out of bounds / land at the wrong texel under scale<1),

@@ -88,6 +88,12 @@ struct HitRecordCpu {
 };
 static_assert(sizeof(HitRecordCpu) == 64, "HitRecordCpu std430 mirror size");
 
+struct PickTargetPixelCpu {
+    uint32_t address;
+    uint32_t instanceIndex;
+};
+static_assert(sizeof(PickTargetPixelCpu) == 2 * sizeof(uint32_t));
+
 constexpr uint32_t kHitRecordFlagHit = 0x1u;
 
 std::vector<uint32_t> ReadSpirv(const char* path) {
@@ -318,7 +324,7 @@ protected:
                                  VkBuffer configBuf, VkBuffer instanceBuf,
                                  const PushConstants& pc, uint32_t w, uint32_t h,
                                  std::vector<uint8_t>& outRgba,
-                                 std::vector<uint32_t>& outIds,
+                                 std::vector<PickTargetPixelCpu>& outIds,
                                  std::vector<HitRecordCpu>& outHitRecords) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
 
@@ -360,7 +366,7 @@ protected:
                          hitRecordBuf, hitRecordMem, /*zero=*/true);
 
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
-        const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
+        const VkFormat kIdFmt    = VK_FORMAT_R32G32_UINT;
         VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE;
         VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, colorImg, colorMem));
@@ -551,7 +557,7 @@ protected:
         colorCopy.imageExtent = {w, h, 1};
         vkCmdCopyImageToBuffer(cmd, colorImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rgbaBuf, 1, &colorCopy);
 
-        const VkDeviceSize idSize = static_cast<VkDeviceSize>(w) * h * 4;
+        const VkDeviceSize idSize = static_cast<VkDeviceSize>(w) * h * sizeof(PickTargetPixelCpu);
         VkBuffer idBuf = VK_NULL_HANDLE; VkDeviceMemory idBufMem = VK_NULL_HANDLE;
         CreateHostBuffer(idSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT, idBuf, idBufMem, false);
         VkBufferImageCopy idCopy{};
@@ -590,7 +596,7 @@ protected:
 
         void* mappedIds = nullptr;
         ASSERT_EQ(vkMapMemory(logicalDevice_, idBufMem, 0, idSize, 0, &mappedIds), VK_SUCCESS);
-        outIds.assign(static_cast<size_t>(w) * h, 0);
+        outIds.assign(static_cast<size_t>(w) * h, PickTargetPixelCpu{});
         std::memcpy(outIds.data(), mappedIds, static_cast<size_t>(idSize));
         vkUnmapMemory(logicalDevice_, idBufMem);
 
@@ -727,7 +733,7 @@ TEST_F(HitRecordReadbackTest, HitRecordMatchesShaderColorAndIdOutput) {
     const PushConstants pc = MakeCamera(eye, focus, kW, kH, static_cast<int32_t>(instances.size()));
 
     std::vector<uint8_t> rgba;
-    std::vector<uint32_t> ids;
+    std::vector<PickTargetPixelCpu> ids;
     std::vector<HitRecordCpu> hitRecords;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadHitRecords(
         nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
@@ -760,14 +766,18 @@ TEST_F(HitRecordReadbackTest, HitRecordMatchesShaderColorAndIdOutput) {
                 // ID buffer cross-check: a hit pixel's idOutputImage entry must NOT be the
                 // 0xFFFFFFFF miss sentinel (both are driven off the SAME anyHitRT this
                 // milestone introduced — see main()'s pickID computation).
-                EXPECT_NE(ids[idx], 0xFFFFFFFFu)
+                EXPECT_NE(ids[idx].address, 0xFFFFFFFFu)
                     << "pixel (" << x << "," << y << "): HitRecord says hit but idOutputImage "
                        "has the miss sentinel";
+                EXPECT_EQ(ids[idx].instanceIndex, rec._pad0[0])
+                    << "pixel (" << x << "," << y << "): pick target instance disagrees with HitRecord";
             } else {
                 ++checkedMiss;
-                EXPECT_EQ(ids[idx], 0xFFFFFFFFu)
+                EXPECT_EQ(ids[idx].address, 0xFFFFFFFFu)
                     << "pixel (" << x << "," << y << "): HitRecord says miss but idOutputImage "
                        "is not the miss sentinel";
+                EXPECT_EQ(ids[idx].instanceIndex, 0xFFFFFFFFu)
+                    << "pixel (" << x << "," << y << "): miss must not carry an instance index";
             }
         }
     }

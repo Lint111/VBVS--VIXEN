@@ -8,7 +8,7 @@
 namespace Vixen::RenderGraph {
 
 /**
- * @brief Node type for the GPU picking ID target (R32_UINT storage image ring)
+ * @brief Node type for the GPU picking ID target (RG32_UINT storage image ring)
  * Type ID: 126
  */
 class PickIdTargetNodeType : public TypedNodeType<PickIdTargetNodeConfig> {
@@ -21,10 +21,11 @@ public:
 };
 
 /**
- * @brief Allocates the per-pixel pick-ID target (AR#35 GPU picking, P1): an R32_UINT 2D STORAGE
+ * @brief Allocates the per-pixel pick-ID target (AR#35 GPU picking): an RG32_UINT 2D STORAGE
  * image ring (one image+memory+view per in-flight frame), sized to the swapchain extent. The voxel
- * compute ray-march writes the packed (brickIndex<<10)|voxelLinearIdx hit identity into it at
- * descriptor binding 9, beside the color store at binding 0.
+ * compute ray-march writes the packed (brickIndex<<10)|voxelLinearIdx address in channel 0 and
+ * the covering body-instance index in channel 1 at descriptor binding 9, beside color binding 0.
+ * Both channels use 0xFFFFFFFF for a miss; the selection result exposes absence as an empty optional.
  *
  * Usage = STORAGE | TRANSFER_SRC (TRANSFER_SRC reserved for the P2 click-readback copy).
  *
@@ -84,7 +85,7 @@ private:
     // overwritten with the new incoming extent before that comparison could happen).
     uint32_t                                ringWidth_   = 0;
     uint32_t                                ringHeight_  = 0;
-    static constexpr VkFormat               kFormat      = VK_FORMAT_R32_UINT;
+    static constexpr VkFormat               kFormat      = VK_FORMAT_R32G32_UINT;
 };
 
 } // namespace Vixen::RenderGraph

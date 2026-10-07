@@ -65,6 +65,21 @@ TEST(SelectionResolve, SingleHitWins) {
     EXPECT_EQ(best->id.payload, 42u);
 }
 
+TEST(SelectionResolve, WinnerRetainsOptionalBodyInstanceIndex) {
+    SelectionCandidate hit = MakeHit(ProviderKind::Voxel, 42, 0.0f, 0);
+    hit.instanceIndex = 7u;
+    std::vector<SelectionCandidate> candidates{hit, MakeMiss()};
+
+    const SelectionCandidate* best = pickBestCandidate(candidates);
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->id.payload, 42u);
+    ASSERT_TRUE(best->instanceIndex.has_value());
+    EXPECT_EQ(*best->instanceIndex, 7u);
+
+    const SelectionCandidate miss = MakeMiss();
+    EXPECT_FALSE(miss.instanceIndex.has_value());
+}
+
 TEST(SelectionResolve, HigherPriorityOccludes) {
     // UI (priority 10) must occlude the world voxel (priority 0) even though the voxel is nearer.
     std::vector<SelectionCandidate> candidates{
