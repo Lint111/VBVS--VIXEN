@@ -30,6 +30,16 @@ uint32_t CaptureBandCount() {
     return static_cast<uint32_t>(std::clamp(parsed, 2ul, 5ul));
 }
 
+bool CaptureRampSoftness(float& softness) {
+    const char* value = std::getenv("VIXEN_CELSHADE_RAMP_SOFTNESS");
+    if (!value) return false;
+    char* end = nullptr;
+    const float parsed = std::strtof(value, &end);
+    if (end == value || *end != '\0' || !std::isfinite(parsed)) return false;
+    softness = std::clamp(parsed, 0.0f, 0.5f);
+    return true;
+}
+
 float CelRampPosition(float NdotL, float shadowThreshold, float litThreshold) {
     return std::clamp((NdotL - shadowThreshold) / (litThreshold - shadowThreshold), 0.0f, 1.0f);
 }
@@ -71,6 +81,11 @@ public:
                     LightingConfigNodeConfig::SHADING_MODE_CEL);
                 lighting->SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_COUNT,
                     action_ == CaptureAction::BandCount ? CaptureBandCount() : 5u);
+                float rampSoftness = 0.0f;
+                if (action_ == CaptureAction::BandCount && CaptureRampSoftness(rampSoftness)) {
+                    lighting->SetParameter(LightingConfigNodeConfig::PARAM_CEL_RAMP_SOFTNESS,
+                        rampSoftness);
+                }
                 if (action_ == CaptureAction::Bounds) SetBoundaryParameters(*lighting);
             }
             return true;
