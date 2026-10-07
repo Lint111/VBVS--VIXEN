@@ -1,6 +1,10 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 #include "InputEvents.h"
@@ -19,6 +23,37 @@ struct ClickEvent {
     float y = 0.0f;
 };
 
+/// Per-frame continuous input axes. Mouse-look remains available as pixel deltas in mouseDelta.
+enum class InputAxis : uint8_t {
+    MoveHorizontal,
+    MoveForward,
+    MoveUp,
+    LookHorizontal,
+    LookVertical,
+    Count
+};
+
+/// One key contribution to a continuous axis. Keep default bindings as data so they can be
+/// reviewed and changed without embedding key policy in InputNode's event-folding logic.
+struct KeyAxisBinding {
+    EventBus::KeyCode key;
+    InputAxis axis;
+    float value;
+};
+
+inline constexpr std::array<KeyAxisBinding, 10> kInputAxisBindings{{
+    {EventBus::KeyCode::A,     InputAxis::MoveHorizontal, -1.0f},
+    {EventBus::KeyCode::D,     InputAxis::MoveHorizontal,  1.0f},
+    {EventBus::KeyCode::S,     InputAxis::MoveForward,    -1.0f},
+    {EventBus::KeyCode::W,     InputAxis::MoveForward,     1.0f},
+    {EventBus::KeyCode::Q,     InputAxis::MoveUp,         -1.0f},
+    {EventBus::KeyCode::E,     InputAxis::MoveUp,          1.0f},
+    {EventBus::KeyCode::Left,  InputAxis::LookHorizontal, -1.0f},
+    {EventBus::KeyCode::Right, InputAxis::LookHorizontal,  1.0f},
+    {EventBus::KeyCode::Down,  InputAxis::LookVertical,    -1.0f},
+    {EventBus::KeyCode::Up,    InputAxis::LookVertical,     1.0f},
+}};
+
 /**
  * @brief Immediate-mode input state (polled once per frame)
  *
@@ -34,7 +69,7 @@ struct ClickEvent {
  */
 struct InputState {
     // Mouse state (updated once per frame)
-    glm::vec2 mouseDelta{0.0f};      // Pixel delta this frame (smooth, no jitter)
+    glm::vec2 mouseDelta{0.0f};      // Raw pixel delta this frame (smooth, no jitter)
     glm::vec2 mousePosition{0.0f};   // Current position in window coordinates
     bool mouseButtons[3]{false};     // [0]=left, [1]=right, [2]=middle
     glm::vec2 wheelDelta{0.0f};      // Scroll offsets this frame (x=horizontal, y=vertical)
@@ -55,6 +90,9 @@ struct InputState {
     std::unordered_map<EventBus::KeyCode, bool> keyPressed;    // Just pressed this frame
     std::unordered_map<EventBus::KeyCode, bool> keyReleased;   // Just released this frame
 
+    // Continuous key axes, recomputed from keyDown once per frame. Mouse look uses mouseDelta.
+    std::array<float, static_cast<std::size_t>(InputAxis::Count)> axes{};
+
     // Debug visualization mode (0=normal, 1-9=debug modes)
     // Updated by pressing number keys 0-9
     int32_t debugMode = 0;
@@ -70,24 +108,23 @@ struct InputState {
     float deltaTime = 0.0f;  // Seconds since last frame
 
     /**
-     * @brief Clear per-frame state (pressed/released flags, click/wheel edge data)
+     * @brief Clear per-frame state (key edges, axes, mouse delta, click/wheel edge data)
      * Call at the start of each frame before polling
      *
-     * NOTE: mouseDelta is NOT cleared here because it's computed by InputNode from drained cursor
-     * events before BeginFrame() is called. Clearing would lose the frame's delta. The delta is
-     * used by consumers (CameraNode) and should persist until the next frame.
+     * InputNode repopulates axes from held keys and mouseDelta from drained cursor events after
+     * BeginFrame. Clearing both here also makes a disabled node output a zero-valued frame.
      *
-     * clicksThisFrame and wheelDelta ARE per-frame edge data (like keyPressed/keyReleased, not like
-     * mouseDelta) and must be cleared here — otherwise a disabled InputNode's early-return in
-     * ExecuteImpl (`!enabled_`) re-outputs the same stale clicks/wheel delta every frame instead of
-     * an empty frame.
+     * clicksThisFrame and wheelDelta are also per-frame data and must be cleared here — otherwise
+     * a disabled InputNode's early-return in ExecuteImpl (`!enabled_`) re-outputs stale click/wheel
+     * values instead of an empty frame.
      */
     void BeginFrame() {
         keyPressed.clear();
         keyReleased.clear();
+        axes.fill(0.0f);
+        mouseDelta = glm::vec2(0.0f);
         clicksThisFrame.clear();
         wheelDelta = glm::vec2(0.0f);
-        // NOTE: mouseDelta is preserved (computed by InputNode, not cleared here)
     }
 
     /**
@@ -114,34 +151,44 @@ struct InputState {
         return it != keyReleased.end() && it->second;
     }
 
+    /// Get a continuous axis value. Invalid axis values return zero.
+    float GetAxis(InputAxis axis) const {
+        const std::size_t index = static_cast<std::size_t>(axis);
+        return index < axes.size() ? axes[index] : 0.0f;
+    }
+
+    /// Rebuild continuous axes from keyDown using the declarative binding table.
+    void UpdateAxesFromKeyState() {
+        axes.fill(0.0f);
+        for (const KeyAxisBinding& binding : kInputAxisBindings) {
+            if (IsKeyDown(binding.key)) {
+                axes[static_cast<size_t>(binding.axis)] += binding.value;
+            }
+        }
+        for (float& value : axes) {
+            value = std::clamp(value, -1.0f, 1.0f);
+        }
+    }
+
     /**
      * @brief Get horizontal axis value (-1 = left/A, +1 = right/D)
      */
     float GetAxisHorizontal() const {
-        float value = 0.0f;
-        if (IsKeyDown(EventBus::KeyCode::A)) value -= 1.0f;
-        if (IsKeyDown(EventBus::KeyCode::D)) value += 1.0f;
-        return value;
+        return GetAxis(InputAxis::MoveHorizontal);
     }
 
     /**
      * @brief Get vertical axis value (-1 = backward/S, +1 = forward/W)
      */
     float GetAxisVertical() const {
-        float value = 0.0f;
-        if (IsKeyDown(EventBus::KeyCode::S)) value -= 1.0f;
-        if (IsKeyDown(EventBus::KeyCode::W)) value += 1.0f;
-        return value;
+        return GetAxis(InputAxis::MoveForward);
     }
 
     /**
      * @brief Get vertical movement axis (Q/E for up/down)
      */
     float GetAxisUpDown() const {
-        float value = 0.0f;
-        if (IsKeyDown(EventBus::KeyCode::Q)) value -= 1.0f;
-        if (IsKeyDown(EventBus::KeyCode::E)) value += 1.0f;
-        return value;
+        return GetAxis(InputAxis::MoveUp);
     }
 
     /**
@@ -149,10 +196,7 @@ struct InputState {
      * Returns -1 = look left, +1 = look right
      */
     float GetAxisLookHorizontal() const {
-        float value = 0.0f;
-        if (IsKeyDown(EventBus::KeyCode::Left)) value -= 1.0f;
-        if (IsKeyDown(EventBus::KeyCode::Right)) value += 1.0f;
-        return value;
+        return GetAxis(InputAxis::LookHorizontal);
     }
 
     /**
@@ -160,10 +204,7 @@ struct InputState {
      * Returns -1 = look down, +1 = look up
      */
     float GetAxisLookVertical() const {
-        float value = 0.0f;
-        if (IsKeyDown(EventBus::KeyCode::Down)) value -= 1.0f;
-        if (IsKeyDown(EventBus::KeyCode::Up)) value += 1.0f;
-        return value;
+        return GetAxis(InputAxis::LookVertical);
     }
 };
 

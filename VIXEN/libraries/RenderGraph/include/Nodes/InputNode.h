@@ -49,7 +49,8 @@ public:
  * Publishes per-frame bus events with real payloads: MouseButtonEvent (press/release),
  * MouseScrollEvent, WindowCloseEvent (ESC). InputState.clicksThisFrame carries every press+
  * release edge since the last Execute (a same-frame press+release is two entries, not a
- * collapsed non-edge — the fix for the old single-poll's click-loss failure mode).
+ * collapsed non-edge — the fix for the old single-poll's click-loss failure mode). InputState
+ * also carries table-driven keyboard axes and a per-frame raw mouse delta.
  */
 class InputNode : public TypedNode<InputNodeConfig> {
 public:
@@ -83,6 +84,9 @@ public:
     // event exactly where OnMouseButton does. Needed because the fail-scenario runner creates the
     // window hidden (GLFW_VISIBLE=false), so no real click ever reaches the GLFW callback.
     void InjectMouseButton(int button, int action);
+    void InjectKey(EventBus::KeyCode key, bool pressed);
+    void InjectCursorPos(double x, double y);
+    void InjectFocusLoss();
 #endif
 
 protected:
@@ -129,11 +133,9 @@ private:
     // recompiles, including window re-entry after a graph rebuild targeting a new instance).
     void RegisterCallbacks();
 
-    // Clears every tracked key/button down-state on focus loss. WSLg RAIL (and some window
-    // managers) can swallow key-release events across a focus transition (e.g. alt-tab while an
-    // arrow key is held) — without this a "latched" key never sees its release edge and drives
-    // the camera forever. cursorPos_ and the per-frame accumulators are left alone: only down-state
-    // is suspect, not position/motion.
+    // Clears held keys/buttons, queued key/cursor events, keyboard axes, and pending mouse motion
+    // on focus loss. WSLg RAIL (and some window managers) can swallow releases across a focus
+    // transition, leaving a key latched or replaying old motion when focus returns.
     void ClearInputOnFocusLoss();
 
     // Static GLFW trampolines (GLFW callbacks are free functions/static; WindowNode already owns
