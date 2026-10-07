@@ -541,6 +541,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // default) uploaded per-frame through a PerFrameResources ring, mirroring
     // DynamicInstanceBufferNode's pattern.
     NodeHandle lightingConfigNode = renderGraph->AddNode<LightingConfigNodeType>("lighting_config");
+#if defined(VIXEN_CAPTURE_TEST_HOOKS)
+    // The native capture witness compares the preserved Lambert+GGX path with the
+    // lane's untouched baseline. Product hosts select this same mode through the
+    // node parameter; this environment hook exists only in BUILD_TESTS binaries.
+    if (envFlagEnabled("VIXEN_TEST_CELSHADE_LAMBERT_GGX")) {
+        if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
+            lighting->SetParameter(LightingConfigNodeConfig::PARAM_SHADING_MODE,
+                                   LightingConfigNodeConfig::SHADING_MODE_LAMBERT_GGX);
+            const uint32_t selectedMode = lighting->GetParameterValue<uint32_t>(
+                LightingConfigNodeConfig::PARAM_SHADING_MODE, UINT32_MAX);
+            mainLogger->Info("[capture-test] shadingMode parameter=" + std::to_string(selectedMode));
+        } else {
+            mainLogger->Warning("[capture-test] lighting_config node instance unavailable for mode override");
+        }
+    }
+#endif
 
     // Sampled Lighting Inc1 M4: ShadowConfig data (binding 18). Same per-frame ring upload
     // pattern as lightingConfigNode above — separate node (see ShadowConfigNode.h's file
@@ -5688,7 +5704,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 mainLogger->Info("[BuildRenderGraph] VIXEN_STARLIGHT_DEMO: seeded one emissive star and three bodies");
             }
             if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
-                lighting->SetLights({starLight}, 0.04f);
+                lighting->SetLights({starLight}, 0.04f, {1.5f});
             }
         } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).

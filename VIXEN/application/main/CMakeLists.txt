@@ -85,6 +85,10 @@ target_link_libraries(VixenApp PUBLIC
 # libraries named in the manifest generated above, not the full unscoped RenderGraph facade.
 vixen_link_used_nodes(VixenApp MANIFEST_FILE ${CMAKE_BINARY_DIR}/generated/node_manifest.cmake)
 
+if(BUILD_TESTS)
+    target_compile_definitions(VixenApp PRIVATE VIXEN_CAPTURE_TEST_HOOKS=1)
+endif()
+
 # View Contract Inc-2 Task 5: stb_image_write.h (Debug/RenderTargetReadback.h's PNG writer, called
 # from VulkanGraphApplication::CaptureHudFrameToPng) -- not transitively provided by RenderGraph.
 # Mirrors application/editor/CMakeLists.txt's identical guard.
@@ -224,3 +228,4 @@ include(${CMAKE_CURRENT_LIST_DIR}/tests/test_view_blob_equiv.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_ui_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_cornell_graph.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tests/test_headless_starfield_graph.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/tests/test_cel_shading_graph.cmake)

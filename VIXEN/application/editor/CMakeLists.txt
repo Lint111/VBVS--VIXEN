@@ -29,7 +29,7 @@ vixen_whole_archive_link_vixen_app(vixen_editor PRIVATE)
 # (EditorApplication::gaiaWorld_) for the Gaia-backed layer-mask provider + reconcile -- previously
 # vixen_editor only pulled gaia.h TRANSITIVELY via SVO's octree headers (VixenApp), never linked
 # the library that actually instantiates a World.
-target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorld)
+target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorld VoxelDocument)
 
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.
@@ -87,6 +87,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_EDITOR_CAPTURE_DIR}"
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1"
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
             "VIXEN_EXIT_AFTER_FRAMES=120")
 
     add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
@@ -100,6 +101,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
             "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
             "VIXEN_HUD_CAPTURE_DIR=${VIXEN_HUD_CAPTURE_DIR}"
             "VIXEN_HUD_OFFSCREEN_CAPTURE=1"
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1"
             "VIXEN_EXIT_AFTER_FRAMES=85")
 endif()
 

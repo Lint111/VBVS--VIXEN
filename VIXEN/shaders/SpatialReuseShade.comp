@@ -503,8 +503,15 @@ void CompositeMiningBeams(inout vec4 outputRadiance, vec3 rayOrigin, vec3 rayDir
 // ShadowVisibilityWave.comp now, mirroring this function's own original order
 // exactly. Arithmetic below is UNTOUCHED from the merged shader (bit-exact:
 // shadowFactor is the same 0.0/1.0 the inline trace produced).
+vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos,
+                                   LightingConfig lighting, uint visBits);
+
 vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 rayDir,
                                 float roughness, LightingConfig lighting, uint visBits) {
+    if (lighting.shadingMode != 0u) {
+        return computeCelLightingWithShadows(color, normal, worldPos, lighting, visBits);
+    }
+
     vec3 viewDir = normalize(-rayDir);
 
     vec3 Lo = lighting.ambientIntensity * color;
@@ -529,6 +536,97 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
 
         Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance *
               shadowFactor * attenuation;
+    }
+    return Lo;
+}
+
+vec3 celHueShiftRgb(vec3 color, float shiftDegrees) {
+    vec3 nonnegative = max(color, vec3(0.0));
+    float maximum = max(nonnegative.r, max(nonnegative.g, nonnegative.b));
+    float minimum = min(nonnegative.r, min(nonnegative.g, nonnegative.b));
+    float delta = maximum - minimum;
+    float hue = 0.0;
+    if (delta > 1e-6) {
+        if (maximum == nonnegative.r) {
+            hue = mod((nonnegative.g - nonnegative.b) / delta, 6.0);
+        } else if (maximum == nonnegative.g) {
+            hue = (nonnegative.b - nonnegative.r) / delta + 2.0;
+        } else {
+            hue = (nonnegative.r - nonnegative.g) / delta + 4.0;
+        }
+        hue /= 6.0;
+    }
+    float saturation = maximum <= 1e-6 ? 0.0 : delta / maximum;
+    vec3 hsv = vec3(fract(hue + shiftDegrees / 360.0), saturation, maximum);
+    vec3 hueRgb = clamp(abs(mod(hsv.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0,
+                        0.0, 1.0);
+    // HSV rotation changes hue only; saturation and value remain those of the hull albedo.
+    return hsv.z * mix(vec3(1.0), hueRgb, hsv.y);
+}
+
+uint celBandCountAtDistance(LightingConfig lighting, float cameraDistance) {
+    uint maximumBands = clamp(lighting.celBandCount, 2u, 5u);
+    if (lighting.celBandFalloffEnd <= lighting.celBandFalloffStart ||
+        cameraDistance <= lighting.celBandFalloffStart) {
+        return maximumBands;
+    }
+    float falloff = clamp((cameraDistance - lighting.celBandFalloffStart) /
+                          max(lighting.celBandFalloffEnd - lighting.celBandFalloffStart, 1e-4),
+                          0.0, 1.0);
+    return clamp(uint(floor(mix(float(maximumBands), 2.0, falloff) + 0.5)), 2u, maximumBands);
+}
+
+float celBandValue(float NdotL, uint bandCount, LightingConfig lighting) {
+    float thresholdSpan = max(lighting.celLitThreshold - lighting.celShadowThreshold, 1e-4);
+    float ramp = clamp((NdotL - lighting.celShadowThreshold) / thresholdSpan, 0.0, 1.0);
+    float bandPosition = ramp * float(bandCount - 1u);
+    float lowerBand = floor(bandPosition);
+    float withinBand = fract(bandPosition);
+    float softness = clamp(lighting.celRampSoftness, 0.0, 0.5);
+    float transition = softness <= 0.0
+        ? step(0.5, withinBand)
+        : smoothstep(0.5 - softness * 0.5, 0.5 + softness * 0.5, withinBand);
+    return clamp((lowerBand + transition) / float(bandCount - 1u), 0.0, 1.0);
+}
+
+vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, LightingConfig lighting,
+                                   uint visBits) {
+    vec3 shadowColor = celHueShiftRgb(color, lighting.celShadowHueShiftDegrees);
+    vec3 Lo = lighting.ambientIntensity * shadowColor;
+    uint bandCount = celBandCountAtDistance(lighting, length(worldPos - pc.cameraPos));
+    // Reserve 30% of the configured ramp for the minor shadow hue and 70% for
+    // the major lit hue, matching the hull palette ratio in R419.2/R419.3.
+    float litSideThreshold = mix(lighting.celShadowThreshold, lighting.celLitThreshold, 0.3);
+
+    for (uint i = 0u; i < lighting.lightCount; ++i) {
+        Light light = lighting.lights[i];
+        float distanceToLight;
+        vec3 lightDir = lightDirectionAt(light, worldPos, distanceToLight);
+        float attenuation = lightRangeAttenuation(light, distanceToLight);
+        float NdotL = max(dot(normal, lightDir), 0.0);
+        if (NdotL <= 0.0 || attenuation <= 0.0) continue;
+
+        float shadowFactor = 1.0;
+        if (shadowConfig.enabled != 0u) {
+            shadowFactor = ((visBits >> i) & 1u) != 0u ? 1.0 : 0.0;
+        }
+        if (shadowFactor <= 0.0) continue;
+
+        float luminosity = max(dot(max(light.radiance, vec3(0.0)),
+                                   vec3(0.2126, 0.7152, 0.0722)), 0.0);
+        vec3 lightSpectrum = max(light.radiance, vec3(0.0));
+        float peakRadiance = max(max(lightSpectrum.r, lightSpectrum.g), lightSpectrum.b);
+        vec3 celLightColor = lightSpectrum / max(peakRadiance, 1.0);
+        float purposeScale = clamp(lighting.celSpillPurposeScales[i], 0.0, 4.0);
+        float spill = clamp(luminosity * purposeScale * lighting.celLightSpillScale * attenuation,
+                            0.0, 1.0);
+        float spilledNdotL = clamp(NdotL + spill * (1.0 - NdotL), 0.0, 1.0);
+        float band = celBandValue(spilledNdotL, bandCount, lighting);
+        float shift = spilledNdotL >= litSideThreshold
+            ? lighting.celLitHueShiftDegrees
+            : lighting.celShadowHueShiftDegrees;
+        vec3 sideColor = celHueShiftRgb(color, shift);
+        Lo += sideColor * celLightColor * band * shadowFactor * attenuation;
     }
     return Lo;
 }

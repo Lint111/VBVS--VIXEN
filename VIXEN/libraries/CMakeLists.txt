@@ -52,6 +52,9 @@ add_subdirectory(GaiaVoxelWorld)
 # SVO library (Sparse Voxel Octree - Laine & Karras 2010 implementation)
 add_subdirectory(SVO)
 
+# VoxelDocument module (headless VDC1 document, flatten, preview, and save operations)
+add_subdirectory(VoxelDocument)
+
 # GaiaArchetypes library (Archetype builder with relationship hooks - depends on Gaia ECS)
 add_subdirectory(GaiaArchetypes)
 

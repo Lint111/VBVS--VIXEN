@@ -11,5 +11,18 @@ struct LightingConfig {
     uint lightCount;
     float ambientIntensity;
     Light lights[4];
+    float celSpillPurposeScales[4];
+    uint shadingMode;
+    uint celBandCount;
+    float celShadowThreshold;
+    float celLitThreshold;
+    float celRampSoftness;
+    float celLitHueShiftDegrees;
+    float celShadowHueShiftDegrees;
+    float celBandFalloffStart;
+    float celBandFalloffEnd;
+    float celLightSpillScale;
+    float _celTailPadding0;
+    float _celTailPadding1;
 };
 #endif // LIGHTINGCONFIG_GLSL
