@@ -9,6 +9,13 @@ if(TARGET GTest::gtest_main)
     set_target_properties(test_fail_scenario_registry PROPERTIES FOLDER "Tests/RenderGraph Tests")
     vixen_gtest_discover_tests(RenderGraph test_fail_scenario_registry)
     message(STATUS "✓ test_fail_scenario_registry configured")
+
+    add_executable(test_input_axes FailScenarios/test_input_axes.cpp)
+    target_include_directories(test_input_axes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+    target_link_libraries(test_input_axes PRIVATE GTest::gtest_main RenderGraph)
+    set_target_properties(test_input_axes PROPERTIES FOLDER "Tests/RenderGraph Tests")
+    vixen_gtest_discover_tests(RenderGraph test_input_axes)
+    message(STATUS "✓ test_input_axes configured")
 endif()
 
 # test_fail_scenario_sweep links VixenApp (application/main), which does not exist yet at this point

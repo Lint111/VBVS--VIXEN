@@ -338,6 +338,21 @@ void InputNode::QueueEvent(const InputEvent& event) {
 void InputNode::InjectMouseButton(int button, int action) {
     QueueEvent({InputEvent::Type::MouseButton, button, action, 0.0, 0.0});
 }
+
+void InputNode::InjectKey(EventBus::KeyCode key, bool pressed) {
+    const int glfwKey = KeyCodeToGlfw(key);
+    if (glfwKey != GLFW_KEY_UNKNOWN) {
+        QueueEvent({InputEvent::Type::Key, glfwKey, pressed ? GLFW_PRESS : GLFW_RELEASE, 0.0, 0.0});
+    }
+}
+
+void InputNode::InjectCursorPos(double x, double y) {
+    QueueEvent({InputEvent::Type::CursorPos, 0, 0, x, y});
+}
+
+void InputNode::InjectFocusLoss() {
+    ClearInputOnFocusLoss();
+}
 #endif
 
 void InputNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
@@ -472,6 +487,7 @@ void InputNode::PopulateInputState() {
         }
         state.wasDown = state.isDown;
     }
+    inputState_.UpdateAxesFromKeyState();
 
     // Update debug mode based on number key presses (0-9)
     // debugMode persists until another number is pressed
@@ -592,8 +608,24 @@ void InputNode::RecenterMouse() {
 void InputNode::ClearInputOnFocusLoss() {
     for (auto& [key, state] : keyStates) {
         state.isDown = false;
+        inputState_.keyDown[key] = false;
     }
     buttonDown_[0] = buttonDown_[1] = buttonDown_[2] = false;
+    {
+        std::lock_guard lock(eventMutex_);
+        auto event = pendingInput_.begin();
+        while (event != pendingInput_.end()) {
+            if (event->type == InputEvent::Type::Key || event->type == InputEvent::Type::CursorPos) {
+                event = pendingInput_.erase(event);
+            } else {
+                ++event;
+            }
+        }
+    }
+    pendingDelta_ = glm::vec2(0.0f);
+    inputState_.mouseDelta = glm::vec2(0.0f);
+    inputState_.axes.fill(0.0f);
+    firstCursorEvent_ = true;
     NODE_LOG_INFO("[InputNode] Focus lost - cleared latched key/button state");
 }
 

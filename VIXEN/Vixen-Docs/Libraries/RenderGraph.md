@@ -267,3 +267,20 @@ For detailed connection system architecture, see [[../01-Architecture/RenderGrap
 - [[../01-Architecture/Vulkan-Pipeline|Vulkan Pipeline]] - Vulkan resource management
 - [[../01-Architecture/Type-System|Type System]] - Compile-time type safety
 - [[CashSystem]] - MainCacher (owned by EngineContext; AR#8)
+
+## 9. Continuous input axes
+
+`InputNode` writes per-frame keyboard axes to `InputState::axes` alongside the existing
+`keyDown`, `keyPressed`, and `keyReleased` maps. `InputState::GetAxis(InputAxis)` reads an axis;
+the existing `GetAxisHorizontal`, `GetAxisVertical`, `GetAxisUpDown`, and look-axis methods remain
+available and read the same stored values.
+
+The default key bindings live in `kInputAxisBindings`: A/D drive horizontal movement, S/W drive
+forward movement, Q/E drive up movement, and the arrow keys drive keyboard look axes. Opposite keys
+sum to zero, and each keyboard axis is clamped to `[-1, 1]`. `mouseDelta` carries raw cursor motion
+in pixels for mouse-look; it is cleared at the start of every frame and repopulated from that
+frame's cursor events. Focus loss clears held-key axes and pending mouse motion.
+
+Gameplay and future simulation ingress read the same `InputState*` on
+`InputNodeConfig::INPUT_STATE`; this extends the existing graph output without changing discrete
+key edges or AppFlow action bindings.
