@@ -29,7 +29,7 @@ vixen_whole_archive_link_vixen_app(vixen_editor PRIVATE)
 # (EditorApplication::gaiaWorld_) for the Gaia-backed layer-mask provider + reconcile -- previously
 # vixen_editor only pulled gaia.h TRANSITIVELY via SVO's octree headers (VixenApp), never linked
 # the library that actually instantiates a World.
-target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorld)
+target_link_libraries(vixen_editor PRIVATE AppFlow GaiaVoxelWorld::GaiaVoxelWorld VoxelDocument)
 
 # Default document path (no argv[1]) resolves relative to the source-tree BuiltAssets dir, not
 # the exe's CWD -- so `vixen_editor` works from any working directory.
