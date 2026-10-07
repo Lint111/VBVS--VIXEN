@@ -532,6 +532,20 @@ namespace Set0 {
     };
 
     /**
+     * @brief skySphereImage
+     * Type: STORAGE_IMAGE
+     */
+    struct Binding35 {
+        static constexpr const char* NAME = "skySphereImage";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 35;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    /**
      * @brief HitAccumTable
      * Type: STORAGE_BUFFER
      * Requires: VIXEN_SRS_CELL_RESOLVE
@@ -618,6 +632,7 @@ using DDGILeakGateDebugShadeSSBO = Set0::Binding31;
 using probeIrradianceAtlasRead = Set0::Binding32;
 using probeVisibilityAtlasRead = Set0::Binding33;
 using ProbeGridConfigReadSSBO = Set0::Binding34;
+using skySphereImage = Set0::Binding35;
 using HitAccumTable = Set0::Binding36;
 using HitAccumParamsSSBO = Set0::Binding37;
 using HitAccumCellRadiance = Set0::Binding38;
@@ -778,6 +793,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"probeIrradianceAtlasRead", false, 0, 32, 0, Access::ReadOnly, 0, nullptr},
     {"probeVisibilityAtlasRead", false, 0, 33, 0, Access::ReadOnly, 0, nullptr},
     {"ProbeGridConfigReadSSBO", false, 0, 34, 0, Access::ReadOnly, 0, nullptr},
+    {"skySphereImage", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"HitAccumTable", false, 0, 36, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding36},
     {"HitAccumParamsSSBO", false, 0, 37, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding37},
     {"HitAccumCellRadiance", false, 0, 38, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding38},
@@ -817,7 +833,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 33;
+    static constexpr uint32_t NUM_MEMBERS = 34;
     static constexpr uint32_t NUM_FEATURES = 2;
 };
 
