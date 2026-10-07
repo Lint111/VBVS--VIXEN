@@ -32,7 +32,12 @@
 
 #include <gtest/gtest.h>
 
+#include "Core/NodeContext.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
+#include "Data/InputState.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
+#include "Data/Nodes/VoxelSelectionProviderNodeConfig.h"
+#include "Nodes/VoxelSelectionProviderNode.h"
 #include "VulkanDevice.h"
 
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
@@ -300,6 +305,50 @@ protected:
 
     std::unique_ptr<VulkanDevice> deviceShell_;
 
+    template <typename T>
+    static void SetHandleVal(Resource& res, T value) { res.SetHandle<T>(std::move(value)); }
+
+    void ReadSelectionPixels(VkImage idImage, uint32_t width, uint32_t height,
+                             const std::vector<uint32_t>& pixelIndices,
+                             std::vector<SelectionCandidate>& outCandidates) {
+        VoxelSelectionProviderNodeType providerType;
+        VoxelSelectionProviderNode provider("test_emissive_pick_provider", &providerType);
+        InputState input;
+
+        Resource inputRes; SetHandleVal<InputStatePtr>(inputRes, &input);
+        Resource imageRes; SetHandleVal<VkImage>(imageRes, idImage);
+        Resource deviceRes; SetHandleVal<VulkanDevice*>(deviceRes, deviceShell_.get());
+        Resource poolRes; SetHandleVal<VkCommandPool>(poolRes, commandPool_);
+        Resource frameRes; SetHandleVal<uint32_t>(frameRes, 0u);
+        Resource widthRes; SetHandleVal<uint32_t>(widthRes, width);
+        Resource heightRes; SetHandleVal<uint32_t>(heightRes, height);
+        Resource candidateRes; candidateRes.SetHandle<SelectionCandidate>(SelectionCandidate{});
+
+        provider.SetInput(VoxelSelectionProviderNodeConfig::INPUT_STATE_Slot::index, 0, &inputRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::ID_IMAGE_Slot::index, 0, &imageRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::VULKAN_DEVICE_Slot::index, 0, &deviceRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::COMMAND_POOL_Slot::index, 0, &poolRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::CURRENT_FRAME_INDEX_Slot::index, 0, &frameRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::VIEWPORT_WIDTH_Slot::index, 0, &widthRes);
+        provider.SetInput(VoxelSelectionProviderNodeConfig::VIEWPORT_HEIGHT_Slot::index, 0, &heightRes);
+        static_cast<INodeWiring&>(provider).SetOutput(
+            VoxelSelectionProviderNodeConfig::CANDIDATE_Slot::index, 0, &candidateRes);
+
+        provider.Setup();
+        provider.Compile();
+        outCandidates.clear();
+        outCandidates.reserve(pixelIndices.size());
+        for (uint32_t pixelIndex : pixelIndices) {
+            ASSERT_LT(pixelIndex, width * height);
+            input.clicksThisFrame = {{static_cast<int>(Vixen::EventBus::MouseButton::Left), true,
+                                      static_cast<float>(pixelIndex % width),
+                                      static_cast<float>(pixelIndex / width)}};
+            provider.Execute();
+            outCandidates.push_back(candidateRes.GetHandle<SelectionCandidate>());
+        }
+        provider.Cleanup(CleanupReason::FinalTeardown);
+    }
+
     // Real discrete/integrated GPUs are now PREFERRED; software/Dozen is only a
     // fallback when no real GPU is visible.
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
@@ -350,6 +399,14 @@ protected:
 
         deviceShell_ = std::make_unique<VulkanDevice>(&physicalDevice_);
         deviceShell_->device = logicalDevice_;
+        deviceShell_->queue = queue_;
+        deviceShell_->graphicsQueueIndex = queueFamily_;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &deviceShell_->gpuMemoryProperties);
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount, nullptr);
+        deviceShell_->queueFamilyProperties.resize(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount,
+                                                  deviceShell_->queueFamilyProperties.data());
     }
 
     void TearDown() override {
@@ -562,8 +619,12 @@ protected:
     void RenderSceneShaded(const std::vector<Vixen::SVO::BodyInstanceGpu>& instances,
                            const LightingConfigCpu& lighting, const ShadowConfigCpu& shadow,
                            const PushConstants& pc, uint32_t w, uint32_t h,
-                           std::vector<uint8_t>& outRgba) {
+                           std::vector<uint8_t>& outRgba,
+                           const std::vector<uint32_t>* selectionPixelIndices = nullptr,
+                           std::vector<SelectionCandidate>* outSelections = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
+        ASSERT_EQ(selectionPixelIndices != nullptr, outSelections != nullptr)
+            << "pick readback requires both requested pixel indices and an output vector";
 
         const std::vector<uint32_t>& shadeSpirv = SpatialReuseShadeSpirv();
         ASSERT_FALSE(shadeSpirv.empty()) << "SpatialReuseShade.comp SPIR-V is empty (build failed above)";
@@ -685,7 +746,7 @@ protected:
         UploadHostBuffer(probeGridMem, &probeGrid, sizeof(ProbeGridConfigCpu));
 
         const VkFormat kColorFmt = VK_FORMAT_R8G8B8A8_UNORM;
-        const VkFormat kIdFmt    = VK_FORMAT_R32_UINT;
+        const VkFormat kIdFmt    = VK_FORMAT_R32G32_UINT;
         VkImage colorImg = VK_NULL_HANDLE, idImg = VK_NULL_HANDLE;
         VkDeviceMemory colorMem = VK_NULL_HANDLE, idMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFmt, colorImg, colorMem));
@@ -1140,6 +1201,10 @@ protected:
         std::memcpy(outRgba.data(), mappedRgba, static_cast<size_t>(rgbaSize));
         vkUnmapMemory(logicalDevice_, rgbaMem);
 
+        if (outSelections != nullptr) {
+            ReadSelectionPixels(idImg, w, h, *selectionPixelIndices, *outSelections);
+        }
+
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_, rgbaBuf, nullptr); vkFreeMemory(logicalDevice_, rgbaMem, nullptr);
         vkDestroyDescriptorPool(logicalDevice_, marchDescPool, nullptr);
@@ -1214,6 +1279,22 @@ LightingConfigCpu MakeLighting(const glm::vec3& lightDir) {
     cfg.lights[0].radianceY = 1.0f;
     cfg.lights[0].radianceZ = 1.0f;
     cfg.lights[0].range = 0.0f;
+    return cfg;
+}
+
+LightingConfigCpu MakePointLighting(const glm::vec3& lightPosition, const glm::vec3& radiance,
+                                    float range, float ambientIntensity) {
+    LightingConfigCpu cfg{};
+    cfg.lightCount = 1u;
+    cfg.ambientIntensity = ambientIntensity;
+    cfg.lights[0].directionX = lightPosition.x;
+    cfg.lights[0].directionY = lightPosition.y;
+    cfg.lights[0].directionZ = lightPosition.z;
+    cfg.lights[0].kind = 1u;  // point
+    cfg.lights[0].radianceX = radiance.x;
+    cfg.lights[0].radianceY = radiance.y;
+    cfg.lights[0].radianceZ = radiance.z;
+    cfg.lights[0].range = range;
     return cfg;
 }
 
@@ -1383,4 +1464,143 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
     std::printf("[SHADOW-CORRECTNESS] target with shadows DISABLED luma=%d\n", targetLumaNoShadow);
     EXPECT_GT(targetLumaNoShadow, targetLuma + 20)
         << "disabling shadows did not brighten the previously-occluded pixel";
+}
+
+TEST_F(ShadowCorrectnessTest, EmissivePointLightFacesThreeBodiesTowardTheStar) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    const glm::vec3 starCenter(64.0f, 64.0f, 64.0f);
+    const glm::vec3 starColor(1.0f, 0.72f, 0.24f);
+    constexpr float kStarEmission = 16.0f;
+    constexpr float kLightRange = 100.0f;
+    auto star = MakeProceduralSphere(starCenter, 8.0f, starColor.x, starColor.y, starColor.z);
+    star.recipeParams[3] = kStarEmission;
+    const LightingConfigCpu lighting = MakePointLighting(
+        glm::vec3(star.worldPos[0], star.worldPos[1], star.worldPos[2]),
+        starColor * kStarEmission, kLightRange, 0.04f);
+    const ShadowConfigCpu shadows = MakeShadow(true);
+
+    const glm::vec3 bodyCenters[] = {
+        starCenter + glm::vec3(-23.0f, 12.0f, -25.0f),
+        starCenter + glm::vec3(23.0f, 12.0f, -25.0f),
+        starCenter + glm::vec3(23.0f, -14.0f, -25.0f),
+    };
+    const glm::vec3 configuredPosition(lighting.lights[0].directionX,
+                                       lighting.lights[0].directionY,
+                                       lighting.lights[0].directionZ);
+
+    constexpr uint32_t kW = 8, kH = 8;
+    const auto centerLuma = [](const std::vector<uint8_t>& rgba) {
+        const size_t idx = (static_cast<size_t>(kH / 2) * kW + kW / 2) * 4;
+        return (static_cast<int>(rgba[idx]) + static_cast<int>(rgba[idx + 1]) +
+                static_cast<int>(rgba[idx + 2])) / 3;
+    };
+
+    for (uint32_t i = 0; i < 3; ++i) {
+        const glm::vec3 expectedDirection = glm::normalize(starCenter - bodyCenters[i]);
+        const glm::vec3 actualDirection = glm::normalize(configuredPosition - bodyCenters[i]);
+        EXPECT_NEAR(actualDirection.x, expectedDirection.x, 1e-6f);
+        EXPECT_NEAR(actualDirection.y, expectedDirection.y, 1e-6f);
+        EXPECT_NEAR(actualDirection.z, expectedDirection.z, 1e-6f);
+        std::printf("[STARLIGHT-DIRECTION] body=%u star-minus-body=(%.4f, %.4f, %.4f)\n",
+                    i, actualDirection.x, actualDirection.y, actualDirection.z);
+
+        const glm::vec3 cameraOffsetDir = glm::normalize(
+            expectedDirection + glm::vec3(0.0f, 0.0f, 0.2f));
+        const glm::vec3 eye = bodyCenters[i] + cameraOffsetDir * 20.0f;
+        const glm::vec3 direction = glm::normalize(bodyCenters[i] - eye);
+        const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+        glm::vec3 right = glm::normalize(glm::cross(direction, worldUp));
+        const glm::vec3 up = glm::normalize(glm::cross(right, direction));
+        PushConstants pc{};
+        pc.cameraPos = eye; pc.time = 0.0f;
+        pc.cameraDir = direction; pc.fov = 1.0f;
+        pc.cameraUp = up; pc.aspect = 1.0f;
+        pc.cameraRight = right; pc.debugMode = 0;
+        pc.raySizeCoef = 0.0f; pc.raySizeBias = 0.0f;
+        pc.instanceCount = 2;
+
+        const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+            star,
+            MakeProceduralSphere(bodyCenters[i], 5.0f, 0.9f, 0.9f, 0.9f),
+        };
+        std::vector<uint8_t> rgba;
+        ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadows, pc, kW, kH, rgba));
+        const int luma = centerLuma(rgba);
+        std::printf("[STARLIGHT-DIRECTION] body=%u facing-surface luma=%d\n", i, luma);
+        EXPECT_GT(luma, 60) << "point light did not illuminate the surface facing the emissive star";
+    }
+}
+
+// Uses the first star/planet/camera tuple from EmissivePointLightFacesThreeBodiesTowardTheStar.
+// Searches the 8x8 output for a pixel whose rendered brightness and production pick identify
+// the same lit planet from this march -> visibility -> shade dispatch and live RG32 pick image.
+TEST_F(ShadowCorrectnessTest, EmissivePointLightPickReturnsTheLitBodyInstance) {
+    ASSERT_TRUE(softwareConfirmed_);
+
+    const glm::vec3 starCenter(64.0f, 64.0f, 64.0f);
+    const glm::vec3 starColor(1.0f, 0.72f, 0.24f);
+    constexpr float kStarEmission = 16.0f;
+    constexpr float kLightRange = 100.0f;
+    auto star = MakeProceduralSphere(starCenter, 8.0f, starColor.x, starColor.y, starColor.z);
+    star.recipeParams[3] = kStarEmission;
+    const glm::vec3 bodyCenter = starCenter + glm::vec3(-23.0f, 12.0f, -25.0f);
+    const LightingConfigCpu lighting = MakePointLighting(
+        starCenter, starColor * kStarEmission, kLightRange, 0.04f);
+    const ShadowConfigCpu shadows = MakeShadow(true);
+
+    const glm::vec3 expectedDirection = glm::normalize(starCenter - bodyCenter);
+    const glm::vec3 cameraOffsetDir = glm::normalize(
+        expectedDirection + glm::vec3(0.0f, 0.0f, 0.2f));
+    const glm::vec3 eye = bodyCenter + cameraOffsetDir * 20.0f;
+    const glm::vec3 direction = glm::normalize(bodyCenter - eye);
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+    const glm::vec3 right = glm::normalize(glm::cross(direction, worldUp));
+    const glm::vec3 up = glm::normalize(glm::cross(right, direction));
+
+    PushConstants pc{};
+    pc.cameraPos = eye; pc.time = 0.0f;
+    pc.cameraDir = direction; pc.fov = 1.0f;
+    pc.cameraUp = up; pc.aspect = 1.0f;
+    pc.cameraRight = right; pc.debugMode = 0;
+    pc.raySizeCoef = 0.0f; pc.raySizeBias = 0.0f;
+    pc.instanceCount = 2;
+
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+        star,
+        MakeProceduralSphere(bodyCenter, 5.0f, 0.9f, 0.9f, 0.9f),
+    };
+    constexpr uint32_t kW = 8, kH = 8;
+    std::vector<uint32_t> selectionPixels(kW * kH);
+    for (uint32_t pixel = 0; pixel < selectionPixels.size(); ++pixel) {
+        selectionPixels[pixel] = pixel;
+    }
+    std::vector<uint8_t> rgba;
+    std::vector<SelectionCandidate> selections;
+    ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadows, pc, kW, kH, rgba,
+                                               &selectionPixels, &selections));
+
+    ASSERT_EQ(selections.size(), selectionPixels.size());
+    uint32_t litBodyPixel = UINT32_MAX;
+    int litBodyLuma = 0;
+    for (uint32_t pixel = 0; pixel < selections.size(); ++pixel) {
+        const size_t offset = static_cast<size_t>(pixel) * 4;
+        const int luma = (static_cast<int>(rgba[offset]) +
+                          static_cast<int>(rgba[offset + 1]) +
+                          static_cast<int>(rgba[offset + 2])) / 3;
+        if (luma > 60 && selections[pixel].hit &&
+            selections[pixel].instanceIndex == std::optional<uint32_t>{1u}) {
+            litBodyPixel = pixel;
+            litBodyLuma = luma;
+            break;
+        }
+    }
+
+    ASSERT_NE(litBodyPixel, UINT32_MAX)
+        << "no pixel was both visibly lit and picked as body instance 1";
+    EXPECT_GT(litBodyLuma, 60);
+    EXPECT_TRUE(selections[litBodyPixel].hit);
+    ASSERT_TRUE(selections[litBodyPixel].instanceIndex.has_value());
+    EXPECT_EQ(*selections[litBodyPixel].instanceIndex, 1u)
+        << "the live RG32 pick target must preserve the lit planet's body-instance index";
 }

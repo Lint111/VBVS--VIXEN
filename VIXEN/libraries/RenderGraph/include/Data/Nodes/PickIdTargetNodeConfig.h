@@ -18,9 +18,10 @@ namespace PickIdTargetNodeCounts {
 /**
  * @brief Pure constexpr resource configuration for PickIdTargetNode (AR#35, GPU picking P1)
  *
- * Allocates an R32_UINT 2D STORAGE image (one per in-flight frame, a ring like the dynamic
+ * Allocates an RG32_UINT 2D STORAGE image (one per in-flight frame, a ring like the dynamic
  * instance buffer) sized to the swapchain extent, used by the voxel compute ray-march to write
- * a per-pixel hit identity (pickID) at descriptor binding 9. Usage is STORAGE | TRANSFER_SRC
+ * a per-pixel pick result at descriptor binding 9: channel 0 is the unchanged packed voxel
+ * address and channel 1 is the body-instance index. Usage is STORAGE | TRANSFER_SRC
  * (TRANSFER_SRC for the P2 click-readback copy). The compute shader writes the image as a
  * STORAGE image, which requires VK_IMAGE_LAYOUT_GENERAL; the node performs a one-time
  * UNDEFINED -> GENERAL transition of every ring image at Compile (storage images stay GENERAL

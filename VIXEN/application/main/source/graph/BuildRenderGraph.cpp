@@ -112,6 +112,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Data/Nodes/LightTreeBufferNodeConfig.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
 #include "Data/Nodes/ProbeGridConfigNodeConfig.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Data/Nodes/ProbeAtlasNodeConfig.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Data/Nodes/SkySphereNodeConfig.h"             // T-1138: procedural background cache
 #include "Data/Nodes/ImageSyncGathererNodeConfig.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Data/Nodes/StorageBufferNodeConfig.h"        // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs
 #include "Data/Nodes/MultiDispatchNodeConfig.h"        // Recipe-Live-App-Bucketed-Dispatch Inc4 M3: specialized-pipeline indirect dispatch
@@ -164,6 +165,7 @@ namespace ClearSdi = ShaderInterface::HitAccumClear;  // B2 (batch-26): table-wi
 #include "Nodes/LightTreeBufferNode.h"      // Sampled Lighting Inc3 M4: mip-cut light-tree upload ring
 #include "Nodes/ProbeGridConfigNode.h"      // Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
 #include "Nodes/ProbeAtlasNode.h"           // Sampled Lighting Inc4 M2: persistent DDGI probe atlas image
+#include "Nodes/SkySphereNode.h"            // T-1138: procedural background cache
 #include "Nodes/DepthTargetNode.h"          // Raster-proxy B1 M4: occlusion depth ping-pong pair
 #include "Nodes/ImageSyncGathererNode.h"    // Sampled Lighting Inc4 M1: variadic IRenderTarget* sync gatherer
 #include "Nodes/LoopBridgeNode.h"
@@ -589,6 +591,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+    NodeHandle skySphereNode = renderGraph->AddNode<SkySphereNodeType>("sky_sphere");
 
     NodeHandle sceneRadianceNode = renderGraph->AddNode<SceneRadianceNodeType>("scene_radiance");
     NodeHandle exposureShaderLib{};
@@ -1260,7 +1263,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
     inputNode_ = inputNode;                          // store for Update()'s live ProcessPendingInput() lookup
 
-    // --- Pick ID Target (AR#35 GPU picking P1: R32_UINT storage-image ring at binding 9) ---
+    // --- Pick ID Target (AR#35 GPU picking: RG32_UINT storage-image ring at binding 9) ---
     NodeHandle pickIdTargetNode = renderGraph->AddNode<PickIdTargetNodeType>("pick_id_target");
 
     // --- Voxel Selection Provider (SEL-P2: providers are nodes) — on a click edge it reads back the
@@ -1445,6 +1448,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_HEIGHT, kProbeVisibilityAtlasHeight);
     probeVisibilityAtlas->SetParameter(ProbeAtlasNodeConfig::PARAM_FORMAT,
         static_cast<uint32_t>(VK_FORMAT_R16G16_SFLOAT));
+
+    // T-1138 defaults off to preserve the existing background exactly. Enable at runtime by
+    // setting `enabled` on the `sky_sphere` node; seed and brightness are live node parameters.
+    auto* skySphere = static_cast<SkySphereNode*>(renderGraph->GetInstance(skySphereNode));
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_WIDTH, 1024u);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_HEIGHT, 512u);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_FORMAT,
+        static_cast<uint32_t>(VK_FORMAT_R16G16B16A16_SFLOAT));
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_ENABLED, 0u);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_SEED, 0x5a17f13du);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_BRIGHTNESS, 0.45f);
+    skySphere->SetParameter(SkySphereNodeConfig::PARAM_REFRESH_CADENCE_FRAMES, 0u);
 
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] DDGI probe atlases: irradiance " +
@@ -2962,10 +2977,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // visibility atlas, see probeAtlasGatherer's own declaration comment above).
     static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(probeAtlasGatherer))->PreRegisterImageSlots(2);
 
-    // Sampled Lighting Inc4 M5: read-side atlas gatherer -- same 2 entries, feeding
-    // spatialReuseNode's IMAGE_READ_ARRAY (see spatialReuseProbeAtlasReadGatherer's own
-    // declaration comment above).
-    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(2);
+    // Read-side image gatherer: two DDGI atlases and the sky cache, all read by SpatialReuseShade.
+    static_cast<ImageSyncGathererNode*>(renderGraph->GetInstance(spatialReuseProbeAtlasReadGatherer))->PreRegisterImageSlots(3);
 
     // Raster-proxy B1 M4: one tile image each side (HiZ write / cull read), one skip-mask
     // buffer entry on the cull's write side.
@@ -3208,6 +3221,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           "(64,64,64), orbitDistance=118 (near the 120 cap), pitch=0.9rad -- frames "
                           "the grid's near region from above; the full grid may extend beyond frame "
                           "at high N, which the live-run gate accounts for");
+    }
+    if (envFlagEnabled("VIXEN_STARLIGHT_DEMO")) {
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_X, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Y, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_CENTER_Z, 64.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_ORBIT_DISTANCE, 110.0f);
+        camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
+        mainLogger->Info("[BuildRenderGraph] VIXEN_STARLIGHT_DEMO: framed star and three orbiting bodies");
     }
     // Sampled Lighting Cornell Box Demo M1: shared camera preset (ONE source, both
     // VIXEN_DDGI_CORNELL_BAKED_DEMO and M2's VIXEN_DDGI_CORNELL_VIRTUAL_DEMO read the SAME
@@ -5657,6 +5678,55 @@ void VulkanGraphApplication::BuildRenderGraph() {
             if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
                 bodyScene->SetInstances(std::move(shadowBodies));
                 mainLogger->Info("[BuildRenderGraph] VIXEN_SHADOW_DEMO: seeded target+occluder+litControl body instances");
+            }
+        } else if (envFlagEnabled("VIXEN_STARLIGHT_DEMO")) {
+            // T-1139 witness scene: the emissive procedural sphere also authors
+            // one entry in the existing shared LightingConfig light set.
+            const glm::vec3 starCenter(64.0f, 64.0f, 64.0f);
+            const glm::vec3 starColor(1.0f, 0.72f, 0.24f);
+            constexpr float kStarRadius = 8.0f;
+            constexpr float kStarEmission = 16.0f;
+            constexpr float kStarLightRange = 100.0f;
+            auto makeSphere = [](glm::vec3 center, float radius, glm::vec3 color, float emission) {
+                Vixen::SVO::BodyInstanceGpu inst{};
+                inst.worldPos[0] = center.x; inst.worldPos[1] = center.y; inst.worldPos[2] = center.z;
+                inst.renderScale = 1.0f;
+                inst.color[0] = color.x; inst.color[1] = color.y; inst.color[2] = color.z;
+                inst.providerKind = 1u;  // PROVIDER_PROCEDURAL
+                inst.recipeId = 0u;      // sphere
+                inst.recipeParams[0] = radius;
+                inst.recipeParams[3] = emission;
+                return inst;
+            };
+
+            std::vector<Vixen::SVO::BodyInstanceGpu> starBodies = {
+                makeSphere(starCenter, kStarRadius, starColor, kStarEmission),
+                // Keep the bodies clear of the default HUD panels in the capture frame.
+                makeSphere(starCenter + glm::vec3(-23.0f, 12.0f, -25.0f), 5.0f,
+                           glm::vec3(0.25f, 0.55f, 0.95f), 0.0f),
+                makeSphere(starCenter + glm::vec3(23.0f, 12.0f, -25.0f), 5.0f,
+                           glm::vec3(0.9f, 0.28f, 0.18f), 0.0f),
+                makeSphere(starCenter + glm::vec3(23.0f, -14.0f, -25.0f), 5.0f,
+                           glm::vec3(0.25f, 0.82f, 0.36f), 0.0f),
+            };
+
+            const Vixen::SVO::BodyInstanceGpu& star = starBodies.front();
+            Vixen::Gpu::Light starLight{};
+            starLight.direction_or_positionX = star.worldPos[0];
+            starLight.direction_or_positionY = star.worldPos[1];
+            starLight.direction_or_positionZ = star.worldPos[2];
+            starLight.kind = 1u;  // point
+            starLight.radianceX = star.color[0] * star.recipeParams[3];
+            starLight.radianceY = star.color[1] * star.recipeParams[3];
+            starLight.radianceZ = star.color[2] * star.recipeParams[3];
+            starLight.range = kStarLightRange;
+
+            if (auto* bodyScene = static_cast<BodyOctreeSceneNode*>(renderGraph->GetInstance(bodyOctreeSceneNode))) {
+                bodyScene->SetInstances(std::move(starBodies));
+                mainLogger->Info("[BuildRenderGraph] VIXEN_STARLIGHT_DEMO: seeded one emissive star and three bodies");
+            }
+            if (auto* lighting = static_cast<LightingConfigNode*>(renderGraph->GetInstance(lightingConfigNode))) {
+                lighting->SetLights({starLight}, 0.04f);
             }
         } else if (envFlagEnabled("VIXEN_DDGI_CORNELL_BAKED_DEMO")) {
             // Sampled Lighting — Cornell Box GI Reference Scene, M1 (baked variant).
@@ -8253,7 +8323,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   selectionCoordinatorNode, SelectionCoordinatorNodeConfig::PROVIDER_CANDIDATES,
                   ConnectionMeta{}.With<AccumulationSortConfig>(1));
 
-    // Pick ID target (AR#35 GPU picking P1): allocate the R32_UINT storage-image ring sized to the
+    // Pick ID target (AR#35 GPU picking): allocate the RG32_UINT storage-image ring sized to the
     // RENDER extent (M4.4 — was the window; the compute shader now writes the offscreen render
     // target, not the swapchain, so the pick-ID image must match ITS resolution or the shader's
     // per-pixel idOutputImage writes go out of bounds / land at the wrong texel under scale<1),
@@ -8407,6 +8477,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   probeVisibilityAtlasNode, ProbeAtlasNodeConfig::COMMAND_POOL);
 
+    // T-1138: the cache uses a fixed world-space source-independent image. The optional
+    // STAR_LIST slot is deliberately unconnected while owner question Q7 remains open.
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  skySphereNode, SkySphereNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  skySphereNode, SkySphereNodeConfig::COMMAND_POOL);
+
     // Sampled Lighting Inc4 M2: gather both atlas IRenderTarget* handles into one
     // IMAGE_WRITE_ARRAY-shaped array (Inc4 M1's ImageSyncGathererNode). No ComputeStageNode
     // consumes IMAGE_ARRAY yet this milestone (that's M3's probe-update pass) -- these
@@ -8429,6 +8506,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   spatialReuseProbeAtlasReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(probeVisibilityAtlasNode, ProbeAtlasNodeConfig::PROBE_ATLAS,
                   spatialReuseProbeAtlasReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(skySphereNode, SkySphereNodeConfig::SKY_SPHERE,
+                  spatialReuseProbeAtlasReadGatherer, 2,
+                  SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
 
     // Sampled Lighting Inc3 M4: reservoir CURRENT/PREVIOUS ping-pong SSBOs — device +
     // extent-driven sizing from renderTargetNode's own RENDER_TARGET output, same
@@ -9103,6 +9183,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                            ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("probeVisibilityAtlasRead", probeVisibilityAtlasNode,
                            ProbeAtlasNodeConfig::CURRENT_VIEW, SlotRole::Execute);
+    sceneProviders.Provide("skySphereImage", skySphereNode,
+                           SkySphereNodeConfig::CURRENT_VIEW, SlotRole::Execute);
     sceneProviders.Provide("ProbeGridConfigReadSSBO", probeGridConfigNode,
                            ProbeGridConfigNodeConfig::PROBE_GRID_CONFIG_BUFFER,
                            SlotRole::Dependency | SlotRole::Execute);

@@ -19,10 +19,10 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform writeonly image2D outputImage;
 
-// AR#35 (GPU ID-buffer picking, P1): per-pixel hit identity. Binding 9 is the next free
-// slot (binding 8 = ShaderCounters). Written every pixel: packed (brickIndex<<10)|voxelLinearIdx
-// on a hit, or 0xFFFFFFFF on a miss. Reflected by SPIR-V as a STORAGE_IMAGE (R32_UINT).
-layout(binding = 9) uniform writeonly uimage2D idOutputImage;
+// AR#35 (GPU ID-buffer picking, P1): per-pixel pick result. The low channel keeps the
+// packed (brickIndex<<10)|voxelLinearIdx address; the high channel is the body-instance index
+// when one exists. This non-instanced shader has no instance index, so writes absence there.
+layout(rg32ui, binding = 9) uniform writeonly uimage2D idOutputImage;
 
 layout(std430, binding = 1) readonly buffer ESVOBuffer {
     uvec2 esvoNodes[];
@@ -567,9 +567,8 @@ void main() {
 
     imageStore(outputImage, pixelCoords, vec4(color, 1.0));
 
-    // AR#35 (GPU ID-buffer picking, P1): write the per-pixel hit identity. Packed as
-    // (brickIndex << 10) | (voxelLinearIdx & 0x3FF); 0xFFFFFFFF sentinel on a miss.
-    // Decoded on the CPU as brick = id >> 10, voxel = id & 0x3FF. Every pixel writes.
+    // AR#35: keep the packed voxel address unchanged. This path has no body-instance loop,
+    // so the second channel reports no instance for both hits and misses.
     uint pickID = hit ? ((hitBrickIndex << 10u) | (hitVoxelLinearIdx & 0x3FFu)) : 0xFFFFFFFFu;
-    imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
+    imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0xFFFFFFFFu, 0u, 0u));
 }

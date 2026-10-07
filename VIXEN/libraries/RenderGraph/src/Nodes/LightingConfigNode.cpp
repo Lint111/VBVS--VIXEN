@@ -8,6 +8,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "Generated/LightingConfig.g.h"
 #include "VulkanDevice.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -74,6 +75,18 @@ LightingConfigNode::LightingConfigNode(const std::string& n, NodeType* t)
 {
 }
 
+void LightingConfigNode::SetLights(const std::vector<Vixen::Gpu::Light>& lights,
+                                   float ambientIntensity) {
+    customLighting_ = {};
+    customLighting_.ambientIntensity = ambientIntensity;
+    customLighting_.lightCount = static_cast<uint32_t>(
+        std::min(lights.size(), std::size(customLighting_.lights)));
+    for (uint32_t i = 0; i < customLighting_.lightCount; ++i) {
+        customLighting_.lights[i] = lights[i];
+    }
+    hasCustomLighting_ = true;
+}
+
 void LightingConfigNode::TypedSetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("[LightingConfigNode] Setup (graph-scope initialization)");
 }
@@ -112,11 +125,12 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Per-frame ring index from FrameSyncNode (clamp via modulo for safety).
     uint32_t frameIndex = ctx.In(LightingConfigNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
 
-    // Static default content (no UI/authoring this increment — Sampled Lighting
-    // Inc0 §4). Re-uploaded every frame anyway: 144 B is negligible and this
-    // keeps the node ready for a future SetLights() with no rewiring.
-    Vixen::Gpu::LightingConfig cfg = MakeDefaultLightingConfig();
-    if (IsCornellDemo()) {
+    // Re-upload the current shared light set each frame (144 B); this keeps
+    // SetLights() updates live without graph rewiring.
+    Vixen::Gpu::LightingConfig cfg = hasCustomLighting_
+        ? customLighting_
+        : MakeDefaultLightingConfig();
+    if (!hasCustomLighting_ && IsCornellDemo()) {
         // Ceiling area-emitter (light-tree/ReSTIR/DDGI) is the Cornell scene's
         // sole light; drop the stray directional light but keep the ambient
         // baseline (not the blotching source -- see IsCornellDemo() comment).

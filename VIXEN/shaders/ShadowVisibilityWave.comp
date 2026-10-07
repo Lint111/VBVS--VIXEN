@@ -57,6 +57,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "SceneBindings.glsl"
 
 #include "Generated/LightingConfig.glsl"
+#include "LightEvaluation.glsl"
 
 layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
@@ -257,17 +258,22 @@ void main() {
 
         for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
             Light light = lightingConfig.lights[i];
-            vec3 lightDir = normalize(light.direction_or_position);
+            float distanceToLight;
+            vec3 lightDir = lightDirectionAt(light, worldPos, distanceToLight);
+            float attenuation = lightRangeAttenuation(light, distanceToLight);
 
             // Same NdotL-before-trace gate as the merged shader (audit C3):
             // a light the surface faces away from contributes provably zero,
             // so its trace is skipped and its bit stays 1 (never consumed).
             float NdotL = max(dot(worldNormal, lightDir), 0.0);
-            if (NdotL <= 0.0) continue;
+            if (NdotL <= 0.0 || attenuation <= 0.0) continue;
 
-            bool occluded = TraceWorldShadow(shadowOrigin, lightDir,
-                                             0.0,
-                                             shadowConfig.maxShadowDistance);
+            float maxShadowDistance = shadowConfig.maxShadowDistance;
+            if (light.kind == 1u) maxShadowDistance = min(maxShadowDistance, distanceToLight);
+            bool occluded = light.kind == 1u
+                ? TraceWorldShadowToPoint(shadowOrigin, lightDir, 0.0, maxShadowDistance,
+                                          light.direction_or_position)
+                : TraceWorldShadow(shadowOrigin, lightDir, 0.0, maxShadowDistance);
             recordCompositionShadowWave(
                 1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
             if (occluded) visBits &= ~(1u << i);

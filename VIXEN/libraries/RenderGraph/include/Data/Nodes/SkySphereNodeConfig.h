@@ -1,8 +1,10 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
-// Deep-Field Mip-Accessor Policy, batch 29 stream C: SkySphereNode scaffold config.
 #pragma once
+
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDeviceFwd.h"
+#include <array>
+#include <vector>
 #include <vulkan/vulkan.h>
 
 namespace Vixen::Vulkan::Resources { struct IRenderTarget; }
@@ -12,37 +14,37 @@ namespace Vixen::RenderGraph {
 using VulkanDevice  = Vixen::Vulkan::Resources::VulkanDevice;
 using IRenderTarget = Vixen::Vulkan::Resources::IRenderTarget;
 
+// An optional, source-neutral contribution to the procedural sky. The direction is in world
+// space; brightness is a relative scalar. Keeping this at the render-node boundary allows a
+// later deep-field source to feed stars without committing this node to that source's storage.
+struct SkySphereStar {
+    std::array<float, 3> direction{0.0f, 0.0f, 1.0f};
+    float brightness = 1.0f;
+};
+
+// Pointer-carried list lets an optional producer own/update its per-frame values without
+// registering a second generic resource-container schema in the graph type system.
+struct SkySphereStarList {
+    std::vector<SkySphereStar> stars;
+};
+
 namespace SkySphereNodeCounts {
-    static constexpr size_t INPUTS  = 2;  // VULKAN_DEVICE_IN, COMMAND_POOL
+    static constexpr size_t INPUTS  = 3;  // device, command pool, optional star list
     static constexpr size_t OUTPUTS = 2;  // SKY_SPHERE, CURRENT_VIEW
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
 /**
- * @brief Pure constexpr resource configuration for SkySphereNode
- * (Deep-Field Mip-Accessor Policy, batch 29 stream C — scaffold only, UNWIRED).
+ * @brief Parameters and resource slots for the procedural sky-sphere cache.
  *
- * Owns ONE persistent 2D storage image holding the cached regime-3 (COSMIC)
- * transmittance-accumulated sky, addressed by octahedral mapping (see
- * SkySphereNode.h for the cube-vs-octahedral choice). Mirrors ProbeAtlasNode's
- * shape exactly: Setup PARAMETERS (not graph inputs) size the image, since the
- * sky sphere's resolution is a design-time/scale-to-the-box knob, not a
- * per-frame extent to subscribe to — same rationale ProbeAtlasNodeConfig.h
- * documents for the DDGI atlas.
+ * The persistent RGBA16F octahedral image is refreshed only when enabled, seed, brightness, or
+ * an optional star-list input changes. `enabled` defaults to false in BuildRenderGraph, so the
+ * consumer retains the existing background until explicitly opted in. The list slot is
+ * intentionally not connected by the default graph while owner question Q7 is open.
  *
- * Inputs: 2
- *   - VULKAN_DEVICE_IN (VulkanDevice*)  Device for allocation + the one-shot transition queue
- *   - COMMAND_POOL     (VkCommandPool)  Pool for the one-shot transition command buffer
- * Outputs: 2
- *   - SKY_SPHERE   (IRenderTarget*) - The persistent octahedral sky image (RenderTargetData, imageCount=1)
- *   - CURRENT_VIEW (VkImageView)    - Raw view handle, mirrors ProbeAtlasNodeConfig::CURRENT_VIEW
- *     (a descriptor-gatherer binding must connect THIS, not SKY_SPHERE — IRenderTarget has no
- *     conversion_type, see ProbeAtlasNodeConfig.h's own CURRENT_VIEW doc for the full reason).
- * Parameters: width, height, format (VkFormat as uint32_t), refreshCadenceFrames
- *
- * UNWIRED this batch: no BuildRenderGraph.cpp instance exists yet, and no consumer reads
- * SKY_SPHERE/CURRENT_VIEW. Zero behavioral change (nothing links to this node type unless a
- * graph instantiates it — a compiled-but-unreferenced TypedNodeType is inert).
+ * Star colors and galaxy tint are restrained linear-light constants in SkySphereNode.cpp;
+ * `brightness` scales both. It affects only miss pixels in SpatialReuseShade, so it does not
+ * alter the scene's bi-modal body lighting.
  */
 CONSTEXPR_NODE_CONFIG(SkySphereNodeConfig,
                       SkySphereNodeCounts::INPUTS,
@@ -62,6 +64,12 @@ CONSTEXPR_NODE_CONFIG(SkySphereNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    INPUT_SLOT(STAR_LIST, SkySphereStarList*, 2,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ----- Output slots -----
     OUTPUT_SLOT(SKY_SPHERE, IRenderTarget*, 0,
         SlotNullability::Required,
@@ -71,22 +79,25 @@ CONSTEXPR_NODE_CONFIG(SkySphereNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    // ----- Parameter name constants -----
+    // ----- Parameter names -----
     static constexpr const char* PARAM_WIDTH  = "width";
     static constexpr const char* PARAM_HEIGHT = "height";
     static constexpr const char* PARAM_FORMAT = "format";  // VkFormat stored as uint32_t
-    // Lazy-refresh contract (spec "dynamic sky sphere"): re-trace cadence in frames, plus a
-    // dirty flag a future content-invalidation hook can set. Stubbed as config this slice —
-    // no scheduler reads it yet (that is the wiring batch's job).
+    static constexpr const char* PARAM_ENABLED = "enabled";  // uint32_t; defaults to 0/off
+    static constexpr const char* PARAM_SEED = "seed";  // uint32_t; stable procedural seed
+    static constexpr const char* PARAM_BRIGHTNESS = "brightness";  // float linear-light scale
     static constexpr const char* PARAM_REFRESH_CADENCE_FRAMES = "refresh_cadence_frames";
 
-    // ----- Constructor: runtime descriptor initialization -----
+    // ----- Runtime resource descriptors -----
     SkySphereNodeConfig() {
         HandleDescriptor deviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, deviceDesc);
 
         HandleDescriptor poolDesc{"VkCommandPool"};
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, poolDesc);
+
+        HandleDescriptor starsDesc{"SkySphereStarList*"};
+        INIT_INPUT_DESC(STAR_LIST, "star_list", ResourceLifetime::Persistent, starsDesc);
 
         HandleDescriptor skyDesc{"IRenderTarget*"};
         INIT_OUTPUT_DESC(SKY_SPHERE, "sky_sphere", ResourceLifetime::Persistent, skyDesc);
@@ -95,22 +106,15 @@ CONSTEXPR_NODE_CONFIG(SkySphereNodeConfig,
         INIT_OUTPUT_DESC(CURRENT_VIEW, "current_view", ResourceLifetime::Persistent, viewDesc);
     }
 
-    // ----- Compile-time validation -----
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
-    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE_IN must not be nullable");
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>,
-                  "VULKAN_DEVICE_IN must be VulkanDevice*");
-
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
-
-    static_assert(SKY_SPHERE_Slot::index == 0, "SKY_SPHERE must be at index 0");
-    static_assert(!SKY_SPHERE_Slot::nullable, "SKY_SPHERE must not be nullable");
-    static_assert(std::is_same_v<SKY_SPHERE_Slot::Type, IRenderTarget*>,
+    static_assert(STAR_LIST_Slot::index == 2 && STAR_LIST_Slot::nullable,
+                  "STAR_LIST must remain optional at index 2");
+    static_assert(SKY_SPHERE_Slot::index == 0 &&
+                  std::is_same_v<SKY_SPHERE_Slot::Type, IRenderTarget*>,
                   "SKY_SPHERE must be IRenderTarget*");
-
-    static_assert(CURRENT_VIEW_Slot::index == 1, "CURRENT_VIEW must be at index 1");
-    static_assert(!CURRENT_VIEW_Slot::nullable, "CURRENT_VIEW must not be nullable");
-    static_assert(std::is_same_v<CURRENT_VIEW_Slot::Type, VkImageView>,
+    static_assert(CURRENT_VIEW_Slot::index == 1 &&
+                  std::is_same_v<CURRENT_VIEW_Slot::Type, VkImageView>,
                   "CURRENT_VIEW must be VkImageView");
 
     VALIDATE_NODE_CONFIG(SkySphereNodeConfig, SkySphereNodeCounts);

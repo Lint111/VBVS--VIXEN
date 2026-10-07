@@ -22,8 +22,9 @@ namespace VoxelSelectionProviderNodeCounts {
  *
  * The voxel-domain selection PROVIDER, now a first-class graph node (was the C++
  * VoxelSelectionProvider object the coordinator owned). On a left-click down-edge it
- * copies the crosshair texel of PickIdTargetNode's pick-ID image (binding-9 target),
- * decodes the packed pickID (brick<<10 | voxel), and emits a SelectionCandidate on its
+ * copies the clicked texel of PickIdTargetNode's RG32_UINT pick image (binding-9 target),
+ * decodes the packed voxel address (brick<<10 | voxel) and optional body-instance index,
+ * and emits a SelectionCandidate on its
  * CANDIDATE output. The SelectionCoordinatorNode gathers this candidate (and any other
  * provider nodes' candidates) through its MultiConnect PROVIDER_CANDIDATES slot and
  * priority-resolves. Off the click edge — or on a miss — it emits {hit=false}.

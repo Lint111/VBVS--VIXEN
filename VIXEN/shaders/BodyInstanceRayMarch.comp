@@ -41,8 +41,9 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform writeonly image2D outputImage;
 
-// Per-pixel hit identity: packed (brickIndex<<10)|voxelLinearIdx, 0xFFFFFFFF on miss
-layout(binding = 9) uniform writeonly uimage2D idOutputImage;
+// Per-pixel pick result: x = packed (brickIndex<<10)|voxelLinearIdx,
+// y = winning body-instance loop index; both are 0xFFFFFFFF on a miss.
+layout(rg32ui, binding = 9) uniform writeonly uimage2D idOutputImage;
 // Raster-proxy B1 M1: per-pixel euclidean hit distance (merged nearest hitT across
 // both writer regimes; miss = 1e30) as a real R32F image — the HiZ reduce and the
 // per-instance occlusion cull consume an image, not the HitRecord SSBO.
@@ -530,7 +531,8 @@ void main() {
     uint pickID = anyHitRT
         ? ((bestBrickIndex << 10u) | (bestVoxelIdx & 0x3FFu))
         : 0xFFFFFFFFu;
-    imageStore(idOutputImage, pixelCoords, uvec4(pickID, 0u, 0u, 0u));
+    uint pickInstanceIndex = anyHitRT ? worldHit.instIdx : 0xFFFFFFFFu;
+    imageStore(idOutputImage, pixelCoords, uvec4(pickID, pickInstanceIndex, 0u, 0u));
 #ifdef VIXEN_B1_OCCLUSION_CULL
     imageStore(depthDistanceImage, pixelCoords,
                vec4(anyHitRT ? recReadback.hitT : 1.0e30, 0.0, 0.0, 0.0));

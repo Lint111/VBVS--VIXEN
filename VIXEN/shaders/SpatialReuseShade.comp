@@ -48,6 +48,7 @@ layout(binding = 0) uniform writeonly image2D sceneRadianceImage;
 // LIGHTING CONFIG (binding 16)
 // ============================================================================
 #include "Generated/LightingConfig.glsl"
+#include "LightEvaluation.glsl"
 
 layout(std430, binding = 16) readonly buffer LightingConfigSSBO {
     LightingConfig lightingConfig;
@@ -166,6 +167,8 @@ layout(std430, binding = 27) readonly buffer SpatialReservoirDebugBuffer {
 // configured with (BuildRenderGraph.cpp PHASE 2).
 layout(rgba16f, binding = 32) uniform readonly image2D probeIrradianceAtlasRead;
 layout(rg16f,   binding = 33) uniform readonly image2D probeVisibilityAtlasRead;
+// T-1138: persistent octahedral procedural sky, synchronized through the third image-array slot.
+layout(rgba16f, binding = 35) uniform readonly image2D skySphereImage;
 
 #include "Generated/ProbeGridConfig.glsl"
 
@@ -398,7 +401,9 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
     vec3 Lo = lighting.ambientIntensity * color;
     for (uint i = 0u; i < lighting.lightCount; ++i) {
         Light light = lighting.lights[i];
-        vec3 lightDir = normalize(light.direction_or_position);
+        float distanceToLight;
+        vec3 lightDir = lightDirectionAt(light, worldPos, distanceToLight);
+        float attenuation = lightRangeAttenuation(light, distanceToLight);
 
         // NdotL gate BEFORE consuming the shadow bit (audit C3 / Top #3): evalBRDF's
         // return is (diffuse + specular) * NdotL (Brdf.glsl:71), so NdotL <= 0 makes
@@ -406,14 +411,15 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
         // and the wave skipped this light's trace under the SAME gate, leaving its
         // bit at 1 (never consumed here). Mirrors ProbeUpdate's own idiom.
         float NdotL = max(dot(normal, lightDir), 0.0);
-        if (NdotL <= 0.0) continue;
+        if (NdotL <= 0.0 || attenuation <= 0.0) continue;
 
         float shadowFactor = 1.0;
         if (shadowConfig.enabled != 0u) {
             shadowFactor = ((visBits >> i) & 1u) != 0u ? 1.0 : 0.0;
         }
 
-        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance * shadowFactor;
+        Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance *
+              shadowFactor * attenuation;
     }
     return Lo;
 }
@@ -421,6 +427,16 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
 // ============================================================================
 // MAIN
 // ============================================================================
+vec2 encodeSkyDirection(vec3 direction) {
+    direction /= (abs(direction.x) + abs(direction.y) + abs(direction.z));
+    vec2 p = direction.xy;
+    if (direction.z < 0.0) {
+        p = (1.0 - abs(p.yx)) * vec2(p.x < 0.0 ? -1.0 : 1.0,
+                                     p.y < 0.0 ? -1.0 : 1.0);
+    }
+    return p * 0.5 + 0.5;
+}
+
 void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imgSize     = imageSize(sceneRadianceImage);
@@ -470,7 +486,14 @@ void main() {
         float emission = uintBitsToFloat(recReadback._pad0[1]);
         outColor += bestColor * emission;
     } else {
+        // Keep the existing assignment as the exact disabled path. An opt-in image marks valid
+        // texels with alpha=1 and contributes only to ray misses, behind every scene body.
         outColor = skyColor;
+        const ivec2 skySize = imageSize(skySphereImage);
+        const vec2 skyUv = encodeSkyDirection(rayDir);
+        const ivec2 skyCoord = clamp(ivec2(skyUv * vec2(skySize)), ivec2(0), skySize - 1);
+        const vec4 skyField = imageLoad(skySphereImage, skyCoord);
+        if (skyField.a > 0.5) outColor += skyField.rgb;
     }
 
 #ifdef VIXEN_SHADOW_DBG
@@ -483,7 +506,8 @@ void main() {
     if (anyHitRT && pixelCoords.x == VIXEN_SHADOW_DBG_PX && pixelCoords.y == VIXEN_SHADOW_DBG_PY
         && lightingConfig.lightCount > 0u) {
         Light dlight = lightingConfig.lights[0];
-        vec3 dLightDir = normalize(dlight.direction_or_position);
+        float dLightDistance;
+        vec3 dLightDir = lightDirectionAt(dlight, bestWorldPos, dLightDistance);
         float dNdotL = max(dot(bestNormal, dLightDir), 0.0);
         vec3 dShadowOrigin = bestWorldPos + bestNormal * shadowConfig.biasEpsilon;
         g_shadowDbgArm      = 1;
@@ -494,7 +518,13 @@ void main() {
         g_shadowDbgHops     = 0;
         bool dOccluded = false;
         if (shadowConfig.enabled != 0u && dNdotL > 0.0) {
-            dOccluded = TraceWorldShadow(dShadowOrigin, dLightDir, 0.0, shadowConfig.maxShadowDistance);
+            if (dlight.kind == 1u) {
+                dOccluded = TraceWorldShadowToPoint(dShadowOrigin, dLightDir, 0.0,
+                    min(shadowConfig.maxShadowDistance, dLightDistance), dlight.direction_or_position);
+            } else {
+                dOccluded = TraceWorldShadow(dShadowOrigin, dLightDir, 0.0,
+                                             shadowConfig.maxShadowDistance);
+            }
         }
         g_shadowDbgArm = 0;
         // pack: pad0[0] = flags (bit0 occluded, bit1 NdotL>0, then instIdx<<8 signed via +1),

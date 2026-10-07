@@ -398,9 +398,9 @@ protected:
         VkImage colorImg=VK_NULL_HANDLE, idImg=VK_NULL_HANDLE;
         VkDeviceMemory colorMem=VK_NULL_HANDLE, idMem=VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R8G8B8A8_UNORM, colorImg, colorMem));
-        ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R32_UINT, idImg, idMem));
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w,h,VK_FORMAT_R32G32_UINT, idImg, idMem));
         VkImageView colorView = MakeView(colorImg, VK_FORMAT_R8G8B8A8_UNORM);
-        VkImageView idView    = MakeView(idImg,    VK_FORMAT_R32_UINT);
+        VkImageView idView    = MakeView(idImg,    VK_FORMAT_R32G32_UINT);
 
         const auto spirv = ReadSpirv(GLSL_RAYMARCH_SPV);
         ASSERT_FALSE(spirv.empty()) << "SPIR-V missing: " << GLSL_RAYMARCH_SPV;

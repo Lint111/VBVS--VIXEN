@@ -449,7 +449,8 @@ bool traverseRayQueryWorld(vec3 worldOrigin, vec3 worldDirUnit,
 // and used directly as the rayQuery interval, no per-instance rescale.
 // ----------------------------------------------------------------------------
 bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
-                                  float tmin, float tmax) {
+                                  float tmin, float tmax,
+                                  bool skipPointLightSource, vec3 pointLightPosition) {
     rayQueryEXT rq;
     rayQueryInitializeEXT(rq, rtQueryTlas, gl_RayFlagsNoneEXT, 0xFF,
                            worldOrigin, max(tmin, 0.0), worldDirUnit, tmax);
@@ -467,6 +468,16 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
         const uint brickIdx = rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
         if (ci >= bodyInstances.length() || proxyBase + brickIdx >= rtQueryProxyAabbs.length()) {
             continue;
+        }
+        if (skipPointLightSource) {
+            BodyInstance sourceCandidate = bodyInstances[ci];
+            vec3 sourceOrigin = sourceCandidate.worldPos;
+            vec3 sourceCenter = sourceOrigin + vec3(0.5 * sourceCandidate.renderScale);
+            if (sourceCandidate.recipeParams[3] > 0.0 &&
+                (all(lessThanEqual(abs(sourceOrigin - pointLightPosition), vec3(1e-3))) ||
+                 all(lessThanEqual(abs(sourceCenter - pointLightPosition), vec3(1e-3))))) {
+                continue;
+            }
         }
         const int  oi       = int(bodyInstances[ci].octreeIndex);
         if (oi < 0 || uint(oi) >= configs.length()) continue;
