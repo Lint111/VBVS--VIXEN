@@ -69,6 +69,22 @@
         [
           "VIXEN_GPU_TRACE_HOOKS",
           "VIXEN_SRS_CELL_RESOLVE"
+        ],
+        [
+          "VIXEN_MINING_BEAM"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_MINING_BEAM"
+        ],
+        [
+          "VIXEN_MINING_BEAM",
+          "VIXEN_SRS_CELL_RESOLVE"
+        ],
+        [
+          "VIXEN_GPU_TRACE_HOOKS",
+          "VIXEN_MINING_BEAM",
+          "VIXEN_SRS_CELL_RESOLVE"
         ]
       ]
     },

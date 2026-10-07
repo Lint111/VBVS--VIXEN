@@ -1,4 +1,5 @@
 #include "VulkanGraphApplication.h"
+#include "Nodes/MiningBeamBufferNode.h"
 #include <stb_image.h>
 
 #include <gtest/gtest.h>
@@ -66,15 +67,64 @@ SeamLineCheck CheckVerticalSeam(const RgbImage& image, int x, int firstY, int la
     return check;
 }
 
+enum class BeamScenario {
+    Default,
+    DisabledWithList,
+    EnabledEmpty,
+    Active,
+};
+
 class HeadlessCornellApplication final : public VulkanGraphApplication {
 public:
-    HeadlessCornellApplication() {
+    HeadlessCornellApplication(BeamScenario scenario, std::string capturePrefix)
+        : scenario_(scenario), capturePrefix_(std::move(capturePrefix)) {
         SetPresentationTarget(PresentationTarget::Offscreen);
     }
 
     void BuildRenderGraph() override { VulkanGraphApplication::BuildRenderGraph(); }
 
     bool Render() override {
+        if (!configuredBeamScenario_) {
+            auto* graph = GetRenderGraph();
+            auto* node = graph
+                ? static_cast<Vixen::RenderGraph::MiningBeamBufferNode*>(
+                      graph->GetInstanceByName("mining_beam_buffer"))
+                : nullptr;
+            if (!node) {
+                captureError_ = "production graph did not create mining_beam_buffer";
+                return false;
+            }
+
+            Vixen::RenderGraph::MiningBeamInput beam;
+            beam.sourceInstanceIndex = 6; // Cornell sphere object
+            beam.targetInstanceIndex = 7; // Cornell box object
+            // The virtual Cornell bodies are world-authored procedural recipes.
+            // These points sit on their facing surfaces, leaving a visible gap.
+            beam.sourceLocalOffset = glm::vec3(13.85f, 9.4f, 14.93f);
+            beam.targetLocalOffset = glm::vec3(18.8f, 9.1f, 17.9f);
+            beam.radius = 0.09f;
+            beam.luminosity = 0.75f;
+            beam.purposeScale = 0.12f;
+
+            switch (scenario_) {
+                case BeamScenario::Default:
+                    break;
+                case BeamScenario::DisabledWithList:
+                    node->SetBeams({beam});
+                    node->SetEnabled(false);
+                    break;
+                case BeamScenario::EnabledEmpty:
+                    node->SetBeams({});
+                    node->SetEnabled(true);
+                    break;
+                case BeamScenario::Active:
+                    node->SetBeams({beam});
+                    node->SetEnabled(true);
+                    break;
+            }
+            configuredBeamScenario_ = true;
+        }
+
         if (!VulkanGraphApplication::Render()) return false;
         if (++completedFrames_ < 5) return true;
 
@@ -91,13 +141,8 @@ public:
         EXPECT_TRUE(target->GetImageUsageFlags() & VK_IMAGE_USAGE_STORAGE_BIT);
         EXPECT_TRUE(target->GetImageUsageFlags() & VK_IMAGE_USAGE_TRANSFER_DST_BIT);
         EXPECT_FALSE(target->UsesWsiSynchronization());
-        const char* prefix = std::getenv("VIXEN_HEADLESS_CORNELL_CAPTURE_PREFIX");
-        if (!prefix) {
-            captureError_ = "CMake did not configure the Cornell capture prefix";
-            return false;
-        }
-        const std::string first = std::string(prefix) + "-a.png";
-        const std::string second = std::string(prefix) + "-b.png";
+        const std::string first = capturePrefix_ + "-a.png";
+        const std::string second = capturePrefix_ + "-b.png";
         if (!CaptureOffscreenFrameToPng(first, captureError_) ||
             !CaptureOffscreenFrameToPng(second, captureError_)) return false;
         captured_ = true;
@@ -108,7 +153,10 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
+    BeamScenario scenario_;
+    std::string capturePrefix_;
     bool captured_ = false;
+    bool configuredBeamScenario_ = false;
     uint32_t completedFrames_ = 0;
     std::string captureError_;
 };
@@ -122,19 +170,40 @@ TEST(HeadlessCornellGraph, ProductionGraphRendersDeterministicCornellWithStableS
     std::filesystem::remove(first, ec);
     std::filesystem::remove(second, ec);
 
-    HeadlessCornellApplication app;
-    const int result = app.Run(RunOptions{.exitAfterFrames = 5});
-    ASSERT_EQ(result, 0) << app.CaptureError();
-    ASSERT_TRUE(app.Captured()) << app.CaptureError();
+    auto captureScenario = [](BeamScenario scenario, const std::string& capturePrefix) {
+        HeadlessCornellApplication app(scenario, capturePrefix);
+        const int result = app.Run(RunOptions{.exitAfterFrames = 5});
+        EXPECT_EQ(result, 0) << app.CaptureError();
+        EXPECT_TRUE(app.Captured()) << app.CaptureError();
 
-    const auto firstBytes = ReadBytes(first);
-    const auto secondBytes = ReadBytes(second);
-    ASSERT_FALSE(firstBytes.empty()) << "first engine PNG readback was empty";
-    ASSERT_FALSE(secondBytes.empty()) << "second engine PNG readback was empty";
-    EXPECT_EQ(firstBytes, secondBytes)
-        << "capturing the same completed Cornell frame twice must produce identical PNG bytes";
+        const auto firstBytes = ReadBytes(capturePrefix + "-a.png");
+        const auto secondBytes = ReadBytes(capturePrefix + "-b.png");
+        EXPECT_FALSE(firstBytes.empty()) << "first engine PNG readback was empty";
+        EXPECT_FALSE(secondBytes.empty()) << "second engine PNG readback was empty";
+        EXPECT_EQ(firstBytes, secondBytes)
+            << "capturing the same completed frame twice must produce identical PNG bytes";
+        return firstBytes;
+    };
 
-    const RgbImage image = DecodeRgb(firstBytes);
+    const auto defaultBytes = captureScenario(BeamScenario::Default, prefix);
+    const auto disabledBytes = captureScenario(BeamScenario::DisabledWithList,
+                                               std::string(prefix) + "-beam-disabled");
+    const auto emptyBytes = captureScenario(BeamScenario::EnabledEmpty,
+                                            std::string(prefix) + "-beam-empty");
+    const auto activeBytes = captureScenario(BeamScenario::Active,
+                                             std::string(prefix) + "-beam-active");
+    ASSERT_FALSE(defaultBytes.empty());
+    ASSERT_FALSE(disabledBytes.empty());
+    ASSERT_FALSE(emptyBytes.empty());
+    ASSERT_FALSE(activeBytes.empty());
+    EXPECT_EQ(defaultBytes, disabledBytes)
+        << "a populated but disabled beam list must preserve current capture bytes";
+    EXPECT_EQ(defaultBytes, emptyBytes)
+        << "an enabled empty list must preserve current capture bytes";
+    EXPECT_NE(defaultBytes, activeBytes)
+        << "the active beam capture must differ from the no-beam production frame";
+
+    const RgbImage image = DecodeRgb(defaultBytes);
     ASSERT_EQ(image.width, 500) << "Cornell terminal capture must be a nonempty 500x500 RGB PNG";
     ASSERT_EQ(image.height, 500) << "Cornell terminal capture must be a nonempty 500x500 RGB PNG";
     ASSERT_EQ(image.pixels.size(), size_t(image.width) * image.height * 3);
