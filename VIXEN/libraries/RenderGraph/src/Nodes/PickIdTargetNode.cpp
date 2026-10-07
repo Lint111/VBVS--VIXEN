@@ -104,7 +104,7 @@ void PickIdTargetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     ctx.Out(PickIdTargetNodeConfig::ID_IMAGE,      images_[currentIndex_].image);
 
     NODE_LOG_INFO("[PickIdTargetNode] Outputs published (" + std::to_string(width_) + "x" +
-                  std::to_string(height_) + ", " + std::to_string(imageCount_) + " R32_UINT images)");
+                  std::to_string(height_) + ", " + std::to_string(imageCount_) + " RG32_UINT images)");
 }
 
 void PickIdTargetNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
@@ -144,11 +144,11 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
     images_.resize(imageCount_);
 
     for (auto& img : images_) {
-        // --- Create R32_UINT storage image ---
+        // --- Create RG32_UINT storage image (packed voxel address + instance index) ---
         VkImageCreateInfo imgInfo{};
         imgInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imgInfo.imageType     = VK_IMAGE_TYPE_2D;
-        imgInfo.format        = kFormat;  // VK_FORMAT_R32_UINT
+        imgInfo.format        = kFormat;  // VK_FORMAT_R32G32_UINT
         imgInfo.extent        = {width_, height_, 1u};
         imgInfo.mipLevels     = 1;
         imgInfo.arrayLayers   = 1;
@@ -174,7 +174,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
             memProps,
             req.memoryTypeBits,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            "PickIdTargetNode R32_UINT image"
+            "PickIdTargetNode RG32_UINT image"
         );
 
         if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &img.memory) != VK_SUCCESS) {
@@ -204,7 +204,7 @@ void PickIdTargetNode::CreateImages(VulkanDevice* device, VkCommandPool commandP
     TransitionAllToGeneral(commandPool);
 
     NODE_LOG_INFO("[PickIdTargetNode] Created " + std::to_string(imageCount_) +
-                  " R32_UINT storage images at " + std::to_string(width_) + "x" +
+                  " RG32_UINT storage images at " + std::to_string(width_) + "x" +
                   std::to_string(height_) + " (transitioned UNDEFINED->GENERAL)");
 }
 

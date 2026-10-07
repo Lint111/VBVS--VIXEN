@@ -20,13 +20,13 @@ determines the hit voxel per pixel — have it write a per-pixel ID, then read b
 
 ## Approach
 
-1. **Shader** — `shaders/VoxelRayMarch_Compressed.comp` (live, `USE_COMPRESSED_SHADER=1`) **and**
-   `shaders/VoxelRayMarch.comp`. At the brick-DDA hit, both `brickIndex` and `voxelLinearIdx` (0–511) are
-   in hand. Write `pickID = (brickIndex << 10) | voxelLinearIdx` (0xFFFFFFFF on miss) to a new
-   `layout(binding = 9) uniform writeonly uimage2D idOutputImage;` via `imageStore(idOutputImage,
-   pixelCoords, uvec4(pickID,0,0,0))`, beside the existing color store to binding 0. (32-bit; decode on
-   CPU as `brick = id >> 10`, `voxel = id & 0x3FF`. No Morton needed.)
-2. **ID image** — an `R32_UINT` storage image, swapchain extent, one per in-flight frame (ring, like the
+1. **Shader** — the covering fragment has both the packed voxel address and, on the body-instance raymarch
+   path, `WorldHit.instIdx` from `TraceWorld.glsl`. Write the unchanged packed voxel address to channel R
+   and the instance index to channel G of the binding-9 pick target. Use `0xFFFFFFFF` in channel R on a
+   miss; channel G is `0xFFFFFFFF` when no body instance is available. CPU decoding remains
+   `brick = address >> 10`, `voxel = address & 0x3FF`; the selection result exposes a missing instance as
+   an empty optional.
+2. **ID image** — an `RG32_UINT` storage image, swapchain extent, one per in-flight frame (ring, like the
    dynamic instance buffer), `STORAGE` + `TRANSFER_SRC` usage. Created by a small dedicated node (or a
    format-extended RenderTargetNode). Bound at descriptor binding 9 of the compute dispatch via the
    DescriptorResourceGatherer (mirrors how the swapchain image is bound at binding 0).

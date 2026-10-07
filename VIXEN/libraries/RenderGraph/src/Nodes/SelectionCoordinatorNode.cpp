@@ -139,7 +139,8 @@ void SelectionCoordinatorNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         bus->Publish(std::make_unique<EventBus::SelectionChangedEvent>(
             instanceId,
             std::vector<SelectionId>(set_.ids().begin(), set_.ids().end()),
-            best->id));
+            best->id,
+            best->instanceIndex));
     }
 }
 

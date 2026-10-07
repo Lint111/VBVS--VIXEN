@@ -34,9 +34,10 @@ public:
  * ID-buffer readback — a single-texel vkCmdCopyImageToBuffer of the pixel under
  * the actual cursor position (the ClickEvent's own x/y, not a fixed viewport-center
  * crosshair — changed so mouse-driven inspection/picking has real fine-grained
- * control over what gets sampled) of PickIdTargetNode's per-pixel pick-ID image
- * (binding 9), fenced and mapped to decode the packed pickID — and emits a
- * SelectionCandidate on its CANDIDATE output. The SelectionCoordinatorNode gathers
+ * control over what gets sampled) of PickIdTargetNode's per-pixel RG32_UINT pick
+ * image (binding 9), fenced and mapped to decode the packed voxel address and
+ * optional body-instance index — and emits a SelectionCandidate on its CANDIDATE
+ * output. The SelectionCoordinatorNode gathers
  * it (plus any other provider nodes' candidates) via a MultiConnect accumulation
  * slot and resolves.
  *
@@ -72,6 +73,12 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    struct PickTargetPixel {
+        uint32_t address;
+        uint32_t instanceIndex;
+    };
+    static_assert(sizeof(PickTargetPixel) == 2 * sizeof(uint32_t));
+
     // Lazily (re)create the host-visible staging buffer, sized for `bytesNeeded`. Reused
     // across clicks as long as the requested size doesn't grow (e.g. a window resize on
     // the KI-012 full-image path); recreated on growth. Returns true when ready.
@@ -80,7 +87,7 @@ private:
 
     // Record the one-shot readback copy on commandPool_, submit on GetDevice()->queue with
     // a fresh fence, wait it, then map the staged pixel(s) and extract the pixel at
-    // (targetX, targetY) into pickIDOut. Returns true on success. Branches on
+    // (targetX, targetY) into pixelOut. Returns true on success. Branches on
     // requiresFullImageTransfers_ (KI-012): when the graphics queue family's
     // minImageTransferGranularity is (0,0,0), a sub-region copy (the single target texel at an
     // arbitrary offset) is a spec violation on that queue — some drivers (Dozen) tolerate it
@@ -89,7 +96,7 @@ private:
     // (Was VoxelSelectionProvider::ReadCenterPixel — renamed/parameterized to pick at the
     // actual cursor position instead of always the viewport center.)
     bool ReadPixelAt(uint32_t width, uint32_t height, uint32_t targetX, uint32_t targetY,
-                     uint32_t& pickIDOut);
+                     PickTargetPixel& pixelOut);
 
     // Free the staging buffer + memory (idempotent). Called from CleanupImpl and on
     // a device change at CompileImpl. (Was VoxelSelectionProvider::DestroyStagingBuffer.)
@@ -106,18 +113,19 @@ private:
     bool requiresFullImageTransfers_ = false;
 
     // ----- Host-visible staging buffer for the readback -----
-    // Sized for one R32_UINT texel on the common path, or the whole id image
-    // (stagingWidth_ * stagingHeight_ * sizeof(uint32_t)) when requiresFullImageTransfers_.
+    // Sized for one RG32_UINT texel on the common path, or the whole id image
+    // (stagingWidth_ * stagingHeight_ * sizeof(PickTargetPixel)) when requiresFullImageTransfers_.
     VkBuffer       stagingBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory stagingMemory_ = VK_NULL_HANDLE;
     VkDeviceSize   stagingCapacity_ = 0;  // bytes actually allocated; EnsureStagingBuffer grows-only
-    static constexpr VkDeviceSize kSingleTexelSize = sizeof(uint32_t);  // one R32_UINT texel
+    static constexpr VkDeviceSize kSingleTexelSize = sizeof(PickTargetPixel);  // one RG32_UINT texel
 
     // ----- Provider config -----
     int priority_ = 0;  ///< Layer priority (PARAM_PRIORITY) stamped on every candidate.
 
     // Pick-ID encoding (must match the shader's imageStore at binding 9):
-    //   pickID = hit ? ((brickIndex << 10) | (voxelLinearIdx & 0x3FF)) : kMissSentinel.
+    //   address = hit ? ((brickIndex << 10) | (voxelLinearIdx & 0x3FF)) : kMissSentinel.
+    //   instanceIndex = hit ? body instance : kMissSentinel (converted to empty optional).
     static constexpr uint32_t kMissSentinel  = 0xFFFFFFFFu;
     static constexpr uint32_t kVoxelIdxMask  = 0x3FFu;  // voxelLinearIdx is 0..511 (9 bits)
     static constexpr uint32_t kBrickIdxShift = 10u;

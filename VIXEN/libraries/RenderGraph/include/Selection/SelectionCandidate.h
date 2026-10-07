@@ -1,8 +1,9 @@
 #pragma once
 
 #include "Selection/SelectionId.h"
-#include <glm/glm.hpp>
 #include <cstdint>
+#include <optional>
+#include <glm/glm.hpp>
 
 namespace Vixen::RenderGraph {
 
@@ -30,6 +31,7 @@ namespace Vixen::RenderGraph {
 struct SelectionCandidate {
     bool        hit;       ///< True iff this provider found something under the query this click.
     SelectionId id;        ///< Domain-tagged identity of the hit (meaningful only when hit==true).
+    std::optional<uint32_t> instanceIndex; ///< Body-instance index, absent when the hit has no instance.
     float       depth;     ///< View/ray depth of the hit — smaller = nearer (tie-break across providers).
     int         priority;  ///< Provider layer — HIGHER wins (UI occludes world). The coordinator's primary key.
     glm::vec3   worldPos;  ///< World-space position of the hit point (0 when not yet computed).
