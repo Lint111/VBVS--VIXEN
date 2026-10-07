@@ -16,7 +16,6 @@
 #include "Debug/RenderTargetReadback.h"       // shared IRenderTarget -> PNG readback
 #include "KeyMap.h"                           // Inc-4 R5a: GLFW keycode -> typed KeyId
 #include "AppFlowBlobFile.h"                   // T1.2: external AppFlow watch/reload
-#include "generated/AppFlowCallables.g.hpp"   // Inc-4 R5c: transplanted applyToggle(mask,index)
 #include "GaiaLayerViewDataProvider.h"        // Inc-B: view->model seam, Gaia-backed provider
 #include <Logger.h>
 
@@ -153,7 +152,7 @@ void EditorApplication::RefreshLayersView() {
         names.push_back(doc_.LayerName(i));
         ops.push_back(Vixen::Editor::EditorDocumentModel::OpName(doc_.View().layers[i].header->op));
     }
-    Vixen::App::RefreshEditorLayersView(*layersView_, rt_.Layers().Mask(), doc_.LayerCount(), names, ops);
+    Vixen::App::RefreshEditorLayersView(*layersView_, doc_.EnabledMask(), doc_.LayerCount(), names, ops);
 }
 
 void EditorApplication::ReconcileLayersView() {
@@ -164,14 +163,26 @@ void EditorApplication::ReconcileLayersView() {
     const std::optional<uint32_t> reconciled = viewReconcile_.Reconcile(gaiaLayerEntity_);
     if (!reconciled.has_value()) return;
 
-    // Keep rt_.Layers() mirrored (see the ToggleLayer handler's own comment on why) so an
-    // EXTERNAL write -- one that bypassed layerProvider_.WriteU32 entirely, e.g. a direct
-    // gaiaWorld_.setComponent<LayerMask> call -- is reflected in the state-dump log and undo's
-    // read-modify-write base the same way an input-driven toggle already is.
-    rt_.Layers().SetMask(*reconciled);
-    // Re-flatten/re-upload on the next dirty tail (Update()'s existing pattern) -- an external
-    // mask change must reach the render, exactly like an input-driven toggle does.
-    dirty_ = true;
+    // External mask writes are requests to the document model, which owns the layer state and
+    // validates every accepted mutation. Restore the projection if the request contains bits
+    // outside this document's admitted layer range.
+    Vixen::Editor::DocumentDiagnostic diagnostic;
+    const uint32_t previousMask = doc_.EnabledMask();
+    if (!doc_.SetEnabledMask(*reconciled, diagnostic)) {
+        logger_->Warning("[EditorApplication] ReconcileLayersView rejected external layer mask: " +
+                         diagnostic.message);
+        using Vixen::AppFlow::ViewNounKey;
+        using Vixen::AppFlow::ViewNounId;
+        layerProvider_.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask}, previousMask);
+        rt_.Layers().SetMask(previousMask);
+        RefreshLayersView();
+        return;
+    }
+
+    rt_.Layers().SetMask(doc_.EnabledMask());
+    if (doc_.EnabledMask() != previousMask) {
+        dirty_ = true;
+    }
     // VALUE-PUSH into the bound view (design §4) -- RefreshEditorLayersView's own DirtyVariable
     // call (EditorLayersView::PopulateFromMask) is the "forward into RmlUi's own dirty tracking"
     // half of the loop. Harmless if this races the same-frame echo above (idempotent re-push,
@@ -180,26 +191,30 @@ void EditorApplication::ReconcileLayersView() {
 }
 
 bool EditorApplication::LoadDocument(const std::string& path) {
-    if (!doc_.Load(path, lastEditorError_)) {
+    Vixen::Editor::EditorDocumentModel candidate;
+    Vixen::Editor::DocumentDiagnostic diagnostic;
+    if (!candidate.Load(path, diagnostic)) {
+        lastEditorError_ = diagnostic.message;
         return false;
     }
-    documentPath_ = path;
     if (rt_.Load(nullptr, &layerProvider_) != Vixen::AppFlow::LoadResult::Ok) {
         lastEditorError_ = "AppFlowRuntime initial load failed";
         return false;
     }
-    rt_.Layers().SetLayerCount(doc_.LayerCount());  // (re)sync the mask to the freshly loaded doc
+    rt_.Layers().SetLayerCount(candidate.LayerCount());
+    rt_.Layers().SetMask(candidate.EnabledMask());
 
-    // Inc-B: re-seed the Gaia layer entity to the freshly loaded document's real mask (all layers
-    // enabled -- SetLayerCount's own default, mirrored above). WriteU32 (not a bare setComponent
-    // call) so this goes through the exact same provider path as every other model->view write --
-    // gaiaLayerEntity_'s LayerMask component is the seam's single source of truth from here on,
-    // not a second copy that could silently diverge from rt_.Layers().
+    // Keep the Gaia view projection and AppFlow undo snapshot mask synchronized with the
+    // candidate document's authored enabled state before committing that document.
     {
         using Vixen::AppFlow::ViewNounKey;
         using Vixen::AppFlow::ViewNounId;
-        layerProvider_.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask}, rt_.Layers().Mask());
+        layerProvider_.WriteU32(ViewNounKey{ViewNounId::EditorNouns_layerMask}, candidate.EnabledMask());
     }
+
+    doc_ = std::move(candidate);
+    documentPath_ = path;
+    lastEditorError_.clear();
 
     // Inc-A2: initial model->view population -- the editor layer view's bound "layers" array now
     // reflects the ACTUAL mask/names/ops of the freshly loaded document (was static markup with 3
@@ -221,52 +236,34 @@ void EditorApplication::RegisterAppFlowHandlers() {
     using Vixen::AppFlow::Generated::FlowActionId;
     rt_.RegisterHandler(FlowActionId::ToggleLayer, [this](const Vixen::AppFlow::AppFlowRuntime::Params& p) {
         const uint32_t idx = ParseParam(p, "layerIndex");
-        rt_.Stack().Dispatch(FlowActionId::ToggleLayer, [this, idx](bool /*forward*/) {
-                // Inc-A reroute (View-Model-Binding-Framework-Design-2026-07.md §5): the ONE
-                // genuine view->model binding now goes read -> provider -> projection ->
-                // provider -> write, instead of calling LayerController directly. Undo stays
-                // OUTSIDE the provider (this whole lambda is still the Stack().Dispatch body,
-                // exactly as before) -- only the RMW's storage access is indirected.
-                using Vixen::AppFlow::ViewNounKey;
-                using Vixen::AppFlow::ViewNounId;
-                const ViewNounKey key{ViewNounId::EditorNouns_layerMask};
-                uint32_t mask = 0;
-                // Inc-B fix (Inc-A carry -- ReadU32 is genuinely fallible now that the provider is
-                // Gaia-backed: gaiaLayerEntity_'s LayerMask component could in principle be absent,
-                // e.g. destroyed out from under the provider). A silent false-read used to fall
-                // through into applyToggle(0, idx) -- toggling bit idx of a WRONG all-zero mask and
-                // WRITING that back, corrupting the real mask instead of leaving it alone. Skip the
-                // whole toggle (no write, no dirty, no echo) and log instead.
-                if (!layerProvider_.ReadU32(key, mask)) {
-                    logger_->Error("[EditorApplication] ToggleLayer: LayerMask read failed "
-                                    "(provider/entity/component absent) -- toggle for layerIndex=" +
-                                    std::to_string(idx) + " skipped, mask left unchanged");
+        if (idx >= doc_.LayerCount()) {
+            logger_->Warning("[EditorApplication] ToggleLayer ignored invalid layerIndex=" +
+                             std::to_string(idx));
+            return;
+        }
+
+        using Vixen::AppFlow::ViewNounKey;
+        using Vixen::AppFlow::ViewNounId;
+        const ViewNounKey key{ViewNounId::EditorNouns_layerMask};
+        const bool wasEnabled = ((doc_.EnabledMask() >> idx) & 1u) != 0u;
+        const bool nextEnabled = !wasEnabled;
+        rt_.Stack().Dispatch(FlowActionId::ToggleLayer,
+                             [this, idx, wasEnabled, nextEnabled, key](bool forward) {
+                Vixen::Editor::DocumentDiagnostic diagnostic;
+                if (!doc_.SetLayerEnabled(idx, forward ? nextEnabled : wasEnabled, diagnostic)) {
+                    lastEditorError_ = diagnostic.message;
+                    logger_->Error("[EditorApplication] ToggleLayer operation failed: " +
+                                   diagnostic.message);
                     return;
                 }
-                // THE TRANSPLANTED PROJECTION, LIVE (R5c, design §5a exemplar projection):
-                // applyToggle is kernel-generated C++ from the same C# body the design's D12
-                // walking skeleton proves transplants identically. Self-inverse
-                // (mask ^ (1<<idx)) -- byte-identical to the old LayerController::Toggle(idx)
-                // for any idx within the valid layer range. A pure leaf function, no wiring.
-                const uint32_t newMask = Vixen::AppFlow::Generated::applyToggle(mask, idx);
+                const uint32_t newMask = doc_.EnabledMask();
                 layerProvider_.WriteU32(key, newMask);
-                // Inc-B: rt_.Layers() is no longer the mask's storage (gaiaLayerEntity_'s
-                // LayerMask component is, via layerProvider_ above) -- but the state-dump log
-                // lines (PreTick's scripted-action trail) and RefreshLayersView() below still read
-                // rt_.Layers().Mask(), so keep it mirrored rather than rewriting both call sites.
                 rt_.Layers().SetMask(newMask);
                 dirty_ = true;
-                // Same-frame echo (design §4a), landed now that the editor layer view is
-                // data-model-bound (Inc-A2 -- was deferred by Inc-A's report, which found the view
-                // still static RML with no DirtyVariable target). This ApplyFn body runs
-                // identically for the initial Dispatch AND every Undo()/Redo() (ActionStack.cpp:
-                // Undo calls apply(false), Redo calls apply(true); both re-run this whole lambda
-                // since applyToggle is self-inverse), so one re-population here echoes the mask
-                // into the bound checkboxes for toggle, undo, and redo alike -- no separate wiring
-                // per action. Cheap: RefreshLayersView() re-reads doc_'s per-layer name/op
-                // (already O(layerCount), unconditionally small) rather than caching them.
-            RefreshLayersView();
-        });
+                // The same headless document operation runs for the initial dispatch and for
+                // ActionStack undo/redo; only the desired enabled value changes by direction.
+                RefreshLayersView();
+            });
     });
     rt_.RegisterHandler(FlowActionId::Undo, [this](const Vixen::AppFlow::AppFlowRuntime::Params&) {
         rt_.Stack().Undo();
@@ -415,7 +412,9 @@ void EditorApplication::BuildRenderGraph() {
 
 bool EditorApplication::ApplyDocumentToScene() {
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
-    if (!doc_.FlattenToRecipeEntry(rt_.Layers().Mask(), entry, lastEditorError_)) {
+    Vixen::Editor::DocumentDiagnostic diagnostic;
+    if (!doc_.FlattenToRecipeEntry(entry, diagnostic)) {
+        lastEditorError_ = diagnostic.message;
         return false;
     }
 
@@ -511,7 +510,9 @@ bool EditorApplication::SaveDocument() {
     const std::string base = (dot == std::string::npos) ? documentPath_ : documentPath_.substr(0, dot);
     const std::string outPath = base + ".edited.vxd";
 
-    if (!doc_.Save(rt_.Layers().Mask(), outPath, lastEditorError_)) {
+    Vixen::Editor::DocumentDiagnostic diagnostic;
+    if (!doc_.Save(outPath, diagnostic)) {
+        lastEditorError_ = diagnostic.message;
         return false;
     }
     lastSavedPath_ = outPath;

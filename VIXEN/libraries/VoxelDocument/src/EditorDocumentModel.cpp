@@ -9,20 +9,62 @@
 
 namespace Vixen::Editor {
 
-bool EditorDocumentModel::Load(const std::string& path, std::string& err) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f) { err = "cannot open document: " + path; return false; }
-    const std::streamsize sz = f.tellg();
-    if (sz <= 0) { err = "empty document: " + path; return false; }
-    rawBytes_.resize(static_cast<size_t>(sz));
-    f.seekg(0);
-    f.read(reinterpret_cast<char*>(rawBytes_.data()), sz);
+uint32_t EditorDocumentModel::ValidMaskForLayerCount(uint32_t count) {
+    if (count == 0u) return 0u;
+    if (count >= kMaximumLayerCount) return 0xFFFFFFFFu;
+    return (1u << count) - 1u;
+}
 
-    if (!Yeroket::Sdf::Generated::ReadVoxelDocument(rawBytes_.data(), rawBytes_.size(), view_)) {
-        err = "malformed VoxelDocument: " + path;
+bool EditorDocumentModel::Load(const std::string& path, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        diagnostic = {DocumentDiagnosticCode::IoError, "cannot open document: " + path};
         return false;
     }
+
+    const std::streamsize size = file.tellg();
+    if (size <= 0) {
+        diagnostic = {DocumentDiagnosticCode::EmptyDocument, "empty document: " + path};
+        return false;
+    }
+
+    std::vector<uint8_t> candidateBytes(static_cast<size_t>(size));
+    file.seekg(0);
+    if (!file.read(reinterpret_cast<char*>(candidateBytes.data()), size)) {
+        diagnostic = {DocumentDiagnosticCode::IoError, "failed reading document: " + path};
+        return false;
+    }
+
+    Yeroket::Sdf::Generated::VoxelDocumentView candidateView{};
+    if (!Yeroket::Sdf::Generated::ReadVoxelDocument(
+            candidateBytes.data(), candidateBytes.size(), candidateView)) {
+        diagnostic = {DocumentDiagnosticCode::MalformedDocument,
+                      "malformed VoxelDocument: " + path};
+        return false;
+    }
+    if (candidateView.header.layerCount > kMaximumLayerCount) {
+        diagnostic = {DocumentDiagnosticCode::TooManyLayers,
+                      "VoxelDocument has " + std::to_string(candidateView.header.layerCount) +
+                          " layers; the editor supports at most " +
+                          std::to_string(kMaximumLayerCount)};
+        return false;
+    }
+
+    uint32_t candidateMask = 0u;
+    for (uint32_t i = 0; i < candidateView.header.layerCount; ++i) {
+        if (candidateView.layers[i].header->enabled != 0u) {
+            candidateMask |= (1u << i);  // Admission caps i at 31 before any mask shift.
+        }
+    }
+
+    // candidateView contains pointers into candidateBytes. Swapping the vector transfers the
+    // allocation without moving its bytes, so those pointers remain valid after the commit.
+    rawBytes_.swap(candidateBytes);
+    view_ = candidateView;
     sourcePath_ = path;
+    enabledMask_ = candidateMask;
     return true;
 }
 
@@ -38,12 +80,46 @@ uint32_t EditorDocumentModel::LayerCount() const {
     return view_.header.layerCount;
 }
 
+uint32_t EditorDocumentModel::EnabledMask() const {
+    return enabledMask_;
+}
+
+bool EditorDocumentModel::SetLayerEnabled(uint32_t index, bool enabled,
+                                          DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if (index >= LayerCount()) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerIndex,
+                      "layer index " + std::to_string(index) + " is outside the document"};
+        return false;
+    }
+
+    const uint32_t bit = 1u << index;  // LayerCount is bounded to 32 at admission.
+    if (enabled) {
+        enabledMask_ |= bit;
+    } else {
+        enabledMask_ &= ~bit;
+    }
+    return true;
+}
+
+bool EditorDocumentModel::SetEnabledMask(uint32_t mask, DocumentDiagnostic& diagnostic) {
+    diagnostic.Clear();
+    if ((mask & ~ValidMaskForLayerCount(LayerCount())) != 0u) {
+        diagnostic = {DocumentDiagnosticCode::InvalidLayerMask,
+                      "enabled-layer mask contains bits outside the document layer range"};
+        return false;
+    }
+    enabledMask_ = mask;
+    return true;
+}
+
 std::string EditorDocumentModel::LayerName(uint32_t i) const {
-    const auto* h = view_.layers[i].header;
+    if (i >= LayerCount()) return {};
+    const auto* header = view_.layers[i].header;
     // name is fixed uint8[32], UTF-8, NUL-padded.
-    const char* bytes = reinterpret_cast<const char*>(h->nameBytes);
+    const char* bytes = reinterpret_cast<const char*>(header->nameBytes);
     size_t len = 0;
-    while (len < sizeof(h->nameBytes) && bytes[len] != '\0') ++len;
+    while (len < sizeof(header->nameBytes) && bytes[len] != '\0') ++len;
     return std::string(bytes, len);
 }
 
@@ -57,39 +133,51 @@ const char* EditorDocumentModel::OpName(uint8_t op) {
     }
 }
 
-bool EditorDocumentModel::Flatten(uint32_t enabledMask, std::vector<uint8_t>& outVrc1Blob,
-                                 std::string& err) const {
-    std::vector<uint8_t> ovr(view_.header.layerCount);
-    for (uint32_t i = 0; i < view_.header.layerCount; ++i)
-        ovr[i] = (enabledMask >> i) & 1u;
-    return Vixen::SVO::FlattenVoxelDocument(view_, &ovr, outVrc1Blob, err);
+bool EditorDocumentModel::Flatten(std::vector<uint8_t>& outVrc1Blob,
+                                  DocumentDiagnostic& diagnostic) const {
+    diagnostic.Clear();
+    std::vector<uint8_t> enabledOverride(LayerCount());
+    for (uint32_t i = 0; i < LayerCount(); ++i) {
+        enabledOverride[i] = static_cast<uint8_t>((enabledMask_ >> i) & 1u);
+    }
+
+    std::string error;
+    if (!Vixen::SVO::FlattenVoxelDocument(view_, &enabledOverride, outVrc1Blob, error)) {
+        diagnostic = {DocumentDiagnosticCode::FlattenError, std::move(error)};
+        return false;
+    }
+    return true;
 }
 
 bool EditorDocumentModel::FlattenToRecipeEntry(
-    uint32_t enabledMask, Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
-    std::string& err) const {
+    Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+    DocumentDiagnostic& diagnostic) const {
     using Yeroket::Sdf::Generated::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
-    err.clear();
-    std::vector<uint8_t> enabledOverride(view_.header.layerCount);
-    for (uint32_t i = 0; i < view_.header.layerCount; ++i)
-        enabledOverride[i] = (enabledMask >> i) & 1u;
+    diagnostic.Clear();
+    std::vector<uint8_t> enabledOverride(LayerCount());
+    for (uint32_t i = 0; i < LayerCount(); ++i) {
+        enabledOverride[i] = static_cast<uint8_t>((enabledMask_ >> i) & 1u);
+    }
 
     std::vector<SdfInstruction> instructions;
     int sp = 0;
     int psp = 0;
     bool haveBase = false;
-    for (uint32_t layerIndex = 0; layerIndex < view_.header.layerCount; ++layerIndex) {
+    for (uint32_t layerIndex = 0; layerIndex < LayerCount(); ++layerIndex) {
         if (enabledOverride[layerIndex] == 0) continue;
         const auto& layer = view_.layers[layerIndex];
         const uint32_t count = layer.header->instructionCount;
+        std::string error;
         if (!Vixen::SVO::GeneratedRecipePipelineDetail::ValidateProgram(
-                layer.instructions, count, sp, psp, err)) {
+                layer.instructions, count, sp, psp, error)) {
+            diagnostic = {DocumentDiagnosticCode::FlattenError, std::move(error)};
             return false;
         }
         if (!haveBase) {
-            instructions.insert(instructions.end(), layer.instructions, layer.instructions + count);
+            instructions.insert(instructions.end(), layer.instructions,
+                                layer.instructions + count);
             haveBase = true;
             continue;
         }
@@ -97,23 +185,28 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
         SdfOpCode combineOpcode{};
         if (!Vixen::SVO::GeneratedRecipePipelineDetail::LayerCombineOpcode(
                 layer.header->op, combineOpcode)) {
-            err = "unknown layer op " + std::to_string(layer.header->op) +
-                  " on layer index " + std::to_string(layerIndex);
+            diagnostic = {
+                DocumentDiagnosticCode::FlattenError,
+                "unknown layer op " + std::to_string(layer.header->op) +
+                    " on layer index " + std::to_string(layerIndex)};
             return false;
         }
-        instructions.insert(instructions.end(), layer.instructions, layer.instructions + count);
+        instructions.insert(instructions.end(), layer.instructions,
+                            layer.instructions + count);
         SdfInstruction combine{};
         combine.opCode = static_cast<uint8_t>(combineOpcode);
         combine.inputMask = 3;
         combine.data[2] = layer.header->blendRadius;
         if (!Vixen::SVO::GeneratedRecipePipelineDetail::ValidateProgram(
-                &combine, 1, sp, psp, err)) {
+                &combine, 1, sp, psp, error)) {
+            diagnostic = {DocumentDiagnosticCode::FlattenError, std::move(error)};
             return false;
         }
         instructions.push_back(combine);
     }
     if (!haveBase) {
-        err = "zero enabled layers — nothing to render";
+        diagnostic = {DocumentDiagnosticCode::FlattenError,
+                      "zero enabled layers — nothing to render"};
         return false;
     }
 
@@ -125,37 +218,45 @@ bool EditorDocumentModel::FlattenToRecipeEntry(
     return true;
 }
 
-bool EditorDocumentModel::Save(uint32_t enabledMask, const std::string& outPath,
-                               std::string& err) const {
+bool EditorDocumentModel::Save(const std::string& outPath,
+                               DocumentDiagnostic& diagnostic) const {
     using namespace Yeroket::Sdf::Generated;
 
-    std::vector<VoxelDocLayerHeader> headers(view_.header.layerCount);
-    std::vector<VoxelDocLayerWrite> writes(view_.header.layerCount);
-    for (uint32_t i = 0; i < view_.header.layerCount; ++i) {
+    diagnostic.Clear();
+    std::vector<VoxelDocLayerHeader> headers(LayerCount());
+    std::vector<VoxelDocLayerWrite> writes(LayerCount());
+    for (uint32_t i = 0; i < LayerCount(); ++i) {
         headers[i] = *view_.layers[i].header;
-        headers[i].enabled = (enabledMask >> i) & 1u;
+        headers[i].enabled = static_cast<uint8_t>((enabledMask_ >> i) & 1u);
         writes[i].header = headers[i];
         writes[i].instructions = view_.layers[i].instructions;
     }
 
-    size_t need = 0;
+    size_t required = 0;
     WriteVoxelDocument(view_.channels, view_.header.channelCount,
-                       writes.data(), view_.header.layerCount,
-                       nullptr, 0, need);
-    std::vector<uint8_t> out(need);
+                       writes.data(), LayerCount(), nullptr, 0, required);
+    std::vector<uint8_t> bytes(required);
     size_t written = 0;
     if (!WriteVoxelDocument(view_.channels, view_.header.channelCount,
-                            writes.data(), view_.header.layerCount,
-                            out.data(), out.size(), written)) {
-        err = "WriteVoxelDocument failed sizing/writing the document";
+                            writes.data(), LayerCount(), bytes.data(), bytes.size(), written)) {
+        diagnostic = {DocumentDiagnosticCode::WriteError,
+                      "WriteVoxelDocument failed sizing/writing the document"};
         return false;
     }
-    out.resize(written);
+    bytes.resize(written);
 
-    std::ofstream f(outPath, std::ios::binary | std::ios::trunc);
-    if (!f) { err = "cannot open output path: " + outPath; return false; }
-    f.write(reinterpret_cast<const char*>(out.data()), static_cast<std::streamsize>(out.size()));
-    return f.good();
+    std::ofstream file(outPath, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        diagnostic = {DocumentDiagnosticCode::IoError, "cannot open output path: " + outPath};
+        return false;
+    }
+    file.write(reinterpret_cast<const char*>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
+    if (!file.good()) {
+        diagnostic = {DocumentDiagnosticCode::IoError, "failed writing output path: " + outPath};
+        return false;
+    }
+    return true;
 }
 
 }  // namespace Vixen::Editor

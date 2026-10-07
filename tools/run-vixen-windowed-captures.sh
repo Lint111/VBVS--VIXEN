@@ -99,7 +99,7 @@ run_capture() {
     local log_path="$4"
     shift 4
 
-    if ! (cd -- "$working_dir" && timeout 180s env "$@" "$executable") >"$log_path" 2>&1; then
+    if ! (cd -- "$working_dir" && timeout 180s env -u VIXEN_TEST_CELSHADE_LAMBERT_GGX "$@" "$executable") >"$log_path" 2>&1; then
         echo "$name capture failed; last output from $log_path:" >&2
         tail -n 80 "$log_path" >&2
         return 1
@@ -123,7 +123,6 @@ run_capture "HUD" "$vixen" "$vixen_runtime_dir" "$capture_root/hud.log" \
     "VIXEN_EXIT_AFTER_FRAMES=85"
 
 run_capture "editor" "$editor" "$editor_runtime_dir" "$capture_root/editor.log" \
-    "VIXEN_TEST_CELSHADE_LAMBERT_GGX=1" \
     "VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110" \
     "VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105" \
     "VIXEN_EDITOR_CAPTURE_DIR=$editor_dir" \

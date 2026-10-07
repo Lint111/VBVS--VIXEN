@@ -68,7 +68,7 @@ public:
     // for the initial load; safe to no-op-check via LastError() on failure.
     bool LoadDocument(const std::string& path);
 
-    // Reconstructs the document with the current enabled overrides and writes it to
+    // Reconstructs the document from the headless model's current enabled state and writes it to
     // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError())
     // on failure.
     bool SaveDocument();
@@ -105,8 +105,8 @@ private:
     // before input dispatch, which is the editor's between-tick point.
     void PollAppFlowFile();
 
-    // Inc-A2: re-derives layersView_'s bound "layers" array from doc_'s per-layer name/op plus
-    // rt_.Layers().Mask()'s current bit state. Shared by the initial population (LoadDocument)
+    // Inc-A2: re-derives layersView_'s bound "layers" array from doc_'s per-layer name/op and
+    // enabled mask. Shared by the initial population (LoadDocument)
     // and the ToggleLayer handler's same-frame echo (the SAME ApplyFn body Undo()/Redo() re-run,
     // so one call site here covers toggle, undo, and redo alike).
     void RefreshLayersView();
@@ -116,19 +116,17 @@ private:
     // driven by the editor's own input (the ToggleLayer handler's same-frame echo above already
     // covers that case) -- e.g. a deterministic external write to gaiaLayerEntity_'s LayerMask
     // component, bypassing WriteU32 entirely. Called from Update(), AFTER input dispatch, so
-    // cross-view/external propagation lands same-frame where possible (design §4a). Re-syncs
-    // rt_.Layers() (the ToggleLayer handler's own mask source, used for undo snapshots + the
-    // scripted-action state dump) so the Gaia component stays the single source of truth an
-    // external write mutates, not a second copy that would silently diverge.
+    // cross-view/external propagation lands same-frame where possible (design §4a). Valid Gaia
+    // writes are applied through EditorDocumentModel, then mirrored to the runtime projection.
     void ReconcileLayersView();
 
 
     std::string documentPath_;
     Vixen::Editor::EditorDocumentModel doc_;
     // Inc-2b: the editor owns an AppFlowRuntime (bus=nullptr — Publish no-ops; the editor
-    // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack
-    // instead of mutating LayerController directly. Layers() exposes the same mask source
-    // of truth Inc-2's raw layers_ member used.
+    // doesn't consume the events yet) so toggle/undo/redo route through the ActionStack. The
+    // runtime's LayerController is a projection for AppFlow snapshots; EditorDocumentModel owns
+    // the accepted document mask and applies every layer mutation.
     Vixen::AppFlow::AppFlowRuntime rt_{nullptr, /*sender*/0};
     // Inc-B: the editor's own Gaia world (Task 1 finding -- vixen_editor previously only pulled
     // gaia.h TRANSITIVELY via SVO's ShellOctree/LaineKarrasOctree; nothing instantiated a
@@ -146,7 +144,8 @@ private:
     // entity look like" logic out of the header, same rationale as layersView_'s bridge factory.
     Vixen::GaiaVoxel::GaiaVoxelWorld::EntityID gaiaLayerEntity_ = Vixen::App::MakeGaiaLayerEntity(gaiaWorld_);
     // Inc-A: the view->model seam's provider (design View-Data-Provider-Seam-Design-2026-07.md).
-    // ToggleLayer reads/writes LayerMask through this instead of touching a mask store directly.
+    // Accepted document state is projected through this provider; external writes are validated
+    // and applied through EditorDocumentModel during ReconcileLayersView().
     // Inc-B swaps the direct-field LayerControllerViewDataProvider for this Gaia-backed one --
     // same seam, same handler body, only this one construction changed (GaiaLayerViewDataProvider.h).
     // Binds gaiaWorld_/gaiaLayerEntity_, both declared above -- default member initializers run in
@@ -159,7 +158,7 @@ private:
     // 2026-07.md). Owned here (mirrors HudView's hudView_ ownership in VulkanGraphApplication --
     // same raw-pointer-via-bridge-factory pattern, same rationale: forward-declared-only type),
     // wired onto the UI node via WireEditorLayersView in BuildRenderGraph, and populated from
-    // doc_/rt_.Layers() at LoadDocument time -- the first model->view path anywhere in the editor.
+    // doc_ at LoadDocument time -- the first model->view path anywhere in the editor.
     Vixen::App::EditorLayersView* layersView_ = Vixen::App::MakeEditorLayersView();
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
