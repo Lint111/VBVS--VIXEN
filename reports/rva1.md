@@ -1,80 +1,98 @@
-# RVA1 Run 2 — tile-local SDF recipe interval pruning
+# RVA1 Run 3 — tile-local SDF recipe interval pruning
 
 ## LANDABLE NOW
 
-- Kernel: `f1ac3fb0f8aa71f98075fb33e35d035999c4f334`, based on merged `origin/main` tip `bd05ce51`.
-- VIXEN feature: `a53de758752ff06f1cf535064481d3d13c0f2dd6`, based on merge `8ee92e5c848b4907ac93984e4a2bd99b830f6138`, which contains wave commit `846ab1a999a542f663ee08764fe69b3de2beade3`.
-- The recipe-only specialization produces a disposable per-tile postfix tape. Source recipe bytes and edit history remain unchanged.
+- VIXEN run-3 tested base: `26cfdc7c7486d86c9c04120f58d62252f7f9f146` (`lane-rva1`). It contains the Run-2 feature commit `a53de758752ff06f1cf535064481d3d13c0f2dd6` and the wave merge `8ee92e5c848b4907ac93984e4a2bd99b830f6138`.
+- Kernel: `f1ac3fb0f8aa71f98075fb33e35d035999c4f334`, based on merged `origin/main` `bd05ce51`.
+- Untouched wave comparison tip: `846ab1a999a542f663ee08764fe69b3de2beade3`.
+- Run 3 changes are in the VIXEN render-test fixture, this report, the capture below, and the lane-local SPT proposal. The kernel worktree is unchanged.
 
-## Changes
+## Run 2 implementation carried into this run
 
-- Kernel declarations: `Packages/com.yeroket.utility.kernel-framework/Runtime/KernelCallableAttribute.cs:131` adds interval-rule metadata; `Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs:13` declares Sphere, Box, hard Union, Subtract, and Intersect rules.
-- Kernel lowering: `Packages/com.yeroket.utility.kernel-framework/SourceGenerator~/Transpiler/RecipeLoweringModel.cs:377` reads the declarations, validates opcode/stack shape and data-slot bounds, and carries operand offsets into generated metadata. `RecipeDispatchEmitter.cs:53` emits the bounded postfix GLSL evaluator. `CodegenTool~/Program.Legacy.cs:158` writes and drift-checks the generated tape GLSL.
-- VIXEN specialization: `VIXEN/libraries/SVO/include/Recipe/RecipeTileSpecialization.h:166` evaluates conservative Sphere/Box intervals over object-local AABBs and prunes only hard CSG branches proven irrelevant by strict interval separation. Unsupported opcodes, invalid domains, and invalid operands return the original tape.
-- VIXEN wiring and tests: `VIXEN/codegen/CMakeLists.txt:238` adds the generated tape evaluator to the recipe codegen checks. `VIXEN/libraries/SVO/tests/test_recipe_interval_pruning.cpp:52` covers CPU interval proofs and fallback. `test_recipe_declared_position_render.cpp:859` exercises full, pruned, and unrolled tapes on the GPU.
-- The library API is exercised by the focused GPU fixture. Runtime scene-host integration remains a follow-on.
+- Kernel declarations add interval-rule metadata to `KernelCallableAttribute.cs` and declare Sphere, Box, hard Union, Subtract, and Intersect rules in `SdfCoreKernels.cs`.
+- Kernel lowering validates opcode, stack shape, and data-slot bounds, then emits bounded postfix tape GLSL and generated dispatch metadata through CodegenTool.
+- `RecipeTileSpecialization.h` evaluates conservative Sphere/Box intervals over object-local AABBs. It prunes only hard CSG branches proven irrelevant by strict interval separation; unsupported opcodes, invalid domains, and invalid operands return the original tape.
+- VIXEN codegen checks the generated tape evaluator. CPU interval/fallback tests and the GPU full/pruned/unrolled parity fixture cover the library API. Runtime scene-host integration remains a follow-on.
+- Run 2 previously recorded 973 SourceGenerator tests and 2,081 CodegenTool tests passed, with 2 CodegenTool tests skipped. Its capture set was 11/11 byte- and pixel-identical. Run 3 leaves the kernel worktree unchanged.
 
-## Witness numbers
+## Run 3 fixture
 
-The fixed edit-heavy recipe has 325 instructions and uses 64 object-local tiles. Each tile’s disposable tape retains one Sphere instruction. The GPU device was an NVIDIA GeForce RTX 3060 Laptop GPU through the WSL DZN driver.
+Both fixtures use a 64×64 ray image and 64 object-local tiles arranged 4×4×4. The GPU was an NVIDIA GeForce RTX 3060 Laptop GPU through WSL DZN. Each GPU median is the median of three timed renders after a warm-up render.
 
-| Measure | Full tape | Pruned tape | Result |
-|---|---:|---:|---:|
-| Output bytes | — | — | 0 differing bytes versus both pruned and unrolled paths; all depth/material/channel values match |
-| Hit pixels | 1,804 / 4,096 | 1,804 / 4,096 | Identical, nonempty image |
-| Executed clauses per image pixel | 26,499.9 | 81.5381 | 99.6923% reduction |
-| GPU median time | 14.9012 ms | 0.108544 ms | Unrolled path: 0.340992 ms |
-| Tape upload | 43,412 B | 8,960 B | Includes tile ranges |
-| CPU tile specialization | — | 0.749964 ms | 20,800 interval evaluations; 20,736 source instructions pruned |
-| Shader compile time | 13.2093 ms unrolled | 151.813 ms tape | One-time compile measurements |
-| Shader source size | 39,275 B unrolled | 41,327 B tape | — |
+The Run-2 control retains its original 325-instruction recipe: one sphere in every tile and 324 off-tile terms. The realistic 433-instruction recipe has 32 internal edits later buried by a larger refill sphere; a raised cross plate, eight perimeter patches, and 20 studs; a round opening, four notches, and 20 pock cuts; plus 128 offscreen terms. The capture's amber overlay marks pixels added by the plate and patches. Cyan marks pixels changed by cuts. The adjacent panel shows retained counts for all 64 tiles across the four Z layers.
 
-The GPU test checks exact RGBA32F bytes for full/pruned/unrolled output, exact material/channel constants, hit count, and clause reduction. The 0.858508 ms serial figure is CPU specialization plus pruned GPU execution; shader compilation is reported separately.
+![Visible edit-heavy fixture and retained-instruction heatmap](rva1-visual/visible-edit-heavy-capture-and-retained-heatmap.png)
+
+## Run 2 and Run 3 measurements
+
+| Measure | Run-2 dead-terms control | Run-3 visible edit-heavy |
+|---|---:|---:|
+| Source instructions | 325 | 433 |
+| Retained instructions per tile (min / median / max) | 1 / 1 / 1 | 7 / 42 / 123 |
+| Retained-instruction histogram | `1:64` | See full histogram below |
+| Hit pixels (full / pruned / unrolled) | 1,804 each / 4,096 | 2,036 each / 4,096 |
+| Output-byte differences (full↔pruned / full↔unrolled) | 0 / 0 | 0 / 0 |
+| Visible output pixels changed from reference | 0 | 544; pre-cut additions: 552, cuts: 148 |
+| Clauses per pixel, all pixels (full → pruned) | 26,499.9 → 81.5381 | 32,658.5 → 3,909.15 |
+| Clause reduction, all pixels | 99.6923% | 88.0302% |
+| Clauses per hit pixel (full → pruned) | 10,205.4 → 31.4013 | 12,691.4 → 2,432.12 |
+| GPU median, full / pruned / unrolled (ms) | 18.7105 / 0.113664 / 0.350208 | 24.022 / 2.55693 / 0.500736 |
+| CPU specialization (ms) | 0.686309 | 2.28172 |
+| Total cost: specialization + pruned GPU median (ms) | 0.799973 | 4.83864 |
+| Interval proof evaluations | 20,800 | 27,712 |
+| Pruned source instructions across tiles | 20,736 | 24,404 |
+| Upload bytes, full / pruned (including tile ranges) | 43,412 / 8,960 | 57,668 / 437,168 |
+
+The exact RGBA32F outputs match byte-for-byte for full, pruned, and unrolled paths in both fixtures. Depth, hit counts, and the three material/channel values also match. Proof work is included in the CPU specialization measurement and therefore in total cost. Total cost is CPU specialization plus the pruned GPU median; one-time shader compilation, the base/pre-cut visibility reference renders, and capture writing are excluded.
+
+Run-3's per-tile histogram is `7:4, 9:2, 13:2, 17:4, 19:1, 21:1, 25:2, 27:2, 31:1, 33:3, 35:4, 39:1, 41:5, 43:4, 45:4, 73:7, 75:2, 77:1, 81:2, 83:4, 107:2, 109:1, 111:1, 123:4` (64 tiles total). Forty-five tiles retain at least 32 instructions.
+
+For the realistic fixture, clause work falls by 88.03%, while the pruned GPU median is 5.1× the unrolled median and total measured cost is 9.7× the unrolled GPU median. The pruned tape upload is 7.6× the full-tape upload because retained instructions are duplicated across tile ranges. In this fixture, tile-local tape duplication and dynamic evaluation outweigh the clause reduction in measured execution time. The Run-2 control still demonstrates the large benefit when most source terms are provably irrelevant to every tile.
+
+The final focused pass ran while another lane had a queued build active. Repeated GPU medians stayed close (`2.56 ms` pruned and `0.50 ms` unrolled); CPU specialization varied from `1.42` to `2.28 ms` with host load, and the table gives the final pass.
 
 ## Build and test record
 
-- Kernel build after merge: both explicit test projects built with 0 warnings and 0 errors.
-- Kernel SourceGenerator suite: 973 passed.
-- Kernel CodegenTool suite: 2,081 passed, 2 skipped.
-- CodegenTool generated all recipe artifacts; the follow-up `--check` run passed.
-- VIXEN configure passed with `YEROKET_ROOT=/home/liory/projects/Yeroket-Fantasy` and kernel pin `f1ac3fb0f8aa71f98075fb33e35d035999c4f334`.
-- Full queued VIXEN build passed. Its 22 generated-code drift checks, including the recipe SIMD/CPU/GLSL/tape evaluator check, passed. An explicit second target invocation returned `ninja: no work to do`.
-- Focused SVO CPU/GPU tests: 5 passed, 0 failed. The GPU witness passed in 4.00 s.
-- Baseline and post-change CelShading capture tests: 4 passed each.
-- Captures: 11/11 byte-identical and pixel-identical (7 HUD/editor and 4 CelShading).
-- No-op VIXEN rebuild: `ninja: no work to do`.
+- CodegenTool restore/build passed. Recipe generation reported no file changes, and the follow-up `--check` passed.
+- Fresh full VIXEN build through the global queue passed; Ninja processed 209 build steps.
+- Focused GPU fixture passed with the byte, depth/material/channel, visibility, and histogram gates. The final focused timing run is the one reported above.
+- Full RenderGraph CTest passed: 1,337 tests, 0 failures, 6 skipped; 362.17 seconds wall time.
+- Full SVO CTest: the sole failure was `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, with `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94`. The suite had 756 registered cases, 1 failure, 8 skipped, and 1 disabled.
+- Full VIXEN CTest: the same opcode-94 test was the sole failure. CTest reported 1 failure among 2,876 counted tests, 13 skipped and 4 disabled, from 2,880 registered; 688.28 seconds wall time.
+- The full suites ran before an indentation-only cleanup of the test body. After that cleanup, the focused target rebuilt and the full/pruned/unrolled GPU witness passed again.
+- The opcode-94 failure reproduced on the untouched wave-tip snapshot at `846ab1a999a542f663ee08764fe69b3de2beade3`, with the same diagnostic. The pre-edit SVO baseline on this lane also showed it. This is the existing T-1449 issue; no other suite failure appeared.
 
 ## Recovery record
 
-- `dotnet build Yeroket-Fantasy.sln -c Release -nodeReuse:false` returned exit 0 with `Unable to find a project to restore!` and compiled nothing. Recovery: build and test `SourceGenerator~/Tests/SDFNodeGenerator.Tests.csproj` and `CodegenTool~/Tests/CodegenTool.Tests.csproj` directly through the queue. Proposal recorded below.
-- The first baseline capture run passed a relative output directory. Both apps rendered, then PNG writes failed after the capture script changed working directory. Recovery: rerun with an absolute output directory. Proposal recorded below.
-- The first CodegenTool generation command used `.../.claude-worktrees/rva1/codegen/RecipeOpDeclarations.cs`; that file is at `.../VIXEN/codegen/RecipeOpDeclarations.cs`. The corrected queued `dotnet run` and `--check` passed.
-- The first VIXEN configure was launched from the checkout root, where `CMakePresets.json` is absent. Recovery: run `cmake --preset vixen-wsl` from `VIXEN/` with the same FetchContent cache and kernel SHA override.
-- The first VIXEN build found a float/double type mismatch in an interval error-scale expression. The domain values were explicitly promoted to double; the recovered full build and focused tests passed.
+- Before semantic edits, the queued full SVO baseline failed only on opcode 94. Recovery rung C was completed: `ctest --test-dir build/wave-baseline/build/wsl --output-on-failure --parallel 1 -R '^RecipeSimdParity\.AllCorpusProgramsAreBitIdenticalAcrossFourLanes$'` was run against a fresh snapshot of the untouched wave tip and failed with the same diagnostic. This proves the red predates Run 3.
+- Codegen recovery rung B was completed: queued CodegenTool restore/build and a fresh recipe generator run succeeded without changing generated files; the follow-up `--check` passed.
+- The wave-tip snapshot configure succeeded with explicit kernel, Undertow, and FetchContent roots. It staged a source-local Vulkan SDK, X11 development files, and missing FetchContent projects before CTest could run. The lane proposal records this provisioning friction.
+- The lane build reconfigured the CMake tree and rebuilt cached dependencies; it completed successfully. No generated recipe outputs changed during this run.
 
 ## CodeGraph and integration scope
 
-VIXEN, the kernel worktree, and KernelFederationRenderer have no `.codegraph/` index; no index was created. VIXEN navigation used `rg`. KFR’s `app/src/session_renderer.cpp` contains no SDF recipe consumer. `SessionRenderer::BuildRenderGraph()` currently builds the UI graph; this is the closest KFR host integration point for a future scene node.
+VIXEN, the kernel worktree, and KernelFederationRenderer have no `.codegraph/` index; no index was created. VIXEN navigation used `rg`. KFR's `app/src/session_renderer.cpp` contains no SDF recipe consumer. `SessionRenderer::BuildRenderGraph()` remains the closest KFR host integration point for a future scene node.
 
-The mixed voxel/virtual delta stack is outside this recipe-only proof. The specializer has no ordered materialized-brick references, per-brick occupancy or min/max distance bounds, or revision linkage from that stack, so it cannot prove that a brick override or virtual clear leaves a recipe branch irrelevant. The recipe-only interval proof is implemented; rv-a2 owns the mixed-stack gap.
+The mixed voxel/virtual delta stack remains outside this recipe-only proof. The specializer has no ordered materialized-brick references, per-brick occupancy or min/max distance bounds, or revision linkage from that stack, so it cannot prove that a brick override or virtual clear leaves a recipe branch irrelevant. The recipe-only interval proof is implemented; rv-a2 owns the mixed-stack gap.
 
 ## Shared files touched
 
-No cross-lane shared source files were changed. Changes are limited to the authorized kernel worktree and VIXEN SVO/codegen/test files.
+No cross-lane shared source files were changed. Run 3 modifies only the VIXEN SVO GPU render test, this report, the committed capture, and `.spt-proposals/rva1.jsonl`.
 
 ## STOPs
 
-At the 08:00 UTC three-hour checkpoint, the full RenderGraph CTest group, full SVO CTest group, and full VIXEN CTest suite were not run. The lane stops with the full build and feature-specific witness green. Current full-suite status on merged wave commit `8ee92e5c` is unclassified. The earlier run’s `T-1449` opcode-94 result was recorded on a different base and was not reverified here.
+None. The only full-suite red is opcode 94 / T-1449, reproduced on the untouched wave tip. T-1449 remains open; this lane does not change or close it.
 
-## SPT DISPOSITION
+## SPT disposition
 
-- `T-1449`: prior report records the opcode-94 recipe parity failure; this run did not rerun the full suite or establish its status on the merged wave.
-- `T-1450`: keep the R328 interval-arithmetic follow-on open. This lane did not implement or close it.
+- `T-1449`: remains open for the opcode-94 recipe gradient capability mismatch.
+- `T-1450`: keep the R328 interval-arithmetic follow-on open; this lane did not implement or close it.
 - No existing SPT task was closed.
 
-## CONSOLIDATION ISSUES
+## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
 - proposed: CodegenTool tests should discover the Undertow root
 - proposed: Standard VIXEN build should regenerate merged SDI before drift checks
 - proposed: Kernel solution build exits successfully without discovering projects
 - proposed: Capture script must resolve output directory before changing working directory
+- proposed: Untouched wave baseline configure re-provisions Vulkan and X11 dependencies

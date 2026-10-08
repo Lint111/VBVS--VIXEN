@@ -44,10 +44,13 @@
 #include <array>
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -174,6 +177,243 @@ std::vector<GpuRecipeTapeInstruction> PackGpuTape(std::span<const SdfInstruction
     for (const SdfInstruction& instruction : instructions)
         packed.push_back(PackGpuInstruction(instruction));
     return packed;
+}
+
+SdfInstruction MakeTileSphere(float x, float y, float z, float radius) {
+    SdfInstruction instruction{};
+    instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
+    instruction.data[0] = x;
+    instruction.data[1] = y;
+    instruction.data[2] = z;
+    instruction.data[3] = radius;
+    return instruction;
+}
+
+SdfInstruction MakeTileBox(float halfX, float halfY, float halfZ) {
+    SdfInstruction instruction{};
+    instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::Box);
+    instruction.data[0] = halfX;
+    instruction.data[1] = halfY;
+    instruction.data[2] = halfZ;
+    return instruction;
+}
+
+SdfInstruction MakeTileCombine(SdfOpCode opcode) {
+    SdfInstruction instruction{};
+    instruction.opCode = static_cast<std::uint8_t>(opcode);
+    return instruction;
+}
+
+struct TileTapeFixtureInput {
+    const char* name;
+    std::vector<SdfInstruction> instructions;
+    std::size_t referenceBaseInstruction;
+    std::size_t preCutInstructionCount;
+    bool capture;
+};
+
+TileTapeFixtureInput MakeRun2DeadTermsFixture() {
+    std::vector<SdfInstruction> source;
+    source.reserve(325);
+    source.push_back(MakeTileSphere(0.0f, 0.0f, 0.0f, 4.5f));
+    source.push_back(MakeTileSphere(100.0f, 0.0f, 0.0f, 12.0f));
+    source.push_back(MakeTileSphere(102.0f, 0.0f, 0.0f, 12.0f));
+    source.push_back(MakeTileCombine(SdfOpCode::Union));
+    source.push_back(MakeTileCombine(SdfOpCode::Union));
+    for (int edit = 0; edit < 160; ++edit) {
+        const float x = 100.0f + static_cast<float>(edit % 17) * 0.5f;
+        const float y = static_cast<float>(edit % 9 - 4) * 0.25f;
+        source.push_back(MakeTileSphere(x, y, 0.0f, 10.0f));
+        source.push_back(MakeTileCombine(edit < 80 ? SdfOpCode::Subtract : SdfOpCode::Union));
+    }
+    return {"run2-dead-terms", std::move(source), 0, 325, false};
+}
+
+TileTapeFixtureInput MakeVisibleEditHeavyFixture() {
+    std::vector<SdfInstruction> source;
+    source.reserve(433);
+    source.push_back(MakeTileSphere(0.0f, 0.0f, 0.0f, 4.5f));
+
+    // These 32 small changes sit inside the body. A later, slightly larger shell refills
+    // that volume, leaving the source edits buried/overridden in the original history.
+    for (int edit = 0; edit < 32; ++edit) {
+        const float x = static_cast<float>(edit % 8 - 4) * 0.12f;
+        const float y = static_cast<float>(edit / 8 - 2) * 0.12f;
+        const float z = static_cast<float>(edit % 3 - 1) * 0.08f;
+        const float radius = 0.18f + static_cast<float>(edit % 4) * 0.025f;
+        source.push_back(MakeTileSphere(x, y, z, radius));
+        source.push_back(MakeTileCombine(edit % 2 == 0 ? SdfOpCode::Union : SdfOpCode::Subtract));
+    }
+    source.push_back(MakeTileSphere(0.0f, 0.0f, 0.0f, 4.65f));
+    source.push_back(MakeTileCombine(SdfOpCode::Union));
+
+    // Two centered boxes form a cross-shaped armor plate raised in front of the sphere.
+    source.push_back(MakeTileBox(3.25f, 0.42f, 5.2f));
+    source.push_back(MakeTileCombine(SdfOpCode::Union));
+    source.push_back(MakeTileBox(0.42f, 1.75f, 5.2f));
+    source.push_back(MakeTileCombine(SdfOpCode::Union));
+
+    // Eight rounded patches cross the body's projected silhouette and remain visible.
+    for (const auto& [x, y, z] : std::array<std::array<float, 3>, 8>{
+            std::array<float, 3>{-4.2f, 0.0f, -1.4f},
+            std::array<float, 3>{ 4.2f, 0.0f, -1.4f},
+            std::array<float, 3>{0.0f, -4.2f, -1.4f},
+            std::array<float, 3>{0.0f,  4.2f, -1.4f},
+            std::array<float, 3>{-3.0f, -3.0f, -1.8f},
+            std::array<float, 3>{-3.0f,  3.0f, -1.8f},
+            std::array<float, 3>{ 3.0f, -3.0f, -1.8f},
+            std::array<float, 3>{ 3.0f,  3.0f, -1.8f}}) {
+        source.push_back(MakeTileSphere(x, y, z, 0.85f));
+        source.push_back(MakeTileCombine(SdfOpCode::Union));
+    }
+
+    // Small studs are added along both plate arms before the later cuts perforate them.
+    for (const float x : {-2.7f, -1.8f, -0.9f, 0.9f, 1.8f, 2.7f}) {
+        for (const float y : {-0.30f, 0.30f}) {
+            source.push_back(MakeTileSphere(x, y, -5.62f, 0.24f));
+            source.push_back(MakeTileCombine(SdfOpCode::Union));
+        }
+    }
+    for (const float y : {-1.45f, -0.72f, 0.72f, 1.45f}) {
+        for (const float x : {-0.30f, 0.30f}) {
+            source.push_back(MakeTileSphere(x, y, -5.62f, 0.24f));
+            source.push_back(MakeTileCombine(SdfOpCode::Union));
+        }
+    }
+
+    // A round opening and four edge cuts read as a hole and notches in the capture.
+    source.push_back(MakeTileSphere(0.0f, 0.0f, -5.2f, 0.82f));
+    source.push_back(MakeTileCombine(SdfOpCode::Subtract));
+    for (const auto& [x, y, z, radius] : std::array<std::array<float, 4>, 4>{
+            std::array<float, 4>{-3.1f, 0.0f, -5.2f, 0.75f},
+            std::array<float, 4>{ 3.1f, 0.0f, -5.2f, 0.75f},
+            std::array<float, 4>{0.0f, -1.58f, -5.2f, 0.72f},
+            std::array<float, 4>{0.0f,  1.58f, -5.2f, 0.72f}}) {
+        source.push_back(MakeTileSphere(x, y, z, radius));
+        source.push_back(MakeTileCombine(SdfOpCode::Subtract));
+    }
+
+    // Twenty overlapping cutters make repeated, visible pock marks on both plate arms.
+    for (const float x : {-2.8f, -2.1f, -1.4f, 1.4f, 2.1f, 2.8f}) {
+        for (const float y : {-0.22f, 0.22f}) {
+            source.push_back(MakeTileSphere(x, y, -5.3f, 0.34f));
+            source.push_back(MakeTileCombine(SdfOpCode::Subtract));
+        }
+    }
+    for (const float y : {-1.32f, -0.78f, 0.78f, 1.32f}) {
+        for (const float x : {-0.22f, 0.22f}) {
+            source.push_back(MakeTileSphere(x, y, -5.3f, 0.32f));
+            source.push_back(MakeTileCombine(SdfOpCode::Subtract));
+        }
+    }
+
+    // A final overlapping offscreen edit cluster is outside every certified view tile.
+    // It is part of the history but should not survive any tile's evaluation tape.
+    for (int edit = 0; edit < 128; ++edit) {
+        const float x = 100.0f + static_cast<float>(edit % 17) * 0.5f;
+        const float y = static_cast<float>(edit % 9 - 4) * 0.25f;
+        source.push_back(MakeTileSphere(x, y, 0.0f, 10.0f));
+        source.push_back(MakeTileCombine(edit % 2 == 0 ? SdfOpCode::Subtract : SdfOpCode::Union));
+    }
+    return {"visible-edit-heavy", std::move(source), 65, 127, true};
+}
+
+bool WriteVisibleEditCapture(const std::filesystem::path& path,
+    const std::vector<float>& rgba32f, const std::vector<float>& baseRgba32f,
+    const std::vector<float>& beforeCutsRgba32f,
+    std::uint32_t width, std::uint32_t height,
+    const std::vector<std::uint32_t>& retainedCounts) {
+    constexpr std::uint32_t kTilesX = 4;
+    constexpr std::uint32_t kTilesY = 4;
+    constexpr std::uint32_t kScale = 8;
+    constexpr std::uint32_t kGap = 12;
+    const std::uint32_t panelWidth = width * kScale;
+    const std::uint32_t panelHeight = height * kScale;
+    const std::uint32_t outputWidth = panelWidth * 2 + kGap;
+    std::vector<std::uint8_t> rgb(static_cast<std::size_t>(outputWidth) * panelHeight * 3, 0);
+
+    const auto writePixel = [&](std::uint32_t x, std::uint32_t y,
+                                std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
+        const std::size_t offset = (static_cast<std::size_t>(y) * outputWidth + x) * 3;
+        rgb[offset + 0] = red;
+        rgb[offset + 1] = green;
+        rgb[offset + 2] = blue;
+    };
+    const auto depthChanged = [](float first, float second) {
+        return (first == -1000.0f) != (second == -1000.0f)
+            || std::abs(first - second) > 1e-4f;
+    };
+
+    // Left panel: depth-mapped GPU capture, with tile boundaries matching the heatmap.
+    for (std::uint32_t y = 0; y < panelHeight; ++y) {
+        for (std::uint32_t x = 0; x < panelWidth; ++x) {
+            const std::uint32_t sourceX = x / kScale;
+            const std::uint32_t sourceY = y / kScale;
+            const std::size_t sourceIndex = (static_cast<std::size_t>(sourceY) * width + sourceX) * 4;
+            const float depth = rgba32f[sourceIndex];
+            const float baseDepth = baseRgba32f[sourceIndex];
+            const float beforeCutsDepth = beforeCutsRgba32f[sourceIndex];
+            std::uint8_t red = 12, green = 18, blue = 30;
+            if (depth != -1000.0f) {
+                const float t = std::clamp((depth + 6.0f) / 12.0f, 0.0f, 1.0f);
+                red = static_cast<std::uint8_t>(35.0f + 205.0f * t);
+                green = static_cast<std::uint8_t>(125.0f - 35.0f * t);
+                blue = static_cast<std::uint8_t>(225.0f - 185.0f * t);
+            }
+            if (depthChanged(depth, beforeCutsDepth)) {
+                red = 20;
+                green = 230;
+                blue = 255;
+            } else if (depthChanged(beforeCutsDepth, baseDepth)) {
+                red = 255;
+                green = 190;
+                blue = 35;
+            }
+            const std::uint32_t tilePixelWidth = panelWidth / kTilesX;
+            const std::uint32_t tilePixelHeight = panelHeight / kTilesY;
+            if (x % tilePixelWidth < 2 || y % tilePixelHeight < 2) {
+                red = static_cast<std::uint8_t>(red / 2);
+                green = static_cast<std::uint8_t>(green / 2);
+                blue = static_cast<std::uint8_t>(blue / 2);
+            }
+            writePixel(x, y, red, green, blue);
+        }
+    }
+
+    if (retainedCounts.size() != kTilesX * kTilesY * 4)
+        return false;
+    const auto [minimum, maximum] = std::minmax_element(retainedCounts.begin(), retainedCounts.end());
+    const std::uint32_t countMin = *minimum;
+    const std::uint32_t countMax = *maximum;
+    const std::uint32_t heatTileWidth = panelWidth / (kTilesX * 2);
+    const std::uint32_t heatTileHeight = panelHeight / (kTilesY * 2);
+
+    // Right panel: all 64 retained counts are shown as four 4x4 maps, one per Z tile layer.
+    // The four maps are arranged in a 2x2 block and use the same XY tile ordering as the capture.
+    for (std::uint32_t y = 0; y < panelHeight; ++y) {
+        for (std::uint32_t x = 0; x < panelWidth; ++x) {
+            const std::uint32_t mapX = x / (panelWidth / 2);
+            const std::uint32_t mapY = y / (panelHeight / 2);
+            const std::uint32_t tileZ = mapY * 2 + mapX;
+            const std::uint32_t tileX = (x % (panelWidth / 2)) / heatTileWidth;
+            const std::uint32_t tileY = (y % (panelHeight / 2)) / heatTileHeight;
+            const std::uint32_t tileIndex = (tileZ * kTilesY + tileY) * kTilesX + tileX;
+            const std::uint32_t count = retainedCounts[tileIndex];
+            const float t = countMax == countMin ? 0.5f
+                : static_cast<float>(count - countMin) / static_cast<float>(countMax - countMin);
+            std::uint8_t red = static_cast<std::uint8_t>(30.0f + 225.0f * t);
+            std::uint8_t green = static_cast<std::uint8_t>(80.0f + 100.0f * (1.0f - std::abs(2.0f * t - 1.0f)));
+            std::uint8_t blue = static_cast<std::uint8_t>(230.0f - 200.0f * t);
+            if (x % heatTileWidth < 2 || y % heatTileHeight < 2) {
+                red = static_cast<std::uint8_t>(red / 3);
+                green = static_cast<std::uint8_t>(green / 3);
+                blue = static_cast<std::uint8_t>(blue / 3);
+            }
+            writePixel(panelWidth + kGap + x, y, red, green, blue);
+        }
+    }
+    return stbi_write_png(path.string().c_str(), static_cast<int>(outputWidth),
+        static_cast<int>(panelHeight), 3, rgb.data(), static_cast<int>(outputWidth * 3)) != 0;
 }
 
 class DeclaredPositionRenderTest : public ::testing::Test {
@@ -871,37 +1111,6 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
     constexpr std::uint32_t kTilePixelsY = kHeight / kTilesY;
     constexpr float kWorldHalfExtent = 6.0f;
 
-    auto sphere = [](float x, float y, float z, float radius) {
-        SdfInstruction instruction{};
-        instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
-        instruction.data[0] = x; instruction.data[1] = y; instruction.data[2] = z;
-        instruction.data[3] = radius;
-        return instruction;
-    };
-    auto combine = [](SdfOpCode opcode) {
-        SdfInstruction instruction{};
-        instruction.opCode = static_cast<std::uint8_t>(opcode);
-        return instruction;
-    };
-
-    // Fixed, bounded edit-heavy input: the 160 cut/patch spheres overlap one another in an
-    // off-tile cluster, and an overlapping patch subtree is buried under the local base.
-    // All observable material/channel outputs below are explicit constants.
-    std::vector<SdfInstruction> source;
-    source.reserve(325);
-    source.push_back(sphere(0.0f, 0.0f, 0.0f, 4.5f));
-    source.push_back(sphere(100.0f, 0.0f, 0.0f, 12.0f));
-    source.push_back(sphere(102.0f, 0.0f, 0.0f, 12.0f));
-    source.push_back(combine(SdfOpCode::Union));
-    source.push_back(combine(SdfOpCode::Union));
-    for (int edit = 0; edit < 160; ++edit) {
-        const float x = 100.0f + static_cast<float>(edit % 17) * 0.5f;
-        const float y = static_cast<float>(edit % 9 - 4) * 0.25f;
-        source.push_back(sphere(x, y, 0.0f, 10.0f));
-        source.push_back(combine(edit < 80 ? SdfOpCode::Subtract : SdfOpCode::Union));
-    }
-    ASSERT_EQ(source.size(), 325u);
-
     const auto pixelWorld = [](std::uint32_t pixel, std::uint32_t extent) {
         const float u = (static_cast<float>(pixel) + 0.5f) / static_cast<float>(extent);
         return (u * 2.0f - 1.0f) * kWorldHalfExtent;
@@ -911,229 +1120,356 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
             * ((2.0f * kWorldHalfExtent) / static_cast<float>(kSteps - 1));
     };
 
-    const auto specializeStart = std::chrono::steady_clock::now();
-    std::vector<GpuRecipeTapeInstruction> prunedTape;
-    std::array<TileTapeRange, kTileCount> prunedRanges{};
-    std::uint64_t intervalEvaluations = 0;
-    std::uint64_t individualSpecializationNs = 0;
-    std::uint64_t prunedInstructions = 0;
-    for (std::uint32_t tileZ = 0; tileZ < kTilesZ; ++tileZ) {
-        const std::uint32_t firstStep = (tileZ * kSteps + kTilesZ - 1) / kTilesZ;
-        const std::uint32_t lastStep = ((tileZ + 1) * kSteps + kTilesZ - 1) / kTilesZ - 1;
-        for (std::uint32_t tileY = 0; tileY < kTilesY; ++tileY) {
-            const std::uint32_t firstY = tileY * kTilePixelsY;
-            const std::uint32_t lastY = (tileY + 1) * kTilePixelsY - 1;
-            for (std::uint32_t tileX = 0; tileX < kTilesX; ++tileX) {
-                const std::uint32_t firstX = tileX * kTilePixelsX;
-                const std::uint32_t lastX = (tileX + 1) * kTilePixelsX - 1;
-                constexpr float kDomainPadding = 0.001f;
-                const RecipeTileDomain domain{
-                    glm::vec3(pixelWorld(firstX, kWidth) - kDomainPadding,
-                        pixelWorld(firstY, kHeight) - kDomainPadding,
-                        stepWorld(firstStep) - kDomainPadding),
-                    glm::vec3(pixelWorld(lastX, kWidth) + kDomainPadding,
-                        pixelWorld(lastY, kHeight) + kDomainPadding,
-                        stepWorld(lastStep) + kDomainPadding)};
-                const auto specialized = SpecializeRecipeTapeForTile(source, domain);
-                ASSERT_EQ(specialized.stats.fallback, RecipeTileFallback::None)
-                    << "tile=" << tileX << "," << tileY << "," << tileZ;
-                ASSERT_EQ(specialized.instructions.size(), 1u)
-                    << "tile=" << tileX << "," << tileY << "," << tileZ;
-                const std::uint32_t tileIndex = (tileZ * kTilesY + tileY) * kTilesX + tileX;
-                prunedRanges[tileIndex] = {
-                    static_cast<std::uint32_t>(prunedTape.size()),
-                    static_cast<std::uint32_t>(specialized.instructions.size())};
-                const auto packed = PackGpuTape(specialized.instructions);
-                prunedTape.insert(prunedTape.end(), packed.begin(), packed.end());
-                intervalEvaluations += specialized.stats.intervalEvaluations;
-                individualSpecializationNs += specialized.stats.specializationNanoseconds;
-                prunedInstructions += specialized.stats.prunedInstructions;
-            }
-        }
-    }
-    const double specializationCpuMilliseconds = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - specializeStart).count();
-    ASSERT_EQ(prunedRanges.size(), kTileCount);
-    ASSERT_EQ(prunedTape.size(), kTileCount);
-
-    std::array<TileTapeRange, kTileCount> fullRanges{};
-    fullRanges.fill(TileTapeRange{0u, static_cast<std::uint32_t>(source.size())});
-    const auto fullTape = PackGpuTape(source);
-    ASSERT_EQ(fullTape.size(), source.size());
-
+    const std::array<TileTapeFixtureInput, 2> fixtures{
+        MakeRun2DeadTermsFixture(),
+        MakeVisibleEditHeavyFixture()};
     const std::string sdfCoreGlsl = ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
     const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
     ASSERT_FALSE(sdfCoreGlsl.empty()) << "Cannot read generated SDF kernels: " << SDF_CORE_KERNELS_GLSL_PATH;
     ASSERT_FALSE(tapeGlsl.empty()) << "Cannot read generated tape evaluator: " << SDF_RECIPE_TAPE_GLSL_PATH;
-    const std::string unrolledField = EmitProceduralFieldFunctionGlsl(source.data(),
-        static_cast<std::uint32_t>(source.size()), 0);
 
-    const std::string tapeAdapter = R"GLSL(
-bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
-    if (EvalRecipeTape(offset, count, p, distanceValue, clauses)) return true;
-    float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    distanceValue = sdfRecipe_0(p, params);
-    clauses = count;
-    return true;
-}
-)GLSL";
-    const std::string tapeShaderSource = ComposeTileTapeRaymarchShader(
-        sdfCoreGlsl, tapeGlsl + "\n" + unrolledField, tapeAdapter);
+    for (const TileTapeFixtureInput& fixture : fixtures) {
+        const std::vector<SdfInstruction>& source = fixture.instructions;
+        if (std::string(fixture.name) == "run2-dead-terms")
+            ASSERT_EQ(source.size(), 325u);
+        else
+            ASSERT_EQ(source.size(), 433u);
 
-    ShaderManagement::ShaderCompiler compiler;
-    ShaderManagement::CompilationOptions options;
-    options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
-    const auto tapeCompileStart = std::chrono::steady_clock::now();
-    const auto tapeCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
-        tapeShaderSource, "main", options);
-    const double tapeCompileMilliseconds = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - tapeCompileStart).count();
-    ASSERT_TRUE(tapeCompile.success) << "Tape GLSL compile failed:\n" << tapeCompile.GetFullLog()
-        << "\n--- source ---\n" << tapeShaderSource;
-
-    const std::string unrolledAdapter = R"GLSL(
-bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
-    float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    distanceValue = sdfRecipe_0(p, params);
-    clauses = count;
-    return true;
-}
-)GLSL";
-    const std::string unrolledShaderSource = ComposeTileTapeRaymarchShader(
-        sdfCoreGlsl, unrolledField, unrolledAdapter);
-    const auto unrolledCompileStart = std::chrono::steady_clock::now();
-    const auto unrolledCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
-        unrolledShaderSource, "main", options);
-    const double unrolledCompileMilliseconds = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - unrolledCompileStart).count();
-    ASSERT_TRUE(unrolledCompile.success) << "Unrolled GLSL compile failed:\n"
-        << unrolledCompile.GetFullLog() << "\n--- source ---\n" << unrolledShaderSource;
-
-    std::vector<float> fullPixels;
-    std::vector<std::uint32_t> fullClauses;
-    std::vector<double> fullGpuTimes;
-    for (int run = 0; run < 4; ++run) {
-        std::vector<float> pixels;
-        std::vector<std::uint32_t> clauses;
-        double gpuMs = 0.0;
-        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, fullTape, fullRanges,
-            kWidth, kHeight, pixels, clauses, gpuMs));
-        if (run > 0) {
-            EXPECT_EQ(std::memcmp(fullPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
-            EXPECT_EQ(fullClauses, clauses);
-            fullGpuTimes.push_back(gpuMs);
+        const auto specializeStart = std::chrono::steady_clock::now();
+        std::vector<GpuRecipeTapeInstruction> prunedTape;
+        std::array<TileTapeRange, kTileCount> prunedRanges{};
+        std::uint64_t intervalEvaluations = 0;
+        std::uint64_t individualSpecializationNs = 0;
+        std::uint64_t prunedInstructions = 0;
+        for (std::uint32_t tileZ = 0; tileZ < kTilesZ; ++tileZ) {
+            const std::uint32_t firstStep = (tileZ * kSteps + kTilesZ - 1) / kTilesZ;
+            const std::uint32_t lastStep = ((tileZ + 1) * kSteps + kTilesZ - 1) / kTilesZ - 1;
+            for (std::uint32_t tileY = 0; tileY < kTilesY; ++tileY) {
+                const std::uint32_t firstY = tileY * kTilePixelsY;
+                const std::uint32_t lastY = (tileY + 1) * kTilePixelsY - 1;
+                for (std::uint32_t tileX = 0; tileX < kTilesX; ++tileX) {
+                    const std::uint32_t firstX = tileX * kTilePixelsX;
+                    const std::uint32_t lastX = (tileX + 1) * kTilePixelsX - 1;
+                    constexpr float kDomainPadding = 0.001f;
+                    const RecipeTileDomain domain{
+                        glm::vec3(pixelWorld(firstX, kWidth) - kDomainPadding,
+                            pixelWorld(firstY, kHeight) - kDomainPadding,
+                            stepWorld(firstStep) - kDomainPadding),
+                        glm::vec3(pixelWorld(lastX, kWidth) + kDomainPadding,
+                            pixelWorld(lastY, kHeight) + kDomainPadding,
+                            stepWorld(lastStep) + kDomainPadding)};
+                    const auto specialized = SpecializeRecipeTapeForTile(source, domain);
+                    ASSERT_EQ(specialized.stats.fallback, RecipeTileFallback::None)
+                        << "tile=" << tileX << "," << tileY << "," << tileZ;
+                    ASSERT_EQ(specialized.instructions.size(), specialized.stats.retainedInstructions)
+                        << "tile=" << tileX << "," << tileY << "," << tileZ;
+                    const std::uint32_t tileIndex = (tileZ * kTilesY + tileY) * kTilesX + tileX;
+                    prunedRanges[tileIndex] = {
+                        static_cast<std::uint32_t>(prunedTape.size()),
+                        static_cast<std::uint32_t>(specialized.instructions.size())};
+                    const auto packed = PackGpuTape(specialized.instructions);
+                    prunedTape.insert(prunedTape.end(), packed.begin(), packed.end());
+                    intervalEvaluations += specialized.stats.intervalEvaluations;
+                    individualSpecializationNs += specialized.stats.specializationNanoseconds;
+                    prunedInstructions += specialized.stats.prunedInstructions;
+                }
+            }
         }
-        fullPixels = std::move(pixels);
-        fullClauses = std::move(clauses);
-    }
+        const double specializationCpuMilliseconds = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - specializeStart).count();
+        ASSERT_EQ(prunedRanges.size(), kTileCount);
+        ASSERT_GT(prunedTape.size(), 0u);
+        std::vector<std::uint32_t> retainedCounts;
+        retainedCounts.reserve(kTileCount);
+        for (const TileTapeRange& range : prunedRanges)
+            retainedCounts.push_back(range[1]);
 
-    std::vector<float> prunedPixels;
-    std::vector<std::uint32_t> prunedClauses;
-    std::vector<double> prunedGpuTimes;
-    for (int run = 0; run < 4; ++run) {
-        std::vector<float> pixels;
-        std::vector<std::uint32_t> clauses;
-        double gpuMs = 0.0;
-        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, prunedTape, prunedRanges,
-            kWidth, kHeight, pixels, clauses, gpuMs));
-        if (run > 0) {
-            EXPECT_EQ(std::memcmp(prunedPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
-            EXPECT_EQ(prunedClauses, clauses);
-            prunedGpuTimes.push_back(gpuMs);
+        std::array<TileTapeRange, kTileCount> fullRanges{};
+        fullRanges.fill(TileTapeRange{0u, static_cast<std::uint32_t>(source.size())});
+        const auto fullTape = PackGpuTape(source);
+        ASSERT_EQ(fullTape.size(), source.size());
+
+        const std::string unrolledField = EmitProceduralFieldFunctionGlsl(source.data(),
+            static_cast<std::uint32_t>(source.size()), 0);
+
+        const std::string tapeAdapter = R"GLSL(
+    bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
+        if (EvalRecipeTape(offset, count, p, distanceValue, clauses)) return true;
+        float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        distanceValue = sdfRecipe_0(p, params);
+        clauses = count;
+        return true;
+    }
+    )GLSL";
+        const std::string tapeShaderSource = ComposeTileTapeRaymarchShader(
+            sdfCoreGlsl, tapeGlsl + "\n" + unrolledField, tapeAdapter);
+
+        ShaderManagement::ShaderCompiler compiler;
+        ShaderManagement::CompilationOptions options;
+        options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+        const auto tapeCompileStart = std::chrono::steady_clock::now();
+        const auto tapeCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+            tapeShaderSource, "main", options);
+        const double tapeCompileMilliseconds = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - tapeCompileStart).count();
+        ASSERT_TRUE(tapeCompile.success) << "Tape GLSL compile failed:\n" << tapeCompile.GetFullLog()
+            << "\n--- source ---\n" << tapeShaderSource;
+
+        const std::string unrolledAdapter = R"GLSL(
+    bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
+        float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        distanceValue = sdfRecipe_0(p, params);
+        clauses = count;
+        return true;
+    }
+    )GLSL";
+        const std::string unrolledShaderSource = ComposeTileTapeRaymarchShader(
+            sdfCoreGlsl, unrolledField, unrolledAdapter);
+        const auto unrolledCompileStart = std::chrono::steady_clock::now();
+        const auto unrolledCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+            unrolledShaderSource, "main", options);
+        const double unrolledCompileMilliseconds = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - unrolledCompileStart).count();
+        ASSERT_TRUE(unrolledCompile.success) << "Unrolled GLSL compile failed:\n"
+            << unrolledCompile.GetFullLog() << "\n--- source ---\n" << unrolledShaderSource;
+
+        std::vector<float> fullPixels;
+        std::vector<std::uint32_t> fullClauses;
+        std::vector<double> fullGpuTimes;
+        for (int run = 0; run < 4; ++run) {
+            std::vector<float> pixels;
+            std::vector<std::uint32_t> clauses;
+            double gpuMs = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, fullTape, fullRanges,
+                kWidth, kHeight, pixels, clauses, gpuMs));
+            if (run > 0) {
+                EXPECT_EQ(std::memcmp(fullPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
+                EXPECT_EQ(fullClauses, clauses);
+                fullGpuTimes.push_back(gpuMs);
+            }
+            fullPixels = std::move(pixels);
+            fullClauses = std::move(clauses);
         }
-        prunedPixels = std::move(pixels);
-        prunedClauses = std::move(clauses);
-    }
 
-    std::vector<float> unrolledPixels;
-    std::vector<std::uint32_t> unrolledClauses;
-    std::vector<double> unrolledGpuTimes;
-    for (int run = 0; run < 4; ++run) {
-        std::vector<float> pixels;
-        std::vector<std::uint32_t> clauses;
-        double gpuMs = 0.0;
-        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(unrolledCompile.spirv, fullTape, fullRanges,
-            kWidth, kHeight, pixels, clauses, gpuMs));
-        if (run > 0) {
-            EXPECT_EQ(std::memcmp(fullPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
-            EXPECT_EQ(fullClauses, clauses);
-            unrolledGpuTimes.push_back(gpuMs);
+        std::vector<float> prunedPixels;
+        std::vector<std::uint32_t> prunedClauses;
+        std::vector<double> prunedGpuTimes;
+        for (int run = 0; run < 4; ++run) {
+            std::vector<float> pixels;
+            std::vector<std::uint32_t> clauses;
+            double gpuMs = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, prunedTape, prunedRanges,
+                kWidth, kHeight, pixels, clauses, gpuMs));
+            if (run > 0) {
+                EXPECT_EQ(std::memcmp(prunedPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
+                EXPECT_EQ(prunedClauses, clauses);
+                prunedGpuTimes.push_back(gpuMs);
+            }
+            prunedPixels = std::move(pixels);
+            prunedClauses = std::move(clauses);
         }
-        unrolledPixels = std::move(pixels);
-        unrolledClauses = std::move(clauses);
+
+        std::vector<float> unrolledPixels;
+        std::vector<std::uint32_t> unrolledClauses;
+        std::vector<double> unrolledGpuTimes;
+        for (int run = 0; run < 4; ++run) {
+            std::vector<float> pixels;
+            std::vector<std::uint32_t> clauses;
+            double gpuMs = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(unrolledCompile.spirv, fullTape, fullRanges,
+                kWidth, kHeight, pixels, clauses, gpuMs));
+            if (run > 0) {
+                EXPECT_EQ(std::memcmp(fullPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
+                EXPECT_EQ(fullClauses, clauses);
+                unrolledGpuTimes.push_back(gpuMs);
+            }
+            unrolledPixels = std::move(pixels);
+            unrolledClauses = std::move(clauses);
+        }
+
+        ASSERT_LT(fixture.referenceBaseInstruction, source.size());
+        const auto baseTape = PackGpuTape(std::span<const SdfInstruction>(
+            source.data() + fixture.referenceBaseInstruction, 1));
+        std::array<TileTapeRange, kTileCount> baseRanges{};
+        baseRanges.fill(TileTapeRange{0u, 1u});
+        std::vector<float> basePixels;
+        std::vector<std::uint32_t> baseClauses;
+        double baseGpuMilliseconds = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, baseTape, baseRanges,
+            kWidth, kHeight, basePixels, baseClauses, baseGpuMilliseconds));
+
+        std::vector<float> beforeCutsPixels;
+        if (fixture.capture) {
+            ASSERT_LE(fixture.preCutInstructionCount, source.size());
+            const auto beforeCutsTape = PackGpuTape(std::span<const SdfInstruction>(
+                source.data(), fixture.preCutInstructionCount));
+            std::array<TileTapeRange, kTileCount> beforeCutsRanges{};
+            beforeCutsRanges.fill(TileTapeRange{0u,
+                static_cast<std::uint32_t>(fixture.preCutInstructionCount)});
+            std::vector<std::uint32_t> beforeCutsClauses;
+            double beforeCutsGpuMilliseconds = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, beforeCutsTape,
+                beforeCutsRanges, kWidth, kHeight, beforeCutsPixels, beforeCutsClauses,
+                beforeCutsGpuMilliseconds));
+        } else {
+            beforeCutsPixels = fullPixels;
+        }
+
+        const auto totalClauses = [](const std::vector<std::uint32_t>& counts) {
+            std::uint64_t total = 0;
+            for (const std::uint32_t count : counts) total += count;
+            return total;
+        };
+        const auto hitPixels = [](const std::vector<float>& pixels) {
+            std::uint32_t hits = 0;
+            for (std::size_t pixel = 0; pixel < pixels.size() / 4; ++pixel)
+                if (pixels[pixel * 4] != -1000.0f) ++hits;
+            return hits;
+        };
+        const auto clausesForHits = [](const std::vector<float>& pixels,
+                                       const std::vector<std::uint32_t>& clauses) {
+            std::uint64_t total = 0;
+            for (std::size_t pixel = 0; pixel < pixels.size() / 4; ++pixel)
+                if (pixels[pixel * 4] != -1000.0f) total += clauses[pixel];
+            return total;
+        };
+        const auto median = [](std::vector<double> values) {
+            std::sort(values.begin(), values.end());
+            return values[values.size() / 2];
+        };
+
+        ASSERT_EQ(fullPixels.size(), prunedPixels.size());
+        const std::size_t differingBytes = [&]() {
+            const auto* full = reinterpret_cast<const std::uint8_t*>(fullPixels.data());
+            const auto* pruned = reinterpret_cast<const std::uint8_t*>(prunedPixels.data());
+            std::size_t differences = 0;
+            for (std::size_t byte = 0; byte < fullPixels.size() * sizeof(float); ++byte)
+                if (full[byte] != pruned[byte]) ++differences;
+            return differences;
+        }();
+        EXPECT_EQ(differingBytes, 0u);
+        EXPECT_EQ(std::memcmp(fullPixels.data(), unrolledPixels.data(), fullPixels.size() * sizeof(float)), 0);
+        EXPECT_EQ(hitPixels(fullPixels), hitPixels(prunedPixels));
+        EXPECT_EQ(hitPixels(fullPixels), hitPixels(unrolledPixels));
+        EXPECT_GT(hitPixels(fullPixels), 0u);
+        for (std::size_t pixel = 0; pixel < fullPixels.size() / 4; ++pixel) {
+            EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 1], 0.25f);
+            EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 2], 0.5f);
+            EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 3], 0.75f);
+        }
+
+        const std::uint64_t fullClauseTotal = totalClauses(fullClauses);
+        const std::uint64_t prunedClauseTotal = totalClauses(prunedClauses);
+        const double fullClausesPerPixel = static_cast<double>(fullClauseTotal) / (kWidth * kHeight);
+        const double prunedClausesPerPixel = static_cast<double>(prunedClauseTotal) / (kWidth * kHeight);
+        const double clauseReductionPercent = fullClauseTotal == 0 ? 0.0
+            : 100.0 * (1.0 - static_cast<double>(prunedClauseTotal) / fullClauseTotal);
+        const std::uint32_t fullHitPixels = hitPixels(fullPixels);
+        const std::uint32_t prunedHitPixels = hitPixels(prunedPixels);
+        EXPECT_EQ(fullHitPixels, prunedHitPixels);
+        const double fullClausesPerHitPixel = static_cast<double>(clausesForHits(fullPixels, fullClauses))
+            / fullHitPixels;
+        const double prunedClausesPerHitPixel = static_cast<double>(clausesForHits(prunedPixels, prunedClauses))
+            / prunedHitPixels;
+        const std::uint64_t fullUploadBytes = fullTape.size() * sizeof(GpuRecipeTapeInstruction)
+            + fullRanges.size() * sizeof(TileTapeRange);
+        const std::uint64_t prunedUploadBytes = prunedTape.size() * sizeof(GpuRecipeTapeInstruction)
+            + prunedRanges.size() * sizeof(TileTapeRange);
+        const double fullGpuMs = median(fullGpuTimes);
+        const double prunedGpuMs = median(prunedGpuTimes);
+        const double unrolledGpuMs = median(unrolledGpuTimes);
+
+        std::vector<std::uint32_t> sortedRetainedCounts = retainedCounts;
+        std::sort(sortedRetainedCounts.begin(), sortedRetainedCounts.end());
+        const std::uint32_t retainedMinimum = sortedRetainedCounts.front();
+        const double retainedMedian = (sortedRetainedCounts[kTileCount / 2 - 1]
+            + sortedRetainedCounts[kTileCount / 2]) / 2.0;
+        const std::uint32_t retainedMaximum = sortedRetainedCounts.back();
+        const std::uint32_t manyTermTiles = static_cast<std::uint32_t>(std::count_if(
+            retainedCounts.begin(), retainedCounts.end(), [](std::uint32_t count) { return count >= 32; }));
+        std::map<std::uint32_t, std::uint32_t> retainedHistogram;
+        for (const std::uint32_t count : retainedCounts)
+            ++retainedHistogram[count];
+        std::ostringstream histogramText;
+        bool firstHistogramEntry = true;
+        for (const auto& [count, tileCount] : retainedHistogram) {
+            if (!firstHistogramEntry) histogramText << ',';
+            histogramText << count << ':' << tileCount;
+            firstHistogramEntry = false;
+        }
+
+        std::uint32_t visibleChangedPixels = 0;
+        std::uint32_t visibleAddedPixels = 0;
+        std::uint32_t visibleCutPixels = 0;
+        for (std::size_t pixel = 0; pixel < fullPixels.size() / 4; ++pixel) {
+            const float editedDepth = fullPixels[pixel * 4];
+            const float baseDepth = basePixels[pixel * 4];
+            const float beforeCutsDepth = beforeCutsPixels[pixel * 4];
+            if ((editedDepth == -1000.0f) != (baseDepth == -1000.0f)
+                || std::abs(editedDepth - baseDepth) > 1e-4f)
+                ++visibleChangedPixels;
+            if ((beforeCutsDepth == -1000.0f) != (baseDepth == -1000.0f)
+                || std::abs(beforeCutsDepth - baseDepth) > 1e-4f)
+                ++visibleAddedPixels;
+            if ((editedDepth == -1000.0f) != (beforeCutsDepth == -1000.0f)
+                || std::abs(editedDepth - beforeCutsDepth) > 1e-4f)
+                ++visibleCutPixels;
+        }
+        if (std::string(fixture.name) == "run2-dead-terms") {
+            EXPECT_EQ(visibleChangedPixels, 0u) << "The dead-terms fixture must match its base sphere";
+            EXPECT_EQ(visibleCutPixels, 0u) << "The dead-terms fixture must not alter the base sphere";
+        }
+
+        std::cout << "[RecipeTileTape] device=" << selectedDeviceName_
+            << " fixture=" << fixture.name
+            << " sourceInstructions=" << source.size() << " tiles=" << kTileCount
+            << " hitPixels=" << fullHitPixels << "/" << (kWidth * kHeight)
+            << " visibleChangedPixelsVsBase=" << visibleChangedPixels
+            << " visibleAddedPixels=" << visibleAddedPixels
+            << " visibleCutPixels=" << visibleCutPixels
+            << " baseRenderForVisibility=true"
+            << " fullClausesPerPixel=" << fullClausesPerPixel
+            << " prunedClausesPerPixel=" << prunedClausesPerPixel
+            << " fullClausesPerHitPixel=" << fullClausesPerHitPixel
+            << " prunedClausesPerHitPixel=" << prunedClausesPerHitPixel
+            << " reductionPercent=" << clauseReductionPercent
+            << " proofEvaluations=" << intervalEvaluations
+            << " prunedSourceInstructions=" << prunedInstructions
+            << " cpuSpecializationMs=" << specializationCpuMilliseconds
+            << " summedTileSpecializationNs=" << individualSpecializationNs
+            << " retainedInstructionMin=" << retainedMinimum
+            << " retainedInstructionMedian=" << retainedMedian
+            << " retainedInstructionMax=" << retainedMaximum
+            << " retainedInstructionHistogram=" << histogramText.str()
+            << " tilesRetainingAtLeast32=" << manyTermTiles
+            << " fullUploadBytes=" << fullUploadBytes
+            << " prunedUploadBytes=" << prunedUploadBytes
+            << " fullGpuMs=" << fullGpuMs << " prunedGpuMs=" << prunedGpuMs
+            << " unrolledGpuMs=" << unrolledGpuMs
+            << " tapeCompileMs=" << tapeCompileMilliseconds
+            << " unrolledCompileMs=" << unrolledCompileMilliseconds
+            << " tapeShaderBytes=" << tapeShaderSource.size()
+            << " unrolledShaderBytes=" << unrolledShaderSource.size()
+            << " totalCostMs=" << specializationCpuMilliseconds + prunedGpuMs
+            << " proofIncludedInCpuSpecialization=true" << std::endl;
+
+        EXPECT_GE(clauseReductionPercent, 25.0);
+        EXPECT_EQ(fullClauseTotal, totalClauses(unrolledClauses));
+        EXPECT_EQ(fullClauses, unrolledClauses);
+        if (fixture.capture) {
+            EXPECT_GE(visibleChangedPixels, 100u);
+            EXPECT_GE(visibleAddedPixels, 100u);
+            EXPECT_GE(visibleCutPixels, 50u);
+            EXPECT_GE(manyTermTiles, 2u);
+            if (const char* captureDirectory = std::getenv("RVA1_CAPTURE_DIR")) {
+                const std::filesystem::path outputPath = std::filesystem::path(captureDirectory)
+                    / "visible-edit-heavy-capture-and-retained-heatmap.png";
+                std::filesystem::create_directories(outputPath.parent_path());
+                ASSERT_TRUE(WriteVisibleEditCapture(outputPath, fullPixels, basePixels,
+                    beforeCutsPixels, kWidth, kHeight, retainedCounts))
+                    << "Failed to write capture " << outputPath;
+                std::cout << "[RecipeTileTape] capture=" << outputPath << std::endl;
+            }
+        }
     }
-
-    const auto totalClauses = [](const std::vector<std::uint32_t>& counts) {
-        std::uint64_t total = 0;
-        for (const std::uint32_t count : counts) total += count;
-        return total;
-    };
-    const auto hitPixels = [](const std::vector<float>& pixels) {
-        std::uint32_t hits = 0;
-        for (std::size_t pixel = 0; pixel < pixels.size() / 4; ++pixel)
-            if (pixels[pixel * 4] != -1000.0f) ++hits;
-        return hits;
-    };
-    const auto median = [](std::vector<double> values) {
-        std::sort(values.begin(), values.end());
-        return values[values.size() / 2];
-    };
-
-    ASSERT_EQ(fullPixels.size(), prunedPixels.size());
-    const std::size_t differingBytes = [&]() {
-        const auto* full = reinterpret_cast<const std::uint8_t*>(fullPixels.data());
-        const auto* pruned = reinterpret_cast<const std::uint8_t*>(prunedPixels.data());
-        std::size_t differences = 0;
-        for (std::size_t byte = 0; byte < fullPixels.size() * sizeof(float); ++byte)
-            if (full[byte] != pruned[byte]) ++differences;
-        return differences;
-    }();
-    EXPECT_EQ(differingBytes, 0u);
-    EXPECT_EQ(std::memcmp(fullPixels.data(), unrolledPixels.data(), fullPixels.size() * sizeof(float)), 0);
-    EXPECT_EQ(hitPixels(fullPixels), hitPixels(prunedPixels));
-    EXPECT_EQ(hitPixels(fullPixels), hitPixels(unrolledPixels));
-    EXPECT_GT(hitPixels(fullPixels), 0u);
-    for (std::size_t pixel = 0; pixel < fullPixels.size() / 4; ++pixel) {
-        EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 1], 0.25f);
-        EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 2], 0.5f);
-        EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 3], 0.75f);
-    }
-
-    const std::uint64_t fullClauseTotal = totalClauses(fullClauses);
-    const std::uint64_t prunedClauseTotal = totalClauses(prunedClauses);
-    const double fullClausesPerPixel = static_cast<double>(fullClauseTotal) / (kWidth * kHeight);
-    const double prunedClausesPerPixel = static_cast<double>(prunedClauseTotal) / (kWidth * kHeight);
-    const double clauseReductionPercent = fullClauseTotal == 0 ? 0.0
-        : 100.0 * (1.0 - static_cast<double>(prunedClauseTotal) / fullClauseTotal);
-    const std::uint64_t fullUploadBytes = fullTape.size() * sizeof(GpuRecipeTapeInstruction)
-        + fullRanges.size() * sizeof(TileTapeRange);
-    const std::uint64_t prunedUploadBytes = prunedTape.size() * sizeof(GpuRecipeTapeInstruction)
-        + prunedRanges.size() * sizeof(TileTapeRange);
-    const double fullGpuMs = median(fullGpuTimes);
-    const double prunedGpuMs = median(prunedGpuTimes);
-    const double unrolledGpuMs = median(unrolledGpuTimes);
-
-    std::cout << "[RecipeTileTape] device=" << selectedDeviceName_
-        << " sourceInstructions=" << source.size() << " tiles=" << kTileCount
-        << " hitPixels=" << hitPixels(fullPixels) << "/" << (kWidth * kHeight)
-        << " fullClausesPerPixel=" << fullClausesPerPixel
-        << " prunedClausesPerPixel=" << prunedClausesPerPixel
-        << " reductionPercent=" << clauseReductionPercent
-        << " proofEvaluations=" << intervalEvaluations
-        << " prunedSourceInstructions=" << prunedInstructions
-        << " cpuSpecializationMs=" << specializationCpuMilliseconds
-        << " summedTileSpecializationNs=" << individualSpecializationNs
-        << " fullUploadBytes=" << fullUploadBytes
-        << " prunedUploadBytes=" << prunedUploadBytes
-        << " fullGpuMs=" << fullGpuMs << " prunedGpuMs=" << prunedGpuMs
-        << " unrolledGpuMs=" << unrolledGpuMs
-        << " tapeCompileMs=" << tapeCompileMilliseconds
-        << " unrolledCompileMs=" << unrolledCompileMilliseconds
-        << " tapeShaderBytes=" << tapeShaderSource.size()
-        << " unrolledShaderBytes=" << unrolledShaderSource.size()
-        << " totalSerialMs=" << specializationCpuMilliseconds + prunedGpuMs << std::endl;
-
-    EXPECT_GE(clauseReductionPercent, 25.0);
-    EXPECT_EQ(fullClauseTotal, totalClauses(unrolledClauses));
-    EXPECT_EQ(fullClauses, unrolledClauses);
 }
