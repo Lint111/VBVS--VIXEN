@@ -21,11 +21,9 @@
 namespace Vixen::RenderGraph {
 
 // Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
-// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
-// start), so sizing the reusable command-buffer ring to the flight count makes the resource
-// ring == the flight ring that fence already guards. This blit is a live composite-chain
-// producer that submits with VK_NULL_HANDLE (leaveImageInGeneral), so CB[imageN] otherwise
-// has the same reuse-while-pending hazard as the compute nodes. Mirrors
+// FrameSyncNode waits the per-flight completion timeline before reusing a slot. This blit is a
+// live composite-chain producer that submits with VK_NULL_HANDLE (leaveImageInGeneral), so the
+// full-frame timeline also guards its command-buffer ring. Mirrors
 // CameraNodeConfig::MAX_FRAMES_IN_FLIGHT / FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
 static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 
@@ -156,17 +154,13 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         submissionPolicy.waitsForSwapchainAcquire, submissionPolicy.signalsPresentSemaphore);
     const bool waitsForSwapchainAcquire = handoffs.acquire != VK_NULL_HANDLE;
 
-    // Fence ownership mirrors ComputeDispatchNode's leaveImageInGeneral convention exactly: the
-    // per-flight in-flight fence must be reset+signalled by EXACTLY ONE submit per frame. When a
-    // downstream graphics pass follows (leaveImageInGeneral==true — the composite chain: Blit ->
-    // sky -> UI, where UIRenderNode is the true frame-final submit and owns the fence), this blit
-    // is NOT the last submit, so it must NOT reset or signal the fence. Two nodes resetting+
-    // signalling one binary fence per frame is illegal (VUID-vkResetFences-pFences-01123 "fence in
-    // use", plus a binary-fence double-signal). Blit must not own the fence when leaveImageInGeneral
-    // because UIRenderNode is the frame-final submit and the sole legitimate fence owner. Blit's
-    // GPU ordering before UI is preserved regardless: both submit to the same device->queue in
-    // executionOrder, so submission order already sequences them (a fence never orders GPU work).
-    // Terminal blit (leaveImageInGeneral==false, no UI after it): Blit stays the sole fence owner.
+    // Fence ownership mirrors ComputeDispatchNode's leaveImageInGeneral convention: exactly one
+    // submit resets and signals the binary in-flight fence per frame. In the composite chain
+    // (Blit -> sky -> UI), UI is the designated owner; later graph submissions may still follow it,
+    // so FrameSyncNode's frame-end timeline marker guards full-frame resource reuse. Two nodes
+    // resetting and signaling one binary fence per frame is illegal (VUID-vkResetFences-pFences-01123).
+    // Blit's queue ordering before UI is preserved because both submit to the same device queue.
+    // On the terminal-blit path, Blit remains the designated binary-fence owner.
     if (submissionPolicy.ownsFrameFence) {
         vkResetFences(GetDevice()->device, 1, &inFlightFence);
     }
@@ -177,8 +171,8 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
 
-    // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
-    // already waited; RecordBlitCommands still targets the physical swapchain image by imageIndex.
+    // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
+    // completion timeline wait; RecordBlitCommands still targets the swapchain image by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
     RecordBlitCommands(ctx, cmd, imageIndex, currentFrameIndex, leaveImageInGeneral);
     commandBuffers_.MarkReady(currentFrameIndex);
@@ -221,7 +215,7 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
 
     // Baked-Perf M6 Task 6.3 (audit E4): only a TERMINAL blit signals the binary semaphore
     // Present consumes. In the composite chain (leaveImageInGeneral==true) nothing ever waits
-    // this per-image semaphore — UI owns the frame-final present handoff via its OWN signal —
+    // this per-image semaphore — UI owns the present handoff via its own signal —
     // so signalling it here left an orphaned pending signal that became an illegal re-signal
     // the next time this swapchain image index came back around
     // (VUID-vkQueueSubmit2-semaphore-03868). See BlitSubmissionPolicy's doc comment.
@@ -244,8 +238,8 @@ void BlitNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
 
-    // Composite (leaveImageInGeneral): downstream UI owns the frame fence, so submit with none —
-    // see the fence-ownership comment above. Terminal blit: this is the last submit, own the fence.
+    // Composite (leaveImageInGeneral): downstream UI owns the binary fence, so submit with none.
+    // Terminal blit: this path assigns the binary fence to Blit.
     VkFence submitFence = submissionPolicy.ownsFrameFence ? inFlightFence : VK_NULL_HANDLE;
 
     // Lock-free phase 1 (design §2.5): publish to the queue-owner channel; owner drains in canonical

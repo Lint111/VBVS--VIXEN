@@ -36,11 +36,12 @@ public:
  *  - RENDER_COMPLETE_SEMAPHORE (VkSemaphore): Semaphore for render completion (GPU-GPU)
  *
  * Usage pattern:
- *  1. Wait on IN_FLIGHT_FENCE before starting frame work
+ *  1. Wait on the per-flight completion timeline (then IN_FLIGHT_FENCE) before reusing frame resources
  *  2. Reset fence
  *  3. Use IMAGE_AVAILABLE_SEMAPHORE for vkAcquireNextImageKHR
  *  4. Use RENDER_COMPLETE_SEMAPHORE for vkQueuePresentKHR
- *  5. Signal fence at queue submit
+ *  5. Signal the binary fence at its designated submit; FrameSyncNode signals the completion timeline
+ *     after all graph submissions at FrameEndEvent
  *  6. Advance CURRENT_FRAME_INDEX (wraps at MAX_FRAMES_IN_FLIGHT)
  */
 /// @brief Advance a monotonic timeline base by the per-frame stride.
@@ -51,6 +52,14 @@ public:
 /// @return The base for the current frame: prev + stride.
 constexpr uint64_t NextFrameBase(uint64_t prev, uint64_t stride) {
     return prev + stride;
+}
+
+/// @brief Timeline value reserved for the frame-end completion marker.
+/// @param frameBase  Base used by this frame's scheduled submit groups.
+/// @param stride  Number of timeline values allocated to submit groups.
+/// @return A value greater than every group offset, including for an empty schedule.
+constexpr uint64_t FrameCompletionValue(uint64_t frameBase, uint64_t stride) {
+    return frameBase + (stride == 0 ? 1 : stride);
 }
 
 class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
@@ -101,6 +110,8 @@ protected:
     void TypedExecuteImpl(TypedExecuteContext& ctx) override;
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
+    void HandleFrameEnd();
+
 private:
     // Per-flight synchronization data (for CPU-GPU sync)
     struct FrameSyncData {
@@ -108,11 +119,14 @@ private:
     };
 
     std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT (per-flight CPU-GPU fences)
+    std::vector<uint64_t> frameCompletionValues_; // Timeline value guarding each flight's full graph frame
     std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = MAX_FRAMES_IN_FLIGHT (per-flight acquisition)
     // FR-3: renderComplete semaphores + present fences (per-IMAGE) now owned by SwapChainNode.
     uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
     VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;  // Per-loop timeline semaphore (P5a M1); persistent across recompile
     uint64_t frameBase_ = 0;                     // Monotonic base offset per frame; never reset on recompile
+    VkResult frameCompletionSubmitFailure_ = VK_SUCCESS;
+    bool frameEndSubscribed_ = false;
     bool isCreated = false;
 };
 

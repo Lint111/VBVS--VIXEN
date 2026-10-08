@@ -32,6 +32,7 @@ VIXEN/libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/ComputeStageNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/DepthBufferNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/DepthTargetNode.cpp	0	VK2-borrowed
+VIXEN/libraries/RenderGraph/src/Nodes/FrameSyncNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/GeometryRenderNode.cpp	0	VK2-borrowed
 VIXEN/libraries/RenderGraph/src/Nodes/InputNode.cpp	0	RG3
 VIXEN/libraries/RenderGraph/src/Nodes/LightTreeBufferNode.cpp	0	RG5

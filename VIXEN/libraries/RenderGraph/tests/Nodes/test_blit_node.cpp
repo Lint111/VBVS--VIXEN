@@ -25,8 +25,8 @@ TEST(BlitSubmissionPolicy, TerminalBlitOwnsFenceAndSignalsPresentSemaphore) {
     const BlitSubmissionPolicy policy = ResolveBlitSubmissionPolicy(/*leaveImageInGeneral=*/false);
 
     EXPECT_TRUE(policy.ownsFrameFence)
-        << "a terminal blit (no downstream sky/UI submit) is the frame's last compute-queue "
-           "submit and must own the in-flight fence";
+        << "a terminal blit (no downstream sky/UI submit) is the designated binary-fence owner "
+           "for this frame path";
     EXPECT_TRUE(policy.signalsPresentSemaphore)
         << "a terminal blit is the one that hands the swapchain image to Present, so it must "
            "signal the binary renderComplete semaphore Present waits on";
@@ -35,12 +35,12 @@ TEST(BlitSubmissionPolicy, TerminalBlitOwnsFenceAndSignalsPresentSemaphore) {
            "consume the WSI acquire wait";
 }
 
-TEST(BlitSubmissionPolicy, CompositeBlitLeavesFenceAndPresentSemaphoreToTheFinalPass) {
+TEST(BlitSubmissionPolicy, CompositeBlitLeavesFenceAndPresentSemaphoreToUiOwner) {
     const BlitSubmissionPolicy policy = ResolveBlitSubmissionPolicy(/*leaveImageInGeneral=*/true);
 
     EXPECT_FALSE(policy.ownsFrameFence)
-        << "in composite mode (Blit -> sky-projection -> UI) the UI composite node is the "
-           "frame-final submit and the sole legitimate fence owner";
+        << "in composite mode (Blit -> sky-projection -> UI) UI owns the binary in-flight fence; "
+           "FrameSyncNode's frame-end timeline marker guards full-frame resource reuse";
     EXPECT_FALSE(policy.signalsPresentSemaphore)
         << "audit E4: nothing ever waits this per-image binary semaphore in composite mode "
            "(UI owns the real present handoff via its own signal) -- signalling it here left an "
