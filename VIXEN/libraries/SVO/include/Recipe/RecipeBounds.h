@@ -4,6 +4,7 @@
 #include <span>
 #include <glm/glm.hpp>
 #include "Recipe/SdfInstruction.h"
+#include "Recipe/generated/RecipeSimd.g.hpp"
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode
 
 namespace Vixen::SVO::Recipe {
@@ -62,16 +63,12 @@ inline RecipeBoundsResult DeriveConservativeBounds(
     for (uint32_t i = 0; i < count; ++i) {
         const SdfInstruction& in = prog[i];
         if (!IsValidSdfOpCode(in.opCode)) return {};
+        bool handled = false;
+        if (!Yeroket::Sdf::Generated::TryRecipeExtentTransfer(in, std::span<Bound>(stk), sp, handled))
+            return {};
+        if (handled) continue;
         switch (static_cast<SdfOpCode>(in.opCode)) {
             // --- Leaf primitives, no position offset (sample point used directly) ---
-            case SdfOpCode::Sphere:
-                // data[0..2]=center, data[3]=radius
-                pushLeaf(glm::vec3(in.data[0], in.data[1], in.data[2]), in.data[3]);
-                break;
-            case SdfOpCode::Box:
-                // data[0..2]=halfExtents about local origin
-                pushLeaf(glm::vec3(0.0f), glm::length(glm::vec3(in.data[0], in.data[1], in.data[2])));
-                break;
             case SdfOpCode::BoxRounded:
                 // data[0..2]=halfExtents, data[3]=rounding
                 pushLeaf(glm::vec3(0.0f), glm::length(glm::vec3(in.data[0], in.data[1], in.data[2])) + in.data[3]);
@@ -158,9 +155,9 @@ inline RecipeBoundsResult DeriveConservativeBounds(
             // expansion for every one of these ops, including Subtract/Intersect — the
             // TRUE result is always a subset of A's own extent, and A's own extent is
             // itself already inside the union bound below). ---
-            case SdfOpCode::Union: case SdfOpCode::SmoothUnion:
-            case SdfOpCode::Subtract: case SdfOpCode::SmoothSubtract:
-            case SdfOpCode::Intersect: case SdfOpCode::SmoothIntersect:
+            case SdfOpCode::SmoothUnion:
+            case SdfOpCode::SmoothSubtract:
+            case SdfOpCode::SmoothIntersect:
             case SdfOpCode::Xor: case SdfOpCode::SmoothMax:
             case SdfOpCode::SmoothUnionCubic: case SdfOpCode::SmoothSubtractCubic:
             case SdfOpCode::SmoothIntersectCubic: {

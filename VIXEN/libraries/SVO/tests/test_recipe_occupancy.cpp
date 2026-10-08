@@ -9,6 +9,10 @@
 #include "Recipe/RecipeOccupancy.h"
 #include "Recipe/RecipeBounds.h"
 #include <random>
+#include <chrono>
+#include <cstring>
+#include <iostream>
+#include <algorithm>
 
 using namespace Vixen::SVO;
 using namespace Vixen::SVO::Recipe;
@@ -151,4 +155,57 @@ TEST(RecipeOccupancy, AllStoredValuesAreNonNegative) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(RecipeOccupancy, GeneratedReductionMatchesOracleAndMeasuresCellWork) {
+    const std::array<std::vector<SdfInstruction>,4> fixtures{{
+        {sphere({0,0,0},1)}, {box({0.75f,0.5f,1})},
+        {sphere({-0.4f,0,0},0.7f),sphere({0.4f,0,0},0.7f),combine(SdfOpCode::Union)},
+        {sphere({0,0,0},1),sphere({0.4f,0,0},0.7f),combine(SdfOpCode::Subtract)}
+    }};
+    const char* names[]={"sphere","box","union","subtract"};
+    for(std::size_t fixture=0;fixture<fixtures.size();++fixture) {
+        const auto& program=fixtures[fixture];
+        const auto bounds=DeriveConservativeBounds(program.data(),static_cast<std::uint32_t>(program.size()));
+        ASSERT_TRUE(bounds.ok);
+        std::vector<double> before,after;
+        OccupancyGridResult oracle,guarded;
+        for(int trial=0;trial<7;++trial) {
+            const auto run=[&](bool enabled) {
+                const auto start=std::chrono::steady_clock::now();
+                auto result=enabled?DeriveOccupancyGrid(program.data(),static_cast<std::uint32_t>(program.size()),bounds.center,bounds.radius)
+                    :occupancy_detail::DeriveOccupancyGridImpl<false>(program.data(),static_cast<std::uint32_t>(program.size()),bounds.center,bounds.radius);
+                const double ns=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-start).count();
+                if(enabled) { after.push_back(ns); guarded=std::move(result); }
+                else { before.push_back(ns); oracle=std::move(result); }
+            };
+            run(trial%2==0); run(trial%2!=0);
+            ASSERT_TRUE(oracle.ok); ASSERT_TRUE(guarded.ok);
+            ASSERT_EQ(oracle.values.size(),guarded.values.size());
+            EXPECT_EQ(std::memcmp(oracle.values.data(),guarded.values.data(),oracle.values.size()*sizeof(float)),0);
+        }
+        EXPECT_EQ(oracle.exactCells,0u); EXPECT_EQ(oracle.sampledCells,4096u);
+        EXPECT_EQ(guarded.exactCells+guarded.sampledCells,4096u);
+        EXPECT_GT(guarded.skippedPoints,0u);
+        std::sort(before.begin(),before.end()); std::sort(after.begin(),after.end());
+        std::cout << "[boundscore-cells] fixture=" << names[fixture]
+            << " before_exact=" << oracle.exactCells << " before_sampled=" << oracle.sampledCells
+            << " after_exact=" << guarded.exactCells << " after_sampled=" << guarded.sampledCells
+            << " points_before=" << oracle.sampledPoints << " points_after=" << guarded.sampledPoints
+            << " median_before_ns=" << before[3] << " median_after_ns=" << after[3]
+            << " byte_identical=1\n";
+    }
+}
+
+TEST(RecipeOccupancy, RoundedAwayOffsetsAndNonmultipleGridsKeepTheOriginalLoop) {
+    const std::vector<SdfInstruction> program{sphere({1e20f,0,0},1)};
+    for(const auto& dimensions:std::array<std::array<std::uint32_t,2>,2>{{{64,16},{31,8}}}) {
+        const auto oracle=occupancy_detail::DeriveOccupancyGridImpl<false>(program.data(),1,
+            {1e20f,0,0},1,dimensions[0],dimensions[1]);
+        const auto result=DeriveOccupancyGrid(program.data(),1,{1e20f,0,0},1,dimensions[0],dimensions[1]);
+        ASSERT_TRUE(result.ok); ASSERT_EQ(result.values.size(),oracle.values.size());
+        EXPECT_EQ(std::memcmp(result.values.data(),oracle.values.data(),result.values.size()*sizeof(float)),0);
+        EXPECT_EQ(result.skippedPoints,0u); EXPECT_EQ(result.exactCells,0u);
+        EXPECT_EQ(result.sampledPoints,oracle.sampledPoints);
+    }
 }
