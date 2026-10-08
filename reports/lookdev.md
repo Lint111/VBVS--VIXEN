@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-- Run 2 implementation tip: `bff5507184efcfb6bbbcaf6a079d1e28b741f2fc` — R424 affine scene placement and before/after capture sheets. The final Run 2 witness and capture disposition are recorded below.
+- Run 3 implementation tip: `687d23a1759a552d6e331763c09fc887e1dfdfec` — typed per-scene exposure field in `LightingConfig`. **STOP: the fresh Run 2 look-dev comparison fails across all 16 per-preset images, so this tip is not landable yet.** Run 3 results and remaining checks are recorded below.
 
 ## Scene and capture
 
@@ -155,3 +155,31 @@ Against the raw `92804a8f` R424 parent, the differing set is instead the four na
 - proposed: Preflight Windows toolchain availability before native VIXEN builds
 - proposed: Propagate cancellation through queued build process groups
 - proposed: Bind shared capture baselines to a fresh source SHA
+
+## Run 3 — scope exposure bias through LightingConfig
+
+### Change
+
+- Added `exposureCompensationEV` to the existing generated `LightingConfig` at byte offset 200; its std430 size remains 208 bytes. `LightingConfigNode` clamps the value to `[-16, 16]` and defaults it to `0`.
+- `ExposureTonemap.comp` reads the generated `LightingConfigSSBO`; the environment-variable parser, shader-source define injection, and global `-3.25 EV` shader default were removed. The look-dev capture passes each preset's existing EV value through the node parameter.
+- Added a CMake dependency on `shaders/Generated/*.glsl` for the shader used by the LightingConfig SPIR-V reflection test. Without it, the full build reused a stale SPIR-V file after `LightingConfig.glsl` changed.
+
+### Witness results
+
+- Fresh detached baseline at `846ab1a999a542f663ee08764fe69b3de2beade3`: full build passed and all 22 generated-config checks passed. The scoped baseline preflight passed 6/6. The required fresh 26-image and 11-check baseline capture comparisons were not completed by the Run 3 checkpoint.
+- Run 3 full queued build passed, including all 22 generated-config checks. `CodegenTool` restore, build, regeneration, and `--check` passed.
+- Full RenderGraph CTest ran 1,340 tests: 1,339 passed, 5 skipped, and `LightingConfigSdiParity.ReflectedLayoutMatchesCppStruct` failed because the generated shader include was missing from the SPIR-V dependency glob. After adding `Generated/*.glsl`, the shader SPIR-V rebuilt and the exact parity test passed 1/1. The full suite was not rerun after that dependency fix.
+- The fresh capture selection passed 12/13. Look-dev CTest passed and produced all 16 images twice internally; headless starfield, cel shading, and the native WSL capture witness passed. `HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams` failed the `R424-BEAM` assertion (same failure seen once in Run 2); no isolated Run 3 retry was completed.
+- Fresh nested look-dev images were compared with `.tmp/lookdev-run2-after-captures/lookdev`. All 16 per-preset images differ across the full 500×500 frame; e.g. midday angle 0 differs by 20,677 bytes with a maximum channel delta of 145. The new images are internally repeatable, but they do not match Run 2. An earlier comparison against stale flat duplicate files was invalid; the result above uses the fresh nested outputs.
+- The exact `846ab1a9` 26/26 shared-image and 11/11 standard-capture identity witnesses remain unverified. The generated ExposureTonemap SDI does contain `LightingConfigSSBO` at binding 16, but the typed values did not reproduce the Run 2 look. Trace the runtime descriptor/data path before treating this implementation as complete.
+
+### STOPs
+
+- **Not landable:** the required look-dev image identity gate fails for all 16 presets. Determine why the tonemap pass does not reproduce each preset's existing exposure value through `LightingConfig`, then rerun the capture comparisons.
+- The Cornell seam witness also failed once with the documented `R424-BEAM` assertion; it needs an isolated retry.
+- Exact baseline comparisons for 26 shared images and 11 standard capture checks were not run before the checkpoint.
+
+### Run 3 consolidation issues
+
+- proposed: Track generated GLSL includes in shader reflection targets
+- proposed: Use the available Python 3 launcher for capture comparison
