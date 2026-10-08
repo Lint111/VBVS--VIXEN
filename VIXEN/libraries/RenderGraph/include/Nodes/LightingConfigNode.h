@@ -55,6 +55,8 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    friend class LightingConfigNodeTestAccess;
+
     static const uint32_t kRingSize;  // = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT
 
     PerFrameResources perFrame_;

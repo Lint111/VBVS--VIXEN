@@ -8,11 +8,36 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace Vixen::RenderGraph {
+
+class LightingConfigNodeTestAccess {
+public:
+    static uint32_t FrameCount(const LightingConfigNode& node) {
+        return node.perFrame_.GetFrameCount();
+    }
+
+    static bool ReadMappedBytes(const LightingConfigNode& node, uint32_t frameIndex,
+                                std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)>& bytes) {
+        if (frameIndex >= node.perFrame_.GetFrameCount()) return false;
+        const void* mapped = node.perFrame_.GetUniformBufferMapped(frameIndex);
+        if (!mapped) return false;
+        std::memcpy(bytes.data(), mapped, bytes.size());
+        return true;
+    }
+};
+
+} // namespace Vixen::RenderGraph
 
 namespace {
 
@@ -93,6 +118,7 @@ public:
         if (framesInScenario_ < kFramesPerScenario) return true;
 
         const auto& scenario = scenarios_[scenarioIndex_];
+        if (scenarioIndex_ == 0 && !VerifyUploadedExposure(scenario)) return false;
         const std::filesystem::path output = outputDir_ / scenario.filename;
         if (!CaptureOffscreenFrameToPng(output.string(), captureError_)) return false;
         ++capturedCount_;
@@ -115,6 +141,49 @@ public:
     const std::string& CaptureError() const { return captureError_; }
 
 private:
+    bool VerifyUploadedExposure(const CaptureScenario& scenario) {
+        const std::size_t exposureOffset = offsetof(Vixen::Gpu::LightingConfig, exposureCompensationEV);
+        std::ofstream readback(outputDir_ / "lighting-config-readback.txt", std::ios::trunc);
+        if (!readback) {
+            captureError_ = "could not create LightingConfig readback report";
+            return false;
+        }
+
+        for (uint32_t frameIndex = 0;
+             frameIndex < Vixen::RenderGraph::LightingConfigNodeTestAccess::FrameCount(*lighting_);
+             ++frameIndex) {
+            std::array<std::byte, sizeof(Vixen::Gpu::LightingConfig)> bytes{};
+            if (!Vixen::RenderGraph::LightingConfigNodeTestAccess::ReadMappedBytes(
+                    *lighting_, frameIndex, bytes)) {
+                captureError_ = "could not read mapped LightingConfig ring slot " +
+                    std::to_string(frameIndex);
+                return false;
+            }
+
+            float uploadedExposureEV = 0.0f;
+            std::memcpy(&uploadedExposureEV, bytes.data() + exposureOffset, sizeof(uploadedExposureEV));
+
+            std::ostringstream line;
+            line << "frame_slot=" << frameIndex
+                 << " offset=" << exposureOffset
+                 << " bytes=" << std::hex << std::setfill('0')
+                 << std::setw(2) << std::to_integer<unsigned>(bytes[exposureOffset]) << ' '
+                 << std::setw(2) << std::to_integer<unsigned>(bytes[exposureOffset + 1]) << ' '
+                 << std::setw(2) << std::to_integer<unsigned>(bytes[exposureOffset + 2]) << ' '
+                 << std::setw(2) << std::to_integer<unsigned>(bytes[exposureOffset + 3])
+                 << std::dec << std::setprecision(9)
+                 << " value=" << uploadedExposureEV
+                 << " expected=" << scenario.lighting.exposureCompensationEV;
+            readback << line.str() << '\n';
+
+            if (uploadedExposureEV != scenario.lighting.exposureCompensationEV) {
+                captureError_ = "LightingConfig SSBO exposure readback mismatch: " + line.str();
+                return false;
+            }
+        }
+        return true;
+    }
+
     std::filesystem::path outputDir_;
     std::vector<CaptureScenario> scenarios_;
     Vixen::RenderGraph::CameraNode* camera_ = nullptr;
