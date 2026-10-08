@@ -13,8 +13,6 @@ layout(std430, binding = 0) readonly buffer ProxyAabbBuffer {
 };
 
 struct BodyInstance {
-    vec3  worldPos;
-    float renderScale;
     vec3  color;
     uint  octreeIndex;
     uint  providerKind;
@@ -24,6 +22,20 @@ struct BodyInstance {
 layout(std430, binding = 1) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
+struct BodyInstanceTransform {
+    vec4 localToWorldRows[3];
+    vec4 worldToLocalRows[3];
+};
+layout(std430, binding = 4) readonly buffer BodyInstanceTransformBuffer {
+    BodyInstanceTransform bodyInstanceTransforms[];
+};
+
+vec3 transformInstancePoint(in BodyInstanceTransform transform, vec3 p) {
+    vec4 hp = vec4(p, 1.0);
+    return vec3(dot(transform.localToWorldRows[0], hp),
+                dot(transform.localToWorldRows[1], hp),
+                dot(transform.localToWorldRows[2], hp));
+}
 
 #include "Generated/OctreeConfig.glsl"
 layout(std430, binding = 2) readonly buffer OctreeConfigsSSBO {
@@ -57,6 +69,7 @@ void main() {
     const uint proxyIndex = linearIndex - bodyIndex * proxyCount;
     const ShellProxyAabb proxy = proxyAabbs[proxyIndex];
     const BodyInstance instance = bodyInstances[bodyIndex];
+    const BodyInstanceTransform transform = bodyInstanceTransforms[bodyIndex];
 
     // Proxy records are concatenated by octree. Drawing the flat pool for each
     // body preserves front-to-back body order; mismatched records clip out.
@@ -69,17 +82,18 @@ void main() {
     }
 
     const OctreeConfig config = configs[instance.octreeIndex];
-    const vec3 localCenter = 0.5 * (proxy.minLocal + proxy.maxLocal);
-    const vec3 localExtents = 0.5 * (proxy.maxLocal - proxy.minLocal);
-    const mat3 linear = mat3(config.localToWorld);
-    const vec3 baseCenter = (config.localToWorld * vec4(localCenter, 1.0)).xyz;
-    const vec3 baseExtents = abs(linear[0]) * localExtents.x +
-                             abs(linear[1]) * localExtents.y +
-                             abs(linear[2]) * localExtents.z;
-    const vec3 worldCenter = instance.worldPos + instance.renderScale * baseCenter;
-    const vec3 worldExtents = abs(instance.renderScale) * baseExtents;
-    proxyWorldMin = worldCenter - worldExtents;
-    proxyWorldMax = worldCenter + worldExtents;
+    proxyWorldMin = vec3(3.4e38);
+    proxyWorldMax = vec3(-3.4e38);
+    for (uint cornerIndex = 0u; cornerIndex < 8u; ++cornerIndex) {
+        const vec3 localCorner = vec3(
+            (cornerIndex & 1u) != 0u ? proxy.maxLocal.x : proxy.minLocal.x,
+            (cornerIndex & 2u) != 0u ? proxy.maxLocal.y : proxy.minLocal.y,
+            (cornerIndex & 4u) != 0u ? proxy.maxLocal.z : proxy.minLocal.z);
+        const vec3 base = (config.localToWorld * vec4(localCorner, 1.0)).xyz;
+        const vec3 world = transformInstancePoint(transform, base);
+        proxyWorldMin = min(proxyWorldMin, world);
+        proxyWorldMax = max(proxyWorldMax, world);
+    }
     bodyIndexOut = bodyIndex;
 
     const uint corner = kCubeIndices[uint(gl_VertexIndex)];

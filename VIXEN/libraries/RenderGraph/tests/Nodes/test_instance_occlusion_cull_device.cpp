@@ -252,13 +252,13 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
 
     Vixen::SVO::BodyInstanceGpu instances[3] = {};
     for (auto& inst : instances) {
-        inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 5.0f;
-        inst.renderScale = 1.0f;
-        inst.octreeIndex = 0u;
-        inst.providerKind = 0u;
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 0, 0.0f); Vixen::SVO::SetInstanceTranslationComponent(inst, 1, 0.0f); Vixen::SVO::SetInstanceTranslationComponent(inst, 2, 5.0f);
+        Vixen::SVO::SetInstanceUniformScale(inst, 1.0f);
+        inst.material.octreeIndex = 0u;
+        inst.material.providerKind = 0u;
     }
-    instances[1].worldPos[2] = 2.0f;   // in front of the wall -> visible
-    instances[2].worldPos[0] = 0.125f; // one tile right -> still occluded
+    Vixen::SVO::SetInstanceTranslationComponent(instances[1], 2, 2.0f);   // in front of the wall -> visible
+    Vixen::SVO::SetInstanceTranslationComponent(instances[2], 0, 0.125f); // one tile right -> still occluded
 
     Vixen::Gpu::OctreeConfig config{};
     config.traceBoundsMinX = 0.0f;   config.traceBoundsMinY = 0.0f;  config.traceBoundsMinZ = 0.0f;
@@ -277,11 +277,9 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     // --- Mirror expectation on the IDENTICAL inputs ------------------------
     CullInstance mInsts[3] = {};
     for (int i = 0; i < 3; ++i) {
-        mInsts[i].worldPos = glm::vec3(instances[i].worldPos[0], instances[i].worldPos[1],
-                                       instances[i].worldPos[2]);
-        mInsts[i].renderScale = instances[i].renderScale;
-        mInsts[i].octreeIndex = instances[i].octreeIndex;
-        mInsts[i].providerKind = instances[i].providerKind;
+        mInsts[i].localToWorld = Vixen::SVO::ToMat4(instances[i].transform.localToWorld);
+        mInsts[i].octreeIndex = instances[i].material.octreeIndex;
+        mInsts[i].providerKind = instances[i].material.providerKind;
     }
     CullOctreeConfig mCfg{};
     mCfg.traceBoundsMin = glm::vec3(0.0f);
@@ -299,12 +297,18 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
         << "mirror precondition drifted — fix the mirror suite first";
 
     // --- Device resources --------------------------------------------------
-    VkBuffer instBuf{}, cfgBuf{}, maskBuf{};
-    VkDeviceMemory instMem{}, cfgMem{}, maskMem{};
-    CreateHostBuffer(sizeof(instances), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf, instMem, false);
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instanceValues(
+        std::begin(instances), std::end(instances));
+    const auto materialData = Vixen::SVO::PackInstanceMaterials(instanceValues);
+    const auto transformData = Vixen::SVO::PackInstanceTransforms(instanceValues);
+    VkBuffer instBuf{}, transformBuf{}, cfgBuf{}, maskBuf{};
+    VkDeviceMemory instMem{}, transformMem{}, cfgMem{}, maskMem{};
+    CreateHostBuffer(materialData.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf, instMem, false);
+    CreateHostBuffer(transformData.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, transformBuf, transformMem, false);
     CreateHostBuffer(sizeof(config), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, cfgBuf, cfgMem, false);
     CreateHostBuffer(sizeof(seededMask), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, maskBuf, maskMem, false);
-    UploadBuffer(instMem, instances, sizeof(instances));
+    UploadBuffer(instMem, materialData.data(), materialData.size());
+    UploadBuffer(transformMem, transformData.data(), transformData.size());
     UploadBuffer(cfgMem, &config, sizeof(config));
     UploadBuffer(maskMem, seededMask, sizeof(seededMask));
 
@@ -350,8 +354,8 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     VkShaderModule shader{};
     ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shader), VK_SUCCESS);
 
-    VkDescriptorSetLayoutBinding bindings[4] = {};
-    for (uint32_t i = 0; i < 4; ++i) {
+    VkDescriptorSetLayoutBinding bindings[5] = {};
+    for (uint32_t i = 0; i < 5; ++i) {
         bindings[i].binding = i;
         bindings[i].descriptorType = (i == 2) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                               : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -360,7 +364,7 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     }
     VkDescriptorSetLayoutCreateInfo dslci{};
     dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    dslci.bindingCount = 4; dslci.pBindings = bindings;
+    dslci.bindingCount = 5; dslci.pBindings = bindings;
     VkDescriptorSetLayout dsl{};
     ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
 
@@ -383,7 +387,7 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline), VK_SUCCESS);
 
     VkDescriptorPoolSize poolSizes[2] = {
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
     };
     VkDescriptorPoolCreateInfo dpci{};
@@ -398,24 +402,25 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     VkDescriptorSet set{};
     ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &set), VK_SUCCESS);
 
-    VkDescriptorBufferInfo bufInfos[3] = {
-        {instBuf, 0, VK_WHOLE_SIZE}, {cfgBuf, 0, VK_WHOLE_SIZE}, {maskBuf, 0, VK_WHOLE_SIZE}};
+    VkDescriptorBufferInfo bufInfos[4] = {
+        {instBuf, 0, VK_WHOLE_SIZE}, {cfgBuf, 0, VK_WHOLE_SIZE},
+        {maskBuf, 0, VK_WHOLE_SIZE}, {transformBuf, 0, VK_WHOLE_SIZE}};
     VkDescriptorImageInfo imgInfo{VK_NULL_HANDLE, tileView, VK_IMAGE_LAYOUT_GENERAL};
-    VkWriteDescriptorSet writes[4] = {};
-    const uint32_t bufBindings[3] = {0u, 1u, 3u};
-    for (int i = 0; i < 3; ++i) {
+    VkWriteDescriptorSet writes[5] = {};
+    const uint32_t bufBindings[4] = {0u, 1u, 3u, 4u};
+    for (int i = 0; i < 4; ++i) {
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[i].dstSet = set; writes[i].dstBinding = bufBindings[i];
         writes[i].descriptorCount = 1;
         writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[i].pBufferInfo = &bufInfos[i];
     }
-    writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[3].dstSet = set; writes[3].dstBinding = 2u;
-    writes[3].descriptorCount = 1;
-    writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    writes[3].pImageInfo = &imgInfo;
-    vkUpdateDescriptorSets(logicalDevice_, 4, writes, 0, nullptr);
+    writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[4].dstSet = set; writes[4].dstBinding = 2u;
+    writes[4].descriptorCount = 1;
+    writes[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    writes[4].pImageInfo = &imgInfo;
+    vkUpdateDescriptorSets(logicalDevice_, 5, writes, 0, nullptr);
 
     // --- Record: clear tile image to the wall, dispatch, read back ---------
     VkCommandBufferAllocateInfo cbai{};
@@ -503,6 +508,7 @@ TEST_F(InstanceOcclusionCullDeviceTest, MaskWordsMatchMirrorOnSyntheticScene) {
     vkDestroyImage(logicalDevice_, tileImage, nullptr);
     vkFreeMemory(logicalDevice_, tileMem, nullptr);
     vkDestroyBuffer(logicalDevice_, instBuf, nullptr);  vkFreeMemory(logicalDevice_, instMem, nullptr);
+    vkDestroyBuffer(logicalDevice_, transformBuf, nullptr); vkFreeMemory(logicalDevice_, transformMem, nullptr);
     vkDestroyBuffer(logicalDevice_, cfgBuf, nullptr);   vkFreeMemory(logicalDevice_, cfgMem, nullptr);
     vkDestroyBuffer(logicalDevice_, maskBuf, nullptr);  vkFreeMemory(logicalDevice_, maskMem, nullptr);
 }

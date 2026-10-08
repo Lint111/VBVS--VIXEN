@@ -834,14 +834,15 @@ bool marchBrickSdf(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN,
             // (brick-face straddle) are never relaxed -- their distance isn't trustworthy, so
             // relaxing off one is exactly the failure mode the test prevents.
             bool sentinel = d > SENTINEL_D;
-            float honestStep = sentinel ? 1.0 : max(d * 0.5773503, EPS);
+            float honestStep = (sentinel ? 1.0 : max(d * 0.5773503, EPS)) *
+                               clamp(g_instanceSdfStepScale, 0.0, 1.0);
             if (i > 0 && !sentinel && !forceHonestStep && stepTakenPrev > dPrev + d) {
                 // The overlap test on the step just taken FAILED against what we now see at d:
                 // it may have skipped the surface. Roll back to the pre-relaxation point (retreat
                 // by the over-step, re-advance by the safe one) and resample there instead of
                 // trusting this sample. dPrev is unchanged (still the safe, valid distance to
                 // retry with); d/p are discarded.
-                s += (dPrev * 0.5773503) - stepTakenPrev;
+                s += (dPrev * 0.5773503 * g_instanceSdfStepScale) - stepTakenPrev;
                 forceHonestStep = true;
                 continue;
             }
@@ -992,7 +993,8 @@ bool marchBrickSdfAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDi
             // sign. Was bare `d` when the crossing test only ever saw d>=EPS>0 here (a no-op
             // change then); now that OCCLUDE_EPS lets d sit slightly negative (down to -EPS)
             // without triggering the return above, a bare `d` would shrink/negate the step.
-            s += (d > SENTINEL_D) ? 1.0 : max(abs(d) * 0.5773503, EPS);
+            s += ((d > SENTINEL_D) ? 1.0 : max(abs(d) * 0.5773503, EPS)) *
+                 clamp(g_instanceSdfStepScale, 0.0, 1.0);
         }
         if (sBase + s > sMaxLimit) return false;  // exited the clamped span without a crossing -- no occluder in range
 
@@ -1069,9 +1071,10 @@ bool marchBrickSdfCell(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gridDirN
             return true;
         }
         bool sentinel = d > SENTINEL_D;
-        float honestStep = sentinel ? 1.0 : max(d * 0.5773503, EPS);
+        float honestStep = (sentinel ? 1.0 : max(d * 0.5773503, EPS)) *
+                           clamp(g_instanceSdfStepScale, 0.0, 1.0);
         if (i > 0 && !sentinel && !forceHonestStep && stepTakenPrev > dPrev + d) {
-            s += (dPrev * 0.5773503) - stepTakenPrev;
+            s += (dPrev * 0.5773503 * g_instanceSdfStepScale) - stepTakenPrev;
             forceHonestStep = true;
             continue;
         }
@@ -1118,7 +1121,8 @@ bool marchBrickSdfCellAnyHit(int octreeIdx, ivec3 brick, vec3 gridEntry, vec3 gr
             sHit = s;
             return true;
         }
-        s += (d > SENTINEL_D) ? 1.0 : max(abs(d) * 0.5773503, 0.01);
+        s += ((d > SENTINEL_D) ? 1.0 : max(abs(d) * 0.5773503, 0.01)) *
+             clamp(g_instanceSdfStepScale, 0.0, 1.0);
     }
     return false;
 }

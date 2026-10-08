@@ -120,15 +120,15 @@ constexpr float kWorldGridSize = 10.0f;
 Vixen::SVO::BodyInstanceGpu MakeInst(float x, float y, float z, float scale,
                                       uint32_t octreeIndex) {
     Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
-    i.renderScale = scale; i.octreeIndex = octreeIndex;
-    i.color[0] = 1.0f; i.color[1] = 1.0f; i.color[2] = 1.0f;
+    Vixen::SVO::SetInstanceTranslationComponent(i, 0, x); Vixen::SVO::SetInstanceTranslationComponent(i, 1, y); Vixen::SVO::SetInstanceTranslationComponent(i, 2, z);
+    Vixen::SVO::SetInstanceUniformScale(i, scale); i.material.octreeIndex = octreeIndex;
+    i.material.color[0] = 1.0f; i.material.color[1] = 1.0f; i.material.color[2] = 1.0f;
     return i;
 }
 
 glm::vec3 BodyCentre(const Vixen::SVO::BodyInstanceGpu& inst) {
-    return glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]) +
-           glm::vec3(0.5f * kWorldGridSize * inst.renderScale);
+    return Vixen::SVO::TransformPoint(inst.transform.localToWorld,
+                                      glm::vec3(0.5f * kWorldGridSize));
 }
 
 PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target, uint32_t w, uint32_t h,
@@ -306,7 +306,7 @@ protected:
 
     // Render using the real BodyInstanceRayMarch shader (binding 5 = SSBO, I3.2).
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
-                      VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
+                      VkBuffer inst, VkBuffer instTransform, VkBuffer sdf, VkBuffer lookup,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms,
                       std::vector<HitRecordCpu>* outHitRecords = nullptr) {
@@ -357,7 +357,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,16> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,17> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -374,6 +374,7 @@ protected:
             bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
             bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
             bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -395,7 +396,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -411,6 +412,7 @@ protected:
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
+            instTransformI{instTransform,0,VK_WHOLE_SIZE},
             sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{dummyMip,0,VK_WHOLE_SIZE},
             tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
             skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE};
@@ -425,12 +427,13 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,16> writes = {
+        const std::array<VkWriteDescriptorSet,17> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI),  // Inc1 M4b: per-instance iteration debug
             wB(15,&tierRefI), wB(18,&hitRecordI),
             wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wB(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -601,9 +604,11 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     VkBuffer mats    = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
     VkBuffer cfgBuf  = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
     VkBuffer instBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+    VkBuffer instTransformBuf = buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index);
     VkBuffer sdfBuf  = buf(C::OCTREE_SDF_BUFFER_Slot::index);
     VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
     ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
+    ASSERT_NE(instTransformBuf, VK_NULL_HANDLE);
 
     // 6) Camera: target the true centroid of all 4 body centres so EVERY octreeIndex
     //    slot appears on-screen. instances[1] was the old target — it skipped slot 3.
@@ -622,7 +627,7 @@ TEST_F(RecipePoolRenderTest, FourRecipesAllRender) {
     // file's HitRecordCpu comment.
     std::vector<uint8_t> rgba; double ms = 0.0;
     std::vector<HitRecordCpu> hitRecords;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf, instTransformBuf,
                                          sdfBuf, lookBuf, pc, kW, kH, rgba, ms, &hitRecords));
 
     // 7) Write PNG, total hit count, AND per-x-band hits (1 band per octreeIndex slot).

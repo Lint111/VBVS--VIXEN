@@ -557,9 +557,9 @@ TEST_F(BandwidthAbMeasurementTest,
         // trigger call itself takes the position directly, matching
         // UpdateBodySceneResidency's own per-instance loop.
         Vixen::SVO::BodyInstanceGpu inst{};
-        inst.worldPos[0] = pos.x;
-        inst.worldPos[1] = pos.y;
-        inst.worldPos[2] = pos.z;
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 0, pos.x);
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 1, pos.y);
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 2, pos.z);
         mixedSet.nodes[i]->SetInstances({inst});
 
         const bool wants = Vixen::SVO::InstanceWantsBrickResidency(

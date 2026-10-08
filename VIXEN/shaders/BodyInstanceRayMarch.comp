@@ -325,16 +325,21 @@ void main() {
             vec3 tbMin, tbMax;
             bool tight = getOctreeTraceBounds(winnerOi, tbMin, tbMax);
             if (tight) {
-                // World-space AABB of the winning instance's tight bounds: same
-                // worldPos + (localToWorld * local) * renderScale mapping
-                // TraceWorld's de-instancing (and InstanceSort.h's
-                // traceBoundsWorldCenterOf, Task 5.3) already use. mat3(...) takes
-                // just the linear part (SerializeSdf's localToWorld is a pure
-                // uniform scale, no rotation, but this form is correct even if
-                // that ever changes, matching TraceWorld's own mat3(...) usage).
+                // World-space AABB of the winning instance's tight bounds: transform
+                // all eight corners through config localToWorld and the instance affine.
                 mat3 l2wLinear = mat3(configs[winnerOi].localToWorld);
-                vec3 worldBoundsMin = winner.worldPos + (l2wLinear * tbMin) * winner.renderScale;
-                vec3 worldBoundsMax = winner.worldPos + (l2wLinear * tbMax) * winner.renderScale;
+                vec3 worldBoundsMin = vec3(3.4e38);
+                vec3 worldBoundsMax = vec3(-3.4e38);
+                for (uint cornerIndex = 0u; cornerIndex < 8u; ++cornerIndex) {
+                    vec3 localCorner = vec3(
+                        (cornerIndex & 1u) != 0u ? tbMax.x : tbMin.x,
+                        (cornerIndex & 2u) != 0u ? tbMax.y : tbMin.y,
+                        (cornerIndex & 4u) != 0u ? tbMax.z : tbMin.z);
+                    vec3 base = (configs[winnerOi].localToWorld * vec4(localCorner, 1.0)).xyz;
+                    vec3 world = instanceLocalToWorldPoint(worldHit.instIdx, base);
+                    worldBoundsMin = min(worldBoundsMin, world);
+                    worldBoundsMax = max(worldBoundsMax, world);
+                }
 
                 // A fixed 1e-3-world epsilon is many orders of magnitude smaller than ONE
                 // BRICK's own world footprint -- traceBoundsMin/Max (Task 5.1) is quantized
@@ -343,14 +348,15 @@ void main() {
                 // world-size inside the tight-bounds boundary. The dimensionally-principled
                 // margin is exactly one brick's own world footprint: (1/bricksPerAxis) of the
                 // local [0,1]^3 cube, scaled to world units the SAME way tbMin/tbMax
-                // themselves are (kWorldGridSize * renderScale) -- undoes exactly the one
+                // themselves are -- undoes exactly the one
                 // brick of quantization traceBoundsMin/Max's own derivation introduces, no
                 // more. Verified live: this margin correctly stops rejecting leftWall/
                 // rightWall/floor/ceiling's genuine near-boundary hits while still catching
                 // ~99% of the pre-existing far-hit OOB corruption on those bodies.
                 float bpa = float(configs[winnerOi].bricksPerAxis);
                 float worldGridSize = l2wLinear[0][0];  // uniform scale factor (kWorldGridSize)
-                float brickWorldEps = (bpa > 0.0) ? (worldGridSize * winner.renderScale / bpa) : 0.0;
+                float brickWorldEps = (bpa > 0.0)
+                    ? (worldGridSize * instanceMinimumAxisScale(worldHit.instIdx) / bpa) : 0.0;
                 vec3 hitWorldPos = rayOrigin + rayDir * worldHit.t;
                 bool inBounds =
                     all(greaterThanEqual(hitWorldPos, worldBoundsMin - vec3(brickWorldEps))) &&

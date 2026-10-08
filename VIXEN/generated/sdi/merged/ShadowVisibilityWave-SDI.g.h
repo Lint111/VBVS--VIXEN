@@ -553,17 +553,17 @@ struct OctreeConfigsSSBO {
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
  */
 struct BodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -673,17 +673,17 @@ struct TierRefTableBuffer {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x6dc24fcf8fba6cee (for runtime discovery)
+ * Layout VixenHash: 0x21ad6abbc3ea8eae (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x6dc24fcf8fba6ceeULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x21ad6abbc3ea8eaeULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 144;
+        static constexpr uint32_t SIZE = 208;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -824,6 +824,26 @@ struct RtQueryProxyAabbBuffer {
         static constexpr const char* TYPE = "ShellProxyAabb";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 32;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief BodyInstanceTransformBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
+ */
+struct BodyInstanceTransformBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "BodyInstanceTransform";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -1142,6 +1162,21 @@ namespace Set0 {
         using DataType = RtQueryProxyAabbBuffer;
     };
 
+    /**
+     * @brief BodyInstanceTransformBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding47 {
+        static constexpr const char* NAME = "BodyInstanceTransformBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 47;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = BodyInstanceTransformBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -1166,6 +1201,7 @@ using InstanceSkipMaskBuffer = Set0::Binding35;
 using rtQueryTlas = Set0::Binding40;
 using PolicyStencilTileBuffer = Set0::Binding41;
 using RtQueryProxyAabbBuffer = Set0::Binding43;
+using BodyInstanceTransformBuffer = Set0::Binding47;
 } // namespace Bind
 
 namespace Push {
@@ -1329,6 +1365,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"rtQueryTlas", false, 0, 40, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding40},
     {"PolicyStencilTileBuffer", false, 0, 41, 0, Access::ReadWrite, 2, kFeatures_Set0_Binding41},
     {"RtQueryProxyAabbBuffer", false, 0, 43, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding43},
+    {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1364,7 +1401,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ShadowVisibilityWave";
-    static constexpr uint32_t NUM_MEMBERS = 34;
+    static constexpr uint32_t NUM_MEMBERS = 35;
     static constexpr uint32_t NUM_FEATURES = 6;
 };
 

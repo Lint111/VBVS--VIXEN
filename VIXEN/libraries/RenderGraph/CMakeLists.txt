@@ -242,6 +242,8 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
     include/Nodes/BodyOctreeSceneNode.h
+    include/Data/Nodes/MiningBeamBufferNodeConfig.h
+    include/Nodes/MiningBeamBufferNode.h
     include/Nodes/PhotonCellParamsConfigNode.h  # C0/C1: photon-cell params ring
     include/Nodes/PhotonCellTableNode.h         # C0/C1: fixed photon-cell table resource
     include/Nodes/PhotonCellPassNodes.h         # C1: pluggable deposit/fold/clear passes
@@ -279,6 +281,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/HitAccumParamsConfigNode.cpp # B2: hit-accumulate per-frame params upload ring (batch-23)
     src/Nodes/ReservoirConfigNode.cpp     # Sampled Lighting Inc3 M3: ReservoirConfig upload ring (M4/M5 scaffolding)
     src/Nodes/LightTreeBufferNode.cpp     # Sampled Lighting Inc3 M4: mip-cut light-tree upload ring (RIS candidate source)
+    src/Nodes/MiningBeamBufferNode.cpp
     src/Nodes/ProbeGridConfigNode.cpp     # Sampled Lighting Inc4 M2: ProbeGridConfig upload ring (M3-M6 scaffolding)
     src/Nodes/ProbeAtlasNode.cpp          # Sampled Lighting Inc4 M2: persistent DDGI probe atlas image (irradiance/visibility)
     src/Nodes/SkySphereNode.cpp           # Deep-Field Mip-Accessor Policy batch 29 stream C: sky-sphere cache scaffold (UNWIRED)

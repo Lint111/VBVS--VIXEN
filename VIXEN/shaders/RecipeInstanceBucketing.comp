@@ -53,22 +53,34 @@
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-// std430 SSBO record, 64 bytes — byte-for-byte identical to shaders/SceneBindings.glsl's
+// Cold std430 material SSBO record, 48 bytes — byte-for-byte identical to shaders/SceneBindings.glsl's
 // BodyInstance (binding 10 there; declared standalone here since this shader has its own
 // binding namespace, mirroring the same C++ Vixen::SVO::BodyInstanceGpu layout).
 struct BodyInstance {
-    vec3  worldPos;          // 0
-    float renderScale;       // 12
-    vec3  color;             // 16
-    uint  octreeIndex;       // 28
-    uint  providerKind;      // 32  (0 = Stored/ESVO, 1 = Procedural)
-    uint  recipeId;          // 36
-    float recipeParams[6];   // 40..63
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
 };
 
 layout(std430, binding = 0) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
+struct BodyInstanceTransform {
+    vec4 localToWorldRows[3];
+    vec4 worldToLocalRows[3];
+};
+layout(std430, binding = 11) readonly buffer BodyInstanceTransformBuffer {
+    BodyInstanceTransform bodyInstanceTransforms[];
+};
+
+vec3 transformInstancePoint(in BodyInstanceTransform transform, vec3 p) {
+    vec4 hp = vec4(p, 1.0);
+    return vec3(dot(transform.localToWorldRows[0], hp),
+                dot(transform.localToWorldRows[1], hp),
+                dot(transform.localToWorldRows[2], hp));
+}
 
 // Per-recipeId world-space bound sphere, CPU-uploaded from RecipeRegistry::RecipeEntry
 // (boundCenter/boundRadius/stepRelaxation) — indexed DIRECTLY by recipeId (dense array,
@@ -272,13 +284,10 @@ void main() {
     // Task 3 setup (moved ahead of Task 2's append, Load-Tier Contract M1): the bound
     // sphere is needed for the new gating check below BEFORE deciding whether this
     // instance gets appended at all. The bound sphere is a PER-RECIPE property (not
-    // per-instance), but its center is recipe-LOCAL — the actual world-space sphere for
-    // THIS instance is the recipe's bound sphere translated to this instance's worldPos
-    // (mirrors how getRecipeBoundSphere's center is combined with a BodyInstance's own
-    // worldPos at the existing TraceWorld.glsl call sites: boundCenter is added to
-    // inst.worldPos there too).
+    // per-instance), and its center is recipe-local. Transform that center through the
+    // same affine used by ray marching.
     RecipeBoundSphere bound = recipeBounds[recipeId];
-    vec3 sphereCenterWorld = inst.worldPos + bound.center;
+    vec3 sphereCenterWorld = transformInstancePoint(bodyInstanceTransforms[gid], bound.center);
     float radius = bound.radius;
 
     // Load-Tier Contract M1 (gating tier): a recipe opts in by setting
