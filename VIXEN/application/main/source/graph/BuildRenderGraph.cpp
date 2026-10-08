@@ -2257,23 +2257,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                 std::stringstream buf;
                 buf << in.rdbuf();
                 std::string source = buf.str();
-                if (std::string(shaderName) == "ExposureTonemap.comp") {
-                    if (const char* exposureEnv = std::getenv("VIXEN_HDR_EXPOSURE_COMPENSATION_EV")) {
-                        char* end = nullptr;
-                        const float compensationEV = std::strtof(exposureEnv, &end);
-                        if (end == exposureEnv || *end != '\0' || !std::isfinite(compensationEV) ||
-                            compensationEV < -16.0f || compensationEV > 16.0f) {
-                            throw std::runtime_error(
-                                "VIXEN_HDR_EXPOSURE_COMPENSATION_EV must be a finite value in [-16, 16]");
-                        }
-                        const std::string exposureDefine =
-                            "#define VIXEN_HDR_EXPOSURE_COMPENSATION_EV " +
-                            std::to_string(compensationEV) + "\n";
-                        const size_t versionLine = source.find('\n');
-                        if (versionLine == std::string::npos) source += "\n" + exposureDefine;
-                        else source.insert(versionLine + 1, exposureDefine);
-                    }
-                }
                 // M10 shadow diagnostic (env-gated, off by default): inject
                 // `#define VIXEN_SHADOW_DBG 1` + target-pixel coords right after
                 // #version. Only SpatialReuseShade.comp has the arming block that

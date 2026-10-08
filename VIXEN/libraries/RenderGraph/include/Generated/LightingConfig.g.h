@@ -34,7 +34,7 @@ struct LightingConfig {
     float celBandFalloffStart;
     float celBandFalloffEnd;
     float celLightSpillScale;
-    float _celTailPadding0;
+    float exposureCompensationEV;
     float _celTailPadding1;
 };
 static_assert(sizeof(LightingConfig) == 208, "LightingConfig std430 size");
@@ -52,6 +52,6 @@ static_assert(offsetof(LightingConfig, celShadowHueShiftDegrees) == 184, "celSha
 static_assert(offsetof(LightingConfig, celBandFalloffStart) == 188, "celBandFalloffStart@188");
 static_assert(offsetof(LightingConfig, celBandFalloffEnd) == 192, "celBandFalloffEnd@192");
 static_assert(offsetof(LightingConfig, celLightSpillScale) == 196, "celLightSpillScale@196");
-static_assert(offsetof(LightingConfig, _celTailPadding0) == 200, "_celTailPadding0@200");
+static_assert(offsetof(LightingConfig, exposureCompensationEV) == 200, "exposureCompensationEV@200");
 static_assert(offsetof(LightingConfig, _celTailPadding1) == 204, "_celTailPadding1@204");
 } // namespace Vixen::Gpu

@@ -41,14 +41,6 @@ std::vector<CaptureScenario> BuildScenarios() {
     return scenarios;
 }
 
-bool SetEnvironmentVariable(const char* name, const std::string& value) {
-#ifdef _WIN32
-    return _putenv_s(name, value.c_str()) == 0;
-#else
-    return setenv(name, value.c_str(), 1) == 0;
-#endif
-}
-
 class LookdevCaptureApplication final : public VulkanGraphApplication {
 public:
     LookdevCaptureApplication(std::filesystem::path outputDir,
@@ -90,6 +82,8 @@ public:
 
         lighting_->SetLights(Vixen::App::Lookdev::Lights(scenarios_.front().lighting),
                              scenarios_.front().lighting.ambient, {1.0f, 1.0f});
+        lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
+                                scenarios_.front().lighting.exposureCompensationEV);
         SetBodyInstances(Vixen::App::Lookdev::BodyInstances(recipes));
     }
 
@@ -111,6 +105,8 @@ public:
             camera_->SetPitchForTest(kPitchRadians);
             lighting_->SetLights(Vixen::App::Lookdev::Lights(next.lighting),
                                  next.lighting.ambient, {1.0f, 1.0f});
+            lighting_->SetParameter(Vixen::RenderGraph::LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
+                                    next.lighting.exposureCompensationEV);
         }
         return true;
     }
@@ -168,8 +164,6 @@ TEST(LookdevCapture, RendersFourStatesAtFourAnglesDeterministically) {
     const std::vector<CaptureScenario> scenarios = BuildScenarios();
     ASSERT_EQ(scenarios.size(), 4u)
         << "CTest must select one four-angle look-dev lighting preset";
-    ASSERT_TRUE(SetEnvironmentVariable("VIXEN_HDR_EXPOSURE_COMPENSATION_EV",
-                                       std::to_string(scenarios.front().lighting.exposureCompensationEV)));
     std::string error;
     ASSERT_TRUE(CaptureSequence(outputDir, scenarios, error)) << error;
 }

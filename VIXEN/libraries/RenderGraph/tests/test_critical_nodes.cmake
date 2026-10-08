@@ -192,7 +192,9 @@ set(_brm_spv "${CMAKE_CURRENT_BINARY_DIR}/BodyInstanceRayMarch.spv")
 
 # DEPEND on the .comp AND every .glsl it may #include — otherwise editing an include
 # (e.g. StoredSdf.glsl / ESVOTraversal.glsl) leaves the .spv stale ("ninja: no work to do").
-file(GLOB _brm_includes CONFIGURE_DEPENDS "${_brm_shader_dir}/*.glsl")
+file(GLOB _brm_includes CONFIGURE_DEPENDS
+    "${_brm_shader_dir}/*.glsl"
+    "${_brm_shader_dir}/Generated/*.glsl")
 
 add_custom_command(
     OUTPUT  ${_brm_spv}
