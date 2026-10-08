@@ -3,6 +3,7 @@
 ## LANDABLE NOW
 
 - VIXEN base/tip before the lane commit: `92804a8f67c48653514c042a8f7b87b70bbb642b`.
+- VIXEN baseline-recovery checkpoint: `842fa64163d26084009437a6466c8b8f8f83bb83`.
 - Kernel tip: `8d68e9839ac3af02b937b2b419c27f829e90cccc` (unchanged; no kernel source edits).
 - The only completed VIXEN source-tree change so far is the documented regeneration of five stale merged-SDI headers. The recipe visibility implementation is not started.
 
@@ -45,13 +46,14 @@ All reds below were captured against VIXEN base `92804a8f67c48653514c042a8f7b87b
 | Kernel CodegenTool suite | 2,077 passed, 2 skipped after setting `UNDERTOW_ROOT=/home/liory/projects/undertow`; first run was 2,066 passed, 4 skipped, 9 failed |
 | Direct RecipeSimd CodegenTool `--check` | Passed |
 | Full VIXEN CTest | Exit 8; one failure among 2,871 tests, the known `T-1449` opcode 94 gradient-capability mismatch (`M4d_Output_IsPassthrough`) |
-| Full-suite headless and CelShading captures | Passed in the full CTest run |
-| Captures with caller display/Vulkan variables unset | Still queued at report time; no pixel comparison result yet |
-| Existing capture byte comparison | Not run |
+| Standard generation/drift checks | All 22 passed after SDI regeneration: 21 full-build codegen checks plus `sdi_merged_drift_check` |
+| Environment-clean capture CTest | 5/5 passed: four CelShading cases plus `vixen_wsl_capture_witness` |
+| Existing capture byte comparison | 11/11 required outputs identical: 7 HUD/editor PNGs and 4 CelShading PNGs |
+| No-op rebuild | Passed; `ninja: no work to do` |
 | Pruning-off/on identical-pixel gate | Not run; no implementation |
 | Recipe clause reduction, proof work, CPU specialization time, upload bytes, GPU time | Not measured; no implementation |
 
-The full-suite CTest output reports `99% tests passed, 1 tests failed out of 2871` and 540.79 seconds total. The separate environment-clean capture run remains queued in the global box queue; its watcher has reported eligibility but no admission for more than ten minutes.
+The full-suite CTest output reports `99% tests passed, 1 tests failed out of 2871` and 540.79 seconds total. The environment-clean capture comparison covers 7 HUD/editor files saved from the full baseline before rerun and 4 CelShading files saved immediately before their repeat run; all have zero byte and pixel differences.
 
 ## Shared files touched
 
