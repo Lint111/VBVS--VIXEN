@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-- VIXEN lane: `lane-rvcompact`, based on A1 tip `e1e6f94342e55b83f4a370b80afff77646c3c25c`. The feature commit SHA will be added after commit.
+- VIXEN lane: `lane-rvcompact`, based on A1 tip `e1e6f94342e55b83f4a370b80afff77646c3c25c`; feature and report commit `3fdb5c56f1b1f0a898eef6f24cc9a28cfc58b149`.
 - Kernel lane: unchanged at `f1ac3fb0f8aa71f98075fb33e35d035999c4f334`; no kernel source or generated schema changed.
 - VIXEN is not yet merged with `origin/main-wave`: this checkout's `origin` advertises only `main`, and fetching `refs/heads/main-wave` returned “couldn't find remote ref”. The requested merge target is pending owner direction.
 
@@ -45,7 +45,7 @@ The result carries the caller-supplied source revision. The fixtures use revisio
 
 ## Checkpoint
 
-At the three-hour lane checkpoint, the implementation, focused tests, full RenderGraph suite, and capture gates are complete and committed. Remaining: run the full final-tree SVO suite (the unchanged-base opcode-94 failure is already reproduced and the focused compaction/SVO tests passed), the no-op rebuild, and all 22 `*_check` targets; obtain the intended `main-wave` ref, merge it, and rerun the merged-tree witness. No further work was started after this checkpoint.
+At the lane checkpoint (2026-10-08 12:08 UTC), the implementation, focused tests, full RenderGraph suite, and capture gates were complete and committed. Remaining: run the full final-tree SVO suite (the unchanged-base opcode-94 failure is already reproduced and the focused compaction/SVO tests passed), the no-op rebuild, and all 22 `*_check` targets; obtain the intended `main-wave` ref, merge it, and rerun the merged-tree witness. No further work was started after this checkpoint.
 
 ## Integration follow-up
 
