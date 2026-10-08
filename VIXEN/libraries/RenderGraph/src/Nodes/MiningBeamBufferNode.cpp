@@ -70,8 +70,9 @@ void MiningBeamBufferNode::TypedCompileImpl(TypedCompileContext& ctx) {
 void MiningBeamBufferNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const uint32_t frameIndex = ctx.In(MiningBeamBufferNodeConfig::CURRENT_FRAME_INDEX) % kRingSize;
     Vixen::Gpu::MiningBeamBuffer gpuBuffer{};
-    gpuBuffer.beamCount = static_cast<uint32_t>(beams_.size());
-    gpuBuffer.enabled = enabled_ ? 1u : 0u;
+    const bool hasWork = enabled_ && !beams_.empty();
+    gpuBuffer.beamCount = hasWork ? static_cast<uint32_t>(beams_.size()) : 0u;
+    gpuBuffer.enabled = hasWork ? 1u : 0u;
 
     for (size_t i = 0; i < beams_.size(); ++i) {
         const MiningBeamInput& source = beams_[i];

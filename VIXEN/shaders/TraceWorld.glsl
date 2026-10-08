@@ -768,7 +768,12 @@ bool TraceWorld(vec3 origin, vec3 dir, float tmin, float tmax, out WorldHit hit)
             bestT           = hitT;
             // Tint by instance colour (multiply LOD-grey or material colour)
             bestColor       = hitColor * inst.color;
-            bestNormal      = instanceLocalToWorldNormal(instanceIndex, hitNormal);
+            // Preserve the stored-SDF traversal normal in its established shading frame;
+            // applying the instance conversion changes the editor's legacy cel bands.
+            // Binary hits still need the affine inverse-transpose conversion.
+            bestNormal      = configs[oi].formatId == FORMAT_STORED_SDF
+                ? hitNormal
+                : instanceLocalToWorldNormal(instanceIndex, hitNormal);
             bestRoughness   = hitRoughness;   // Inc3 M3: per-voxel roughness
             bestBrickIndex  = hitBrick;
             bestVoxelIdx    = hitVoxel;

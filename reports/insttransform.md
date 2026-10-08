@@ -6,7 +6,7 @@ R424 replaces the instance quaternion and scalar-scale path with one affine tran
 
 `Affine3x4Gpu` is 48 bytes, `BodyInstanceTransformGpu` is 96 bytes, `BodyInstanceMaterialGpu` is 48 bytes, and the host-side `BodyInstanceGpu` is 144 bytes. The shader transform stream is binding 47 and the cold material stream is binding 10. Capacity checks and bounded copies preserve the existing R213 ring behavior.
 
-The transform pair now drives ray marching, recipe bounds, sorting, culling, proxy intervals, picking, star lighting, and mining-beam endpoints. `VIXEN/shaders/SceneBindings.glsl:1081` reads the shared transform record and provides point, vector, and normal transforms. `VIXEN/shaders/TraceWorld.glsl:244` transforms rays into instance space, scales SDF steps by the affine minimum axis scale, and transforms normals by the inverse-transpose. The shadow path uses the same rules. The uniform-scale matrix specialization preserves the legacy arithmetic order for existing procedural scenes. `BodyOctreeSceneNode.cpp:2036` passes `localToWorld` directly to the ray-tracing instance without transposition or TRS recomposition.
+The transform pair now drives ray marching, recipe bounds, sorting, culling, proxy intervals, picking, star lighting, and mining-beam endpoints. `VIXEN/shaders/SceneBindings.glsl:1081` reads the shared transform record and provides point, vector, and normal transforms. `VIXEN/shaders/TraceWorld.glsl:244` transforms rays into instance space and scales SDF steps by the affine minimum axis scale. Procedural and shadow normals use the inverse-transpose; primary stored-SDF hits preserve the traversal normal frame to keep the editor's legacy cel bands byte-identical, while binary hits still use the affine normal transform. The uniform-scale matrix specialization preserves the legacy arithmetic order for existing procedural scenes. `BodyOctreeSceneNode.cpp:2036` passes `localToWorld` directly to the ray-tracing instance without transposition or TRS recomposition.
 
 `lane-minebeam` T-1170 was merged as `cf34e8e8`. Its `SpatialReuseShade.comp` source was manually combined with the starlight changes, and the generated SDI header was regenerated from that source. Mining-beam local endpoint offsets now pass through the source and target instance transforms.
 
@@ -36,6 +36,22 @@ The full RenderGraph engine suite passed 1,340/1,340 with five registered skips 
 
 The final selected rerun passed 25/25 (`run2-focused-captures-r424-final.log`): all six focused R424 witnesses (`CopiesLocalToWorldRowsWithoutTranspose`, `RenderStoredSdfBodiesNoHoles`, `PickSelectionReturnsInstanceForTwoBodiesAndNoneForBackground`, `EmissivePointLightFacesThreeBodiesTowardTheStar`, `RenderRecipeBakedBody`, and production Cornell), the four editor and three HUD checks, three starfield checks, both capture producers, and all seven Cel tests. The six Cel PNGs, seven editor/HUD PNGs, and six shared headless Cornell/starfield PNGs are byte-identical to the archived `fc69e0c3` captures; this includes the legacy Lambert+GGX capture. The comparison used `tools/compare-capture-pixels.py --require-byte-identical`, with direct SHA-256 equality checks for the six headless files. There is no Cel appearance stop. The final queued target rebuild reported `ninja: no work to do` (zero units; `run2-final-target-rebuild.log`). Both baseline and merged CMake trees shared a worktree-wide FetchContent build directory, so the merged build rebuilt 557 units; this environment workaround is filed in SPT.
 
+## Run 3 — merge `92804a8f` and final re-witness
+
+Merged `origin/wave/authoring-convergence` at `92804a8f67c48653514c042a8f7b87b70bbb642b` in merge commit `f7844f649ee0735196ee48c1b96ed9616308a350`. Git reported no textual conflicts. Semantic review confirmed that `EditorApplication` supplies its document instance through `SetInstanceTranslationScale` and the shared affine stream provider at binding 47. The merged kernel pin is `8d68e9839ac3af02b937b2b419c27f829e90cccc`; the fresh full build and `appflow_check` pass.
+
+CodegenTool restore/build and `MiningBeamBuffer --check` passed (`run3-codegen-restore-build.log`). SDI regeneration and `sdi_tool merge-variants --check` passed with no generated diff; all 22 codegen `_check` targets passed (`run3-final-22-checks.log`). The merged full build and final format-scoped build passed (`run3-full-build.log`, `run3-final-format-scoped-build.log`).
+
+The first post-merge Cornell capture found that disabled or empty mining-beam inputs still uploaded stale list metadata. The node now publishes `beamCount=0` and `enabled=0` together when there is no work; Cornell then passed, including the disabled/empty equivalence check. The first native capture comparison also found darker Cel bands in the editor instance. Preserving the stored-SDF traversal normal at the primary hit restored all four native editor images byte-for-byte; binary hits retain the affine inverse-transpose path.
+
+The final RenderGraph CTest passed 1,340/1,340 with five registered skips (`run3-final-format-scoped-rendergraph-ctest.log`). The scoped capture/R424/Cel rerun passed 25/25, including all 11 editor, HUD, Cornell, and starfield capture checks, all six R424 witnesses, and all seven Cel tests (`run3-final-format-scoped-captures-r424-cel-ctest.log`). The full SVO CTest had one failure and 750 passes: `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, with `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94` (`run3-final-format-scoped-svo-ctest.log`). This matches the known T-1449 opcode 94 finding from run 2; no other SVO test failed.
+
+Against a detached, freshly built `92804a8f` tree, all 26 shared captures were byte-identical: six Cel images, seven offscreen editor/HUD images, seven native editor/HUD images, and six headless Cornell/starfield images (`run3-final-format-scoped-capture-comparison.log`). The native windowed capture witness completed with an absolute output root (`run3-final-format-scoped-native-capture.log`). A relative output root had made the capture helper's app-side output path differ from its verification path; that recovered invocation is recorded in `run3-normal-probe-capture.log`. The final queued rebuild reported `ninja: no work to do` (`run3-final-format-scoped-noop-build.log`).
+
+## LANDABLE NOW
+
+Merged wave tip: `92804a8f67c48653514c042a8f7b87b70bbb642b` (branch merge commit: `f7844f649ee0735196ee48c1b96ed9616308a350`).
+
 ## SPT DISPOSITION
 
 T-1150 CLOSE by replacement (R424); T-1170 CLOSE (minebeam, merged here).
@@ -47,3 +63,6 @@ T-1150 CLOSE by replacement (R424); T-1170 CLOSE (minebeam, merged here).
 - Generate identity-equivalent affine SDF shader specialization.
 - Isolate FetchContent build outputs for archived baseline witnesses.
 - Provision Vulkan SDK for archived baseline witnesses.
+- Declare stored-SDF traversal normal space.
+- Derive effective mining-beam GPU enabled state.
+- Resolve capture output roots before launching apps.
