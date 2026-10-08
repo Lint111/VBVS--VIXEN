@@ -30,6 +30,7 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/RecipeTileSpecialization.h"
 #include "ShaderCompiler.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -41,15 +42,21 @@
 #include <glm/glm.hpp>
 
 #include <array>
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #ifndef SDF_CORE_KERNELS_GLSL_PATH
 #  error "SDF_CORE_KERNELS_GLSL_PATH must be defined via CMake compile_definitions"
+#endif
+#ifndef SDF_RECIPE_TAPE_GLSL_PATH
+#  error "SDF_RECIPE_TAPE_GLSL_PATH must be defined via CMake compile_definitions"
 #endif
 
 namespace {
@@ -86,6 +93,89 @@ std::string ComposeSliceShader(const std::string& sdfCoreGlsl, const std::string
     return ss.str();
 }
 
+std::string ComposeTileTapeRaymarchShader(const std::string& sdfCoreGlsl,
+    const std::string& evaluatorSource, const std::string& evaluatorAdapter) {
+    std::ostringstream ss;
+    ss << "#version 450\n" << sdfCoreGlsl << "\n";
+    ss << "struct RecipeTapeInstruction { uint opCode; float data[32]; };\n";
+    ss << "layout(set=0,binding=0,rgba32f) uniform image2D outImage;\n";
+    ss << "layout(set=0,binding=1,std430) readonly buffer InRecipeTape { RecipeTapeInstruction recipeTape[]; };\n";
+    ss << "layout(set=0,binding=2,std430) readonly buffer InTileRanges { uvec2 tileRanges[]; };\n";
+    ss << "layout(set=0,binding=3,std430) writeonly buffer OutClauseCounts { uint clauseCounts[]; };\n";
+    ss << evaluatorSource << "\n" << evaluatorAdapter << "\n";
+    ss << R"GLSL(
+layout(local_size_x=8,local_size_y=8) in;
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outImage);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+    uint xTile = min(uint(pixel.x / 16), 3u);
+    uint yTile = min(uint(pixel.y / 16), 3u);
+    float u = (float(pixel.x) + 0.5) / float(size.x);
+    float v = (float(pixel.y) + 0.5) / float(size.y);
+    float worldX = (u * 2.0 - 1.0) * 6.0;
+    float worldY = (v * 2.0 - 1.0) * 6.0;
+    float hitDepth = -1000.0;
+    uint totalClauses = 0u;
+    for (uint stepIndex = 0u; stepIndex < 121u; ++stepIndex) {
+        float z = -6.0 + float(stepIndex) * (12.0 / 120.0);
+        uint zTile = min((stepIndex * 4u) / 121u, 3u);
+        uint tileIndex = (zTile * 4u + yTile) * 4u + xTile;
+        uvec2 tapeRange = tileRanges[tileIndex];
+        float distanceValue = 0.0;
+        uint executedClauses = 0u;
+        if (!EvaluateAtTile(tapeRange.x, tapeRange.y, vec3(worldX, worldY, z),
+                distanceValue, executedClauses)) {
+            imageStore(outImage, pixel, vec4(-2.0, -1.0, -1.0, -1.0));
+            clauseCounts[uint(pixel.y * size.x + pixel.x)] = 0u;
+            return;
+        }
+        totalClauses += executedClauses;
+        if (distanceValue <= 0.0) {
+            hitDepth = z;
+            break;
+        }
+    }
+    // Material, selected channel and emission are fixture constants independent of the
+    // geometry tape, matching the rv-a1 requirement for observable-output parity.
+    imageStore(outImage, pixel, vec4(hitDepth, 0.25, 0.5, 0.75));
+    clauseCounts[uint(pixel.y * size.x + pixel.x)] = totalClauses;
+}
+)GLSL";
+    return ss.str();
+}
+
+std::string ReadWholeFile(const char* path) {
+    std::ifstream file(path);
+    if (!file.good()) return {};
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
+}
+
+struct GpuRecipeTapeInstruction {
+    std::uint32_t opCode;
+    float data[32];
+};
+static_assert(sizeof(GpuRecipeTapeInstruction) == sizeof(SdfInstruction));
+
+GpuRecipeTapeInstruction PackGpuInstruction(const SdfInstruction& instruction) {
+    GpuRecipeTapeInstruction packed{};
+    packed.opCode = instruction.opCode;
+    std::memcpy(packed.data, instruction.data, sizeof(packed.data));
+    return packed;
+}
+
+using TileTapeRange = std::array<std::uint32_t, 2>;
+
+std::vector<GpuRecipeTapeInstruction> PackGpuTape(std::span<const SdfInstruction> instructions) {
+    std::vector<GpuRecipeTapeInstruction> packed;
+    packed.reserve(instructions.size());
+    for (const SdfInstruction& instruction : instructions)
+        packed.push_back(PackGpuInstruction(instruction));
+    return packed;
+}
+
 class DeclaredPositionRenderTest : public ::testing::Test {
 protected:
     VkInstance       instance_       = VK_NULL_HANDLE;
@@ -95,6 +185,7 @@ protected:
     VkCommandPool    commandPool_    = VK_NULL_HANDLE;
     uint32_t         queueFamily_    = 0;
     bool             realGpuConfirmed_ = false;
+    bool             timestampsSupported_ = false;
     std::string      selectedDeviceName_;
 
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
@@ -159,7 +250,12 @@ protected:
         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &qfCount, qfs.data());
         bool found = false;
         for (uint32_t i = 0; i < qfCount; ++i) {
-            if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { queueFamily_ = i; found = true; break; }
+            if (qfs[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                queueFamily_ = i;
+                timestampsSupported_ = qfs[i].timestampValidBits != 0;
+                found = true;
+                break;
+            }
         }
         ASSERT_TRUE(found) << "No compute queue family on the selected GPU";
 
@@ -428,6 +524,241 @@ protected:
         vkDestroyImage(logicalDevice_, colorImg, nullptr); vkFreeMemory(logicalDevice_, colorMem, nullptr);
         vkDestroyBuffer(logicalDevice_, paramsBuf, nullptr); vkFreeMemory(logicalDevice_, paramsMem, nullptr);
     }
+
+    void RenderRecipeTape(const std::vector<std::uint32_t>& spirv,
+        const std::vector<GpuRecipeTapeInstruction>& tape,
+        const std::array<TileTapeRange, 64>& ranges, std::uint32_t w, std::uint32_t h,
+        std::vector<float>& outRgba32f, std::vector<std::uint32_t>& outClauseCounts,
+        double& gpuMilliseconds) {
+        ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
+        ASSERT_FALSE(spirv.empty());
+        ASSERT_FALSE(tape.empty());
+
+        constexpr VkFormat kColorFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+        VkImage colorImage = VK_NULL_HANDLE;
+        VkDeviceMemory colorMemory = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kColorFormat, colorImage, colorMemory));
+        VkImageView colorView = CreateView(colorImage, kColorFormat);
+        ASSERT_NE(colorView, VK_NULL_HANDLE);
+
+        const VkDeviceSize tapeBytes = tape.size() * sizeof(GpuRecipeTapeInstruction);
+        const VkDeviceSize rangeBytes = ranges.size() * sizeof(TileTapeRange);
+        const VkDeviceSize clauseBytes = static_cast<VkDeviceSize>(w) * h * sizeof(std::uint32_t);
+        VkBuffer tapeBuffer = VK_NULL_HANDLE; VkDeviceMemory tapeMemory = VK_NULL_HANDLE;
+        VkBuffer rangeBuffer = VK_NULL_HANDLE; VkDeviceMemory rangeMemory = VK_NULL_HANDLE;
+        VkBuffer clauseBuffer = VK_NULL_HANDLE; VkDeviceMemory clauseMemory = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(tapeBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            tapeBuffer, tapeMemory));
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(rangeBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            rangeBuffer, rangeMemory));
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(clauseBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            clauseBuffer, clauseMemory));
+        void* mapped = nullptr;
+        ASSERT_EQ(vkMapMemory(logicalDevice_, tapeMemory, 0, tapeBytes, 0, &mapped), VK_SUCCESS);
+        std::memcpy(mapped, tape.data(), static_cast<size_t>(tapeBytes));
+        vkUnmapMemory(logicalDevice_, tapeMemory);
+        ASSERT_EQ(vkMapMemory(logicalDevice_, rangeMemory, 0, rangeBytes, 0, &mapped), VK_SUCCESS);
+        std::memcpy(mapped, ranges.data(), static_cast<size_t>(rangeBytes));
+        vkUnmapMemory(logicalDevice_, rangeMemory);
+        ASSERT_EQ(vkMapMemory(logicalDevice_, clauseMemory, 0, clauseBytes, 0, &mapped), VK_SUCCESS);
+        std::memset(mapped, 0, static_cast<size_t>(clauseBytes));
+        vkUnmapMemory(logicalDevice_, clauseMemory);
+
+        VkShaderModuleCreateInfo shaderInfo{};
+        shaderInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shaderInfo.codeSize = spirv.size() * sizeof(std::uint32_t);
+        shaderInfo.pCode = spirv.data();
+        VkShaderModule shaderModule = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &shaderInfo, nullptr, &shaderModule), VK_SUCCESS);
+
+        VkDescriptorSetLayoutBinding bindings[4]{};
+        bindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        for (std::uint32_t binding = 1; binding < 4; ++binding)
+            bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+                VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        VkDescriptorSetLayoutCreateInfo setLayoutInfo{};
+        setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        setLayoutInfo.bindingCount = 4;
+        setLayoutInfo.pBindings = bindings;
+        VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &setLayoutInfo, nullptr, &setLayout), VK_SUCCESS);
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &setLayout;
+        VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreatePipelineLayout(logicalDevice_, &pipelineLayoutInfo, nullptr, &pipelineLayout), VK_SUCCESS);
+
+        VkComputePipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pipelineInfo.stage.module = shaderModule;
+        pipelineInfo.stage.pName = "main";
+        pipelineInfo.layout = pipelineLayout;
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &pipelineInfo,
+            nullptr, &pipeline), VK_SUCCESS);
+
+        VkQueryPoolCreateInfo queryPoolInfo{};
+        queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        queryPoolInfo.queryCount = 2;
+        VkQueryPool queryPool = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateQueryPool(logicalDevice_, &queryPoolInfo, nullptr, &queryPool), VK_SUCCESS);
+
+        VkDescriptorPoolSize poolSizes[2] = {
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+        };
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.maxSets = 1;
+        poolInfo.poolSizeCount = 2;
+        poolInfo.pPoolSizes = poolSizes;
+        VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+        ASSERT_EQ(vkCreateDescriptorPool(logicalDevice_, &poolInfo, nullptr, &descriptorPool), VK_SUCCESS);
+        VkDescriptorSetAllocateInfo setAllocateInfo{};
+        setAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        setAllocateInfo.descriptorPool = descriptorPool;
+        setAllocateInfo.descriptorSetCount = 1;
+        setAllocateInfo.pSetLayouts = &setLayout;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &setAllocateInfo, &descriptorSet), VK_SUCCESS);
+
+        VkDescriptorImageInfo imageInfo{VK_NULL_HANDLE, colorView, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorBufferInfo bufferInfos[3] = {
+            {tapeBuffer, 0, VK_WHOLE_SIZE},
+            {rangeBuffer, 0, VK_WHOLE_SIZE},
+            {clauseBuffer, 0, VK_WHOLE_SIZE},
+        };
+        VkWriteDescriptorSet writes[4]{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = descriptorSet; writes[0].dstBinding = 0;
+        writes[0].descriptorCount = 1; writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        writes[0].pImageInfo = &imageInfo;
+        for (std::uint32_t index = 0; index < 3; ++index) {
+            writes[index + 1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[index + 1].dstSet = descriptorSet;
+            writes[index + 1].dstBinding = index + 1;
+            writes[index + 1].descriptorCount = 1;
+            writes[index + 1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[index + 1].pBufferInfo = &bufferInfos[index];
+        }
+        vkUpdateDescriptorSets(logicalDevice_, 4, writes, 0, nullptr);
+
+        VkCommandBufferAllocateInfo commandAllocateInfo{};
+        commandAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        commandAllocateInfo.commandPool = commandPool_;
+        commandAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandAllocateInfo.commandBufferCount = 1;
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &commandAllocateInfo, &commandBuffer), VK_SUCCESS);
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        ASSERT_EQ(vkBeginCommandBuffer(commandBuffer, &beginInfo), VK_SUCCESS);
+        vkCmdResetQueryPool(commandBuffer, queryPool, 0, 2);
+
+        VkImageMemoryBarrier toGeneral{};
+        toGeneral.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toGeneral.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        toGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        toGeneral.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toGeneral.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toGeneral.image = colorImage;
+        toGeneral.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        toGeneral.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toGeneral);
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+            pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+        vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, 0);
+        vkCmdDispatch(commandBuffer, (w + 7) / 8, (h + 7) / 8, 1);
+        vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool, 1);
+
+        VkImageMemoryBarrier toTransfer{};
+        toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toTransfer.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.image = colorImage;
+        toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        toTransfer.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
+
+        const VkDeviceSize readbackBytes = static_cast<VkDeviceSize>(w) * h * 4 * sizeof(float);
+        VkBuffer readbackBuffer = VK_NULL_HANDLE; VkDeviceMemory readbackMemory = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateHostBuffer(readbackBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            readbackBuffer, readbackMemory));
+        VkBufferImageCopy imageCopy{};
+        imageCopy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        imageCopy.imageExtent = {w, h, 1};
+        vkCmdCopyImageToBuffer(commandBuffer, colorImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            readbackBuffer, 1, &imageCopy);
+
+        VkBufferMemoryBarrier hostBarriers[2]{};
+        hostBarriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hostBarriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        hostBarriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hostBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostBarriers[0].buffer = clauseBuffer;
+        hostBarriers[0].size = clauseBytes;
+        hostBarriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hostBarriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        hostBarriers[1].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hostBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostBarriers[1].buffer = readbackBuffer;
+        hostBarriers[1].size = readbackBytes;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+            | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            0, 0, nullptr, 2, hostBarriers, 0, nullptr);
+        ASSERT_EQ(vkEndCommandBuffer(commandBuffer), VK_SUCCESS);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+        ASSERT_EQ(vkQueueSubmit(queue_, 1, &submitInfo, VK_NULL_HANDLE), VK_SUCCESS);
+        ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+        std::uint64_t timestamps[2]{};
+        ASSERT_EQ(vkGetQueryPoolResults(logicalDevice_, queryPool, 0, 2, sizeof(timestamps),
+            timestamps, sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT), VK_SUCCESS);
+        VkPhysicalDeviceProperties physicalProperties{};
+        vkGetPhysicalDeviceProperties(physicalDevice_, &physicalProperties);
+        gpuMilliseconds = static_cast<double>(timestamps[1] - timestamps[0])
+            * static_cast<double>(physicalProperties.limits.timestampPeriod) / 1.0e6;
+
+        ASSERT_EQ(vkMapMemory(logicalDevice_, readbackMemory, 0, readbackBytes, 0, &mapped), VK_SUCCESS);
+        outRgba32f.resize(static_cast<size_t>(w) * h * 4);
+        std::memcpy(outRgba32f.data(), mapped, static_cast<size_t>(readbackBytes));
+        vkUnmapMemory(logicalDevice_, readbackMemory);
+        ASSERT_EQ(vkMapMemory(logicalDevice_, clauseMemory, 0, clauseBytes, 0, &mapped), VK_SUCCESS);
+        outClauseCounts.resize(static_cast<size_t>(w) * h);
+        std::memcpy(outClauseCounts.data(), mapped, static_cast<size_t>(clauseBytes));
+        vkUnmapMemory(logicalDevice_, clauseMemory);
+
+        vkDestroyBuffer(logicalDevice_, readbackBuffer, nullptr); vkFreeMemory(logicalDevice_, readbackMemory, nullptr);
+        vkFreeCommandBuffers(logicalDevice_, commandPool_, 1, &commandBuffer);
+        vkDestroyDescriptorPool(logicalDevice_, descriptorPool, nullptr);
+        vkDestroyQueryPool(logicalDevice_, queryPool, nullptr);
+        vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
+        vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(logicalDevice_, setLayout, nullptr);
+        vkDestroyShaderModule(logicalDevice_, shaderModule, nullptr);
+        vkDestroyImageView(logicalDevice_, colorView, nullptr);
+        vkDestroyImage(logicalDevice_, colorImage, nullptr); vkFreeMemory(logicalDevice_, colorMemory, nullptr);
+        vkDestroyBuffer(logicalDevice_, clauseBuffer, nullptr); vkFreeMemory(logicalDevice_, clauseMemory, nullptr);
+        vkDestroyBuffer(logicalDevice_, rangeBuffer, nullptr); vkFreeMemory(logicalDevice_, rangeMemory, nullptr);
+        vkDestroyBuffer(logicalDevice_, tapeBuffer, nullptr); vkFreeMemory(logicalDevice_, tapeMemory, nullptr);
+    }
 };
 
 } // namespace
@@ -523,4 +854,286 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
             << "declared=(" << c.declared.x << "," << c.declared.y << ") centroid Y mismatch — "
                "declared position did not move the rendered shape as expected";
     }
+}
+
+TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels) {
+    if (!timestampsSupported_)
+        GTEST_SKIP() << "Selected compute queue has no timestamp support for the GPU-time witness.";
+
+    constexpr std::uint32_t kWidth = 64;
+    constexpr std::uint32_t kHeight = 64;
+    constexpr std::uint32_t kTilesX = 4;
+    constexpr std::uint32_t kTilesY = 4;
+    constexpr std::uint32_t kTilesZ = 4;
+    constexpr std::uint32_t kSteps = 121;
+    constexpr std::uint32_t kTileCount = kTilesX * kTilesY * kTilesZ;
+    constexpr std::uint32_t kTilePixelsX = kWidth / kTilesX;
+    constexpr std::uint32_t kTilePixelsY = kHeight / kTilesY;
+    constexpr float kWorldHalfExtent = 6.0f;
+
+    auto sphere = [](float x, float y, float z, float radius) {
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
+        instruction.data[0] = x; instruction.data[1] = y; instruction.data[2] = z;
+        instruction.data[3] = radius;
+        return instruction;
+    };
+    auto combine = [](SdfOpCode opcode) {
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<std::uint8_t>(opcode);
+        return instruction;
+    };
+
+    // Fixed, bounded edit-heavy input: the 160 cut/patch spheres overlap one another in an
+    // off-tile cluster, and an overlapping patch subtree is buried under the local base.
+    // All observable material/channel outputs below are explicit constants.
+    std::vector<SdfInstruction> source;
+    source.reserve(325);
+    source.push_back(sphere(0.0f, 0.0f, 0.0f, 4.5f));
+    source.push_back(sphere(100.0f, 0.0f, 0.0f, 12.0f));
+    source.push_back(sphere(102.0f, 0.0f, 0.0f, 12.0f));
+    source.push_back(combine(SdfOpCode::Union));
+    source.push_back(combine(SdfOpCode::Union));
+    for (int edit = 0; edit < 160; ++edit) {
+        const float x = 100.0f + static_cast<float>(edit % 17) * 0.5f;
+        const float y = static_cast<float>(edit % 9 - 4) * 0.25f;
+        source.push_back(sphere(x, y, 0.0f, 10.0f));
+        source.push_back(combine(edit < 80 ? SdfOpCode::Subtract : SdfOpCode::Union));
+    }
+    ASSERT_EQ(source.size(), 325u);
+
+    const auto pixelWorld = [](std::uint32_t pixel, std::uint32_t extent) {
+        const float u = (static_cast<float>(pixel) + 0.5f) / static_cast<float>(extent);
+        return (u * 2.0f - 1.0f) * kWorldHalfExtent;
+    };
+    const auto stepWorld = [](std::uint32_t step) {
+        return -kWorldHalfExtent + static_cast<float>(step)
+            * ((2.0f * kWorldHalfExtent) / static_cast<float>(kSteps - 1));
+    };
+
+    const auto specializeStart = std::chrono::steady_clock::now();
+    std::vector<GpuRecipeTapeInstruction> prunedTape;
+    std::array<TileTapeRange, kTileCount> prunedRanges{};
+    std::uint64_t intervalEvaluations = 0;
+    std::uint64_t individualSpecializationNs = 0;
+    std::uint64_t prunedInstructions = 0;
+    for (std::uint32_t tileZ = 0; tileZ < kTilesZ; ++tileZ) {
+        const std::uint32_t firstStep = (tileZ * kSteps + kTilesZ - 1) / kTilesZ;
+        const std::uint32_t lastStep = ((tileZ + 1) * kSteps + kTilesZ - 1) / kTilesZ - 1;
+        for (std::uint32_t tileY = 0; tileY < kTilesY; ++tileY) {
+            const std::uint32_t firstY = tileY * kTilePixelsY;
+            const std::uint32_t lastY = (tileY + 1) * kTilePixelsY - 1;
+            for (std::uint32_t tileX = 0; tileX < kTilesX; ++tileX) {
+                const std::uint32_t firstX = tileX * kTilePixelsX;
+                const std::uint32_t lastX = (tileX + 1) * kTilePixelsX - 1;
+                constexpr float kDomainPadding = 0.001f;
+                const RecipeTileDomain domain{
+                    glm::vec3(pixelWorld(firstX, kWidth) - kDomainPadding,
+                        pixelWorld(firstY, kHeight) - kDomainPadding,
+                        stepWorld(firstStep) - kDomainPadding),
+                    glm::vec3(pixelWorld(lastX, kWidth) + kDomainPadding,
+                        pixelWorld(lastY, kHeight) + kDomainPadding,
+                        stepWorld(lastStep) + kDomainPadding)};
+                const auto specialized = SpecializeRecipeTapeForTile(source, domain);
+                ASSERT_EQ(specialized.stats.fallback, RecipeTileFallback::None)
+                    << "tile=" << tileX << "," << tileY << "," << tileZ;
+                ASSERT_EQ(specialized.instructions.size(), 1u)
+                    << "tile=" << tileX << "," << tileY << "," << tileZ;
+                const std::uint32_t tileIndex = (tileZ * kTilesY + tileY) * kTilesX + tileX;
+                prunedRanges[tileIndex] = {
+                    static_cast<std::uint32_t>(prunedTape.size()),
+                    static_cast<std::uint32_t>(specialized.instructions.size())};
+                const auto packed = PackGpuTape(specialized.instructions);
+                prunedTape.insert(prunedTape.end(), packed.begin(), packed.end());
+                intervalEvaluations += specialized.stats.intervalEvaluations;
+                individualSpecializationNs += specialized.stats.specializationNanoseconds;
+                prunedInstructions += specialized.stats.prunedInstructions;
+            }
+        }
+    }
+    const double specializationCpuMilliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - specializeStart).count();
+    ASSERT_EQ(prunedRanges.size(), kTileCount);
+    ASSERT_EQ(prunedTape.size(), kTileCount);
+
+    std::array<TileTapeRange, kTileCount> fullRanges{};
+    fullRanges.fill(TileTapeRange{0u, static_cast<std::uint32_t>(source.size())});
+    const auto fullTape = PackGpuTape(source);
+    ASSERT_EQ(fullTape.size(), source.size());
+
+    const std::string sdfCoreGlsl = ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
+    const std::string tapeGlsl = ReadWholeFile(SDF_RECIPE_TAPE_GLSL_PATH);
+    ASSERT_FALSE(sdfCoreGlsl.empty()) << "Cannot read generated SDF kernels: " << SDF_CORE_KERNELS_GLSL_PATH;
+    ASSERT_FALSE(tapeGlsl.empty()) << "Cannot read generated tape evaluator: " << SDF_RECIPE_TAPE_GLSL_PATH;
+    const std::string unrolledField = EmitProceduralFieldFunctionGlsl(source.data(),
+        static_cast<std::uint32_t>(source.size()), 0);
+
+    const std::string tapeAdapter = R"GLSL(
+bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
+    if (EvalRecipeTape(offset, count, p, distanceValue, clauses)) return true;
+    float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    distanceValue = sdfRecipe_0(p, params);
+    clauses = count;
+    return true;
+}
+)GLSL";
+    const std::string tapeShaderSource = ComposeTileTapeRaymarchShader(
+        sdfCoreGlsl, tapeGlsl + "\n" + unrolledField, tapeAdapter);
+
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions options;
+    options.sourceLanguage = ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    const auto tapeCompileStart = std::chrono::steady_clock::now();
+    const auto tapeCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+        tapeShaderSource, "main", options);
+    const double tapeCompileMilliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - tapeCompileStart).count();
+    ASSERT_TRUE(tapeCompile.success) << "Tape GLSL compile failed:\n" << tapeCompile.GetFullLog()
+        << "\n--- source ---\n" << tapeShaderSource;
+
+    const std::string unrolledAdapter = R"GLSL(
+bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
+    float params[6] = float[6](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    distanceValue = sdfRecipe_0(p, params);
+    clauses = count;
+    return true;
+}
+)GLSL";
+    const std::string unrolledShaderSource = ComposeTileTapeRaymarchShader(
+        sdfCoreGlsl, unrolledField, unrolledAdapter);
+    const auto unrolledCompileStart = std::chrono::steady_clock::now();
+    const auto unrolledCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+        unrolledShaderSource, "main", options);
+    const double unrolledCompileMilliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - unrolledCompileStart).count();
+    ASSERT_TRUE(unrolledCompile.success) << "Unrolled GLSL compile failed:\n"
+        << unrolledCompile.GetFullLog() << "\n--- source ---\n" << unrolledShaderSource;
+
+    std::vector<float> fullPixels;
+    std::vector<std::uint32_t> fullClauses;
+    std::vector<double> fullGpuTimes;
+    for (int run = 0; run < 4; ++run) {
+        std::vector<float> pixels;
+        std::vector<std::uint32_t> clauses;
+        double gpuMs = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, fullTape, fullRanges,
+            kWidth, kHeight, pixels, clauses, gpuMs));
+        if (run > 0) {
+            EXPECT_EQ(std::memcmp(fullPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
+            EXPECT_EQ(fullClauses, clauses);
+            fullGpuTimes.push_back(gpuMs);
+        }
+        fullPixels = std::move(pixels);
+        fullClauses = std::move(clauses);
+    }
+
+    std::vector<float> prunedPixels;
+    std::vector<std::uint32_t> prunedClauses;
+    std::vector<double> prunedGpuTimes;
+    for (int run = 0; run < 4; ++run) {
+        std::vector<float> pixels;
+        std::vector<std::uint32_t> clauses;
+        double gpuMs = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(tapeCompile.spirv, prunedTape, prunedRanges,
+            kWidth, kHeight, pixels, clauses, gpuMs));
+        if (run > 0) {
+            EXPECT_EQ(std::memcmp(prunedPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
+            EXPECT_EQ(prunedClauses, clauses);
+            prunedGpuTimes.push_back(gpuMs);
+        }
+        prunedPixels = std::move(pixels);
+        prunedClauses = std::move(clauses);
+    }
+
+    std::vector<float> unrolledPixels;
+    std::vector<std::uint32_t> unrolledClauses;
+    std::vector<double> unrolledGpuTimes;
+    for (int run = 0; run < 4; ++run) {
+        std::vector<float> pixels;
+        std::vector<std::uint32_t> clauses;
+        double gpuMs = 0.0;
+        ASSERT_NO_FATAL_FAILURE(RenderRecipeTape(unrolledCompile.spirv, fullTape, fullRanges,
+            kWidth, kHeight, pixels, clauses, gpuMs));
+        if (run > 0) {
+            EXPECT_EQ(std::memcmp(fullPixels.data(), pixels.data(), pixels.size() * sizeof(float)), 0);
+            EXPECT_EQ(fullClauses, clauses);
+            unrolledGpuTimes.push_back(gpuMs);
+        }
+        unrolledPixels = std::move(pixels);
+        unrolledClauses = std::move(clauses);
+    }
+
+    const auto totalClauses = [](const std::vector<std::uint32_t>& counts) {
+        std::uint64_t total = 0;
+        for (const std::uint32_t count : counts) total += count;
+        return total;
+    };
+    const auto hitPixels = [](const std::vector<float>& pixels) {
+        std::uint32_t hits = 0;
+        for (std::size_t pixel = 0; pixel < pixels.size() / 4; ++pixel)
+            if (pixels[pixel * 4] != -1000.0f) ++hits;
+        return hits;
+    };
+    const auto median = [](std::vector<double> values) {
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
+    };
+
+    ASSERT_EQ(fullPixels.size(), prunedPixels.size());
+    const std::size_t differingBytes = [&]() {
+        const auto* full = reinterpret_cast<const std::uint8_t*>(fullPixels.data());
+        const auto* pruned = reinterpret_cast<const std::uint8_t*>(prunedPixels.data());
+        std::size_t differences = 0;
+        for (std::size_t byte = 0; byte < fullPixels.size() * sizeof(float); ++byte)
+            if (full[byte] != pruned[byte]) ++differences;
+        return differences;
+    }();
+    EXPECT_EQ(differingBytes, 0u);
+    EXPECT_EQ(std::memcmp(fullPixels.data(), unrolledPixels.data(), fullPixels.size() * sizeof(float)), 0);
+    EXPECT_EQ(hitPixels(fullPixels), hitPixels(prunedPixels));
+    EXPECT_EQ(hitPixels(fullPixels), hitPixels(unrolledPixels));
+    EXPECT_GT(hitPixels(fullPixels), 0u);
+    for (std::size_t pixel = 0; pixel < fullPixels.size() / 4; ++pixel) {
+        EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 1], 0.25f);
+        EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 2], 0.5f);
+        EXPECT_FLOAT_EQ(fullPixels[pixel * 4 + 3], 0.75f);
+    }
+
+    const std::uint64_t fullClauseTotal = totalClauses(fullClauses);
+    const std::uint64_t prunedClauseTotal = totalClauses(prunedClauses);
+    const double fullClausesPerPixel = static_cast<double>(fullClauseTotal) / (kWidth * kHeight);
+    const double prunedClausesPerPixel = static_cast<double>(prunedClauseTotal) / (kWidth * kHeight);
+    const double clauseReductionPercent = fullClauseTotal == 0 ? 0.0
+        : 100.0 * (1.0 - static_cast<double>(prunedClauseTotal) / fullClauseTotal);
+    const std::uint64_t fullUploadBytes = fullTape.size() * sizeof(GpuRecipeTapeInstruction)
+        + fullRanges.size() * sizeof(TileTapeRange);
+    const std::uint64_t prunedUploadBytes = prunedTape.size() * sizeof(GpuRecipeTapeInstruction)
+        + prunedRanges.size() * sizeof(TileTapeRange);
+    const double fullGpuMs = median(fullGpuTimes);
+    const double prunedGpuMs = median(prunedGpuTimes);
+    const double unrolledGpuMs = median(unrolledGpuTimes);
+
+    std::cout << "[RecipeTileTape] device=" << selectedDeviceName_
+        << " sourceInstructions=" << source.size() << " tiles=" << kTileCount
+        << " hitPixels=" << hitPixels(fullPixels) << "/" << (kWidth * kHeight)
+        << " fullClausesPerPixel=" << fullClausesPerPixel
+        << " prunedClausesPerPixel=" << prunedClausesPerPixel
+        << " reductionPercent=" << clauseReductionPercent
+        << " proofEvaluations=" << intervalEvaluations
+        << " prunedSourceInstructions=" << prunedInstructions
+        << " cpuSpecializationMs=" << specializationCpuMilliseconds
+        << " summedTileSpecializationNs=" << individualSpecializationNs
+        << " fullUploadBytes=" << fullUploadBytes
+        << " prunedUploadBytes=" << prunedUploadBytes
+        << " fullGpuMs=" << fullGpuMs << " prunedGpuMs=" << prunedGpuMs
+        << " unrolledGpuMs=" << unrolledGpuMs
+        << " tapeCompileMs=" << tapeCompileMilliseconds
+        << " unrolledCompileMs=" << unrolledCompileMilliseconds
+        << " tapeShaderBytes=" << tapeShaderSource.size()
+        << " unrolledShaderBytes=" << unrolledShaderSource.size()
+        << " totalSerialMs=" << specializationCpuMilliseconds + prunedGpuMs << std::endl;
+
+    EXPECT_GE(clauseReductionPercent, 25.0);
+    EXPECT_EQ(fullClauseTotal, totalClauses(unrolledClauses));
+    EXPECT_EQ(fullClauses, unrolledClauses);
 }

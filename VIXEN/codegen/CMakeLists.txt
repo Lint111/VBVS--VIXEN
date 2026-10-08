@@ -235,6 +235,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp" _out_recipe_simd_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc" _out_recipe_eval_dispatch_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc" _out_recipe_glsl_dispatch_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl" _out_recipe_tape_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h" _out_hud_header_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml" _out_hud_rml_run)
         # Inc-A2: EditorLayers [View] schema — the editor layer view's generated data-model header.
@@ -309,6 +310,7 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_recipe_simd_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeSimd.g.hpp")
         set(_out_recipe_eval_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeEvalDispatch.g.inc")
         set(_out_recipe_glsl_dispatch_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/SdfRecipeCodegenGlslDispatch.g.inc")
+        set(_out_recipe_tape_glsl_run "${VIXEN_ROOT}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl")
         set(_out_hud_header_run "${VIXEN_ROOT}/application/main/include/Generated/Hud.g.h")
         set(_out_hud_rml_run "${VIXEN_ROOT}/libraries/RenderGraph/assets/ui/Hud.view.rml")
         set(_out_editor_layers_header_run "${VIXEN_ROOT}/application/editor/include/Generated/EditorLayers.g.h")
@@ -508,14 +510,15 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         --recipe-kernels-extra "${_recipe_op_declarations_run}"
         --out-header "${_out_recipe_simd_run}"
         --out-eval-dispatch "${_out_recipe_eval_dispatch_run}"
-        --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}")
+        --out-glsl-dispatch "${_out_recipe_glsl_dispatch_run}"
+        --out-tape-glsl "${_out_recipe_tape_glsl_run}")
     vixen_add_codegen_check(recipe_simd_check ALL
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args} --check
-        COMMENT "[codegen] golden check: RecipeSimd and CPU/GLSL dispatch match merged recipe declarations"
+        COMMENT "[codegen] golden check: recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator match merged declarations"
         VERBATIM)
     add_custom_target(recipe_simd_regen
         COMMAND ${_CODEGEN_RUNNER} ${_recipe_simd_args}
-        COMMENT "[codegen] regenerate RecipeSimd and CPU/GLSL dispatch from merged recipe declarations"
+        COMMENT "[codegen] regenerate recipe SIMD, CPU/GLSL dispatch, and GPU tape evaluator from merged declarations"
         VERBATIM)
 
     set(_sdf_core_kernel_args

@@ -926,6 +926,7 @@ else()
 endif()
 target_compile_definitions(test_recipe_declared_position_render PRIVATE
     SDF_CORE_KERNELS_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/SdfCoreKernels.g.glsl"
+    SDF_RECIPE_TAPE_GLSL_PATH="${CMAKE_SOURCE_DIR}/libraries/SVO/shaders/recipe/RecipeTapeEval.g.glsl"
 )
 set_target_properties(test_recipe_declared_position_render PROPERTIES FOLDER "Tests/SVO Tests")
 if(TARGET TBB::tbb)
@@ -1053,6 +1054,15 @@ else()
 endif()
 set_target_properties(test_recipe_bounds PROPERTIES FOLDER "Tests/SVO Tests")
 vixen_gtest_discover_tests(SVO test_recipe_bounds)
+
+# ===========================================================================
+# Generated interval proof and exact per-tile recipe tape reduction.
+# ===========================================================================
+add_executable(test_recipe_interval_pruning test_recipe_interval_pruning.cpp)
+target_link_libraries(test_recipe_interval_pruning PRIVATE GTest::gtest_main SVO)
+enable_recipe_strict_fp(test_recipe_interval_pruning)
+set_target_properties(test_recipe_interval_pruning PROPERTIES FOLDER "Tests/SVO Tests")
+vixen_gtest_discover_tests(SVO test_recipe_interval_pruning)
 
 # ===========================================================================
 # Recipe Occupancy Grid Tests (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13 —
