@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-- `0e405d71ec4b8f93d9d2ec34aa747d6d91eb702a` — scene, capture test, and visual artifacts. The latest two full repeat-pixel runs passed; the earlier mismatch is recorded below. The report itself is committed in the follow-on report commit.
+- Run 2 implementation tip: `bff5507184efcfb6bbbcaf6a079d1e28b741f2fc` — R424 affine scene placement and before/after capture sheets. The final Run 2 witness and capture disposition are recorded below.
 
 ## Scene and capture
 
@@ -103,3 +103,55 @@ Four consolidation proposals were appended through the SPT CLI and included in t
 - proposed: Size queued VIXEN build admission to the actual Ninja job count
 - proposed: Expose HDR exposure compensation as typed render configuration
 - proposed: Keep repeated look-dev captures in fresh Vulkan processes
+
+## Run 2 — merge R424 instance transforms and re-witness
+
+Merged `origin/wave/authoring-convergence` at `846ab1a999a542f663ee08764fe69b3de2beade3` in merge commit `2e136a3525a3599561c2430d1a285d160665dfbf`. Git reported no textual conflicts. `LookdevSceneDefinition.h` now composes translation, rotation, and scale into one affine matrix and submits it with `SetInstanceTransform`; material values stay in the cold record. All look-dev subjects use the transform stream. Presets, orbit angles, no-HUD capture, ambient values, and exposure presets are unchanged.
+
+The implementation and visual sheets are committed as `bff55071` (`feat(lookdev): place scene instances through affine transforms`). Generated interfaces were regenerated from source: `sdi_tool merge-variants` and `--check` passed. CodegenTool restore and Release build passed; MiningBeamBuffer `--check` passed. The queued fresh merged-tree build passed all 174 steps and all 22 codegen checks (`.tmp/lookdev-run2-build-after-affine.log`).
+
+### Look-dev capture comparison
+
+The deterministic look-dev capture test passed twice. Each run compared all 16 state/angle image pairs; both runs were 16/16 byte-identical internally (`.tmp/lookdev-run2-lookdev-test-1.log`, `.tmp/lookdev-run2-lookdev-test-2.log`). Compared with Run 1, angle 0 is byte-identical for all four presets. Angles 1–3 have the following localized deltas in each preset:
+
+| Preset(s) | Angle 1 | Angle 2 | Angle 3 |
+|---|---|---|---|
+| Midday, late afternoon, overcast, night/service | 151 pixels; bbox x=299–309, y=238–253 | 220 pixels; bbox x=190–205, y=240–253 | 23 pixels; bbox x=198–200, y=200–211 |
+
+The changed files are `midday-angle-{1,2,3}.png`, `late-afternoon-angle-{1,2,3}.png`, `overcast-angle-{1,2,3}.png`, and `night-service-angle-{1,2,3}.png`. The bounded changes are consistent with the translated lamp/body geometry using the affine ray and normal path; this is an inference from their location and the unchanged angle-0 frames. No visual tuning was done.
+
+- [Run 1 contact sheet](visual/lookdev-run2-before-contact-sheet.png)
+- [Run 2 contact sheet](visual/lookdev-run2-after-contact-sheet.png)
+
+### Shared capture comparison
+
+Fresh detached builds of the exact pre-merge look-dev tip `25b865d44d8c2bd9c41d15a7b93b96b5af2db6ed` and the R424 parent `92804a8f67c48653514c042a8f7b87b70bbb642b` produced all 26 shared images. Their capture producer CTests passed 12/12. Against the pre-merge look-dev tip, 22/26 images are byte-identical. The four differences are `offscreen/editor/editor_capture_{5,45,75,105}.png`, all confined to x=234–265, y=232–263:
+
+- Frames 5 and 75: 82 pixels differ; max channel delta 180.
+- Frames 45 and 105: 1,024 pixels differ; max channel delta 126.
+
+The other 22 images match exactly: all six cel-shading, six headless Cornell/starfield, seven native editor/HUD, and three offscreen HUD captures. A repeated merged offscreen editor producer matched all four merged frames byte-for-byte, so the difference is deterministic. The before/after sheets show the editor document instance at the center of the frame:
+
+- [Pre-merge shared editor captures](visual/lookdev-run2-shared-before-contact-sheet.png)
+- [Merged shared editor captures](visual/lookdev-run2-shared-after-contact-sheet.png)
+
+Against the raw `92804a8f` R424 parent, the differing set is instead the four native editor frames. The pre-merge Run 1 tree adds the retained `-3.25 EV` default in `ExposureTonemap.comp`; its native editor captures match the merged tree, while its offscreen editor captures are the four that change above. This separates the existing Run 1 exposure difference from the R424 offscreen editor delta. The exact 26-frame identity condition is therefore not fully met by the current merged tree: 22/26 match the pre-merge look-dev captures, with the four deterministic editor-frame changes documented here.
+
+### Engine witnesses and findings
+
+- Full RenderGraph CTest: 1,340/1,340 passed, 6 registered skips (`.tmp/lookdev-run2-rendergraph-full.log`).
+- Full SVO CTest: 750 passed, one known T-1449 failure, `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, diagnostic `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94` (`.tmp/lookdev-run2-svo-full.log`). `reports/insttransform.md` records the same failure and diagnostic on the exact `92804a8f` base; it is outside this change's dependency and verification scope.
+- Final focused capture/R424/Cel run: 25/25 passed (`.tmp/lookdev-run2-focused-captures-final.log`). An earlier focused Cornell run failed once; an isolated retry passed 1/1 and the final full focused rerun passed Cornell again (`.tmp/lookdev-run2-cornell-isolated-retry.log`).
+- Native WSLg capture witness: 1/1 passed with caller `DISPLAY` and `WAYLAND_DISPLAY` unset (`.tmp/lookdev-run2-native-capture.log`). Repeated native and offscreen editor captures were byte-identical within the merged tree.
+- The Windows-native route was attempted through the global queue but stopped before configure because `C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe` is unavailable on this host. The documented WSL preset route was available and passed the required build and captures.
+
+### STOPs
+
+- The strict shared-capture identity check is 22/26 against the pre-merge Run 1 tree. The four deterministic offscreen editor changes are localized and consistent with the editor document instance now using the affine stream at binding 47. They are recorded with before/after sheets; the look itself was not retuned. If all 26 shared images must remain byte-identical with no R424 visual exception, that gate remains unresolved.
+
+### Run 2 consolidation issues
+
+- proposed: Align CodegenTool run checks with the built configuration
+- proposed: Preflight Windows toolchain availability before native VIXEN builds
+- proposed: Propagate cancellation through queued build process groups
+- proposed: Bind shared capture baselines to a fresh source SHA
