@@ -1,11 +1,14 @@
 #include <gtest/gtest.h>
 
 #include "Recipe/RecipeTileSpecialization.h"
+#include "Recipe/RecipeWholeDomainCompaction.h"
 #include "Recipe/SdfRecipeEval.h"
 
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -55,6 +58,33 @@ void ExpectSameField(const std::vector<SdfInstruction>& source,
             }
         }
     }
+}
+
+void ExpectSameInstructions(const std::vector<SdfInstruction>& a,
+    const std::vector<SdfInstruction>& b) {
+    ASSERT_EQ(a.size(), b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        EXPECT_EQ(a[i].opCode, b[i].opCode) << "instruction " << i;
+        EXPECT_EQ(std::memcmp(a[i].data, b[i].data, sizeof(a[i].data)), 0)
+            << "instruction " << i;
+    }
+}
+
+RecipeWholeDomainCompactionRequest DeclaredWholeDomainRequest(
+    const RecipeTileDomain& domain, std::uint64_t sourceRevision = 7) {
+    RecipeWholeDomainCompactionRequest request;
+    request.sourceRevision = sourceRevision;
+    request.domain = domain;
+    request.domainIsEnforced = true;
+    request.requiredOutputChannels = kAllRecipeOutputChannels;
+    request.channelDependencies = {
+        RecipeChannelDependency::GeometryWinner,
+        RecipeChannelDependency::Independent,
+        RecipeChannelDependency::Independent,
+        RecipeChannelDependency::Independent,
+        RecipeChannelDependency::Independent,
+    };
+    return request;
 }
 
 TEST(RecipeIntervalPruning, SphereAndBoxLeavesUseStrictHardUnionProofs) {
@@ -152,6 +182,158 @@ TEST(RecipeIntervalPruning, EditHeavyBuriedBranchesReduceOnlyTheTileTape) {
     EXPECT_LT(result.stats.retainedInstructions, result.stats.sourceInstructions / 4u);
     EXPECT_GT(result.stats.intervalEvaluations, 200u);
     ExpectSameField(source, result.instructions, kNearOrigin);
+}
+
+TEST(RecipeWholeDomainCompaction, RemovesFarBranchesOnlyInsideDeclaredEnforcedDomain) {
+    const std::vector<SdfInstruction> source = {
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Sphere(80.0f, 0.0f, 0.0f, 2.0f),
+        Combine(SdfOpCode::Union),
+    };
+    const auto sourceBefore = source;
+    const RecipeTileDomain domain{{-2.0f, -2.0f, -2.0f}, {2.0f, 2.0f, 2.0f}};
+    const auto result = CompactRecipeOverWholeDomain(
+        source, DeclaredWholeDomainRequest(domain, 41));
+
+    ASSERT_EQ(result.sourceRevision, 41u);
+    ASSERT_EQ(result.instructions.size(), 1u);
+    EXPECT_EQ(result.stats.removedByIntervalProof, 2u);
+    EXPECT_TRUE(result.stats.intervalProofApplied);
+    ExpectSameInstructions(source, sourceBefore);
+    ExpectSameField(source, result.instructions, domain);
+}
+
+TEST(RecipeWholeDomainCompaction, UndeclaredEmissionBlocksGlobalBranchRemoval) {
+    const std::vector<SdfInstruction> source = {
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Sphere(80.0f, 0.0f, 0.0f, 2.0f),
+        Combine(SdfOpCode::Union),
+    };
+    auto request = DeclaredWholeDomainRequest(
+        RecipeTileDomain{{-2.0f, -2.0f, -2.0f}, {2.0f, 2.0f, 2.0f}});
+    request.channelDependencies[static_cast<std::size_t>(RecipeOutputChannel::Emission)] =
+        RecipeChannelDependency::Undeclared;
+
+    const auto result = CompactRecipeOverWholeDomain(source, request);
+    EXPECT_EQ(result.instructions.size(), source.size());
+    EXPECT_EQ(result.stats.removedByIntervalProof, 0u);
+    EXPECT_FALSE(result.stats.intervalProofApplied);
+    EXPECT_EQ(result.stats.blockedChannels,
+        (std::vector<RecipeOutputChannel>{RecipeOutputChannel::Emission}));
+}
+
+TEST(RecipeWholeDomainCompaction, UnenforcedBoundsBlockIntervalBranchRemoval) {
+    const std::vector<SdfInstruction> source = {
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Sphere(80.0f, 0.0f, 0.0f, 2.0f),
+        Combine(SdfOpCode::Union),
+    };
+    auto request = DeclaredWholeDomainRequest(
+        RecipeTileDomain{{-2.0f, -2.0f, -2.0f}, {2.0f, 2.0f, 2.0f}});
+    request.domainIsEnforced = false;
+
+    const auto result = CompactRecipeOverWholeDomain(source, request);
+    EXPECT_EQ(result.instructions.size(), source.size());
+    EXPECT_EQ(result.stats.removedByIntervalProof, 0u);
+    EXPECT_FALSE(result.stats.intervalProofApplied);
+    EXPECT_TRUE(result.stats.domainNotEnforced);
+}
+
+TEST(RecipeWholeDomainCompaction, RemovesGeneratedExactNoOpsWithoutChannelAssumptions) {
+    const std::vector<SdfInstruction> source = {
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Combine(SdfOpCode::Output),
+        Combine(SdfOpCode::ComposeFloat3),
+        Combine(SdfOpCode::Passthrough),
+    };
+    RecipeWholeDomainCompactionRequest request;
+    request.domainIsEnforced = false;
+    request.requiredOutputChannels = kAllRecipeOutputChannels;
+
+    const auto result = CompactRecipeOverWholeDomain(source, request);
+    ASSERT_EQ(result.instructions.size(), 1u);
+    EXPECT_EQ(result.stats.removedIdentityNoOps, 3u);
+    EXPECT_EQ(result.instructions.front().opCode, static_cast<std::uint8_t>(SdfOpCode::Sphere));
+}
+
+TEST(RecipeWholeDomainCompaction, DuplicateUnionRequiresMatchingWinnerMetadata) {
+    const std::vector<SdfInstruction> duplicateUnion = {
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Combine(SdfOpCode::Union),
+    };
+    auto request = DeclaredWholeDomainRequest(kNearOrigin);
+    request.channelDependencies[static_cast<std::size_t>(RecipeOutputChannel::Material)] =
+        RecipeChannelDependency::GeometryWinner;
+    request.channelDependencies[static_cast<std::size_t>(RecipeOutputChannel::Provenance)] =
+        RecipeChannelDependency::GeometryWinner;
+
+    const auto tieSensitive = CompactRecipeOverWholeDomain(duplicateUnion, request);
+    EXPECT_EQ(tieSensitive.instructions.size(), duplicateUnion.size());
+    EXPECT_EQ(tieSensitive.stats.removedIdempotentDuplicateInstructions, 0u);
+
+    request.duplicateSelectionAndProvenanceEquivalent = true;
+    const auto tieEquivalent = CompactRecipeOverWholeDomain(duplicateUnion, request);
+    EXPECT_EQ(tieEquivalent.instructions.size(), 1u);
+    EXPECT_EQ(tieEquivalent.stats.removedIdempotentDuplicateInstructions, 2u);
+}
+
+TEST(RecipeWholeDomainCompaction, InvalidPrimitivePreflightPreventsDuplicateRemoval) {
+    const SdfInstruction invalid = Sphere(0.0f, 0.0f, 0.0f,
+        std::numeric_limits<float>::quiet_NaN());
+    const std::vector<SdfInstruction> source = {
+        invalid,
+        invalid,
+        Combine(SdfOpCode::Union),
+    };
+    auto request = DeclaredWholeDomainRequest(kNearOrigin);
+    request.duplicateSelectionAndProvenanceEquivalent = true;
+
+    const auto result = CompactRecipeOverWholeDomain(source, request);
+    ExpectSameInstructions(result.instructions, source);
+    EXPECT_EQ(result.stats.intervalFallback, RecipeTileFallback::InvalidPrimitive);
+    EXPECT_EQ(result.stats.removedIdempotentDuplicateInstructions, 0u);
+}
+
+TEST(RecipeWholeDomainCompaction, DoesNotCancelCutAndRefillAsAnAlgebraicPair) {
+    const std::vector<SdfInstruction> cutAndRefill = {
+        Sphere(0.0f, 0.0f, 0.0f, 2.0f),
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Combine(SdfOpCode::Subtract),
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Combine(SdfOpCode::Union),
+    };
+    auto request = DeclaredWholeDomainRequest(
+        RecipeTileDomain{{-2.0f, -2.0f, -2.0f}, {2.0f, 2.0f, 2.0f}});
+    request.duplicateSelectionAndProvenanceEquivalent = true;
+
+    const auto result = CompactRecipeOverWholeDomain(cutAndRefill, request);
+    EXPECT_EQ(result.instructions.size(), cutAndRefill.size());
+    EXPECT_EQ(result.stats.removedByIntervalProof, 0u);
+    ExpectSameField(cutAndRefill, result.instructions, request.domain);
+}
+
+TEST(RecipeWholeDomainCompaction, RejectsRemovalOfAVisibleCornerTerm) {
+    const std::vector<SdfInstruction> source = {
+        Sphere(0.0f, 0.0f, 0.0f, 1.0f),
+        Sphere(1.1f, 0.0f, 0.0f, 0.5f),
+        Combine(SdfOpCode::Union),
+    };
+    const RecipeTileDomain domain{{-2.0f, -2.0f, -2.0f}, {2.0f, 2.0f, 2.0f}};
+    const auto compacted = CompactRecipeOverWholeDomain(
+        source, DeclaredWholeDomainRequest(domain));
+    const std::vector<SdfInstruction> deliberatelyWrong = {source.front()};
+    const glm::vec3 visibleCorner(1.3f, 0.0f, 0.0f);
+    const float sourceValue = evalRecipe(source.data(), static_cast<std::uint32_t>(source.size()), visibleCorner);
+    const float wrongValue = evalRecipe(deliberatelyWrong.data(),
+        static_cast<std::uint32_t>(deliberatelyWrong.size()), visibleCorner);
+
+    EXPECT_EQ(compacted.instructions.size(), source.size());
+    EXPECT_EQ(compacted.stats.removedByIntervalProof, 0u);
+    EXPECT_LT(sourceValue, 0.0f);
+    EXPECT_GT(wrongValue, 0.0f);
+    std::cout << "[RecipeWholeDomain] rejected visible-corner removal at (1.3,0,0): source="
+        << sourceValue << " wrong=" << wrongValue << " intervalRemoved=0" << std::endl;
 }
 
 } // namespace
