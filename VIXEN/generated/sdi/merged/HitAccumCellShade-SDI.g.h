@@ -693,17 +693,17 @@ struct OccupancyGridBuffer {
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x6dc24fcf8fba6cee (for runtime discovery)
+ * Layout VixenHash: 0x21ad6abbc3ea8eae (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x6dc24fcf8fba6ceeULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x21ad6abbc3ea8eaeULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 144;
+        static constexpr uint32_t SIZE = 208;
         static constexpr uint32_t BINDING = 0;
     };
 
