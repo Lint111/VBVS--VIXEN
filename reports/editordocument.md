@@ -2,8 +2,26 @@
 
 ## LANDABLE NOW
 
-- Kernel: `e807763f4c856268c4b9b0a37c868c1383d60005` (named VoxelDocument parameter declaration and generated C++/Python readers; includes the merge from `origin/main`).
-- VIXEN: `b235fb11f7e07629e3dc0b2db3c40f327ffd9880` (editor rule layers, parameter controls and snapshots, bounds framing, preview/bake wiring, tests, and consolidation proposals). The VIXEN wave ref remained at the lane base `92804a8f67c48653514c042a8f7b87b70bbb642b` through the final witness, so no additional wave merge was needed.
+- Kernel: `92cfa58c3c7078aac01895d7ff1191c522cfe6c4` (landed main containing `e807763f4c856268c4b9b0a37c868c1383d60005`, named recipe parameter metadata).
+- VIXEN: `3b6c73c569be869ea55c246f65a8c46e4d5cac7d` (editor implementation plus tracked landed-kernel pin). Run 2 merges wave `846ab1a999a542f663ee08764fe69b3de2beade3` in `5ba8a169`; final report/proposal commit follows this implementation tip.
+
+## Run 2 — merged wave and landed kernel
+
+**Merge and pin.** Run 2 started from `5cf28e6ff89a733059af096c652206d68f300b8b`, merged `origin/wave/authoring-convergence` at `846ab1a999a542f663ee08764fe69b3de2beade3`, and set `_vixen_tracked_yeroket_kernel_sha` in `VIXEN/codegen/CMakeLists.txt` to current kernel main `92cfa58c3c7078aac01895d7ff1191c522cfe6c4`. The CMake cache override is empty. The merge conflict in `EditorApplication.cpp` was resolved by retaining the editor's procedural provider, recipe id, and six snapshot parameters while initializing the R424 affine transform stream with identity translation/scale. This preserves editor parameter data in the cold material record while R424 supplies the instance transform through binding 47.
+
+**Configure recovery and fresh build.** The queued configure under `--resource build` waited on a 17 GB class-max reservation and was cancelled before CMake started (exit 130; no configure result). Re-running the configure-only command through the live queue as `--resource light` passed and printed `[codegen] using tracked Yeroket kernel pin: 92cfa58c3c7078aac01895d7ff1191c522cfe6c4` (`/home/liory/.local/state/undertow/undertow-box-logs/1791460023-light-run2-configure-light.log`). CMake configure emitted a nonfatal Vulkan SDK `glslang` directory diagnostic but returned 0. A fresh queued `cmake --build build --parallel 4` passed; all 22 VIXEN `*_check` targets passed. The requested kernel CodegenTool restore and Release build also passed with 0 warnings/errors, and its direct `RecipeParams --check` against VIXEN's schema/artifact paths passed. A final queued no-op rebuild passed with all targets already built and no compile or link steps.
+
+**Engine suites.** The merged-tree RenderGraph suite passed at `-j4`: 1,342/1,342, 11 skipped, with no DZN device loss, so a serial retry was unnecessary (`1791460591-test-run2-rendergraph-j4.log`). SVO reproduced only the known `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes` opcode-94 failure, `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94` (T-1449); 752 tests passed, 8 were skipped, and one was disabled (`1791460824-test-run2-svo.log`).
+
+The requested 11-case capture selection first failed in the three `HeadlessStarfieldGraph` cases with `VK_ERROR_INCOMPATIBLE_DRIVER`: those CTest cases omitted the configured Vulkan runtime library path when the caller's `LD_LIBRARY_PATH` was unset (`1791460950-test-run2-captures-11.log`). Re-running the same selection with the configured Mesa/windowing/Vulkan loader directories in `LD_LIBRARY_PATH`, while keeping `DISPLAY`, `WAYLAND_DISPLAY`, and Vulkan selector variables unset, passed 11/11 (`1791461024-test-run2-captures-11-libpath.log`). This was recovered and filed as a consolidation proposal.
+
+**Editor witnesses and capture comparison.** The scripted editor capture edited the named parameter from `0.6` through `1.225`, toggled layer 2, undid and redid the layer edit, saved, and reopened. At each parameter revision, the log shows the CPU bake snapshot and virtual preview arrays match; reopen reports `programMatch=1 parametersMatch=1 maskMatch=1`. The focused editor selection passed 11/11, including byte-exact undo/redo render checks and `EditorDocumentFraming.FramesThreeDifferentlyBoundedDocumentsAndParameterizedRecipe` (`1791461170-test-run2-editor-document-tests.log`). The same-cel before/after pair (frame 5 at the default parameter and frame 25 after editing) differs in 2,148 pixels, with maximum channel delta 74 and bounds x=104–395, y=222–395.
+
+The untouched wave tree at `846ab1a9` has tree hash `1709f17e99af44699ecd9d75d109a0492ff93179`, identical to the R424 Run 3 tree `a9d7c0febe5ad02a7de329f081e63cc10b8dc789`; the R424 report records all 26 shared captures byte-identical against untouched `92804a8f` captures. In the direct comparison against the untouched-wave baseline, offscreen and native HUD frames 5, 45, and 75 remained byte-identical. Existing editor frames 5, 45, 75, and 105 changed as expected; editor frames 25 and 115 are new script checkpoints. No other existing capture changes were observed.
+
+**Run 2 queue logs.** Configure: `1791460023-light-run2-configure-light.log`; build: `1791460084-build-run2-full-build1.log`; RenderGraph: `1791460591-test-run2-rendergraph-j4.log`; SVO: `1791460824-test-run2-svo.log`; capture recovery: `1791461024-test-run2-captures-11-libpath.log`; focused editor tests: `1791461170-test-run2-editor-document-tests.log`; CodegenTool restore/build and check: `1791461396-build-run2-codegentool-restore-build.log`, `1791461410-light-run2-codegentool-recipeparams-check.log`; no-op rebuild: `1791461426-build-run2-noop-rebuild.log`. The initial capture failure is `1791460950-test-run2-captures-11.log`. The configure queue admission interruption had no CMake log because CMake never started.
+
+**Run 2 disposition.** No STOP remains. The only suite failure is the previously observed T-1449 opcode-94 SVO case; the capture environment issue recovered with configured loader paths. The required merged-tree build, checks, captures, editor witnesses, and no-op rebuild passed.
 
 ## What changed
 
@@ -54,3 +72,5 @@ The shared backend changes are in `VIXEN/libraries/SVO/include/Recipe/RecipeBake
 - proposed: Resolve the root build directory for nested VIXEN regen targets
 - proposed: Expose a canonical VDC artifact regeneration target
 - proposed: Serialize DZN-backed CTest workloads under parallel runs
+- proposed: Give VIXEN CMake configure a light queue reservation
+- proposed: Set Vulkan runtime paths on headless starfield CTest captures
