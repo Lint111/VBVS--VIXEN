@@ -1,75 +1,80 @@
-# Lane rva1 — recipe visibility increment A1
+# RVA1 Run 2 — tile-local SDF recipe interval pruning
 
 ## LANDABLE NOW
 
-- VIXEN base/tip before the lane commit: `92804a8f67c48653514c042a8f7b87b70bbb642b`.
-- VIXEN baseline-recovery checkpoint: `842fa64163d26084009437a6466c8b8f8f83bb83`.
-- Kernel tip: `8d68e9839ac3af02b937b2b419c27f829e90cccc` (unchanged; no kernel source edits).
-- The only completed VIXEN source-tree change so far is the documented regeneration of five stale merged-SDI headers. The recipe visibility implementation is not started.
+- Kernel: `f1ac3fb0f8aa71f98075fb33e35d035999c4f334`, based on merged `origin/main` tip `bd05ce51`.
+- VIXEN feature: `a53de758752ff06f1cf535064481d3d13c0f2dd6`, based on merge `8ee92e5c848b4907ac93984e4a2bd99b830f6138`, which contains wave commit `846ab1a999a542f663ee08764fe69b3de2beade3`.
+- The recipe-only specialization produces a disposable per-tile postfix tape. Source recipe bytes and edit history remain unchanged.
 
-## Scope status
+## Changes
 
-The lane guide assigns both the VIXEN and kernel worktrees, but the dispatch fact says all file work must stay in VIXEN. The required interval extensions must come from the kernel CodegenTool declarations that also drive evaluator dispatch; implementing them correctly therefore requires a kernel source change. The cited Undertow design object `01b83e6d2:reports/recipevis.md` is absent from the local Undertow object database, and the documented lookup did not find a copy. I am waiting for the owner to resolve these two inputs before editing feature code.
+- Kernel declarations: `Packages/com.yeroket.utility.kernel-framework/Runtime/KernelCallableAttribute.cs:131` adds interval-rule metadata; `Packages/com.utility.sdf/Runtime/Kernels/SdfCoreKernels.cs:13` declares Sphere, Box, hard Union, Subtract, and Intersect rules.
+- Kernel lowering: `Packages/com.yeroket.utility.kernel-framework/SourceGenerator~/Transpiler/RecipeLoweringModel.cs:377` reads the declarations, validates opcode/stack shape and data-slot bounds, and carries operand offsets into generated metadata. `RecipeDispatchEmitter.cs:53` emits the bounded postfix GLSL evaluator. `CodegenTool~/Program.Legacy.cs:158` writes and drift-checks the generated tape GLSL.
+- VIXEN specialization: `VIXEN/libraries/SVO/include/Recipe/RecipeTileSpecialization.h:166` evaluates conservative Sphere/Box intervals over object-local AABBs and prunes only hard CSG branches proven irrelevant by strict interval separation. Unsupported opcodes, invalid domains, and invalid operands return the original tape.
+- VIXEN wiring and tests: `VIXEN/codegen/CMakeLists.txt:238` adds the generated tape evaluator to the recipe codegen checks. `VIXEN/libraries/SVO/tests/test_recipe_interval_pruning.cpp:52` covers CPU interval proofs and fallback. `test_recipe_declared_position_render.cpp:859` exercises full, pruned, and unrolled tapes on the GPU.
+- The library API is exercised by the focused GPU fixture. Runtime scene-host integration remains a follow-on.
 
-## Changes made
+## Witness numbers
 
-The documented `sdi_tool merge-variants shaders/sdi-variants.json` regeneration refreshed `LightingConfigSSBO` metadata in:
+The fixed edit-heavy recipe has 325 instructions and uses 64 object-local tiles. Each tile’s disposable tape retains one Sphere instruction. The GPU device was an NVIDIA GeForce RTX 3060 Laptop GPU through the WSL DZN driver.
 
-- `VIXEN/generated/sdi/merged/BodyInstanceRayMarch-SDI.g.h:696-706`
-- `VIXEN/generated/sdi/merged/DirectLighting-SDI.g.h:676-686`
-- `VIXEN/generated/sdi/merged/HitAccumCellShade-SDI.g.h:696-706`
-- `VIXEN/generated/sdi/merged/ShadowVisibilityWave-SDI.g.h:676-686`
-- `VIXEN/generated/sdi/merged/SpatialReuseShade-SDI.g.h:36-46`
+| Measure | Full tape | Pruned tape | Result |
+|---|---:|---:|---:|
+| Output bytes | — | — | 0 differing bytes versus both pruned and unrolled paths; all depth/material/channel values match |
+| Hit pixels | 1,804 / 4,096 | 1,804 / 4,096 | Identical, nonempty image |
+| Executed clauses per image pixel | 26,499.9 | 81.5381 | 99.6923% reduction |
+| GPU median time | 14.9012 ms | 0.108544 ms | Unrolled path: 0.340992 ms |
+| Tape upload | 43,412 B | 8,960 B | Includes tile ranges |
+| CPU tile specialization | — | 0.749964 ms | 20,800 interval evaluations; 20,736 source instructions pruned |
+| Shader compile time | 13.2093 ms unrolled | 151.813 ms tape | One-time compile measurements |
+| Shader source size | 39,275 B unrolled | 41,327 B tape | — |
 
-Each output now reports the canonical size `208` and layout hash `0x21ad6abbc3ea8eae`; each was stale at size `144` with hash `0x6dc24fcf8fba6cee`. Only those five generated files changed in the regeneration.
+The GPU test checks exact RGBA32F bytes for full/pruned/unrolled output, exact material/channel constants, hit count, and clause reduction. The 0.858508 ms serial figure is CPU specialization plus pruned GPU execution; shader compilation is reported separately.
 
-## Baseline recovery record
+## Build and test record
 
-All reds below were captured against VIXEN base `92804a8f67c48653514c042a8f7b87b70bbb642b`, before any recipe-visibility source edits.
+- Kernel build after merge: both explicit test projects built with 0 warnings and 0 errors.
+- Kernel SourceGenerator suite: 973 passed.
+- Kernel CodegenTool suite: 2,081 passed, 2 skipped.
+- CodegenTool generated all recipe artifacts; the follow-up `--check` run passed.
+- VIXEN configure passed with `YEROKET_ROOT=/home/liory/projects/Yeroket-Fantasy` and kernel pin `f1ac3fb0f8aa71f98075fb33e35d035999c4f334`.
+- Full queued VIXEN build passed. Its 22 generated-code drift checks, including the recipe SIMD/CPU/GLSL/tape evaluator check, passed. An explicit second target invocation returned `ninja: no work to do`.
+- Focused SVO CPU/GPU tests: 5 passed, 0 failed. The GPU witness passed in 4.00 s.
+- Baseline and post-change CelShading capture tests: 4 passed each.
+- Captures: 11/11 byte-identical and pixel-identical (7 HUD/editor and 4 CelShading).
+- No-op VIXEN rebuild: `ninja: no work to do`.
 
-| First red | Recovery | Result |
-|---|---|---|
-| `cmake --preset vixen-wsl` exited 1 because kernel pin `8d68e9839ac3af02b937b2b419c27f829e90cccc` was looked up in the auto-discovered `/home/liory/Github/Yeroket-Fantasy`, where that object was absent. Diagnostic: `.tmp/rva1/vixen-configure-baseline.log`. | Re-ran the documented preset with `VIXEN_FETCHCONTENT_CACHE="$PWD/.tmp/fetch-wsl"` and `-DYEROKET_ROOT=/home/liory/projects/Yeroket-Fantasy`. | Configure passed; log `.tmp/rva1/vixen-configure-retry.log`. Existing proposals already cover the kernel-root discovery gap; no duplicate was filed. |
-| Initial full CTest exposed stale merged-SDI metadata in `sdi_merged_drift_check` (and the base opcode 94 failure). | Ran the documented `build/wsl/bin/sdi_tool merge-variants shaders/sdi-variants.json`, then its `--check`, then rebuilt. | Regeneration updated only the five headers listed above; drift check and incremental build passed. Logs: `.tmp/rva1/sdi-merged-regen-baseline.log`, `.tmp/rva1/sdi-merged-check-baseline.log`, and `.tmp/rva1/vixen-build-sdi-recovery.log`. |
-| Kernel CodegenTool tests without `UNDERTOW_ROOT` exited 1: 9 failures, 2,066 passed, 4 skipped. The assertions report `UNDERTOW_ROOT is required to locate the production migration`. Queue log: `/home/liory/.local/state/undertow/undertow-box-logs/1791413932-test-rva1:kernel-test-baseline.log`. | Re-ran the suite with `UNDERTOW_ROOT=/home/liory/projects/undertow`. | 2,077 passed, 2 skipped; log `.tmp/rva1/codegen-tests-undertow-root.log`. An SPT proposal records this manual environment requirement. |
-| Recovered full CTest on unchanged base exits 8 on `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`: `M4d_Output_IsPassthrough` gradient capability mismatch, opcode 94. | Compared against the known base issue `T-1449`; retained this as the only full-suite red and ran the supported fresh build and generator checks. | Recorded as a pre-existing scoped baseline red, not attributed to this lane. Log `.tmp/rva1/vixen-ctest-recovery.log`. |
+## Recovery record
 
-## Baseline and witness numbers
+- `dotnet build Yeroket-Fantasy.sln -c Release -nodeReuse:false` returned exit 0 with `Unable to find a project to restore!` and compiled nothing. Recovery: build and test `SourceGenerator~/Tests/SDFNodeGenerator.Tests.csproj` and `CodegenTool~/Tests/CodegenTool.Tests.csproj` directly through the queue. Proposal recorded below.
+- The first baseline capture run passed a relative output directory. Both apps rendered, then PNG writes failed after the capture script changed working directory. Recovery: rerun with an absolute output directory. Proposal recorded below.
+- The first CodegenTool generation command used `.../.claude-worktrees/rva1/codegen/RecipeOpDeclarations.cs`; that file is at `.../VIXEN/codegen/RecipeOpDeclarations.cs`. The corrected queued `dotnet run` and `--check` passed.
+- The first VIXEN configure was launched from the checkout root, where `CMakePresets.json` is absent. Recovery: run `cmake --preset vixen-wsl` from `VIXEN/` with the same FetchContent cache and kernel SHA override.
+- The first VIXEN build found a float/double type mismatch in an interval error-scale expression. The domain values were explicitly promoted to double; the recovered full build and focused tests passed.
 
-| Check | Result |
-|---|---:|
-| VIXEN fresh configure | Passed with explicit `-DYEROKET_ROOT=/home/liory/projects/Yeroket-Fantasy` |
-| VIXEN full fresh build | Passed, 1,141/1,141 steps, queued, `--parallel 3` |
-| Incremental build after SDI regeneration | Passed, 12/12 steps |
-| SDI merged drift check | Passed after documented regeneration |
-| Kernel SourceGenerator suite | 966 passed |
-| Kernel CodegenTool suite | 2,077 passed, 2 skipped after setting `UNDERTOW_ROOT=/home/liory/projects/undertow`; first run was 2,066 passed, 4 skipped, 9 failed |
-| Direct RecipeSimd CodegenTool `--check` | Passed |
-| Full VIXEN CTest | Exit 8; one failure among 2,871 tests, the known `T-1449` opcode 94 gradient-capability mismatch (`M4d_Output_IsPassthrough`) |
-| Standard generation/drift checks | All 22 passed after SDI regeneration: 21 full-build codegen checks plus `sdi_merged_drift_check` |
-| Environment-clean capture CTest | 5/5 passed: four CelShading cases plus `vixen_wsl_capture_witness` |
-| Existing capture byte comparison | 11/11 required outputs identical: 7 HUD/editor PNGs and 4 CelShading PNGs |
-| No-op rebuild | Passed; `ninja: no work to do` |
-| Pruning-off/on identical-pixel gate | Not run; no implementation |
-| Recipe clause reduction, proof work, CPU specialization time, upload bytes, GPU time | Not measured; no implementation |
+## CodeGraph and integration scope
 
-The full-suite CTest output reports `99% tests passed, 1 tests failed out of 2871` and 540.79 seconds total. The environment-clean capture comparison covers 7 HUD/editor files saved from the full baseline before rerun and 4 CelShading files saved immediately before their repeat run; all have zero byte and pixel differences.
+VIXEN, the kernel worktree, and KernelFederationRenderer have no `.codegraph/` index; no index was created. VIXEN navigation used `rg`. KFR’s `app/src/session_renderer.cpp` contains no SDF recipe consumer. `SessionRenderer::BuildRenderGraph()` currently builds the UI graph; this is the closest KFR host integration point for a future scene node.
+
+The mixed voxel/virtual delta stack is outside this recipe-only proof. The specializer has no ordered materialized-brick references, per-brick occupancy or min/max distance bounds, or revision linkage from that stack, so it cannot prove that a brick override or virtual clear leaves a recipe branch irrelevant. The recipe-only interval proof is implemented; rv-a2 owns the mixed-stack gap.
 
 ## Shared files touched
 
-No files shared with lanes `editordocument` or `insttransform2` were touched.
-
-## SPT DISPOSITION
-
-- `T-1449`: known opcode 94 recipe parity failure remains present on the recorded base.
-- `T-1450`: keep the R328 interval-arithmetic follow-on open; this lane has not implemented or closed it.
-- New incidental tooling proposals are listed by title in the final section below.
+No cross-lane shared source files were changed. Changes are limited to the authorized kernel worktree and VIXEN SVO/codegen/test files.
 
 ## STOPs
 
-The A1 feature work is awaiting resolution of the worktree-scope conflict and the missing design reference. This is not a baseline-unobtainable STOP: the fresh VIXEN build and relevant generator checks passed, and the remaining full-suite failure is the known `T-1449` case. Pixel equivalence and clause reduction are unmeasured because no feature implementation exists.
+At the 08:00 UTC three-hour checkpoint, the full RenderGraph CTest group, full SVO CTest group, and full VIXEN CTest suite were not run. The lane stops with the full build and feature-specific witness green. Current full-suite status on merged wave commit `8ee92e5c` is unclassified. The earlier run’s `T-1449` opcode-94 result was recorded on a different base and was not reverified here.
+
+## SPT DISPOSITION
+
+- `T-1449`: prior report records the opcode-94 recipe parity failure; this run did not rerun the full suite or establish its status on the merged wave.
+- `T-1450`: keep the R328 interval-arithmetic follow-on open. This lane did not implement or close it.
+- No existing SPT task was closed.
 
 ## CONSOLIDATION ISSUES
 
 - proposed: CodegenTool tests should discover the Undertow root
 - proposed: Standard VIXEN build should regenerate merged SDI before drift checks
+- proposed: Kernel solution build exits successfully without discovering projects
+- proposed: Capture script must resolve output directory before changing working directory
