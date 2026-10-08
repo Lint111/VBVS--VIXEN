@@ -450,10 +450,9 @@ bool EditorApplication::ApplyDocumentToScene() {
     // so a grid-space extent of ~2 voxels maps to only ~0.3 world units before renderScale — too
     // small to frame usefully. renderScale=5 brings that up to a comfortable ~1.5 world units.
     Vixen::SVO::BodyInstanceGpu inst{};
-    inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;
-    inst.renderScale = 5.0f;
-    inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f;
-    inst.octreeIndex = 0u;
+    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f), 5.0f);
+    inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
+    inst.material.octreeIndex = 0u;
     SetBodyInstances({inst});
 
     // Editor Brick-Residency Fix: the document body is the ONE object being directly edited and

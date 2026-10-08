@@ -424,7 +424,7 @@ protected:
     // rejects the layout).
     // ------------------------------------------------------------------
     void March(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
-              VkBuffer configBuf, VkBuffer instanceBuf,
+              VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer instanceTransformBuf,
               VkBuffer skipMaskBuf, VkDeviceSize skipMaskBufSize,
               VkImage depthImg, VkImageView depthView, bool clearDepth,
               const PushConstants& pc, uint32_t w, uint32_t h,
@@ -523,6 +523,7 @@ protected:
             bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(36, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         if (b2Enabled) {
             bindings.push_back(bind(42, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER));
@@ -554,7 +555,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  4},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, b2Enabled ? 20u : 19u},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, b2Enabled ? 21u : 20u},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -579,6 +580,7 @@ protected:
         VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo instTransformInfo{instanceTransformBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{dummySdf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{dummyLookup, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
@@ -631,6 +633,7 @@ protected:
             wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),
             wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
             wImg(36, &depthInfo),
+            wBuf(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo),
         };
         if (b2Enabled) {
             writes.push_back(wBuf(42, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -849,7 +852,8 @@ protected:
     // InstanceOcclusionCull.comp dispatch: same descriptor/push layout as
     // test_instance_occlusion_cull_device.cpp's proven working dispatch.
     // ------------------------------------------------------------------
-    void DispatchInstanceOcclusionCull(VkBuffer instBuf, VkBuffer cfgBuf, VkImageView tileView,
+    void DispatchInstanceOcclusionCull(VkBuffer instBuf, VkBuffer transformBuf,
+                                       VkBuffer cfgBuf, VkImageView tileView,
                                        VkBuffer maskBuf, VkDeviceSize maskBufSize,
                                        const CullPush& push) {
         auto code = ReadSpirv(INSTANCE_OCCLUSION_CULL_SPV);
@@ -860,8 +864,8 @@ protected:
         VkShaderModule shader{};
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shader), VK_SUCCESS);
 
-        VkDescriptorSetLayoutBinding bindings[4] = {};
-        for (uint32_t i = 0; i < 4; ++i) {
+        VkDescriptorSetLayoutBinding bindings[5] = {};
+        for (uint32_t i = 0; i < 5; ++i) {
             bindings[i].binding = i;
             bindings[i].descriptorType = (i == 2) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                                   : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -870,7 +874,7 @@ protected:
         }
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 4; dslci.pBindings = bindings;
+        dslci.bindingCount = 5; dslci.pBindings = bindings;
         VkDescriptorSetLayout dsl{};
         ASSERT_EQ(vkCreateDescriptorSetLayout(logicalDevice_, &dslci, nullptr, &dsl), VK_SUCCESS);
 
@@ -893,7 +897,7 @@ protected:
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline), VK_SUCCESS);
 
         VkDescriptorPoolSize poolSizes[2] = {
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
         };
         VkDescriptorPoolCreateInfo dpci{};
@@ -909,10 +913,11 @@ protected:
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &set), VK_SUCCESS);
 
         VkDescriptorBufferInfo instInfo{instBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo transformInfo{transformBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo cfgInfo{cfgBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo maskInfo{maskBuf, 0, maskBufSize};
         VkDescriptorImageInfo tileInfo{VK_NULL_HANDLE, tileView, VK_IMAGE_LAYOUT_GENERAL};
-        VkWriteDescriptorSet writes[4] = {};
+        VkWriteDescriptorSet writes[5] = {};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = set; writes[0].dstBinding = 0; writes[0].descriptorCount = 1;
         writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[0].pBufferInfo = &instInfo;
@@ -925,7 +930,10 @@ protected:
         writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[3].dstSet = set; writes[3].dstBinding = 3; writes[3].descriptorCount = 1;
         writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[3].pBufferInfo = &maskInfo;
-        vkUpdateDescriptorSets(logicalDevice_, 4, writes, 0, nullptr);
+        writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[4].dstSet = set; writes[4].dstBinding = 4; writes[4].descriptorCount = 1;
+        writes[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[4].pBufferInfo = &transformInfo;
+        vkUpdateDescriptorSets(logicalDevice_, 5, writes, 0, nullptr);
 
         VkCommandBuffer cmd = BeginOneShot();
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
@@ -955,7 +963,7 @@ protected:
     // regression deterministic and avoids the binding-14 multi-writer race documented by
     // the per-pixel iteration readback below.
     void DispatchShadowRay(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
-                           VkBuffer configBuf, VkBuffer instanceBuf,
+                           VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer instanceTransformBuf,
                            VkBuffer skipMaskBuf, VkDeviceSize skipMaskBufSize,
                            const PushConstants& push, const ShadowRayRequestCpu& request,
                            uint32_t& outVisible) {
@@ -992,9 +1000,9 @@ protected:
             out.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return out;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 13> bindings = {{
+        const std::array<VkDescriptorSetLayoutBinding, 14> bindings = {{
             bind(1), bind(2), bind(3), bind(4), bind(5), bind(10), bind(11),
-            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38),
+            bind(12), bind(13), bind(15), bind(35), bind(37), bind(38), bind(47),
         }};
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1037,7 +1045,7 @@ protected:
         VkDescriptorSet set = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &dsai, &set), VK_SUCCESS);
 
-        const std::array<VkDescriptorBufferInfo, 13> infos = {{
+        const std::array<VkDescriptorBufferInfo, 14> infos = {{
             {nodesBuf, 0, VK_WHOLE_SIZE},
             {bricksBuf, 0, VK_WHOLE_SIZE},
             {materialsBuf, 0, VK_WHOLE_SIZE},
@@ -1051,8 +1059,9 @@ protected:
             {skipMaskBuf, 0, skipMaskBufSize},
             {requestBuf, 0, VK_WHOLE_SIZE},
             {resultBuf, 0, VK_WHOLE_SIZE},
+            {instanceTransformBuf, 0, VK_WHOLE_SIZE},
         }};
-        std::array<VkWriteDescriptorSet, 13> writes{};
+        std::array<VkWriteDescriptorSet, 14> writes{};
         for (size_t i = 0; i < writes.size(); ++i) {
             writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[i].dstSet = set;
@@ -1183,10 +1192,10 @@ constexpr float kWorldGridSize = 10.0f;
 Vixen::SVO::BodyInstanceGpu MakeInstance(float x, float y, float z, float scale,
                                          uint32_t octreeIndex, float r, float g, float b) {
     Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
-    i.renderScale = scale; i.octreeIndex = octreeIndex;
-    i.color[0] = r; i.color[1] = g; i.color[2] = b;
-    i.providerKind = 0u;  // Stored/ESVO — explicit, though value-init already defaults to 0.
+    Vixen::SVO::SetInstanceTranslationComponent(i, 0, x); Vixen::SVO::SetInstanceTranslationComponent(i, 1, y); Vixen::SVO::SetInstanceTranslationComponent(i, 2, z);
+    Vixen::SVO::SetInstanceUniformScale(i, scale); i.material.octreeIndex = octreeIndex;
+    i.material.color[0] = r; i.material.color[1] = g; i.material.color[2] = b;
+    i.material.providerKind = 0u;  // Stored/ESVO — explicit, though value-init already defaults to 0.
     return i;
 }
 
@@ -1313,9 +1322,9 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     // list above (exact float compare is safe -- nothing here reorders elements).
     auto indexOf = [&](const Vixen::SVO::BodyInstanceGpu& want) -> uint32_t {
         for (uint32_t i = 0; i < instances.size(); ++i) {
-            if (instances[i].worldPos[0] == want.worldPos[0] &&
-                instances[i].worldPos[1] == want.worldPos[1] &&
-                instances[i].worldPos[2] == want.worldPos[2]) {
+            if (instances[i].transform.localToWorld.rows[0][3] == want.transform.localToWorld.rows[0][3] &&
+                instances[i].transform.localToWorld.rows[1][3] == want.transform.localToWorld.rows[1][3] &&
+                instances[i].transform.localToWorld.rows[2][3] == want.transform.localToWorld.rows[2][3]) {
                 return i;
             }
         }
@@ -1344,6 +1353,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     VkBuffer materialsBuf = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     VkBuffer configBuf    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     VkBuffer instanceBuf  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer instanceTransformBuf = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(nodesBuf, VK_NULL_HANDLE);    ASSERT_NE(bricksBuf, VK_NULL_HANDLE);
     ASSERT_NE(materialsBuf, VK_NULL_HANDLE); ASSERT_NE(configBuf, VK_NULL_HANDLE);
     ASSERT_NE(instanceBuf, VK_NULL_HANDLE);
@@ -1421,7 +1431,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
         VkImageView scratchDepthView = CreateView(scratchDepthImg, VK_FORMAT_R32_SFLOAT);
 
         std::vector<uint32_t> singleIter; std::vector<HitRecordCpu> singleHitRecords;
-        March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
               skipMaskForThisMeasurement, skipMaskForThisMeasurementSize,
               scratchDepthImg, scratchDepthView, /*clearDepth=*/true,
               singlePc, /*w=*/1, /*h=*/1, maxInstances, singleIter, singleHitRecords,
@@ -1480,7 +1490,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
 
     // --- Pass A: all-zero mask, B1-ON SPV, clear+write the depth image fresh. ---
     std::vector<uint32_t> iterA; std::vector<HitRecordCpu> hitRecordsA;
-    ASSERT_NO_FATAL_FAILURE(March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+    ASSERT_NO_FATAL_FAILURE(March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
                                   maskBuf, maskBufSize, depthImg, depthView, /*clearDepth=*/true,
                                   pc, kW, kH, maxInstances, iterA, hitRecordsA));
     ASSERT_EQ(iterA.size(), 5u);
@@ -1506,7 +1516,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     cullPush.prevViewProj = viewProj;
     cullPush.prevCamPos = glm::vec4(pc.cameraPos, 1.0f);
     cullPush.dims[0] = kW; cullPush.dims[1] = kH; cullPush.dims[2] = maxInstances; cullPush.dims[3] = 0u;
-    ASSERT_NO_FATAL_FAILURE(DispatchInstanceOcclusionCull(instanceBuf, configBuf, tileView,
+    ASSERT_NO_FATAL_FAILURE(DispatchInstanceOcclusionCull(instanceBuf, instanceTransformBuf, configBuf, tileView,
                                                           maskBuf, maskBufSize, cullPush));
 
     uint32_t producedMask[kSkipMaskWords] = {};
@@ -1545,7 +1555,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     shadowPc.raySizeBias = 0.0f;
     uint32_t shadowVisible = 1u;
     ASSERT_NO_FATAL_FAILURE(DispatchShadowRay(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
         maskBuf, maskBufSize, shadowPc, shadowRequest, shadowVisible));
     std::printf("[b1-shadow] camera-culled occ1 shadow result=%u (0=occluded)\n",
                 shadowVisible);
@@ -1556,7 +1566,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     // distances the cull step just consumed; production leaves it alone across A->B
     // this same frame). ---
     std::vector<uint32_t> iterB; std::vector<HitRecordCpu> hitRecordsB;
-    ASSERT_NO_FATAL_FAILURE(March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+    ASSERT_NO_FATAL_FAILURE(March(nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
                                   maskBuf, maskBufSize, depthImg, depthView, /*clearDepth=*/false,
                                   pc, kW, kH, maxInstances, iterB, hitRecordsB));
     ASSERT_EQ(iterB.size(), 5u);
@@ -1628,7 +1638,7 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     std::vector<uint32_t> iterB2;
     std::vector<HitRecordCpu> hitRecordsB2;
     ASSERT_NO_FATAL_FAILURE(March(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
         maskBuf, maskBufSize, depthImg, depthView, /*clearDepth=*/false,
         pc, kW, kH, maxInstances, iterB2, hitRecordsB2,
         GLSL_RAYMARCH_B2_SPV, proxyPixelsBuf, /*proxyAabbCount=*/1u));
@@ -1702,11 +1712,9 @@ TEST_F(B1OcclusionAbTest, OccludedInstancesDropIterationsAndPixelsStayIdentical)
     // is a single real entry, repeated by CullInstance::octreeIndex.
     std::vector<CullInstance> mirrorInstances(instances.size());
     for (size_t i = 0; i < instances.size(); ++i) {
-        mirrorInstances[i].worldPos = glm::vec3(instances[i].worldPos[0], instances[i].worldPos[1],
-                                                instances[i].worldPos[2]);
-        mirrorInstances[i].renderScale = instances[i].renderScale;
-        mirrorInstances[i].octreeIndex = instances[i].octreeIndex;
-        mirrorInstances[i].providerKind = instances[i].providerKind;
+        mirrorInstances[i].localToWorld = Vixen::SVO::ToMat4(instances[i].transform.localToWorld);
+        mirrorInstances[i].octreeIndex = instances[i].material.octreeIndex;
+        mirrorInstances[i].providerKind = instances[i].material.providerKind;
     }
     CullOctreeConfig mirrorConfig{};
     mirrorConfig.traceBoundsMin = glm::vec3(realConfig.traceBoundsMinX, realConfig.traceBoundsMinY, realConfig.traceBoundsMinZ);

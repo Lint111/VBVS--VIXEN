@@ -304,7 +304,7 @@ protected:
     // per-instance iteration-count debug buffer (binding 14). maxInstances sizes the
     // debug buffer (one uint per slot); instanceIterCounts is resized to maxInstances.
     void RenderAndReadIterCounts(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
-                                 VkBuffer configBuf, VkBuffer instanceBuf,
+                                 VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer instanceTransformBuf,
                                  const PushConstants& pc, uint32_t w, uint32_t h,
                                  uint32_t maxInstances,
                                  std::vector<uint32_t>& instanceIterCounts) {
@@ -379,7 +379,7 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 16> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 17> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -396,6 +396,7 @@ protected:
             bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424: hot instance transform stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -423,7 +424,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -446,6 +447,7 @@ protected:
         VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo instTransformInfo{instanceTransformBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{dummySdf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{dummyLookup, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
@@ -468,7 +470,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 16> writes = {
+        const std::array<VkWriteDescriptorSet, 17> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -485,6 +487,7 @@ protected:
             wBuf(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
             wBuf(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
             wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wBuf(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo), // R424 hot transform stream
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
@@ -576,18 +579,18 @@ constexpr float kWorldGridSize = 10.0f;
 Vixen::SVO::BodyInstanceGpu MakeInstance(float x, float y, float z, float scale,
                                          uint32_t octreeIndex, float r, float g, float b) {
     Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
-    i.renderScale = scale; i.octreeIndex = octreeIndex;
-    i.color[0] = r; i.color[1] = g; i.color[2] = b;
+    Vixen::SVO::SetInstanceTranslationComponent(i, 0, x); Vixen::SVO::SetInstanceTranslationComponent(i, 1, y); Vixen::SVO::SetInstanceTranslationComponent(i, 2, z);
+    Vixen::SVO::SetInstanceUniformScale(i, scale); i.material.octreeIndex = octreeIndex;
+    i.material.color[0] = r; i.material.color[1] = g; i.material.color[2] = b;
     return i;
 }
 
 glm::vec3 ShaderBodyCentre(const Vixen::SVO::BodyInstanceGpu& inst) {
-    const glm::vec3 wp(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
-    return wp + glm::vec3(0.5f * kWorldGridSize * inst.renderScale);
+    return Vixen::SVO::TransformPoint(inst.transform.localToWorld,
+                                      glm::vec3(0.5f * kWorldGridSize));
 }
 float ShaderBodyRadius(const Vixen::SVO::BodyInstanceGpu& inst) {
-    return 0.5f * kWorldGridSize * inst.renderScale;
+    return 0.5f * kWorldGridSize * Vixen::SVO::MaximumAxisScale(inst.transform.localToWorld);
 }
 
 }  // namespace
@@ -650,11 +653,14 @@ TEST_F(BodyInstanceOcclusionRejectTest, OccludedInstanceHasZeroTraversalIteratio
     Vixen::SVO::SortInstancesFrontToBack(instances, eye);
 
     // occluder (t=0) must now be first, target (t=20) second, control (t=40) last.
-    ASSERT_NEAR(instances[0].worldPos[0], placeOnLine(0.0f).worldPos[0], 0.01f)
+    ASSERT_NEAR(instances[0].transform.localToWorld.rows[0][3],
+                placeOnLine(0.0f).transform.localToWorld.rows[0][3], 0.01f)
         << "sort did not put the occluder first";
-    ASSERT_NEAR(instances[1].worldPos[0], placeOnLine(20.0f).worldPos[0], 0.01f)
+    ASSERT_NEAR(instances[1].transform.localToWorld.rows[0][3],
+                placeOnLine(20.0f).transform.localToWorld.rows[0][3], 0.01f)
         << "sort did not put the target second";
-    ASSERT_NEAR(instances[2].worldPos[0], placeOnLine(40.0f).worldPos[0], 0.01f)
+    ASSERT_NEAR(instances[2].transform.localToWorld.rows[0][3],
+                placeOnLine(40.0f).transform.localToWorld.rows[0][3], 0.01f)
         << "sort did not put the control last";
 
     node->SetInstances(instances);
@@ -668,6 +674,7 @@ TEST_F(BodyInstanceOcclusionRejectTest, OccludedInstanceHasZeroTraversalIteratio
     VkBuffer materialsBuf = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     VkBuffer configBuf    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     VkBuffer instanceBuf  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer instanceTransformBuf = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(nodesBuf, VK_NULL_HANDLE);    ASSERT_NE(bricksBuf, VK_NULL_HANDLE);
     ASSERT_NE(materialsBuf, VK_NULL_HANDLE); ASSERT_NE(configBuf, VK_NULL_HANDLE);
     ASSERT_NE(instanceBuf, VK_NULL_HANDLE);
@@ -693,7 +700,7 @@ TEST_F(BodyInstanceOcclusionRejectTest, OccludedInstanceHasZeroTraversalIteratio
 
     std::vector<uint32_t> iterCounts;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
         pc, kW, kH, static_cast<uint32_t>(instances.size()), iterCounts));
 
     ASSERT_EQ(iterCounts.size(), 3u);
@@ -762,6 +769,7 @@ TEST_F(BodyInstanceOcclusionRejectTest, NonOccludedInstancesStillTraverse) {
     VkBuffer materialsBuf = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     VkBuffer configBuf    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     VkBuffer instanceBuf  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer instanceTransformBuf = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(instanceBuf, VK_NULL_HANDLE);
 
     constexpr uint32_t kW = 1, kH = 1;
@@ -780,7 +788,7 @@ TEST_F(BodyInstanceOcclusionRejectTest, NonOccludedInstancesStillTraverse) {
 
     std::vector<uint32_t> iterCounts;
     ASSERT_NO_FATAL_FAILURE(RenderAndReadIterCounts(
-        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf,
+        nodesBuf, bricksBuf, materialsBuf, configBuf, instanceBuf, instanceTransformBuf,
         pc, kW, kH, static_cast<uint32_t>(instances.size()), iterCounts));
 
     ASSERT_EQ(iterCounts.size(), 1u);

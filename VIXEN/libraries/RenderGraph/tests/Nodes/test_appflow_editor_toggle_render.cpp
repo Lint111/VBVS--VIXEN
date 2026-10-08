@@ -344,7 +344,7 @@ protected:
 
     // Render using the real BodyInstanceRayMarch shader and read its current geometry output.
     void RenderToHitRecords(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
-                            VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
+                            VkBuffer inst, VkBuffer instTransform, VkBuffer sdf, VkBuffer lookup,
                             const PushConstants& pc, uint32_t w, uint32_t h,
                             std::vector<HitRecordCpu>& outHitRecords, double& ms) {
         ASSERT_TRUE(softwareConfirmed_);
@@ -391,7 +391,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,16> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,17> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -408,6 +408,7 @@ protected:
             bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
             bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
             bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -429,7 +430,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -445,6 +446,7 @@ protected:
         VkDescriptorBufferInfo nodesI{nodes,0,VK_WHOLE_SIZE}, bricksI{bricks,0,VK_WHOLE_SIZE},
             matsI{mats,0,VK_WHOLE_SIZE}, traceI{traceBuf,0,VK_WHOLE_SIZE}, cfgI{cfg,0,VK_WHOLE_SIZE},
             ctrI{ctrBuf,0,VK_WHOLE_SIZE}, instI{inst,0,VK_WHOLE_SIZE},
+            instTransformI{instTransform,0,VK_WHOLE_SIZE},
             sdfI{sdf,0,VK_WHOLE_SIZE}, lookupI{lookup,0,VK_WHOLE_SIZE}, iterI{dummyIter,0,VK_WHOLE_SIZE}, mipI{dummyMip,0,VK_WHOLE_SIZE},
             tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
             skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE};
@@ -459,12 +461,13 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,16> writes = {
+        const std::array<VkWriteDescriptorSet,17> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wB(8,&ctrI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI),  // Inc1 M4b: per-instance iteration debug
             wB(15,&tierRefI), wB(18,&hitRecordI),
             wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wB(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -565,10 +568,10 @@ protected:
         // document's object-centered geometry is baked at grid-center (32,32,32) (Inc2a fix);
         // grid-to-world = (kWorldGridSize/n)*renderScale = (10/64)*5 = 0.78125.
         Vixen::SVO::BodyInstanceGpu inst{};
-        inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;
-        inst.renderScale = 5.0f;
-        inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f;
-        inst.octreeIndex = 0u;
+        Vixen::SVO::SetInstanceTranslationComponent(inst, 0, 0.0f); Vixen::SVO::SetInstanceTranslationComponent(inst, 1, 0.0f); Vixen::SVO::SetInstanceTranslationComponent(inst, 2, 0.0f);
+        Vixen::SVO::SetInstanceUniformScale(inst, 5.0f);
+        inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
+        inst.material.octreeIndex = 0u;
         node->SetInstances({inst});
         node->Setup();
         ASSERT_NO_THROW(node->Compile());
@@ -583,12 +586,14 @@ protected:
         VkBuffer mats    = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
         VkBuffer cfgBuf  = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
         VkBuffer instBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+        VkBuffer instTransformBuf = buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index);
         VkBuffer sdfBuf  = buf(C::OCTREE_SDF_BUFFER_Slot::index);
         VkBuffer lookBuf = buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index);
         ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
+        ASSERT_NE(instTransformBuf, VK_NULL_HANDLE);
 
         double ms = 0.0;
-        ASSERT_NO_FATAL_FAILURE(RenderToHitRecords(nodes, bricks, mats, cfgBuf, instBuf,
+        ASSERT_NO_FATAL_FAILURE(RenderToHitRecords(nodes, bricks, mats, cfgBuf, instBuf, instTransformBuf,
                                                    sdfBuf, lookBuf, pc, w, h, outHitRecords, ms));
 
         vkDeviceWaitIdle(logicalDevice_);

@@ -1060,24 +1060,93 @@ layout(std430, binding = 5) readonly buffer OctreeConfigsSSBO {
 };
 
 // ============================================================================
-// BODY INSTANCE SSBO (binding 10, std430, 64 B / element)
+// BODY INSTANCE MATERIAL SSBO (binding 10, std430, 48 B / element)
 // ============================================================================
-// Declared before C++ wires it (Task 8); glslc accepts unmatched bindings at
-// compile time — the descriptor wiring is deferred to the next milestone.
 struct BodyInstance {
-    vec3  worldPos;          // 0
-    float renderScale;       // 12
-    vec3  color;             // 16
-    uint  octreeIndex;       // 28
-    uint  providerKind;      // 32  (0 = Stored/ESVO, 1 = Procedural)
-    uint  recipeId;          // 36
-    float recipeParams[6];   // 40..63  (params.xyz = radius, amp, freq)
+    vec3  color;             // 0..11
+    uint  octreeIndex;       // 12
+    uint  providerKind;      // 16  (0 = Stored/ESVO, 1 = Procedural)
+    uint  recipeId;          // 20
+    float recipeParams[6];   // 24..47
 };
-// std430 SSBO record, 64 bytes — byte-for-byte identical to C++ BodyInstanceGpu.
+// std430 SSBO record, 48 bytes — byte-for-byte identical to BodyInstanceMaterialGpu.
 
 layout(std430, binding = 10) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
 };
+
+// HOT INSTANCE TRANSFORM STREAM (binding 47, std430, 96 B / element).
+// Each matrix is three row-major vec4 values with an implicit (0,0,0,1) row.
+struct BodyInstanceTransform {
+    vec4 localToWorldRows[3];
+    vec4 worldToLocalRows[3];
+};
+layout(std430, binding = 47) readonly buffer BodyInstanceTransformBuffer {
+    BodyInstanceTransform bodyInstanceTransforms[];
+};
+
+vec3 instanceTransformPoint(vec4 rows[3], vec3 p) {
+    vec4 hp = vec4(p, 1.0);
+    return vec3(dot(rows[0], hp), dot(rows[1], hp), dot(rows[2], hp));
+}
+vec3 instanceTransformVector(vec4 rows[3], vec3 v) {
+    return vec3(dot(rows[0].xyz, v), dot(rows[1].xyz, v), dot(rows[2].xyz, v));
+}
+bool instanceIsAxisAlignedUniformScale(uint instanceIndex) {
+    vec4 l0 = bodyInstanceTransforms[instanceIndex].localToWorldRows[0];
+    vec4 l1 = bodyInstanceTransforms[instanceIndex].localToWorldRows[1];
+    vec4 l2 = bodyInstanceTransforms[instanceIndex].localToWorldRows[2];
+    return l0.y == 0.0 && l0.z == 0.0 && l1.x == 0.0 && l1.z == 0.0 &&
+           l2.x == 0.0 && l2.y == 0.0 && l0.x > 0.0 &&
+           l0.x == l1.y && l1.y == l2.z;
+}
+float instanceUniformAxisScale(uint instanceIndex) {
+    return bodyInstanceTransforms[instanceIndex].localToWorldRows[0].x;
+}
+vec3 instanceTranslation(uint instanceIndex) {
+    return vec3(bodyInstanceTransforms[instanceIndex].localToWorldRows[0].w,
+                bodyInstanceTransforms[instanceIndex].localToWorldRows[1].w,
+                bodyInstanceTransforms[instanceIndex].localToWorldRows[2].w);
+}
+vec3 instanceLocalToWorldPoint(uint instanceIndex, vec3 p) {
+    // Keep the previous translation + uniform-scale operation ordering exactly
+    // for the canonical affine form while deriving both values from this matrix.
+    if (instanceIsAxisAlignedUniformScale(instanceIndex)) {
+        return instanceTranslation(instanceIndex) + p * instanceUniformAxisScale(instanceIndex);
+    }
+    return instanceTransformPoint(bodyInstanceTransforms[instanceIndex].localToWorldRows, p);
+}
+vec3 instanceWorldToLocalPoint(uint instanceIndex, vec3 p) {
+    if (instanceIsAxisAlignedUniformScale(instanceIndex)) {
+        return (p - instanceTranslation(instanceIndex)) / instanceUniformAxisScale(instanceIndex);
+    }
+    return instanceTransformPoint(bodyInstanceTransforms[instanceIndex].worldToLocalRows, p);
+}
+vec3 instanceWorldToLocalVector(uint instanceIndex, vec3 v) {
+    return instanceTransformVector(bodyInstanceTransforms[instanceIndex].worldToLocalRows, v);
+}
+vec3 instanceLocalToWorldNormal(uint instanceIndex, vec3 localNormal) {
+    // worldToLocal's transpose is the inverse-transpose required for normals.
+    // Preserve the legacy axis-aligned uniform-scale result bit-for-bit: its
+    // inverse-transpose is a positive scalar multiple of the sampled normal,
+    // so normalizing it again only adds rounding without changing direction.
+    if (instanceIsAxisAlignedUniformScale(instanceIndex)) {
+        return localNormal;
+    }
+    vec4 r0 = bodyInstanceTransforms[instanceIndex].worldToLocalRows[0];
+    vec4 r1 = bodyInstanceTransforms[instanceIndex].worldToLocalRows[1];
+    vec4 r2 = bodyInstanceTransforms[instanceIndex].worldToLocalRows[2];
+    return normalize(vec3(dot(vec3(r0.x, r1.x, r2.x), localNormal),
+                          dot(vec3(r0.y, r1.y, r2.y), localNormal),
+                          dot(vec3(r0.z, r1.z, r2.z), localNormal)));
+}
+float instanceMinimumAxisScale(uint instanceIndex) {
+    vec4 r0 = bodyInstanceTransforms[instanceIndex].localToWorldRows[0];
+    vec4 r1 = bodyInstanceTransforms[instanceIndex].localToWorldRows[1];
+    vec4 r2 = bodyInstanceTransforms[instanceIndex].localToWorldRows[2];
+    return min(length(vec3(r0.x, r1.x, r2.x)),
+               min(length(vec3(r0.y, r1.y, r2.y)), length(vec3(r0.z, r1.z, r2.z))));
+}
 
 // rtperf S1: ray-query primitive indices address the compact shell pool, not
 // the sparse bpa^3 source grid. The CPU flattens these records in octree order
@@ -1128,6 +1197,7 @@ layout(std430, set = 0, binding = 43) readonly buffer RtQueryProxyAabbBuffer {
 int g_octreeIdx      = 0;   // index into configs[] for the active octree
 int g_brickArrayBase = 0;   // configs[g_octreeIdx].brickArrayBase
 uint g_mipSampleLevel = 0u; // last resolved mip level for readMipSample accounting
+float g_instanceSdfStepScale = 1.0; // affine minimum-axis conservative scale; set per instance before traversal
 // Round-7 blocker-1 probe #3: set true immediately before the far-field
 // early-return in both twins (traverseCoarseGridInstancedSdf below,
 // traverseRayQueryWorld in RayQueryTraversal.glsl), read by TraceWorld.glsl

@@ -235,17 +235,41 @@ void BodyOctreeSceneNode::SetInstances(std::vector<Vixen::SVO::BodyInstanceGpu> 
     // force a recompile or the per-frame upload silently truncates (see ExecuteImpl's clamp).
     instances_     = std::move(instances);
     instanceCount_ = static_cast<int32_t>(instances_.size());
+    RefreshInstanceStreams();
     ++rtQueryInstanceEpoch_;
-    const VkDeviceSize neededBytes = static_cast<VkDeviceSize>(
-        instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu));
-    if (neededBytes > instanceRingCapacity_) {
-        NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: needed " + std::to_string(neededBytes) +
-                      "B exceeds ring capacity " + std::to_string(instanceRingCapacity_) +
-                      "B — requesting recompile to grow the ring");
+    const VkDeviceSize neededTransformBytes = static_cast<VkDeviceSize>(
+        instanceTransforms_.size() * sizeof(Vixen::SVO::BodyInstanceTransformGpu));
+    const VkDeviceSize neededMaterialBytes = static_cast<VkDeviceSize>(
+        instanceMaterials_.size() * sizeof(Vixen::SVO::BodyInstanceMaterialGpu));
+    if (neededTransformBytes > transformRingCapacity_ || neededMaterialBytes > materialRingCapacity_) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: stream capacities exceeded (transforms=" +
+                      std::to_string(neededTransformBytes) + "/" + std::to_string(transformRingCapacity_) +
+                      "B, materials=" + std::to_string(neededMaterialBytes) + "/" +
+                      std::to_string(materialRingCapacity_) + "B) — requesting recompile to grow rings");
         MarkNeedsRecompile();
     }
     NODE_LOG_INFO("[BodyOctreeSceneNode] SetInstances: " +
                   std::to_string(instanceCount_) + " instances staged for next Execute");
+}
+
+void BodyOctreeSceneNode::RefreshInstanceStreams() {
+    instanceTransforms_.clear();
+    instanceTransforms_.reserve(instances_.size());
+    std::vector<Vixen::SVO::BodyInstanceMaterialGpu> nextMaterials;
+    nextMaterials.reserve(instances_.size());
+    for (const Vixen::SVO::BodyInstanceGpu& instance : instances_) {
+        instanceTransforms_.push_back(instance.transform);
+        nextMaterials.push_back(instance.material);
+    }
+
+    const bool materialsChanged = nextMaterials.size() != instanceMaterials_.size() ||
+        (!nextMaterials.empty() &&
+         std::memcmp(nextMaterials.data(), instanceMaterials_.data(),
+                     nextMaterials.size() * sizeof(Vixen::SVO::BodyInstanceMaterialGpu)) != 0);
+    if (materialsChanged) {
+        instanceMaterials_ = std::move(nextMaterials);
+        std::fill(materialDirty_.begin(), materialDirty_.end(), true);
+    }
 }
 
 void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
@@ -254,29 +278,26 @@ void BodyOctreeSceneNode::SortInstancesFrontToBack(const glm::vec3& cameraPos) {
     // SetInstances, just without replacing the list.
     //
     // Baked-Perf M5 Task 5.3: sort by each instance's TRUE occupied-region center
-    // (traceBoundsMin/Max, Task 5.1), not worldPos (the body's full-cube min-CORNER,
-    // despite BodyInstanceGpu's own field comment calling it "body centre" — see
-    // InstanceSort.h's updated doc comment for the full derivation). This node has
+    // (traceBoundsMin/Max, Task 5.1), transformed by the same affine used by rendering.
+    // This node has
     // concatenated_.configs available here (populated by EnsureOctreesBuilt/
     // Rematerialize before any SetInstances/Sort call), so it can compute the real
     // per-instance center instead of falling back to the plain worldPos-only overload.
     // Procedural-provider instances (no octreeIndex-indexed config; analytic SDF, not
     // ESVO) have no traceBounds to read — worldPos IS their true center for those
-    // (bodyWorldPos/kWorldGridSize's own convention only applies to Stored/ESVO
-    // instances), so the accessor below falls back to worldPos unchanged whenever
-    // octreeIndex doesn't resolve to a valid config, keeping this a strict refinement.
+    // instances), so procedural centers are transformed by their instance affine too.
     constexpr float kWorldGridSize = 10.0f;  // ShellOctreeGpu.h's fixed octree-local->world span
     const std::vector<Vixen::SVO::OctreeConfig>& configs = concatenated_.configs;
     Vixen::SVO::SortInstancesFrontToBack(instances_, cameraPos,
         [&configs](const Vixen::SVO::BodyInstanceGpu& inst) {
-            const glm::vec3 worldPos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
-            if (inst.providerKind != 0u /* PROVIDER_STORED */ ||
-                inst.octreeIndex >= configs.size()) {
-                return worldPos;
+            if (inst.material.providerKind != 0u /* PROVIDER_STORED */ ||
+                inst.material.octreeIndex >= configs.size()) {
+                return Vixen::SVO::TransformPoint(inst.transform.localToWorld, glm::vec3(0.0f));
             }
             return Vixen::SVO::traceBoundsWorldCenterOf(
-                configs[inst.octreeIndex], worldPos, inst.renderScale, kWorldGridSize);
+                configs[inst.material.octreeIndex], inst.transform.localToWorld, kWorldGridSize);
         });
+    RefreshInstanceStreams();
     ++rtQueryInstanceEpoch_;
 }
 
@@ -423,28 +444,26 @@ void BodyOctreeSceneNode::TypedCompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent octree buffers across recompile");
     }
 
-    // 3b) Instance SSBO ring — allocate once, persistent across recompile.
-    // A placeholder capacity of at least 1 element ensures the ring is valid before
-    // the first SetInstances call. EnsureRingAllocated grows it (behind vkDeviceWaitIdle)
-    // if SetInstances is called with a larger list before the first Compile.
+    // 3b) Hot transform and cold material rings — allocate once, persistent across recompile.
+    // A placeholder capacity of at least 1 record keeps both descriptors valid for an empty scene.
     {
-        // Capacity: max of current instance list and a safe minimum (1 record).
-        // BodyInstanceGpu is already the exact std430 page layout, so sizing does
-        // not need to materialize a transient byte copy.
-        const VkDeviceSize instanceBytes = static_cast<VkDeviceSize>(
-            instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu));
-        const VkDeviceSize needed = std::max<VkDeviceSize>(
-            instanceBytes, sizeof(Vixen::SVO::BodyInstanceGpu));
-        EnsureRingAllocated(devicePtr, needed);
+        const VkDeviceSize transformBytes = static_cast<VkDeviceSize>(
+            instanceTransforms_.size() * sizeof(Vixen::SVO::BodyInstanceTransformGpu));
+        const VkDeviceSize materialBytes = static_cast<VkDeviceSize>(
+            instanceMaterials_.size() * sizeof(Vixen::SVO::BodyInstanceMaterialGpu));
+        EnsureRingAllocated(devicePtr,
+            std::max<VkDeviceSize>(transformBytes, sizeof(Vixen::SVO::BodyInstanceTransformGpu)),
+            std::max<VkDeviceSize>(materialBytes, sizeof(Vixen::SVO::BodyInstanceMaterialGpu)));
     }
 
-    // 4) Publish outputs. INSTANCE_BUFFER emits ring slot 0 as a compile-time placeholder;
+    // 4) Publish outputs. Both stream handles start at ring slot 0;
     //    ExecuteImpl overwrites it each frame with the current ring slot.
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_NODES_BUFFER,         nodesBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_BRICKS_BUFFER,        bricksBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_MATERIALS_BUFFER,     materialsBuffer_);
     ctx.Out(BodyOctreeSceneNodeConfig::OCTREE_CONFIG_BUFFER,        configBuffer_);
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,             perFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,    materialPerFrame_.GetUniformBuffer(0));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,   transformPerFrame_.GetUniformBuffer(0));
     ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_COUNT,              instanceCount_);
     // Inc2 M3: SDF + lookup buffers (bindings 11/12). Always emitted — placeholder
     // for binary/Procedural, real data for Stored-SDF bodies.
@@ -582,44 +601,55 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(BodyOctreeSceneNodeConfig::PROXY_AABB_COUNT,    proxyAabbCount_[readSlot]);
     }
 
-    // Upload the shell-owned 64-byte pages directly into THIS frame's ring buffer.
-    // BodyInstanceGpu is already the exact std430 byte layout, so no source vector
-    // or packed byte buffer is needed. If empty, use one zeroed placeholder so the
-    // SSBO remains valid even though INSTANCE_COUNT is zero. The frame fence for
-    // frameIndex was waited before Execute fired, so this slot is not in flight.
-    void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);
-    Vixen::SVO::BodyInstanceGpu emptyPlaceholder{};
-    const Vixen::SVO::BodyInstanceGpu* source = instances_.empty()
-        ? &emptyPlaceholder
-        : instances_.data();
-    const size_t sourceBytes = instances_.empty()
-        ? sizeof(emptyPlaceholder)
-        : instances_.size() * sizeof(Vixen::SVO::BodyInstanceGpu);
-    if (mapped && sourceBytes != 0) {
-        const size_t copyBytes = std::min(static_cast<size_t>(instanceRingCapacity_),
-                                          sourceBytes);
-        std::memcpy(mapped, source, copyBytes);
+    // Each transform stream is one contiguous span copied once per frame. The fence for
+    // frameIndex has already completed, so the corresponding in-flight slot is writable.
+    Vixen::SVO::BodyInstanceTransformGpu emptyTransform{};
+    const auto* transformSource = instanceTransforms_.empty() ? &emptyTransform : instanceTransforms_.data();
+    const size_t transformSourceBytes = instanceTransforms_.empty()
+        ? sizeof(emptyTransform)
+        : instanceTransforms_.size() * sizeof(Vixen::SVO::BodyInstanceTransformGpu);
+    void* transformMapped = transformPerFrame_.GetUniformBufferMapped(frameIndex);
+    if (transformMapped && transformSourceBytes != 0) {
+        std::memcpy(transformMapped, transformSource,
+                    std::min(static_cast<size_t>(transformRingCapacity_), transformSourceBytes));
     }
 
-    // Emit THIS frame's buffer so the descriptor binds the just-written data.
-    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER, perFrame_.GetUniformBuffer(frameIndex));
+    // Cold material bytes are uploaded only for slots dirtied by an instance change.
+    if (frameIndex >= materialDirty_.size()) materialDirty_.resize(kRingSize, true);
+    if (materialDirty_[frameIndex]) {
+        Vixen::SVO::BodyInstanceMaterialGpu emptyMaterial{};
+        const auto* materialSource = instanceMaterials_.empty() ? &emptyMaterial : instanceMaterials_.data();
+        const size_t materialSourceBytes = instanceMaterials_.empty()
+            ? sizeof(emptyMaterial)
+            : instanceMaterials_.size() * sizeof(Vixen::SVO::BodyInstanceMaterialGpu);
+        void* materialMapped = materialPerFrame_.GetUniformBufferMapped(frameIndex);
+        if (materialMapped && materialSourceBytes != 0) {
+            std::memcpy(materialMapped, materialSource,
+                        std::min(static_cast<size_t>(materialRingCapacity_), materialSourceBytes));
+            materialDirty_[frameIndex] = false;
+        }
+    }
 
-    // Honest count clamp: sourceBytes can exceed instanceRingCapacity_ between a SetInstances
-    // growth and the recompile that actually grows the ring (SetInstances now requests that
-    // recompile, but it hasn't necessarily run by this Execute). The upload above already clamps
-    // copyBytes to the ring's real capacity — clamp the emitted count the same way so the shader
-    // never reads instance records past what was actually written (no robustBufferAccess on this
-    // SSBO; an unclamped count was a latent OOB read).
-    const int32_t ringCapacityCount =
-        static_cast<int32_t>(instanceRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceGpu));
+    // Emit this frame's paired buffers so every consumer sees matching record order.
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_BUFFER,
+            materialPerFrame_.GetUniformBuffer(frameIndex));
+    ctx.Out(BodyOctreeSceneNodeConfig::INSTANCE_TRANSFORM_BUFFER,
+            transformPerFrame_.GetUniformBuffer(frameIndex));
+
+    // Clamp to the smaller stream capacity so no consumer can read a partial record.
+    const int32_t transformCount = static_cast<int32_t>(
+        transformRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceTransformGpu));
+    const int32_t materialCount = static_cast<int32_t>(
+        materialRingCapacity_ / sizeof(Vixen::SVO::BodyInstanceMaterialGpu));
+    const int32_t ringCapacityCount = std::min(transformCount, materialCount);
     const int32_t emittedCount = std::min(instanceCount_, ringCapacityCount);
     if (emittedCount < instanceCount_) {
         static bool warnedOnce = false;
         if (!warnedOnce) {
             warnedOnce = true;
             NODE_LOG_WARNING("[BodyOctreeSceneNode] instanceCount_ (" + std::to_string(instanceCount_) +
-                              ") exceeds ring capacity (" + std::to_string(ringCapacityCount) +
-                              ") — clamping emitted INSTANCE_COUNT until the pending recompile grows the ring");
+                              ") exceeds paired stream capacity (" + std::to_string(ringCapacityCount) +
+                              ") — clamping emitted INSTANCE_COUNT until recompile grows both rings");
         }
     }
     // Re-emit the count (it may change each frame if SetInstances was called).
@@ -1238,36 +1268,43 @@ void BodyOctreeSceneNode::CreateOctreeBuffers(VulkanDevice* device) {
     }
 }
 
-void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device, VkDeviceSize neededCapacity) {
-    if (perFrame_.IsInitialized() && neededCapacity <= instanceRingCapacity_) {
-        // Ring already exists and is large enough — nothing to do.
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent instance ring (capacity=" +
-                      std::to_string(static_cast<uint64_t>(instanceRingCapacity_)) + "B)");
+void BodyOctreeSceneNode::EnsureRingAllocated(VulkanDevice* device,
+                                               VkDeviceSize transformCapacity,
+                                               VkDeviceSize materialCapacity) {
+    if (transformPerFrame_.IsInitialized() && materialPerFrame_.IsInitialized() &&
+        transformCapacity <= transformRingCapacity_ && materialCapacity <= materialRingCapacity_) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Reusing persistent instance rings (transforms=" +
+                      std::to_string(static_cast<uint64_t>(transformRingCapacity_)) +
+                      "B, materials=" + std::to_string(static_cast<uint64_t>(materialRingCapacity_)) + "B)");
         return;
     }
 
     // Grow path: we must wait for all in-flight frames before destroying and recreating
     // the ring. This is a RARE path (capacity overflow), not the per-frame path.
-    if (perFrame_.IsInitialized()) {
-        NODE_LOG_INFO("[BodyOctreeSceneNode] Growing instance ring (old=" +
-                      std::to_string(static_cast<uint64_t>(instanceRingCapacity_)) +
-                      "B → new=" + std::to_string(static_cast<uint64_t>(neededCapacity)) +
-                      "B) — vkDeviceWaitIdle");
+    if (transformPerFrame_.IsInitialized() || materialPerFrame_.IsInitialized()) {
+        NODE_LOG_INFO("[BodyOctreeSceneNode] Growing instance rings — vkDeviceWaitIdle");
         vkDeviceWaitIdle(device->device);
-        perFrame_.Cleanup();
-        instanceRingCapacity_ = 0;
+        transformPerFrame_.Cleanup();
+        materialPerFrame_.Cleanup();
+        transformRingCapacity_ = 0;
+        materialRingCapacity_ = 0;
     }
 
-    // Allocate fresh ring of kRingSize storage buffers.
-    perFrame_.Initialize(device, kRingSize);
+    // Allocate fresh, separately sized rings of kRingSize storage buffers.
+    transformPerFrame_.Initialize(device, kRingSize);
+    materialPerFrame_.Initialize(device, kRingSize);
     for (uint32_t i = 0; i < kRingSize; ++i) {
-        perFrame_.CreateStorageBuffer(i, neededCapacity);
+        transformPerFrame_.CreateStorageBuffer(i, transformCapacity);
+        materialPerFrame_.CreateStorageBuffer(i, materialCapacity);
     }
-    instanceRingCapacity_ = neededCapacity;
+    transformRingCapacity_ = transformCapacity;
+    materialRingCapacity_ = materialCapacity;
+    materialDirty_.assign(kRingSize, true);
 
-    NODE_LOG_INFO("[BodyOctreeSceneNode] Allocated instance ring: " +
+    NODE_LOG_INFO("[BodyOctreeSceneNode] Allocated instance rings: " +
                   std::to_string(kRingSize) + " x " +
-                  std::to_string(static_cast<uint64_t>(neededCapacity)) + "B storage buffers");
+                  std::to_string(static_cast<uint64_t>(transformCapacity)) +
+                  "B transforms and " + std::to_string(static_cast<uint64_t>(materialCapacity)) + "B materials");
 }
 
 void BodyOctreeSceneNode::Rematerialize(uint64_t executeFrame) {
@@ -1979,35 +2016,24 @@ void BodyOctreeSceneNode::EnsureRtQueryTlasBuilt(VulkanDevice* device) {
     }
 
     // --- TLAS: one instance per BodyOctreeSceneNode instance ---
-    // Transform = local-to-world for THIS instance's placement: TraceWorld.glsl computes
-    // instOrigin=(rayOrigin-worldPos)/renderScale then localRayOrigin=worldToLocal*instOrigin,
-    // i.e. world->local = octreeConfig.worldToLocal * scale(1/renderScale) * translate(-worldPos).
-    // The TLAS wants the INVERSE (local->world), which is exactly the octree's own
-    // localToWorld already composed with this instance's placement:
-    //   local->world = translate(worldPos) * scale(renderScale) * octreeConfig.localToWorld.
+    // The instance owns the parent localToWorld affine; the octree config contributes
+    // the child localToWorld. Compose parent × child exactly once for this BLAS instance.
     std::vector<VkAccelerationStructureInstanceKHR> vkInstances;
     vkInstances.reserve(instances_.size());
     for (uint32_t ii = 0; ii < static_cast<uint32_t>(instances_.size()); ++ii) {
         const Vixen::SVO::BodyInstanceGpu& inst = instances_[ii];
-        if (inst.providerKind != 0u) continue;  // PROVIDER_STORED only -- procedural bodies have no octree/BLAS
-        const uint32_t oi = inst.octreeIndex;
+        if (inst.material.providerKind != 0u) continue;  // PROVIDER_STORED only -- procedural bodies have no octree/BLAS
+        const uint32_t oi = inst.material.octreeIndex;
         if (oi >= rtQueryBlas_.size() || rtQueryBlas_[oi].handle == VK_NULL_HANDLE) {
             continue;  // no brick occupied this octree (or index out of range) -- nothing to instance
         }
-        const glm::mat4 localToWorld =
-            glm::translate(glm::mat4(1.0f), glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2])) *
-            glm::scale(glm::mat4(1.0f), glm::vec3(inst.renderScale)) *
-            concatenated_.configs[oi].localToWorld;
+        const Vixen::SVO::Affine3x4Gpu localToWorld = Vixen::SVO::ComposeAffine(
+            inst.transform.localToWorld,
+            Vixen::SVO::ToAffine3x4(concatenated_.configs[oi].localToWorld));
 
         VkAccelerationStructureInstanceKHR vkInst{};
-        // VkTransformMatrixKHR is row-major 3x4; glm::mat4 is column-major -- transpose via
-        // direct [row][col] = mat[col][row] indexing (same convention TLASInstanceManager.h's
-        // glm::mat3x4 comment documents for this engine's other TLAS instance path).
-        for (int row = 0; row < 3; ++row) {
-            for (int col = 0; col < 4; ++col) {
-                vkInst.transform.matrix[row][col] = localToWorld[col][row];
-            }
-        }
+        // Keep the explicit parent×child affine and copy its 3x4 rows as-is.
+        vkInst.transform = ToVkTransformMatrix(localToWorld);
         // The 24-bit custom index carries the body-instance index in its low byte and
         // the flattened proxy base in the upper 16 bits. This is the only per-instance
         // metadata exposed to a ray-query shader, and recovers both records without a
@@ -2166,9 +2192,12 @@ void BodyOctreeSceneNode::DestroyBuffers() {
     DestroyOctreeBuffers();
     DestroyRtQueryTlas();  // W-RTQUERY Slice A: no-op when never built (flag off / no capability)
 
-    // FR-7: destroy the instance ring via PerFrameResources (mirrors DynamicInstanceBufferNode).
-    perFrame_.Cleanup();
-    instanceRingCapacity_ = 0;
+    // Destroy both instance rings via PerFrameResources (mirrors DynamicInstanceBufferNode).
+    transformPerFrame_.Cleanup();
+    materialPerFrame_.Cleanup();
+    transformRingCapacity_ = 0;
+    materialRingCapacity_ = 0;
+    materialDirty_.clear();
 
     NODE_LOG_INFO("[BodyOctreeSceneNode] All buffers destroyed");
 }

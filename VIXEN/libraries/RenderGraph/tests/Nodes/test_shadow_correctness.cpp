@@ -48,6 +48,7 @@
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <array>
@@ -246,15 +247,15 @@ struct DDGILeakGateDebugShadeCpu {
 Vixen::SVO::BodyInstanceGpu MakeProceduralSphere(glm::vec3 center, float radius,
                                                  float r, float g, float b) {
     Vixen::SVO::BodyInstanceGpu inst{};
-    inst.worldPos[0] = center.x; inst.worldPos[1] = center.y; inst.worldPos[2] = center.z;
-    inst.renderScale  = 1.0f;   // unused by Procedural
-    inst.color[0] = r; inst.color[1] = g; inst.color[2] = b;
-    inst.octreeIndex  = 0u;     // unused by Procedural
-    inst.providerKind = 1u;     // PROVIDER_PROCEDURAL
-    inst.recipeId     = 0u;     // sphere
-    inst.recipeParams[0] = radius;
-    inst.recipeParams[1] = 0.0f;  // displaceAmp
-    inst.recipeParams[2] = 0.0f;  // displaceFreq
+    Vixen::SVO::SetInstanceTranslationComponent(inst, 0, center.x); Vixen::SVO::SetInstanceTranslationComponent(inst, 1, center.y); Vixen::SVO::SetInstanceTranslationComponent(inst, 2, center.z);
+    Vixen::SVO::SetInstanceUniformScale(inst, 1.0f);   // unused by Procedural
+    inst.material.color[0] = r; inst.material.color[1] = g; inst.material.color[2] = b;
+    inst.material.octreeIndex  = 0u;     // unused by Procedural
+    inst.material.providerKind = 1u;     // PROVIDER_PROCEDURAL
+    inst.material.recipeId     = 0u;     // sphere
+    inst.material.recipeParams[0] = radius;
+    inst.material.recipeParams[1] = 0.0f;  // displaceAmp
+    inst.material.recipeParams[2] = 0.0f;  // displaceFreq
     return inst;
 }
 
@@ -668,10 +669,14 @@ protected:
         CreateHostBuffer(static_cast<VkDeviceSize>(instances.size()) * sizeof(uint32_t) + 4,
                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, dummyIter, dummyIterMem, true);
 
-        const VkDeviceSize instBufSize = static_cast<VkDeviceSize>(instances.size()) * sizeof(Vixen::SVO::BodyInstanceGpu);
-        VkBuffer instBuf = VK_NULL_HANDLE; VkDeviceMemory instMem = VK_NULL_HANDLE;
-        CreateHostBuffer(instBufSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf, instMem, false);
-        UploadHostBuffer(instMem, instances.data(), instBufSize);
+        const std::vector<uint8_t> materialBytes = Vixen::SVO::PackInstanceMaterials(instances);
+        const std::vector<uint8_t> transformBytes = Vixen::SVO::PackInstanceTransforms(instances);
+        VkBuffer instBuf = VK_NULL_HANDLE, transformBuf = VK_NULL_HANDLE;
+        VkDeviceMemory instMem = VK_NULL_HANDLE, transformMem = VK_NULL_HANDLE;
+        CreateHostBuffer(materialBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf, instMem, false);
+        CreateHostBuffer(transformBytes.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, transformBuf, transformMem, false);
+        UploadHostBuffer(instMem, materialBytes.data(), materialBytes.size());
+        UploadHostBuffer(transformMem, transformBytes.data(), transformBytes.size());
 
         VkBuffer lightBuf = VK_NULL_HANDLE; VkDeviceMemory lightMem = VK_NULL_HANDLE;
         CreateHostBuffer(sizeof(LightingConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, lightBuf, lightMem, false);
@@ -809,7 +814,7 @@ protected:
         // undetected because BodyInstanceRayMarch.comp stopped writing colour before this
         // test ever exercised its downstream shading path). Binding 18 is the ONLY one of
         // 16-19 the march's main() actually touches (hitRecords[idx] = rec).
-        const std::array<VkDescriptorSetLayoutBinding, 16> marchBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 17> marchBindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -826,6 +831,7 @@ protected:
             bind(15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo marchDslci{};
         marchDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -841,7 +847,7 @@ protected:
         // sibling B1 tests) established.
         // Binding 35 (InstanceSkipMaskBuffer) is required too -- SpatialReuseShade.comp
         // #includes SceneBindings.glsl, same as every other consumer of that shared file.
-        const std::array<VkDescriptorSetLayoutBinding, 27> shadeBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 28> shadeBindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -869,6 +875,7 @@ protected:
             bind(33, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo shadeDslci{};
         shadeDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -878,7 +885,7 @@ protected:
 
         // ShadowVisibilityWave.comp's reflected storage-buffer bindings. It reads scene/light
         // inputs and the shadow config, and read/writes HitRecordBuffer at binding 17.
-        const std::array<VkDescriptorSetLayoutBinding, 15> waveBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 16> waveBindings = {
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -894,6 +901,7 @@ protected:
             bind(17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo waveDslci{};
         waveDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -957,7 +965,7 @@ protected:
         // shared pool across two differently-sized layouts confuses this non-conformant driver.
         const std::array<VkDescriptorPoolSize, 2> marchPoolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17},
         }};
         VkDescriptorPoolCreateInfo marchDpci{};
         marchDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -973,7 +981,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> shadePoolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  6},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 24},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 25},
         }};
         VkDescriptorPoolCreateInfo shadeDpci{};
         shadeDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -987,7 +995,7 @@ protected:
         VkDescriptorSet shadeDescSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &shadeDsai, &shadeDescSet), VK_SUCCESS);
 
-        const VkDescriptorPoolSize wavePoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15};
+        const VkDescriptorPoolSize wavePoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16};
         VkDescriptorPoolCreateInfo waveDpci{};
         waveDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         waveDpci.maxSets = 1; waveDpci.poolSizeCount = 1; waveDpci.pPoolSizes = &wavePoolSize;
@@ -1009,6 +1017,7 @@ protected:
         VkDescriptorBufferInfo configInfo{dummyConfig, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo transformInfo{transformBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{dummySdf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{dummyLookup, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
@@ -1047,7 +1056,7 @@ protected:
             return w2;
         };
 
-        const std::array<VkWriteDescriptorSet, 16> marchWrites = {
+        const std::array<VkWriteDescriptorSet, 17> marchWrites = {
             wImg(marchDescSet, 0, &colorInfo),
             wBuf(marchDescSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(marchDescSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -1064,10 +1073,11 @@ protected:
             wBuf(marchDescSet, 15, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &tierRefInfo),
             wBuf(marchDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),  // HitRecordBuffer (real slot, not 17 -- see marchBindings' own comment)
             wBuf(marchDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
+            wBuf(marchDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(marchWrites.size()), marchWrites.data(), 0, nullptr);
 
-        const std::array<VkWriteDescriptorSet, 27> shadeWrites = {
+        const std::array<VkWriteDescriptorSet, 28> shadeWrites = {
             wImg(shadeDescSet, 0, &colorInfo),
             wBuf(shadeDescSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(shadeDescSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -1095,10 +1105,11 @@ protected:
             wImg(shadeDescSet, 33, &probeVisInfo),
             wBuf(shadeDescSet, 34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &probeGridInfo),
             wBuf(shadeDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
+            wBuf(shadeDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(shadeWrites.size()), shadeWrites.data(), 0, nullptr);
 
-        const std::array<VkWriteDescriptorSet, 15> waveWrites = {
+        const std::array<VkWriteDescriptorSet, 16> waveWrites = {
             wBuf(waveDescSet, 1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(waveDescSet, 2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
             wBuf(waveDescSet, 3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
@@ -1114,6 +1125,7 @@ protected:
             wBuf(waveDescSet, 17, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),
             wBuf(waveDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),
             wBuf(waveDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
+            wBuf(waveDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(waveWrites.size()), waveWrites.data(), 0, nullptr);
 
@@ -1259,6 +1271,7 @@ protected:
         vkDestroyBuffer(logicalDevice_, dummyTierRef, nullptr); vkFreeMemory(logicalDevice_, dummyTierRefMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyIter, nullptr);    vkFreeMemory(logicalDevice_, dummyIterMem, nullptr);
         vkDestroyBuffer(logicalDevice_, instBuf, nullptr);      vkFreeMemory(logicalDevice_, instMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, transformBuf, nullptr); vkFreeMemory(logicalDevice_, transformMem, nullptr);
         vkDestroyBuffer(logicalDevice_, lightBuf, nullptr);     vkFreeMemory(logicalDevice_, lightMem, nullptr);
         vkDestroyBuffer(logicalDevice_, hitRecordBuf, nullptr); vkFreeMemory(logicalDevice_, hitRecordMem, nullptr);
         vkDestroyBuffer(logicalDevice_, shadowBuf, nullptr);    vkFreeMemory(logicalDevice_, shadowMem, nullptr);
@@ -1487,9 +1500,9 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightFacesThreeBodiesTowardTheStar) {
     constexpr float kStarEmission = 16.0f;
     constexpr float kLightRange = 100.0f;
     auto star = MakeProceduralSphere(starCenter, 8.0f, starColor.x, starColor.y, starColor.z);
-    star.recipeParams[3] = kStarEmission;
+    star.material.recipeParams[3] = kStarEmission;
     const LightingConfigCpu lighting = MakePointLighting(
-        glm::vec3(star.worldPos[0], star.worldPos[1], star.worldPos[2]),
+        Vixen::SVO::TransformPoint(star.transform.localToWorld, glm::vec3(0.0f)),
         starColor * kStarEmission, kLightRange, 0.04f);
     const ShadowConfigCpu shadows = MakeShadow(true);
 
@@ -1533,10 +1546,13 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightFacesThreeBodiesTowardTheStar) {
         pc.raySizeCoef = 0.0f; pc.raySizeBias = 0.0f;
         pc.instanceCount = 2;
 
-        const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
-            star,
-            MakeProceduralSphere(bodyCenters[i], 5.0f, 0.9f, 0.9f, 0.9f),
-        };
+        auto rotatedBody = MakeProceduralSphere(bodyCenters[i], 5.0f, 0.9f, 0.9f, 0.9f);
+        const glm::mat4 rotatedBodyLocalToWorld =
+            glm::translate(glm::mat4(1.0f), bodyCenters[i]) *
+            glm::rotate(glm::mat4(1.0f), glm::radians(53.0f), glm::normalize(glm::vec3(0.4f, 0.7f, 0.2f))) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(1.25f, 0.8f, 1.0f));
+        Vixen::SVO::SetInstanceTransform(rotatedBody, rotatedBodyLocalToWorld);
+        const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {star, rotatedBody};
         std::vector<uint8_t> rgba;
         ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadows, pc, kW, kH, rgba));
         const int luma = centerLuma(rgba);
@@ -1556,7 +1572,7 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightPickReturnsTheLitBodyInstance) {
     constexpr float kStarEmission = 16.0f;
     constexpr float kLightRange = 100.0f;
     auto star = MakeProceduralSphere(starCenter, 8.0f, starColor.x, starColor.y, starColor.z);
-    star.recipeParams[3] = kStarEmission;
+    star.material.recipeParams[3] = kStarEmission;
     const glm::vec3 bodyCenter = starCenter + glm::vec3(-23.0f, 12.0f, -25.0f);
     const LightingConfigCpu lighting = MakePointLighting(
         starCenter, starColor * kStarEmission, kLightRange, 0.04f);

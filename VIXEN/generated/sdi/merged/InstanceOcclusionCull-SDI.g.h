@@ -33,17 +33,17 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
  */
 struct BodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -84,6 +84,26 @@ struct InstanceSkipMaskBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief BodyInstanceTransformBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
+ */
+struct BodyInstanceTransformBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "BodyInstanceTransform";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -150,6 +170,21 @@ namespace Set0 {
         using DataType = InstanceSkipMaskBuffer;
     };
 
+    /**
+     * @brief BodyInstanceTransformBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding4 {
+        static constexpr const char* NAME = "BodyInstanceTransformBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 4;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = BodyInstanceTransformBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -158,6 +193,7 @@ using BodyInstanceBuffer = Set0::Binding0;
 using OctreeConfigsSSBO = Set0::Binding1;
 using tileMaxImage = Set0::Binding2;
 using InstanceSkipMaskBuffer = Set0::Binding3;
+using BodyInstanceTransformBuffer = Set0::Binding4;
 } // namespace Bind
 
 namespace Push {
@@ -211,6 +247,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"OctreeConfigsSSBO", false, 0, 1, 0, Access::ReadOnly, 0, nullptr},
     {"tileMaxImage", false, 0, 2, 0, Access::ReadOnly, 0, nullptr},
     {"InstanceSkipMaskBuffer", false, 0, 3, 0, Access::ReadWrite, 0, nullptr},
+    {"BodyInstanceTransformBuffer", false, 0, 4, 0, Access::ReadOnly, 0, nullptr},
     {"prevViewProj", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"prevCamPos", true, 0, 0, 64, Access::ReadOnly, 0, nullptr},
     {"dims", true, 0, 0, 80, Access::ReadOnly, 0, nullptr},
@@ -235,7 +272,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "InstanceOcclusionCull";
-    static constexpr uint32_t NUM_MEMBERS = 7;
+    static constexpr uint32_t NUM_MEMBERS = 8;
     static constexpr uint32_t NUM_FEATURES = 0;
 };
 

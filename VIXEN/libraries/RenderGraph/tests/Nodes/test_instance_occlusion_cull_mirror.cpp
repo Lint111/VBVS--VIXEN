@@ -3,8 +3,8 @@
 // 1:1 CPU mirror tests for shaders/InstanceOcclusionCull.comp per the
 // gpu-shader-debug discipline. The mirror (Nodes/InstanceOcclusionCullMirror.h)
 // carries the exact per-word cull a shader thread performs:
-//   - world AABB = inst.worldPos + inst.renderScale * (config.localToWorld *
-//     traceBounds corner)  — TraceWorld.glsl's inverse, corners min/maxed
+//   - world AABB = inst.localToWorld * config.localToWorld * traceBounds corner,
+//     with all eight corners transformed and min/maxed
 //   - project the 8 corners by prevViewProj; uv = ndc*0.5+0.5, texel = uv*dims
 //     (SpatialReuseShade.comp's reprojection convention, w>1e-5 validity)
 //   - tile rect (/16), dilated one tile, clamped; occluded iff EVERY consulted
@@ -50,8 +50,7 @@ std::vector<float> Tiles(float v) {
 // the origin camera is exactly 5.0 (dx=dy=0 inside the xy footprint, dz=5).
 CullInstance BoxInstance() {
     CullInstance inst{};
-    inst.worldPos = glm::vec3(0.0f, 0.0f, 5.0f);
-    inst.renderScale = 1.0f;
+    inst.localToWorld = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 5.0f));
     inst.octreeIndex = 0u;
     inst.providerKind = 0u;  // Stored/ESVO
     return inst;
@@ -81,8 +80,8 @@ CullParams BoxParams() {
 
 TEST(InstanceOcclusionCullMirror, WorldAabbComposesScaleTranslate) {
     CullInstance inst{};
-    inst.worldPos = glm::vec3(3.0f, 0.0f, 5.0f);
-    inst.renderScale = 2.0f;
+    inst.localToWorld = glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 0.0f, 5.0f)) *
+                        glm::scale(glm::mat4(1.0f), glm::vec3(2.0f));
     CullOctreeConfig cfg{};
     cfg.traceBoundsMin = glm::vec3(0.25f);
     cfg.traceBoundsMax = glm::vec3(0.75f);
@@ -92,7 +91,7 @@ TEST(InstanceOcclusionCullMirror, WorldAabbComposesScaleTranslate) {
     glm::vec3 mn, mx;
     CullWorldAabb(inst, cfg, mn, mx);
     // base = 2*[0.25,0.75] + 1 = [1.5, 2.5] (x), [0.5, 1.5] (y,z)
-    // world = worldPos + 2*base
+    // world = localToWorld * base
     EXPECT_FLOAT_EQ(mn.x, 3.0f + 2.0f * 1.5f);   // 6.0
     EXPECT_FLOAT_EQ(mx.x, 3.0f + 2.0f * 2.5f);   // 8.0
     EXPECT_FLOAT_EQ(mn.y, 0.0f + 2.0f * 0.5f);   // 1.0
@@ -105,13 +104,14 @@ TEST(InstanceOcclusionCullMirror, WorldAabbHandlesRotation) {
     // 90 deg about +Z maps local +x -> world +y. Corner-based min/max must
     // stay a valid (min<max) box, not assume axis-aligned pass-through.
     CullInstance inst{};
-    inst.worldPos = glm::vec3(0.0f);
-    inst.renderScale = 1.0f;
+    inst.localToWorld = glm::mat4(1.0f);
     CullOctreeConfig cfg{};
     cfg.traceBoundsMin = glm::vec3(0.0f);
     cfg.traceBoundsMax = glm::vec3(1.0f, 0.5f, 0.25f);
     cfg.localToWorld = glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(),
                                    glm::vec3(0.0f, 0.0f, 1.0f));
+    inst.localToWorld = cfg.localToWorld;
+    cfg.localToWorld = glm::mat4(1.0f);
     glm::vec3 mn, mx;
     CullWorldAabb(inst, cfg, mn, mx);
     // x' = -y ∈ [-0.5, 0], y' = x ∈ [0, 1]
@@ -186,20 +186,20 @@ TEST(InstanceOcclusionCullMirror, BehindNearPlaneNeverCulled) {
 TEST(InstanceOcclusionCullMirror, FullyOffscreenNeverCulled) {
     // Shift the instance so its uv rect lies entirely right of uv.x = 1.
     auto inst = BoxInstance();
-    inst.worldPos.x = 1.5f;  // uv.x ∈ [1.25, 1.3125]
+    inst.localToWorld[3].x = 1.5f;  // uv.x ∈ [1.25, 1.3125]
     auto tiles = Tiles(4.0f);
     EXPECT_FALSE(InstanceOccluded(inst, BoxConfig(), tiles.data(), BoxParams()));
 }
 
 TEST(InstanceOcclusionCullMirror, TileCapNeverCulled) {
-    // Blow the instance up (renderScale, NOT traceBounds — those must stay in
-    // [0,1] to pass validity) to cover the whole viewport: clamped 16x16 = 256
+    // Blow the instance up (NOT traceBounds — those must stay in [0,1] to pass
+    // validity) to cover the whole viewport: clamped 16x16 = 256
     // covered tiles > the 64-tile cap — big things are visible anyway.
     auto cfg = BoxConfig();
     cfg.traceBoundsMax = glm::vec3(1.0f, 1.0f, 0.125f);
     auto inst = BoxInstance();
-    inst.worldPos = glm::vec3(-2.0f, -2.0f, 5.0f);
-    inst.renderScale = 4.0f;  // world xy ∈ [-2, 2] → uv ∈ [-0.5, 1.5]
+    inst.localToWorld = glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, -2.0f, 5.0f)) *
+                        glm::scale(glm::mat4(1.0f), glm::vec3(4.0f)); // world xy ∈ [-2, 2]
     auto tiles = Tiles(4.0f);
     EXPECT_FALSE(InstanceOccluded(inst, cfg, tiles.data(), BoxParams()));
 }
@@ -219,8 +219,8 @@ TEST(InstanceOcclusionCullMirror, MaskWordSetsBitsOnlyForOccludedInstances) {
     // z ∈ [2, 2.5], nearest 2.0 < wall 4.0), inst2 occluded (same as inst0 but
     // shifted +x one tile-width 0.125 — uv rect [0.5625, 0.625], still walled).
     std::vector<CullInstance> insts = {BoxInstance(), BoxInstance(), BoxInstance()};
-    insts[1].worldPos.z = 2.0f;
-    insts[2].worldPos.x = 0.125f;
+    insts[1].localToWorld[3].z = 2.0f;
+    insts[2].localToWorld[3].x = 0.125f;
     std::vector<CullOctreeConfig> cfgs = {BoxConfig()};
     auto params = BoxParams();
     params.instanceCount = 3u;

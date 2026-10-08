@@ -470,10 +470,9 @@ bool traverseRayQueryWorldAnyHit(vec3 worldOrigin, vec3 worldDirUnit,
             continue;
         }
         if (skipPointLightSource) {
-            BodyInstance sourceCandidate = bodyInstances[ci];
-            vec3 sourceOrigin = sourceCandidate.worldPos;
-            vec3 sourceCenter = sourceOrigin + vec3(0.5 * sourceCandidate.renderScale);
-            if (sourceCandidate.recipeParams[3] > 0.0 &&
+            vec3 sourceOrigin = instanceLocalToWorldPoint(ci, vec3(0.0));
+            vec3 sourceCenter = instanceLocalToWorldPoint(ci, vec3(0.5));
+            if (bodyInstances[ci].recipeParams[3] > 0.0 &&
                 (all(lessThanEqual(abs(sourceOrigin - pointLightPosition), vec3(1e-3))) ||
                  all(lessThanEqual(abs(sourceCenter - pointLightPosition), vec3(1e-3))))) {
                 continue;

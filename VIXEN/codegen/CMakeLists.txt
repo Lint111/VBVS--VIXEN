@@ -215,6 +215,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ProbeGridConfig.glsl" _out_probegridconfig_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h" _out_lighttreebuffer_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl" _out_lighttreebuffer_glsl_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/MiningBeamBuffer.g.h" _out_miningbeambuffer_cpp_run)
+        _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/MiningBeamBuffer.glsl" _out_miningbeambuffer_glsl_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h" _out_reservoirrecord_cpp_run)
         _codegen_to_wsl_path("${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl" _out_reservoirrecord_glsl_run)
         # Recipe-Load-Tier-Contract M2 (precision tier): dual full/half layout for the recipe
@@ -289,6 +291,8 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
         set(_out_probegridconfig_glsl_run "${VIXEN_ROOT}/shaders/Generated/ProbeGridConfig.glsl")
         set(_out_lighttreebuffer_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/LightTreeBuffer.g.h")
         set(_out_lighttreebuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/LightTreeBuffer.glsl")
+        set(_out_miningbeambuffer_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/MiningBeamBuffer.g.h")
+        set(_out_miningbeambuffer_glsl_run "${VIXEN_ROOT}/shaders/Generated/MiningBeamBuffer.glsl")
         set(_out_reservoirrecord_cpp_run "${VIXEN_ROOT}/libraries/RenderGraph/include/Generated/ReservoirRecord.g.h")
         set(_out_reservoirrecord_glsl_run "${VIXEN_ROOT}/shaders/Generated/ReservoirRecord.glsl")
         set(_out_recipeparams_cpp_run "${VIXEN_ROOT}/libraries/SVO/include/Recipe/generated/RecipeParams.g.h")
@@ -689,6 +693,21 @@ if(EXISTS "${_yk_tool}/CodegenTool.csproj")
     add_custom_target(lighttreebuffer_regen
         COMMAND ${_CODEGEN_RUNNER} ${_ltb_args}
         COMMENT "[codegen] regenerate LightTreeBuffer.g.h/.glsl (Yeroket tool)"
+        JOB_POOL msbuild
+        VERBATIM)
+
+    set(_mb_args
+        "${_yk_dll_run}"
+        --schema "${_schema_config_run}" --struct MiningBeamBuffer
+        --out-cpp  "${_out_miningbeambuffer_cpp_run}"
+        --out-glsl "${_out_miningbeambuffer_glsl_run}")
+    vixen_add_codegen_check(miningbeambuffer_check ALL
+        COMMAND ${_CODEGEN_RUNNER} ${_mb_args} --check
+        COMMENT "[codegen] golden check: MiningBeamBuffer.g.h/.glsl match canonical schema"
+        VERBATIM)
+    add_custom_target(miningbeambuffer_regen
+        COMMAND ${_CODEGEN_RUNNER} ${_mb_args}
+        COMMENT "[codegen] regenerate MiningBeamBuffer.g.h/.glsl from canonical schema"
         JOB_POOL msbuild
         VERBATIM)
 
