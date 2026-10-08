@@ -129,7 +129,7 @@ endif()
 # archive outside tracked directories; never check out the user's kernel clone.
 include("${VIXEN_ROOT}/cmake/VixenKernelSnapshot.cmake")
 include("${VIXEN_ROOT}/cmake/VixenChecks.cmake")
-set(_vixen_tracked_yeroket_kernel_sha "92cfa58c3c7078aac01895d7ff1191c522cfe6c4")
+set(_vixen_tracked_yeroket_kernel_sha "77574f29728c40da71365d9e3c8125acf6a506ed")
 unset(YEROKET_KERNEL_SHA CACHE)
 set(VIXEN_YEROKET_KERNEL_SHA_OVERRIDE "" CACHE STRING
     "Optional per-build-tree override for VIXEN's tracked Yeroket kernel pin")
