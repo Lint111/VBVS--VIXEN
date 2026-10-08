@@ -133,9 +133,9 @@ constexpr float kWorldGridSize = 10.0f;
 Vixen::SVO::BodyInstanceGpu MakeInst(float x, float y, float z, float scale,
                                       uint32_t octreeIndex) {
     Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
-    i.renderScale = scale; i.octreeIndex = octreeIndex;
-    i.color[0] = 1.0f; i.color[1] = 1.0f; i.color[2] = 1.0f;
+    Vixen::SVO::SetInstanceTranslationComponent(i, 0, x); Vixen::SVO::SetInstanceTranslationComponent(i, 1, y); Vixen::SVO::SetInstanceTranslationComponent(i, 2, z);
+    Vixen::SVO::SetInstanceUniformScale(i, scale); i.material.octreeIndex = octreeIndex;
+    i.material.color[0] = 1.0f; i.material.color[1] = 1.0f; i.material.color[2] = 1.0f;
     return i;
 }
 
@@ -481,10 +481,10 @@ protected:
         vkFreeMemory(logicalDevice_, readbackMem, nullptr);
     }
 
-    // Render using the real BodyInstanceRayMarch shader (bindings 0-5,9-22; binding 8 does
-    // not exist in the reflected SPIR-V — see the descriptor-layout comment below).
+    // Render using the real BodyInstanceRayMarch shader (bindings 0-5,9-22,35,47; binding 8
+    // does not exist in the reflected SPIR-V — see the descriptor-layout comment below).
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
-                      VkBuffer inst, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
+                      VkBuffer inst, VkBuffer instTransform, VkBuffer sdf, VkBuffer lookup, VkBuffer mip,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms,
                       std::vector<HitRecordCpu>* outHitRecords = nullptr,
@@ -559,7 +559,7 @@ protected:
         // desyncs this local layout from the SPIR-V module's actual resource interface,
         // which is a VUID-VkComputePipelineCreateInfo-layout-07988-class validation error
         // (root-caused 2026-07-15, Recipe-Parameterization M4).
-        const std::array<VkDescriptorSetLayoutBinding,21> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,22> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -581,6 +581,7 @@ protected:
             bindL(21,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Sampled Lighting Inc2 M1: historyImage
             bindL(22,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
             bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -602,7 +603,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 18},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -624,7 +625,7 @@ protected:
             lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
             shadowI{dummyShadow,0,VK_WHOLE_SIZE}, accumI{dummyAccum,0,VK_WHOLE_SIZE},
             prevCamI{dummyPrevCam,0,VK_WHOLE_SIZE},
-            skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE};
+            skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE}, instTransformI{instTransform,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -636,7 +637,7 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,21> writes = {
+        const std::array<VkWriteDescriptorSet,22> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI),  // Inc1 M4b: per-instance iteration debug
@@ -645,6 +646,7 @@ protected:
             wB(17,&lightingI), wB(18,&hitRecordI), wB(19,&shadowI), wB(20,&accumI),
             wI(21,&historyImgI), wB(22,&prevCamI),
             wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wB(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -860,6 +862,7 @@ protected:
         VkBuffer mats    = buf(C::OCTREE_MATERIALS_BUFFER_Slot::index);
         VkBuffer cfgBuf  = buf(C::OCTREE_CONFIG_BUFFER_Slot::index);
         VkBuffer instBuf = buf(C::INSTANCE_BUFFER_Slot::index);
+        VkBuffer instTransformBuf = buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index);
         // BuildRenderGraph wires the compact shell pair to shader bindings 11/12. The
         // source pair remains a separate producer output and is not the active render payload
         // after BodyOctreeSceneNode derives its shell cache.
@@ -868,7 +871,7 @@ protected:
         VkBuffer mipBuf  = buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index);
         ASSERT_NE(nodes, VK_NULL_HANDLE); ASSERT_NE(cfgBuf, VK_NULL_HANDLE);
         ASSERT_NE(shellDataBuf, VK_NULL_HANDLE); ASSERT_NE(shellLookupBuf, VK_NULL_HANDLE);
-        ASSERT_NE(mipBuf, VK_NULL_HANDLE);
+        ASSERT_NE(mipBuf, VK_NULL_HANDLE); ASSERT_NE(instTransformBuf, VK_NULL_HANDLE);
 
         constexpr uint32_t kW=512, kH=512;
         // Fit the sphere (radius kRadius in grid-voxel units, occupying roughly
@@ -879,7 +882,7 @@ protected:
 
         std::vector<uint8_t> rgba; double ms = 0.0;
         std::vector<HitRecordCpu> hitRecords;
-        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
+        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf, instTransformBuf,
                                              shellDataBuf, shellLookupBuf, mipBuf,
                                              pc, kW, kH, rgba, ms, &hitRecords));
 
@@ -1049,7 +1052,8 @@ protected:
                 buf(C::OCTREE_NODES_BUFFER_Slot::index),
                 buf(C::OCTREE_BRICKS_BUFFER_Slot::index),
                 buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), configBuf,
-                buf(C::INSTANCE_BUFFER_Slot::index), channelPool, brickLookup, mipBuf,
+                buf(C::INSTANCE_BUFFER_Slot::index),
+                buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index), channelPool, brickLookup, mipBuf,
                 probePc, 1u, 1u, probeRgba, probeMs, &probeHits, &iterCount));
             ASSERT_EQ(probeHits.size(), 1u);
             const bool hit = (probeHits[0].flags & kHitRecordFlagHit) != 0u;
@@ -1066,7 +1070,8 @@ protected:
             ASSERT_NO_FATAL_FAILURE(RenderToRgba(
                 buf(C::OCTREE_NODES_BUFFER_Slot::index), buf(C::OCTREE_BRICKS_BUFFER_Slot::index),
                 buf(C::OCTREE_MATERIALS_BUFFER_Slot::index), configBuf,
-                buf(C::INSTANCE_BUFFER_Slot::index), shellDataBuf, shellLookupBuf, mipBuf,
+                buf(C::INSTANCE_BUFFER_Slot::index),
+                buf(C::INSTANCE_TRANSFORM_BUFFER_Slot::index), shellDataBuf, shellLookupBuf, mipBuf,
                 pc, kW, kH, rgba, ms, &hitRecords));
             // KI-032 fix: PNG rendered from HitRecord.albedo (still written post-KI-018), not
             // the dead colorImg -- see this file's HitRecordCpu comment.

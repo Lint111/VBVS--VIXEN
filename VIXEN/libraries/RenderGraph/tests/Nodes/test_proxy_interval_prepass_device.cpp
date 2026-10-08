@@ -253,9 +253,9 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
 
     std::array<Vixen::SVO::BodyInstanceGpu, 2> instances{};
     for (uint32_t index = 0u; index < static_cast<uint32_t>(instances.size()); ++index) {
-        instances[index].renderScale = 1.0f;
-        instances[index].octreeIndex = index;
-        instances[index].providerKind = 0u;
+        Vixen::SVO::SetInstanceUniformScale(instances[index], 1.0f);
+        instances[index].material.octreeIndex = index;
+        instances[index].material.providerKind = 0u;
     }
     std::array<Vixen::Gpu::OctreeConfig, 2> configs{};
     for (auto& config : configs) {
@@ -263,10 +263,15 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
         config.worldToLocal = glm::mat4(1.0f);
     }
 
+    const std::vector<Vixen::SVO::BodyInstanceGpu> instanceValues(instances.begin(), instances.end());
+    const auto materialData = Vixen::SVO::PackInstanceMaterials(instanceValues);
+    const auto transformData = Vixen::SVO::PackInstanceTransforms(instanceValues);
     const BufferAllocation proxyBuffer = CreateHostBuffer(
         sizeof(proxies), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, proxies.data());
     const BufferAllocation instanceBuffer = CreateHostBuffer(
-        sizeof(instances), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instances.data());
+        materialData.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, materialData.data());
+    const BufferAllocation instanceTransformBuffer = CreateHostBuffer(
+        transformData.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, transformData.data());
     const BufferAllocation configBuffer = CreateHostBuffer(
         sizeof(configs), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, configs.data());
     const BufferAllocation rasterResultBuffer = CreateHostBuffer(
@@ -328,7 +333,7 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
     framebufferInfo.width = 1u; framebufferInfo.height = 1u; framebufferInfo.layers = 1u;
     ASSERT_EQ(vkCreateFramebuffer(device_, &framebufferInfo, nullptr, &framebuffer_), VK_SUCCESS);
 
-    std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+    std::array<VkDescriptorSetLayoutBinding, 5> bindings{};
     for (uint32_t index = 0u; index < static_cast<uint32_t>(bindings.size()); ++index) {
         bindings[index].binding = index;
         bindings[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -394,7 +399,7 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
     ASSERT_EQ(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1u, &pipelineInfo,
                                         nullptr, &pipeline_), VK_SUCCESS);
 
-    std::array<VkDescriptorSetLayoutBinding, 4> computeBindings{};
+    std::array<VkDescriptorSetLayoutBinding, 5> computeBindings{};
     for (uint32_t index = 0u; index < static_cast<uint32_t>(computeBindings.size()); ++index) {
         computeBindings[index].binding = index;
         computeBindings[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -432,7 +437,7 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
                                        &computePipelineInfo, nullptr,
                                        &computePipeline_), VK_SUCCESS);
 
-    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4u};
+    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5u};
     VkDescriptorPoolCreateInfo descriptorPoolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     descriptorPoolInfo.maxSets = 1u;
     descriptorPoolInfo.poolSizeCount = 1u;
@@ -445,13 +450,14 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
     setAllocate.pSetLayouts = &descriptorSetLayout_;
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     ASSERT_EQ(vkAllocateDescriptorSets(device_, &setAllocate, &descriptorSet), VK_SUCCESS);
-    const std::array<VkDescriptorBufferInfo, 4> bufferInfos = {{
+    const std::array<VkDescriptorBufferInfo, 5> bufferInfos = {{
         {proxyBuffer.buffer, 0u, VK_WHOLE_SIZE},
         {instanceBuffer.buffer, 0u, VK_WHOLE_SIZE},
         {configBuffer.buffer, 0u, VK_WHOLE_SIZE},
         {rasterResultBuffer.buffer, 0u, VK_WHOLE_SIZE},
+        {instanceTransformBuffer.buffer, 0u, VK_WHOLE_SIZE},
     }};
-    std::array<VkWriteDescriptorSet, 4> writes{};
+    std::array<VkWriteDescriptorSet, 5> writes{};
     for (uint32_t index = 0u; index < static_cast<uint32_t>(writes.size()); ++index) {
         writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[index].dstSet = descriptorSet;
@@ -477,13 +483,14 @@ TEST_F(ProxyIntervalPrepassDeviceTest, RasterAndComputeRecordsMatchMirrorByteFor
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
     ASSERT_EQ(vkAllocateDescriptorSets(device_, &computeSetAllocate,
                                        &computeDescriptorSet), VK_SUCCESS);
-    const std::array<VkDescriptorBufferInfo, 4> computeBufferInfos = {{
+    const std::array<VkDescriptorBufferInfo, 5> computeBufferInfos = {{
         {proxyBuffer.buffer, 0u, VK_WHOLE_SIZE},
         {instanceBuffer.buffer, 0u, VK_WHOLE_SIZE},
         {configBuffer.buffer, 0u, VK_WHOLE_SIZE},
         {computeResultBuffer.buffer, 0u, VK_WHOLE_SIZE},
+        {instanceTransformBuffer.buffer, 0u, VK_WHOLE_SIZE},
     }};
-    std::array<VkWriteDescriptorSet, 4> computeWrites{};
+    std::array<VkWriteDescriptorSet, 5> computeWrites{};
     for (uint32_t index = 0u;
          index < static_cast<uint32_t>(computeWrites.size()); ++index) {
         computeWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

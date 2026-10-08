@@ -515,9 +515,9 @@ protected:
         std::vector<Vixen::SVO::BodyInstanceGpu> hotInstances;
         auto addHotInstance = [&](uint32_t recipeId) {
             Vixen::SVO::BodyInstanceGpu inst{};
-            inst.renderScale = 1.0f;
-            inst.color[0] = 0.8f; inst.color[1] = 0.3f; inst.color[2] = 0.3f;
-            inst.recipeId = recipeId;
+            Vixen::SVO::SetInstanceUniformScale(inst, 1.0f);
+            inst.material.color[0] = 0.8f; inst.material.color[1] = 0.3f; inst.material.color[2] = 0.3f;
+            inst.material.recipeId = recipeId;
             hotInstances.push_back(inst);
         };
         for (const auto& rd : recipes)
@@ -548,8 +548,13 @@ protected:
                  precCountBuf, precIdxBuf;
         VkDeviceMemory instMem, boundMem, countMem, idxMem, minXMem, minYMem, maxXMem, maxYMem, indirectMem,
                        precCountMem, precIdxMem;
+        VkBuffer transformBuf;
+        VkDeviceMemory transformMem;
 
-        const VkDeviceSize instSize  = hotInstanceCount * sizeof(Vixen::SVO::BodyInstanceGpu);
+        const auto materialData = Vixen::SVO::PackInstanceMaterials(hotInstances);
+        const auto transformData = Vixen::SVO::PackInstanceTransforms(hotInstances);
+        const VkDeviceSize instSize  = materialData.size();
+        const VkDeviceSize transformSize = transformData.size();
         const VkDeviceSize boundSize = kMaxBuckets * sizeof(RecipeBoundSphereCpu);
         const VkDeviceSize countSize = kMaxBuckets * sizeof(uint32_t);
         const VkDeviceSize idxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * kMaxMembersPerBucket * sizeof(uint32_t);
@@ -563,6 +568,7 @@ protected:
         const VkDeviceSize precIdxSize   = static_cast<VkDeviceSize>(kMaxBuckets) * 2 * kMaxMembersPerBucket * sizeof(uint32_t);
 
         CreateHostBuffer(instSize,  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, instBuf,  instMem,  false);
+        CreateHostBuffer(transformSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, transformBuf, transformMem, false);
         CreateHostBuffer(boundSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, boundBuf, boundMem, false);
         CreateHostBuffer(countSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, countBuf, countMem, true);
         CreateHostBuffer(idxSize,   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, idxBuf,   idxMem,   true);
@@ -576,7 +582,8 @@ protected:
         CreateHostBuffer(precCountSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, precCountBuf, precCountMem, true);
         CreateHostBuffer(precIdxSize,   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, precIdxBuf,   precIdxMem,   true);
 
-        UploadBuffer(instMem, hotInstances.data(), instSize);
+        UploadBuffer(instMem, materialData.data(), instSize);
+        UploadBuffer(transformMem, transformData.data(), transformSize);
 
         std::vector<RecipeBoundSphereCpu> boundSpheres(kMaxBuckets, RecipeBoundSphereCpu{});
         for (const auto& rd : recipes) {
@@ -600,9 +607,9 @@ protected:
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 11> bucketingBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 12> bucketingBindings = {
             bind(0), bind(1), bind(2), bind(3), bind(4), bind(5), bind(6), bind(7), bind(8),
-            bind(9), bind(10),
+            bind(9), bind(10), bind(11),
         };
         VkDescriptorSetLayoutCreateInfo bdslci{};
         bdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -628,7 +635,7 @@ protected:
         VkPipeline bucketingPipeline = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateComputePipelines(logicalDevice_, VK_NULL_HANDLE, 1, &bcpci, nullptr, &bucketingPipeline), VK_SUCCESS);
 
-        VkDescriptorPoolSize bPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11};
+        VkDescriptorPoolSize bPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 12};
         VkDescriptorPoolCreateInfo bdpci{};
         bdpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         bdpci.maxSets = 1; bdpci.poolSizeCount = 1; bdpci.pPoolSizes = &bPoolSize;
@@ -647,6 +654,7 @@ protected:
             maxXInfo{maxXBuf, 0, VK_WHOLE_SIZE}, maxYInfo{maxYBuf, 0, VK_WHOLE_SIZE},
             indirectInfo{indirectBuf, 0, VK_WHOLE_SIZE},
             precCountInfo{precCountBuf, 0, VK_WHOLE_SIZE}, precIdxInfo{precIdxBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo transformInfo{transformBuf, 0, VK_WHOLE_SIZE};
         auto wBuf = [&](uint32_t b, VkDescriptorBufferInfo* info) {
             VkWriteDescriptorSet w{};
             w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -654,10 +662,11 @@ protected:
             w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
             return w;
         };
-        const std::array<VkWriteDescriptorSet, 11> bucketingWrites = {
+        const std::array<VkWriteDescriptorSet, 12> bucketingWrites = {
             wBuf(0, &instInfo), wBuf(1, &boundInfo), wBuf(2, &countInfo), wBuf(3, &idxInfo),
             wBuf(4, &minXInfo), wBuf(5, &minYInfo), wBuf(6, &maxXInfo), wBuf(7, &maxYInfo),
             wBuf(8, &indirectInfo), wBuf(9, &precCountInfo), wBuf(10, &precIdxInfo),
+            wBuf(11, &transformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(bucketingWrites.size()), bucketingWrites.data(), 0, nullptr);
 
@@ -756,7 +765,7 @@ protected:
             typeid(CashSystem::ComputePipelineWrapper), deviceShell_.get());
         ASSERT_NE(pipelineCacher, nullptr);
 
-        const std::array<VkDescriptorSetLayoutBinding, 4> specBindings = {bind(0), bind(1), bind(2), bind(3)};
+        const std::array<VkDescriptorSetLayoutBinding, 5> specBindings = {bind(0), bind(1), bind(2), bind(3), bind(4)};
         VkDescriptorSetLayoutCreateInfo sdslci{};
         sdslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         sdslci.bindingCount = static_cast<uint32_t>(specBindings.size()); sdslci.pBindings = specBindings.data();
@@ -835,7 +844,7 @@ protected:
         VkBuffer specInstBuf, hitRecordBuf;
         VkDeviceMemory specInstMem, hitRecordMem;
         CreateHostBuffer(instSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, specInstBuf, specInstMem, false);
-        UploadBuffer(specInstMem, hotInstances.data(), instSize);
+        UploadBuffer(specInstMem, materialData.data(), instSize);
 
         const VkDeviceSize hitRecordSize = static_cast<VkDeviceSize>(kScreenWidth) * kScreenHeight * sizeof(HitRecordCpu);
         CreateHostBuffer(hitRecordSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hitRecordBuf, hitRecordMem, true);
@@ -864,7 +873,7 @@ protected:
 
         // ONE descriptor pool sized for ONE shared descriptor set (was N+1 sets, N*3+2
         // descriptors) -- Inc3 M1's actual per-bucket-allocation elimination.
-        VkDescriptorPoolSize dPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4};
+        VkDescriptorPoolSize dPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets = 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = &dPoolSize;
@@ -881,6 +890,7 @@ protected:
         VkDescriptorBufferInfo memberInfo{idxBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo hitInfo{hitRecordBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo bucketMetaInfo{bucketMetaBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo specTransformInfo{transformBuf, 0, VK_WHOLE_SIZE};
         auto wSharedSet = [&](uint32_t b, VkDescriptorBufferInfo* info) {
             VkWriteDescriptorSet w{};
             w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -888,9 +898,10 @@ protected:
             w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo = info;
             return w;
         };
-        const std::array<VkWriteDescriptorSet, 4> sharedSetWrites = {
+        const std::array<VkWriteDescriptorSet, 5> sharedSetWrites = {
             wSharedSet(0, &specInstInfo), wSharedSet(1, &memberInfo),
             wSharedSet(2, &hitInfo), wSharedSet(3, &bucketMetaInfo),
+            wSharedSet(4, &specTransformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(sharedSetWrites.size()), sharedSetWrites.data(), 0, nullptr);
 
@@ -1292,6 +1303,7 @@ void main() {
         vkDestroyDescriptorSetLayout(logicalDevice_, bucketingDsl, nullptr);
         vkDestroyShaderModule(logicalDevice_, bucketingModule, nullptr);
         vkDestroyBuffer(logicalDevice_, instBuf, nullptr);  vkFreeMemory(logicalDevice_, instMem, nullptr);
+        vkDestroyBuffer(logicalDevice_, transformBuf, nullptr); vkFreeMemory(logicalDevice_, transformMem, nullptr);
         vkDestroyBuffer(logicalDevice_, boundBuf, nullptr); vkFreeMemory(logicalDevice_, boundMem, nullptr);
         vkDestroyBuffer(logicalDevice_, countBuf, nullptr); vkFreeMemory(logicalDevice_, countMem, nullptr);
         vkDestroyBuffer(logicalDevice_, idxBuf, nullptr);   vkFreeMemory(logicalDevice_, idxMem, nullptr);

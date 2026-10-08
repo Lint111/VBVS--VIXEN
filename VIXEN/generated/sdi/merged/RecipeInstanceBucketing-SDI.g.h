@@ -33,17 +33,17 @@ enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
  */
 struct BodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -249,6 +249,26 @@ struct PrecisionBucketIndicesBuffer {
 
 };
 
+/**
+ * @brief BodyInstanceTransformBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
+ */
+struct BodyInstanceTransformBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "BodyInstanceTransform";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 96;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
 namespace Set0 {
 
     /**
@@ -416,6 +436,21 @@ namespace Set0 {
         using DataType = PrecisionBucketIndicesBuffer;
     };
 
+    /**
+     * @brief BodyInstanceTransformBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding11 {
+        static constexpr const char* NAME = "BodyInstanceTransformBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 11;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = BodyInstanceTransformBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -431,6 +466,7 @@ using BucketCoverageMaxYBuffer = Set0::Binding7;
 using BucketIndirectCommandBuffer = Set0::Binding8;
 using PrecisionBucketCountBuffer = Set0::Binding9;
 using PrecisionBucketIndicesBuffer = Set0::Binding10;
+using BodyInstanceTransformBuffer = Set0::Binding11;
 } // namespace Bind
 
 namespace Push {
@@ -547,6 +583,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"BucketIndirectCommandBuffer", false, 0, 8, 0, Access::ReadWrite, 0, nullptr},
     {"PrecisionBucketCountBuffer", false, 0, 9, 0, Access::ReadWrite, 0, nullptr},
     {"PrecisionBucketIndicesBuffer", false, 0, 10, 0, Access::ReadWrite, 0, nullptr},
+    {"BodyInstanceTransformBuffer", false, 0, 11, 0, Access::ReadOnly, 0, nullptr},
     {"viewProj", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"instanceCount", true, 0, 0, 64, Access::ReadOnly, 0, nullptr},
     {"maxBuckets", true, 0, 0, 68, Access::ReadOnly, 0, nullptr},
@@ -578,7 +615,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "RecipeInstanceBucketing";
-    static constexpr uint32_t NUM_MEMBERS = 21;
+    static constexpr uint32_t NUM_MEMBERS = 22;
     static constexpr uint32_t NUM_FEATURES = 0;
 };
 

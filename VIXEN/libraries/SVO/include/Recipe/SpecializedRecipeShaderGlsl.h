@@ -126,15 +126,37 @@ inline std::string TryGetKernelEmittedRecipeGlsl(uint32_t recipeId) {
 // way for both; see VulkanGraphApplication.cpp's PreTick orchestration).
 inline constexpr const char* kSpecializedRecipeInterfaceGlsl = R"(
 struct BodyInstance {
-    vec3  worldPos;          // 0
-    float renderScale;       // 12
-    vec3  color;             // 16
-    uint  octreeIndex;       // 28
-    uint  providerKind;      // 32
-    uint  recipeId;          // 36
-    float recipeParams[6];   // 40..63
+    vec3  color;
+    uint  octreeIndex;
+    uint  providerKind;
+    uint  recipeId;
+    float recipeParams[6];
 };
 layout(std430, binding = 0) readonly buffer BodyInstanceBuffer { BodyInstance bodyInstances[]; };
+struct BodyInstanceTransform {
+    vec4 localToWorldRows[3];
+    vec4 worldToLocalRows[3];
+};
+layout(std430, binding = 4) readonly buffer BodyInstanceTransformBuffer {
+    BodyInstanceTransform bodyInstanceTransforms[];
+};
+vec3 instancePoint(vec4 rows[3], vec3 p) {
+    vec4 hp = vec4(p, 1.0);
+    return vec3(dot(rows[0], hp), dot(rows[1], hp), dot(rows[2], hp));
+}
+vec3 instanceVector(vec4 rows[3], vec3 v) {
+    return vec3(dot(rows[0].xyz, v), dot(rows[1].xyz, v), dot(rows[2].xyz, v));
+}
+vec3 instanceWorldNormal(BodyInstanceTransform transform, vec3 n) {
+    return normalize(vec3(dot(vec3(transform.worldToLocalRows[0].x, transform.worldToLocalRows[1].x, transform.worldToLocalRows[2].x), n),
+                          dot(vec3(transform.worldToLocalRows[0].y, transform.worldToLocalRows[1].y, transform.worldToLocalRows[2].y), n),
+                          dot(vec3(transform.worldToLocalRows[0].z, transform.worldToLocalRows[1].z, transform.worldToLocalRows[2].z), n)));
+}
+float instanceMinimumAxisScale(BodyInstanceTransform transform) {
+    return min(length(vec3(transform.localToWorldRows[0].x, transform.localToWorldRows[1].x, transform.localToWorldRows[2].x)),
+               min(length(vec3(transform.localToWorldRows[0].y, transform.localToWorldRows[1].y, transform.localToWorldRows[2].y)),
+                   length(vec3(transform.localToWorldRows[0].z, transform.localToWorldRows[1].z, transform.localToWorldRows[2].z))));
+}
 
 // Inc3 M1: the FULL shared bucketIndices[] output from RecipeInstanceBucketing.comp (row-major,
 // stride maxMembersPerBucket) — every recipe's compacted member list lives in ONE buffer, ONE
@@ -232,9 +254,9 @@ inline std::string EmitSpecializedRecipeComputeShader(
     out << fieldFn << "\n";
 
     // Standalone binding namespace (0..4), mirrors RecipeInstanceBucketing.comp's own
-    // self-contained-shader precedent. bodyInstances[] is byte-identical to the shared
-    // BodyInstanceGpu layout (binding 10 in SceneBindings.glsl) but declared fresh here at
-    // binding 0, since this shader has no other reason to #include the shared chain.
+    // self-contained-shader precedent. bodyInstances[] is the 48-byte material stream and
+    // bodyInstanceTransforms[] is the 96-byte affine stream. Both are declared fresh here
+    // because this shader has no other reason to #include the shared chain.
     // (W2c: hoisted to kSpecializedRecipeInterfaceGlsl — shared with the shade emitter.)
     out << kSpecializedRecipeInterfaceGlsl;
     out << "void main() {\n";
@@ -256,6 +278,14 @@ inline std::string EmitSpecializedRecipeComputeShader(
     out << "    for (uint m = 0u; m < meta.memberCount; ++m) {\n";
     out << "        uint instIdx = bucketMembers[bucketBase + m];\n";
     out << "        BodyInstance inst = bodyInstances[instIdx];\n";
+    out << "        BodyInstanceTransform instanceTransform = bodyInstanceTransforms[instIdx];\n";
+    out << "        vec3 localRayOrigin = instancePoint(instanceTransform.worldToLocalRows, rayOrigin);\n";
+    out << "        vec3 rawLocalRayDir = instanceVector(instanceTransform.worldToLocalRows, rayDir);\n";
+    out << "        float localRayScale = length(rawLocalRayDir);\n";
+    out << "        if (localRayScale <= 1e-20) continue;\n";
+    out << "        vec3 localRayDir = rawLocalRayDir / localRayScale;\n";
+    out << "        float worldUnitsPerLocalUnit = 1.0 / localRayScale;\n";
+    out << "        float conservativeStepScale = min(instanceMinimumAxisScale(instanceTransform) * localRayScale, 1.0);\n";
     out << "        // Bound-sphere reject center matches tier-0's getRecipeBoundSphere EXACTLY:\n";
     out << "        // this recipe's REGISTERED boundCenter, baked as a compile-time constant --\n";
     out << "        // worldPos is NEVER added to it (UberShaderSplice.h's getRecipeBoundSphere\n";
@@ -269,20 +299,20 @@ inline std::string EmitSpecializedRecipeComputeShader(
     out << "        // the raw world-space march point with NO per-instance offset subtraction.\n";
     out << "        vec3 boundCenter = vec3(" << f(entry.boundCenter.x) << ", "
         << f(entry.boundCenter.y) << ", " << f(entry.boundCenter.z) << ");\n\n";
-    out << "        vec3  oc = rayOrigin - boundCenter;\n";
-    out << "        float b  = dot(oc, rayDir);\n";
+    out << "        vec3  oc = localRayOrigin - boundCenter;\n";
+    out << "        float b  = dot(oc, localRayDir);\n";
     out << "        float c  = dot(oc, oc) - meta.boundRadius * meta.boundRadius;\n";
     out << "        float disc = b * b - c;\n";
     out << "        if (disc < 0.0) continue;\n";
     out << "        float sq = sqrt(disc);\n";
     out << "        float tNear = max(-b - sq, 0.0);\n";
     out << "        float tFar  = -b + sq;\n";
-    out << "        if (tFar < 0.0 || tNear >= bestT) continue;\n\n";
+    out << "        if (tFar < 0.0 || tNear * worldUnitsPerLocalUnit >= bestT) continue;\n\n";
     out << "        float t = tNear;\n";
     out << "        const int   MAX_STEPS = 128;\n";
     out << "        const float EPS = 1e-3;\n";
     out << "        for (int i = 0; i < MAX_STEPS; ++i) {\n";
-    out << "            vec3  p = rayOrigin + rayDir * t;\n";
+    out << "            vec3  p = localRayOrigin + localRayDir * t;\n";
     out << "            float d = sdfRecipe_" << recipeId << "(p, inst.recipeParams);\n";
     out << "            if (d < EPS) {\n";
     out << "                if (t < bestT) {\n";
@@ -298,9 +328,9 @@ inline std::string EmitSpecializedRecipeComputeShader(
         out << "                    float gx = sdfRecipe_" << recipeId << "(p + e.xyy, inst.recipeParams) - sdfRecipe_" << recipeId << "(p - e.xyy, inst.recipeParams);\n";
         out << "                    float gy = sdfRecipe_" << recipeId << "(p + e.yxy, inst.recipeParams) - sdfRecipe_" << recipeId << "(p - e.yxy, inst.recipeParams);\n";
         out << "                    float gz = sdfRecipe_" << recipeId << "(p + e.yyx, inst.recipeParams) - sdfRecipe_" << recipeId << "(p - e.yyx, inst.recipeParams);\n";
-        out << "                    bestNormal = normalize(vec3(gx, gy, gz));\n";
+        out << "                    bestNormal = instanceWorldNormal(instanceTransform, vec3(gx, gy, gz));\n";
     }
-    out << "                    bestT = t;\n";
+    out << "                    bestT = t * worldUnitsPerLocalUnit;\n";
     out << "                    bestColor  = inst.color;\n";
     out << "                    bestInstIdx = instIdx;\n";
     out << "                    bestEmission = inst.recipeParams[3];\n";
@@ -308,7 +338,7 @@ inline std::string EmitSpecializedRecipeComputeShader(
     out << "                }\n";
     out << "                break;\n";
     out << "            }\n";
-    out << "            t += d * meta.stepRelaxation;\n";
+    out << "            t += d * meta.stepRelaxation * conservativeStepScale;\n";
     out << "            if (t > tFar) break;\n";
     out << "        }\n";
     out << "    }\n\n";
@@ -393,10 +423,11 @@ inline std::string EmitSpecializedRecipeShadeShader(
     out << "    if (instIdx >= bodyInstances.length()) return;\n";
     out << "    BodyInstance inst = bodyInstances[instIdx];\n";
     out << "    if (inst.recipeId != pc.recipeId) return;\n\n";
+    out << "    BodyInstanceTransform instanceTransform = bodyInstanceTransforms[instIdx];\n";
     out << "    // The march's own gradient, verbatim, at the record's hit point (the same\n";
     out << "    // rayOrigin + rayDir*bestT float the march evaluated at) with the winning\n";
     out << "    // instance's params -- bit-equal normal by construction.\n";
-    out << "    vec3 p = rec.worldPos;\n";
+    out << "    vec3 p = instancePoint(instanceTransform.worldToLocalRows, rec.worldPos);\n";
     out << "    const float h = 1e-3;\n";
     out << "    vec2 e = vec2(h, 0.0);\n";
     out << "    float gx = sdfRecipe_" << recipeId << "(p + e.xyy, inst.recipeParams) - sdfRecipe_" << recipeId << "(p - e.xyy, inst.recipeParams);\n";
@@ -404,7 +435,7 @@ inline std::string EmitSpecializedRecipeShadeShader(
     out << "    float gz = sdfRecipe_" << recipeId << "(p + e.yyx, inst.recipeParams) - sdfRecipe_" << recipeId << "(p - e.yyx, inst.recipeParams);\n\n";
     out << "    hitRecords[hitIdx].albedo      = inst.color;\n";
     out << "    hitRecords[hitIdx].roughness   = 0.5;\n";
-    out << "    hitRecords[hitIdx].worldNormal = normalize(vec3(gx, gy, gz));\n";
+    out << "    hitRecords[hitIdx].worldNormal = instanceWorldNormal(instanceTransform, vec3(gx, gy, gz));\n";
     out << "    hitRecords[hitIdx]._pad0[1]    = floatBitsToUint(inst.recipeParams[3]);\n";
     out << "}\n";
 

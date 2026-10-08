@@ -516,10 +516,11 @@ void VulkanGraphApplication::PreTick() {
                 // we're mutating the right one without needing to plumb its recipeId/index through.
                 if (!instances.empty()) {
                     Vixen::SVO::BodyInstanceGpu& rp = instances.back();
-                    if (rp.providerKind == 1u && rp.color[0] == 1.0f && rp.color[1] == 0.85f && rp.color[2] == 0.2f) {
+                    if (rp.material.providerKind == 1u && rp.material.color[0] == 1.0f &&
+                        rp.material.color[1] == 0.85f && rp.material.color[2] == 0.2f) {
                         constexpr float kSweepAmplitude = 3.0f;   // matches BuildRenderGraph.cpp's kReadParamDemoSweepMax
                         constexpr float kSweepSpeed     = 0.05f;  // radians/frame
-                        rp.recipeParams[0] = kSweepAmplitude *
+                        rp.material.recipeParams[0] = kSweepAmplitude *
                             std::sin(static_cast<float>(hudUpdateTick_) * kSweepSpeed);
                         // SAME instance COUNT every frame -> BodyOctreeSceneNode::SetInstances never
                         // calls MarkNeedsRecompile (see its own comment: "Do NOT call MarkNeedsRecompile
@@ -569,7 +570,7 @@ void VulkanGraphApplication::PreTick() {
                     diversityBasePositions.reserve(instances.size());
                     for (const auto& inst : instances) {
                         diversityBasePositions.emplace_back(
-                            inst.recipeParams[0], inst.recipeParams[1], inst.recipeParams[2]);
+                            inst.material.recipeParams[0], inst.material.recipeParams[1], inst.material.recipeParams[2]);
                     }
                 }
 
@@ -582,10 +583,10 @@ void VulkanGraphApplication::PreTick() {
                 const float t = static_cast<float>(hudUpdateTick_);
                 for (size_t idx = 0; idx < instances.size(); ++idx) {
                     Vixen::SVO::BodyInstanceGpu& inst = instances[idx];
-                    if (inst.providerKind != 1u) continue;  // only PROVIDER_PROCEDURAL bodies carry recipeParams
+                    if (inst.material.providerKind != 1u) continue;  // only PROVIDER_PROCEDURAL bodies carry recipeParams
 
                     // (1) every instance: animated shape parameter.
-                    inst.recipeParams[3] = kShapeParamSweepMax * std::sin(t * kShapeSweepSpeed + static_cast<float>(idx));
+                    inst.material.recipeParams[3] = kShapeParamSweepMax * std::sin(t * kShapeSweepSpeed + static_cast<float>(idx));
 
                     // (2) every Nth instance: animated declared position, orbiting its own base
                     // grid slot in the XZ plane (Y fixed, matching the grid's own flat layout).
@@ -596,9 +597,9 @@ void VulkanGraphApplication::PreTick() {
                             base.x + kOrbitRadius * std::cos(phase),
                             base.y,
                             base.z + kOrbitRadius * std::sin(phase));
-                        inst.recipeParams[0] = orbited.x;
-                        inst.recipeParams[1] = orbited.y;
-                        inst.recipeParams[2] = orbited.z;
+                        inst.material.recipeParams[0] = orbited.x;
+                        inst.material.recipeParams[1] = orbited.y;
+                        inst.material.recipeParams[2] = orbited.z;
                     }
                 }
 
@@ -766,8 +767,8 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
     std::vector<uint32_t> instanceRecipeIds;
     instanceRecipeIds.reserve(instances.size());
     for (uint32_t i = 0; i < instances.size(); ++i) {
-        instanceRecipeIds.push_back(instances[i].recipeId);
-        instancesByRecipe[instances[i].recipeId].push_back(i);
+        instanceRecipeIds.push_back(instances[i].material.recipeId);
+        instancesByRecipe[instances[i].material.recipeId].push_back(i);
     }
     if (recipeBucketInstanceGeneration_ == 0 || instanceRecipeIds != recipeBucketLastInstanceRecipes_) {
         ++recipeBucketInstanceGeneration_;
@@ -1084,17 +1085,18 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
             // layout does not opt into (BuildDescriptorSetLayoutFromReflection's own default).
             VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
             VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 4u);
-            std::vector<VkWriteDescriptorSet> writes(frameSetCount * 4u);
+            std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 5u);
+            std::vector<VkWriteDescriptorSet> writes(frameSetCount * 5u);
             for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
-                VkBuffer buffers[4] = {
+                VkBuffer buffers[5] = {
                     bodyScene->GetInstanceBufferHandle(frameSlot),
                     bucketMembersBuf,
                     hitRecordBuf,
                     bucketMetaNode->GetBufferHandle(frameSlot),
+                    bodyScene->GetInstanceTransformBufferHandle(frameSlot),
                 };
-                for (uint32_t binding = 0; binding < 4u; ++binding) {
-                    const size_t writeIndex = static_cast<size_t>(frameSlot) * 4u + binding;
+                for (uint32_t binding = 0; binding < 5u; ++binding) {
+                    const size_t writeIndex = static_cast<size_t>(frameSlot) * 5u + binding;
                     bufInfos[writeIndex] = { buffers[binding], 0, VK_WHOLE_SIZE };
                     writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[writeIndex].dstSet = descriptorSets[frameSlot];
@@ -1267,17 +1269,18 @@ void VulkanGraphApplication::RunRecipeBucketedDispatchPreTick() {
                                 if (pipelineWrapper && pipelineWrapper->pipeline != VK_NULL_HANDLE) {
                                     const VkBuffer bucketMembersBuf = bucketIndicesNode->GetBufferHandle();
                                     const VkBuffer hitRecordBuf = hitRecordNode->GetBufferHandle();
-                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 4u);
-                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * 4u);
+                                    std::vector<VkDescriptorBufferInfo> bufInfos(frameSetCount * 5u);
+                                    std::vector<VkWriteDescriptorSet> writes(frameSetCount * 5u);
                                     for (uint32_t frameSlot = 0; frameSlot < frameSetCount; ++frameSlot) {
-                                        const VkBuffer bufHandles[4] = {
+                                        const VkBuffer bufHandles[5] = {
                                             bodyScene->GetInstanceBufferHandle(frameSlot),
                                             bucketMembersBuf,
                                             hitRecordBuf,
                                             bucketMetaNode->GetBufferHandle(frameSlot),
+                                            bodyScene->GetInstanceTransformBufferHandle(frameSlot),
                                         };
-                                        for (uint32_t binding = 0; binding < 4u; ++binding) {
-                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * 4u + binding;
+                                        for (uint32_t binding = 0; binding < 5u; ++binding) {
+                                            const size_t writeIndex = static_cast<size_t>(frameSlot) * 5u + binding;
                                             bufInfos[writeIndex] = { bufHandles[binding], 0, VK_WHOLE_SIZE };
                                             writes[writeIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                                             writes[writeIndex].dstSet = descriptorSets[frameSlot];
@@ -1483,7 +1486,7 @@ void VulkanGraphApplication::RunHitAccumDiagReadback(uint64_t sampleFrame) {
                     using namespace Vixen::SVO::HitAccum;
                     const uint32_t mip = SelectMip(footprint, hitAccumDetailSize0_);
                     if (mip == 0u) continue;
-                    const uint32_t recipeId = instancesDiag[instIdx].recipeId;
+                    const uint32_t recipeId = instancesDiag[instIdx].material.recipeId;
                     const float cellSize = CellSize(mip, hitAccumDetailSize0_);
                     const glm::ivec3 cell = glm::ivec3(glm::floor(worldPos / cellSize));
                     const glm::ivec3 anchor = AnchorCell(camPos, camFwd, coef, hitAccumDetailSize0_, mip);
@@ -4457,7 +4460,7 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
         for (size_t i = 0; i < instances.size(); ++i) {
             const auto& inst = instances[i];
             residentOccluders.push_back(Vixen::SVO::ResidentOccluder{
-                glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]),
+                Vixen::SVO::TransformPoint(inst.transform.localToWorld, glm::vec3(0.0f)),
                 kResidencyBoundingRadius,
                 static_cast<int>(i)});
         }
@@ -4472,14 +4475,17 @@ void VulkanGraphApplication::UpdateBodySceneResidency() {
     std::vector<size_t> policyDisagreements;
     for (size_t i = 0; i < instances.size(); ++i) {
         const auto& inst = instances[i];
-        const glm::vec3 pos(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
+        const glm::vec3 pos = Vixen::SVO::TransformPoint(
+            inst.transform.localToWorld, glm::vec3(0.0f));
         const bool oldPolicy = Vixen::SVO::InstanceWantsBrickResidency(
                 pos, kResidencyBoundingRadius,
                 cam.cameraPos, cam.cameraDir, cam.cameraUp, cam.cameraRight,
                 cam.fov, cam.aspect, screenHeightPx, /*nearDist=*/0.1f, /*farDist=*/500.0f,
                 brickTierLevel, kResidencyLeafSizeM, kResidencyPxThreshold);
         oldAnyInstanceWantsBricks = oldAnyInstanceWantsBricks || oldPolicy;
-        const float cellWorldSize = std::max(std::abs(inst.renderScale), 1e-6f) /
+        const float cellWorldSize = std::max(
+                                        Vixen::SVO::MinimumAxisScale(inst.transform.localToWorld),
+                                        1e-6f) /
                                     kResidencyBricksPerAxis;
         const bool footprintPolicy = Vixen::SVO::InstanceWantsBrickResidencyByFootprint(
             pos, kResidencyBoundingRadius,

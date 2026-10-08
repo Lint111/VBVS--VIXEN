@@ -136,15 +136,15 @@ constexpr float kWorldGridSize = 10.0f;
 Vixen::SVO::BodyInstanceGpu MakeInst(float x, float y, float z, float scale, uint32_t oi,
                                       float r = 1.f, float g = 1.f, float b = 1.f) {
     Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0]=x; i.worldPos[1]=y; i.worldPos[2]=z;
-    i.renderScale = scale; i.octreeIndex = oi;
-    i.color[0]=r; i.color[1]=g; i.color[2]=b;
+    Vixen::SVO::SetInstanceTranslationComponent(i, 0, x); Vixen::SVO::SetInstanceTranslationComponent(i, 1, y); Vixen::SVO::SetInstanceTranslationComponent(i, 2, z);
+    Vixen::SVO::SetInstanceUniformScale(i, scale); i.material.octreeIndex = oi;
+    i.material.color[0]=r; i.material.color[1]=g; i.material.color[2]=b;
     return i;
 }
 
 glm::vec3 BodyCentre(const Vixen::SVO::BodyInstanceGpu& inst) {
-    return glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]) +
-           glm::vec3(0.5f * kWorldGridSize * inst.renderScale);
+    return Vixen::SVO::TransformPoint(inst.transform.localToWorld,
+                                      glm::vec3(0.5f * kWorldGridSize));
 }
 
 PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
@@ -325,7 +325,7 @@ protected:
     }
 
     void RenderToRgba(VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfg,
-                      VkBuffer inst, VkBuffer sdf, VkBuffer lookup,
+                      VkBuffer inst, VkBuffer instTransform, VkBuffer sdf, VkBuffer lookup,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms,
                       std::vector<HitRecordCpu>* outHitRecords = nullptr) {
@@ -376,7 +376,7 @@ protected:
             VkDescriptorSetLayoutBinding lb{}; lb.binding=b; lb.descriptorType=t;
             lb.descriptorCount=1; lb.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding,16> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,17> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -393,6 +393,7 @@ protected:
             bindL(15,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // TierRefTableBuffer (placeholder)
             bindL(18,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // HitRecordBuffer (placeholder)
             bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
+            bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount=uint32_t(bindings.size()); dslci.pBindings=bindings.data();
@@ -414,7 +415,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  2},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 15},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -430,6 +431,7 @@ protected:
         VkDescriptorBufferInfo nI{nodes,0,VK_WHOLE_SIZE}, brI{bricks,0,VK_WHOLE_SIZE},
             mI{mats,0,VK_WHOLE_SIZE}, trI{traceBuf,0,VK_WHOLE_SIZE}, cI{cfg,0,VK_WHOLE_SIZE},
             ctI{ctrBuf,0,VK_WHOLE_SIZE}, inI{inst,0,VK_WHOLE_SIZE},
+            instTransformI{instTransform,0,VK_WHOLE_SIZE},
             sdI{sdf,0,VK_WHOLE_SIZE}, lkI{lookup,0,VK_WHOLE_SIZE}, mpI{dummyMip,0,VK_WHOLE_SIZE},
             itI{dummyIter,0,VK_WHOLE_SIZE},
             tierRefI{dummyTierRef,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
@@ -445,12 +447,13 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,16> writes = {
+        const std::array<VkWriteDescriptorSet,17> writes = {
             wI2(0,&colI), wB2(1,&nI), wB2(2,&brI), wB2(3,&mI), wB2(4,&trI),
             wB2(5,&cI), wB2(8,&ctI), wI2(9,&idI), wB2(10,&inI), wB2(11,&sdI), wB2(12,&lkI), wB2(13,&mpI),
             wB2(14,&itI),  // Inc1 M4b: per-instance iteration debug
             wB2(15,&tierRefI), wB2(18,&hitRecordI),
             wB2(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
+            wB2(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -565,10 +568,11 @@ protected:
         VkBuffer mats    = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index,0)->GetHandle<VkBuffer>();
         VkBuffer cfgBuf  = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index,  0)->GetHandle<VkBuffer>();
         VkBuffer instBuf = node->GetOutput(C::INSTANCE_BUFFER_Slot::index,       0)->GetHandle<VkBuffer>();
+        VkBuffer instTransformBuf = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         VkBuffer sdfBuf  = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index,     0)->GetHandle<VkBuffer>();
         VkBuffer lookBuf = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index,0)->GetHandle<VkBuffer>();
 
-        fn(nodes, bricks, mats, cfgBuf, instBuf, sdfBuf, lookBuf);
+        fn(nodes, bricks, mats, cfgBuf, instBuf, instTransformBuf, sdfBuf, lookBuf);
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -662,10 +666,10 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
         // file's HitRecordCpu comment.
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
-                VkBuffer inst, VkBuffer sdf, VkBuffer lk) {
+                VkBuffer inst, VkBuffer instTransform, VkBuffer sdf, VkBuffer lk) {
             std::vector<uint8_t> rgba; double ms2 = 0.0;
             std::vector<HitRecordCpu> hitRecords;
-            ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,sdf,lk,sharedPc,kW,kH,rgba,ms2,&hitRecords));
+            ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,instTransform,sdf,lk,sharedPc,kW,kH,rgba,ms2,&hitRecords));
             for (uint32_t i = 0; i < kW*kH; ++i)
                 if ((hitRecords[i].flags & kHitRecordFlagHit) != 0u) ++boxOnlyPx;
             std::printf("[CSG/ablation] Box only | px=%d | %.0f ms\n", boxOnlyPx, ms2);
@@ -697,7 +701,7 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
 
         ASSERT_NO_FATAL_FAILURE(RunNode(nd, nb, instances,
             [&](VkBuffer ns, VkBuffer br, VkBuffer mt, VkBuffer cfg,
-                VkBuffer inst, VkBuffer sdf, VkBuffer lk) {
+                VkBuffer inst, VkBuffer instTransform, VkBuffer sdf, VkBuffer lk) {
             ASSERT_NE(ns,   VK_NULL_HANDLE);
             ASSERT_NE(cfg,  VK_NULL_HANDLE);
             ASSERT_NE(inst, VK_NULL_HANDLE);
@@ -707,7 +711,7 @@ TEST_F(RecipeAuthoringGateTest, CsgSubtractRendersNonTrivial) {
             // readback; see this file's HitRecordCpu comment.
             std::vector<uint8_t> rgba; double ms = 0.0;
             std::vector<HitRecordCpu> hitRecords;
-            ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,sdf,lk,sharedPc,kW,kH,rgba,ms,&hitRecords));
+            ASSERT_NO_FATAL_FAILURE(RenderToRgba(ns,br,mt,cfg,inst,instTransform,sdf,lk,sharedPc,kW,kH,rgba,ms,&hitRecords));
 
             const char* outPath = "/tmp/recipe_gate.png";
             {
@@ -771,7 +775,7 @@ TEST_F(RecipeAuthoringGateTest, DefaultSceneRegression) {
 
     ASSERT_NO_FATAL_FAILURE(RunNode(node, nodeBase, instances,
         [&](VkBuffer nodes, VkBuffer bricks, VkBuffer mats, VkBuffer cfgBuf,
-            VkBuffer instBuf, VkBuffer sdfBuf, VkBuffer lookBuf) {
+            VkBuffer instBuf, VkBuffer instTransformBuf, VkBuffer sdfBuf, VkBuffer lookBuf) {
 
         // OctreeConfig must still be 432 bytes (shader's std140 ArrayStride).
         ASSERT_EQ(sizeof(Vixen::SVO::OctreeConfig), 432u)
@@ -790,7 +794,7 @@ TEST_F(RecipeAuthoringGateTest, DefaultSceneRegression) {
         // this file's HitRecordCpu comment.
         std::vector<uint8_t> rgba; double ms = 0.0;
         std::vector<HitRecordCpu> hitRecords;
-        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf,
+        ASSERT_NO_FATAL_FAILURE(RenderToRgba(nodes, bricks, mats, cfgBuf, instBuf, instTransformBuf,
                                              VK_NULL_HANDLE, VK_NULL_HANDLE,
                                              pc, kW, kH, rgba, ms, &hitRecords));
 

@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Program: SpatialReuseShade
-// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_SRS_CELL_RESOLVE
+// Feature axis: VIXEN_GPU_TRACE_HOOKS VIXEN_MINING_BEAM VIXEN_SRS_CELL_RESOLVE
 //
 // Merged across compiled feature variants: every member carries the
 // feature conjunction under which it exists (empty = unconditional).
@@ -30,20 +30,40 @@ namespace SpatialReuseShade {
 enum class Access : uint32_t { ReadWrite = 0, ReadOnly = 1, WriteOnly = 2 };
 
 /**
+ * @brief OctreeConfigsSSBO
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xaf0b4419476a6289 (for runtime discovery)
+ */
+struct OctreeConfigsSSBO {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xaf0b4419476a6289ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "OctreeConfig";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 432;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
  * @brief LightingConfigSSBO
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x6dc24fcf8fba6cee (for runtime discovery)
+ * Layout VixenHash: 0x21ad6abbc3ea8eae (for runtime discovery)
  */
 struct LightingConfigSSBO {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x6dc24fcf8fba6ceeULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x21ad6abbc3ea8eaeULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "LightingConfig";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 144;
+        static constexpr uint32_t SIZE = 208;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -293,17 +313,77 @@ struct HitAccumCellRadiance {
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
  */
 struct BodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief MiningBeamBufferSSBO
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x98e8e9943bf1831 (for runtime discovery)
+ */
+struct MiningBeamBufferSSBO {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x98e8e9943bf1831ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "MiningBeamBuffer";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 1040;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief MiningBeamBodyInstanceBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xb22cabdb7641e2c3 (for runtime discovery)
+ */
+struct MiningBeamBodyInstanceBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xb22cabdb7641e2c3ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "BodyInstance";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 48;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief MiningBeamInstanceTransformBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x4864789073b89d18 (for runtime discovery)
+ */
+struct MiningBeamInstanceTransformBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x4864789073b89d18ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "MiningBeamInstanceTransform";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -323,6 +403,23 @@ namespace Set0 {
         static constexpr uint32_t COUNT = 1;
         static constexpr Access ACCESS = Access::WriteOnly;
         static constexpr uint32_t FEATURE_COUNT = 0;
+    };
+
+    /**
+     * @brief OctreeConfigsSSBO
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_MINING_BEAM
+     */
+    struct Binding5 {
+        static constexpr const char* NAME = "OctreeConfigsSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 5;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
+        using DataType = OctreeConfigsSSBO;
     };
 
     /**
@@ -613,11 +710,63 @@ namespace Set0 {
         using DataType = BodyInstanceBuffer;
     };
 
+    /**
+     * @brief MiningBeamBufferSSBO
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_MINING_BEAM
+     */
+    struct Binding44 {
+        static constexpr const char* NAME = "MiningBeamBufferSSBO";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 44;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
+        using DataType = MiningBeamBufferSSBO;
+    };
+
+    /**
+     * @brief MiningBeamBodyInstanceBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_MINING_BEAM
+     */
+    struct Binding45 {
+        static constexpr const char* NAME = "MiningBeamBodyInstanceBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 45;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
+        using DataType = MiningBeamBodyInstanceBuffer;
+    };
+
+    /**
+     * @brief MiningBeamInstanceTransformBuffer
+     * Type: STORAGE_BUFFER
+     * Requires: VIXEN_MINING_BEAM
+     */
+    struct Binding46 {
+        static constexpr const char* NAME = "MiningBeamInstanceTransformBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 46;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 1;
+        static constexpr const char* FEATURES[1] = {"VIXEN_MINING_BEAM"};
+        using DataType = MiningBeamInstanceTransformBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
 namespace Bind {
 using sceneRadianceImage = Set0::Binding0;
+using OctreeConfigsSSBO = Set0::Binding5;
 using LightingConfigSSBO = Set0::Binding16;
 using HitRecordBuffer = Set0::Binding17;
 using ShadowConfigSSBO = Set0::Binding18;
@@ -637,6 +786,9 @@ using HitAccumTable = Set0::Binding36;
 using HitAccumParamsSSBO = Set0::Binding37;
 using HitAccumCellRadiance = Set0::Binding38;
 using BodyInstanceBuffer = Set0::Binding39;
+using MiningBeamBufferSSBO = Set0::Binding44;
+using MiningBeamBodyInstanceBuffer = Set0::Binding45;
+using MiningBeamInstanceTransformBuffer = Set0::Binding46;
 } // namespace Bind
 
 namespace Push {
@@ -772,13 +924,18 @@ struct MemberInfo {
     const char* const* features;
 };
 
+inline constexpr const char* const kFeatures_Set0_Binding5[] = {"VIXEN_MINING_BEAM"};
 inline constexpr const char* const kFeatures_Set0_Binding36[] = {"VIXEN_SRS_CELL_RESOLVE"};
 inline constexpr const char* const kFeatures_Set0_Binding37[] = {"VIXEN_SRS_CELL_RESOLVE"};
 inline constexpr const char* const kFeatures_Set0_Binding38[] = {"VIXEN_SRS_CELL_RESOLVE"};
 inline constexpr const char* const kFeatures_Set0_Binding39[] = {"VIXEN_SRS_CELL_RESOLVE"};
+inline constexpr const char* const kFeatures_Set0_Binding44[] = {"VIXEN_MINING_BEAM"};
+inline constexpr const char* const kFeatures_Set0_Binding45[] = {"VIXEN_MINING_BEAM"};
+inline constexpr const char* const kFeatures_Set0_Binding46[] = {"VIXEN_MINING_BEAM"};
 
 inline constexpr MemberInfo MEMBERS[] = {
     {"sceneRadianceImage", false, 0, 0, 0, Access::WriteOnly, 0, nullptr},
+    {"OctreeConfigsSSBO", false, 0, 5, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding5},
     {"LightingConfigSSBO", false, 0, 16, 0, Access::ReadOnly, 0, nullptr},
     {"HitRecordBuffer", false, 0, 17, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowConfigSSBO", false, 0, 18, 0, Access::ReadOnly, 0, nullptr},
@@ -798,6 +955,9 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"HitAccumParamsSSBO", false, 0, 37, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding37},
     {"HitAccumCellRadiance", false, 0, 38, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding38},
     {"BodyInstanceBuffer", false, 0, 39, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding39},
+    {"MiningBeamBufferSSBO", false, 0, 44, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding44},
+    {"MiningBeamBodyInstanceBuffer", false, 0, 45, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding45},
+    {"MiningBeamInstanceTransformBuffer", false, 0, 46, 0, Access::ReadOnly, 1, kFeatures_Set0_Binding46},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -833,8 +993,8 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "SpatialReuseShade";
-    static constexpr uint32_t NUM_MEMBERS = 34;
-    static constexpr uint32_t NUM_FEATURES = 2;
+    static constexpr uint32_t NUM_MEMBERS = 38;
+    static constexpr uint32_t NUM_FEATURES = 3;
 };
 
 } // namespace SpatialReuseShade

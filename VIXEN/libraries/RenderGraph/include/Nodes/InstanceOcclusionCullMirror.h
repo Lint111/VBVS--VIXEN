@@ -5,8 +5,8 @@
 // @shader shaders/InstanceOcclusionCull.comp
 // 1:1 mirror per the gpu-shader-debug discipline. One shader thread owns one
 // 32-bit skip-mask word (CullMaskWord); per instance (InstanceOccluded):
-//   world AABB  = inst.worldPos + inst.renderScale * (localToWorld * corner)
-//                 over the 8 traceBounds corners (TraceWorld.glsl's inverse)
+//   world AABB  = instance.localToWorld * config.localToWorld * corner
+//                 over the 8 traceBounds corners (same affine as the shader)
 //   reprojection: uv = ndc*0.5+0.5, texel = uv*dims, valid iff w > 1e-5
 //                 (SpatialReuseShade.comp's convention)
 //   verdict:     occluded iff EVERY tile of the one-tile-dilated, clamped
@@ -37,8 +37,7 @@ inline constexpr uint32_t kCameraVisibilityMaskWordBase = kInstanceMaskWordCount
 
 // The BodyInstance fields the cull reads (std430 record, SceneBindings.glsl).
 struct CullInstance {
-    glm::vec3 worldPos;
-    float renderScale;
+    glm::mat4 localToWorld;
     uint32_t octreeIndex;
     uint32_t providerKind;  // 0 = Stored/ESVO; anything else is never culled
 };
@@ -68,7 +67,7 @@ inline void CullWorldAabb(const CullInstance& inst, const CullOctreeConfig& cfg,
                           (i & 2u) ? cfg.traceBoundsMax.y : cfg.traceBoundsMin.y,
                           (i & 4u) ? cfg.traceBoundsMax.z : cfg.traceBoundsMin.z);
         const glm::vec3 base = glm::vec3(cfg.localToWorld * glm::vec4(l, 1.0f));
-        const glm::vec3 w = inst.worldPos + inst.renderScale * base;
+        const glm::vec3 w = glm::vec3(inst.localToWorld * glm::vec4(base, 1.0f));
         outMin = glm::min(outMin, w);
         outMax = glm::max(outMax, w);
     }
