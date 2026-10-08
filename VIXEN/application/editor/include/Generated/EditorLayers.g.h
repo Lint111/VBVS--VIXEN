@@ -8,9 +8,11 @@
 
 namespace Vixen::Views {
 
-struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; };
+struct EditorLayerRow { Rml::String name; Rml::String op; bool isChecked; Rml::String elementId; Rml::String moveUpId; Rml::String moveDownId; Rml::String deleteId; Rml::String programUpId; Rml::String programDownId; float programFieldValue; };
+struct EditorParameterRow { Rml::String name; Rml::String unit; Rml::String upId; Rml::String downId; float value; float minimum; float maximum; };
 struct EditorLayersBind {
     std::vector<EditorLayerRow>* layers;
+    std::vector<EditorParameterRow>* parameters;
     int* activeLayerCount;
 };
 
@@ -22,9 +24,26 @@ inline void BindEditorLayersModel(Rml::DataModelConstructor& c, const EditorLaye
         sh.RegisterMember("op", &EditorLayerRow::op);
         sh.RegisterMember("isChecked", &EditorLayerRow::isChecked);
         sh.RegisterMember("elementId", &EditorLayerRow::elementId);
+        sh.RegisterMember("moveUpId", &EditorLayerRow::moveUpId);
+        sh.RegisterMember("moveDownId", &EditorLayerRow::moveDownId);
+        sh.RegisterMember("deleteId", &EditorLayerRow::deleteId);
+        sh.RegisterMember("programUpId", &EditorLayerRow::programUpId);
+        sh.RegisterMember("programDownId", &EditorLayerRow::programDownId);
+        sh.RegisterMember("programFieldValue", &EditorLayerRow::programFieldValue);
+    }
+    if (auto sh = c.RegisterStruct<EditorParameterRow>()) {
+        sh.RegisterMember("name", &EditorParameterRow::name);
+        sh.RegisterMember("unit", &EditorParameterRow::unit);
+        sh.RegisterMember("upId", &EditorParameterRow::upId);
+        sh.RegisterMember("downId", &EditorParameterRow::downId);
+        sh.RegisterMember("value", &EditorParameterRow::value);
+        sh.RegisterMember("minimum", &EditorParameterRow::minimum);
+        sh.RegisterMember("maximum", &EditorParameterRow::maximum);
     }
     c.RegisterArray<std::vector<EditorLayerRow>>();
+    c.RegisterArray<std::vector<EditorParameterRow>>();
     c.Bind("layers", b.layers);
+    c.Bind("parameters", b.parameters);
     c.BindFunc("activeLayerCount", [b](Rml::Variant& out) { out = BindEditorLayersModel_activeLayerCountOverride(b.activeLayerCount); });
 }
 

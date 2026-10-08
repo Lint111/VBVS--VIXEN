@@ -22,6 +22,12 @@ static SdfInstruction sphereInstr(glm::vec3 c, float r) {
     return in;
 }
 
+static std::optional<float> SampleDensity(const SdfBodyOctree& body, const glm::vec3& gridPos) {
+    const auto entity = body.world->getEntityByWorldSpace(gridPos);
+    if (!body.world->exists(entity)) return std::nullopt;
+    return body.world->getComponentValue<Vixen::GaiaVoxel::Density>(entity);
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -79,6 +85,71 @@ TEST(RecipeBaker, UnboundedBudgetAlwaysPasses) {
 
     RecipeBakeResult r = BakeRegistryToPool(reg, cfg);
     EXPECT_TRUE(r.ok) << r.err;
+}
+
+TEST(RecipeBaker, GenericRegistryBakeUsesEntryParameterSnapshot) {
+    auto parameterizedSphere = [] {
+        SdfInstruction sphere = sphereInstr(glm::vec3(0.0f), 0.0f);
+        SdfInstruction read{};
+        read.opCode = static_cast<uint8_t>(SdfOpCode::ReadParam);
+        read.paramMask = 1u;
+        read.data[0] = 0.0f;
+        SdfInstruction subtract{};
+        subtract.opCode = static_cast<uint8_t>(SdfOpCode::MathSub);
+        return std::vector<SdfInstruction>{sphere, read, subtract};
+    };
+
+    RecipeRegistry smallRegistry;
+    RecipeRegistry::RecipeEntry small{};
+    small.bytecode = parameterizedSphere();
+    small.parameterValues = {0.5f};
+    ASSERT_EQ(smallRegistry.Register(1u, small), RecipeRegistry::RegisterResult::Ok);
+
+    RecipeRegistry largeRegistry;
+    RecipeRegistry::RecipeEntry large{};
+    large.bytecode = parameterizedSphere();
+    large.parameterValues = {1.5f};
+    ASSERT_EQ(largeRegistry.Register(1u, large), RecipeRegistry::RegisterResult::Ok);
+
+    RecipeBakeConfig cfg{};
+    cfg.center = glm::vec3(8.0f);
+    cfg.defaultResolution = 16u;
+    RecipeBakeResult smallBake = BakeRegistryToPool(smallRegistry, cfg);
+    RecipeBakeResult largeBake = BakeRegistryToPool(largeRegistry, cfg);
+    ASSERT_TRUE(smallBake.ok) << smallBake.err;
+    ASSERT_TRUE(largeBake.ok) << largeBake.err;
+    ASSERT_EQ(smallBake.owned.size(), 1u);
+    ASSERT_EQ(largeBake.owned.size(), 1u);
+
+    const auto outside = SampleDensity(smallBake.owned[0], glm::vec3(9.0f, 8.0f, 8.0f));
+    const auto inside = SampleDensity(largeBake.owned[0], glm::vec3(9.0f, 8.0f, 8.0f));
+    ASSERT_TRUE(outside.has_value());
+    ASSERT_TRUE(inside.has_value());
+    EXPECT_GT(*outside, 0.0f);
+    EXPECT_LT(*inside, 0.0f);
+}
+
+TEST(RecipeRegistry, ReplaceValidatesAndPublishesProgramAtomically) {
+    RecipeRegistry registry;
+    RecipeRegistry::RecipeEntry original{};
+    original.bytecode = {sphereInstr(glm::vec3(0.0f), 1.0f)};
+    ASSERT_EQ(registry.Register(7u, original), RecipeRegistry::RegisterResult::Ok);
+    const auto generation = registry.GetGeneration();
+
+    RecipeRegistry::RecipeEntry replacement{};
+    replacement.bytecode = {sphereInstr(glm::vec3(1.0f, 0.0f, 0.0f), 2.0f)};
+    ASSERT_EQ(registry.Replace(7u, replacement), RecipeRegistry::RegisterResult::Ok);
+    ASSERT_EQ(registry.GetGeneration(), generation + 1u);
+    ASSERT_NE(registry.Get(7u), nullptr);
+    ASSERT_EQ(registry.Get(7u)->bytecode.size(), 1u);
+    EXPECT_FLOAT_EQ(registry.Get(7u)->bytecode[0].data[0], 1.0f);
+    EXPECT_FLOAT_EQ(registry.Get(7u)->bytecode[0].data[3], 2.0f);
+
+    RecipeRegistry::RecipeEntry invalid{};
+    EXPECT_EQ(registry.Replace(7u, invalid), RecipeRegistry::RegisterResult::EmptyProgram);
+    EXPECT_FLOAT_EQ(registry.Get(7u)->bytecode[0].data[3], 2.0f)
+        << "failed replacement must leave the accepted recipe unchanged";
+    EXPECT_EQ(registry.Replace(8u, replacement), RecipeRegistry::RegisterResult::MissingId);
 }
 
 // ---------------------------------------------------------------------------

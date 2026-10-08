@@ -18,12 +18,12 @@ body {
     position: absolute;
     top: 10px;
     left: 10px;
-    width: 240px;
+    width: 420px;
     padding: 8px 12px;
     background-color: #1a1a2ecc;
     border-width: 1px;
     border-color: #4060a0;
-    pointer-events: none;  /* panel background is read-only; the checkboxes opt back in */
+    pointer-events: none;  /* panel background is read-only; interactive controls opt back in */
 }
 
 .title {
@@ -67,6 +67,56 @@ body {
     display: inline-block;
     color: #90c0ff;
     font-size: 13px;
+}
+
+.button {
+    display: inline-block;
+    min-width: 16px;
+    margin-left: 3px;
+    padding: 1px 4px;
+    color: #d0e0ff;
+    text-align: center;
+    background-color: #303050;
+    border-width: 1px;
+    border-color: #6080c0;
+    pointer-events: auto;
+}
+
+.program-controls {
+    display: block;
+    margin-left: 24px;
+    color: #a0a0c0;
+    font-size: 12px;
+}
+
+.value, .parameter-value, .parameter-range {
+    display: inline-block;
+    color: #a0b0d0;
+    font-size: 12px;
+}
+
+.toolbar {
+    display: block;
+    margin-top: 8px;
+}
+
+.parameters-title {
+    margin-top: 10px;
+}
+
+.parameter-row {
+    display: block;
+    margin-top: 5px;
+}
+
+.parameter-name {
+    display: inline-block;
+    width: 110px;
+    color: #e0d0b0;
+}
+
+.parameter-range {
+    margin-left: 4px;
 }
 
 .hint {

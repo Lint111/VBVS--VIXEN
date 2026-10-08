@@ -560,6 +560,10 @@ public:
     // pipeline. Returns the registry's own RegisterResult (Ok / DuplicateId / BadOpCode / ...).
     Vixen::SVO::RecipeRegistry::RegisterResult RegisterProceduralRecipe(
         uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry);
+    // Replaces a registered program under the same id; callers must recompile the procedural
+    // shader after a successful bytecode change. Runtime parameter edits stay in recipeParams.
+    Vixen::SVO::RecipeRegistry::RegisterResult ReplaceProceduralRecipe(
+        uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry);
     // Forces BodyInstanceRayMarch.comp to be re-spliced from the CURRENT proceduralRecipes_
     // contents and recompiled (MarkNodeNeedsRecompile on the stored compute_shader_lib node
     // handle). No-op (logs a warning) if the graph hasn't been compiled yet -- there is

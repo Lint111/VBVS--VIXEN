@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include "ActionStack.h"
+#include "EditorDocumentFraming.h"
 #include "EditorDocumentModel.h"
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/RecipeSimd.g.hpp"
+#include "Recipe/RecipeBounds.h"
 
 #include <chrono>
 #include <cstdint>
@@ -70,10 +72,12 @@ bool WriteDocument(const Yeroket::Sdf::Generated::VoxelDocumentView& source,
 
     size_t required = 0;
     WriteVoxelDocument(source.channels, source.header.channelCount,
+                       source.parameters, source.header.reserved0,
                        layers.data(), layerCount, nullptr, 0, required);
     std::vector<std::uint8_t> bytes(required);
     size_t written = 0;
     if (!WriteVoxelDocument(source.channels, source.header.channelCount,
+                            source.parameters, source.header.reserved0,
                             layers.data(), layerCount,
                             bytes.data(), bytes.size(), written)) {
         return false;
@@ -253,6 +257,174 @@ TEST(EditorDocumentModelOperations, ToggleUndoSaveAndReopenUseTheAcceptedDocumen
     ASSERT_TRUE(reopened.Flatten(reopenedCanonical, diagnostic)) << diagnostic.message;
     EXPECT_EQ(reopenedCanonical, acceptedCanonical);
     EXPECT_EQ(ReadFile(savedPath.path), ReadFile(VXD_GOLDEN_PATH));
+}
+
+TEST(EditorDocumentModelParameters, SnapshotValuesAndMetadataSurviveSaveAndRejectStaleUse) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+
+    ASSERT_EQ(model.ParameterCount(), 1u);
+    EXPECT_EQ(model.ParameterName(0), "bulgeRadius");
+    EXPECT_EQ(model.ParameterUnit(0), "voxels");
+    EXPECT_EQ(model.ParameterSlot(0), 0u);
+    EXPECT_FLOAT_EQ(model.ParameterDefault(0), 0.6f);
+    EXPECT_FLOAT_EQ(model.ParameterMin(0), 0.25f);
+    EXPECT_FLOAT_EQ(model.ParameterMax(0), 1.5f);
+
+    const auto original = model.CaptureBakeSnapshot();
+    EXPECT_FLOAT_EQ(original.parameterValues[0], 0.6f);
+    Vixen::SVO::RecipeRegistry::RecipeEntry originalEntry;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(originalEntry, original, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(originalEntry.parameterValues.size(), 6u);
+    EXPECT_FLOAT_EQ(originalEntry.parameterValues[0], original.parameterValues[0]);
+
+    ASSERT_TRUE(model.SetParameterValue(0u, 0.9f, diagnostic)) << diagnostic.message;
+    EXPECT_GT(model.Revision(), original.revision);
+    Vixen::SVO::RecipeRegistry::RecipeEntry staleEntry;
+    EXPECT_FALSE(model.FlattenToRecipeEntry(staleEntry, original, diagnostic));
+    EXPECT_EQ(diagnostic.code, DocumentDiagnosticCode::StaleBakeSnapshot);
+
+    const auto current = model.CaptureBakeSnapshot();
+    Vixen::SVO::RecipeRegistry::RecipeEntry currentEntry;
+    ASSERT_TRUE(model.FlattenToRecipeEntry(currentEntry, current, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(currentEntry.parameterValues[0], 0.9f);
+
+    auto savedPath = MakeTempDocumentPath("parameter-save-reopen");
+    ASSERT_TRUE(model.Save(savedPath.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(savedPath.path, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(reopened.ParameterName(0), "bulgeRadius");
+    EXPECT_EQ(reopened.ParameterUnit(0), "voxels");
+    EXPECT_FLOAT_EQ(reopened.ParameterValue(0), 0.9f);
+    EXPECT_EQ(reopened.CaptureBakeSnapshot().parameterValues, current.parameterValues);
+
+    Vixen::SVO::RecipeRegistry::RecipeEntry reopenedEntry;
+    ASSERT_TRUE(reopened.FlattenToRecipeEntry(reopenedEntry, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(reopenedEntry.bytecode.size(), currentEntry.bytecode.size());
+    EXPECT_EQ(std::memcmp(reopenedEntry.bytecode.data(), currentEntry.bytecode.data(),
+                          currentEntry.bytecode.size() * sizeof(currentEntry.bytecode[0])), 0);
+    EXPECT_EQ(reopenedEntry.parameterValues, currentEntry.parameterValues);
+}
+
+TEST(EditorDocumentModelOperations, LayerInsertDeleteMoveAndProgramFieldEditPersist) {
+    EditorDocumentModel model;
+    DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(VXD_GOLDEN_PATH, diagnostic)) << diagnostic.message;
+
+    Vixen::Editor::EditableDocumentLayer inserted;
+    inserted.type = 0u;
+    inserted.op = 0u;
+    inserted.enabled = false;
+    inserted.name = "guide";
+    Yeroket::Sdf::Generated::SdfInstruction guideSphere{};
+    guideSphere.opCode = 0u;
+    guideSphere.data[3] = 0.25f;
+    inserted.program.push_back(guideSphere);
+    ASSERT_TRUE(model.InsertLayer(1u, inserted, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(model.LayerCount(), 4u);
+    EXPECT_EQ(model.LayerName(1u), "guide");
+    EXPECT_EQ(model.EnabledMask(), 0xDu);
+
+    float oldField = 0.0f;
+    ASSERT_TRUE(model.GetLayerProgramField(0u, 0u, 3u, oldField, diagnostic)) << diagnostic.message;
+    ASSERT_TRUE(model.SetLayerProgramField(0u, 0u, 3u, oldField + 0.5f, diagnostic)) << diagnostic.message;
+    float editedField = 0.0f;
+    ASSERT_TRUE(model.GetLayerProgramField(0u, 0u, 3u, editedField, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(editedField, oldField + 0.5f);
+
+    ASSERT_TRUE(model.MoveLayer(0u, 2u, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(model.LayerName(2u), "base");
+    ASSERT_TRUE(model.MoveLayer(2u, 0u, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(model.LayerName(0u), "base");
+
+    Vixen::Editor::EditableDocumentLayer removed;
+    ASSERT_TRUE(model.DeleteLayer(1u, &removed, diagnostic)) << diagnostic.message;
+    EXPECT_EQ(removed.name, "guide");
+    ASSERT_EQ(model.LayerCount(), 3u);
+
+    auto savedPath = MakeTempDocumentPath("layer-operations-save-reopen");
+    ASSERT_TRUE(model.Save(savedPath.path, diagnostic)) << diagnostic.message;
+    EditorDocumentModel reopened;
+    ASSERT_TRUE(reopened.Load(savedPath.path, diagnostic)) << diagnostic.message;
+    ASSERT_EQ(reopened.LayerCount(), model.LayerCount());
+    EXPECT_EQ(reopened.EnabledMask(), model.EnabledMask());
+    EXPECT_EQ(reopened.LayerName(0u), "base");
+    ASSERT_TRUE(reopened.GetLayerProgramField(0u, 0u, 3u, editedField, diagnostic)) << diagnostic.message;
+    EXPECT_FLOAT_EQ(editedField, oldField + 0.5f);
+}
+
+TEST(EditorDocumentFraming, FramesThreeDifferentlyBoundedDocumentsAndParameterizedRecipe) {
+    using Vixen::SVO::Recipe::SdfInstruction;
+    using Vixen::SVO::Recipe::SdfOpCode;
+
+    const SdfInstruction sphere = [] {
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<uint8_t>(SdfOpCode::Sphere);
+        instruction.data[3] = 0.5f;
+        return instruction;
+    }();
+    const SdfInstruction box = [] {
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<uint8_t>(SdfOpCode::Box);
+        instruction.data[0] = 1.0f;
+        instruction.data[1] = 2.0f;
+        instruction.data[2] = 0.75f;
+        return instruction;
+    }();
+    const SdfInstruction cylinder = [] {
+        SdfInstruction instruction{};
+        instruction.opCode = static_cast<uint8_t>(SdfOpCode::Cylinder);
+        instruction.data[0] = 3.0f;
+        instruction.data[1] = 1.0f;
+        return instruction;
+    }();
+    const std::vector<std::vector<SdfInstruction>> programs = {
+        {sphere}, {box}, {cylinder},
+    };
+
+    std::vector<Vixen::Editor::EditorCameraFrame> frames;
+    for (const auto& program : programs) {
+        const auto bounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+            program.data(), static_cast<uint32_t>(program.size()));
+        ASSERT_TRUE(bounds.ok);
+        frames.push_back(Vixen::Editor::FitEditorCameraToBounds(
+            bounds.center, bounds.radius, glm::vec3(32.0f), 64));
+    }
+    ASSERT_EQ(frames.size(), 3u);
+    EXPECT_NE(frames[0].distance, frames[1].distance);
+    EXPECT_NE(frames[1].distance, frames[2].distance);
+    EXPECT_LT(frames[0].distance, frames[1].distance);
+    EXPECT_LT(frames[0].distance, frames[2].distance);
+    for (const auto& frame : frames) {
+        EXPECT_GT(frame.distance, 0.0f);
+        EXPECT_NEAR(frame.center.x, 25.0f, 1e-5f);
+        EXPECT_NEAR(frame.center.y, 25.0f, 1e-5f);
+        EXPECT_NEAR(frame.center.z, 25.0f, 1e-5f);
+        EXPECT_GE(frame.distance * std::sin(45.0f * 3.14159265358979323846f / 360.0f),
+                  frame.worldRadius);
+    }
+
+    const SdfInstruction parameterized[] = {
+        sphere,
+        [] {
+            SdfInstruction instruction{};
+            instruction.opCode = static_cast<uint8_t>(SdfOpCode::ReadParam);
+            instruction.paramMask = 1u;
+            instruction.data[0] = 0.0f;
+            return instruction;
+        }(),
+        [] {
+            SdfInstruction instruction{};
+            instruction.opCode = static_cast<uint8_t>(SdfOpCode::MathSub);
+            return instruction;
+        }(),
+    };
+    const float parameterValues[] = {1.25f};
+    const auto parameterizedBounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+        parameterized, 3u, parameterValues);
+    ASSERT_TRUE(parameterizedBounds.ok);
+    EXPECT_GE(parameterizedBounds.radius, 1.75f);
 }
 
 }  // namespace

@@ -23,6 +23,21 @@ namespace Vixen::RenderGraph { class UIRenderNode; }
 
 namespace Vixen::App {
 
+struct EditorLayerData {
+    std::string name;
+    std::string op;
+    bool enabled = true;
+    float programFieldValue = 0.0f;
+};
+
+struct EditorParameterData {
+    std::string name;
+    std::string unit;
+    float value = 0.0f;
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+};
+
 // Returns a raw, owning pointer (not std::unique_ptr<EditorLayersView>) -- same incomplete-type-
 // delete rationale as HudViewBridge.h's MakeHudView(): EditorApplication.h forward-declares
 // EditorLayersView only, so a unique_ptr's implicit destructor (instantiated at EditorApplication's
@@ -37,8 +52,9 @@ void DestroyEditorLayersView(EditorLayersView* view);
 // by the caller, e.g. EditorApplication::layersView_, which outlives the graph/node it's wired into).
 void WireEditorLayersView(Vixen::RenderGraph::UIRenderNode& node, EditorLayersView& view);
 
-// Forwards to EditorLayersView::PopulateFromMask (the mask/names/ops -> bound "layers" projection).
-void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask, uint32_t layerCount,
-                             const std::vector<std::string>& names, const std::vector<std::string>& ops);
+// Forwards the headless document's layer and parameter projection into the generated view model.
+void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
+                             const std::vector<EditorLayerData>& layers,
+                             const std::vector<EditorParameterData>& parameters);
 
 }  // namespace Vixen::App

@@ -26,9 +26,10 @@ void WireEditorLayersView(Vixen::RenderGraph::UIRenderNode& node, EditorLayersVi
     node.SetView(std::shared_ptr<Vixen::RenderGraph::IView>(&view, [](Vixen::RenderGraph::IView*) {}));
 }
 
-void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask, uint32_t layerCount,
-                             const std::vector<std::string>& names, const std::vector<std::string>& ops) {
-    view.PopulateFromMask(mask, layerCount, names, ops);
+void RefreshEditorLayersView(EditorLayersView& view, uint32_t mask,
+                             const std::vector<EditorLayerData>& layers,
+                             const std::vector<EditorParameterData>& parameters) {
+    view.PopulateFromDocument(mask, layers, parameters);
 }
 
 }  // namespace Vixen::App

@@ -1,11 +1,11 @@
 #pragma once
 // EditorApplication — Inc1 vixen_editor: loads a VoxelDocument, live-renders it through
-// the existing body-octree/recipe-pool render path, and supports layer enable/disable
-// (UI click -> document -> flatten -> re-render) plus save. Reuses VulkanGraphApplication's
+// the shared body-octree/recipe and virtual-provider paths, and supports rule editing
+// (UI selector -> headless document operation -> preview refresh) plus save/reopen. Reuses VulkanGraphApplication's
 // whole graph (window, body-octree scene, UI composite HUD) unmodified; BuildRenderGraph
 // calls the base implementation and then re-points the UI node at editor.rml, and the one
-// default body instance is replaced by a single instance selecting the document's baked
-// recipe-pool slot.
+// default body instance is replaced by a procedural instance using the document's registered
+// bytecode and the same six-value snapshot consumed by the CPU bake.
 //
 // Inc-4 reframe (design D10/D15, R5): the editor is a PURE CONSUMER of the AppFlow registry
 // -- it names zero triggers/actions in code. It registers one self-contained handler per
@@ -26,6 +26,7 @@
 #include <Logger.h>
 
 #include <memory>
+#include <array>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -44,19 +45,17 @@ public:
     // EditorApplication.cpp, not implicitly generated here where the type is incomplete.
     ~EditorApplication() override;
 
-    // Inc-2b Task 4: one parsed VIXEN_EDITOR_SCRIPT entry (e.g. "toggle:2@30" or "undo@60").
+    // One parsed VIXEN_EDITOR_SCRIPT entry (e.g. "parameter_up:0@30" or "undo@60").
     // Public (plain data, no invariants) so the free-function parser in EditorApplication.cpp's
     // anonymous namespace can build a std::vector<ScriptedAction> without befriending it.
     struct ScriptedAction {
         long frame = 0;
-        // R6a: Settings/Back added to exercise the back-button->Return edge in the RUNNING
-        // editor (not just the FSM unit test) -- Settings drives NavTo(Settings) directly
-        // (a real editor has no "open settings" UI yet, so there is no selector to route this
-        // through; NavTo is a public service call, same primitive Return's own handler uses),
-        // Back drives DispatchBySelector("back-button") -- the real dispatch path a back-button
-        // click would take.
-        enum class Kind { Toggle, Undo, Redo, Settings, Back } kind = Kind::Undo;
-        uint32_t layerIndex = 0;  // only meaningful for Kind::Toggle
+        enum class Kind {
+            Toggle, CreateLayer, DeleteLayer, MoveLayerUp, MoveLayerDown,
+            ProgramFieldUp, ProgramFieldDown, ParameterUp, ParameterDown,
+            Undo, Redo, Save, Reopen, Settings, Back
+        } kind = Kind::Undo;
+        uint32_t index = 0;  // layer or parameter index, depending on Kind
     };
 
     void BuildRenderGraph() override;
@@ -72,17 +71,18 @@ public:
     // "<input-path-without-extension>.edited.vxd". Returns false (see LastEditorError())
     // on failure.
     bool SaveDocument();
+    bool ReopenSavedDocument();
 
     const Vixen::Editor::EditorDocumentModel& DocumentModel() const { return doc_; }
     const std::string& LastEditorError() const { return lastEditorError_; }
 
-    // Flattens the current document state into a RecipeEntry, bakes a fresh single-recipe
-    // pool, and pushes it into BodyOctreeSceneNode via SetRecipePool + one instance
-    // (providerKind=0/Stored default, octreeIndex=0 selects the pool's only baked slot —
-    // see test_recipe_pool_render.cpp for the identical pattern). Returns false
-    // (lastEditorError_ set) on flatten/bake failure. Public so the headless live-gate test
-    // can drive the exact same path the app uses without booting a window.
-    bool ApplyDocumentToScene();
+    // Captures one document revision and effective-parameter snapshot, bakes that entry into a
+    // fresh CPU pool, and updates the shared virtual recipe instance. Returns false
+    // (lastEditorError_ set) on flatten, registry, or bake failure.
+    bool ApplyDocumentToScene(bool reframeCamera = false);
+
+    const Vixen::Editor::DocumentBakeSnapshot& LastBakeSnapshot() const { return lastBakeSnapshot_; }
+    const std::array<float, 6>& LastPreviewParameterValues() const { return lastPreviewParameterValues_; }
 
     // Editor Brick-Residency Fix (2026-07): the editor's one document body is the object being
     // directly edited and is always in view — it must render the fine SDF march (where the layer
@@ -119,6 +119,7 @@ private:
     // cross-view/external propagation lands same-frame where possible (design §4a). Valid Gaia
     // writes are applied through EditorDocumentModel, then mirrored to the runtime projection.
     void ReconcileLayersView();
+    void SyncAfterDocumentMutation();
 
 
     std::string documentPath_;
@@ -163,6 +164,13 @@ private:
     bool dirty_ = false;  // set on toggle; drives the next-tick re-flatten (was doc_.ConsumeDirty())
     std::string lastEditorError_;
     std::string lastSavedPath_;
+    std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastSavedProgram_;
+    std::array<float, 6> lastSavedParameters_{};
+    uint32_t lastSavedMask_ = 0;
+    Vixen::Editor::DocumentBakeSnapshot lastBakeSnapshot_{};
+    std::array<float, 6> lastPreviewParameterValues_{};
+    std::vector<Yeroket::Sdf::Generated::SdfInstruction> lastProceduralProgram_;
+    bool proceduralPreviewRegistered_ = false;
     bool sKeyWasDown_ = false;  // edge-detect for the Save keybinding
     bool ctrlZWasDown_ = false;  // edge-detect for the Undo keybinding
     bool ctrlYWasDown_ = false;  // edge-detect for the Redo keybinding

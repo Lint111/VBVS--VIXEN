@@ -4229,14 +4229,31 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     // (IsLipschitzSafeForOccupancyGrid declines) leaves occupancyGridDim==0 — the splice's
     // getRecipeOccupancyGrid switch then emits a gridDim=0u case for this recipe and the
     // shader skips the occupancy fast-path for it, exactly as if this call never ran.
-    auto occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
-        entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
-        entry.boundCenter, entry.boundRadius);
+    const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
+        [](const auto& instruction) {
+            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
+            return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
+                   op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
+        });
+    Vixen::SVO::Recipe::OccupancyGridResult occGrid;
+    // This grid generator currently samples the zero-parameter field. A runtime-parameter
+    // recipe must not inherit that grid because its cells could incorrectly cull a changed
+    // field; use the correct ungridded sphere-trace path until parameter-aware derivation lands.
+    if (!hasRuntimeParameters) {
+        occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
+            entry.boundCenter, entry.boundRadius);
+    }
     if (occGrid.ok) {
         entry.occupancyGridValues    = std::move(occGrid.values);
         entry.occupancyGridDim       = occGrid.dim;
         entry.occupancyGridAabbMin   = occGrid.aabbMin;
         entry.occupancyGridCellSize  = occGrid.cellSize;
+    } else {
+        entry.occupancyGridValues.clear();
+        entry.occupancyGridDim = 0u;
+        entry.occupancyGridAabbMin = glm::vec3(0.0f);
+        entry.occupancyGridCellSize = 0.0f;
     }
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[VulkanGraphApplication::RegisterProceduralRecipe] recipeId=" +
@@ -4278,6 +4295,57 @@ Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::RegisterProce
     return result;
 }
 
+Vixen::SVO::RecipeRegistry::RegisterResult VulkanGraphApplication::ReplaceProceduralRecipe(
+    uint32_t recipeId, Vixen::SVO::RecipeRegistry::RecipeEntry entry) {
+    constexpr float kDefaultProceduralBoundRadius = 24.0f;
+    Vixen::SVO::Recipe::ApplyRecipeBoundsDefaults(
+        entry, kDefaultProceduralBoundRadius, /*defaultStepRelaxation=*/0.9f);
+
+    const bool hasRuntimeParameters = std::any_of(entry.bytecode.begin(), entry.bytecode.end(),
+        [](const auto& instruction) {
+            const auto op = static_cast<Vixen::SVO::Recipe::SdfOpCode>(instruction.opCode);
+            return op == Vixen::SVO::Recipe::SdfOpCode::ReadParam ||
+                   op == Vixen::SVO::Recipe::SdfOpCode::ReadParamFloat3;
+        });
+    Vixen::SVO::Recipe::OccupancyGridResult occGrid;
+    if (!hasRuntimeParameters) {
+        occGrid = Vixen::SVO::Recipe::DeriveOccupancyGrid(
+            entry.bytecode.data(), static_cast<uint32_t>(entry.bytecode.size()),
+            entry.boundCenter, entry.boundRadius);
+    }
+    if (occGrid.ok) {
+        entry.occupancyGridValues = std::move(occGrid.values);
+        entry.occupancyGridDim = occGrid.dim;
+        entry.occupancyGridAabbMin = occGrid.aabbMin;
+        entry.occupancyGridCellSize = occGrid.cellSize;
+    } else {
+        entry.occupancyGridValues.clear();
+        entry.occupancyGridDim = 0u;
+        entry.occupancyGridAabbMin = glm::vec3(0.0f);
+        entry.occupancyGridCellSize = 0.0f;
+    }
+
+    const auto result = proceduralRecipes_.Replace(recipeId, entry);
+    if (result == Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
+        auto& mainCacher = renderGraph->GetMainCacher();
+        const auto cacherType = std::type_index(typeid(CashSystem::RecipeFamilyRecord));
+        if (!mainCacher.IsRegistered(cacherType)) {
+            mainCacher.RegisterCacher<
+                CashSystem::RecipeContentCacher,
+                CashSystem::RecipeFamilyRecord,
+                CashSystem::RecipeContentCacheCreateInfo
+            >(cacherType, "RecipeContent", /*isDeviceDependent=*/false);
+        }
+        auto* recipeCacher = mainCacher.GetCacher<
+            CashSystem::RecipeContentCacher,
+            CashSystem::RecipeFamilyRecord,
+            CashSystem::RecipeContentCacheCreateInfo
+        >(cacherType);
+        if (recipeCacher) recipeCacher->RegisterRecipe(recipeId, entry.bytecode);
+    }
+    return result;
+}
+
 void VulkanGraphApplication::RecompileProceduralShader() {
     if (!graphCompiled) {
         // Nothing to mark dirty yet -- the first Compile() will read proceduralRecipes_'s
@@ -4285,6 +4353,19 @@ void VulkanGraphApplication::RecompileProceduralShader() {
         return;
     }
     if (computeShaderLibNode_.IsValid()) {
+        // Replacing editor rule layers rebuilds the shader library and every dependent pipeline.
+        // Drain prior frame submissions first: those pipelines may still be referenced by GPU work
+        // even though the graph's ordinary recompile path does not wait device-wide.
+        if (auto* deviceInst = static_cast<DeviceNode*>(renderGraph->GetInstanceByName("main_device"))) {
+            if (auto* device = deviceInst->GetVulkanDevice()) {
+                const VkResult waitResult = vkDeviceWaitIdle(device->device);
+                if (waitResult == VK_ERROR_DEVICE_LOST) {
+                    renderGraph->NotifyDeviceLost(
+                        "VulkanGraphApplication::RecompileProceduralShader vkDeviceWaitIdle");
+                    return;
+                }
+            }
+        }
         renderGraph->MarkNodeNeedsRecompile(computeShaderLibNode_);
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[VulkanGraphApplication::RecompileProceduralShader] marked compute_shader_lib dirty");

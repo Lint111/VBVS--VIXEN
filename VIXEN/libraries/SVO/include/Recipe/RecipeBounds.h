@@ -1,5 +1,7 @@
 #pragma once
+#include <cmath>
 #include <cstdint>
+#include <span>
 #include <glm/glm.hpp>
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/RecipeRegistry.h"  // IsValidSdfOpCode
@@ -36,17 +38,25 @@ struct RecipeBoundsResult {
     float     radius = 0.0f;
 };
 
-inline RecipeBoundsResult DeriveConservativeBounds(const SdfInstruction* prog, uint32_t count) {
+inline RecipeBoundsResult DeriveConservativeBounds(
+    const SdfInstruction* prog, uint32_t count, std::span<const float> parameters = {}) {
     // Emit-time bound stack, one (center, radius) sphere per pushed value — mirrors the
     // value-stack VM's shape (SdfRecipeEval.h) but carries a bound instead of a distance.
-    struct Bound { glm::vec3 center; float radius; };
+    struct Bound {
+        glm::vec3 center;
+        float radius;
+        bool scalar = false;
+        float scalarValue = 0.0f;
+    };
     Bound stk[64];
     int sp = 0;
 
     auto pushLeaf = [&](const glm::vec3& localCenter, float localRadius) {
-        stk[sp].center = localCenter;
-        stk[sp].radius = localRadius;
+        stk[sp] = Bound{localCenter, localRadius, false, 0.0f};
         ++sp;
+    };
+    auto pushScalar = [&](float value) {
+        stk[sp++] = Bound{glm::vec3(0.0f), 0.0f, true, value};
     };
 
     for (uint32_t i = 0; i < count; ++i) {
@@ -157,6 +167,7 @@ inline RecipeBoundsResult DeriveConservativeBounds(const SdfInstruction* prog, u
                 if (sp < 2) return {};
                 Bound b = stk[--sp];
                 Bound a = stk[--sp];
+                if (a.scalar || b.scalar) return {};
                 // Bounding sphere of the union of two spheres.
                 glm::vec3 d = b.center - a.center;
                 float dist = glm::length(d);
@@ -166,14 +177,66 @@ inline RecipeBoundsResult DeriveConservativeBounds(const SdfInstruction* prog, u
                 glm::vec3 newCenter = (dist > 1e-8f)
                     ? a.center + d * ((newRadius - a.radius) / dist)
                     : a.center;
-                stk[sp++] = Bound{newCenter, newRadius};
+                stk[sp++] = Bound{newCenter, newRadius, false, 0.0f};
                 break;
             }
 
             // --- Unary inflation: TOS radius grows by data[0] ---
             case SdfOpCode::Round: case SdfOpCode::Onion: {
-                if (sp < 1) return {};
-                stk[sp - 1].radius += in.data[0];
+                if (sp < 1 || stk[sp - 1].scalar) return {};
+                stk[sp - 1].radius += std::abs(in.data[0]);
+                break;
+            }
+
+            // Parameter values are scalar stack items. A field minus a scalar expands its
+            // zero-set bound by |scalar|, which safely covers authored radius/offset knobs.
+            case SdfOpCode::PushParam:
+                if (!std::isfinite(in.data[0])) return {};
+                pushScalar(in.data[0]);
+                break;
+            case SdfOpCode::ReadParam: {
+                const float encodedIndex = in.data[0];
+                if (!std::isfinite(encodedIndex) || encodedIndex < 0.0f ||
+                    std::floor(encodedIndex) != encodedIndex ||
+                    encodedIndex >= static_cast<float>(parameters.size())) return {};
+                const float value = parameters[static_cast<size_t>(encodedIndex)];
+                if (!std::isfinite(value)) return {};
+                pushScalar(value);
+                break;
+            }
+            case SdfOpCode::MathSub: {
+                if (sp < 2) return {};
+                const Bound b = stk[--sp];
+                Bound a = stk[--sp];
+                if (a.scalar && b.scalar) {
+                    pushScalar(a.scalarValue - b.scalarValue);
+                } else if (!a.scalar && b.scalar) {
+                    a.radius += std::abs(b.scalarValue);
+                    stk[sp++] = a;
+                } else if (a.scalar && !b.scalar) {
+                    // Negating a distance field leaves its zero surface unchanged.
+                    stk[sp++] = b;
+                } else {
+                    return {};
+                }
+                break;
+            }
+            case SdfOpCode::MathAdd: {
+                if (sp < 2) return {};
+                const Bound b = stk[--sp];
+                Bound a = stk[--sp];
+                if (a.scalar && b.scalar) {
+                    pushScalar(a.scalarValue + b.scalarValue);
+                } else if (!a.scalar && b.scalar) {
+                    a.radius += std::abs(b.scalarValue);
+                    stk[sp++] = a;
+                } else if (a.scalar && !b.scalar) {
+                    Bound result = b;
+                    result.radius += std::abs(a.scalarValue);
+                    stk[sp++] = result;
+                } else {
+                    return {};
+                }
                 break;
             }
 
@@ -187,7 +250,7 @@ inline RecipeBoundsResult DeriveConservativeBounds(const SdfInstruction* prog, u
         }
     }
 
-    if (sp != 1) return {};  // program didn't reduce to a single field (shouldn't happen
+    if (sp != 1 || stk[0].scalar) return {};  // program must reduce to one bounded field (shouldn't happen
                               // for a Register()-validated program, but stay defensive)
     RecipeBoundsResult out;
     out.ok     = true;

@@ -1,4 +1,5 @@
 #pragma once
+#include "EditorLayersViewBridge.h"
 #include "Ui/IView.h"
 #include "Generated/EditorLayers.g.h"   // Vixen::Views::{EditorLayerRow,EditorLayersBind,BindEditorLayersModel}
 #include <RmlUi/Core/DataModelHandle.h>
@@ -46,42 +47,69 @@ public:
     const char* ModelName() const override { return "editor_layers"; }
     const char* DocumentPath() const override { return "assets/ui/editor.rml"; }
     void Register(Rml::DataModelConstructor& c) override {
-        Vixen::Views::BindEditorLayersModel(c, Vixen::Views::EditorLayersBind{ &layers_, &activeLayerCountRaw_ });
+        Vixen::Views::BindEditorLayersModel(c,
+            Vixen::Views::EditorLayersBind{ &layers_, &parameters_, &activeLayerCountRaw_ });
         model_ = c.GetModelHandle();
     }
 
-    // Rebuilds the bound row array from EditorDocumentModel's enabled mask. Inc-Ovr (View-Model-Binding-
+    // Rebuilds the bound row arrays from EditorDocumentModel's accepted state. Inc-Ovr (View-Model-Binding-
     // Inc-Ovr-Plan-2026-07.md Task 3): isChecked's bit-decomposition is no longer a hand-written
     // shift here -- it is the schema-declared Projection on EditorLayerRow.isChecked
     // (codegen/view-schemas/EditorLayers.cs), generated as
     // Vixen::Views::ComputeEditorLayerRow_isChecked (Generated/EditorLayers.g.h), which itself
     // calls the transplanted [KernelCallable] Vixen::AppFlow::Generated::bitAt -- the same
     // transform the EditorDocumentModel operation used by EditorApplication's ToggleLayer handler.
-    // name/op/elementId come from the document model. Dirties "layers" so an already-loaded model picks up the
+    // names, operations, and parameter metadata come from the document model. Dirties the bound
+    // arrays so an already-loaded model picks up the
     // change (initial population calls this before the document loads, so the dirty is a no-op
     // there; a later re-population, e.g. after the optional same-frame echo, needs it).
-    void PopulateFromMask(uint32_t mask, uint32_t layerCount,
-                          const std::vector<std::string>& names, const std::vector<std::string>& ops) {
+    void PopulateFromDocument(uint32_t mask,
+                              const std::vector<EditorLayerData>& layerData,
+                              const std::vector<EditorParameterData>& parameterData) {
         layers_.clear();
-        layers_.reserve(layerCount);
-        for (uint32_t i = 0; i < layerCount; ++i) {
+        layers_.reserve(layerData.size());
+        for (uint32_t i = 0; i < layerData.size(); ++i) {
             Vixen::Views::EditorLayerRow row;
-            row.name      = i < names.size() ? Rml::String(names[i]) : Rml::String{};
-            row.op        = i < ops.size()   ? Rml::String(ops[i])   : Rml::String{};
+            row.name      = Rml::String(layerData[i].name);
+            row.op        = Rml::String(layerData[i].op);
             row.isChecked = Vixen::Views::ComputeEditorLayerRow_isChecked(mask, i);
             row.elementId = "layer-" + std::to_string(i) + "-toggle";
+            row.moveUpId = "layer-" + std::to_string(i) + "-up";
+            row.moveDownId = "layer-" + std::to_string(i) + "-down";
+            row.deleteId = "layer-" + std::to_string(i) + "-delete";
+            row.programUpId = "layer-" + std::to_string(i) + "-program-up";
+            row.programDownId = "layer-" + std::to_string(i) + "-program-down";
+            row.programFieldValue = layerData[i].programFieldValue;
             layers_.push_back(std::move(row));
+        }
+        parameters_.clear();
+        parameters_.reserve(parameterData.size());
+        for (uint32_t i = 0; i < parameterData.size(); ++i) {
+            Vixen::Views::EditorParameterRow row;
+            row.name = Rml::String(parameterData[i].name);
+            row.unit = Rml::String(parameterData[i].unit);
+            row.upId = "parameter-" + std::to_string(i) + "-up";
+            row.downId = "parameter-" + std::to_string(i) + "-down";
+            row.value = parameterData[i].value;
+            row.minimum = parameterData[i].minimum;
+            row.maximum = parameterData[i].maximum;
+            parameters_.push_back(std::move(row));
         }
         // activeLayerCount (Inc-Ovr Override proof): storage holds the raw mask reinterpreted as
         // int; BindEditorLayersModel_activeLayerCountOverride (this file, above) popcounts it at
         // bind time. Only needs a dirty when the mask itself changes, same as "layers".
         activeLayerCountRaw_ = static_cast<int>(mask);
-        if (model_) { model_.DirtyVariable("layers"); model_.DirtyVariable("activeLayerCount"); }
+        if (model_) {
+            model_.DirtyVariable("layers");
+            model_.DirtyVariable("parameters");
+            model_.DirtyVariable("activeLayerCount");
+        }
     }
 
     // Debug accessor for tests.
     size_t DebugLayerCount() const { return layers_.size(); }
     const Vixen::Views::EditorLayerRow& DebugLayer(size_t i) const { return layers_.at(i); }
+    size_t DebugParameterCount() const { return parameters_.size(); }
     int DebugActiveLayerCount() const {
         return Vixen::Views::BindEditorLayersModel_activeLayerCountOverride(
             const_cast<int*>(&activeLayerCountRaw_));
@@ -89,6 +117,7 @@ public:
 
 private:
     std::vector<Vixen::Views::EditorLayerRow> layers_;
+    std::vector<Vixen::Views::EditorParameterRow> parameters_;
     int activeLayerCountRaw_ = 0;
     Rml::DataModelHandle model_;
 };

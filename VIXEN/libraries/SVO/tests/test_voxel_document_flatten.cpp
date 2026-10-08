@@ -20,9 +20,10 @@ using namespace Yeroket::Sdf::Generated;
 namespace {
 
 // sample_tri_layer.vxd — vendored golden asset (Yeroket VoxelDocumentGoldenTests.cs
-// BuildSampleTriLayerDoc, VDC1 design §6): 3 rule layers, all enabled, 1 channel.
-//  "base"  Box(halfExtents=(1,1,1))                          op=Union (ignored, first layer)
-//  "bulge" Sphere(radius=0.6)                                 op=SmoothUnion blendRadius=0.15
+// BuildSampleTriLayerDoc): VDC1 v2, 3 rule layers, all enabled, 1 channel, and one
+// named float parameter. The bulge's radius is computed as length(position)-slot0.
+//  "base"  Box(halfExtents=(1,1,1))                           op=Union (ignored, first layer)
+//  "bulge" Sphere(0), ReadParam(0), MathSub                    op=SmoothUnion blendRadius=0.15
 //  "cut"   Cylinder(halfHeight=1.5, radius=0.35)               op=Subtract
 const char* kGoldenPath = SAMPLE_TRI_LAYER_VXD_PATH;
 
@@ -36,13 +37,24 @@ std::vector<uint8_t> ReadFile(const char* path) {
     return data;
 }
 
-std::string NameOf(const VoxelDocLayerHeader* h) {
-    // nameBytes is NUL-padded UTF-8; construct a std::string up to the first NUL
-    // (or the full 32 bytes if unterminated).
-    const char* raw = reinterpret_cast<const char*>(h->nameBytes);
+std::string FixedText(const uint8_t* bytes, size_t capacity) {
+    // Fixed-width metadata strings are NUL-padded UTF-8; read up to the first NUL
+    // (or the full field width if unterminated).
     size_t len = 0;
-    while (len < sizeof(h->nameBytes) && raw[len] != '\0') ++len;
-    return std::string(raw, len);
+    while (len < capacity && bytes[len] != 0) ++len;
+    return std::string(reinterpret_cast<const char*>(bytes), len);
+}
+
+std::string NameOf(const VoxelDocLayerHeader* h) {
+    return FixedText(h->nameBytes, sizeof(h->nameBytes));
+}
+
+std::string NameOf(const VoxelDocParameterHeader* p) {
+    return FixedText(p->nameBytes, sizeof(p->nameBytes));
+}
+
+std::string UnitOf(const VoxelDocParameterHeader* p) {
+    return FixedText(p->unitBytes, sizeof(p->unitBytes));
 }
 
 // --- instruction builders (mirror test_recipe_eval_parity.cpp conventions) ---
@@ -99,9 +111,21 @@ TEST(VoxelDocumentDecode, SampleTriLayerGoldenDecodesToExpectedValues) {
     ASSERT_TRUE(ReadVoxelDocument(bytes.data(), bytes.size(), view));
 
     EXPECT_EQ(view.header.magic, 0x31434456u);       // 'VDC1'
-    EXPECT_EQ(view.header.formatVersion, 1u);
+    EXPECT_EQ(view.header.formatVersion, 2u);
     EXPECT_EQ(view.header.channelCount, 1u);
     EXPECT_EQ(view.header.layerCount, 3u);
+    EXPECT_EQ(view.header.reserved0, 1u);  // VDC v2 parameter count
+
+    ASSERT_NE(view.parameters, nullptr);
+    const auto& radius = view.parameters[0];
+    EXPECT_EQ(radius.slot, 0u);
+    EXPECT_EQ(radius.type, 0u);  // Float
+    EXPECT_EQ(NameOf(&radius), "bulgeRadius");
+    EXPECT_EQ(UnitOf(&radius), "voxels");
+    EXPECT_NEAR(radius.defaultValue, 0.6f, 1e-6f);
+    EXPECT_NEAR(radius.minValue, 0.25f, 1e-6f);
+    EXPECT_NEAR(radius.maxValue, 1.5f, 1e-6f);
+    EXPECT_NEAR(radius.value, 0.6f, 1e-6f);
 
     ASSERT_NE(view.channels, nullptr);
     EXPECT_EQ(view.channels[0].semanticId, 0u);          // SEM_SDF
@@ -126,7 +150,8 @@ TEST(VoxelDocumentDecode, SampleTriLayerGoldenDecodesToExpectedValues) {
         EXPECT_FLOAT_EQ(in.data[2], 1.0f);
     }
 
-    // Layer 1: "bulge" — Sphere(radius=0.6), op=SmoothUnion(1), blendRadius=0.15.
+    // Layer 1: "bulge" — Sphere(0), ReadParam(slot=0), MathSub; the parameter
+    // supplies the sphere radius. Layer op=SmoothUnion(1), blendRadius=0.15.
     {
         const auto* h = view.layers[1].header;
         EXPECT_EQ(NameOf(h), "bulge");
@@ -134,11 +159,17 @@ TEST(VoxelDocumentDecode, SampleTriLayerGoldenDecodesToExpectedValues) {
         EXPECT_EQ(h->op, 1u);
         EXPECT_EQ(h->enabled, 1u);
         EXPECT_NEAR(h->blendRadius, 0.15f, 1e-6f);
-        EXPECT_EQ(h->instructionCount, 1u);
+        EXPECT_EQ(h->instructionCount, 3u);
         ASSERT_NE(view.layers[1].instructions, nullptr);
-        const auto& in = view.layers[1].instructions[0];
-        EXPECT_EQ(in.opCode, (uint8_t)SdfOpCode::Sphere);
-        EXPECT_NEAR(in.data[3], 0.6f, 1e-6f);
+        const auto& sphere = view.layers[1].instructions[0];
+        EXPECT_EQ(sphere.opCode, (uint8_t)SdfOpCode::Sphere);
+        EXPECT_FLOAT_EQ(sphere.data[3], 0.0f);
+        const auto& readRadius = view.layers[1].instructions[1];
+        EXPECT_EQ(readRadius.opCode, (uint8_t)SdfOpCode::ReadParam);
+        EXPECT_EQ(readRadius.paramMask, 1u);
+        EXPECT_FLOAT_EQ(readRadius.data[0], 0.0f);
+        const auto& subtract = view.layers[1].instructions[2];
+        EXPECT_EQ(subtract.opCode, (uint8_t)SdfOpCode::MathSub);
     }
 
     // Layer 2: "cut" — Cylinder(halfHeight=1.5, radius=0.35), op=Subtract(2).
@@ -320,7 +351,8 @@ TEST(VoxelDocumentFlatten, UnknownLayerOpFails) {
 
     std::vector<uint8_t> buf(4096);
     size_t outLen = 0;
-    ASSERT_TRUE(WriteVoxelDocument(&channel, 1, &layerWrite, 1, buf.data(), buf.size(), outLen));
+    ASSERT_TRUE(WriteVoxelDocument(&channel, 1, nullptr, 0,
+                                   &layerWrite, 1, buf.data(), buf.size(), outLen));
     buf.resize(outLen);
 
     VoxelDocumentView view{};
@@ -341,7 +373,8 @@ TEST(VoxelDocumentFlatten, UnknownLayerOpFails) {
     };
     std::vector<uint8_t> buf2(4096);
     size_t outLen2 = 0;
-    ASSERT_TRUE(WriteVoxelDocument(&channel, 1, writes, 2, buf2.data(), buf2.size(), outLen2));
+    ASSERT_TRUE(WriteVoxelDocument(&channel, 1, nullptr, 0,
+                                   writes, 2, buf2.data(), buf2.size(), outLen2));
     buf2.resize(outLen2);
     VoxelDocumentView view2{};
     ASSERT_TRUE(ReadVoxelDocument(buf2.data(), buf2.size(), view2));
@@ -383,7 +416,8 @@ TEST(VoxelDocumentFlatten, DeepStackSyntheticDocumentRejectedWithClearMessage) {
 
     std::vector<uint8_t> buf(1 << 20);
     size_t outLen = 0;
-    ASSERT_TRUE(WriteVoxelDocument(&channel, 1, writes.data(), kLayerCount, buf.data(), buf.size(), outLen))
+    ASSERT_TRUE(WriteVoxelDocument(&channel, 1, nullptr, 0,
+                                   writes.data(), kLayerCount, buf.data(), buf.size(), outLen))
         << "synthetic document write buffer too small (need " << outLen << ")";
     buf.resize(outLen);
 
@@ -417,8 +451,8 @@ TEST(VoxelDocumentFlatten, OutputIsRegistryConsumableWithExpectedInstructionCoun
     ASSERT_TRUE(Yeroket::Sdf::Generated::ReadRecipeContainer(blob.data(), blob.size(), flatView))
         << "flattened blob must be consumable by the vendored VRC1 reader unchanged";
 
-    // 3 enabled layers, 1 instruction each = 3 program instructions,
-    // + (enabledCount-1)=2 combine instructions = 5 total.
+    // Enabled layer instructions are 1 + 3 + 1 = 5; flatten adds
+    // (enabledCount-1)=2 layer-combine instructions for 7 total.
     uint32_t enabledInstrSum = 0;
     for (uint32_t l = 0; l < view.header.layerCount; ++l)
         if (view.layers[l].header->enabled)
@@ -427,7 +461,7 @@ TEST(VoxelDocumentFlatten, OutputIsRegistryConsumableWithExpectedInstructionCoun
     const uint32_t expected = enabledInstrSum + (enabledCount - 1);
 
     EXPECT_EQ(flatView.header.instructionCount, expected);
-    EXPECT_EQ(flatView.header.instructionCount, 5u);
+    EXPECT_EQ(flatView.header.instructionCount, 7u);
 
     // RecipeRegistry::Register must also accept it (fully registry-consumable,
     // not just container-readable).

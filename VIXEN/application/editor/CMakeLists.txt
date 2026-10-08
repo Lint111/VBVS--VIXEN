@@ -82,12 +82,14 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
         TIMEOUT 180)
     vixen_set_suite_properties(RenderGraph TESTS vixen_editor_capture_producer
         TEST_ENVIRONMENT
-            "VIXEN_EDITOR_SCRIPT=toggle:2@30,undo@60,redo@90,settings@100,back@110"
-            "VIXEN_EDITOR_CAPTURE_FRAMES=5,45,75,105"
+            # R426 makes bi-modal cel the body-shading default; keep the legacy test override off.
+            "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
+            "VIXEN_EDITOR_SCRIPT=parameter_up:0@20,parameter_up:0@21,parameter_up:0@22,parameter_up:0@23,toggle:2@30,undo@60,redo@90,save@100,reopen@110,settings@120,back@130"
+            "VIXEN_EDITOR_CAPTURE_FRAMES=5,25,45,75,105,115"
             "VIXEN_EDITOR_CAPTURE_DIR=${VIXEN_EDITOR_CAPTURE_DIR}"
             "VIXEN_EDITOR_OFFSCREEN_CAPTURE=1"
             "VIXEN_EDITOR_TEST_CAMERA=top-down"
-            "VIXEN_EXIT_AFTER_FRAMES=120")
+            "VIXEN_EXIT_AFTER_FRAMES=140")
 
     add_test(NAME vixen_hud_capture_producer COMMAND $<TARGET_FILE:VIXEN>)
     set_tests_properties(vixen_hud_capture_producer PROPERTIES

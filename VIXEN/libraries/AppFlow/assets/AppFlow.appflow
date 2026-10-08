@@ -1,6 +1,6 @@
 # appflow v1
 model appflow
-shape 0x49EA8366
+shape 0xC6F3E476
 state Editing 0
 state Simulating 1
 state Paused 2
@@ -14,6 +14,14 @@ action Save 3
 action UndoSettingChange 4
 action Return 5
 action Data 6
+action CreateLayer 7
+action DeleteLayer 8
+action MoveLayerUp 9
+action MoveLayerDown 10
+action EditProgramFieldUp 11
+action EditProgramFieldDown 12
+action AdjustParameterUp 13
+action AdjustParameterDown 14
 paramtype String 0
 paramtype Int 1
 paramtype Float 2
@@ -58,11 +66,37 @@ decl 3 sizeof(LayerState) 1
 decl 4 sizeof(LayerState) 1
 decl 5 sizeof(LayerState) 1
 decl 6 sizeof(LayerState) 1
+decl 7 sizeof(LayerState) 1
+decl 8 sizeof(LayerState) 1
+decl 9 sizeof(LayerState) 1
+decl 10 sizeof(LayerState) 1
+decl 11 sizeof(LayerState) 1
+decl 12 sizeof(LayerState) 1
+decl 13 sizeof(LayerState) 1
+decl 14 sizeof(LayerState) 1
 param 0 layerIndex 1
+param 8 layerIndex 1
+param 9 layerIndex 1
+param 10 layerIndex 1
+param 11 layerIndex 1
+param 12 layerIndex 1
+param 13 parameterIndex 1
+param 14 parameterIndex 1
 transition Transitions 0 1 0
 transition ToSettings 0 3 0
 transition SettingsEditingEdge 3 0 0
 trigger ToggleLayerTrigger layer-{index}-toggle 0 layerIndex click
+trigger CreateLayerTrigger add-layer 7 - click
+trigger DeleteLayerTrigger layer-{index}-delete 8 layerIndex click
+trigger MoveLayerUpTrigger layer-{index}-up 9 layerIndex click
+trigger MoveLayerDownTrigger layer-{index}-down 10 layerIndex click
+trigger EditProgramFieldUpTrigger layer-{index}-program-up 11 layerIndex click
+trigger EditProgramFieldDownTrigger layer-{index}-program-down 12 layerIndex click
+trigger AdjustParameterUpTrigger parameter-{index}-up 13 parameterIndex click
+trigger AdjustParameterDownTrigger parameter-{index}-down 14 parameterIndex click
+trigger UndoButtonTrigger undo-button 1 - click
+trigger RedoButtonTrigger redo-button 2 - click
+trigger SaveButtonTrigger save-button 3 - click
 trigger BackButtonTrigger back-button 5 - click
 keydefault UndoKey 1 26 1 0 0
 keydefault RedoKey 2 25 1 0 0

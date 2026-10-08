@@ -17,6 +17,22 @@ namespace Vixen.ViewSchemas
         [Projected(typeof(AppFlowCallables), nameof(AppFlowCallables.bitAt))]
         public bool   isChecked;
         public string elementId;
+        public string moveUpId;
+        public string moveDownId;
+        public string deleteId;
+        public string programUpId;
+        public string programDownId;
+        public float programFieldValue;
+    }
+
+    public struct EditorParameterRow {
+        public string name;
+        public string unit;
+        public string upId;
+        public string downId;
+        public float value;
+        public float minimum;
+        public float maximum;
     }
 
     // Provider-seam nouns for the editor face (seam M2a). A [View] noun source, NOT an RML
@@ -32,6 +48,7 @@ namespace Vixen.ViewSchemas
     [View]
     public struct EditorLayers {
         [ViewSection(Layout = ViewLayout.Aos)] public EditorLayerRow[] layers;
+        [ViewSection(Layout = ViewLayout.Aos)] public EditorParameterRow[] parameters;
 
         // Inc-Ovr (design §5b Override proof): the framework generates NO read/write/reconcile
         // logic for this field -- only a forward-declared hook,
