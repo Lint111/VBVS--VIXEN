@@ -553,17 +553,17 @@ struct OctreeConfigsSSBO {
  * @brief BodyInstanceBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x3335dc522c336e07 (for runtime discovery)
+ * Layout VixenHash: 0xa3fa6d735e8891d7 (for runtime discovery)
  */
 struct BodyInstanceBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x3335dc522c336e07ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xa3fa6d735e8891d7ULL;
 
     // Member metadata structs
     struct pc_0 {
         static constexpr const char* TYPE = "BodyInstance";
         static constexpr uint32_t OFFSET = 0;
-        static constexpr uint32_t SIZE = 64;
+        static constexpr uint32_t SIZE = 48;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -724,6 +724,26 @@ struct ShadowRayResultBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief BodyInstanceTransformBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x7b417f719200b26f (for runtime discovery)
+ */
+struct BodyInstanceTransformBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x7b417f719200b26fULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "BodyInstanceTransform";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 96;
         static constexpr uint32_t BINDING = 0;
     };
 
@@ -943,6 +963,21 @@ namespace Set0 {
         using DataType = ShadowRayResultBuffer;
     };
 
+    /**
+     * @brief BodyInstanceTransformBuffer
+     * Type: STORAGE_BUFFER
+     */
+    struct Binding47 {
+        static constexpr const char* NAME = "BodyInstanceTransformBuffer";
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 47;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr Access ACCESS = Access::ReadOnly;
+        static constexpr uint32_t FEATURE_COUNT = 0;
+        using DataType = BodyInstanceTransformBuffer;
+    };
+
 } // namespace Set0
 
 // Name-keyed binding aliases (duplicate names skipped)
@@ -961,6 +996,7 @@ using TierRefTableBuffer = Set0::Binding15;
 using InstanceSkipMaskBuffer = Set0::Binding35;
 using ShadowRayRequestBuffer = Set0::Binding37;
 using ShadowRayResultBuffer = Set0::Binding38;
+using BodyInstanceTransformBuffer = Set0::Binding47;
 } // namespace Bind
 
 namespace Push {
@@ -1113,6 +1149,7 @@ inline constexpr MemberInfo MEMBERS[] = {
     {"InstanceSkipMaskBuffer", false, 0, 35, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowRayRequestBuffer", false, 0, 37, 0, Access::ReadOnly, 0, nullptr},
     {"ShadowRayResultBuffer", false, 0, 38, 0, Access::WriteOnly, 0, nullptr},
+    {"BodyInstanceTransformBuffer", false, 0, 47, 0, Access::ReadOnly, 0, nullptr},
     {"cameraPos", true, 0, 0, 0, Access::ReadOnly, 0, nullptr},
     {"time", true, 0, 0, 12, Access::ReadOnly, 0, nullptr},
     {"cameraDir", true, 0, 0, 16, Access::ReadOnly, 0, nullptr},
@@ -1148,7 +1185,7 @@ inline std::vector<MemberInfo> Members(
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ShadowRayTrace";
-    static constexpr uint32_t NUM_MEMBERS = 28;
+    static constexpr uint32_t NUM_MEMBERS = 29;
     static constexpr uint32_t NUM_FEATURES = 1;
 };
 

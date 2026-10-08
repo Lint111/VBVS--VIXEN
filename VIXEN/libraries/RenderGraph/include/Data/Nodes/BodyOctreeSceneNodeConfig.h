@@ -15,7 +15,7 @@ namespace BodyOctreeSceneNodeCounts {
     // + occupancy grid buffer (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 13) — merge of parallel features.
     // + RTQUERY_TLAS handle (W-RTQUERY Slice A: per-brick-AABB TLAS for the ray_query backend).
     // + raster-proxy AABB buffer and its exact live element count (Slice B2 binder seam).
-    static constexpr size_t OUTPUTS = 16;
+    static constexpr size_t OUTPUTS = 17;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -79,7 +79,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    // New: per-body instance SSBO (BodyInstanceGpu records, 64 bytes each) + count.
+    // Cold per-body material/provider/recipe SSBO (48-byte records) + count.
     OUTPUT_SLOT(INSTANCE_BUFFER, VkBuffer, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
@@ -166,6 +166,11 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Hot affine transforms (localToWorld + worldToLocal, 96-byte records).
+    OUTPUT_SLOT(INSTANCE_TRANSFORM_BUFFER, VkBuffer, 16,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // Constructor: runtime descriptor initialization
     BodyOctreeSceneNodeConfig() {
         // ----- Inputs -----
@@ -198,10 +203,15 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
         octreeConfigDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_CONFIG_BUFFER, "octree_config_buffer", ResourceLifetime::Persistent, octreeConfigDesc);
 
-        // Instance SSBO — per-body BodyInstanceGpu records.
-        BufferDescriptor instanceDesc{};
-        instanceDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
-        INIT_OUTPUT_DESC(INSTANCE_BUFFER, "body_instance_buffer", ResourceLifetime::Persistent, instanceDesc);
+        // Cold per-body material/provider/recipe stream.
+        BufferDescriptor instanceMaterialDesc{};
+        instanceMaterialDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(INSTANCE_BUFFER, "body_instance_material_buffer", ResourceLifetime::Persistent, instanceMaterialDesc);
+
+        // Hot affine transform stream.
+        BufferDescriptor instanceTransformDesc{};
+        instanceTransformDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(INSTANCE_TRANSFORM_BUFFER, "body_instance_transform_buffer", ResourceLifetime::Persistent, instanceTransformDesc);
 
         // Instance count — transient scalar value.
         BufferDescriptor instanceCountDesc{};
@@ -270,7 +280,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(OCTREE_BRICKS_BUFFER_Slot::index == 1, "OCTREE_BRICKS_BUFFER must be at index 1");
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");
     static_assert(OCTREE_CONFIG_BUFFER_Slot::index == 3, "OCTREE_CONFIG_BUFFER must be at index 3");
-    static_assert(INSTANCE_BUFFER_Slot::index == 4, "INSTANCE_BUFFER must be at index 4");
+    static_assert(INSTANCE_BUFFER_Slot::index == 4, "INSTANCE_BUFFER must be at index 4 (cold material stream)");
     static_assert(INSTANCE_COUNT_Slot::index == 5, "INSTANCE_COUNT must be at index 5");
     static_assert(OCTREE_SDF_BUFFER_Slot::index == 6, "OCTREE_SDF_BUFFER must be at index 6");
     static_assert(OCTREE_BRICKLOOKUP_BUFFER_Slot::index == 7, "OCTREE_BRICKLOOKUP_BUFFER must be at index 7");
@@ -282,6 +292,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(RTQUERY_TLAS_Slot::index == 13, "RTQUERY_TLAS must be at index 13");
     static_assert(PROXY_AABB_BUFFER_Slot::index == 14, "PROXY_AABB_BUFFER must be at index 14");
     static_assert(PROXY_AABB_COUNT_Slot::index == 15, "PROXY_AABB_COUNT must be at index 15");
+    static_assert(INSTANCE_TRANSFORM_BUFFER_Slot::index == 16, "INSTANCE_TRANSFORM_BUFFER must be at index 16");
 
     // ----- Type validations -----
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -291,6 +302,7 @@ CONSTEXPR_NODE_CONFIG(BodyOctreeSceneNodeConfig,
     static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INSTANCE_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<INSTANCE_TRANSFORM_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INSTANCE_COUNT_Slot::Type, int32_t>);
     static_assert(std::is_same_v<OCTREE_SDF_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKLOOKUP_BUFFER_Slot::Type, VkBuffer>);

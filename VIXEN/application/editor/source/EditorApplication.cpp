@@ -668,14 +668,13 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     // available as the explicit baked result, while the editor's visible body uses the virtual
     // recipe path for immediate parameter feedback.
     Vixen::SVO::BodyInstanceGpu inst{};
-    inst.worldPos[0] = 0.0f; inst.worldPos[1] = 0.0f; inst.worldPos[2] = 0.0f;
-    inst.renderScale = 1.0f;
-    inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f;
-    inst.octreeIndex = 0u;
-    inst.providerKind = Vixen::SVO::PROVIDER_PROCEDURAL;
-    inst.recipeId = kEditorProceduralRecipeId;
+    Vixen::SVO::SetInstanceTranslationScale(inst, glm::vec3(0.0f), 1.0f);
+    inst.material.color[0] = 1.0f; inst.material.color[1] = 1.0f; inst.material.color[2] = 1.0f;
+    inst.material.octreeIndex = 0u;
+    inst.material.providerKind = Vixen::SVO::PROVIDER_PROCEDURAL;
+    inst.material.recipeId = kEditorProceduralRecipeId;
     for (size_t i = 0; i < snapshot.parameterValues.size(); ++i)
-        inst.recipeParams[i] = snapshot.parameterValues[i];
+        inst.material.recipeParams[i] = snapshot.parameterValues[i];
     SetBodyInstances({inst});
 
     if (entry.parameterValues.size() != snapshot.parameterValues.size() ||

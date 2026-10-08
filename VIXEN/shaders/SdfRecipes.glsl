@@ -35,6 +35,7 @@ vec3 sdfGradient(uint recipeId, vec3 p, vec3 center, vec3 params) {
 
 // Sphere-trace within the bounding sphere. Writes hitNormal/hitT on success.
 bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 rd,
+                         float conservativeStepScale,
                          out vec3 hitNormal, out float hitT) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
@@ -57,6 +58,7 @@ bool traceProceduralBody(uint recipeId, vec3 center, vec3 params, vec3 ro, vec3 
     const float EPS       = 1e-3;  // hit threshold (independent of gradient h in sdfGradient, which coincidentally equals EPS)
     // Step factor = 1/Lipschitz (see SdfRecipes.h): L = 1 + maxDisp*freq*sqrt(3).
     float stepScale = 1.0 / (1.0 + maxDisp * params.z * 1.7320508);
+    stepScale *= clamp(conservativeStepScale, 0.0, 1.0);
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3  p = ro + rd * t;
         float d = evalSdf(recipeId, p, center, params);
@@ -137,7 +139,7 @@ float sampleRecipeOccupancy(uint gridOffset, uint gridDim, vec3 gridAabbMin, flo
 }
 
 bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, float relaxation,
-                         vec3 ro, vec3 rd, float params[6],
+                         vec3 ro, vec3 rd, float conservativeStepScale, float params[6],
                          out vec3 hitNormal, out float hitT, out uint stepsUsed) {
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT      = 0.0;
@@ -203,6 +205,9 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         float gridBound = sampleRecipeOccupancy(gridOffset, gridDim, gridAabbMin, gridCellSize, p);
         float step = (gridDim != 0u) ? max(d * relaxation, min(gridBound, d * relaxation * 8.0))
                                       : d * relaxation;
+        // Preserve the identity-scale stepping sequence used by legacy instances.
+        float stepScale = clamp(conservativeStepScale, 0.0, 1.0);
+        if (stepScale < 1.0) step *= stepScale;
         t += step;
         if (t > tFar) return false;
     }

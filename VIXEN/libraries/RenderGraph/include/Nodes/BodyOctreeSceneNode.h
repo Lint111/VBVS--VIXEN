@@ -6,7 +6,7 @@
 #include "Data/Nodes/BodyOctreeSceneNodeConfig.h"
 
 #include "ShellOctree.h"      // Vixen::SVO::ShellOctree, BuildShellOctree
-#include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu, PackInstances}
+#include "ShellOctreeGpu.h"   // Vixen::SVO::{Concatenate, ConcatenatedOctrees, BodyInstanceGpu}
 #include "ShellDerive.h"      // Vixen::SVO::{DeriveShell, RevalidateShellBricks, ShellDeriveResult}
 #include "BrickConfigUpload.h" // generation-keyed brick/config dirty ranges
 #include "Recipe/SdfInstruction.h"  // Vixen::SVO::Recipe::SdfInstruction
@@ -16,7 +16,9 @@
 #include "Memory/IMemoryAllocator.h" // tracked RTAccelStructures allocations
 
 #include <glm/glm.hpp>
+#include <array>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <utility>   // std::pair (OOC R1 retired-buffer ledger)
 #include <vector>
@@ -30,6 +32,14 @@ namespace Vixen::Vulkan::Resources {
 namespace Vixen::RenderGraph {
 
 constexpr uint32_t kWholePayloadLevel = UINT32_MAX;
+
+/** Copy the canonical row-major affine bytes into Vulkan's 3x4 RT matrix. */
+inline VkTransformMatrixKHR ToVkTransformMatrix(const Vixen::SVO::Affine3x4Gpu& affine) {
+    static_assert(sizeof(VkTransformMatrixKHR) == sizeof(affine.rows));
+    VkTransformMatrixKHR result{};
+    std::memcpy(result.matrix, affine.rows, sizeof(affine.rows));
+    return result;
+}
 
 struct UploadLedgerEntry {
     uint32_t bodyIndex = UINT32_MAX;
@@ -122,15 +132,21 @@ public:
 
     /**
      * @brief Recipe-Live-App-Bucketed-Dispatch Inc4 M3: read the per-body instance ring
-     * buffer's VkBuffer handle for a given ring slot (defaults to slot 0), for a caller
+     * material stream's VkBuffer handle for a given ring slot (defaults to slot 0), for a caller
      * OUTSIDE the render graph's own per-frame Execute cycle (e.g. PreTick's specialized-
      * pipeline descriptor-set wiring, which runs before FrameSyncNode advances the live
      * frame index this frame). Same underlying accessor ExecuteImpl itself uses
-     * (perFrame_.GetUniformBuffer(frameIndex)) — this is a read-only convenience, not a
+     * (materialPerFrame_.GetUniformBuffer(frameIndex)) — this is a read-only convenience, not a
      * new upload/write path; the ring slot's CONTENT is still written only by ExecuteImpl.
      */
     VkBuffer GetInstanceBufferHandle(uint32_t ringSlot = 0) const {
-        return perFrame_.GetUniformBuffer(ringSlot % kRingSize);
+        return materialPerFrame_.GetUniformBuffer(ringSlot % kRingSize);
+    }
+    VkBuffer GetInstanceMaterialBufferHandle(uint32_t ringSlot = 0) const {
+        return materialPerFrame_.GetUniformBuffer(ringSlot % kRingSize);
+    }
+    VkBuffer GetInstanceTransformBufferHandle(uint32_t ringSlot = 0) const {
+        return transformPerFrame_.GetUniformBuffer(ringSlot % kRingSize);
     }
 
     /**
@@ -302,7 +318,9 @@ private:
     void EnsureOctreesBuilt();                                        // build + concatenate once
     void CreateOctreeBuffers(Vixen::Vulkan::Resources::VulkanDevice* device);  // 4 octree buffers
     void EnsureRingAllocated(Vixen::Vulkan::Resources::VulkanDevice* device,
-                             VkDeviceSize neededCapacity);            // allocate/grow instance ring
+                             VkDeviceSize transformCapacity,
+                             VkDeviceSize materialCapacity);           // allocate/grow both instance rings
+    void RefreshInstanceStreams();
     void DestroyBuffers();
     void DestroyOctreeBuffers();   // P2.3: destroy ONLY the 6 octree/channel buffers (ring untouched)
     void Rematerialize(uint64_t executeFrame);  // OOC R1: re-bake octree 0 + build new octree buffers OFF-TICK
@@ -426,6 +444,8 @@ private:
 
     // Current instance list (set by SetInstances; uploaded in ExecuteImpl).
     std::vector<Vixen::SVO::BodyInstanceGpu> instances_;
+    std::vector<Vixen::SVO::BodyInstanceTransformGpu> instanceTransforms_;
+    std::vector<Vixen::SVO::BodyInstanceMaterialGpu> instanceMaterials_;
     // int32_t (not uint32_t) to match the shader's reflected `int instanceCount` push-constant field
     // (BodyInstanceRayMarch.comp). The INSTANCE_COUNT slot, this member, and the shader field are all
     // int32_t so the gatherer's reflection-driven any_cast<int32_t> at Execute succeeds.
@@ -527,9 +547,12 @@ private:
     // brick range here; ExecuteImpl revalidates only those bricks in the write slot.
     std::vector<uint32_t>         dirtyBricks_;
 
-    // Instance SSBO ring (one buffer per frame-in-flight — never freed on the tick path).
-    PerFrameResources perFrame_;
-    VkDeviceSize      instanceRingCapacity_ = 0;  // bytes per ring slot (grow-only)
+    // Hot transforms upload each frame; cold materials upload once per changed ring slot.
+    PerFrameResources transformPerFrame_;
+    PerFrameResources materialPerFrame_;
+    std::vector<bool> materialDirty_;
+    VkDeviceSize transformRingCapacity_ = 0;
+    VkDeviceSize materialRingCapacity_ = 0;
 
     // --- W-RTQUERY Slice A: per-brick-AABB TLAS (VIXEN_RTQUERY_TRAVERSAL) ---
     // One BLAS per octree (the compact ShellProxyAabb records in octree-local [0,1]^3

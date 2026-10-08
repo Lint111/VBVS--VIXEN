@@ -33,11 +33,11 @@ inline void SortFrontToBackByCenter(std::vector<InstanceT>& instances, const glm
 }  // namespace detail
 
 // Reorders `instances` in place so the ones nearest `cameraPos` come first (by
-// straight-line distance from worldPos — a cheap, order-only proxy; exact distance
+// straight-line distance from the instance transform's origin — a cheap, order-only proxy; exact distance
 // value is not otherwise used). Templated on the instance type so it works directly
 // on Vixen::SVO::BodyInstanceGpu (ShellOctreeGpu.h) without a library-order include
 // cycle (SVO's public headers do not need to depend on ShellOctreeGpu.h here) — the
-// only requirement is a `float worldPos[3]` member.
+// only requirement is a row-major 3x4 `transform.localToWorld.rows` member.
 //
 // Baked-Perf M5 Task 5.3: worldPos is documented as "body centre" (BodyInstanceGpu's
 // own field comment) but is ACTUALLY the min-CORNER of the body's full [0,1]^3->world
@@ -46,23 +46,23 @@ inline void SortFrontToBackByCenter(std::vector<InstanceT>& instances, const glm
 // body's TIGHT allocated-brick bounds (Task 5.1) sit off-center within that cube (e.g.
 // a thin wall whose true content hugs one face of its bake cube). This plain overload
 // is kept, unchanged, for callers with no per-octree bounds available (this file's own
-// tests use a minimal FakeInstance with no octreeIndex/configs at all) — it now simply
-// forwards to the bounds-aware overload below with a same-as-before worldPos-only
-// center function, so existing behavior for those callers is untouched byte-for-byte.
+// tests use a minimal FakeInstance with no octreeIndex/configs at all); it uses the
+// transformed local origin, the affine equivalent of the old placement origin.
 template <typename InstanceT>
 inline void SortInstancesFrontToBack(std::vector<InstanceT>& instances, const glm::vec3& cameraPos) {
     detail::SortFrontToBackByCenter(instances, cameraPos, [](const InstanceT& inst) {
-        return glm::vec3(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
+        const auto& m = inst.transform.localToWorld.rows;
+        return glm::vec3(m[0][3], m[1][3], m[2][3]);
     });
 }
 
 // Baked-Perf M5 Task 5.3: bounds-aware overload. `centerOf(inst)` returns the TRUE
-// world-space center the caller wants to sort by (e.g. worldPos + tight-bounds-center
-// mapped through the instance's own renderScale/localToWorld) — see
+// world-space center the caller wants to sort by (e.g. tight-bounds center mapped
+// through the instance affine) — see
 // BodyOctreeSceneNode::SortInstancesFrontToBack for the real caller, which has the
 // concatenated OctreeConfig array (traceBoundsMin/Max, Task 5.1) available to compute
 // it per-instance. Kept as a separate overload (not a defaulted parameter) so the
-// plain worldPos-only call above stays a simple, zero-lambda call for every existing
+// plain transform-origin call above stays a simple, zero-lambda call for every existing
 // caller/test that has no bounds data to offer.
 template <typename InstanceT, typename CenterOfFn>
 inline void SortInstancesFrontToBack(std::vector<InstanceT>& instances, const glm::vec3& cameraPos,

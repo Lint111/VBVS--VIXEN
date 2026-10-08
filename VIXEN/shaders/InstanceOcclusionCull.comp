@@ -32,12 +32,10 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "Generated/OctreeConfig.glsl"
 
-// std430 SSBO record, 64 bytes — byte-for-byte identical to C++ BodyInstanceGpu
+// Cold std430 material SSBO record, 48 bytes — byte-for-byte identical to C++ BodyInstanceMaterialGpu
 // (SceneBindings.glsl's BodyInstance; redeclared here for the self-contained
 // namespace).
 struct BodyInstance {
-    vec3  worldPos;
-    float renderScale;
     vec3  color;
     uint  octreeIndex;
     uint  providerKind;      // 0 = Stored/ESVO, 1 = Procedural
@@ -47,6 +45,13 @@ struct BodyInstance {
 
 layout(std430, binding = 0) readonly buffer BodyInstanceBuffer {
     BodyInstance bodyInstances[];
+};
+struct BodyInstanceTransform {
+    vec4 localToWorldRows[3];
+    vec4 worldToLocalRows[3];
+};
+layout(std430, binding = 4) readonly buffer BodyInstanceTransformBuffer {
+    BodyInstanceTransform bodyInstanceTransforms[];
 };
 layout(std430, binding = 1) readonly buffer OctreeConfigsSSBO {
     OctreeConfig configs[];
@@ -71,7 +76,15 @@ const uint  kInstanceMaskWordCount = 6u;
 uint hiZTileCount(uint pixels) { return (pixels + kHiZTileSize - 1u) / kHiZTileSize; }
 
 // Mirror: CullWorldAabb
-void cullWorldAabb(in BodyInstance inst, in OctreeConfig cfg,
+vec3 transformInstancePoint(in BodyInstanceTransform transform, vec3 p) {
+    vec4 hp = vec4(p, 1.0);
+    return vec3(dot(transform.localToWorldRows[0], hp),
+                dot(transform.localToWorldRows[1], hp),
+                dot(transform.localToWorldRows[2], hp));
+}
+
+void cullWorldAabb(in BodyInstance inst, in BodyInstanceTransform transform,
+                   in OctreeConfig cfg,
                    out vec3 outMin, out vec3 outMax) {
     outMin = vec3(3.4e38);
     outMax = vec3(-3.4e38);
@@ -80,7 +93,7 @@ void cullWorldAabb(in BodyInstance inst, in OctreeConfig cfg,
                       (i & 2u) != 0u ? cfg.traceBoundsMax.y : cfg.traceBoundsMin.y,
                       (i & 4u) != 0u ? cfg.traceBoundsMax.z : cfg.traceBoundsMin.z);
         vec3 base = (cfg.localToWorld * vec4(l, 1.0)).xyz;
-        vec3 w = inst.worldPos + inst.renderScale * base;
+        vec3 w = transformInstancePoint(transform, base);
         outMin = min(outMin, w);
         outMax = max(outMax, w);
     }
@@ -89,6 +102,7 @@ void cullWorldAabb(in BodyInstance inst, in OctreeConfig cfg,
 // Mirror: InstanceOccluded
 bool instanceOccluded(uint instIdx) {
     BodyInstance inst = bodyInstances[instIdx];
+    BodyInstanceTransform transform = bodyInstanceTransforms[instIdx];
     if (inst.providerKind != 0u) return false;
 
     OctreeConfig cfg = configs[inst.octreeIndex];
@@ -100,7 +114,7 @@ bool instanceOccluded(uint instIdx) {
     if (!validBounds) return false;
 
     vec3 mn, mx;
-    cullWorldAabb(inst, cfg, mn, mx);
+    cullWorldAabb(inst, transform, cfg, mn, mx);
 
     // Nearest euclidean distance from the previous camera position to the AABB
     // — the same distance metric the march's hitT/tile maxes carry.

@@ -54,6 +54,7 @@
 #include <stb_image_write.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <array>
@@ -504,13 +505,13 @@ protected:
     }
 
     // -----------------------------------------------------------------------
-    // Run the REAL shader against the node's 5 octree/instance buffers with the
+    // Run the REAL shader against the node's octree and split instance buffers with the
     // given push constants, at w*h, and return the rendered RGBA8 bytes (+ render
     // time). Stands up the compute pipeline + descriptor set for every binding the
     // shader uses (0,1,2,3,4,5,8,9,10), dispatches, and copies the colour image back.
     // The software (lavapipe) device MUST already be confirmed — asserted before submit.
     void RenderToRgba(VkBuffer nodesBuf, VkBuffer bricksBuf, VkBuffer materialsBuf,
-                      VkBuffer configBuf, VkBuffer instanceBuf,
+                      VkBuffer configBuf, VkBuffer instanceBuf, VkBuffer instanceTransformBuf,
                       VkBuffer sdfBuf, VkBuffer brickLookupBuf,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& outRgba /*w*h*4*/, double& outRenderMs,
@@ -530,6 +531,7 @@ protected:
                       std::vector<float>* outDepthDistances = nullptr,
                       std::vector<SelectionCandidate>* outSelections = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
+        ASSERT_NE(instanceTransformBuf, VK_NULL_HANDLE);
 
         // Dummy SSBOs for the trace (4) + counter (8) bindings the shader declares.
         // Baked-perf-pipeline M2 CORRECTION: the comment this replaces claimed zeroing
@@ -674,14 +676,14 @@ protected:
         VkShaderModule shaderModule = VK_NULL_HANDLE;
         ASSERT_EQ(vkCreateShaderModule(logicalDevice_, &smci, nullptr, &shaderModule), VK_SUCCESS);
 
-        // Descriptor set layout (bindings 0..10 the shader uses).
+        // Descriptor set layout (including the split material/transform instance streams).
         auto bind = [](uint32_t b, VkDescriptorType t) {
             VkDescriptorSetLayoutBinding lb{};
             lb.binding = b; lb.descriptorType = t; lb.descriptorCount = 1;
             lb.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             return lb;
         };
-        const std::array<VkDescriptorSetLayoutBinding, 23> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 24> bindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -705,6 +707,7 @@ protected:
             bind(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
             bind(36, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),   // Raster-proxy B1 M1: depthDistanceImage
+            bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424: hot localToWorld/worldToLocal stream
         };
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -735,7 +738,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize, 2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  4},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 20},
         }};
         VkDescriptorPoolCreateInfo dpci{};
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -762,6 +765,7 @@ protected:
         VkDescriptorBufferInfo configInfo{configBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo counterInfo{counterBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo instInfo{instanceBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo instTransformInfo{instanceTransformBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo sdfInfo{sdfBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lookupInfo{brickLookupBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo mipInfo{dummyMip, 0, VK_WHOLE_SIZE};
@@ -789,7 +793,7 @@ protected:
             w2.descriptorType = t; w2.pBufferInfo = info;
             return w2;
         };
-        const std::array<VkWriteDescriptorSet, 23> writes = {
+        const std::array<VkWriteDescriptorSet, 24> writes = {
             wImg(0, &colorInfo),
             wBuf(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -813,6 +817,7 @@ protected:
             wBuf(22, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &prevCamInfo),   // Sampled Lighting Inc2 M3
             wBuf(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
             wImg(36, &depthInfo),                                        // Raster-proxy B1 M1
+            wBuf(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &instTransformInfo), // R424 hot transform stream
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(writes.size()),
                                writes.data(), 0, nullptr);
@@ -1014,9 +1019,9 @@ constexpr float kWorldGridSize = 10.0f;   // ShellOctreeGpu::Serialize localToWo
 Vixen::SVO::BodyInstanceGpu MakeInstance(float x, float y, float z, float scale,
                                          uint32_t octreeIndex, float r, float g, float b) {
     Vixen::SVO::BodyInstanceGpu i{};
-    i.worldPos[0] = x; i.worldPos[1] = y; i.worldPos[2] = z;
-    i.renderScale = scale; i.octreeIndex = octreeIndex;
-    i.color[0] = r; i.color[1] = g; i.color[2] = b;
+    Vixen::SVO::SetInstanceTranslationComponent(i, 0, x); Vixen::SVO::SetInstanceTranslationComponent(i, 1, y); Vixen::SVO::SetInstanceTranslationComponent(i, 2, z);
+    Vixen::SVO::SetInstanceUniformScale(i, scale); i.material.octreeIndex = octreeIndex;
+    i.material.color[0] = r; i.material.color[1] = g; i.material.color[2] = b;
     return i;
 }
 
@@ -1027,11 +1032,11 @@ Vixen::SVO::BodyInstanceGpu MakeInstance(float x, float y, float z, float scale,
 // to an ACTUAL-WORLD ball spanning [worldPos, worldPos + kWorldGridSize*renderScale]^3:
 //   centre = worldPos + 0.5*kWorldGridSize*renderScale,  radius = 0.5*kWorldGridSize*renderScale.
 glm::vec3 ShaderBodyCentre(const Vixen::SVO::BodyInstanceGpu& inst) {
-    const glm::vec3 wp(inst.worldPos[0], inst.worldPos[1], inst.worldPos[2]);
-    return wp + glm::vec3(0.5f * kWorldGridSize * inst.renderScale);
+    return Vixen::SVO::TransformPoint(inst.transform.localToWorld,
+                                      glm::vec3(0.5f * kWorldGridSize));
 }
 float ShaderBodyRadius(const Vixen::SVO::BodyInstanceGpu& inst) {
-    return 0.5f * kWorldGridSize * inst.renderScale;
+    return 0.5f * kWorldGridSize * Vixen::SVO::MaximumAxisScale(inst.transform.localToWorld);
 }
 
 // Build a look-at camera into the push-constant block (fov in DEGREES; the shader applies
@@ -1052,10 +1057,48 @@ PushConstants MakeCamera(const glm::vec3& eye, const glm::vec3& target,
     return pc;
 }
 
-// Build the node, push `instances`, Compile+Execute, and return its 5 published buffers.
+glm::vec3 CameraRayForPixel(const PushConstants& pc, uint32_t x, uint32_t y,
+                            uint32_t width, uint32_t height) {
+    const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(width);
+    const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(height);
+    const float ndcX = 2.0f * u - 1.0f;
+    const float ndcY = 1.0f - 2.0f * v; // CameraRay.glsl's Vulkan Y flip.
+    const float tanHalfFov = std::tan(glm::radians(pc.fov * 0.5f));
+    return glm::normalize(pc.cameraDir + pc.cameraRight * (ndcX * tanHalfFov * pc.aspect) +
+                          pc.cameraUp * (ndcY * tanHalfFov));
+}
+
+bool ConservativeSphereTraceReference(const Vixen::SVO::BodyInstanceGpu& instance,
+                                      const glm::vec3& rayOrigin, const glm::vec3& rayDirection,
+                                      float maxDistance, float& hitDistance) {
+    constexpr glm::vec3 kBodyLocalCenter(5.0f);
+    constexpr float kSphereRadius = (26.0f / 64.0f) * kWorldGridSize;
+    constexpr float kHitEpsilon = 0.003f;
+    constexpr float kMinimumStep = 0.001f;
+    const glm::vec3 localOrigin = Vixen::SVO::TransformPoint(
+        instance.transform.worldToLocal, rayOrigin);
+    const glm::vec3 localDirection = Vixen::SVO::TransformVector(
+        instance.transform.worldToLocal, rayDirection);
+    const float conservativeScale = Vixen::SVO::MinimumAxisScale(
+        instance.transform.localToWorld);
+
+    float distance = 0.0f;
+    for (uint32_t step = 0; step < 1024u && distance <= maxDistance; ++step) {
+        const glm::vec3 localPosition = localOrigin + localDirection * distance;
+        const float signedDistance = glm::length(localPosition - kBodyLocalCenter) - kSphereRadius;
+        if (signedDistance <= kHitEpsilon) {
+            hitDistance = distance;
+            return true;
+        }
+        distance += std::max(signedDistance * conservativeScale, kMinimumStep);
+    }
+    return false;
+}
+
+// Build the node, push `instances`, Compile+Execute, and return its published buffers.
 struct NodeBuffers {
     VkBuffer nodes = VK_NULL_HANDLE, bricks = VK_NULL_HANDLE, materials = VK_NULL_HANDLE;
-    VkBuffer config = VK_NULL_HANDLE, instance = VK_NULL_HANDLE;
+    VkBuffer config = VK_NULL_HANDLE, instance = VK_NULL_HANDLE, transform = VK_NULL_HANDLE;
     VkBuffer sdf = VK_NULL_HANDLE, brickLookup = VK_NULL_HANDLE;   // Inc2 bindings 11/12
 };
 
@@ -1099,6 +1142,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
     b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(b.nodes, VK_NULL_HANDLE);    ASSERT_NE(b.bricks, VK_NULL_HANDLE);
     ASSERT_NE(b.materials, VK_NULL_HANDLE); ASSERT_NE(b.config, VK_NULL_HANDLE);
     ASSERT_NE(b.instance, VK_NULL_HANDLE);
@@ -1116,7 +1160,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRealShaderNearViewToPng) {
     // material tint) so it stays visually meaningful for inspection.
     std::vector<uint8_t> rgba; double renderMs = 0.0;
     std::vector<HitRecordCpu> hitRecords;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,  // binary: dummy SDF/lookup
                                          pc, kW, kH, rgba, renderMs, &hitRecords));
 
@@ -1181,6 +1225,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, DepthDistanceImageMatchesHitRecords) {
     b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(b.nodes, VK_NULL_HANDLE);
 
     constexpr uint32_t kW = 256, kH = 256;
@@ -1192,7 +1237,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, DepthDistanceImageMatchesHitRecords) {
     std::vector<uint8_t> rgba; double renderMs = 0.0;
     std::vector<HitRecordCpu> hitRecords;
     std::vector<float> depth;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgba, renderMs, &hitRecords,
                                          /*skipMaskWords=*/nullptr, /*preSeedHitRecords=*/nullptr,
@@ -1295,6 +1340,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
     b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
 
     // The C++ OctreeConfig stride MUST equal the shader's std140 UBO-array stride (432 B) so
@@ -1331,7 +1377,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderMultiKindBodiesProvesStrideFix) {
     // buffer to begin with), but the same three-way hue classification still applies.
     std::vector<uint8_t> rgba; double renderMs = 0.0;
     std::vector<HitRecordCpu> hitRecords;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,  // binary: dummy SDF/lookup
                                          pc, kW, kH, rgba, renderMs, &hitRecords));
 
@@ -1402,10 +1448,17 @@ TEST_F(BodyInstanceRayMarchRenderTest, PickSelectionReturnsInstanceForTwoBodiesA
     const float scale = kBaseRadiusAu * 2.0f;
     const float radius = 0.5f * kWorldGridSize * scale;
     const float separation = radius * 3.0f;
-    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+    std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
         MakeInstance(-separation, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),
         MakeInstance( separation, 0.0f, 0.0f, scale, 0, 1.0f, 1.0f, 1.0f),
     };
+    const glm::vec3 rotatedBodyCenter = ShaderBodyCentre(instances[1]);
+    const glm::mat4 rotateSecondBody =
+        glm::translate(glm::mat4(1.0f), rotatedBodyCenter) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(37.0f), glm::normalize(glm::vec3(0.2f, 0.5f, 0.8f))) *
+        glm::translate(glm::mat4(1.0f), -rotatedBodyCenter);
+    Vixen::SVO::SetInstanceTransform(
+        instances[1], rotateSecondBody * Vixen::SVO::ToMat4(instances[1].transform.localToWorld));
     node->SetInstances(instances);
     node->Setup();
     ASSERT_NO_THROW(node->Compile());
@@ -1417,6 +1470,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, PickSelectionReturnsInstanceForTwoBodiesA
     buffers.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     buffers.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     buffers.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    buffers.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
 
     constexpr uint32_t kW = 768, kH = 256;
     const glm::vec3 c0 = ShaderBodyCentre(instances[0]);
@@ -1434,7 +1488,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, PickSelectionReturnsInstanceForTwoBodiesA
     std::vector<SelectionCandidate> selections;
     double renderMs = 0.0;
     ASSERT_NO_FATAL_FAILURE(RenderToRgba(
-        buffers.nodes, buffers.bricks, buffers.materials, buffers.config, buffers.instance,
+        buffers.nodes, buffers.bricks, buffers.materials, buffers.config, buffers.instance, buffers.transform,
         VK_NULL_HANDLE, VK_NULL_HANDLE, pc, kW, kH, rgba, renderMs,
         &hitRecords, nullptr, nullptr, nullptr, &selections));
 
@@ -1511,6 +1565,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, SkipMaskExcludesOnlyTargetedInstance) {
     b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
 
     constexpr uint32_t kW = 768, kH = 256;
@@ -1545,7 +1600,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, SkipMaskExcludesOnlyTargetedInstance) {
     // stride-fix test's own gate. This is the empty-skip-set no-op case for THIS scene.
     std::vector<uint8_t> rgbaBaseline; double renderMsBaseline = 0.0;
     std::vector<HitRecordCpu> hitRecordsBaseline;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaBaseline, renderMsBaseline,
                                          &hitRecordsBaseline, /*skipMaskWords=*/nullptr));
@@ -1560,7 +1615,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, SkipMaskExcludesOnlyTargetedInstance) {
     const std::vector<uint32_t> skipMask = {0x2u};
     std::vector<uint8_t> rgbaSkip; double renderMsSkip = 0.0;
     std::vector<HitRecordCpu> hitRecordsSkip;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaSkip, renderMsSkip,
                                          &hitRecordsSkip, &skipMask));
@@ -1645,6 +1700,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderin
     b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
 
     constexpr uint32_t kW = 768, kH = 256;
@@ -1669,10 +1725,10 @@ TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderin
     // -----------------------------------------------------------------------
     std::vector<uint8_t> rgbaA, rgbaB; double msA = 0.0, msB = 0.0;
     std::vector<HitRecordCpu> baselineA, baselineB;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaA, msA, &baselineA, /*skipMaskWords=*/nullptr));
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaB, msB, &baselineB, /*skipMaskWords=*/nullptr));
     const int noOpDiff = std::memcmp(baselineA.data(), baselineB.data(), baselineA.size() * sizeof(HitRecordCpu));
@@ -1744,7 +1800,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderin
     // -----------------------------------------------------------------------
     std::vector<uint8_t> rgbaOrderA; double msOrderA = 0.0;
     std::vector<HitRecordCpu> resultOrderA;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaOrderA, msOrderA, &resultOrderA,
                                          &skipMask, &stubOverlay));
@@ -1757,7 +1813,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderin
     // -----------------------------------------------------------------------
     std::vector<uint8_t> rgbaTier0Only; double msTier0Only = 0.0;
     std::vector<HitRecordCpu> resultOrderB;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaTier0Only, msTier0Only, &resultOrderB,
                                          &skipMask, /*preSeedHitRecords=*/nullptr));
@@ -1779,7 +1835,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, HitRecordCompositingRealShaderBothOrderin
     // independently of either ordering's own bookkeeping.
     std::vector<uint8_t> rgbaTier0Fresh; double msTier0Fresh = 0.0;
     std::vector<HitRecordCpu> tier0Only;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaTier0Fresh, msTier0Fresh, &tier0Only,
                                          &skipMask, /*preSeedHitRecords=*/nullptr));
@@ -1870,6 +1926,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, EmptySkipMaskHitAlwaysOverwritesStaleClos
     b.materials = node->GetOutput(C::OCTREE_MATERIALS_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.config    = node->GetOutput(C::OCTREE_CONFIG_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     b.instance  = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    b.transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(b.config, VK_NULL_HANDLE);  ASSERT_NE(b.instance, VK_NULL_HANDLE);
 
     constexpr uint32_t kW = 768, kH = 256;
@@ -1887,7 +1944,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, EmptySkipMaskHitAlwaysOverwritesStaleClos
     // pixels are real body pixels and what their real hitT is.
     std::vector<uint8_t> rgbaBaseline; double msBaseline = 0.0;
     std::vector<HitRecordCpu> baseline;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaBaseline, msBaseline, &baseline,
                                          /*skipMaskWords=*/nullptr));
@@ -1920,7 +1977,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, EmptySkipMaskHitAlwaysOverwritesStaleClos
     // regime -- the current frame's real, farther hit must win at every single body pixel.
     std::vector<uint8_t> rgbaResult; double msResult = 0.0;
     std::vector<HitRecordCpu> result;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, b.instance, b.transform,
                                          VK_NULL_HANDLE, VK_NULL_HANDLE,
                                          pc, kW, kH, rgbaResult, msResult, &result,
                                          /*skipMaskWords=*/nullptr, &staleSeed));
@@ -2041,10 +2098,11 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
         frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
         node->Execute();
         VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        VkBuffer transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         ASSERT_NE(inst, VK_NULL_HANDLE);
         double ms = 0.0;
         std::vector<uint8_t> outRgba;
-        RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+        RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst, transform,
                      b.sdf, b.brickLookup, pc, kW, kH, outRgba, ms, &outHitRecords);
         std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);
         int bodyPx = 0;
@@ -2084,6 +2142,70 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfBodiesNoHoles) {
     EXPECT_GT(fillRatio, 0.97)
         << "Stored-SDF smooth sphere has interior HOLES (fillRatio " << fillRatio
         << " < 0.97) — the ESVO-leaf-hit redesign did not close the brick-aligned gaps.";
+
+    // R424 non-uniform instance-scale witness. The independent reference marches the
+    // known local sphere SDF and advances by minimumAxisScale * localDistance, which is
+    // conservative in world distance for this rotated, non-uniform affine.
+    Vixen::SVO::BodyInstanceGpu nonUniform = MakeInstance(
+        0.0f, 0.0f, 0.0f, kRS, 0u, 1.0f, 1.0f, 1.0f);
+    const glm::vec3 localCenter(0.5f * kWorldGridSize);
+    const glm::mat4 nonUniformLocalToWorld =
+        glm::translate(glm::mat4(1.0f), focus) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(37.0f), glm::normalize(glm::vec3(0.3f, 0.8f, 0.5f))) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 1.35f, 0.7f)) *
+        glm::translate(glm::mat4(1.0f), -localCenter);
+    Vixen::SVO::SetInstanceTransform(nonUniform, nonUniformLocalToWorld);
+    node->SetInstances({nonUniform});
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->Execute();
+    const VkBuffer nonUniformMaterials =
+        node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    const VkBuffer nonUniformTransforms =
+        node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(nonUniformMaterials, VK_NULL_HANDLE);
+    ASSERT_NE(nonUniformTransforms, VK_NULL_HANDLE);
+
+    std::vector<HitRecordCpu> nonUniformHits;
+    std::vector<uint8_t> nonUniformRgba;
+    double nonUniformMs = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(
+        b.nodes, b.bricks, b.materials, b.config, nonUniformMaterials, nonUniformTransforms,
+        b.sdf, b.brickLookup, pc, kW, kH, nonUniformRgba, nonUniformMs, &nonUniformHits));
+
+    size_t referenceHits = 0, renderedHits = 0, unionPixels = 0, matchingHits = 0;
+    size_t depthMatches = 0;
+    float maxDepthError = 0.0f;
+    for (uint32_t y = 0; y < kH; ++y) {
+        for (uint32_t x = 0; x < kW; ++x) {
+            float referenceDistance = 0.0f;
+            const bool referenceHit = ConservativeSphereTraceReference(
+                nonUniform, pc.cameraPos, CameraRayForPixel(pc, x, y, kW, kH),
+                100.0f, referenceDistance);
+            const HitRecordCpu& record = nonUniformHits[static_cast<size_t>(y) * kW + x];
+            const bool renderedHit = (record.flags & kHitRecordFlagHit) != 0u;
+            referenceHits += referenceHit ? 1u : 0u;
+            renderedHits += renderedHit ? 1u : 0u;
+            unionPixels += (referenceHit || renderedHit) ? 1u : 0u;
+            if (referenceHit && renderedHit) {
+                ++matchingHits;
+                const float error = std::abs(record.hitT - referenceDistance);
+                maxDepthError = std::max(maxDepthError, error);
+                depthMatches += error <= 0.5f ? 1u : 0u;
+            }
+        }
+    }
+    const double nonUniformIou = unionPixels == 0u
+        ? 0.0 : static_cast<double>(matchingHits) / static_cast<double>(unionPixels);
+    const double depthAgreement = matchingHits == 0u
+        ? 0.0 : static_cast<double>(depthMatches) / static_cast<double>(matchingHits);
+    std::printf("[R424-SDF] conservative reference=%zu GPU=%zu IoU=%.5f depth<=0.5=%.5f max-depth-error=%.4f render=%.0f ms\n",
+                referenceHits, renderedHits, nonUniformIou, depthAgreement, maxDepthError, nonUniformMs);
+    EXPECT_GT(referenceHits, 10000u);
+    EXPECT_GT(renderedHits, 10000u);
+    EXPECT_GT(nonUniformIou, 0.94)
+        << "non-uniform Stored-SDF coverage differs from the conservative minimum-axis reference";
+    EXPECT_GT(depthAgreement, 0.95)
+        << "non-uniform Stored-SDF hit distances disagree with the conservative-step reference";
 
     // --- Displaced sphere (octree 1): lenient coverage + PNG for inspection ---
     std::vector<HitRecordCpu> displaced;
@@ -2171,6 +2293,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
     node->Execute();
     VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(inst, VK_NULL_HANDLE);
 
     // M2c fix: hit/hole/color-variation all read HitRecordBuffer (the buffer this shader
@@ -2181,7 +2304,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderStoredSdfMultiChannel) {
     // of lighting washing out/masking the band variation).
     std::vector<uint8_t> rgba; double renderMs = 0.0;
     std::vector<HitRecordCpu> hitRecords;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst, transform,
                                           b.sdf, b.brickLookup, pc, kW, kH, rgba, renderMs, &hitRecords));
 
     // ------------------------------------------------------------------
@@ -2365,6 +2488,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
     node->Execute();
     VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    VkBuffer transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
     ASSERT_NE(inst, VK_NULL_HANDLE);
 
     // M2c fix: hit/hole oracle reads HitRecordBuffer (still written post-784adff7/KI-018)
@@ -2372,7 +2496,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
     // HitRecordCpu comment. PNG rendered from albedo.
     std::vector<uint8_t> rgba; double ms = 0.0;
     std::vector<HitRecordCpu> hitRecords;
-    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst, transform,
                                          b.sdf, b.brickLookup, pc, kW, kH, rgba, ms, &hitRecords));
 
     // Write PNG (controller reads this to verify visually).
@@ -2409,6 +2533,61 @@ TEST_F(BodyInstanceRayMarchRenderTest, RenderRecipeBakedBody) {
 
     EXPECT_GT(bodyPixels, 20000) << "recipe-baked body barely rendered";
     EXPECT_GT(fillRatio, 0.97)   << "recipe-baked body has interior holes (fillRatio=" << fillRatio << ")";
+
+    // Rotate the asymmetric peanut 90 degrees about the camera axis. The affine is
+    // centered on the same world point, so the exact CPU screen-space oracle is a
+    // quarter-turn of the identity hit mask: (x,y) -> (width-1-y,x).
+    const glm::mat4 rotateAboutCamera =
+        glm::translate(glm::mat4(1.0f), focus) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::normalize(pc.cameraDir)) *
+        glm::translate(glm::mat4(1.0f), -focus);
+    Vixen::SVO::BodyInstanceGpu rotatedPeanut = frameInst;
+    Vixen::SVO::SetInstanceTransform(
+        rotatedPeanut, rotateAboutCamera * Vixen::SVO::ToMat4(frameInst.transform.localToWorld));
+    node->SetInstances({rotatedPeanut});
+    frameIndex = 0; SetHandleVal<uint32_t>(frameRes, frameIndex);
+    node->Execute();
+    const VkBuffer rotatedMaterials =
+        node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    const VkBuffer rotatedTransforms =
+        node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+    ASSERT_NE(rotatedMaterials, VK_NULL_HANDLE);
+    ASSERT_NE(rotatedTransforms, VK_NULL_HANDLE);
+    std::vector<HitRecordCpu> rotatedHits;
+    std::vector<uint8_t> rotatedRgba;
+    double rotatedMs = 0.0;
+    ASSERT_NO_FATAL_FAILURE(RenderToRgba(
+        b.nodes, b.bricks, b.materials, b.config, rotatedMaterials, rotatedTransforms,
+        b.sdf, b.brickLookup, pc, kW, kH, rotatedRgba, rotatedMs, &rotatedHits));
+
+    size_t identityCount = 0, rotatedCount = 0, rotatedIntersection = 0, changedPixels = 0;
+    for (uint32_t y = 0; y < kH; ++y) {
+        for (uint32_t x = 0; x < kW; ++x) {
+            const bool identityHit =
+                (hitRecords[static_cast<size_t>(y) * kW + x].flags & kHitRecordFlagHit) != 0u;
+            const bool rotatedHit =
+                (rotatedHits[static_cast<size_t>(y) * kW + x].flags & kHitRecordFlagHit) != 0u;
+            identityCount += identityHit ? 1u : 0u;
+            rotatedCount += rotatedHit ? 1u : 0u;
+            changedPixels += identityHit != rotatedHit ? 1u : 0u;
+            if (identityHit) {
+                const uint32_t quarterTurnX = kW - 1u - y;
+                const uint32_t quarterTurnY = x;
+                rotatedIntersection +=
+                    (rotatedHits[static_cast<size_t>(quarterTurnY) * kW + quarterTurnX].flags &
+                     kHitRecordFlagHit) != 0u ? 1u : 0u;
+            }
+        }
+    }
+    const size_t rotatedUnion = identityCount + rotatedCount - rotatedIntersection;
+    const double rotatedMathIou = rotatedUnion == 0u
+        ? 0.0 : static_cast<double>(rotatedIntersection) / static_cast<double>(rotatedUnion);
+    std::printf("[R424-ROTATION] identity=%zu rotated=%zu quarter-turn IoU=%.5f changed=%zu render=%.0f ms\n",
+                identityCount, rotatedCount, rotatedMathIou, changedPixels, rotatedMs);
+    EXPECT_GT(rotatedMathIou, 0.985)
+        << "rotated asymmetric Stored-SDF recipe does not match the affine quarter-turn math";
+    EXPECT_GT(changedPixels, 1000u)
+        << "rotating the asymmetric peanut did not change its projected silhouette";
 
     vkDeviceWaitIdle(logicalDevice_);
     node->Cleanup(CleanupReason::FinalTeardown);
@@ -2490,6 +2669,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
         b.sdf         = node->GetOutput(C::OCTREE_SDF_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         b.brickLookup = node->GetOutput(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         VkBuffer inst = node->GetOutput(C::INSTANCE_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
+        VkBuffer transform = node->GetOutput(C::INSTANCE_TRANSFORM_BUFFER_Slot::index, 0)->GetHandle<VkBuffer>();
         ASSERT_NE(b.sdf, VK_NULL_HANDLE);
         ASSERT_NE(inst,  VK_NULL_HANDLE);
 
@@ -2498,7 +2678,7 @@ TEST_F(BodyInstanceRayMarchRenderTest, RematerializeEditLoop) {
         // HitRecordCpu comment. PNG from albedo.
         std::vector<uint8_t> rgba; double ms = 0.0;
         std::vector<HitRecordCpu> hitRecords;
-        ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst,
+        ASSERT_NO_FATAL_FAILURE(RenderToRgba(b.nodes, b.bricks, b.materials, b.config, inst, transform,
                                              b.sdf, b.brickLookup, pc, kW, kH, rgba, ms, &hitRecords));
         {
             std::vector<uint8_t> rgb(static_cast<size_t>(kW) * kH * 3);

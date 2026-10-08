@@ -313,19 +313,6 @@ inline bool hasTightTraceBounds(const OctreeConfig& c) {
     return glm::any(glm::greaterThan(bmin, glm::vec3(0.0f))) ||
            glm::any(glm::lessThan(bmax, glm::vec3(1.0f)));
 }
-/// World-space center of traceBoundsMin/Max (or the full-cube center if untight),
-/// for an instance placed via worldPos/renderScale exactly as TraceWorld.glsl's
-/// de-instancing does: world = worldPos + (local * kWorldGridSize) * renderScale
-/// (SerializeSdf's localToWorld is a pure uniform scale by kWorldGridSize, no
-/// rotation/translation — see SerializeSdf's own kWorldGridSize comment). Baked-Perf
-/// M5 Task 5.3: the sort-key use case — a body's true occupied-region center, not
-/// its full-cube min-corner (worldPos) or full-cube center.
-inline glm::vec3 traceBoundsWorldCenterOf(const OctreeConfig& c, const glm::vec3& worldPos,
-                                            float renderScale, float worldGridSize) {
-    const glm::vec3 localCenter = 0.5f * (traceBoundsMinOf(c) + traceBoundsMaxOf(c));
-    return worldPos + (localCenter * worldGridSize) * renderScale;
-}
-
 // ===========================================================================
 // Serialized output
 // ===========================================================================
@@ -492,31 +479,185 @@ struct ConcatenatedOctrees {
 };
 
 /**
- * Per-instance GPU record (std430-friendly, 64 bytes). The host-side BodyInstance
- * lives in the outer repo (vixen/render/scene_instances.h) and is intentionally
- * NOT included here — Task 5b / main bridges the two. octreeIndex selects which
- * concatenated octree (and thus which OctreeConfig) this instance draws.
+ * One affine transform stored as three 16-byte rows. This row-major 3x4 shape
+ * has the same 12 floats and byte order as VkTransformMatrixKHR::matrix.
  */
-struct BodyInstanceGpu {
-    float worldPos[3];       // 0   : body's local [0,1]^3-cube min-CORNER in the active tier's
-                             //       world frame -- never a flattened AU/world position. It is
-                             //       NOT the centre (Baked-Perf M5 Task 5.3; see
-                             //       InstanceSort.h's traceBoundsWorldCenterOf for the true
-                             //       occupied-region center derivation).
-    float renderScale;       // 12  : Stored: grid scale; Procedural: unused
-    float color[3];          // 16  : per-instance tint
-    uint32_t octreeIndex;    // 28  : Stored: index into configs[]; Procedural: unused
-    uint32_t providerKind;   // 32  : 0 = Stored/ESVO, 1 = Procedural
-    uint32_t recipeId;       // 36  : Procedural recipe id (0 = sphere, 1 = displaced sphere)
-    float recipeParams[6];   // 40..63 : params.xyz = (radius, displaceAmp, displaceFreq); 3 spare
+struct alignas(16) Affine3x4Gpu {
+    float rows[3][4] = {
+        {1.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f},
+    };
 };
-// 64-byte std430 record. recipeParams[6] is valid because binding 10 is a std430
-// SSBO (float[] stride = 4). providerKind defaults to 0 (Stored) under value-init,
-// so a zeroed/legacy record renders via the unchanged ESVO path.
-static_assert(sizeof(BodyInstanceGpu) == 64, "BodyInstanceGpu must be 64 bytes (std430 record)");
-static_assert(offsetof(BodyInstanceGpu, providerKind) == 32, "providerKind @32");
-static_assert(offsetof(BodyInstanceGpu, recipeId)     == 36, "recipeId @36");
-static_assert(offsetof(BodyInstanceGpu, recipeParams) == 40, "recipeParams @40");
+static_assert(sizeof(Affine3x4Gpu) == 48, "an affine 3x4 row matrix is 48 bytes");
+static_assert(alignof(Affine3x4Gpu) == 16);
+
+struct alignas(16) BodyInstanceTransformGpu {
+    Affine3x4Gpu localToWorld{};
+    Affine3x4Gpu worldToLocal{};
+};
+static_assert(sizeof(BodyInstanceTransformGpu) == 96,
+              "the hot instance transform record is two packed 3x4 matrices");
+
+/** Material, provider and recipe values. This is the cold std430 record. */
+struct alignas(16) BodyInstanceMaterialGpu {
+    float color[3]{};
+    uint32_t octreeIndex = 0;
+    uint32_t providerKind = 0; // 0 = Stored/ESVO, 1 = Procedural
+    uint32_t recipeId = 0;     // Procedural recipe id
+    float recipeParams[6]{};   // params.xyz = recipe center; remaining values are recipe-specific
+};
+static_assert(sizeof(BodyInstanceMaterialGpu) == 48,
+              "the cold instance material record must match std430");
+static_assert(offsetof(BodyInstanceMaterialGpu, providerKind) == 16);
+static_assert(offsetof(BodyInstanceMaterialGpu, recipeParams) == 24);
+
+/**
+ * Host-side submission row. BodyOctreeSceneNode splits it into the hot transform
+ * and cold material streams before upload; the 144-byte row itself is never bound.
+ */
+struct alignas(16) BodyInstanceGpu {
+    BodyInstanceTransformGpu transform{};
+    BodyInstanceMaterialGpu material{};
+};
+static_assert(sizeof(BodyInstanceGpu) == 144);
+static_assert(offsetof(BodyInstanceGpu, material) == sizeof(BodyInstanceTransformGpu));
+
+inline glm::mat4 ToMat4(const Affine3x4Gpu& affine) {
+    glm::mat4 result(1.0f);
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            result[column][row] = affine.rows[row][column];
+        }
+    }
+    return result;
+}
+
+inline Affine3x4Gpu ToAffine3x4(const glm::mat4& matrix) {
+    Affine3x4Gpu result{};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            result.rows[row][column] = matrix[column][row];
+        }
+    }
+    return result;
+}
+
+inline Affine3x4Gpu ComposeAffine(const Affine3x4Gpu& parent, const Affine3x4Gpu& child) {
+    return ToAffine3x4(ToMat4(parent) * ToMat4(child));
+}
+
+inline glm::vec3 TransformPoint(const Affine3x4Gpu& affine, const glm::vec3& point) {
+    const float x = point.x;
+    const float y = point.y;
+    const float z = point.z;
+    return {
+        affine.rows[0][0] * x + affine.rows[0][1] * y + affine.rows[0][2] * z + affine.rows[0][3],
+        affine.rows[1][0] * x + affine.rows[1][1] * y + affine.rows[1][2] * z + affine.rows[1][3],
+        affine.rows[2][0] * x + affine.rows[2][1] * y + affine.rows[2][2] * z + affine.rows[2][3],
+    };
+}
+
+inline glm::vec3 TransformVector(const Affine3x4Gpu& affine, const glm::vec3& vector) {
+    const float x = vector.x;
+    const float y = vector.y;
+    const float z = vector.z;
+    return {
+        affine.rows[0][0] * x + affine.rows[0][1] * y + affine.rows[0][2] * z,
+        affine.rows[1][0] * x + affine.rows[1][1] * y + affine.rows[1][2] * z,
+        affine.rows[2][0] * x + affine.rows[2][1] * y + affine.rows[2][2] * z,
+    };
+}
+
+inline glm::vec3 TransformNormalToWorld(const BodyInstanceTransformGpu& transform,
+                                       const glm::vec3& localNormal) {
+    const Affine3x4Gpu& inverse = transform.worldToLocal;
+    return glm::normalize(glm::vec3(
+        inverse.rows[0][0] * localNormal.x + inverse.rows[1][0] * localNormal.y + inverse.rows[2][0] * localNormal.z,
+        inverse.rows[0][1] * localNormal.x + inverse.rows[1][1] * localNormal.y + inverse.rows[2][1] * localNormal.z,
+        inverse.rows[0][2] * localNormal.x + inverse.rows[1][2] * localNormal.y + inverse.rows[2][2] * localNormal.z));
+}
+
+inline float MinimumAxisScale(const Affine3x4Gpu& affine) {
+    const glm::vec3 xAxis(affine.rows[0][0], affine.rows[1][0], affine.rows[2][0]);
+    const glm::vec3 yAxis(affine.rows[0][1], affine.rows[1][1], affine.rows[2][1]);
+    const glm::vec3 zAxis(affine.rows[0][2], affine.rows[1][2], affine.rows[2][2]);
+    return std::min({glm::length(xAxis), glm::length(yAxis), glm::length(zAxis)});
+}
+
+inline float MaximumAxisScale(const Affine3x4Gpu& affine) {
+    const glm::vec3 xAxis(affine.rows[0][0], affine.rows[1][0], affine.rows[2][0]);
+    const glm::vec3 yAxis(affine.rows[0][1], affine.rows[1][1], affine.rows[2][1]);
+    const glm::vec3 zAxis(affine.rows[0][2], affine.rows[1][2], affine.rows[2][2]);
+    return std::max({glm::length(xAxis), glm::length(yAxis), glm::length(zAxis)});
+}
+
+inline glm::vec3 traceBoundsWorldCenterOf(const OctreeConfig& config,
+                                         const Affine3x4Gpu& instanceLocalToWorld,
+                                         float worldGridSize) {
+    const glm::vec3 localCenter = 0.5f * (traceBoundsMinOf(config) + traceBoundsMaxOf(config));
+    return TransformPoint(instanceLocalToWorld, localCenter * worldGridSize);
+}
+
+inline void SetInstanceTransform(BodyInstanceGpu& instance, const glm::mat4& localToWorld) {
+    instance.transform.localToWorld = ToAffine3x4(localToWorld);
+    instance.transform.worldToLocal = ToAffine3x4(glm::inverse(localToWorld));
+}
+
+inline void SetInstanceTranslationScale(BodyInstanceGpu& instance, const glm::vec3& origin,
+                                        float uniformScale) {
+    const float inverseScale = 1.0f / uniformScale;
+    Affine3x4Gpu& localToWorld = instance.transform.localToWorld;
+    localToWorld.rows[0][0] = uniformScale;
+    localToWorld.rows[0][1] = 0.0f;
+    localToWorld.rows[0][2] = 0.0f;
+    localToWorld.rows[0][3] = origin.x;
+    localToWorld.rows[1][0] = 0.0f;
+    localToWorld.rows[1][1] = uniformScale;
+    localToWorld.rows[1][2] = 0.0f;
+    localToWorld.rows[1][3] = origin.y;
+    localToWorld.rows[2][0] = 0.0f;
+    localToWorld.rows[2][1] = 0.0f;
+    localToWorld.rows[2][2] = uniformScale;
+    localToWorld.rows[2][3] = origin.z;
+
+    Affine3x4Gpu& worldToLocal = instance.transform.worldToLocal;
+    worldToLocal.rows[0][0] = inverseScale;
+    worldToLocal.rows[0][1] = 0.0f;
+    worldToLocal.rows[0][2] = 0.0f;
+    worldToLocal.rows[0][3] = -origin.x * inverseScale;
+    worldToLocal.rows[1][0] = 0.0f;
+    worldToLocal.rows[1][1] = inverseScale;
+    worldToLocal.rows[1][2] = 0.0f;
+    worldToLocal.rows[1][3] = -origin.y * inverseScale;
+    worldToLocal.rows[2][0] = 0.0f;
+    worldToLocal.rows[2][1] = 0.0f;
+    worldToLocal.rows[2][2] = inverseScale;
+    worldToLocal.rows[2][3] = -origin.z * inverseScale;
+}
+
+inline void SetInstanceTranslationComponent(BodyInstanceGpu& instance, uint32_t axis, float value) {
+    if (axis >= 3u) return;
+    Affine3x4Gpu& localToWorld = instance.transform.localToWorld;
+    localToWorld.rows[axis][3] = value;
+
+    const glm::vec3 translation(localToWorld.rows[0][3], localToWorld.rows[1][3],
+                                localToWorld.rows[2][3]);
+    Affine3x4Gpu& worldToLocal = instance.transform.worldToLocal;
+    for (uint32_t row = 0; row < 3u; ++row) {
+        worldToLocal.rows[row][3] = -(
+            worldToLocal.rows[row][0] * translation.x +
+            worldToLocal.rows[row][1] * translation.y +
+            worldToLocal.rows[row][2] * translation.z);
+    }
+}
+
+inline void SetInstanceUniformScale(BodyInstanceGpu& instance, float uniformScale) {
+    const Affine3x4Gpu& localToWorld = instance.transform.localToWorld;
+    SetInstanceTranslationScale(instance,
+        glm::vec3(localToWorld.rows[0][3], localToWorld.rows[1][3], localToWorld.rows[2][3]),
+        uniformScale);
+}
 
 // ===========================================================================
 // Implementation helpers
@@ -1418,13 +1559,22 @@ inline ConcatenatedOctrees ConcatenateSdf(const std::vector<const SdfBodyOctree*
 // Instance packing
 // ===========================================================================
 
-/**
- * Pack a list of BodyInstanceGpu records into a tight byte buffer (in order).
- */
-inline std::vector<uint8_t> PackInstances(const std::vector<BodyInstanceGpu>& instances) {
-    std::vector<uint8_t> bytes(instances.size() * sizeof(BodyInstanceGpu));
-    if (!instances.empty()) {
-        std::memcpy(bytes.data(), instances.data(), bytes.size());
+/** Pack the hot local/world matrix pairs as one contiguous upload span. */
+inline std::vector<uint8_t> PackInstanceTransforms(const std::vector<BodyInstanceGpu>& instances) {
+    std::vector<uint8_t> bytes(instances.size() * sizeof(BodyInstanceTransformGpu));
+    for (size_t i = 0; i < instances.size(); ++i) {
+        std::memcpy(bytes.data() + i * sizeof(BodyInstanceTransformGpu),
+                    &instances[i].transform, sizeof(BodyInstanceTransformGpu));
+    }
+    return bytes;
+}
+
+/** Pack the cold material/provider/recipe rows as one contiguous upload span. */
+inline std::vector<uint8_t> PackInstanceMaterials(const std::vector<BodyInstanceGpu>& instances) {
+    std::vector<uint8_t> bytes(instances.size() * sizeof(BodyInstanceMaterialGpu));
+    for (size_t i = 0; i < instances.size(); ++i) {
+        std::memcpy(bytes.data() + i * sizeof(BodyInstanceMaterialGpu),
+                    &instances[i].material, sizeof(BodyInstanceMaterialGpu));
     }
     return bytes;
 }
