@@ -51,7 +51,8 @@ public struct LightingConfig
     public float celBandFalloffStart;
     public float celBandFalloffEnd;
     public float celLightSpillScale;
+    // Per-scene tonemap bias in EV. LightingConfigNode clamps this to [-16, 16].
+    public float exposureCompensationEV;
     // Round the struct size to std430's 16-byte structure alignment.
-    public float _celTailPadding0;
     public float _celTailPadding1;
 }

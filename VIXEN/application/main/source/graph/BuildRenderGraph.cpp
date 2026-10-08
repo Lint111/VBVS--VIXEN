@@ -40,7 +40,7 @@
 #include "merged/RecipeInstanceBucketing-SDI.g.h" // Semantic-wiring S1: bucketing named binding/push constants
 #include "merged/DirectLighting-SDI.g.h"          // Semantic-wiring S1: lighting passes each cite their OWN interface
 #include "merged/SpatialReuseShade-SDI.g.h"
-#include "merged/ExposureTonemap-SDI.h"
+#include "merged/ExposureTonemap-SDI.g.h"
 #include "merged/ExposureMeter-SDI.h"
 #include "merged/ProbeGather-SDI.g.h"             // W1a: ProbeUpdate's megakernel split (gather/wave/apply)
 #include "merged/ProbeApply-SDI.g.h"

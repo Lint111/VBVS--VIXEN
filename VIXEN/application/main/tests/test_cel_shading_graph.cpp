@@ -121,6 +121,7 @@ private:
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_START, 0.0f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_BAND_FALLOFF_END, 1000000.0f);
         lighting.SetParameter(LightingConfigNodeConfig::PARAM_CEL_LIGHT_SPILL_SCALE, 0.25f);
+        lighting.SetParameter(LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV, 100.0f);
     }
 
     bool Capture(const std::string& suffix) {

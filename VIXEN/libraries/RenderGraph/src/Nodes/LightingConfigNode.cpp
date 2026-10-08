@@ -197,6 +197,11 @@ void LightingConfigNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     cfg.celLightSpillScale = ReadClampedFloat(
         *this, LightingConfigNodeConfig::PARAM_CEL_LIGHT_SPILL_SCALE,
         LightingConfigNodeConfig::DEFAULT_CEL_LIGHT_SPILL_SCALE, 0.0f, 0.25f);
+    cfg.exposureCompensationEV = ReadClampedFloat(
+        *this, LightingConfigNodeConfig::PARAM_EXPOSURE_COMPENSATION_EV,
+        LightingConfigNodeConfig::DEFAULT_EXPOSURE_COMPENSATION_EV,
+        LightingConfigNodeConfig::MIN_EXPOSURE_COMPENSATION_EV,
+        LightingConfigNodeConfig::MAX_EXPOSURE_COMPENSATION_EV);
 
     // Upload into this frame's ring buffer (host-coherent: no flush needed).
     void* mapped = perFrame_.GetUniformBufferMapped(frameIndex);

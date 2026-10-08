@@ -51,6 +51,7 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr const char* PARAM_CEL_BAND_FALLOFF_START = "celBandFalloffStart";
     static constexpr const char* PARAM_CEL_BAND_FALLOFF_END = "celBandFalloffEnd";
     static constexpr const char* PARAM_CEL_LIGHT_SPILL_SCALE = "celLightSpillScale";
+    static constexpr const char* PARAM_EXPOSURE_COMPENSATION_EV = "exposureCompensationEV";
 
     static constexpr uint32_t SHADING_MODE_LAMBERT_GGX = 0u;
     static constexpr uint32_t SHADING_MODE_CEL = 1u;
@@ -63,6 +64,9 @@ CONSTEXPR_NODE_CONFIG(LightingConfigNodeConfig,
     static constexpr float DEFAULT_CEL_BAND_FALLOFF_START = 0.0f;
     static constexpr float DEFAULT_CEL_BAND_FALLOFF_END = 0.0f;
     static constexpr float DEFAULT_CEL_LIGHT_SPILL_SCALE = 0.012f;
+    static constexpr float DEFAULT_EXPOSURE_COMPENSATION_EV = 0.0f;
+    static constexpr float MIN_EXPOSURE_COMPENSATION_EV = -16.0f;
+    static constexpr float MAX_EXPOSURE_COMPENSATION_EV = 16.0f;
 
     // ----- Input slots -----
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,

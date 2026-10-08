@@ -149,6 +149,7 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         {"celBandFalloffStart", offsetof(LightingConfig, celBandFalloffStart)},
         {"celBandFalloffEnd", offsetof(LightingConfig, celBandFalloffEnd)},
         {"celLightSpillScale", offsetof(LightingConfig, celLightSpillScale)},
+        {"exposureCompensationEV", offsetof(LightingConfig, exposureCompensationEV)},
     };
     for (const auto& f : celFields) {
         const SpirvStructMember* sm = FindSubMember(*lightingConfig, f.name);

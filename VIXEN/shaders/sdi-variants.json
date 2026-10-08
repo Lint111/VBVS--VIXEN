@@ -56,6 +56,13 @@
       ]
     },
     {
+      "name": "ExposureTonemap",
+      "source": "ExposureTonemap.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
       "name": "SpatialReuseShade",
       "source": "SpatialReuseShade.comp",
       "variants": [

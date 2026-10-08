@@ -70,6 +70,7 @@ TEST(LightingConfigParity, LightingConfigStd430Layout) {
     EXPECT_EQ(offsetof(LightingConfig, celBandFalloffStart), 188u);
     EXPECT_EQ(offsetof(LightingConfig, celBandFalloffEnd), 192u);
     EXPECT_EQ(offsetof(LightingConfig, celLightSpillScale), 196u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureCompensationEV), 200u);
 }
 
 TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {

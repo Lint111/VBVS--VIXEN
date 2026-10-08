@@ -22,7 +22,7 @@ struct LightingConfig {
     float celBandFalloffStart;
     float celBandFalloffEnd;
     float celLightSpillScale;
-    float _celTailPadding0;
+    float exposureCompensationEV;
     float _celTailPadding1;
 };
 #endif // LIGHTINGCONFIG_GLSL
