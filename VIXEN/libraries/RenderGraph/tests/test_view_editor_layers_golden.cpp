@@ -64,9 +64,25 @@ const std::vector<std::string> kExpected = {
     "RegisterMember(op,&EditorLayerRow::op)",
     "RegisterMember(isChecked,&EditorLayerRow::isChecked)",
     "RegisterMember(elementId,&EditorLayerRow::elementId)",
+    "RegisterMember(moveUpId,&EditorLayerRow::moveUpId)",
+    "RegisterMember(moveDownId,&EditorLayerRow::moveDownId)",
+    "RegisterMember(deleteId,&EditorLayerRow::deleteId)",
+    "RegisterMember(programUpId,&EditorLayerRow::programUpId)",
+    "RegisterMember(programDownId,&EditorLayerRow::programDownId)",
+    "RegisterMember(programFieldValue,&EditorLayerRow::programFieldValue)",
+    "RegisterStruct<EditorParameterRow>",
+    "RegisterMember(name,&EditorParameterRow::name)",
+    "RegisterMember(unit,&EditorParameterRow::unit)",
+    "RegisterMember(upId,&EditorParameterRow::upId)",
+    "RegisterMember(downId,&EditorParameterRow::downId)",
+    "RegisterMember(value,&EditorParameterRow::value)",
+    "RegisterMember(minimum,&EditorParameterRow::minimum)",
+    "RegisterMember(maximum,&EditorParameterRow::maximum)",
     "RegisterArray<std::vector<EditorLayerRow>",   // regex [^>]+ stops at the first '>', so the
                                                      // captured token intentionally omits '>>'
+    "RegisterArray<std::vector<EditorParameterRow>",
     "Bind(layers)",
+    "Bind(parameters)",
     "BindFunc(activeLayerCount)",
 };
 
@@ -116,8 +132,9 @@ TEST(ViewEditorLayersGolden, GeneratedBindFunctionCompilesAndBinds) {
     ASSERT_NE(ctx, nullptr);
 
     std::vector<Vixen::Views::EditorLayerRow> layers;
+    std::vector<Vixen::Views::EditorParameterRow> parameters;
     int activeLayerCount = 0;
-    Vixen::Views::EditorLayersBind bind{ &layers, &activeLayerCount };
+    Vixen::Views::EditorLayersBind bind{ &layers, &parameters, &activeLayerCount };
 
     Rml::DataModelConstructor c = ctx->CreateDataModel("editor_layers");
     ASSERT_TRUE(static_cast<bool>(c));

@@ -5,7 +5,7 @@
 </head>
 <body>
     <div data-model="editor_layers" id="panel">
-        <div class="title">Layers</div>
+        <div class="title">Rule layers</div>
         <!-- Inc-A2 (View-Model-Binding-Inc-A2-Plan-2026-07.md): layer rows are now data-model-bound,
              replacing the Inc1 static markup (3 hand-authored "checkbox checked" divs). Each row's
              id (row.elementId, "layer-<index>-toggle" -- built once in EditorLayersView::
@@ -18,8 +18,30 @@
             <div data-attr-id="row.elementId" class="checkbox" data-class-checked="row.isChecked" hit-mask="none"></div>
             <span class="col-name">{{row.name}}</span>
             <span class="col-op">{{row.op}}</span>
+            <div class="button" data-attr-id="row.moveUpId" hit-mask="none">↑</div>
+            <div class="button" data-attr-id="row.moveDownId" hit-mask="none">↓</div>
+            <div class="button" data-attr-id="row.deleteId" hit-mask="none">×</div>
+            <div class="program-controls">
+                <span class="value">instruction 0 · data 0: {{row.programFieldValue}}</span>
+                <div class="button" data-attr-id="row.programDownId" hit-mask="none">−</div>
+                <div class="button" data-attr-id="row.programUpId" hit-mask="none">+</div>
+            </div>
         </div>
-        <div class="hint">Click a box to toggle a layer. Press S to save.</div>
+        <div class="toolbar">
+            <div class="button" id="add-layer" hit-mask="none">Add rule layer</div>
+            <div class="button" id="undo-button" hit-mask="none">Undo</div>
+            <div class="button" id="redo-button" hit-mask="none">Redo</div>
+            <div class="button" id="save-button" hit-mask="none">Save</div>
+        </div>
+        <div class="title parameters-title">Recipe parameters</div>
+        <div class="parameter-row" data-for="param : parameters">
+            <span class="parameter-name">{{param.name}}</span>
+            <span class="parameter-value">{{param.value}} {{param.unit}}</span>
+            <div class="button" data-attr-id="param.downId" hit-mask="none">−</div>
+            <div class="button" data-attr-id="param.upId" hit-mask="none">+</div>
+            <span class="parameter-range">{{param.minimum}}–{{param.maximum}}</span>
+        </div>
+        <div class="hint">Click a box to toggle a layer. Edits support undo/redo. S saves.</div>
     </div>
 </body>
 </rml>

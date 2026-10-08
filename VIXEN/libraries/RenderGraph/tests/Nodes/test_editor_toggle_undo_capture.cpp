@@ -4,8 +4,9 @@
  * work end-to-end in the RUNNING editor, through the real click-equivalent -> registry dispatch ->
  * ActionStack -> re-flatten path (EditorApplication's registered handlers, via
  * DispatchBySelector/DispatchByKey), not a shortcut. Reads the artifacts of an unattended
- * vixen_editor run (VIXEN/temp/run_editor_script.bat: script "toggle:2@30,undo@60,redo@90,
- * settings@100,back@110", capture frames "5,45,75,105"). Pure file I/O -- no Vulkan/GPU here; the
+ * vixen_editor run (script "parameter_up:0@20,parameter_up:0@21,parameter_up:0@22,
+ * parameter_up:0@23,toggle:2@30,undo@60,redo@90,save@100,reopen@110,settings@120,back@130",
+ * capture frames "5,25,45,75,105,115"). Pure file I/O -- no Vulkan/GPU here; the
  * GPU work already happened when the .bat produced the PNGs + log. Registered OUTSIDE the
  * glslc-gated GPU-render test group (test_critical_nodes.cmake) so it builds+runs Windows-side too,
  * matching where the windowed editor itself runs.
@@ -46,24 +47,28 @@
  *      EditorApplication::PreTick on each scripted edit) and asserts the mask trail is exactly
  *      7 -> 3(toggle) -> 7(undo) -> 3(redo) with correct undo/redo depth movement. THIS is the real
  *      proof undo/redo work: from the running windowed editor, through the registry-dispatch path.
- *   2. FirstEditReachesRenderPipeline -- asserts capture_5 != capture_45: the first edit produced
- *      a real, mask-confined visual delta (residency is now requested unconditionally, so this is
- *      no longer a one-shot residency-transition smoke check -- it is the mask itself; see
- *      kMinMaskDiffPixels below for the calibrated lower bound).
- *   3. UndoRedoRestoresRenderByteExact -- capture_75.rgb == capture_5.rgb (undo restores the
- *      render) and capture_105.rgb == capture_45.rgb (redo re-applies it), byte-for-byte. This is
- *      the real visual round-trip the residency fix makes reachable again.
- *   4. BackButtonReachesReturnInRunningEditor -- back-button -> Return in the running editor
+ *   2. ParameterEditReachesRenderPipeline and LayerEditReachesRenderPipeline -- compare the
+ *      baseline/parameter-edited pair and then the parameter-edited/layer-edited pair, so both UI
+ *      edits have independently visible pixel deltas.
+ *   3. UndoRedoRestoresRenderByteExact -- capture_75.rgb == capture_25.rgb (undo restores the
+ *      layer edit while retaining the parameter edit) and capture_105.rgb == capture_45.rgb (redo
+ *      reapplies the layer edit), byte-for-byte. The post-reopen capture also matches frame 105.
+ *   4. ParameterSnapshotAndSaveReopenStayCanonical -- bake and preview values match for each
+ *      revision, and reopening reports saved program/parameter/mask parity.
+ *   5. BackButtonReachesReturnInRunningEditor -- back-button -> Return in the running editor
  *      (afterBack == FlowStateId::Editing). Proven + real; unchanged.
  *
  * Frame timeline (matches VIXEN_EDITOR_SCRIPT/VIXEN_EDITOR_CAPTURE_FRAMES in run_editor_script.bat):
- *   frame 5   -- baseline capture, all layers enabled, PRE first edit.
+ *   frame 5   -- baseline capture, default parameter, all layers enabled.
+ *   frames 20-23 -- four parameter_up edits raise the bulge radius past the box boundary.
+ *   frame 25  -- capture records the parameter's visible geometry change.
  *   frame 30  -- toggle:2 fires (mask cut becomes visible -- residency is now unconditional, so
  *                this is not confounded with a mip->resident transition).
- *   frame 45  -- capture (post-toggle; differs from frame 5 by the mask cut).
- *   frame 60  -- undo fires.   frame 75 -- capture (mask back to 7, render byte-identical to 5).
+ *   frame 45  -- capture (post-toggle; differs from frame 20 by the mask cut).
+ *   frame 60  -- undo fires.   frame 75 -- capture (mask back to 7, render byte-identical to 25).
  *   frame 90  -- redo fires.   frame 105 -- capture (mask 3 again, byte-identical to 45).
- *   frame 100 -- settings (NavTo). frame 110 -- back-button (DispatchBySelector("back-button")).
+ *   frame 100 -- save. frame 110 -- reopen. frame 115 -- capture (byte-identical to 105).
+ *   frame 120 -- settings (NavTo). frame 130 -- back-button (DispatchBySelector("back-button")).
  */
 
 #include <gtest/gtest.h>
@@ -226,45 +231,107 @@ TEST(EditorToggleUndoCapture, ToggleUndoRedoStateTrailThroughWindowedRun) {
     // toggle:2@30 -- mask 7 -> 3; the edit pushes one undo entry, clears redo.
     EXPECT_EQ(edits[0].op, "toggle");
     EXPECT_EQ(edits[0].mask, 3)       << "toggle:2 did not flip mask 7->3 in the running editor";
-    EXPECT_EQ(edits[0].undoDepth, 1)  << "toggle did not push an undo entry";
+    EXPECT_EQ(edits[0].undoDepth, 5)  << "toggle did not preserve four parameter edits and push an undo entry";
     EXPECT_EQ(edits[0].redoDepth, 0)  << "toggle did not clear the redo stack";
 
     // undo@60 -- mask 3 -> 7; pops the undo entry onto the redo stack.
     EXPECT_EQ(edits[1].op, "undo");
     EXPECT_EQ(edits[1].mask, 7)       << "undo did not restore mask 3->7 in the running editor";
-    EXPECT_EQ(edits[1].undoDepth, 0)  << "undo did not pop the undo entry";
+    EXPECT_EQ(edits[1].undoDepth, 4)  << "undo did not pop the layer edit while preserving four parameter edits";
     EXPECT_EQ(edits[1].redoDepth, 1)  << "undo did not push a redo entry";
 
     // redo@90 -- mask 7 -> 3; re-applies from the redo stack.
     EXPECT_EQ(edits[2].op, "redo");
     EXPECT_EQ(edits[2].mask, 3)       << "redo did not re-apply mask 7->3 in the running editor";
-    EXPECT_EQ(edits[2].undoDepth, 1)  << "redo did not push the undo entry back";
+    EXPECT_EQ(edits[2].undoDepth, 5)  << "redo did not push the layer edit back after four parameter edits";
     EXPECT_EQ(edits[2].redoDepth, 0)  << "redo did not consume the redo entry";
 }
 
-TEST(EditorToggleUndoCapture, FirstEditReachesRenderPipeline) {
-    // Editor-Brick-Residency-Fix-Plan-2026-07: residency is now requested unconditionally (see the
-    // file header), so this asserts the MASK delta itself, not a one-shot residency-transition
-    // smoke check -- capture_5 (mask=7) must differ from capture_45 (mask=3) by at least
-    // kMinMaskDiffPixels, calibrated to a real WSL/Dozen measurement (62 pixels, all inside the
-    // object's bounding box).
+TEST(EditorToggleUndoCapture, ParameterEditReachesRenderPipeline) {
     const std::string dir = CaptureDir();
-    const Image png5  = LoadPng(dir + "/editor_capture_5.png");
-    const Image png45 = LoadPng(dir + "/editor_capture_45.png");
+    const Image png5 = LoadPng(dir + "/editor_capture_5.png");
+    const Image png25 = LoadPng(dir + "/editor_capture_25.png");
 
     ASSERT_FALSE(png5.rgb.empty())  << "missing " << dir << "/editor_capture_5.png -- run "
                                         "VIXEN/temp/run_editor_script.bat first";
-    ASSERT_FALSE(png45.rgb.empty()) << "missing " << dir << "/editor_capture_45.png";
-    ASSERT_EQ(png5.width, png45.width);
-    ASSERT_EQ(png5.height, png45.height);
+    ASSERT_FALSE(png25.rgb.empty()) << "missing " << dir << "/editor_capture_25.png";
+    ASSERT_EQ(png5.width, png25.width);
+    ASSERT_EQ(png5.height, png25.height);
 
-    const int diff = WholeImageDiffPixels(png5, png45);
-    std::printf("[EDITOR/mask] wholeImageDiffPixels(png5,png45)=%d (%dx%d)\n",
+    const int diff = WholeImageDiffPixels(png5, png25);
+    std::printf("[EDITOR/parameter] wholeImageDiffPixels(png5,png25)=%d (%dx%d)\n",
                 diff, png5.width, png5.height);
     EXPECT_GT(diff, kMinMaskDiffPixels)
-        << "the first edit produced too small a render change (frame 45 vs frame 5, diff=" << diff
-        << ") -- either the mask cut isn't reaching the render, or brick residency regressed back "
-           "to mip-only fallback (see EditorApplication::SkipResidencyHeuristic)";
+        << "the parameter edit produced too small a render change (frame 25 vs frame 5, diff=" << diff
+        << ") -- the virtual preview may not be receiving the bake snapshot's effective values";
+}
+
+TEST(EditorToggleUndoCapture, LayerEditReachesRenderPipeline) {
+    const std::string dir = CaptureDir();
+    const Image parameterEdited = LoadPng(dir + "/editor_capture_25.png");
+    const Image layerEdited = LoadPng(dir + "/editor_capture_45.png");
+
+    ASSERT_FALSE(parameterEdited.rgb.empty()) << "missing " << dir << "/editor_capture_25.png";
+    ASSERT_FALSE(layerEdited.rgb.empty()) << "missing " << dir << "/editor_capture_45.png";
+    ASSERT_EQ(parameterEdited.width, layerEdited.width);
+    ASSERT_EQ(parameterEdited.height, layerEdited.height);
+
+    const int diff = WholeImageDiffPixels(parameterEdited, layerEdited);
+    std::printf("[EDITOR/layer] wholeImageDiffPixels(png25,png45)=%d (%dx%d)\n",
+                diff, parameterEdited.width, parameterEdited.height);
+    EXPECT_GT(diff, kMinMaskDiffPixels)
+        << "the layer edit produced too small a render change at the same parameter value";
+}
+
+TEST(EditorToggleUndoCapture, ParameterSnapshotAndSaveReopenStayCanonical) {
+    std::ifstream in(LogPath());
+    ASSERT_TRUE(in.good()) << "cannot read editor log " << LogPath();
+
+    bool sawParameterEdit = false;
+    bool sawSave = false;
+    bool sawReopen = false;
+    bool sawChangedValues = false;
+    std::optional<std::string> firstCpuValues;
+    std::string line;
+    const auto bracketValue = [](const std::string& text, const std::string& field)
+        -> std::optional<std::string> {
+        const std::string marker = field + "=[";
+        const size_t start = text.find(marker);
+        if (start == std::string::npos) return std::nullopt;
+        const size_t valueStart = start + marker.size();
+        const size_t end = text.find(']', valueStart);
+        if (end == std::string::npos) return std::nullopt;
+        return text.substr(valueStart, end - valueStart);
+    };
+
+    while (std::getline(in, line)) {
+        if (line.find("[EDITOR/state] parameter_up parameterIndex=0") != std::string::npos &&
+            line.find("result=0") != std::string::npos) {
+            sawParameterEdit = true;
+        }
+        if (line.find("[EDITOR/state] save ") != std::string::npos &&
+            line.find("mask=3 parameterCount=1") != std::string::npos) {
+            sawSave = true;
+        }
+        if (line.find("[EDITOR/state] reopen ") != std::string::npos &&
+            line.find("programMatch=1 parametersMatch=1 maskMatch=1") != std::string::npos) {
+            sawReopen = true;
+        }
+        if (line.find("[EDITOR/snapshot]") == std::string::npos) continue;
+
+        const auto cpuValues = bracketValue(line, "cpu");
+        const auto previewValues = bracketValue(line, "preview");
+        ASSERT_TRUE(cpuValues.has_value()) << "snapshot has no CPU values: " << line;
+        ASSERT_TRUE(previewValues.has_value()) << "snapshot has no preview values: " << line;
+        EXPECT_EQ(*cpuValues, *previewValues) << "bake and preview parameters diverged: " << line;
+        if (!firstCpuValues) firstCpuValues = *cpuValues;
+        else if (*cpuValues != *firstCpuValues) sawChangedValues = true;
+    }
+
+    EXPECT_TRUE(sawParameterEdit) << "scripted parameter control did not dispatch successfully";
+    EXPECT_TRUE(sawChangedValues) << "no changed effective parameter snapshot was recorded";
+    EXPECT_TRUE(sawSave) << "scripted save did not record the edited layer mask and parameter count";
+    EXPECT_TRUE(sawReopen) << "reopened document did not match its saved program, parameters, and mask";
 }
 
 TEST(EditorToggleUndoCapture, UndoRedoRestoresRenderByteExact) {
@@ -277,24 +344,33 @@ TEST(EditorToggleUndoCapture, UndoRedoRestoresRenderByteExact) {
     const Image png45  = LoadPng(dir + "/editor_capture_45.png");
     const Image png75  = LoadPng(dir + "/editor_capture_75.png");
     const Image png105 = LoadPng(dir + "/editor_capture_105.png");
+    const Image png115 = LoadPng(dir + "/editor_capture_115.png");
 
     ASSERT_FALSE(png5.rgb.empty())   << "missing " << dir << "/editor_capture_5.png -- run "
                                          "VIXEN/temp/run_editor_script.bat first";
     ASSERT_FALSE(png45.rgb.empty())  << "missing " << dir << "/editor_capture_45.png";
     ASSERT_FALSE(png75.rgb.empty())  << "missing " << dir << "/editor_capture_75.png";
     ASSERT_FALSE(png105.rgb.empty()) << "missing " << dir << "/editor_capture_105.png";
+    ASSERT_FALSE(png115.rgb.empty()) << "missing " << dir << "/editor_capture_115.png";
 
-    // Undo (frame 60) restores mask=7 -- frame 75's render must byte-match frame 5's baseline.
-    ASSERT_EQ(png75.width, png5.width);
-    ASSERT_EQ(png75.height, png5.height);
-    EXPECT_EQ(png75.rgb, png5.rgb)
-        << "undo did not restore the render byte-for-byte (frame 75 vs frame 5)";
+    // Undo (frame 60) restores mask=7 while retaining the parameter edit; frame 75 must match 25.
+    const Image png25 = LoadPng(dir + "/editor_capture_25.png");
+    ASSERT_FALSE(png25.rgb.empty()) << "missing " << dir << "/editor_capture_25.png";
+    ASSERT_EQ(png75.width, png25.width);
+    ASSERT_EQ(png75.height, png25.height);
+    EXPECT_EQ(png75.rgb, png25.rgb)
+        << "undo did not restore the layer-edited render byte-for-byte (frame 75 vs frame 25)";
 
     // Redo (frame 90) re-applies mask=3 -- frame 105's render must byte-match frame 45's.
     ASSERT_EQ(png105.width, png45.width);
     ASSERT_EQ(png105.height, png45.height);
     EXPECT_EQ(png105.rgb, png45.rgb)
         << "redo did not restore the render byte-for-byte (frame 105 vs frame 45)";
+
+    ASSERT_EQ(png115.width, png105.width);
+    ASSERT_EQ(png115.height, png105.height);
+    EXPECT_EQ(png115.rgb, png105.rgb)
+        << "reopen changed the saved canonical render (frame 115 vs frame 105)";
 }
 
 TEST(EditorToggleUndoCapture, BackButtonReachesReturnInRunningEditor) {

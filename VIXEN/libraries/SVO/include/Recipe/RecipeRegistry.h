@@ -30,6 +30,10 @@ public:
 
     struct RecipeEntry {
         std::vector<Recipe::SdfInstruction> bytecode;
+        // Explicit bake-time scalar snapshot. The transport contract remains the existing
+        // six-float BodyInstanceGpu carrier; this CPU-side vector carries the same effective
+        // values into BakeRegistryToPool without creating per-recipe GPU parameter blocks.
+        std::vector<float> parameterValues;
         uint32_t bakeResolution = 0;   // 0 = engine default
         float    bandVoxels     = 0.f; // 0 = engine default
         uint32_t brickDepth     = 0;   // 0 = engine default (3)
@@ -119,6 +123,7 @@ public:
         UnknownCalleeRecipe,   // InvokeRecipe references a recipeId not yet Register()-ed
         RecursiveInvocation,   // InvokeRecipe graph contains a cycle (direct or indirect)
         NestingTooDeep,        // InvokeRecipe chain exceeds kMaxRecipeNestingDepth
+        MissingId,
     };
 
     RegisterResult Register(uint32_t recipeId, const RecipeEntry& entry) {
@@ -199,6 +204,19 @@ public:
 
         entries_.emplace(recipeId, std::move(normalizedEntry));
         ++generation_;
+        return RegisterResult::Ok;
+    }
+
+    // Atomically validate and replace an existing recipe. Re-registering the same id is useful
+    // for editor-authored bytecode changes: build a candidate registry without the old entry,
+    // validate the replacement against that candidate, then publish it in one assignment.
+    RegisterResult Replace(uint32_t recipeId, const RecipeEntry& entry) {
+        if (!entries_.count(recipeId)) return RegisterResult::MissingId;
+        RecipeRegistry candidate = *this;
+        candidate.entries_.erase(recipeId);
+        const RegisterResult result = candidate.Register(recipeId, entry);
+        if (result != RegisterResult::Ok) return result;
+        *this = std::move(candidate);
         return RegisterResult::Ok;
     }
 

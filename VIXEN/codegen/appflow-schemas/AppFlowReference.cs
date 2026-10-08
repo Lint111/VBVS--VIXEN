@@ -17,7 +17,13 @@ namespace Vixen.AppFlow.Reference
 
     // Actions — members become FlowActionId (pinned, append-only).
     [FlowActionEnum]
-    public enum FlowAction { ToggleLayer = 0, Undo = 1, Redo = 2, Save = 3, UndoSettingChange = 4, Return = 5, Data = 6 }
+    public enum FlowAction
+    {
+        ToggleLayer = 0, Undo = 1, Redo = 2, Save = 3, UndoSettingChange = 4, Return = 5, Data = 6,
+        CreateLayer = 7, DeleteLayer = 8, MoveLayerUp = 9, MoveLayerDown = 10,
+        EditProgramFieldUp = 11, EditProgramFieldDown = 12,
+        AdjustParameterUp = 13, AdjustParameterDown = 14,
+    }
 
     // Typed key vocabulary (design §3.1/§5.2) — KeyChord{KeyId,KeyMod} is the ONLY boundary;
     // the host-side glfw-keycode→KeyId map (M4) is the sole raw-string/int crossing.
@@ -46,6 +52,55 @@ namespace Vixen.AppFlow.Reference
         public const int    Param0Type = (int)FlowParamType.Int;
     }
 
+    [FlowActionParams(nameof(FlowAction.DeleteLayer))]
+    public static class DeleteLayerParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.MoveLayerUp))]
+    public static class MoveLayerUpParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.MoveLayerDown))]
+    public static class MoveLayerDownParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.EditProgramFieldUp))]
+    public static class EditProgramFieldUpParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.EditProgramFieldDown))]
+    public static class EditProgramFieldDownParams
+    {
+        public const string Param0Name = "layerIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.AdjustParameterUp))]
+    public static class AdjustParameterUpParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
+    [FlowActionParams(nameof(FlowAction.AdjustParameterDown))]
+    public static class AdjustParameterDownParams
+    {
+        public const string Param0Name = "parameterIndex";
+        public const int Param0Type = (int)FlowParamType.Int;
+    }
+
     // Footprint struct for ToggleLayer — a GpuStruct-style serializable blob so the
     // runtime can snapshot it generically (Inc 2 uses this; Inc 1 emits it only).
     [FlowStateStruct]
@@ -67,6 +122,94 @@ namespace Vixen.AppFlow.Reference
     {
         public const string Element = "layer-{index}-toggle";
         public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.CreateLayer))]
+    public static class CreateLayerTrigger
+    {
+        public const string Element = "add-layer";
+        public const string ParamName = "";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.DeleteLayer))]
+    public static class DeleteLayerTrigger
+    {
+        public const string Element = "layer-{index}-delete";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.MoveLayerUp))]
+    public static class MoveLayerUpTrigger
+    {
+        public const string Element = "layer-{index}-up";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.MoveLayerDown))]
+    public static class MoveLayerDownTrigger
+    {
+        public const string Element = "layer-{index}-down";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.EditProgramFieldUp))]
+    public static class EditProgramFieldUpTrigger
+    {
+        public const string Element = "layer-{index}-program-up";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.EditProgramFieldDown))]
+    public static class EditProgramFieldDownTrigger
+    {
+        public const string Element = "layer-{index}-program-down";
+        public const string ParamName = "layerIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.AdjustParameterUp))]
+    public static class AdjustParameterUpTrigger
+    {
+        public const string Element = "parameter-{index}-up";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.AdjustParameterDown))]
+    public static class AdjustParameterDownTrigger
+    {
+        public const string Element = "parameter-{index}-down";
+        public const string ParamName = "parameterIndex";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.Undo))]
+    public static class UndoButtonTrigger
+    {
+        public const string Element = "undo-button";
+        public const string ParamName = "";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.Redo))]
+    public static class RedoButtonTrigger
+    {
+        public const string Element = "redo-button";
+        public const string ParamName = "";
+        public const string On = "click";
+    }
+
+    [FlowElementTrigger(nameof(FlowAction.Save))]
+    public static class SaveButtonTrigger
+    {
+        public const string Element = "save-button";
+        public const string ParamName = "";
         public const string On = "click";
     }
 

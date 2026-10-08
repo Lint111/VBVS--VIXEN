@@ -74,16 +74,20 @@ TEST(ViewEditorLayersReconcile, ExternalGaiaWriteReconcilesIntoBoundView) {
 
     // Initial population: 3 layers, all enabled (mask=7), mirrors EditorApplication::LoadDocument's
     // RefreshLayersView call -- NOT the thing under test, just realistic starting state.
-    const std::vector<std::string> names = {"layer0", "layer1", "layer2"};
-    const std::vector<std::string> ops   = {"union", "union", "union"};
-    view.PopulateFromMask(0b111u, 3, names, ops);
+    const std::vector<Vixen::App::EditorLayerData> layers = {
+        {"layer0", "union", true, 0.0f},
+        {"layer1", "union", true, 0.0f},
+        {"layer2", "union", true, 0.0f},
+    };
+    const std::vector<Vixen::App::EditorParameterData> parameters;
+    view.PopulateFromDocument(0b111u, layers, parameters);
     ASSERT_EQ(view.DebugLayerCount(), 3u);
     EXPECT_TRUE(view.DebugLayer(0).isChecked);
     EXPECT_TRUE(view.DebugLayer(1).isChecked);
     EXPECT_TRUE(view.DebugLayer(2).isChecked);
 
-    // Gaia-side fixture, seeded to the SAME initial mask -- this is the real backing store
-    // view.PopulateFromMask above only mirrored by hand for this test's initial population.
+    // Gaia-side fixture, seeded to the SAME initial mask -- this is the real backing store;
+    // PopulateFromDocument above only mirrors it by hand for this test's initial population.
     Vixen::App::GaiaLayerReconcileFixture* fixture = Vixen::App::MakeGaiaLayerReconcileFixture(0b111u);
     ASSERT_NE(fixture, nullptr);
 
@@ -118,9 +122,9 @@ TEST(ViewEditorLayersReconcile, ExternalGaiaWriteReconcilesIntoBoundView) {
     EXPECT_EQ(viaProvider, kExternalMask);
 
     // Value-push into the bound view (the reconcile's actual job, EditorApplication::
-    // ReconcileLayersView mirrors this exact PopulateFromMask call). THIS is model->view for a
+    // ReconcileLayersView mirrors this exact PopulateFromDocument call). THIS is model->view for a
     // change the input echo did not produce -- the assertion Inc-A2 could not make.
-    view.PopulateFromMask(reconciledMask, 3, names, ops);
+    view.PopulateFromDocument(reconciledMask, layers, parameters);
     EXPECT_TRUE(view.DebugLayer(0).isChecked);
     EXPECT_FALSE(view.DebugLayer(1).isChecked) << "external write did not reach the bound checkbox model";
     EXPECT_TRUE(view.DebugLayer(2).isChecked);

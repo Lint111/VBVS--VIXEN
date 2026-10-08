@@ -4,6 +4,7 @@
 // the headless module remains the single authority for accepted document state.
 
 #include <cstdint>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,9 @@ enum class DocumentDiagnosticCode : uint8_t {
     TooManyLayers,
     InvalidLayerIndex,
     InvalidLayerMask,
+    InvalidProgramField,
+    InvalidParameterValue,
+    StaleBakeSnapshot,
     FlattenError,
     WriteError,
 };
@@ -32,6 +36,20 @@ struct DocumentDiagnostic {
         code = DocumentDiagnosticCode::None;
         message.clear();
     }
+};
+
+struct EditableDocumentLayer {
+    uint8_t type = 0;
+    uint8_t op = 0;
+    bool enabled = true;
+    float blendRadius = 0.0f;
+    std::string name;
+    std::vector<Yeroket::Sdf::Generated::SdfInstruction> program;
+};
+
+struct DocumentBakeSnapshot {
+    uint64_t revision = 0;
+    std::array<float, 6> parameterValues{};
 };
 
 // Loads one VoxelDocument and owns the enabled-layer state used by flatten/save operations.
@@ -47,11 +65,38 @@ public:
     const std::string& SourcePath() const;
     uint32_t LayerCount() const;
     uint32_t EnabledMask() const;
+    uint64_t Revision() const;
+
+    uint32_t ParameterCount() const;
+    std::string ParameterName(uint32_t index) const;
+    std::string ParameterUnit(uint32_t index) const;
+    uint32_t ParameterSlot(uint32_t index) const;
+    float ParameterValue(uint32_t index) const;
+    float ParameterDefault(uint32_t index) const;
+    float ParameterMin(uint32_t index) const;
+    float ParameterMax(uint32_t index) const;
+    std::array<float, 6> EffectiveParameterValues() const;
+    DocumentBakeSnapshot CaptureBakeSnapshot() const;
 
     // All document layer-state mutations pass through these validated operations. The mask
     // accepts only bits corresponding to layers admitted by Load().
     bool SetLayerEnabled(uint32_t index, bool enabled, DocumentDiagnostic& diagnostic);
     bool SetEnabledMask(uint32_t mask, DocumentDiagnostic& diagnostic);
+    bool GetLayer(uint32_t index, EditableDocumentLayer& out,
+                  DocumentDiagnostic& diagnostic) const;
+    bool InsertLayer(uint32_t index, const EditableDocumentLayer& layer,
+                     DocumentDiagnostic& diagnostic);
+    bool DeleteLayer(uint32_t index, EditableDocumentLayer* removed,
+                     DocumentDiagnostic& diagnostic);
+    bool MoveLayer(uint32_t from, uint32_t to, DocumentDiagnostic& diagnostic);
+    bool GetLayerProgramField(uint32_t layerIndex, uint32_t instructionIndex,
+                              uint32_t fieldIndex, float& out,
+                              DocumentDiagnostic& diagnostic) const;
+    bool SetLayerProgramField(uint32_t layerIndex, uint32_t instructionIndex,
+                              uint32_t fieldIndex, float value,
+                              DocumentDiagnostic& diagnostic);
+    bool SetParameterValue(uint32_t index, float value,
+                           DocumentDiagnostic& diagnostic);
 
     std::string LayerName(uint32_t i) const;
     static const char* OpName(uint8_t op);
@@ -63,17 +108,26 @@ public:
     // serialize/parse/copy round-trip.
     bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
                               DocumentDiagnostic& diagnostic) const;
+    bool FlattenToRecipeEntry(Vixen::SVO::RecipeRegistry::RecipeEntry& outEntry,
+                              const DocumentBakeSnapshot& snapshot,
+                              DocumentDiagnostic& diagnostic) const;
 
     // Writes the accepted document with its current enabled-layer state.
     bool Save(const std::string& outPath, DocumentDiagnostic& diagnostic) const;
 
 private:
     static uint32_t ValidMaskForLayerCount(uint32_t count);
+    std::vector<EditableDocumentLayer> CopyLayers() const;
+    std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> CopyParameters() const;
+    bool Rebuild(std::vector<EditableDocumentLayer> layers,
+                 std::vector<Yeroket::Sdf::Generated::VoxelDocParameterHeader> parameters,
+                 uint32_t enabledMask, DocumentDiagnostic& diagnostic);
 
     std::vector<uint8_t> rawBytes_;
     Yeroket::Sdf::Generated::VoxelDocumentView view_{};
     std::string sourcePath_;
     uint32_t enabledMask_ = 0;
+    uint64_t revision_ = 0;
 };
 
 }  // namespace Vixen::Editor

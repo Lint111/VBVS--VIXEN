@@ -89,7 +89,9 @@ inline RecipeBakeResult BakeRegistryToPool(RecipeRegistry& reg,
         auto baked = BakeRecipeInstructionsToSdfWorld(
             entry->bytecode.data(),
             static_cast<uint32_t>(entry->bytecode.size()),
-            cfg.center, n, band, depth);
+            cfg.center, n, band, depth,
+            std::span<const float>(entry->parameterValues.data(),
+                                   entry->parameterValues.size()));
 
         res.owned.push_back(BuildSdfBodyOctree(baked, depth));
 

@@ -7,7 +7,7 @@
 
 namespace Vixen::AppFlow::Generated {
 
-inline constexpr uint32_t kAppFlowShapeHash = 0x49EA8366u;
+inline constexpr uint32_t kAppFlowShapeHash = 0xC6F3E476u;
 
 enum class FlowStateId : uint16_t { Editing=0, Simulating=1, Paused=2, Settings=3 };
 inline constexpr std::array<FlowStateId, 4> kStateIds = { FlowStateId::Editing, FlowStateId::Simulating, FlowStateId::Paused, FlowStateId::Settings };
@@ -16,7 +16,7 @@ inline constexpr std::array<FlowStateId, 0> kTerminalStateIds = {  };
 
 enum class FlowGuardId : uint16_t { DocumentValid=0 };
 
-enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6 };
+enum class FlowActionId : uint16_t { ToggleLayer=0, Undo=1, Redo=2, Save=3, UndoSettingChange=4, Return=5, Data=6, CreateLayer=7, DeleteLayer=8, MoveLayerUp=9, MoveLayerDown=10, EditProgramFieldUp=11, EditProgramFieldDown=12, AdjustParameterUp=13, AdjustParameterDown=14 };
 
 // Mirrors undertow's UiParamType (String/Int/Float/EntityRef) — design §7c.
 enum class FlowParamType : uint8_t { String=0, Int=1, Float=2, EntityRef=3 };
@@ -52,6 +52,17 @@ struct AppFlowTransition { const char* id; FlowStateId from; FlowStateId to; Flo
 
 namespace FlowElementTriggerId {
     inline constexpr const char* ToggleLayerTrigger = "ToggleLayerTrigger";
+    inline constexpr const char* CreateLayerTrigger = "CreateLayerTrigger";
+    inline constexpr const char* DeleteLayerTrigger = "DeleteLayerTrigger";
+    inline constexpr const char* MoveLayerUpTrigger = "MoveLayerUpTrigger";
+    inline constexpr const char* MoveLayerDownTrigger = "MoveLayerDownTrigger";
+    inline constexpr const char* EditProgramFieldUpTrigger = "EditProgramFieldUpTrigger";
+    inline constexpr const char* EditProgramFieldDownTrigger = "EditProgramFieldDownTrigger";
+    inline constexpr const char* AdjustParameterUpTrigger = "AdjustParameterUpTrigger";
+    inline constexpr const char* AdjustParameterDownTrigger = "AdjustParameterDownTrigger";
+    inline constexpr const char* UndoButtonTrigger = "UndoButtonTrigger";
+    inline constexpr const char* RedoButtonTrigger = "RedoButtonTrigger";
+    inline constexpr const char* SaveButtonTrigger = "SaveButtonTrigger";
     inline constexpr const char* BackButtonTrigger = "BackButtonTrigger";
 }
 namespace FlowKeyDefaultId {
@@ -76,6 +87,13 @@ struct AppFlowReturnEdge { const char* id; FlowStateId from; KeyChord trigger; }
 struct AppFlowDataTarget { FlowActionId action; ViewNounId viewNoun; };
 
 inline constexpr FlowParamSchema kToggleLayerParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kDeleteLayerParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kMoveLayerUpParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kMoveLayerDownParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kEditProgramFieldUpParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kEditProgramFieldDownParams[] = { {"layerIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kAdjustParameterUpParams[] = { {"parameterIndex", FlowParamType::Int} };
+inline constexpr FlowParamSchema kAdjustParameterDownParams[] = { {"parameterIndex", FlowParamType::Int} };
 
 inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::ToggleLayer, sizeof(LayerState), true, kToggleLayerParams, 1 },
@@ -84,7 +102,15 @@ inline constexpr AppFlowActionDecl kActionDecls[] = {
     { FlowActionId::Save, sizeof(LayerState), true, nullptr, 0 },
     { FlowActionId::UndoSettingChange, sizeof(LayerState), true, nullptr, 0 },
     { FlowActionId::Return, sizeof(LayerState), true, nullptr, 0 },
-    { FlowActionId::Data, sizeof(LayerState), true, nullptr, 0 }
+    { FlowActionId::Data, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::CreateLayer, sizeof(LayerState), true, nullptr, 0 },
+    { FlowActionId::DeleteLayer, sizeof(LayerState), true, kDeleteLayerParams, 1 },
+    { FlowActionId::MoveLayerUp, sizeof(LayerState), true, kMoveLayerUpParams, 1 },
+    { FlowActionId::MoveLayerDown, sizeof(LayerState), true, kMoveLayerDownParams, 1 },
+    { FlowActionId::EditProgramFieldUp, sizeof(LayerState), true, kEditProgramFieldUpParams, 1 },
+    { FlowActionId::EditProgramFieldDown, sizeof(LayerState), true, kEditProgramFieldDownParams, 1 },
+    { FlowActionId::AdjustParameterUp, sizeof(LayerState), true, kAdjustParameterUpParams, 1 },
+    { FlowActionId::AdjustParameterDown, sizeof(LayerState), true, kAdjustParameterDownParams, 1 }
 };
 
 inline constexpr AppFlowTransition kTransitions[] = {
@@ -95,6 +121,17 @@ inline constexpr AppFlowTransition kTransitions[] = {
 
 inline constexpr AppFlowElementTrigger kElementTriggers[] = {
     { FlowElementTriggerId::ToggleLayerTrigger, "layer-{index}-toggle", FlowActionId::ToggleLayer, "layerIndex", "click" },
+    { FlowElementTriggerId::CreateLayerTrigger, "add-layer", FlowActionId::CreateLayer, "", "click" },
+    { FlowElementTriggerId::DeleteLayerTrigger, "layer-{index}-delete", FlowActionId::DeleteLayer, "layerIndex", "click" },
+    { FlowElementTriggerId::MoveLayerUpTrigger, "layer-{index}-up", FlowActionId::MoveLayerUp, "layerIndex", "click" },
+    { FlowElementTriggerId::MoveLayerDownTrigger, "layer-{index}-down", FlowActionId::MoveLayerDown, "layerIndex", "click" },
+    { FlowElementTriggerId::EditProgramFieldUpTrigger, "layer-{index}-program-up", FlowActionId::EditProgramFieldUp, "layerIndex", "click" },
+    { FlowElementTriggerId::EditProgramFieldDownTrigger, "layer-{index}-program-down", FlowActionId::EditProgramFieldDown, "layerIndex", "click" },
+    { FlowElementTriggerId::AdjustParameterUpTrigger, "parameter-{index}-up", FlowActionId::AdjustParameterUp, "parameterIndex", "click" },
+    { FlowElementTriggerId::AdjustParameterDownTrigger, "parameter-{index}-down", FlowActionId::AdjustParameterDown, "parameterIndex", "click" },
+    { FlowElementTriggerId::UndoButtonTrigger, "undo-button", FlowActionId::Undo, "", "click" },
+    { FlowElementTriggerId::RedoButtonTrigger, "redo-button", FlowActionId::Redo, "", "click" },
+    { FlowElementTriggerId::SaveButtonTrigger, "save-button", FlowActionId::Save, "", "click" },
     { FlowElementTriggerId::BackButtonTrigger, "back-button", FlowActionId::Return, "", "click" }
 };
 
