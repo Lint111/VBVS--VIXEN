@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-- Run 3 implementation tip: `687d23a1759a552d6e331763c09fc887e1dfdfec` — typed per-scene exposure field in `LightingConfig`. **STOP: the fresh Run 2 look-dev comparison fails across all 16 per-preset images, so this tip is not landable yet.** Run 3 results and remaining checks are recorded below.
+- Run 4 implementation tip: `b6e40d5a26aeb450e0326ef200f56a86dd4f6006` — typed exposure is wired through the generated `ExposureTonemap` SDI interface. All 16 look-dev frames match Run 2 byte for byte; the 26 shared and 11 standard captures also match the fresh `846ab1a9` baseline. Run 4 results and the remaining unrelated SVO finding are recorded below.
 
 ## Scene and capture
 
@@ -97,7 +97,7 @@ The purple-blue sky is the renderer's fallback miss color, not ambient-lit geome
 
 Four consolidation proposals were appended through the SPT CLI and included in the implementation commit. They cover pinned-kernel provisioning, queue-credit sizing, a typed exposure setting, and the headless Vulkan capture lifecycle.
 
-## CONSOLIDATION ISSUES
+## Prior consolidation issues
 
 - proposed: Provision the pinned Yeroket snapshot when a VIXEN wave advances its kernel pin
 - proposed: Size queued VIXEN build admission to the actual Ninja job count
@@ -183,3 +183,40 @@ Against the raw `92804a8f` R424 parent, the differing set is instead the four na
 
 - proposed: Track generated GLSL includes in shader reflection targets
 - proposed: Use the available Python 3 launcher for capture comparison
+
+## Run 4 — trace typed exposure and compare R424 baselines
+
+### Root cause and implementation
+
+The `LightingConfig` value and upload were correct. Midday supplies `−3.25 EV`; `Gpu::LightingConfig::exposureCompensationEV` is at byte offset 200 in the 208-byte record. After 64 warm-up frames, the test read the host-coherent mapped upload buffer and found all four ring slots contained `00 00 50 c0`, decoding to `−3.25`, exactly matching the preset. The readback is in `.tmp/lookdev-run4-debug-midday/lighting-config-readback.txt`.
+
+The failure was the tonemap graph interface. `ExposureTonemap.comp` reads `lightingConfig.exposureCompensationEV` from the `LightingConfigSSBO` at binding 16 and applies it with `exp2(meter.ev100 + ...)`. `BuildRenderGraph.cpp` included the stale `ExposureTonemap-SDI.h`, whose member table had no binding 16, so `SynthesizeComputeStage` could not connect the `LightingConfigNode` buffer to the tonemap stage. This was a graph-wiring omission, not an std430 offset mismatch or a float-path difference.
+
+Added `ExposureTonemap` to `VIXEN/shaders/sdi-variants.json`, regenerated `ExposureTonemap-SDI.g.h`, switched `BuildRenderGraph.cpp` to that generated interface, and removed the stale header. The merged member table now includes read-only set 0, binding 16. Added test-only mapped-buffer readback to `test_lookdev_capture.cpp` and a friend accessor in `LightingConfigNode.h`; the check records the bytes for each ring slot and fails on a mismatch. `LightingConfigNodeConfig` continues to default exposure to `0.0f` and clamp it to `[-16, 16]`.
+
+### Witness results
+
+- `sdi_tool merge-variants` and its `--check` passed. CodegenTool restore, Release build, and the `LightingConfig --check` passed; generated config outputs were unchanged.
+- The queued fresh configure `cmake -S VIXEN -B build/wsl` passed and found the pinned schema/kernel inputs. The queued full build after the source changes passed. The post-configure full build and all 23 current `*_check` targets reported `ninja: no work to do`; the current list includes `no_new_mutex_check`, which explains the difference from the shared witness's count of 22. The final queued no-op rebuild also reported zero work.
+- The queued look-dev matrix passed. All 16 500×500 frames (four states × four angles) are byte-identical to Run 2: zero differing bytes and pixels, and maximum channel delta 0. There is no residual float difference to quantify. The midday readback test also passed independently. [Run 2 vs Run 4 exposure sheet](lookdev-visual/run4-exposure-before-after.png).
+- Cornell `HeadlessCornellGraph.ProductionGraphRendersDeterministicCornellWithStableSharedWallSeams` passed in isolation on the Run 4 tree. On the untouched baseline `846ab1a999a542f663ee08764fe69b3de2beade3`, it first failed the `R424-BEAM` assertion (`transformed-start-core=9`, `stale-start-core=0`, `endpoint-shift=49.80 px`), then passed on an isolated retry. The base reproduces the intermittent failure, so it is a pre-existing flake; the Run 4 tree passed its isolated run.
+- Fresh captures from exact baseline `846ab1a999a542f663ee08764fe69b3de2beade3` and the current tree were compared byte-for-byte. Shared captures: 26/26 identical (six cel-shading, six headless, seven native editor/HUD, and seven offscreen editor/HUD). Standard captures: 11/11 identical (seven native editor/HUD and four headless starfield). The baseline capture producer selection passed 12/12; the standard selection passed 13/13 including two fixture producer tests.
+- The shader SPIR-V dependency fix was included in the fresh RenderGraph test build. The full queued RenderGraph CTest label ran 1,340 tests: 1,335 passed, five skipped, zero failed. `LightingConfigSdiParity.ReflectedLayoutMatchesCppStruct` passed. The full queued build passed, and the queued no-op rebuild reported `ninja: no work to do`.
+- The common engine-lane SVO witness ran 751 registered tests. It had one failure, `RecipeSimdParity.AllCorpusProgramsAreBitIdenticalAcrossFourLanes`, with the established T-1449 diagnostic `M4d_Output_IsPassthrough: recipe gradient capability mismatch: 94`; eight tests were skipped and one disabled. This is the same unrelated failure recorded in Runs 2 and 3, outside the exposure and RenderGraph dependency scope.
+
+### Shared files and follow-up
+
+This run touched the shared graph composition in `VIXEN/application/main/source/graph/BuildRenderGraph.cpp`, the `LightingConfigNode` test-access declaration, and the SDI manifest; it did not edit KFR. KFR follow-up remains at `KernelFederationRenderer/app/src/session_renderer.cpp`.
+
+### Design references
+
+Read `/home/liory/scripts/codex-briefs/_engine-slice-common.md`, `lookdev2.md`, `lookdev3.md`, and `lookdev4.md`; `VIXEN/CLAUDE.md`; `VIXEN/Vixen-Docs/00-Index/Quick-Lookup.md`; `VIXEN/Vixen-Docs/04-Development/Build-System.md`; and `VIXEN/Vixen-Docs/Deep-Field-HDR-Exposure-2026-08.md`. No VIXEN design document change was needed; the shared witness and SPT instruction mismatches are listed under Consolidation Issues.
+
+### STOPs
+
+None for the requested Run 4 gates. The Cornell base flake and the established SVO opcode-94 failure are findings; the exposure captures, exact baseline comparisons, and full RenderGraph suite passed.
+
+## CONSOLIDATION ISSUES
+
+- proposed: Derive the engine witness check-target set
+- proposed: Align consolidation proposal instructions with SPT category requirements
