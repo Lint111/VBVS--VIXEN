@@ -30,7 +30,9 @@
 #include "Recipe/SdfInstruction.h"
 #include "Recipe/SdfRecipeCodegenGlsl.h"
 #include "Recipe/SdfRecipeEval.h"
+#include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeTileSpecialization.h"
+#include "Recipe/RecipeWholeDomainCompaction.h"
 #include "ShaderCompiler.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -143,6 +145,40 @@ void main() {
     // geometry tape, matching the rv-a1 requirement for observable-output parity.
     imageStore(outImage, pixel, vec4(hitDepth, 0.25, 0.5, 0.75));
     clauseCounts[uint(pixel.y * size.x + pixel.x)] = totalClauses;
+}
+)GLSL";
+    return ss.str();
+}
+
+std::string ComposeCompiledRecipeRaymarchShader(const std::string& sdfCoreGlsl,
+    const std::string& recipeFieldGlsl) {
+    std::ostringstream ss;
+    ss << "#version 450\n" << sdfCoreGlsl << "\n" << recipeFieldGlsl << "\n";
+    ss << R"GLSL(
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=0,binding=0,rgba32f) uniform image2D outImage;
+layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outImage);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+    float u = (float(pixel.x) + 0.5) / float(size.x);
+    float v = (float(pixel.y) + 0.5) / float(size.y);
+    float worldX = (u * 2.0 - 1.0) * 6.0;
+    float worldY = (v * 2.0 - 1.0) * 6.0;
+    float recipeParams[6] = float[6](params[0], params[1], params[2],
+        params[3], params[4], params[5]);
+    float hitDepth = -1000.0;
+    for (uint stepIndex = 0u; stepIndex < 121u; ++stepIndex) {
+        float z = -6.0 + float(stepIndex) * (12.0 / 120.0);
+        float distanceValue = sdfRecipe_0(vec3(worldX, worldY, z), recipeParams);
+        if (distanceValue <= 0.0) {
+            hitDepth = z;
+            break;
+        }
+    }
+    // Non-geometry fixture outputs are constants, independent of the selected geometry term.
+    imageStore(outImage, pixel, vec4(hitDepth, 0.25, 0.5, 0.75));
 }
 )GLSL";
     return ss.str();
@@ -596,7 +632,8 @@ protected:
 
     // Dispatch the slice shader once, readback RGBA32F pixels.
     void RenderSlice(const std::vector<uint32_t>& spirv, const std::array<float, 6>& params,
-                      uint32_t w, uint32_t h, std::vector<float>& outRgba32f) {
+                      uint32_t w, uint32_t h, std::vector<float>& outRgba32f,
+                      double* gpuMilliseconds = nullptr) {
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
         ASSERT_FALSE(spirv.empty());
 
@@ -692,10 +729,20 @@ protected:
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateCommandBuffers(logicalDevice_, &cbai, &cmd), VK_SUCCESS);
 
+        VkQueryPool queryPool = VK_NULL_HANDLE;
+        if (gpuMilliseconds != nullptr) {
+            VkQueryPoolCreateInfo queryPoolInfo{};
+            queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            queryPoolInfo.queryCount = 2;
+            ASSERT_EQ(vkCreateQueryPool(logicalDevice_, &queryPoolInfo, nullptr, &queryPool), VK_SUCCESS);
+        }
+
         VkCommandBufferBeginInfo bi{};
         bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         ASSERT_EQ(vkBeginCommandBuffer(cmd, &bi), VK_SUCCESS);
+        if (queryPool != VK_NULL_HANDLE) vkCmdResetQueryPool(cmd, queryPool, 0, 2);
 
         VkImageMemoryBarrier toGeneral{};
         toGeneral.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -712,7 +759,11 @@ protected:
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descSet, 0, nullptr);
+        if (queryPool != VK_NULL_HANDLE)
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, 0);
         vkCmdDispatch(cmd, (w + 7) / 8, (h + 7) / 8, 1);
+        if (queryPool != VK_NULL_HANDLE)
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool, 1);
 
         VkImageMemoryBarrier toSrc{};
         toSrc.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -746,6 +797,15 @@ protected:
         ASSERT_TRUE(realGpuConfirmed_) << "ABORT: not a confirmed real GPU; refusing vkQueueSubmit.";
         ASSERT_EQ(vkQueueSubmit(queue_, 1, &si, VK_NULL_HANDLE), VK_SUCCESS);
         ASSERT_EQ(vkQueueWaitIdle(queue_), VK_SUCCESS);
+        if (queryPool != VK_NULL_HANDLE) {
+            std::uint64_t timestamps[2]{};
+            ASSERT_EQ(vkGetQueryPoolResults(logicalDevice_, queryPool, 0, 2, sizeof(timestamps),
+                timestamps, sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT), VK_SUCCESS);
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(physicalDevice_, &properties);
+            *gpuMilliseconds = static_cast<double>(timestamps[1] - timestamps[0])
+                * static_cast<double>(properties.limits.timestampPeriod) / 1.0e6;
+        }
 
         void* mapped = nullptr;
         ASSERT_EQ(vkMapMemory(logicalDevice_, rbMem, 0, rbSize, 0, &mapped), VK_SUCCESS);
@@ -755,6 +815,7 @@ protected:
 
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_, rbBuf, nullptr); vkFreeMemory(logicalDevice_, rbMem, nullptr);
+        if (queryPool != VK_NULL_HANDLE) vkDestroyQueryPool(logicalDevice_, queryPool, nullptr);
         vkDestroyDescriptorPool(logicalDevice_, descPool, nullptr);
         vkDestroyPipeline(logicalDevice_, pipeline, nullptr);
         vkDestroyPipelineLayout(logicalDevice_, pipelineLayout, nullptr);
@@ -1130,10 +1191,35 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
 
     for (const TileTapeFixtureInput& fixture : fixtures) {
         const std::vector<SdfInstruction>& source = fixture.instructions;
+        const std::vector<SdfInstruction> sourceHistory = source;
         if (std::string(fixture.name) == "run2-dead-terms")
             ASSERT_EQ(source.size(), 325u);
         else
             ASSERT_EQ(source.size(), 433u);
+
+        RecipeWholeDomainCompactionRequest compactionRequest;
+        compactionRequest.sourceRevision = std::string(fixture.name) == "run2-dead-terms" ? 1u : 2u;
+        compactionRequest.domain = {
+            glm::vec3(-kWorldHalfExtent), glm::vec3(kWorldHalfExtent)};
+        // ComposeCompiledRecipeRaymarchShader samples every point inside this box: pixel
+        // centers are in (-6,6) for X/Y and the 121 z steps include both endpoints.
+        compactionRequest.domainIsEnforced = true;
+        compactionRequest.requiredOutputChannels = kAllRecipeOutputChannels;
+        compactionRequest.channelDependencies = {
+            RecipeChannelDependency::GeometryWinner,
+            RecipeChannelDependency::Independent,
+            RecipeChannelDependency::Independent,
+            RecipeChannelDependency::Independent,
+            RecipeChannelDependency::Independent,
+        };
+        const RecipeWholeDomainCompactionResult wholeDomain =
+            CompactRecipeOverWholeDomain(source, compactionRequest);
+        EXPECT_EQ(wholeDomain.sourceRevision, compactionRequest.sourceRevision);
+        ASSERT_TRUE(wholeDomain.stats.intervalProofApplied)
+            << "whole-domain proof fallback=" << static_cast<int>(wholeDomain.stats.intervalFallback);
+        ASSERT_LT(wholeDomain.instructions.size(), source.size());
+        EXPECT_EQ(std::memcmp(source.data(), sourceHistory.data(),
+            source.size() * sizeof(SdfInstruction)), 0) << "source recipe history was mutated";
 
         const auto specializeStart = std::chrono::steady_clock::now();
         std::vector<GpuRecipeTapeInstruction> prunedTape;
@@ -1189,8 +1275,20 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         const auto fullTape = PackGpuTape(source);
         ASSERT_EQ(fullTape.size(), source.size());
 
-        const std::string unrolledField = EmitProceduralFieldFunctionGlsl(source.data(),
-            static_cast<std::uint32_t>(source.size()), 0);
+        Vixen::SVO::RecipeRegistry emptyRegistry;
+        std::string unrollError;
+        std::vector<SdfInstruction> sourceUnrolled;
+        ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(source.data(),
+            static_cast<std::uint32_t>(source.size()), emptyRegistry, sourceUnrolled, unrollError))
+            << unrollError;
+        std::vector<SdfInstruction> compactedUnrolled;
+        ASSERT_TRUE(Vixen::SVO::UnrollRecipeInstructions(wholeDomain.instructions.data(),
+            static_cast<std::uint32_t>(wholeDomain.instructions.size()), emptyRegistry,
+            compactedUnrolled, unrollError)) << unrollError;
+        EXPECT_EQ(std::memcmp(source.data(), sourceHistory.data(),
+            source.size() * sizeof(SdfInstruction)), 0) << "unrolling mutated source recipe history";
+        const std::string unrolledField = EmitProceduralFieldFunctionGlsl(sourceUnrolled.data(),
+            static_cast<std::uint32_t>(sourceUnrolled.size()), 0);
 
         const std::string tapeAdapter = R"GLSL(
     bool EvaluateAtTile(uint offset, uint count, vec3 p, out float distanceValue, out uint clauses) {
@@ -1232,6 +1330,28 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
             std::chrono::steady_clock::now() - unrolledCompileStart).count();
         ASSERT_TRUE(unrolledCompile.success) << "Unrolled GLSL compile failed:\n"
             << unrolledCompile.GetFullLog() << "\n--- source ---\n" << unrolledShaderSource;
+
+        const std::string sourceCompiledShaderSource = ComposeCompiledRecipeRaymarchShader(
+            sdfCoreGlsl, unrolledField);
+        const auto sourceCompiledStart = std::chrono::steady_clock::now();
+        const auto sourceCompiled = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+            sourceCompiledShaderSource, "main", options);
+        const double sourceCompiledMilliseconds = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - sourceCompiledStart).count();
+        ASSERT_TRUE(sourceCompiled.success) << "Source unrolled recipe compile failed:\n"
+            << sourceCompiled.GetFullLog() << "\n--- source ---\n" << sourceCompiledShaderSource;
+
+        const std::string compactedField = EmitProceduralFieldFunctionGlsl(
+            compactedUnrolled.data(), static_cast<std::uint32_t>(compactedUnrolled.size()), 0);
+        const std::string compactedShaderSource = ComposeCompiledRecipeRaymarchShader(
+            sdfCoreGlsl, compactedField);
+        const auto compactedCompileStart = std::chrono::steady_clock::now();
+        const auto compactedCompile = compiler.Compile(ShaderManagement::ShaderStage::Compute,
+            compactedShaderSource, "main", options);
+        const double compactedCompileMilliseconds = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - compactedCompileStart).count();
+        ASSERT_TRUE(compactedCompile.success) << "Compacted unrolled recipe compile failed:\n"
+            << compactedCompile.GetFullLog() << "\n--- source ---\n" << compactedShaderSource;
 
         std::vector<float> fullPixels;
         std::vector<std::uint32_t> fullClauses;
@@ -1285,6 +1405,29 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
             }
             unrolledPixels = std::move(pixels);
             unrolledClauses = std::move(clauses);
+        }
+
+        const std::array<float, 6> recipeParams{};
+        std::vector<float> sourceCompiledPixels;
+        std::vector<double> sourceCompiledGpuTimes;
+        for (int run = 0; run < 4; ++run) {
+            std::vector<float> pixels;
+            double gpuMs = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderSlice(sourceCompiled.spirv, recipeParams,
+                kWidth, kHeight, pixels, &gpuMs));
+            if (run > 0) sourceCompiledGpuTimes.push_back(gpuMs);
+            sourceCompiledPixels = std::move(pixels);
+        }
+
+        std::vector<float> compactedCompiledPixels;
+        std::vector<double> compactedCompiledGpuTimes;
+        for (int run = 0; run < 4; ++run) {
+            std::vector<float> pixels;
+            double gpuMs = 0.0;
+            ASSERT_NO_FATAL_FAILURE(RenderSlice(compactedCompile.spirv, recipeParams,
+                kWidth, kHeight, pixels, &gpuMs));
+            if (run > 0) compactedCompiledGpuTimes.push_back(gpuMs);
+            compactedCompiledPixels = std::move(pixels);
         }
 
         ASSERT_LT(fixture.referenceBaseInstruction, source.size());
@@ -1378,6 +1521,52 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         const double fullGpuMs = median(fullGpuTimes);
         const double prunedGpuMs = median(prunedGpuTimes);
         const double unrolledGpuMs = median(unrolledGpuTimes);
+        const double sourceCompiledGpuMs = median(sourceCompiledGpuTimes);
+        const double compactedCompiledGpuMs = median(compactedCompiledGpuTimes);
+
+        ASSERT_EQ(sourceCompiledPixels.size(), compactedCompiledPixels.size());
+        const std::size_t compactedPixelDifferingBytes = [&]() {
+            const auto* original = reinterpret_cast<const std::uint8_t*>(sourceCompiledPixels.data());
+            const auto* compacted = reinterpret_cast<const std::uint8_t*>(compactedCompiledPixels.data());
+            std::size_t differences = 0;
+            for (std::size_t byte = 0; byte < sourceCompiledPixels.size() * sizeof(float); ++byte)
+                if (original[byte] != compacted[byte]) ++differences;
+            return differences;
+        }();
+        EXPECT_EQ(compactedPixelDifferingBytes, 0u);
+        EXPECT_EQ(std::memcmp(sourceCompiledPixels.data(), compactedCompiledPixels.data(),
+            sourceCompiledPixels.size() * sizeof(float)), 0);
+        EXPECT_EQ(std::memcmp(fullPixels.data(), sourceCompiledPixels.data(),
+            fullPixels.size() * sizeof(float)), 0);
+        EXPECT_EQ(std::memcmp(unrolledPixels.data(), sourceCompiledPixels.data(),
+            sourceCompiledPixels.size() * sizeof(float)), 0);
+        for (std::size_t pixel = 0; pixel < compactedCompiledPixels.size() / 4; ++pixel) {
+            EXPECT_FLOAT_EQ(compactedCompiledPixels[pixel * 4 + 1], 0.25f);
+            EXPECT_FLOAT_EQ(compactedCompiledPixels[pixel * 4 + 2], 0.5f);
+            EXPECT_FLOAT_EQ(compactedCompiledPixels[pixel * 4 + 3], 0.75f);
+        }
+        const std::uint64_t sourceCompiledUploadBytes = sourceCompiled.spirv.size()
+            * sizeof(std::uint32_t) + recipeParams.size() * sizeof(float);
+        const std::uint64_t compactedCompiledUploadBytes = compactedCompile.spirv.size()
+            * sizeof(std::uint32_t) + recipeParams.size() * sizeof(float);
+        std::cout << "[RecipeWholeDomain] fixture=" << fixture.name
+            << " sourceRevision=" << wholeDomain.sourceRevision
+            << " instructionsBefore=" << sourceUnrolled.size()
+            << " instructionsAfter=" << compactedUnrolled.size()
+            << " removedNoOps=" << wholeDomain.stats.removedIdentityNoOps
+            << " removedIdempotentDuplicateInstructions="
+                << wholeDomain.stats.removedIdempotentDuplicateInstructions
+            << " removedByIntervalProof=" << wholeDomain.stats.removedByIntervalProof
+            << " proofCpuMs=" << wholeDomain.stats.proofNanoseconds / 1.0e6
+            << " sourceCompileMs=" << sourceCompiledMilliseconds
+            << " compactedCompileMs=" << compactedCompileMilliseconds
+            << " sourceUploadBytes=" << sourceCompiledUploadBytes
+            << " compactedUploadBytes=" << compactedCompiledUploadBytes
+            << " sourceGpuMedianMs=" << sourceCompiledGpuMs
+            << " compactedGpuMedianMs=" << compactedCompiledGpuMs
+            << " pixelDifferingBytes=" << compactedPixelDifferingBytes
+            << " pixelChannels=depth+fixture-RGB-identical"
+            << " domainEnforced=true channelDependencies=declared" << std::endl;
 
         std::vector<std::uint32_t> sortedRetainedCounts = retainedCounts;
         std::sort(sortedRetainedCounts.begin(), sortedRetainedCounts.end());
