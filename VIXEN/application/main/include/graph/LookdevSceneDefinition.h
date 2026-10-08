@@ -4,6 +4,8 @@
 #include "ShellOctreeGpu.h"
 #include "Generated/LightingConfig.g.h"
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -249,16 +251,21 @@ inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
         const glm::vec3 instanceOrigin = recipe.material == Material::Lamp
             ? GridToWorld(kFloodlightGridPosition) : glm::vec3(0.0f);
         Vixen::SVO::BodyInstanceGpu instance{};
-        instance.worldPos[0] = instanceOrigin.x;
-        instance.worldPos[1] = instanceOrigin.y;
-        instance.worldPos[2] = instanceOrigin.z;
-        instance.renderScale = 1.0f;
-        instance.color[0] = color.r;
-        instance.color[1] = color.g;
-        instance.color[2] = color.b;
-        instance.providerKind = 1u;
-        instance.recipeId = recipe.recipeId;
-        if (recipe.material == Material::Lamp) instance.recipeParams[3] = 2.0f;
+
+        // Keep each procedural body at its authored origin and unit size while
+        // routing all placement through the R424 affine transform pair.
+        const glm::mat4 translation = glm::translate(glm::mat4(1.0f), instanceOrigin);
+        const glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f));
+        Vixen::SVO::SetInstanceTransform(instance, translation * rotation * scale);
+
+        Vixen::SVO::BodyInstanceMaterialGpu& materialData = instance.material;
+        materialData.color[0] = color.r;
+        materialData.color[1] = color.g;
+        materialData.color[2] = color.b;
+        materialData.providerKind = 1u;
+        materialData.recipeId = recipe.recipeId;
+        if (recipe.material == Material::Lamp) materialData.recipeParams[3] = 2.0f;
         instances.push_back(instance);
     }
     return instances;
