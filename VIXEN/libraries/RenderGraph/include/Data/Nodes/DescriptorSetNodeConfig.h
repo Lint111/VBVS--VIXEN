@@ -98,8 +98,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     // Current frame-in-flight index. When wired (from FrameSyncNode), the descriptor SET OBJECTS
     // are allocated at flight-ring depth and selected by this index instead of imageIndex, so the
-    // set ring == the flight ring the per-flight fence already guards (fixes the reuse-while-pending
-    // sync-val cluster: VUID-vkUpdateDescriptorSets-03047 et al.). Optional: graphs that do not wire
+    // set ring matches the flight slots guarded by FrameSyncNode's completion timeline (fixes the
+    // reuse-while-pending VUID-vkUpdateDescriptorSets-None-03047). Optional: graphs that do not wire
     // it (the demo graphs) fall back to imageIndex — since flight depth (4) >= image count (3),
     // allocating at flight depth is safe for the fallback too. Consumers binding these sets use the
     // same fallback, so the set-object index always matches.

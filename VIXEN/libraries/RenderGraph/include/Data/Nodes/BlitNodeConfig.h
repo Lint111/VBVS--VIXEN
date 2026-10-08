@@ -119,7 +119,7 @@ CONSTEXPR_NODE_CONFIG(BlitNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    /** @brief In-flight fence — this node owns + resets it (the frame's last compute-queue submit). */
+    /** @brief Binary in-flight fence — this node owns and resets it when selected as fence owner. */
     INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 6,
         SlotNullability::Required,
         SlotRole::Execute,

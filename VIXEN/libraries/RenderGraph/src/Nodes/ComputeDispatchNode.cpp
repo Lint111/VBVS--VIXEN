@@ -20,9 +20,9 @@
 namespace Vixen::RenderGraph {
 
 // Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
-// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
-// start), so sizing the reusable command-buffer ring to the flight count makes the resource
-// ring == the flight ring that fence already guards. Mirrors
+// FrameSyncNode waits the per-flight completion timeline before reusing a slot (and retains its
+// binary fence wait for existing mid-frame consumers), so the command-buffer ring matches the
+// flight ring whose full-frame use it guards. Mirrors
 // CameraNodeConfig::MAX_FRAMES_IN_FLIGHT / FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
 static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 
@@ -200,8 +200,9 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         NODE_LOG_DEBUG("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
     }
 
-    // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode). In
-    // composite mode the downstream UI submit resets + owns the fence, so leave it alone here.
+    // Reset the binary fence before submitting (FrameSyncNode waited on it at frame start). In
+    // composite mode the downstream UI submit owns this fence, so leave it alone here; the
+    // FrameSyncNode frame-end timeline marker guards reuse after all graph submissions.
     if (!leaveImageInGeneral) {
         VkResult resetResult = vkResetFences(vulkanDevice->device, 1, &inFlightFence);
         if (resetResult != VK_SUCCESS) {
@@ -331,8 +332,8 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         signals.push_back(renderSig);
     }
 
-    // Composite mode submits with no fence — the downstream UI submit is the frame's last submit and
-    // owns inFlightFence (a binary fence must not be signalled by two submits in one frame).
+    // Composite mode submits with no fence — the downstream UI submit owns inFlightFence. Later graph
+    // submits may still follow it, so FrameSyncNode's frame-end timeline marker guards full-frame reuse.
     VkFence submitFence = leaveImageInGeneral ? VK_NULL_HANDLE : inFlightFence;
 
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};

@@ -16,13 +16,13 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Binary-WSI submission policy for a blit (Baked-Perf M6 Task 6.3, audit E4).
  *
- * A terminal blit (leaveImageInGeneral==false) is the frame's last swapchain-touching
- * submit and therefore owns both the in-flight fence and the binary renderComplete
- * semaphore Present consumes. A composite blit (leaveImageInGeneral==true) has
- * downstream sky-projection/UI submits — the UI composite node is the true frame-final
- * submit and the compute->UI ordering is carried entirely by the baked timeline edge
- * (P5b M3). Before this fix, BlitNode unconditionally signalled the per-image binary
- * renderComplete semaphore even in composite mode: nothing ever waits it there (UI's own
+ * A terminal blit (leaveImageInGeneral==false) is the last swapchain-touching submit on
+ * that path and therefore owns both the binary in-flight fence and renderComplete semaphore
+ * consumed by Present. A composite blit (leaveImageInGeneral==true) has downstream
+ * sky-projection/UI submits. UI owns the binary fence for its existing synchronization role;
+ * FrameSyncNode's frame-end marker guards full-frame resource reuse, while compute-to-UI ordering
+ * is carried by the baked timeline edge (P5b M3). Before this fix, BlitNode unconditionally
+ * signalled the per-image binary renderComplete semaphore even in composite mode: nothing waits it (UI's own
  * signal is a SEPARATE semaphore), so the signal sits permanently pending, and the NEXT
  * time this same swapchain image index comes back around, signalling it again is a
  * binary-semaphore re-signal-without-intervening-wait VUID

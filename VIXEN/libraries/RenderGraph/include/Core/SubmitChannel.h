@@ -48,7 +48,7 @@ struct SubmitRecord {
     std::vector<VkSemaphoreSubmitInfo> waits;
     std::vector<VkCommandBufferSubmitInfo> commandBuffers;
     std::vector<VkSemaphoreSubmitInfo> signals;
-    VkFence fence = VK_NULL_HANDLE;   ///< The frame in-flight fence for the frame-final submit; else VK_NULL_HANDLE.
+    VkFence fence = VK_NULL_HANDLE;   ///< Binary in-flight fence for the designated fence-owning submit, else VK_NULL_HANDLE.
     bool present = false;             ///< True for the present record (issued via presentFn, not vkQueueSubmit2).
 
     /// The producing node's device (set by RenderGraph::PublishSubmit). The owner drains through this

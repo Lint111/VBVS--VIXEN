@@ -29,9 +29,9 @@
 namespace Vixen::RenderGraph {
 
 // Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
-// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
-// start), so sizing the reusable command-buffer ring to the flight count makes the resource
-// ring == the flight ring that fence already guards. Mirrors
+// FrameSyncNode waits the per-flight completion timeline before reusing a slot (and retains its
+// binary fence wait for existing mid-frame consumers), so the command-buffer ring matches the
+// flight ring whose full-frame use it guards. Mirrors
 // CameraNodeConfig::MAX_FRAMES_IN_FLIGHT / FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
 static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
 
@@ -159,8 +159,9 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     const auto handoffs = ResolveTargetSemaphoreHandoffs(
         target, imageAvailable, renderComplete, currentFrameIndex, imageIndex, isConsumer, isConsumer);
 
-    // Consumer is the frame's last submit: it resets + owns the in-flight fence (the
-    // producers submit with NO fence). FrameSyncNode already waited on it.
+    // The designated consumer resets + owns this binary in-flight fence (producers submit with no
+    // fence). Other graph submits can follow it, so FrameSyncNode's frame-end timeline marker is
+    // the full-frame resource-reuse guard.
     if (isConsumer) {
         vkResetFences(GetDevice()->device, 1, &inFlightFence);
     }
@@ -183,8 +184,8 @@ void ComputeStageNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         lastDescriptorSets_ = currentSets;
     }
 
-    // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
-    // already waited; RecordComputeCommands still selects its image-derived values by imageIndex.
+    // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
+    // completion timeline wait; RecordComputeCommands still selects image-derived values by imageIndex.
     VkCommandBuffer cmd = commandBuffers_.GetValue(currentFrameIndex);
     RecordComputeCommands(ctx, cmd, imageIndex, currentFrameIndex, isConsumer);
     commandBuffers_.MarkReady(currentFrameIndex);

@@ -20,10 +20,9 @@
 namespace Vixen::RenderGraph {
 
 // Descriptor SET OBJECTS (and their per-frame scratch info arrays) are frame-indexed at the
-// flight-ring depth, NOT image-indexed: the only per-frame GPU-completion fence is per-FLIGHT
-// (FrameSyncNode waits it at frame start), so sizing the set ring to the flight count makes the
-// set ring == the flight ring that fence already guards — fixing the reuse-while-pending
-// vkUpdateDescriptorSets hazard (VUID-vkUpdateDescriptorSets-03047 et al.). Flight depth (4) >=
+// flight-ring depth, NOT image-indexed. FrameSyncNode waits the per-flight completion timeline
+// before reusing a slot, so matching the set ring to the flight count keeps each set out of use
+// while a previous frame is pending (VUID-vkUpdateDescriptorSets-None-03047). Flight depth (4) >=
 // swapchain image count (3), so the imageIndex fallback (when CURRENT_FRAME_INDEX is unwired) is
 // also in-bounds. Mirrors CameraNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
 static constexpr uint32_t DESCRIPTOR_SET_RING_DEPTH = 4;
@@ -259,7 +258,7 @@ void DescriptorSetNode::TypedCompileImpl(TypedCompileContext& ctx) {
     // Descriptor SET OBJECTS + their per-frame scratch info arrays are allocated at the flight-ring
     // depth (see DESCRIPTOR_SET_RING_DEPTH note above), NOT imageCount. imageCount is still read
     // above (validated non-zero) as the swapchain-image count for the imageIndex fallback; the set
-    // ring is sized to the flight count so it == the flight ring the per-flight fence guards.
+    // ring is sized to the flight count so FrameSyncNode's completion timeline guards the same slots.
     const uint32_t setRingDepth = DESCRIPTOR_SET_RING_DEPTH;
     NODE_LOG_INFO("[DescriptorSetNode::Compile] Creating " + std::to_string(setRingDepth) +
                   " per-frame descriptor sets (flight-ring depth; swapchain imageCount=" +

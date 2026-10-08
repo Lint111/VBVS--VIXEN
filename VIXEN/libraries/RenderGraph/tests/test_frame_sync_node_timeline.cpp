@@ -11,6 +11,7 @@
 #include "Nodes/FrameSyncNode.h"
 
 using Vixen::RenderGraph::NextFrameBase;
+using Vixen::RenderGraph::FrameCompletionValue;
 
 // ---------------------------------------------------------------------------
 // BaseAdvancesByStrideAndNeverCollidesWithin4Frames
@@ -50,4 +51,23 @@ TEST(FrameSyncTimeline, BaseAdvancesByStrideAndNeverCollidesWithin4Frames) {
 TEST(FrameSyncTimeline, ZeroStrideHoldsBase) {
     EXPECT_EQ(NextFrameBase(5, 0), 5u);   // zero stride -> base unchanged
     EXPECT_EQ(NextFrameBase(0, 0), 0u);   // starts at zero, stays at zero
+}
+
+TEST(FrameSyncTimeline, CompletionMarkersStayUniqueAcrossFramesAndScheduleChanges) {
+    uint64_t base = 0;
+    std::set<uint64_t> seen;
+    const uint64_t strides[] = {3, 3, 1, 0, 4};
+
+    for (uint64_t stride : strides) {
+        base = NextFrameBase(base, stride);
+        for (uint64_t offset = 0; offset < stride; ++offset) {
+            EXPECT_TRUE(seen.insert(base + offset).second)
+                << "Duplicate group value: " << (base + offset);
+        }
+
+        const uint64_t completion = FrameCompletionValue(base, stride);
+        EXPECT_TRUE(seen.insert(completion).second)
+            << "Duplicate completion value: " << completion;
+        base = completion;
+    }
 }

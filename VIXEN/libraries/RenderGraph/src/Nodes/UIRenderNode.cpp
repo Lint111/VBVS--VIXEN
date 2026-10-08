@@ -26,9 +26,9 @@
 namespace Vixen::RenderGraph {
 
 // Command buffers are frame-indexed (ring depth = frames-in-flight), NOT image-indexed:
-// the only per-frame GPU-completion fence is per-FLIGHT (FrameSyncNode waits it at frame
-// start), so sizing the reusable command-buffer ring to the flight count makes the resource
-// ring == the flight ring that fence already guards. The per-image present/composite
+// FrameSyncNode waits the per-flight completion timeline before reusing a slot (and retains its
+// binary fence wait for existing mid-frame consumers), so the command-buffer ring matches the
+// flight ring whose full-frame use it guards. The per-image present/composite
 // semaphores (uiCompleteSemaphores_) stay imageCount-sized — they are intrinsically tied to
 // the physical swapchain image. Mirrors CameraNodeConfig::MAX_FRAMES_IN_FLIGHT (= 4).
 static constexpr uint32_t COMMAND_BUFFER_RING_DEPTH = 4;
@@ -445,8 +445,9 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         currentFrameIndex, imageIndex, !composite_, true);
     const VkSemaphore signalSem = handoffs.present;
 
-    // This UI submit is the frame's last submit, so it resets + owns the frame fence (in composite mode
-    // the upstream compute submitted with no fence). Safe: FrameSyncNode already waited on it.
+    // The UI submit owns this binary fence for its existing per-flight synchronization role (in
+    // composite mode upstream compute submits with no fence). Later graph submits may still follow;
+    // FrameSyncNode's frame-end timeline marker guards reuse after all graph work completes.
     vkResetFences(device_, 1, &inFlightFence);
 
     // Collect the previous use of this frame-in-flight's query slot (results are ready now that its
@@ -455,8 +456,8 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
 
-    // Command buffer is frame-indexed (flight ring), guarded by the per-flight fence FrameSyncNode
-    // already waited; the framebuffer it renders into stays imageIndex-selected.
+    // Command buffer is frame-indexed (flight ring), guarded by FrameSyncNode's full-frame
+    // completion timeline wait; the framebuffer it renders into stays imageIndex-selected.
     VkCommandBuffer cmd = commandBuffers_[currentFrameIndex];
     RecordFrame(cmd, framebuffers[imageIndex], currentFrameIndex);
     ctx.In(UIRenderNodeConfig::SWAPCHAIN_INFO)->SetImageLayout(
@@ -502,7 +503,7 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // Baked-Perf M6 Task 6.3 (audit pattern R7): scoped to COLOR_ATTACHMENT_OUTPUT_BIT — this
     // node's last GPU-side write is the render pass's color attachment (matches this same
     // submit's own acquire-wait stage mask above, line ~318), not ALL_COMMANDS_BIT. Unlike the
-    // other three R7 sites this signal is always live (UI is the true frame-final consumer in
+    // other three R7 sites this signal is always live (UI is the final swapchain-image consumer in
     // both standalone and composite mode), so the correct scope is the graphics stage, not
     // COMPUTE_SHADER_BIT.
     if (signalSem != VK_NULL_HANDLE) {
@@ -520,9 +521,9 @@ void UIRenderNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     si.pCommandBufferInfos      = &cmdInfo;
     si.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
     si.pSignalSemaphoreInfos    = signals.data();
-    // Lock-free phase 1 (design §2.5): publish the frame-final submit (this node owns inFlightFence)
-    // to the queue-owner channel; the owner drains it last-in-wave, in canonical order. When the
-    // channel is inactive (sequential/headless), fall back to the guarded direct submit.
+    // Lock-free phase 1 (design §2.5): publish this node's fence-owning submit to the queue-owner
+    // channel; the owner drains it in canonical order. When the channel is inactive
+    // (sequential/headless), fall back to the guarded direct submit.
     if (!GetOwningGraph()->PublishSubmit(this, SubmitRecord::FromSubmitInfo2(si, inFlightFence))) {
         // Externally synchronized per Vulkan spec (audit V-M11): the TBB parallel executor can
         // schedule this alongside another node's submit on the same queue.
