@@ -44,9 +44,14 @@
 #include "ShellOctreeGpu.h"
 #include "Recipe/RecipeRegistry.h"
 #include "Recipe/RecipeBaker.h"
+#include "Recipe/RecipeBounds.h"
+#include "Recipe/RecipeOccupancy.h"
+#include "Recipe/RecipeTileSpecialization.h"
+#include "Recipe/SdfRecipeEval.h"
 #include "Recipe/generated/VoxelDocument.g.h"
 #include "Recipe/generated/RecipeContainer.g.h"
 #include "Recipe/generated/RecipeSimd.g.hpp"
+#include "EditorDocumentModel.h"
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
@@ -59,6 +64,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -66,6 +72,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -816,6 +823,174 @@ TEST_F(EditorDocumentRenderTest, DisablingCutLayerChangesTopFaceSilhouette) {
     // "did the toggle change geometry here" (old weak bound was >50, out of the same 6400).
     EXPECT_GT(centreDiffPixels, 3000)
         << "Expected a real pixel-level difference under the cylinder bore; toggle may not be wired";
+}
+
+// Regression fixture for the editor's serialized layer path: a thin box slab with a spherical
+// subtract layer. Guarded interval specialization and occupancy reduction must preserve their
+// unguarded oracles byte-for-byte, and the real baked render must retain an open center ray.
+TEST_F(EditorDocumentRenderTest, LayeredSlabSubtractSphereGuardsAreExactAndCaptureHasHole) {
+    using namespace Vixen::SVO::Recipe;
+    using Yeroket::Sdf::Generated::SdfInstruction;
+    using Yeroket::Sdf::Generated::VoxelDocLayerHeader;
+    using Yeroket::Sdf::Generated::VoxelDocLayerWrite;
+
+    SdfInstruction slab{};
+    slab.opCode = static_cast<std::uint8_t>(SdfOpCode::Box);
+    slab.data[0] = 1.0f;
+    slab.data[1] = 0.3f;
+    slab.data[2] = 1.0f;
+
+    SdfInstruction cutter{};
+    cutter.opCode = static_cast<std::uint8_t>(SdfOpCode::Sphere);
+    cutter.data[0] = 0.0f;
+    cutter.data[1] = 0.0f;
+    cutter.data[2] = 0.0f;
+    cutter.data[3] = 0.55f;
+
+    VoxelDocLayerHeader slabHeader{};
+    slabHeader.type = 0;
+    slabHeader.op = 0;
+    slabHeader.enabled = 1;
+    slabHeader.instructionCount = 1;
+    std::memcpy(slabHeader.nameBytes, "slab", 4);
+
+    VoxelDocLayerHeader cutHeader{};
+    cutHeader.type = 0;
+    cutHeader.op = 2;  // EditorDocumentModel's serialized Subtract layer operation.
+    cutHeader.enabled = 1;
+    cutHeader.instructionCount = 1;
+    std::memcpy(cutHeader.nameBytes, "sphere cut", 10);
+
+    const std::array<VoxelDocLayerWrite, 2> layers{{
+        {slabHeader, &slab},
+        {cutHeader, &cutter},
+    }};
+    size_t required = 0;
+    EXPECT_FALSE(Yeroket::Sdf::Generated::WriteVoxelDocument(
+        nullptr, 0, nullptr, 0, layers.data(), static_cast<std::uint32_t>(layers.size()),
+        nullptr, 0, required));
+    ASSERT_GT(required, 0u);
+
+    std::vector<std::uint8_t> documentBytes(required);
+    size_t written = 0;
+    ASSERT_TRUE(Yeroket::Sdf::Generated::WriteVoxelDocument(
+        nullptr, 0, nullptr, 0, layers.data(), static_cast<std::uint32_t>(layers.size()),
+        documentBytes.data(), documentBytes.size(), written));
+    documentBytes.resize(written);
+
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto documentPath = std::filesystem::temp_directory_path() /
+        ("vixen-carvefix-slab-sphere-" + std::to_string(stamp) + ".vxd");
+    struct RemoveTempDocument {
+        std::filesystem::path path;
+        ~RemoveTempDocument() {
+            std::error_code ignored;
+            std::filesystem::remove(path, ignored);
+        }
+    } removeDocument{documentPath};
+    {
+        std::ofstream file(documentPath, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(file.is_open());
+        file.write(reinterpret_cast<const char*>(documentBytes.data()),
+                   static_cast<std::streamsize>(documentBytes.size()));
+        ASSERT_TRUE(file.good());
+    }
+
+    Vixen::Editor::EditorDocumentModel model;
+    Vixen::Editor::DocumentDiagnostic diagnostic;
+    ASSERT_TRUE(model.Load(documentPath.string(), diagnostic)) << diagnostic.message;
+    ASSERT_EQ(model.LayerCount(), 2u);
+    ASSERT_EQ(model.View().layers[1].header->op, 2u);
+
+    std::vector<std::uint8_t> recipeBlob;
+    ASSERT_TRUE(model.Flatten(recipeBlob, diagnostic)) << diagnostic.message;
+    Yeroket::Sdf::Generated::RecipeContainerView recipe{};
+    ASSERT_TRUE(Yeroket::Sdf::Generated::ReadRecipeContainer(
+        recipeBlob.data(), recipeBlob.size(), recipe));
+    ASSERT_EQ(recipe.header.instructionCount, 3u);
+    const std::vector<SdfInstruction> program(
+        recipe.instructions, recipe.instructions + recipe.header.instructionCount);
+
+    // This side tile stays inside the slab and outside the sphere, so the subtractor is
+    // provably irrelevant. The specialized tape must preserve evalRecipe bit for bit.
+    const RecipeTileDomain outsideCutter{{0.9f, -0.1f, -0.1f}, {0.95f, 0.1f, 0.1f}};
+    const auto specialized = SpecializeRecipeTapeForTile(program, outsideCutter);
+    ASSERT_TRUE(specialized.stats.specialized);
+    ASSERT_LT(specialized.instructions.size(), program.size());
+    std::vector<std::uint32_t> unguardedBits;
+    std::vector<std::uint32_t> guardedBits;
+    constexpr int kProbeSteps = 9;
+    unguardedBits.reserve(kProbeSteps * kProbeSteps * kProbeSteps);
+    guardedBits.reserve(kProbeSteps * kProbeSteps * kProbeSteps);
+    for (int z = 0; z < kProbeSteps; ++z) {
+        for (int y = 0; y < kProbeSteps; ++y) {
+            for (int x = 0; x < kProbeSteps; ++x) {
+                const glm::vec3 point(
+                    glm::mix(outsideCutter.minimum.x, outsideCutter.maximum.x,
+                             static_cast<float>(x) / (kProbeSteps - 1)),
+                    glm::mix(outsideCutter.minimum.y, outsideCutter.maximum.y,
+                             static_cast<float>(y) / (kProbeSteps - 1)),
+                    glm::mix(outsideCutter.minimum.z, outsideCutter.maximum.z,
+                             static_cast<float>(z) / (kProbeSteps - 1)));
+                unguardedBits.push_back(std::bit_cast<std::uint32_t>(evalRecipe(
+                    program.data(), static_cast<std::uint32_t>(program.size()), point)));
+                guardedBits.push_back(std::bit_cast<std::uint32_t>(evalRecipe(
+                    specialized.instructions.data(),
+                    static_cast<std::uint32_t>(specialized.instructions.size()), point)));
+            }
+        }
+    }
+    ASSERT_EQ(unguardedBits.size(), guardedBits.size());
+    EXPECT_EQ(std::memcmp(unguardedBits.data(), guardedBits.data(),
+                          unguardedBits.size() * sizeof(unguardedBits[0])), 0)
+        << "interval-guarded slab field differs from the unguarded document oracle";
+
+    const auto bounds = DeriveConservativeBounds(
+        program.data(), static_cast<std::uint32_t>(program.size()));
+    ASSERT_TRUE(bounds.ok);
+    const auto guardedOccupancy = DeriveOccupancyGrid(
+        program.data(), static_cast<std::uint32_t>(program.size()),
+        bounds.center, bounds.radius, 32, 8);
+    const auto unguardedOccupancy = occupancy_detail::DeriveOccupancyGridImpl<false>(
+        program.data(), static_cast<std::uint32_t>(program.size()),
+        bounds.center, bounds.radius, 32, 8);
+    ASSERT_TRUE(guardedOccupancy.ok);
+    ASSERT_TRUE(unguardedOccupancy.ok);
+    ASSERT_EQ(guardedOccupancy.values.size(), unguardedOccupancy.values.size());
+    EXPECT_GT(guardedOccupancy.skippedPoints, 0u)
+        << "the occupancy guard did not exercise its exact reduction path";
+    EXPECT_EQ(std::memcmp(guardedOccupancy.values.data(), unguardedOccupancy.values.data(),
+                          guardedOccupancy.values.size() * sizeof(float)), 0)
+        << "guarded occupancy values differ from the dense unguarded oracle";
+
+    std::vector<std::uint8_t> bakedBlob;
+    auto baked = FlattenAndBake(model.View(), nullptr, bakedBlob);
+    ASSERT_TRUE(baked.ok) << baked.err;
+    constexpr std::uint32_t kW = 512, kH = 512;
+    constexpr float kGridToWorld = 0.15625f * 5.0f;
+    const glm::vec3 target(32.0f * kGridToWorld);
+    const PushConstants camera = MakeCamera(
+        target + glm::vec3(0.05f, 1.3f, 0.05f), target, kW, kH, 1);
+    std::vector<std::uint8_t> rgba;
+    std::vector<HitRecordCpu> hitRecords;
+    int hitPixels = 0;
+    ASSERT_NO_FATAL_FAILURE(RenderPool(std::move(baked.pool), camera, kW, kH,
+                                       rgba, hitPixels, &hitRecords));
+
+    const auto didHit = [&](std::uint32_t x, std::uint32_t y) {
+        return (hitRecords[static_cast<std::size_t>(y) * kW + x].flags &
+                kHitRecordFlagHit) != 0u;
+    };
+    int centerMisses = 0;
+    for (std::uint32_t y = kH / 2 - 4; y <= kH / 2 + 4; ++y) {
+        for (std::uint32_t x = kW / 2 - 4; x <= kW / 2 + 4; ++x) {
+            if (!didHit(x, y)) ++centerMisses;
+        }
+    }
+    EXPECT_GT(centerMisses, 0)
+        << "the rendered subtract-sphere layer left no open center ray";
+    EXPECT_GT(hitPixels, 0)
+        << "the rendered slab produced no surface hits outside the opening";
 }
 
 // ---------------------------------------------------------------------------

@@ -4,30 +4,30 @@ vec3 SdfCore_Bend(vec3 p, float k) {
     float c = cos(k * p.x);
     float s = sin(k * p.x);
     vec2 q = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
-    return vec3(q.x, q.y, p.z);
+    { precise vec3 _yeroketPreciseReturn = vec3(q.x, q.y, p.z); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Box(vec3 p, vec3 b) {
     vec3 q = abs(p) - b;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+    { precise float _yeroketPreciseReturn = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_BoxRounded(vec3 p, vec3 halfExtents, float roundRadius) {
     vec3 q = abs(p) - halfExtents + roundRadius;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - roundRadius;
+    { precise float _yeroketPreciseReturn = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - roundRadius; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_CappedTorus(vec3 p, vec2 sc, float majorRadius, float minorRadius) {
     vec3 localP = p;
     localP.x = abs(localP.x);
     float k = ((sc.y * localP.x > sc.x * localP.z) ? dot(vec2(localP.x, localP.z), sc) : length(vec2(localP.x, localP.z)));
-    return sqrt(dot(localP, localP) + majorRadius * majorRadius - 2.0 * majorRadius * k) - minorRadius;
+    { precise float _yeroketPreciseReturn = sqrt(dot(localP, localP) + majorRadius * majorRadius - 2.0 * majorRadius * k) - minorRadius; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Capsule(vec3 p, float height, float radius) {
     vec3 localP = p;
     localP.y -= clamp(localP.y, -height, height);
-    return length(localP) - radius;
+    { precise float _yeroketPreciseReturn = length(localP) - radius; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Cone(vec3 p, vec2 angle, float height) {
@@ -38,68 +38,68 @@ float SdfCore_Cone(vec3 p, vec2 angle, float height) {
     float k = sign(q.y);
     float d = min(dot(a, a), dot(b, b));
     float s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));
-    return sqrt(d) * sign(s);
+    { precise float _yeroketPreciseReturn = sqrt(d) * sign(s); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Cylinder(vec3 p, float height, float radius) {
     vec2 d = vec2(length(vec2(p.x, p.z)) - radius, abs(p.y) - height);
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    { precise float _yeroketPreciseReturn = min(max(d.x, d.y), 0.0) + length(max(d, 0.0)); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Displacement(float sdf, float disp, float scale) {
-    return sdf + disp * scale;
+    { precise float _yeroketPreciseReturn = sdf + disp * scale; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Ellipsoid(vec3 p, vec3 radii) {
     vec3 safeRadii = max(radii, 0.0001);
     float k0 = length(p / safeRadii);
     float k1 = length(p / (safeRadii * safeRadii));
-    return k0 * (k0 - 1.0) / max(k1, 0.0001);
+    { precise float _yeroketPreciseReturn = k0 * (k0 - 1.0) / max(k1, 0.0001); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Elongate(vec3 p, vec3 h) {
-    return p - clamp(p, -h, h);
+    { precise vec3 _yeroketPreciseReturn = p - clamp(p, -h, h); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_FakeRoundCone(vec3 p, float r1, float r2, float height) {
     vec2 q = vec2(length(vec2(p.x, p.z)), p.y);
     float h = clamp(q.y / height, 0.0, 1.0);
     float r = mix(r1, r2, h);
-    return length(vec2(q.x, q.y - height * h)) - r;
+    { precise float _yeroketPreciseReturn = length(vec2(q.x, q.y - height * h)) - r; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3Add(vec3 a, vec3 b) {
-    return a + b;
+    { precise vec3 _yeroketPreciseReturn = a + b; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Float3Dot(vec3 a, vec3 b) {
-    return dot(a, b);
+    { precise float _yeroketPreciseReturn = dot(a, b); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3Max(vec3 a, vec3 b) {
-    return max(a, b);
+    { precise vec3 _yeroketPreciseReturn = max(a, b); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3Min(vec3 a, vec3 b) {
-    return min(a, b);
+    { precise vec3 _yeroketPreciseReturn = min(a, b); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3MulComponentWise(vec3 a, vec3 b) {
-    return a * b;
+    { precise vec3 _yeroketPreciseReturn = a * b; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3Normalize(vec3 v) {
     float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
     float invLen = (lenSq < 1e-14 ? 0.0 : 1.0 / sqrt(lenSq));
-    return v * invLen;
+    { precise vec3 _yeroketPreciseReturn = v * invLen; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3ScalarMul(vec3 v, float s) {
-    return v * s;
+    { precise vec3 _yeroketPreciseReturn = v * s; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Float3Sub(vec3 a, vec3 b) {
-    return a - b;
+    { precise vec3 _yeroketPreciseReturn = a - b; return _yeroketPreciseReturn; }
 }
 
 int SdfCore_FloatToQ16(float value) {
@@ -188,134 +188,134 @@ float SdfCore_HexPrism(vec3 p, vec2 h) {
     q.x -= 2.0 * dotVal * (-k0);
     q.z -= 2.0 * dotVal * 0.5;
     vec2 d = vec2(length(vec2(q.x, q.z) - vec2(clamp(q.x, -kz * h.x, kz * h.x), h.x)) * sign(q.z - h.x), q.y - h.y);
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+    { precise float _yeroketPreciseReturn = min(max(d.x, d.y), 0.0) + length(max(d, 0.0)); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_HollowCylinder(vec3 p, float halfLen, float outerR, float wall) {
     vec2 d = vec2(length(vec2(p.x, p.z)) - outerR, abs(p.y) - halfLen);
     float cyl = min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-    return abs(cyl) - wall;
+    { precise float _yeroketPreciseReturn = abs(cyl) - wall; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Intersect(float a, float b) {
-    return max(a, b);
+    { precise float _yeroketPreciseReturn = max(a, b); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Link(vec3 p, float halfLength, float majorRadius, float minorRadius) {
     vec3 q = vec3(p.x, max(abs(p.y) - halfLength, 0.0), p.z);
-    return length(vec2(length(vec2(q.x, q.y)) - majorRadius, q.z)) - minorRadius;
+    { precise float _yeroketPreciseReturn = length(vec2(length(vec2(q.x, q.y)) - majorRadius, q.z)) - minorRadius; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathAbs(float x) {
-    return abs(x);
+    { precise float _yeroketPreciseReturn = abs(x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathAdd(float a, float b) {
-    return a + b;
+    { precise float _yeroketPreciseReturn = a + b; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathClamp(float x, float lo, float hi) {
-    return clamp(x, lo, hi);
+    { precise float _yeroketPreciseReturn = clamp(x, lo, hi); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathCos(float x, float frequency, float phase, float amplitude) {
-    return cos(x * frequency + phase) * amplitude;
+    { precise float _yeroketPreciseReturn = cos(x * frequency + phase) * amplitude; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathDiv(float a, float b) {
-    return (b != 0.0 ? a / b : 0.0);
+    { precise float _yeroketPreciseReturn = (b != 0.0 ? a / b : 0.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathExp(float x) {
-    return exp(x);
+    { precise float _yeroketPreciseReturn = exp(x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathFrac(float x) {
-    return fract(x);
+    { precise float _yeroketPreciseReturn = fract(x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathLerp(float a, float b, float t) {
-    return mix(a, b, t);
+    { precise float _yeroketPreciseReturn = mix(a, b, t); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathLog(float x) {
-    return log(max(x, 1e-30));
+    { precise float _yeroketPreciseReturn = log(max(x, 1e-30)); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathLog2(float x) {
-    return log2(max(x, 1e-30));
+    { precise float _yeroketPreciseReturn = log2(max(x, 1e-30)); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathMax(float a, float b) {
-    return max(a, b);
+    { precise float _yeroketPreciseReturn = max(a, b); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathMin(float a, float b) {
-    return min(a, b);
+    { precise float _yeroketPreciseReturn = min(a, b); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathMul(float a, float b) {
-    return a * b;
+    { precise float _yeroketPreciseReturn = a * b; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathNegate(float x) {
-    return -x;
+    { precise float _yeroketPreciseReturn = -x; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathPow(float x, float power) {
-    return pow(abs(x), power) * sign(x);
+    { precise float _yeroketPreciseReturn = pow(abs(x), power) * sign(x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathRemap(float x, float inMin, float inMax, float outMin, float outMax) {
-    return outMin + (x - inMin) / max(inMax - inMin, 1e-8) * (outMax - outMin);
+    { precise float _yeroketPreciseReturn = outMin + (x - inMin) / max(inMax - inMin, 1e-8) * (outMax - outMin); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathSaturate(float x) {
-    return clamp(x, 0.0, 1.0);
+    { precise float _yeroketPreciseReturn = clamp(x, 0.0, 1.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathSign(float x) {
-    return sign(x);
+    { precise float _yeroketPreciseReturn = sign(x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathSin(float x, float frequency, float phase, float amplitude) {
-    return sin(x * frequency + phase) * amplitude;
+    { precise float _yeroketPreciseReturn = sin(x * frequency + phase) * amplitude; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathSmoothstep(float x, float edge0, float edge1) {
-    return smoothstep(edge0, edge1, x);
+    { precise float _yeroketPreciseReturn = smoothstep(edge0, edge1, x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathSqrt(float x) {
-    return sqrt(abs(x));
+    { precise float _yeroketPreciseReturn = sqrt(abs(x)); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathStep(float x, float edge) {
-    return step(edge, x);
+    { precise float _yeroketPreciseReturn = step(edge, x); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_MathSub(float a, float b) {
-    return a - b;
+    { precise float _yeroketPreciseReturn = a - b; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_MirrorX(vec3 p) {
-    return vec3(abs(p.x), p.y, p.z);
+    { precise vec3 _yeroketPreciseReturn = vec3(abs(p.x), p.y, p.z); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_MirrorY(vec3 p) {
-    return vec3(p.x, abs(p.y), p.z);
+    { precise vec3 _yeroketPreciseReturn = vec3(p.x, abs(p.y), p.z); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_MirrorZ(vec3 p) {
-    return vec3(p.x, p.y, abs(p.z));
+    { precise vec3 _yeroketPreciseReturn = vec3(p.x, p.y, abs(p.z)); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Onion(float d, float r) {
-    return abs(d) - r;
+    { precise float _yeroketPreciseReturn = abs(d) - r; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Plane(vec3 p, vec3 normal, float distance) {
-    return dot(p, normal) + distance;
+    { precise float _yeroketPreciseReturn = dot(p, normal) + distance; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Pyramid(vec3 p, float height) {
@@ -330,7 +330,7 @@ float SdfCore_Pyramid(vec3 p, float height) {
     float da = m2 * (a.x + s) * (a.x + s) + a.y * a.y;
     float db = m2 * (a.x + 0.5 * t) * (a.x + 0.5 * t) + (a.y - m2 * t) * (a.y - m2 * t);
     float d2 = ((min(a.y, -a.x * m2 - a.y * 0.5) > 0.0) ? 0.0 : min(da, db));
-    return sqrt((d2 + a.z * a.z) / m2) * sign(max(a.z, -q.y));
+    { precise float _yeroketPreciseReturn = sqrt((d2 + a.z * a.z) / m2) * sign(max(a.z, -q.y)); return _yeroketPreciseReturn; }
 }
 
 int SdfCore_Q16Add(int a, int b) {
@@ -432,7 +432,7 @@ int SdfCore_Q16Sub(int a, int b) {
 }
 
 float SdfCore_Q16ToFloat(int value) {
-    return float(value) * (1.0 / 65536.0);
+    { precise float _yeroketPreciseReturn = float(value) * (1.0 / 65536.0); return _yeroketPreciseReturn; }
 }
 
 uint SdfCore_Q16ToU32(int value) {
@@ -454,21 +454,21 @@ uint SdfCore_Q16ToU32(int value) {
 }
 
 vec3 SdfCore_RepeatInfinite(vec3 p, vec3 spacing) {
-    return mod(abs(p) + spacing * 0.5, spacing) - spacing * 0.5;
+    { precise vec3 _yeroketPreciseReturn = mod(abs(p) + spacing * 0.5, spacing) - spacing * 0.5; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_RepeatLimited(vec3 p, float spacing, vec3 limit) {
-    return p - spacing * clamp(round(p / spacing), -limit, limit);
+    { precise vec3 _yeroketPreciseReturn = p - spacing * clamp(round(p / spacing), -limit, limit); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Revolution(vec3 p, vec3 center, float offset) {
     vec3 pp = p - center;
     vec2 q = vec2(length(vec2(pp.x, pp.z)) - offset, pp.y);
-    return vec3(q.x, q.y, 0) + center;
+    { precise vec3 _yeroketPreciseReturn = vec3(q.x, q.y, 0) + center; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Round(float d, float r) {
-    return d - r;
+    { precise float _yeroketPreciseReturn = d - r; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_RoundCone(vec3 p, float r1, float r2, float height) {
@@ -481,61 +481,61 @@ float SdfCore_RoundCone(vec3 p, float r1, float r2, float height) {
     float regionC = dot(q, vec2(a, b)) - r1;
     float d = ((k < 0.0) ? regionA : regionC);
     d = ((k > a * height) ? regionB : d);
-    return d;
+    { precise float _yeroketPreciseReturn = d; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Segment(vec3 p, vec3 a, vec3 b, float radius) {
     vec3 pa = p - a;
     vec3 ba = b - a;
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-    return length(pa - ba * h) - radius;
+    { precise float _yeroketPreciseReturn = length(pa - ba * h) - radius; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Select(float cond, float a, float b, float thr) {
-    return (cond > thr ? a : b);
+    { precise float _yeroketPreciseReturn = (cond > thr ? a : b); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothIntersect(float a, float b, float k) {
     float h = clamp(0.5 - 0.5 * (b - a) / k, 0.0, 1.0);
-    return mix(b, a, h) + k * h * (1.0 - h);
+    { precise float _yeroketPreciseReturn = mix(b, a, h) + k * h * (1.0 - h); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothIntersectCubic(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0) / k;
-    return max(a, b) + h * h * h * k * (1.0 / 6.0);
+    { precise float _yeroketPreciseReturn = max(a, b) + h * h * h * k * (1.0 / 6.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothMax(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0) / k;
-    return max(a, b) + h * h * h * k * (1.0 / 6.0);
+    { precise float _yeroketPreciseReturn = max(a, b) + h * h * h * k * (1.0 / 6.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothSubtract(float a, float b, float k) {
     float h = clamp(0.5 - 0.5 * (b + a) / k, 0.0, 1.0);
-    return mix(a, -b, h) + k * h * (1.0 - h);
+    { precise float _yeroketPreciseReturn = mix(a, -b, h) + k * h * (1.0 - h); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothSubtractCubic(float a, float b, float k) {
     float h = max(k - abs(-b - a), 0.0) / k;
-    return max(a, -b) + h * h * h * k * (1.0 / 6.0);
+    { precise float _yeroketPreciseReturn = max(a, -b) + h * h * h * k * (1.0 / 6.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothUnion(float a, float b, float k) {
     float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-    return mix(b, a, h) - k * h * (1.0 - h);
+    { precise float _yeroketPreciseReturn = mix(b, a, h) - k * h * (1.0 - h); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_SmoothUnionCubic(float a, float b, float k) {
     float h = max(k - abs(a - b), 0.0) / k;
-    return min(a, b) - h * h * h * k * (1.0 / 6.0);
+    { precise float _yeroketPreciseReturn = min(a, b) - h * h * h * k * (1.0 / 6.0); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Sphere(vec3 p, vec3 center, float radius) {
-    return length(p - center) - radius;
+    { precise float _yeroketPreciseReturn = length(p - center) - radius; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Subtract(float a, float b) {
-    return max(a, -b);
+    { precise float _yeroketPreciseReturn = max(a, -b); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_TaperedCylinder(vec3 p, float height, float r1, float r2) {
@@ -545,12 +545,12 @@ float SdfCore_TaperedCylinder(vec3 p, float height, float r1, float r2) {
     vec2 ca = vec2(q.x - min(q.x, ((q.y < 0.0) ? r1 : r2)), abs(q.y) - height);
     vec2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
     float s = ((cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0);
-    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+    { precise float _yeroketPreciseReturn = s * sqrt(min(dot(ca, ca), dot(cb, cb))); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Torus(vec3 p, float majorRadius, float minorRadius) {
     vec2 q = vec2(length(vec2(p.x, p.z)) - majorRadius, p.y);
-    return length(q) - minorRadius;
+    { precise float _yeroketPreciseReturn = length(q) - minorRadius; return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Transform(vec3 p, vec3 translation, vec4 invRotXYZW, vec3 invScale) {
@@ -559,19 +559,19 @@ vec3 SdfCore_Transform(vec3 p, vec3 translation, vec4 invRotXYZW, vec3 invScale)
     float qw = invRotXYZW.w;
     vec3 t = 2.0 * cross(qv, v);
     vec3 rotated = v + qw * t + cross(qv, t);
-    return rotated * invScale;
+    { precise vec3 _yeroketPreciseReturn = rotated * invScale; return _yeroketPreciseReturn; }
 }
 
 float SdfCore_TriangularPrism(vec3 p, vec2 h) {
     vec3 q = abs(p);
-    return max(q.z - h.y, max(q.x * 0.866025 + p.y * 0.5, -p.y) - h.x * 0.5);
+    { precise float _yeroketPreciseReturn = max(q.z - h.y, max(q.x * 0.866025 + p.y * 0.5, -p.y) - h.x * 0.5); return _yeroketPreciseReturn; }
 }
 
 vec3 SdfCore_Twist(vec3 p, float k) {
     float c = cos(k * p.y);
     float s = sin(k * p.y);
     vec2 q = vec2(c * p.x - s * p.z, s * p.x + c * p.z);
-    return vec3(q.x, p.y, q.y);
+    { precise vec3 _yeroketPreciseReturn = vec3(q.x, p.y, q.y); return _yeroketPreciseReturn; }
 }
 
 uint SdfCore_U32Add(uint a, uint b) {
@@ -619,7 +619,7 @@ uint SdfCore_U32Sub(uint a, uint b) {
 }
 
 float SdfCore_U32ToFloat(uint value) {
-    return float(value);
+    { precise float _yeroketPreciseReturn = float(value); return _yeroketPreciseReturn; }
 }
 
 int SdfCore_U32ToQ16(uint value) {
@@ -631,9 +631,9 @@ int SdfCore_U32ToQ16(uint value) {
 }
 
 float SdfCore_Union(float a, float b) {
-    return min(a, b);
+    { precise float _yeroketPreciseReturn = min(a, b); return _yeroketPreciseReturn; }
 }
 
 float SdfCore_Xor(float a, float b) {
-    return max(min(a, b), -max(a, b));
+    { precise float _yeroketPreciseReturn = max(min(a, b), -max(a, b)); return _yeroketPreciseReturn; }
 }

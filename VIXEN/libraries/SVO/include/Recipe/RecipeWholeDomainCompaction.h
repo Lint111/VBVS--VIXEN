@@ -41,6 +41,8 @@ struct RecipeWholeDomainCompactionRequest {
     std::uint64_t sourceRevision = 0;
     RecipeTileDomain domain{};
     bool domainIsEnforced = false;
+    Yeroket::Sdf::Generated::RecipeProofBackend backend =
+        Yeroket::Sdf::Generated::RecipeProofBackend::CpuStrict;
     std::uint32_t requiredOutputChannels = kAllRecipeOutputChannels;
     std::array<RecipeChannelDependency,
         static_cast<std::size_t>(RecipeOutputChannel::Count)> channelDependencies = {
@@ -215,6 +217,14 @@ inline RecipeWholeDomainCompactionResult CompactRecipeOverWholeDomain(
         return finish();
     }
 
+    using Yeroket::Sdf::Generated::RecipeProofBackend;
+    // Duplicate min/max folding has no GPU non-interference certificate.
+    // Keep these operators on GPU: they may flush a denormal even when their
+    // corresponding strict host operation is idempotent. Lowered-away no-ops
+    // remain backend-independent because the generated declaration emits no execution.
+    const bool duplicateIdentitiesAdmitted =
+        (request.backend == RecipeProofBackend::CpuStrict || request.backend == RecipeProofBackend::SimdStrict)
+        && Yeroket::Sdf::Generated::RecipeStrictEnvironment();
     std::vector<SdfInstruction> withoutNoOps;
     withoutNoOps.reserve(source.size());
     for (const SdfInstruction& instruction : source) {
@@ -267,7 +277,7 @@ inline RecipeWholeDomainCompactionResult CompactRecipeOverWholeDomain(
 
     // Validate the complete supported recipe before algebraic simplification. In particular,
     // two bit-identical but invalid primitives are not enough evidence to rewrite their history.
-    const auto preflight = SpecializeRecipeTapeForTile(withoutNoOps, request.domain);
+    const auto preflight = SpecializeRecipeTapeForTile(withoutNoOps, request.domain, request.backend);
     result.stats.intervalEvaluations += preflight.stats.intervalEvaluations;
     if (preflight.stats.fallback != RecipeTileFallback::None) {
         result.instructions = std::move(withoutNoOps);
@@ -282,7 +292,7 @@ inline RecipeWholeDomainCompactionResult CompactRecipeOverWholeDomain(
     std::vector<SdfInstruction> withoutDuplicates;
     std::uint32_t removedDuplicates = 0;
     const bool duplicateOutputsAreSafe =
-        whole_domain_detail::CanCollapseDuplicateForChannels(request);
+        duplicateIdentitiesAdmitted && whole_domain_detail::CanCollapseDuplicateForChannels(request);
     if (whole_domain_detail::RemoveIdempotentDuplicateBranches(
             preflight.instructions, duplicateOutputsAreSafe, withoutDuplicates, removedDuplicates)) {
         result.instructions = std::move(withoutDuplicates);
@@ -293,7 +303,7 @@ inline RecipeWholeDomainCompactionResult CompactRecipeOverWholeDomain(
     result.stats.afterIdempotentDuplicates =
         static_cast<std::uint32_t>(result.instructions.size());
 
-    const auto specialized = SpecializeRecipeTapeForTile(result.instructions, request.domain);
+    const auto specialized = SpecializeRecipeTapeForTile(result.instructions, request.domain, request.backend);
     result.stats.intervalEvaluations += specialized.stats.intervalEvaluations;
     result.stats.intervalFallback = specialized.stats.fallback;
     if (specialized.stats.fallback == RecipeTileFallback::None) {

@@ -34,6 +34,8 @@
 #include "Recipe/RecipeTileSpecialization.h"
 #include "Recipe/RecipeWholeDomainCompaction.h"
 #include "ShaderCompiler.h"
+#include <spirv/unified1/spirv.hpp>
+#include <unordered_set>
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
 
 #include <vulkan/vulkan.h>
@@ -463,6 +465,16 @@ protected:
     bool             realGpuConfirmed_ = false;
     bool             timestampsSupported_ = false;
     std::string      selectedDeviceName_;
+
+    Yeroket::Sdf::Generated::RecipeProofBackend DeviceProofBackend() const {
+        VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties.pNext = &driver;
+        vkGetPhysicalDeviceProperties2(physicalDevice_, &properties);
+        return driver.driverID == VK_DRIVER_ID_MESA_DOZEN
+            ? Yeroket::Sdf::Generated::RecipeProofBackend::GpuDznPrecise
+            : Yeroket::Sdf::Generated::RecipeProofBackend::GpuUncertified;
+    }
 
     static bool IsRealGpu(const VkPhysicalDeviceProperties& props) {
         return props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
@@ -1095,11 +1107,14 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
         << "GLSL compile failed:\n" << compOut.GetFullLog() << "\n--- source ---\n" << shaderSrc;
     ASSERT_FALSE(compOut.spirv.empty());
 
-    struct Case { const char* path; glm::vec3 declared; };
+    const auto artifactRoot = std::getenv("TMPDIR")
+        ? std::filesystem::path(std::getenv("TMPDIR")) : std::filesystem::current_path();
+    std::filesystem::create_directories(artifactRoot);
+    struct Case { std::filesystem::path path; glm::vec3 declared; };
     const std::array<Case, 3> cases = {{
-        {"/tmp/declared_pos_0.png", glm::vec3(0.0f, 0.0f, 0.0f)},   // sphere at world origin
-        {"/tmp/declared_pos_1.png", glm::vec3(2.0f, 1.5f, 0.0f)},   // moved up-right
-        {"/tmp/declared_pos_2.png", glm::vec3(-2.5f, -1.0f, 0.0f)}, // moved down-left
+        {artifactRoot / "declared_pos_0.png", glm::vec3(0.0f, 0.0f, 0.0f)},   // sphere at world origin
+        {artifactRoot / "declared_pos_1.png", glm::vec3(2.0f, 1.5f, 0.0f)},   // moved up-right
+        {artifactRoot / "declared_pos_2.png", glm::vec3(-2.5f, -1.0f, 0.0f)}, // moved down-left
     }};
 
     for (const auto& c : cases) {
@@ -1116,10 +1131,11 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
             rgba8[i * 4 + 0] = b; rgba8[i * 4 + 1] = b; rgba8[i * 4 + 2] = b; rgba8[i * 4 + 3] = 255;
             if (v > 0.5f) ++insidePixels;
         }
-        const int pngOk = stbi_write_png(c.path, static_cast<int>(W), static_cast<int>(H), 4,
+        const auto artifactPath = c.path.string();
+        const int pngOk = stbi_write_png(artifactPath.c_str(), static_cast<int>(W), static_cast<int>(H), 4,
                                           rgba8.data(), static_cast<int>(W) * 4);
         printf("[DeclaredPositionRender] declared=(%.2f,%.2f,%.2f) insidePixels=%d PNG=%s path=%s\n",
-               c.declared.x, c.declared.y, c.declared.z, insidePixels, pngOk ? "YES" : "NO", c.path);
+               c.declared.x, c.declared.y, c.declared.z, insidePixels, pngOk ? "YES" : "NO", artifactPath.c_str());
         fflush(stdout);
         EXPECT_TRUE(pngOk) << "stbi_write_png failed for " << c.path;
 
@@ -1155,6 +1171,198 @@ TEST_F(DeclaredPositionRenderTest, ThreeDeclaredPositionsMoveTheRenderedShape) {
             << "declared=(" << c.declared.x << "," << c.declared.y << ") centroid Y mismatch — "
                "declared position did not move the rendered shape as expected";
     }
+}
+
+// Optional raw-buffer witness against the unmodified shader baseline. Recording is
+// explicit; check mode never overwrites its oracle after a mismatch.
+void CheckRecordedRecipeGpuOracle(const char* fixture, std::span<const float> pixels) {
+    const char* root=std::getenv("BOUNDSCORE_GPU_ORACLE_DIR");
+    if(!root) return;
+    const auto path=std::filesystem::path(root)/(std::string(fixture)+"-full.rgba32f.bin");
+    const char* mode=std::getenv("BOUNDSCORE_GPU_ORACLE_MODE");
+    ASSERT_NE(mode,nullptr);
+    const auto bytes=pixels.size_bytes();
+    if(std::string(mode)=="record") {
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream file(path,std::ios::binary|std::ios::trunc);
+        ASSERT_TRUE(file.good());
+        file.write(reinterpret_cast<const char*>(pixels.data()),static_cast<std::streamsize>(bytes));
+        ASSERT_TRUE(file.good());
+        std::cout << "[boundscore-oracle] recorded " << path << " bytes=" << bytes << std::endl;
+        return;
+    }
+    ASSERT_EQ(std::string(mode),"check");
+    ASSERT_TRUE(std::filesystem::exists(path));
+    ASSERT_EQ(std::filesystem::file_size(path),bytes);
+    std::vector<float> oracle(pixels.size());
+    std::ifstream file(path,std::ios::binary);
+    file.read(reinterpret_cast<char*>(oracle.data()),static_cast<std::streamsize>(bytes));
+    ASSERT_EQ(file.gcount(),static_cast<std::streamsize>(bytes));
+    EXPECT_EQ(std::memcmp(oracle.data(),pixels.data(),bytes),0) << "baseline GPU output changed: " << fixture;
+    std::cout << "[boundscore-oracle] checked " << path << " bytes=" << bytes << std::endl;
+}
+
+// This validator is deliberately independent of recipe opcode/output names.
+// All arithmetic in the small containment shader must retain NoContraction.
+static bool HasStrictFp32Arithmetic(const std::vector<std::uint32_t>& words, bool requireArithmetic=true) {
+    std::unordered_set<std::uint32_t> precise;
+    std::vector<std::uint32_t> arithmetic;
+    for(std::size_t i=5;i<words.size();) {
+        const auto size=words[i]>>16, op=words[i]&0xffff;
+        if(!size || i+size>words.size()) return false;
+        if(op==spv::OpDecorate && size>=3) {
+            if(words[i+2]==spv::DecorationRelaxedPrecision) return false;
+            if(words[i+2]==spv::DecorationNoContraction) precise.insert(words[i+1]);
+        }
+        if(op==spv::OpTypeFloat && (size!=3 || words[i+2]!=32)) return false;
+        if(op==spv::OpFAdd || op==spv::OpFSub || op==spv::OpFMul || op==spv::OpFDiv)
+            arithmetic.push_back(words[i+2]);
+        i+=size;
+    }
+    return (!requireArithmetic || !arithmetic.empty()) && std::all_of(arithmetic.begin(),arithmetic.end(),
+        [&](auto id){ return precise.contains(id); });
+}
+
+TEST_F(DeclaredPositionRenderTest, GeneratedGpuRoundingContainsExtremaTiesAndUnknowns) {
+    using namespace Yeroket::Sdf::Generated;
+    const auto backend=DeviceProofBackend();
+    if(backend==RecipeProofBackend::GpuUncertified)
+        GTEST_SKIP() << "No admitted floating-point profile for " << selectedDeviceName_;
+    const std::string source=R"GLSL(#version 450
+layout(local_size_x=1,local_size_y=1) in;
+layout(set=0,binding=0,rgba32f) uniform image2D outImage;
+layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
+void main() {
+ precise float a=params[0]+params[1];
+ precise float b=params[0]*params[1];
+ precise float c=params[0]/params[1];
+ precise float d=sqrt(params[2]);
+ imageStore(outImage,ivec2(0),vec4(a,b,c,d));
+})GLSL";
+    ShaderManagement::ShaderCompiler compiler;
+    ShaderManagement::CompilationOptions options;
+    options.sourceLanguage=ShaderManagement::CompilationOptions::SourceLanguage::GLSL;
+    const auto compiled=compiler.Compile(ShaderManagement::ShaderStage::Compute,source,"main",options);
+    ASSERT_TRUE(compiled.success) << compiled.GetFullLog();
+    ASSERT_TRUE(HasStrictFp32Arithmetic(compiled.spirv));
+    const RecipeArithmetic arithmetic{backend};
+    const float tiny=std::numeric_limits<float>::denorm_min(), normal=std::numeric_limits<float>::min();
+    const float huge=std::numeric_limits<float>::max(), inf=std::numeric_limits<float>::infinity();
+    const float nan=std::numeric_limits<float>::quiet_NaN();
+    const std::array<std::array<float,3>,18> cases{{
+        {1,0x1p-24f,0}, {1,-0x1p-24f,1}, {0x1.000002p0f,0x1p-24f,2},
+        {huge,1,huge}, {-huge,1,normal}, {huge,huge,0},
+        {normal,0.5f,tiny}, {tiny,0x1p100f,tiny}, {-tiny,1,normal},
+        {0,0,0}, {-0.0f,1,0}, {1,0,1}, {1,0x1p126f,1},
+        {nan,1,nan}, {inf,1,inf}, {-inf,1,-1}, {1,-1,4}, {0x1p100f,0x1p100f,0x1p100f}
+    }};
+    std::uint32_t certified=0, unknown=0;
+    for(const auto& values:cases) {
+        std::array<float,6> params{values[0],values[1],values[2],0,0,0};
+        std::vector<float> pixels;
+        ASSERT_NO_FATAL_FAILURE(RenderSlice(compiled.spirv,params,1,1,pixels));
+        ASSERT_EQ(pixels.size(),4u);
+        const auto a=RecipePoint(values[0]), b=RecipePoint(values[1]);
+        const std::array<RecipeRange,4> bounds{arithmetic.RecipeAdd(a,b),arithmetic.RecipeMul(a,b),
+            arithmetic.RecipeDiv(a,b),arithmetic.RecipeSqrt(RecipePoint(values[2]))};
+        for(std::size_t channel=0;channel<4;++channel) {
+            if(!RecipeFinite(bounds[channel])) { ++unknown; continue; }
+            ++certified;
+            EXPECT_TRUE(std::isfinite(pixels[channel]));
+            EXPECT_GE(pixels[channel],bounds[channel].lower);
+            EXPECT_LE(pixels[channel],bounds[channel].upper);
+        }
+    }
+    EXPECT_GT(certified,0u); EXPECT_GT(unknown,0u);
+    EXPECT_FALSE(arithmetic.RecipeDiv(RecipePoint(1),RecipePoint(0)).known);
+    EXPECT_FALSE(arithmetic.RecipeAdd(RecipePoint(nan),RecipePoint(1)).known);
+    const std::string selectionSource=R"GLSL(#version 450
+layout(local_size_x=1,local_size_y=1) in;
+layout(set=0,binding=0,rgba32f) uniform image2D outImage;
+layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
+void main() {
+ precise vec4 value=vec4(min(params[0],params[1]),max(params[0],params[1]),-params[0],abs(params[0]));
+ imageStore(outImage,ivec2(0),value);
+})GLSL";
+    const auto selection=compiler.Compile(ShaderManagement::ShaderStage::Compute,selectionSource,"main",options);
+    ASSERT_TRUE(selection.success) << selection.GetFullLog();
+    ASSERT_TRUE(HasStrictFp32Arithmetic(selection.spirv,false));
+    for(const auto& pair:std::array<std::array<float,2>,10>{{
+        {tiny,-tiny},{tiny,0},{-tiny,-0.0f},{0,-0.0f},{1,1},
+        {-huge,huge},{normal,tiny},{nan,1},{inf,1},{-inf,inf}
+    }}) {
+        const std::array<float,6> params{pair[0],pair[1],0,0,0,0};
+        const auto a=RecipePoint(pair[0]), b=RecipePoint(pair[1]);
+        const std::array<RecipeRange,4> bounds{arithmetic.RecipeMin(a,b),arithmetic.RecipeMax(a,b),
+            arithmetic.RecipeNeg(a),arithmetic.RecipeAbs(a)};
+        std::vector<float> pixels;
+        ASSERT_NO_FATAL_FAILURE(RenderSlice(selection.spirv,params,1,1,pixels));
+        for(std::size_t channel=0;channel<4;++channel) {
+            if(!RecipeFinite(bounds[channel])) { ++unknown; continue; }
+            ++certified; EXPECT_GE(pixels[channel],bounds[channel].lower); EXPECT_LE(pixels[channel],bounds[channel].upper);
+        }
+    }
+    const std::string octaveSource=R"GLSL(#version 450
+layout(local_size_x=1,local_size_y=1) in;
+layout(set=0,binding=0,rgba32f) uniform image2D outImage;
+layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
+void main() {
+ precise float numerator=0.0, denominator=0.0, amplitude=1.0;
+ for(int i=0;i<8;++i) {
+  numerator=numerator+(i%2==0?params[0]:params[1])*amplitude;
+  denominator=denominator+amplitude;
+  amplitude=amplitude*params[2];
+ }
+ precise float value=numerator/denominator;
+ imageStore(outImage,ivec2(0),vec4(value,0,0,1));
+})GLSL";
+    const auto octaveShader=compiler.Compile(ShaderManagement::ShaderStage::Compute,octaveSource,"main",options);
+    ASSERT_TRUE(octaveShader.success) << octaveShader.GetFullLog();
+    ASSERT_TRUE(HasStrictFp32Arithmetic(octaveShader.spirv));
+    for(float gain:std::array<float,7>{-1.0f,-0.5f,0.0f,0.5f,1.0f,1.5f,tiny}) {
+        const std::array<float,6> params{0.75f,-0.625f,gain,0,0,0};
+        std::array<RecipeRange,8> octaves;
+        for(std::size_t i=0;i<octaves.size();++i) octaves[i]=RecipePoint(params[i%2]);
+        const auto range=arithmetic.NormalizedOctaves(octaves,RecipePoint(gain));
+        std::vector<float> pixels;
+        ASSERT_NO_FATAL_FAILURE(RenderSlice(octaveShader.spirv,params,1,1,pixels));
+        if(RecipeFinite(range)) {
+            ++certified; EXPECT_GE(pixels[0],range.lower); EXPECT_LE(pixels[0],range.upper);
+        } else ++unknown;
+    }
+    const auto core=ReadWholeFile(SDF_CORE_KERNELS_GLSL_PATH);
+    ASSERT_FALSE(core.empty());
+    const std::string primitiveSource="#version 450\n"+core+R"GLSL(
+layout(local_size_x=1,local_size_y=1) in;
+layout(set=0,binding=0,rgba32f) uniform image2D outImage;
+layout(set=0,binding=1,std430) readonly buffer InParams { float params[6]; };
+void main() {
+ vec3 p=vec3(params[0],params[1],params[2]);
+ precise float sphere=SdfCore_Sphere(p,vec3(0),params[3]);
+ precise float box=SdfCore_Box(p,vec3(params[4]));
+ imageStore(outImage,ivec2(0),vec4(sphere,box,0,1));
+})GLSL";
+    const auto primitive=compiler.Compile(ShaderManagement::ShaderStage::Compute,primitiveSource,"main",options);
+    ASSERT_TRUE(primitive.success) << primitive.GetFullLog();
+    ASSERT_TRUE(HasStrictFp32Arithmetic(primitive.spirv)) << "Generated callees lost precision";
+    for(const auto& params:std::array<std::array<float,6>,6>{{
+        {0,0,0,1,1,0},{1,0,0,1,1,0},{0x1.000002p0f,0,0,1,1,0},
+        {tiny,-tiny,tiny,0,normal,0},{0x1p50f,0x1p50f,0x1p50f,1,1,0},{inf,0,0,1,1,0}
+    }}) {
+        const RecipeRange3 point{RecipePoint(params[0]),RecipePoint(params[1]),RecipePoint(params[2])};
+        const RecipeRange3 zero{RecipePoint(0),RecipePoint(0),RecipePoint(0)};
+        const RecipeRange3 boxExtent{RecipePoint(params[4]),RecipePoint(params[4]),RecipePoint(params[4])};
+        const std::array<RecipeRange,2> bounds{RecipeTransfer_0(point,zero,RecipePoint(params[3]),backend),
+            RecipeTransfer_1(point,boxExtent,backend)};
+        std::vector<float> pixels;
+        ASSERT_NO_FATAL_FAILURE(RenderSlice(primitive.spirv,params,1,1,pixels));
+        for(std::size_t channel=0;channel<2;++channel) {
+            if(!RecipeFinite(bounds[channel])) { ++unknown; continue; }
+            ++certified; EXPECT_GE(pixels[channel],bounds[channel].lower); EXPECT_LE(pixels[channel],bounds[channel].upper);
+        }
+    }
+    std::cout << "[boundscore-gpu-containment] device=" << selectedDeviceName_
+        << " certified=" << certified << " unknown=" << unknown << " NoContraction=verified\n";
 }
 
 TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGpuPixels) {
@@ -1204,6 +1412,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
         // ComposeCompiledRecipeRaymarchShader samples every point inside this box: pixel
         // centers are in (-6,6) for X/Y and the 121 z steps include both endpoints.
         compactionRequest.domainIsEnforced = true;
+        compactionRequest.backend = DeviceProofBackend();
         compactionRequest.requiredOutputChannels = kAllRecipeOutputChannels;
         compactionRequest.channelDependencies = {
             RecipeChannelDependency::GeometryWinner,
@@ -1244,7 +1453,7 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
                         glm::vec3(pixelWorld(lastX, kWidth) + kDomainPadding,
                             pixelWorld(lastY, kHeight) + kDomainPadding,
                             stepWorld(lastStep) + kDomainPadding)};
-                    const auto specialized = SpecializeRecipeTapeForTile(source, domain);
+                    const auto specialized = SpecializeRecipeTapeForTile(source, domain, DeviceProofBackend());
                     ASSERT_EQ(specialized.stats.fallback, RecipeTileFallback::None)
                         << "tile=" << tileX << "," << tileY << "," << tileZ;
                     ASSERT_EQ(specialized.instructions.size(), specialized.stats.retainedInstructions)
@@ -1370,6 +1579,8 @@ TEST_F(DeclaredPositionRenderTest, IntervalPrunedTileTapesMatchFullAndUnrolledGp
             fullPixels = std::move(pixels);
             fullClauses = std::move(clauses);
         }
+
+        ASSERT_NO_FATAL_FAILURE(CheckRecordedRecipeGpuOracle(fixture.name,fullPixels));
 
         std::vector<float> prunedPixels;
         std::vector<std::uint32_t> prunedClauses;
