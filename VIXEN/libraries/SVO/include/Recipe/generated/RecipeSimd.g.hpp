@@ -498,6 +498,1223 @@ inline constexpr std::array<RecipeOpcodeMetadata, 122> RecipeOpcodeTable{{
     {180, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 1ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamU32"},
     {181, RecipeExecutionClass::ResolvedAtLowering, RecipeControlBehavior::None, RecipeGradientHazard::NonDifferentiable, RecipeGradientCost::Fallback, RecipeDerivativeRule::Reject, false, false, 0, 1, 0, 0, 0ull, 2ull, RecipeContinuityKind::DeclaredBound, RecipeMipFilterMode::NotApplicable, RecipeIntervalRule::Unspecified, -1, -1, "ReadParamQ16"},
 }};
+} // namespace Yeroket::Sdf::Generated
+// BEGIN GENERATED RECIPE ANALYSIS (CPU proof, compiled consumers; R441/R442)
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cfenv>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <map>
+#include <span>
+#include <string>
+#include <vector>
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#endif
+namespace Yeroket::Sdf::Generated {
+// CPU/SIMD: correctly rounded binary32 add/sub/mul/div/sqrt, round-to-nearest,
+// no reassociation/contraction or approximate length, gradual underflow.
+// GPU profiles require FP32 (no RelaxedPrecision) and NoContraction on the authored
+// arithmetic. VulkanPreserve additionally requires enabled DenormPreserve and
+// SignedZeroInfNanPreserve execution modes; DznPrecise is the native D3D FP32
+// sqrt/reciprocal contract, with either preserved or flushed input/output denormals.
+// An unspecified device/compiler remains unknown. These are caller obligations,
+// never a conclusion drawn from a CPU floating-point environment or sampled maxima.
+enum class RecipeProofBackend : std::uint8_t { CpuStrict, SimdStrict, GpuUncertified, GpuVulkanPreserve, GpuDznPrecise };
+enum class RecipeAnalysisDiagnostic : std::uint8_t { None, Unsupported, StackShape, AnalysisBudget, BackendContract, DeclaredRangeContradiction };
+struct RecipeRange {
+    float lower=-std::numeric_limits<float>::infinity();
+    float upper=std::numeric_limits<float>::infinity();
+    bool known=false;
+    bool mayNaN=true;
+};
+struct RecipeRange3 { RecipeRange x,y,z; };
+inline bool RecipeFinite(RecipeRange a) {
+    return a.known && !a.mayNaN && std::isfinite(a.lower) && std::isfinite(a.upper) && a.lower<=a.upper;
+}
+// A range alone can prove a gap around nonzero denormals. Primitive rules below
+// additionally prove a discrete float gap even when their interval crosses zero.
+inline bool RecipeRangeDenormFree(RecipeRange a) {
+    return RecipeFinite(a) && (a.lower>=std::numeric_limits<float>::min()
+        || a.upper<=-std::numeric_limits<float>::min() || (a.lower==0 && a.upper==0));
+}
+inline bool RecipeDifferenceDenormFree(RecipeRange anchor, bool minuendDenormFree=false) {
+    // For |anchor| >= 2^-102, the adjacent float spacing below it is >= 2^-126.
+    // A nearby subtraction is exact (Sterbenz); a distant result is normal.
+    // Thus subtracting this binary32 anchor from any finite binary32 produces
+    // zero or a normal, even with approximate-but-representable sqrt inputs.
+    return RecipeFinite(anchor) && (anchor.lower>=0x1p-102f || anchor.upper<=-0x1p-102f
+        || (minuendDenormFree && anchor.lower==0 && anchor.upper==0));
+}
+inline RecipeRange RecipePoint(float x) {
+    return std::isfinite(x) ? RecipeRange{x,x,true,false} : RecipeRange{};
+}
+inline float RecipeOutwardSteps(float value, bool upper, unsigned ulps) {
+    const auto bits=std::bit_cast<std::uint32_t>(value);
+    const auto magnitude=bits&0x7fffffffu;
+    if(magnitude>0x7f800000u) return value; // NaN is never admitted by RecipeEnclose.
+    const std::int64_t ordinal=(bits&0x80000000u)?-std::int64_t(magnitude):std::int64_t(magnitude);
+    const auto stepped=std::clamp(ordinal+(upper?std::int64_t(ulps):-std::int64_t(ulps)),
+        -std::int64_t(0x7f800000u),std::int64_t(0x7f800000u));
+    const auto sign=stepped<0?0x80000000u:stepped==0?(bits&0x80000000u):0u;
+    return std::bit_cast<float>(sign|static_cast<std::uint32_t>(stepped<0?-stepped:stepped));
+}
+struct RecipeArithmetic {
+    RecipeProofBackend backend=RecipeProofBackend::CpuStrict;
+    bool Gpu() const { return backend==RecipeProofBackend::GpuVulkanPreserve || backend==RecipeProofBackend::GpuDznPrecise; }
+    RecipeRange Input(RecipeRange a) const {
+        if(backend==RecipeProofBackend::GpuUncertified) return {};
+        if(backend==RecipeProofBackend::GpuDznPrecise && RecipeFinite(a)
+            && a.lower<std::numeric_limits<float>::min() && a.upper>-std::numeric_limits<float>::min()) {
+            a.lower=std::min(a.lower,0.0f); a.upper=std::max(a.upper,0.0f);
+        }
+        return a;
+    }
+    RecipeRange RecipeEnclose(double lower, double upper, unsigned ulps=1) const {
+        if(!std::isfinite(lower) || !std::isfinite(upper) || lower>upper) return {};
+        const float lo=static_cast<float>(lower), hi=static_cast<float>(upper);
+        if(!std::isfinite(lo) || !std::isfinite(hi)) return {};
+        // Include the real result and all correctly rounded binary32 results at every step.
+        // This also covers subnormal/zero transitions, unlike relative epsilon padding.
+        RecipeRange out{lo,hi,true,false};
+        if(backend==RecipeProofBackend::GpuDznPrecise) ulps=std::max(ulps,2u);
+        out.lower=RecipeOutwardSteps(out.lower,false,ulps);
+        out.upper=RecipeOutwardSteps(out.upper,true,ulps);
+        return Input(out);
+    }
+    RecipeRange RecipeHull(RecipeRange a, RecipeRange b) const {
+        a=Input(a); b=Input(b);
+        if(!RecipeFinite(a) || !RecipeFinite(b)) return {};
+        return {std::min(a.lower,b.lower),std::max(a.upper,b.upper),true,false};
+    }
+    RecipeRange RecipeNeg(RecipeRange a) const {
+        a=Input(a);
+        if(!RecipeFinite(a)) return {};
+        return {-a.upper,-a.lower,true,false};
+    }
+    RecipeRange RecipeAdd(RecipeRange a, RecipeRange b) const {
+        a=Input(a); b=Input(b);
+        if(!RecipeFinite(a) || !RecipeFinite(b)) return {};
+        return RecipeEnclose(double(a.lower)+b.lower,double(a.upper)+b.upper);
+    }
+    RecipeRange RecipeSub(RecipeRange a, RecipeRange b) const { return RecipeAdd(a,RecipeNeg(b)); }
+    RecipeRange RecipeMul(RecipeRange a, RecipeRange b) const {
+        a=Input(a); b=Input(b);
+        if(!RecipeFinite(a) || !RecipeFinite(b)) return {};
+        const double products[4]={double(a.lower)*b.lower,double(a.lower)*b.upper,
+                                  double(a.upper)*b.lower,double(a.upper)*b.upper};
+        return RecipeEnclose(*std::min_element(products,products+4),*std::max_element(products,products+4));
+    }
+    RecipeRange RecipeDiv(RecipeRange a, RecipeRange b) const {
+        a=Input(a); b=Input(b);
+        if(!RecipeFinite(a) || !RecipeFinite(b) || (b.lower<=0 && b.upper>=0)) return {};
+        if(Gpu() && (std::min(std::fabs(b.lower),std::fabs(b.upper))<std::numeric_limits<float>::min()
+            || std::max(std::fabs(b.lower),std::fabs(b.upper))>0x1p126f)) return {};
+        // A rounded D3D reciprocal near the smallest normal may itself flush before
+        // multiplication. Reject that boundary instead of bounding only the quotient.
+        if(backend==RecipeProofBackend::GpuDznPrecise
+            && std::max(std::fabs(b.lower),std::fabs(b.upper))>0x1p125f) return {};
+        const double quotients[4]={double(a.lower)/b.lower,double(a.lower)/b.upper,
+                                   double(a.upper)/b.lower,double(a.upper)/b.upper};
+        return RecipeEnclose(*std::min_element(quotients,quotients+4),*std::max_element(quotients,quotients+4),Gpu()?8u:1u);
+    }
+    RecipeRange RecipeAbs(RecipeRange a) const {
+        a=Input(a);
+        if(!RecipeFinite(a)) return {};
+        return {a.lower<=0 && a.upper>=0 ? 0.0f : std::min(std::fabs(a.lower),std::fabs(a.upper)),
+                std::max(std::fabs(a.lower),std::fabs(a.upper)),true,false};
+    }
+    RecipeRange DenormalTies(RecipeRange result, RecipeRange a, RecipeRange b) const {
+        if(backend!=RecipeProofBackend::GpuDznPrecise
+            || a.lower>0 || a.upper<0 || b.lower>0 || b.upper<0) return result;
+        const float normal=std::numeric_limits<float>::min();
+        // Only denormal operands can tie after flushing. Normal portions of the
+        // original ranges still obey the ordinary min/max selection rule.
+        const RecipeRange ties{std::min(std::max(a.lower,-normal),std::max(b.lower,-normal)),
+            std::max(std::min(a.upper,normal),std::min(b.upper,normal)),true,false};
+        return RecipeHull(result,ties);
+    }
+    RecipeRange RecipeMin(RecipeRange a, RecipeRange b) const {
+        a=Input(a); b=Input(b);
+        if(!RecipeFinite(a) || !RecipeFinite(b)) return {};
+        return DenormalTies({std::min(a.lower,b.lower),std::min(a.upper,b.upper),true,false},a,b);
+    }
+    RecipeRange RecipeMax(RecipeRange a, RecipeRange b) const {
+        a=Input(a); b=Input(b);
+        if(!RecipeFinite(a) || !RecipeFinite(b)) return {};
+        return DenormalTies({std::max(a.lower,b.lower),std::max(a.upper,b.upper),true,false},a,b);
+    }
+    RecipeRange RecipeSqrt(RecipeRange a) const {
+        a=Input(a);
+        if(!RecipeFinite(a) || a.lower<0) return {};
+        // Vulkan sqrt inherits 1/inversesqrt: inverse root error is <=2 ULP and
+        // division <=2.5 ULP. On normal finite operands this is <8 output ULP;
+        // use 16 outward representable steps to cover binade transitions too.
+        // The inherited formula has a pole at zero: do not invent sqrt(0) semantics.
+        // D3D's native sqrt explicitly specifies zero and <=1 ULP, so it admits zero.
+        if(backend==RecipeProofBackend::GpuVulkanPreserve && a.lower<std::numeric_limits<float>::min()) return {};
+        RecipeRange r=RecipeEnclose(std::sqrt(double(a.lower)),std::sqrt(double(a.upper)),backend==RecipeProofBackend::GpuVulkanPreserve?16u:backend==RecipeProofBackend::GpuDznPrecise?2u:1u);
+        r.lower=std::max(0.0f,r.lower); return r;
+    }
+    RecipeRange3 RecipeSub(RecipeRange3 a, RecipeRange3 b) const {
+        return {RecipeSub(a.x,b.x),RecipeSub(a.y,b.y),RecipeSub(a.z,b.z)};
+    }
+    RecipeRange3 RecipeAbs(RecipeRange3 a) const { return {RecipeAbs(a.x),RecipeAbs(a.y),RecipeAbs(a.z)}; }
+    RecipeRange3 RecipeMax(RecipeRange3 a, RecipeRange b) const { return {RecipeMax(a.x,b),RecipeMax(a.y,b),RecipeMax(a.z,b)}; }
+    RecipeRange RecipeSquare(RecipeRange a) const {
+        a=RecipeAbs(a);
+        a=Input(a);
+        if(!RecipeFinite(a)) return {};
+        RecipeRange r=RecipeEnclose(double(a.lower)*a.lower,double(a.upper)*a.upper);
+        r.lower=std::max(0.0f,r.lower); return r;
+    }
+    RecipeRange RecipeLength(RecipeRange3 a) const {
+        const auto x=RecipeSquare(a.x),y=RecipeSquare(a.y),z=RecipeSquare(a.z);
+        // glm, SIMD and scalar dot products can choose different sum orders. Enclose all
+        // three first-pair choices without changing the actual evaluator's arithmetic.
+        auto sum=RecipeHull(RecipeAdd(RecipeAdd(x,y),z),RecipeAdd(RecipeAdd(x,z),y));
+        sum=RecipeHull(sum,RecipeAdd(RecipeAdd(y,z),x));
+        if(RecipeFinite(sum)) sum.lower=std::max(0.0f,sum.lower);
+        return RecipeSqrt(sum);
+    }
+    // Bound the actual ordered numerator/denominator recurrence, including signed
+    // gain, cancellation and overflow. A certified octave range is an input;
+    // this helper never turns an unknown sampler into a noise certificate.
+    RecipeRange NormalizedOctaves(std::span<const RecipeRange> octaves, RecipeRange persistence) const {
+        if(octaves.empty() || octaves.size()>4096u || !RecipeFinite(persistence)) return {};
+        RecipeRange numerator=RecipePoint(0), denominator=RecipePoint(0), amplitude=RecipePoint(1);
+        for(auto octave:octaves) {
+            numerator=RecipeAdd(numerator,RecipeMul(octave,amplitude));
+            denominator=RecipeAdd(denominator,amplitude);
+            amplitude=RecipeMul(amplitude,persistence);
+        }
+        return RecipeDiv(numerator,denominator);
+    }
+};
+inline RecipeRange RecipeEnclose(double lower, double upper) { return RecipeArithmetic{}.RecipeEnclose(lower,upper); }
+inline RecipeRange RecipeHull(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeHull(a,b); }
+inline RecipeRange RecipeNeg(RecipeRange a) { return RecipeArithmetic{}.RecipeNeg(a); }
+inline RecipeRange RecipeAdd(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeAdd(a,b); }
+inline RecipeRange RecipeSub(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeSub(a,b); }
+inline RecipeRange RecipeMul(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeMul(a,b); }
+inline RecipeRange RecipeDiv(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeDiv(a,b); }
+inline RecipeRange RecipeAbs(RecipeRange a) { return RecipeArithmetic{}.RecipeAbs(a); }
+inline RecipeRange RecipeMin(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeMin(a,b); }
+inline RecipeRange RecipeMax(RecipeRange a, RecipeRange b) { return RecipeArithmetic{}.RecipeMax(a,b); }
+inline RecipeRange RecipeSqrt(RecipeRange a) { return RecipeArithmetic{}.RecipeSqrt(a); }
+inline RecipeRange3 RecipeSub(RecipeRange3 a, RecipeRange3 b) { return RecipeArithmetic{}.RecipeSub(a,b); }
+inline RecipeRange3 RecipeAbs(RecipeRange3 a) { return RecipeArithmetic{}.RecipeAbs(a); }
+inline RecipeRange3 RecipeMax(RecipeRange3 a, RecipeRange b) { return RecipeArithmetic{}.RecipeMax(a,b); }
+inline RecipeRange RecipeSquare(RecipeRange a) { return RecipeArithmetic{}.RecipeSquare(a); }
+inline RecipeRange RecipeLength(RecipeRange3 a) { return RecipeArithmetic{}.RecipeLength(a); }
+inline bool RecipeStrictEnvironment() {
+#if defined(__FAST_MATH__)
+    return false;
+#else
+    if(std::fegetround()!=FE_TONEAREST) return false;
+#if defined(__SSE__)
+    if((_mm_getcsr() & ((1u<<15)|(1u<<6)))!=0) return false; // FTZ / DAZ
+#endif
+    return std::numeric_limits<float>::is_iec559 && std::numeric_limits<float>::digits==24;
+#endif
+}
+inline RecipeRange RecipeTransfer_0(RecipeRange3 p, RecipeRange3 center, RecipeRange radius, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    if(!RecipeFinite(radius) || radius.lower<0) return {};
+    return arithmetic.RecipeSub(arithmetic.RecipeLength(arithmetic.RecipeSub(p, center)), radius);
+}
+inline RecipeRange RecipeTransfer_1(RecipeRange3 p, RecipeRange3 b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    if(!RecipeFinite(b.x) || !RecipeFinite(b.y) || !RecipeFinite(b.z) || b.x.lower<0 || b.y.lower<0 || b.z.lower<0) return {};
+    const auto q=arithmetic.RecipeSub(arithmetic.RecipeAbs(p), b);
+    return arithmetic.RecipeAdd(arithmetic.RecipeLength(arithmetic.RecipeMax(q, RecipePoint(0))), arithmetic.RecipeMin(arithmetic.RecipeMax(q.x, arithmetic.RecipeMax(q.y,q.z)), RecipePoint(0)));
+}
+inline RecipeRange RecipeTransfer_24(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeMin(a,b);
+}
+inline RecipeRange RecipeTransfer_26(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeMax(a,arithmetic.RecipeNeg(b));
+}
+inline RecipeRange RecipeTransfer_28(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeMax(a,b);
+}
+inline RecipeRange RecipeTransfer_35(RecipeRange d, RecipeRange r, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeSub(d,r);
+
+}
+inline RecipeRange RecipeTransfer_60(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeAdd(a,b);
+
+}
+inline RecipeRange RecipeTransfer_61(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeSub(a,b);
+
+}
+inline RecipeRange RecipeTransfer_62(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeMul(a,b);
+
+}
+inline RecipeRange RecipeTransfer_63(RecipeRange a, RecipeRange b, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeHull(arithmetic.RecipeDiv(a,b),RecipePoint(0.0f));
+
+}
+inline RecipeRange RecipeTransfer_72(RecipeRange x, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeNeg(x);
+
+}
+inline RecipeRange RecipeTransfer_74(RecipeRange sdf, RecipeRange disp, RecipeRange scale, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeAdd(sdf,arithmetic.RecipeMul(disp,scale));
+
+}
+inline RecipeRange RecipeTransfer_81(RecipeRange cond, RecipeRange a, RecipeRange b, RecipeRange thr, RecipeProofBackend backend=RecipeProofBackend::CpuStrict) {
+    const RecipeArithmetic arithmetic{backend};
+    return arithmetic.RecipeHull(a,b);
+
+}
+struct RecipeAnalysisCoverage { std::uint8_t opcode; bool cpu, simd, gpu, pure; const char* name; const char* reason; bool vulkanPreserve, dznPrecise, extent, occupancy; };
+inline constexpr std::array<RecipeAnalysisCoverage, 184> RecipeAnalysisCoverageTable{{
+    {0, true, true, false, true, "Sphere", "declared extension or bound body; strict FP32 only", true, true, true, true},
+    {1, true, true, false, true, "Box", "declared extension or bound body; strict FP32 only", true, true, true, true},
+    {2, false, false, false, false, "BoxRounded", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {3, false, false, false, false, "Capsule", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {4, false, false, false, false, "Cylinder", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {5, false, false, false, false, "Plane", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {6, false, false, false, false, "Torus", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {7, false, false, false, false, "Ellipsoid", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {8, false, false, false, false, "HollowCylinder", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {9, false, false, false, false, "TaperedCylinder", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {10, false, false, false, false, "Panel", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {11, false, false, false, false, "Plank", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {12, false, false, false, false, "RoundedBox", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {13, false, false, false, false, "ProfileExtrude", "no admitted recipe declaration; unknown", false, false, false, false},
+    {14, false, false, false, false, "CappedTorus", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {15, false, false, false, false, "Cone", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {16, false, false, false, false, "RoundCone", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {17, false, false, false, false, "FakeRoundCone", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {18, false, false, false, false, "Segment", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {19, false, false, false, false, "BezierCurve", "no admitted recipe declaration; unknown", false, false, false, false},
+    {20, false, false, false, false, "TriangularPrism", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {21, false, false, false, false, "Pyramid", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {22, false, false, false, false, "HexPrism", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {23, false, false, false, false, "Link", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {24, true, true, false, true, "Union", "declared extension or bound body; strict FP32 only", true, true, true, true},
+    {25, false, false, false, false, "SmoothUnion", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {26, true, true, false, true, "Subtract", "declared extension or bound body; strict FP32 only", true, true, true, true},
+    {27, false, false, false, false, "SmoothSubtract", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {28, true, true, false, true, "Intersect", "declared extension or bound body; strict FP32 only", true, true, true, true},
+    {29, false, false, false, false, "SmoothIntersect", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {30, false, false, false, false, "Xor", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {31, false, false, false, false, "SmoothMax", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {32, false, false, false, false, "SmoothUnionCubic", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {33, false, false, false, false, "SmoothSubtractCubic", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {34, false, false, false, false, "SmoothIntersectCubic", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {35, true, true, false, true, "Round", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {36, false, false, false, false, "Onion", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {37, false, false, false, false, "Transform", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {38, false, false, false, false, "Elongate", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {39, false, false, false, false, "Twist", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {40, false, false, false, false, "Bend", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {41, false, false, false, false, "MirrorX", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {42, false, false, false, false, "MirrorY", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {43, false, false, false, false, "MirrorZ", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {44, false, false, false, false, "RepeatInfinite", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {45, false, false, false, false, "RepeatLimited", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {46, false, false, false, false, "Revolution", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {47, false, false, false, false, "NoiseDeform", "no admitted recipe declaration; unknown", false, false, false, false},
+    {48, false, false, false, false, "BoundedCarve", "no admitted recipe declaration; unknown", false, false, false, false},
+    {49, false, false, false, false, "ChipDamage", "no admitted recipe declaration; unknown", false, false, false, false},
+    {50, false, false, false, false, "Corrosion", "no admitted recipe declaration; unknown", false, false, false, false},
+    {51, false, false, false, false, "Crack", "no admitted recipe declaration; unknown", false, false, false, false},
+    {52, false, false, false, false, "EdgeRounding", "no admitted recipe declaration; unknown", false, false, false, false},
+    {53, false, false, false, false, "PaperAging", "no admitted recipe declaration; unknown", false, false, false, false},
+    {54, false, false, false, false, "WeatheringBlend", "no admitted recipe declaration; unknown", false, false, false, false},
+    {55, false, false, false, false, "WoodGrain", "no admitted recipe declaration; unknown", false, false, false, false},
+    {56, false, false, false, false, "MathSin", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {57, false, false, false, false, "MathCos", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {58, false, false, false, false, "MathSmoothstep", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {59, false, false, false, false, "MathRemap", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {60, true, true, false, true, "MathAdd", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {61, true, true, false, true, "MathSub", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {62, true, true, false, true, "MathMul", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {63, true, true, false, true, "MathDiv", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {64, false, false, false, false, "MathMin", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {65, false, false, false, false, "MathMax", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {66, false, false, false, false, "MathClamp", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {67, false, false, false, false, "MathAbs", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {68, false, false, false, false, "MathFrac", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {69, false, false, false, false, "MathPow", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {70, false, false, false, false, "MathSqrt", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {71, false, false, false, false, "MathLerp", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {72, true, true, false, true, "MathNegate", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {73, true, true, false, true, "PositionChannel", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {74, true, true, false, true, "Displacement", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {75, false, false, false, false, "MathStep", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {76, false, false, false, false, "MathSign", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {77, false, false, false, false, "MathSaturate", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {78, false, false, false, false, "MathExp", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {79, false, false, false, false, "MathLog", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {80, false, false, false, false, "MathLog2", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {81, true, true, false, true, "Select", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {82, false, false, false, false, "DistanceTo", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {83, false, false, false, false, "NoiseSimplex3D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {84, false, false, false, false, "NoisePerlin3D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {85, false, false, false, false, "NoiseVoronoiF1", "no admitted recipe declaration; unknown", false, false, false, false},
+    {86, false, false, false, false, "NoiseFBMPerlin3D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {87, false, false, false, false, "NoiseFBMRidged3D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {88, false, false, false, false, "NoiseFBMTurbulence3D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {89, false, false, false, false, "Circle2D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {90, false, false, false, false, "Segment2D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {91, false, false, false, false, "Bezier2D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {92, false, false, false, false, "Arc2D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {93, false, false, false, false, "RoundedBox2D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {94, false, false, false, false, "Output", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {95, true, true, false, true, "PushParam", "declared extension or bound body; strict FP32 only", true, true, false, false},
+    {96, false, false, false, false, "ReadParam", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {97, false, false, false, false, "RestorePos", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {98, false, false, false, false, "PushFloat3", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {99, false, false, false, false, "ComposeFloat3", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {100, false, false, false, false, "Passthrough", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {101, false, false, false, false, "DecomposeFloat3", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {102, false, false, false, false, "Float3Add", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {103, false, false, false, false, "Float3Sub", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {104, false, false, false, false, "Float3MulComponentWise", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {105, false, false, false, false, "Float3Min", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {106, false, false, false, false, "Float3Max", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {107, false, false, false, false, "Float3ScalarMul", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {108, false, false, false, false, "Float3Dot", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {109, false, false, false, false, "Float3Normalize", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {110, false, false, false, false, "CurlNoise3D", "no admitted recipe declaration; unknown", false, false, false, false},
+    {111, false, false, false, false, "ReadParamFloat3", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {112, false, false, false, false, "BBRead", "no admitted recipe declaration; unknown", false, false, false, false},
+    {112, false, false, false, false, "DeclarePosition", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {113, false, false, false, false, "BBWrite", "no admitted recipe declaration; unknown", false, false, false, false},
+    {113, false, false, false, false, "InvokeRecipe", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {114, false, false, false, false, "BBRead3", "no admitted recipe declaration; unknown", false, false, false, false},
+    {115, false, false, false, false, "BBWrite3", "no admitted recipe declaration; unknown", false, false, false, false},
+    {116, false, false, false, false, "BBAccumAdd", "no admitted recipe declaration; unknown", false, false, false, false},
+    {117, false, false, false, false, "BBAccumMin", "no admitted recipe declaration; unknown", false, false, false, false},
+    {118, false, false, false, false, "BBAccumMax", "no admitted recipe declaration; unknown", false, false, false, false},
+    {119, false, false, false, false, "ArrayRead", "no admitted recipe declaration; unknown", false, false, false, false},
+    {120, false, false, false, false, "ArrayRead3", "no admitted recipe declaration; unknown", false, false, false, false},
+    {121, false, false, false, false, "ArrayWrite", "no admitted recipe declaration; unknown", false, false, false, false},
+    {122, false, false, false, false, "ArrayLength", "no admitted recipe declaration; unknown", false, false, false, false},
+    {123, false, false, false, false, "LoopBegin", "no admitted recipe declaration; unknown", false, false, false, false},
+    {124, false, false, false, false, "LoopEnd", "no admitted recipe declaration; unknown", false, false, false, false},
+    {125, false, false, false, false, "BranchIfZero", "no admitted recipe declaration; unknown", false, false, false, false},
+    {126, false, false, false, false, "BranchIfNonZero", "no admitted recipe declaration; unknown", false, false, false, false},
+    {127, false, false, false, false, "Jump", "no admitted recipe declaration; unknown", false, false, false, false},
+    {128, false, false, false, false, "PushLoopCounter", "no admitted recipe declaration; unknown", false, false, false, false},
+    {129, false, false, false, false, "GravityBias", "no admitted recipe declaration; unknown", false, false, false, false},
+    {130, false, false, false, false, "WindBias", "no admitted recipe declaration; unknown", false, false, false, false},
+    {131, false, false, false, false, "AttractRepel", "no admitted recipe declaration; unknown", false, false, false, false},
+    {132, false, false, false, false, "ObstacleDeflect", "no admitted recipe declaration; unknown", false, false, false, false},
+    {133, false, false, false, false, "SurfaceSeek", "no admitted recipe declaration; unknown", false, false, false, false},
+    {134, false, false, false, false, "GravityDroop", "no admitted recipe declaration; unknown", false, false, false, false},
+    {135, false, false, false, false, "PhysicsRelax", "no admitted recipe declaration; unknown", false, false, false, false},
+    {136, false, false, false, false, "SpaceColonizationStep", "no admitted recipe declaration; unknown", false, false, false, false},
+    {137, false, false, false, false, "PipeModelAccum", "no admitted recipe declaration; unknown", false, false, false, false},
+    {138, false, false, false, false, "CrownEnvelope", "no admitted recipe declaration; unknown", false, false, false, false},
+    {139, false, false, false, false, "VoxelLightSample", "no admitted recipe declaration; unknown", false, false, false, false},
+    {140, false, false, false, false, "TurtleForward", "no admitted recipe declaration; unknown", false, false, false, false},
+    {141, false, false, false, false, "TurtleTurn", "no admitted recipe declaration; unknown", false, false, false, false},
+    {142, false, false, false, false, "FoliagePoint", "no admitted recipe declaration; unknown", false, false, false, false},
+    {143, false, false, false, false, "BranchRingVertex", "no admitted recipe declaration; unknown", false, false, false, false},
+    {144, false, false, false, false, "CanopySphereNormal", "no admitted recipe declaration; unknown", false, false, false, false},
+    {145, false, false, false, false, "MCClassifyCell", "no admitted recipe declaration; unknown", false, false, false, false},
+    {146, false, false, false, false, "MCEdgeInterpolate", "no admitted recipe declaration; unknown", false, false, false, false},
+    {147, false, false, false, false, "MCTriCount", "no admitted recipe declaration; unknown", false, false, false, false},
+    {148, false, false, false, false, "PlantCapsuleSegmentDistance", "no admitted recipe declaration; unknown", false, false, false, false},
+    {149, false, false, false, false, "PolySmoothMin", "no admitted recipe declaration; unknown", false, false, false, false},
+    {150, false, false, false, false, "DepthBlend", "no admitted recipe declaration; unknown", false, false, false, false},
+    {151, false, false, false, false, "Hash32", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {152, false, false, false, false, "Hash32Combine", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {153, false, false, false, false, "U32Add", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {154, false, false, false, false, "U32Sub", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {155, false, false, false, false, "U32Mul", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {156, false, false, false, false, "U32Min", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {157, false, false, false, false, "U32Max", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {158, false, false, false, false, "U32Equal", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {159, false, false, false, false, "U32NotEqual", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {160, false, false, false, false, "U32Less", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {161, false, false, false, false, "U32LessEqual", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {162, false, false, false, false, "U32Greater", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {163, false, false, false, false, "U32GreaterEqual", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {164, false, false, false, false, "Q16Add", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {165, false, false, false, false, "Q16Sub", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {166, false, false, false, false, "Q16Mul", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {167, false, false, false, false, "Q16Min", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {168, false, false, false, false, "Q16Max", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {169, false, false, false, false, "Q16Equal", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {170, false, false, false, false, "Q16NotEqual", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {171, false, false, false, false, "Q16Less", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {172, false, false, false, false, "Q16LessEqual", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {173, false, false, false, false, "Q16Greater", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {174, false, false, false, false, "Q16GreaterEqual", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {175, false, false, false, false, "FloatToQ16", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {176, false, false, false, false, "Q16ToFloat", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {177, false, false, false, false, "U32ToQ16", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {178, false, false, false, false, "Q16ToU32", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {179, false, false, false, false, "U32ToFloat", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {180, false, false, false, false, "ReadParamU32", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+    {181, false, false, false, false, "ReadParamQ16", "unsupported or opaque body/control/type; unknown", false, false, false, false},
+}};
+inline const RecipeAnalysisCoverage* FindRecipeAnalysisCoverage(std::uint8_t opcode) { for(const auto& entry:RecipeAnalysisCoverageTable) if(entry.opcode==opcode) return &entry; return nullptr; }
+inline bool RecipeBackendCovered(const RecipeAnalysisCoverage& entry, RecipeProofBackend backend) { switch(backend) { case RecipeProofBackend::CpuStrict: return entry.cpu; case RecipeProofBackend::SimdStrict: return entry.simd; case RecipeProofBackend::GpuVulkanPreserve: return entry.vulkanPreserve; case RecipeProofBackend::GpuDznPrecise: return entry.dznPrecise; default: return false; } }
+template<class Instruction,class Extent> inline bool TryRecipeExtentTransfer(const Instruction& in, std::span<Extent> stack, int& sp, bool& handled) {
+    handled=true; switch(in.opCode) {
+    case 0: {
+        if(in.paramMask!=0) return false;
+        const float r=in.data[3];
+        if(sp<0 || sp>=static_cast<int>(stack.size()) || !std::isfinite(r) || r<0 || !std::isfinite(in.data[0]) || !std::isfinite(in.data[1]) || !std::isfinite(in.data[2])) return false;
+        stack[sp++]=Extent{decltype(Extent{}.center)(in.data[0],in.data[1],in.data[2]),r,false,0.0f}; return true;
+    }
+    case 1: {
+        if(in.paramMask!=0) return false;
+        const float x=in.data[0], y=in.data[1], z=in.data[2];
+        const float r=std::sqrt(x*x+y*y+z*z);
+        if(sp<0 || sp>=static_cast<int>(stack.size()) || !std::isfinite(r) || x<0 || y<0 || z<0) return false;
+        stack[sp++]=Extent{decltype(Extent{}.center)(0.0f),r,false,0.0f}; return true;
+    }
+    case 24: {
+        if(in.paramMask!=0) return false;
+        if(sp<2 || sp>static_cast<int>(stack.size())) return false;
+        auto b=stack[--sp], a=stack[--sp]; if(a.scalar || b.scalar) return false;
+        if(!std::isfinite(a.radius) || !std::isfinite(b.radius) || a.radius<0 || b.radius<0) return false;
+        const auto d=b.center-a.center; const float dist=std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
+        if(!std::isfinite(dist)) return false;
+        if(dist+b.radius<=a.radius) { stack[sp++]=a; return true; }
+        if(dist+a.radius<=b.radius) { stack[sp++]=b; return true; }
+        const float radius=(a.radius+b.radius+dist)*0.5f;
+        if(!std::isfinite(radius)) return false;
+        const auto center=dist>1e-8f ? a.center+d*((radius-a.radius)/dist) : a.center;
+        if(!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) return false;
+        stack[sp++]=Extent{center,radius,false,0.0f}; return true;
+    }
+    case 26: {
+        if(in.paramMask!=0) return false;
+        if(sp<2 || sp>static_cast<int>(stack.size())) return false;
+        auto b=stack[--sp], a=stack[--sp]; if(a.scalar || b.scalar) return false;
+        if(!std::isfinite(a.radius) || !std::isfinite(b.radius) || a.radius<0 || b.radius<0) return false;
+        const auto d=b.center-a.center; const float dist=std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
+        if(!std::isfinite(dist)) return false;
+        if(dist+b.radius<=a.radius) { stack[sp++]=a; return true; }
+        if(dist+a.radius<=b.radius) { stack[sp++]=b; return true; }
+        const float radius=(a.radius+b.radius+dist)*0.5f;
+        if(!std::isfinite(radius)) return false;
+        const auto center=dist>1e-8f ? a.center+d*((radius-a.radius)/dist) : a.center;
+        if(!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) return false;
+        stack[sp++]=Extent{center,radius,false,0.0f}; return true;
+    }
+    case 28: {
+        if(in.paramMask!=0) return false;
+        if(sp<2 || sp>static_cast<int>(stack.size())) return false;
+        auto b=stack[--sp], a=stack[--sp]; if(a.scalar || b.scalar) return false;
+        if(!std::isfinite(a.radius) || !std::isfinite(b.radius) || a.radius<0 || b.radius<0) return false;
+        const auto d=b.center-a.center; const float dist=std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
+        if(!std::isfinite(dist)) return false;
+        if(dist+b.radius<=a.radius) { stack[sp++]=a; return true; }
+        if(dist+a.radius<=b.radius) { stack[sp++]=b; return true; }
+        const float radius=(a.radius+b.radius+dist)*0.5f;
+        if(!std::isfinite(radius)) return false;
+        const auto center=dist>1e-8f ? a.center+d*((radius-a.radius)/dist) : a.center;
+        if(!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) return false;
+        stack[sp++]=Extent{center,radius,false,0.0f}; return true;
+    }
+    default: handled=false; return true; } }
+inline bool RecipeOccupancyReductionSaturated(float minimum, float margin) { return std::isfinite(minimum) && std::isfinite(margin) && margin>=0 && minimum<=margin; }
+
+struct RecipeAnalysisValue {
+    std::uint8_t opcode=0, inputMask=0, axes=0, winnerRule=0;
+    std::size_t sourceInstruction=0;
+    std::array<std::uint32_t,32> data{};
+    std::vector<int> inputs;
+    RecipeRange fact;
+    bool pure=false, costly=false, denormFree=false;
+    int identity=-1, selected=-1, reuse=-1;
+    std::string expression;
+};
+struct RecipeAnalysis {
+    static constexpr std::size_t MaxNodes=4096;
+    std::vector<RecipeAnalysisValue> values;
+    RecipeRange3 domain;
+    RecipeProofBackend backend=RecipeProofBackend::CpuStrict;
+    RecipeAnalysisDiagnostic diagnostic=RecipeAnalysisDiagnostic::None;
+    int output=-1;
+    bool hasOpaqueEffects=false, compiledExpressions=true;
+    std::uint32_t sharedValues=0, prunedValues=0;
+};
+inline std::string RecipeFloatLiteral(std::uint32_t bits) {
+    return "std::bit_cast<float>(std::uint32_t("+std::to_string(bits)+"u))";
+}
+inline std::string RecipeValueName(int index) { return "v"+std::to_string(index); }
+inline int RecipeResolvedValue(const RecipeAnalysis& a, int index) {
+    if(a.hasOpaqueEffects) return index;
+    for(std::size_t i=0;i<a.values.size();++i) {
+        const auto& v=a.values[index];
+        const int next=v.selected>=0?v.selected:v.reuse;
+        if(next<0) break;
+        index=next;
+    }
+    return index;
+}
+template<class Instruction> inline RecipeAnalysis AnalyzeRecipeValues(std::span<const Instruction> instructions, RecipeRange3 domain, RecipeProofBackend backend = RecipeProofBackend::CpuStrict, bool buildCompiledExpressions = true) {
+    RecipeAnalysis result; result.domain=domain; result.backend=backend; result.compiledExpressions=buildCompiledExpressions;
+    if (instructions.size()>RecipeAnalysis::MaxNodes) { result.diagnostic=RecipeAnalysisDiagnostic::AnalysisBudget; return result; }
+    if(backend!=RecipeProofBackend::GpuUncertified && !RecipeStrictEnvironment()) { result.diagnostic=RecipeAnalysisDiagnostic::BackendContract; return result; }
+    const RecipeArithmetic arithmetic{backend}; std::size_t sourceInstruction=0;
+    std::vector<int> stack; std::map<std::string,int> identities;
+    for (const auto& in : instructions) {
+        if(in.paramMask!=0) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+        RecipeAnalysisValue node; node.opcode=static_cast<std::uint8_t>(in.opCode); node.inputMask=in.inputMask; node.sourceInstruction=sourceInstruction++;
+        for (int k=0;k<32;++k) node.data[k]=std::bit_cast<std::uint32_t>(in.data[k]);
+        switch(node.opcode) {
+        case 0: { // Sphere
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=true;
+            node.costly=true;
+            node.fact=RecipeTransfer_0(domain, RecipeRange3{RecipePoint(in.data[0]), RecipePoint(in.data[1]), RecipePoint(in.data[2])}, RecipePoint(in.data[3]), backend);
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Sphere(" + std::string("p") + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+            node.denormFree=RecipeDifferenceDenormFree(RecipePoint(in.data[3]),true);
+        } break;
+        case 1: { // Box
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=true;
+            node.costly=true;
+            node.fact=RecipeTransfer_1(domain, RecipeRange3{RecipePoint(in.data[0]), RecipePoint(in.data[1]), RecipePoint(in.data[2])}, backend);
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Box(" + std::string("p") + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ")";
+            node.denormFree=RecipeDifferenceDenormFree(RecipePoint(in.data[0])) && RecipeDifferenceDenormFree(RecipePoint(in.data[1])) && RecipeDifferenceDenormFree(RecipePoint(in.data[2]));
+        } break;
+        case 2: { // BoxRounded
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_BoxRounded(" + std::string("p") + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 3: { // Capsule
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Capsule(" + std::string("p") + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ")";
+        } break;
+        case 4: { // Cylinder
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Cylinder(" + std::string("p") + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ")";
+        } break;
+        case 5: { // Plane
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Plane(" + std::string("p") + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 6: { // Torus
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Torus(" + std::string("p") + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ")";
+        } break;
+        case 7: { // Ellipsoid
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Ellipsoid(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ")";
+        } break;
+        case 8: { // HollowCylinder
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_HollowCylinder(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 9: { // TaperedCylinder
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_TaperedCylinder(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 10: { // Panel
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_BoxRounded(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 11: { // Plank
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_BoxRounded(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 12: { // RoundedBox
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_BoxRounded(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 16: { // RoundCone
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_RoundCone(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 17: { // FakeRoundCone
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_FakeRoundCone(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 18: { // Segment
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Segment(" + std::string("p") + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[0]) + "," + RecipeFloatLiteral(node.data[1]) + "," + RecipeFloatLiteral(node.data[2]) + ")" + ", " + std::string("glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + ")" + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 21: { // Pyramid
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Pyramid(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 23: { // Link
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=false;
+            node.costly=false;
+            node.axes=7u;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Link(" + std::string("(p - glm::vec3(") + RecipeFloatLiteral(node.data[4]) + "," + RecipeFloatLiteral(node.data[5]) + "," + RecipeFloatLiteral(node.data[6]) + "))" + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 24: { // Union
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_24(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Union(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+            node.winnerRule=3;
+            node.denormFree=result.values[node.inputs[0]].denormFree && result.values[node.inputs[1]].denormFree;
+        } break;
+        case 25: { // SmoothUnion
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothUnion(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 26: { // Subtract
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_26(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Subtract(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+            node.winnerRule=4;
+            node.denormFree=result.values[node.inputs[0]].denormFree && result.values[node.inputs[1]].denormFree;
+        } break;
+        case 27: { // SmoothSubtract
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothSubtract(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 28: { // Intersect
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_28(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Intersect(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+            node.winnerRule=5;
+            node.denormFree=result.values[node.inputs[0]].denormFree && result.values[node.inputs[1]].denormFree;
+        } break;
+        case 29: { // SmoothIntersect
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothIntersect(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 30: { // Xor
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Xor(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 31: { // SmoothMax
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothMax(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 32: { // SmoothUnionCubic
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothUnionCubic(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 33: { // SmoothSubtractCubic
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothSubtractCubic(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 34: { // SmoothIntersectCubic
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_SmoothIntersectCubic(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 35: { // Round
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_35(result.values[node.inputs[0]].fact, RecipePoint(in.data[0]), backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Round(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 36: { // Onion
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Onion(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 56: { // MathSin
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathSin(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 57: { // MathCos
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathCos(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ")";
+        } break;
+        case 58: { // MathSmoothstep
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathSmoothstep(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ")";
+        } break;
+        case 59: { // MathRemap
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathRemap(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ", " + RecipeFloatLiteral(node.data[2]) + ", " + RecipeFloatLiteral(node.data[3]) + ")";
+        } break;
+        case 60: { // MathAdd
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_60(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathAdd(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 61: { // MathSub
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_61(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathSub(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 62: { // MathMul
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_62(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathMul(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 63: { // MathDiv
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_63(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathDiv(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 64: { // MathMin
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathMin(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 65: { // MathMax
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathMax(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ")";
+        } break;
+        case 66: { // MathClamp
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathClamp(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ", " + RecipeFloatLiteral(node.data[1]) + ")";
+        } break;
+        case 67: { // MathAbs
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathAbs(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 68: { // MathFrac
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathFrac(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 69: { // MathPow
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathPow(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 70: { // MathSqrt
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathSqrt(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 71: { // MathLerp
+            if(stack.size()<3u || stack.size()-3+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-3,stack.end()); stack.resize(stack.size()-3);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathLerp(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeValueName(node.inputs[2]) + ")";
+        } break;
+        case 72: { // MathNegate
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_72(result.values[node.inputs[0]].fact, backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathNegate(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 73: { // PositionChannel
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=true;
+            node.costly=false;
+            if(!std::isfinite(in.data[0]) || in.data[0]<0 || in.data[0]>2 || std::floor(in.data[0])!=in.data[0]) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            const int axis=static_cast<int>(in.data[0]); node.axes=1u<<axis; node.fact=axis==0?domain.x:axis==1?domain.y:domain.z;
+            if(buildCompiledExpressions) node.expression=axis==0?"p.x":axis==1?"p.y":"p.z";
+        } break;
+        case 74: { // Displacement
+            if(in.inputMask!=0 && in.inputMask!=3) { result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result; }
+            if(stack.size()<2u || stack.size()-2+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-2,stack.end()); stack.resize(stack.size()-2);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_74(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, RecipePoint(in.data[0]), backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Displacement(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 75: { // MathStep
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathStep(" + RecipeValueName(node.inputs[0]) + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 76: { // MathSign
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathSign(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 77: { // MathSaturate
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathSaturate(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 78: { // MathExp
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathExp(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 79: { // MathLog
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathLog(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 80: { // MathLog2
+            if(stack.size()<1u || stack.size()-1+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-1,stack.end()); stack.resize(stack.size()-1);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_MathLog2(" + RecipeValueName(node.inputs[0]) + ")";
+        } break;
+        case 81: { // Select
+            if(stack.size()<3u || stack.size()-3+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-3,stack.end()); stack.resize(stack.size()-3);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipeTransfer_81(result.values[node.inputs[0]].fact, result.values[node.inputs[1]].fact, result.values[node.inputs[2]].fact, RecipePoint(in.data[0]), backend);
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Select(" + RecipeValueName(node.inputs[0]) + ", " + RecipeValueName(node.inputs[1]) + ", " + RecipeValueName(node.inputs[2]) + ", " + RecipeFloatLiteral(node.data[0]) + ")";
+        } break;
+        case 94: continue;
+        case 95: { // PushParam
+            if(stack.size()<0u || stack.size()-0+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-0,stack.end()); stack.resize(stack.size()-0);
+            node.pure=true;
+            node.costly=false;
+            node.fact=RecipePoint(in.data[0]); if(buildCompiledExpressions) node.expression=RecipeFloatLiteral(node.data[0]);
+        } break;
+        case 108: { // Float3Dot
+            if(stack.size()<6u || stack.size()-6+1>64u) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+            node.inputs.assign(stack.end()-6,stack.end()); stack.resize(stack.size()-6);
+            node.pure=false;
+            node.costly=false;
+            if(buildCompiledExpressions) node.expression="Yeroket::Sdf::Generated::SdfCore_Float3Dot(" + std::string("glm::vec3(") + RecipeValueName(node.inputs[0]) + "," + RecipeValueName(node.inputs[1]) + "," + RecipeValueName(node.inputs[2]) + ")" + ", " + std::string("glm::vec3(") + RecipeValueName(node.inputs[3]) + "," + RecipeValueName(node.inputs[4]) + "," + RecipeValueName(node.inputs[5]) + ")" + ")";
+        } break;
+        default: result.diagnostic=RecipeAnalysisDiagnostic::Unsupported; return result;
+        }
+        if(backend==RecipeProofBackend::GpuUncertified || !RecipeStrictEnvironment() || !RecipeFinite(node.fact)) node.fact={};
+        for(int input : node.inputs) {
+            node.axes|=result.values[input].axes;
+            node.pure=node.pure && result.values[input].pure;
+        }
+        // Strict separation only. Ties, signed zeros, NaNs, infinities and unknowns
+        // keep the original operator and its provenance; no algebraic float rewrite.
+        node.denormFree=node.denormFree || RecipeRangeDenormFree(node.fact);
+        if(node.pure && node.inputs.size()==2 && node.winnerRule!=0) {
+            const RecipeArithmetic arithmetic{backend};
+            const auto a=arithmetic.Input(result.values[node.inputs[0]].fact),
+                       b=arithmetic.Input(result.values[node.inputs[1]].fact);
+            if(RecipeFinite(a) && RecipeFinite(b)) {
+                if(node.winnerRule==3) { // declared HardUnion
+                    if(a.upper<b.lower) node.selected=node.inputs[0];
+                    else if(b.upper<a.lower) node.selected=node.inputs[1];
+                } else if(node.winnerRule==5) { // declared HardIntersect
+                    if(a.lower>b.upper) node.selected=node.inputs[0];
+                    else if(b.lower>a.upper) node.selected=node.inputs[1];
+                } else if(node.winnerRule==4 && a.lower>-b.lower) { // HardSubtract: base wins
+                    node.selected=node.inputs[0];
+                }
+                // Numeric selection can still flush a winning denormal. Erasing
+                // that min/max is exact only if its selected producer cannot return one.
+                if(node.selected>=0 && backend==RecipeProofBackend::GpuDznPrecise
+                    && !result.values[node.selected].denormFree) node.selected=-1;
+                if(node.selected>=0) {
+                    node.denormFree=result.values[node.selected].denormFree;
+                    // Rewrite feedback: the surviving value's facts/dependencies flow
+                    // forward to later guards and schedule placement.
+                    node.fact=result.values[node.selected].fact;
+                    node.axes=result.values[node.selected].axes;
+                    ++result.prunedValues;
+                }
+            }
+        }
+        result.hasOpaqueEffects=result.hasOpaqueEffects || !node.pure;
+        const int index=static_cast<int>(result.values.size());
+        node.identity=index;
+        if(buildCompiledExpressions) {
+        std::string key=std::to_string(node.opcode)+":"+std::to_string(node.inputMask)+":";
+        for(auto bits : node.data) key+=std::to_string(bits)+",";
+        key+="|";
+        for(int input : node.inputs) key+=std::to_string(result.values[input].identity)+",";
+        // The complete ordered key is compared, never just a digest. Constant bytes,
+        // type (scalar float here), frame (unwarped position here), and operand order
+        // are identity. Opaque/effectful values get a fresh identity and remain live.
+        if(node.pure) {
+            auto [found, inserted]=identities.emplace(key,index);
+            if(!inserted) { node.identity=found->second; node.reuse=found->second; ++result.sharedValues; }
+        }
+        }
+        result.values.push_back(std::move(node)); stack.push_back(index);
+    }
+    if(stack.size()!=1) { result.diagnostic=RecipeAnalysisDiagnostic::StackShape; return result; }
+    result.output=stack[0];
+    if(result.hasOpaqueEffects || backend==RecipeProofBackend::GpuUncertified) { result.sharedValues=0; result.prunedValues=0; for(auto& value:result.values) { value.fact={}; value.selected=-1; value.reuse=-1; } }
+    if(backend==RecipeProofBackend::GpuUncertified) result.diagnostic=RecipeAnalysisDiagnostic::BackendContract;
+    return result;
+}
+inline std::string RecipeExpression(const RecipeAnalysis& a, int index, bool optimized) {
+    std::string expression=a.values[index].expression;
+    if(!optimized || a.hasOpaqueEffects) return expression;
+    // Replace whole identifiers, so v1 cannot accidentally replace the prefix of v10.
+    const auto identifier=[](char c) { return (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_'; };
+    for(std::size_t p=0;p<expression.size();) {
+        if(expression[p]!='v' || (p>0 && identifier(expression[p-1])) || p+1==expression.size() || expression[p+1]<'0' || expression[p+1]>'9') { ++p; continue; }
+        std::size_t end=p+1;
+        while(end<expression.size() && expression[end]>='0' && expression[end]<='9') ++end;
+        if(end<expression.size() && identifier(expression[end])) { p=end; continue; }
+        int value=0;
+        for(std::size_t digit=p+1;digit<end;++digit) value=value*10+(expression[digit]-'0');
+        const std::string replacement=RecipeValueName(RecipeResolvedValue(a,value));
+        expression.replace(p,end-p,replacement); p+=replacement.size();
+    }
+    return expression;
+}
+inline std::vector<bool> RecipeLiveValues(const RecipeAnalysis& a, bool optimized) {
+    std::vector<bool> live(a.values.size(),!optimized || a.hasOpaqueEffects);
+    if(!optimized || a.hasOpaqueEffects) return live;
+    // Effectful original producers remain in original order even if their result is dead.
+    for(std::size_t i=0;i<a.values.size();++i) if(!a.values[i].pure) live[i]=true;
+    if(a.output>=0) live[RecipeResolvedValue(a,a.output)]=true;
+    for(std::size_t i=a.values.size();i-->0;) if(live[i])
+        for(int input : a.values[i].inputs) live[RecipeResolvedValue(a,input)]=true;
+    return live;
+}
+inline std::string RecipeCompiledBody(const RecipeAnalysis& a, bool optimized) {
+    const auto live=RecipeLiveValues(a,optimized);
+    std::string body;
+    for(std::size_t i=0;i<a.values.size();++i) if(live[i])
+        body+="const float "+RecipeValueName(static_cast<int>(i))+"="+RecipeExpression(a,static_cast<int>(i),optimized)+";\n";
+    return body+"return "+RecipeValueName(optimized?RecipeResolvedValue(a,a.output):a.output)+";\n";
+}
+inline std::string RecipeAxisCondition(RecipeRange r, const std::string& p) {
+    if(!RecipeFinite(r)) return "false";
+    return "std::isfinite("+p+") && "+p+">="+RecipeFloatLiteral(std::bit_cast<std::uint32_t>(r.lower))
+        +" && "+p+"<="+RecipeFloatLiteral(std::bit_cast<std::uint32_t>(r.upper));
+}
+inline std::string RecipeDomainCondition(const RecipeAnalysis& a) {
+    return "RecipeStrictEnvironment() && ("+RecipeAxisCondition(a.domain.x,"p.x")+") && ("
+        +RecipeAxisCondition(a.domain.y,"p.y")+") && ("+RecipeAxisCondition(a.domain.z,"p.z")+")";
+}
+inline bool RecipeProfitable(const RecipeAnalysis& a, bool grid) {
+    if(a.hasOpaqueEffects) return false;
+    const auto live=RecipeLiveValues(a,true);
+    for(std::size_t i=0;i<a.values.size();++i) if(a.values[i].costly)
+        if(!live[i] || (grid && (a.values[i].axes&4)==0)) return true;
+    return false;
+}
+inline std::string EmitRecipeCompiledFunction(const RecipeAnalysis& a, const std::string& name) {
+    if(!a.compiledExpressions || a.diagnostic!=RecipeAnalysisDiagnostic::None || a.output<0) return {};
+    if(!RecipeProfitable(a,false)) return "inline float "+name+"(glm::vec3 p, RecipeAnalysisDiagnostic& diagnostic) {\n"
+        "diagnostic=RecipeAnalysisDiagnostic::None;\n"+RecipeCompiledBody(a,false)+"}\n";
+    // Two bounded forms: domain-guarded specialization and original compiled oracle.
+    // Neither form is a runtime opcode evaluator. The domain escape never throws.
+    return "inline float "+name+"(glm::vec3 p, RecipeAnalysisDiagnostic& diagnostic) {\n"
+        "diagnostic=RecipeAnalysisDiagnostic::None;\nif("+RecipeDomainCondition(a)+") {\n"
+        +RecipeCompiledBody(a,true)+"}\ndiagnostic=RecipeStrictEnvironment()?RecipeAnalysisDiagnostic::DeclaredRangeContradiction:RecipeAnalysisDiagnostic::BackendContract;\n"
+        +RecipeCompiledBody(a,false)+"}\n";
+}
+inline std::string EmitRecipeCompiledGrid(const RecipeAnalysis& a, const std::string& name) {
+    if(!a.compiledExpressions || a.diagnostic!=RecipeAnalysisDiagnostic::None || a.output<0) return {};
+    if(!RecipeProfitable(a,true)) return "inline void "+name+"(std::span<const float> xs, std::span<const float> ys, std::span<const float> zs, std::span<float> output, RecipeAnalysisDiagnostic& diagnostic) {\n"
+        "diagnostic=RecipeAnalysisDiagnostic::None;\nif(xs.empty() || ys.empty() || zs.empty()) return;\n"
+        "if(xs.size()>output.size()/ys.size()/zs.size()) { diagnostic=RecipeAnalysisDiagnostic::AnalysisBudget; return; }\n"
+        "std::size_t slot=0; for(float x:xs) for(float y:ys) for(float z:zs) { glm::vec3 p(x,y,z); output[slot++]=[&]() {\n"
+        +RecipeCompiledBody(a,false)+"}(); }\n}\n";
+    // No tables/caches: a bounded schedule of local temporaries. All domain checks
+    // precede the first producer. Zero-trip grids return before any hoisted evaluation.
+    std::string text="inline void "+name+"(std::span<const float> xs, std::span<const float> ys, std::span<const float> zs, std::span<float> output, RecipeAnalysisDiagnostic& diagnostic) {\n"
+        "diagnostic=RecipeAnalysisDiagnostic::None;\nif(xs.empty() || ys.empty() || zs.empty()) return;\n"
+        "if(xs.size()>output.size()/ys.size()/zs.size()) { diagnostic=RecipeAnalysisDiagnostic::AnalysisBudget; return; }\n"
+        "bool admitted=RecipeStrictEnvironment();\nfor(float x:xs) admitted=admitted && ("+RecipeAxisCondition(a.domain.x,"x")+");\n"
+        "for(float y:ys) admitted=admitted && ("+RecipeAxisCondition(a.domain.y,"y")+");\n"
+        "for(float z:zs) admitted=admitted && ("+RecipeAxisCondition(a.domain.z,"z")+");\n"
+        "if(!admitted) { diagnostic=RecipeStrictEnvironment()?RecipeAnalysisDiagnostic::DeclaredRangeContradiction:RecipeAnalysisDiagnostic::BackendContract; std::size_t slot=0;\n"
+        "for(float x:xs) for(float y:ys) for(float z:zs) { glm::vec3 p(x,y,z); output[slot++]=[&]() {\n"
+        +RecipeCompiledBody(a,false)+"}(); } return; }\n"
+        "std::size_t slot=0; glm::vec3 p(0.0f);\n";
+    const auto live=RecipeLiveValues(a,true);
+    for(int level=0;level<4;++level) {
+        if(level==1) text+="for(float x:xs) { p.x=x;\n";
+        if(level==2) text+="for(float y:ys) { p.y=y;\n";
+        if(level==3) text+="for(float z:zs) { p.z=z;\n";
+        for(std::size_t i=0;i<a.values.size();++i) if(live[i]) {
+            const auto& v=a.values[i];
+            // Effectful/opaque producers stay in the innermost original-order body.
+            const int scope=a.hasOpaqueEffects || !v.pure?3:(v.axes&4)?3:(v.axes&2)?2:(v.axes&1)?1:0;
+            if(scope==level) text+="const float "+RecipeValueName(static_cast<int>(i))+"="+RecipeExpression(a,static_cast<int>(i),true)+";\n";
+        }
+    }
+    text+="output[slot++]="+RecipeValueName(RecipeResolvedValue(a,a.output))+";\n}}}\n}\n";
+    return text;
+}
+} // namespace Yeroket::Sdf::Generated
+// END GENERATED RECIPE ANALYSIS
+
+namespace Yeroket::Sdf::Generated {
 
 inline yk::simd4::f32 SdfCore_SphereSimd4(yk::simd4::f32x3 p, glm::vec3 center, float radius) {
     alignas(16) float p_x[4], p_y[4], p_z[4];
