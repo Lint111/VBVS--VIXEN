@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#include <bit>
+#include <cstring>
 
 #include "Recipe/RecipeTileSpecialization.h"
 #include "Recipe/RecipeWholeDomainCompaction.h"
@@ -52,8 +54,8 @@ void ExpectSameField(const std::vector<SdfInstruction>& source,
                     glm::mix(domain.minimum.x, domain.maximum.x, static_cast<float>(x) / (kSteps - 1)),
                     glm::mix(domain.minimum.y, domain.maximum.y, static_cast<float>(y) / (kSteps - 1)),
                     glm::mix(domain.minimum.z, domain.maximum.z, static_cast<float>(z) / (kSteps - 1)));
-                EXPECT_FLOAT_EQ(evalRecipe(source.data(), static_cast<std::uint32_t>(source.size()), point),
-                    evalRecipe(specialized.data(), static_cast<std::uint32_t>(specialized.size()), point))
+                EXPECT_EQ(std::bit_cast<std::uint32_t>(evalRecipe(source.data(), static_cast<std::uint32_t>(source.size()), point)),
+                    std::bit_cast<std::uint32_t>(evalRecipe(specialized.data(), static_cast<std::uint32_t>(specialized.size()), point)))
                     << "at " << point.x << "," << point.y << "," << point.z;
             }
         }
@@ -337,3 +339,32 @@ TEST(RecipeWholeDomainCompaction, RejectsRemovalOfAVisibleCornerTerm) {
 }
 
 } // namespace
+
+TEST(RecipeIntervalPruning, UnknownGpuBackendRetainsTheOracleTape) {
+    const std::vector<SdfInstruction> source{Sphere(0,0,0,8), Sphere(80,0,0,2), Combine(SdfOpCode::Union)};
+    const auto result=SpecializeRecipeTapeForTile(source,kNearOrigin,
+        Yeroket::Sdf::Generated::RecipeProofBackend::GpuUncertified);
+    EXPECT_EQ(result.stats.fallback,RecipeTileFallback::BackendContract);
+    ASSERT_EQ(result.instructions.size(),source.size());
+    EXPECT_EQ(std::memcmp(result.instructions.data(),source.data(),source.size()*sizeof(SdfInstruction)),0);
+}
+
+TEST(RecipeWholeDomainCompaction, UncertifiedGpuDuplicatesRetainTheOperator) {
+    SdfInstruction value{};
+    value.opCode=static_cast<std::uint8_t>(SdfOpCode::PushParam);
+    value.data[0]=std::numeric_limits<float>::denorm_min();
+    const std::array<std::vector<SdfInstruction>,1> fixtures{{
+        {value,value,Combine(SdfOpCode::Union)}
+    }};
+    for(auto backend:{Yeroket::Sdf::Generated::RecipeProofBackend::GpuDznPrecise,
+        Yeroket::Sdf::Generated::RecipeProofBackend::GpuUncertified})
+        for(const auto& source:fixtures) {
+            auto request=DeclaredWholeDomainRequest(kNearOrigin);
+            request.backend=backend;
+            request.duplicateSelectionAndProvenanceEquivalent=true;
+            const auto result=CompactRecipeOverWholeDomain(source,request);
+            ExpectSameInstructions(source,result.instructions);
+            EXPECT_EQ(result.stats.removedIdentityNoOps,0u);
+            EXPECT_EQ(result.stats.removedIdempotentDuplicateInstructions,0u);
+        }
+}
