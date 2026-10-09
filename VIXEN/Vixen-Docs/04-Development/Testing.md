@@ -104,6 +104,8 @@ for t in test_*.exe; do ./$t --gtest_brief=1; done
 
 ### 3.3 Via CTest
 
+GPU-device tests share the `vixen_gpu_device` resource lock so CTest can keep CPU-only tests parallel. Device loss under concurrency is under diagnosis.
+
 ```bash
 # All tests
 ctest --test-dir build -C Debug

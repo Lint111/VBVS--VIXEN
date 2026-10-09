@@ -16,8 +16,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     set_tests_properties(HeadlessStarfieldGraph.CaptureFirst PROPERTIES
         ENVIRONMENT "VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}"
         ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
-        LABELS "Application"
-        RUN_SERIAL TRUE)
+        LABELS "Application")
 
     add_test(NAME HeadlessStarfieldGraph.CaptureSecond
         COMMAND test_headless_starfield_graph
@@ -25,8 +24,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
     set_tests_properties(HeadlessStarfieldGraph.CaptureSecond PROPERTIES
         ENVIRONMENT "VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}-repeat"
         ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1;VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
-        LABELS "Application"
-        RUN_SERIAL TRUE)
+        LABELS "Application")
 
     add_test(NAME HeadlessStarfieldGraph.CompareIndependentCaptures
         COMMAND test_headless_starfield_graph
@@ -35,8 +33,11 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         ENVIRONMENT "VIXEN_HEADLESS_STARFIELD_CAPTURE_PREFIX=${_starfield_prefix}"
         ENVIRONMENT_MODIFICATION "VIXEN_TEST_CELSHADE_LAMBERT_GGX=set:1"
         DEPENDS "HeadlessStarfieldGraph.CaptureFirst;HeadlessStarfieldGraph.CaptureSecond"
-        LABELS "Application"
-        RUN_SERIAL TRUE)
+        LABELS "Application")
+
+    vixen_lock_gpu_tests(TESTS
+        HeadlessStarfieldGraph.CaptureFirst
+        HeadlessStarfieldGraph.CaptureSecond)
 
     message(STATUS "[Application Tests] Added: test_headless_starfield_graph (isolated production graph captures and pixel comparison)")
 endif()

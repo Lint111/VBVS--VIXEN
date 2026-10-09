@@ -830,7 +830,8 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_glsl_numerical_parity>
         COMMENT "Copying TBB DLL for test_recipe_glsl_numerical_parity")
 endif()
-vixen_gtest_discover_tests(SVO test_recipe_glsl_numerical_parity)
+vixen_gtest_discover_tests(SVO test_recipe_glsl_numerical_parity
+    GPU_TESTS "^RecipeGlslNumericalParityTest\\..*")
 
 # ===========================================================================
 # Recipe-compiler uplift S1 step 4 (task #26, 2026-08-04): CPU-side compile-
@@ -878,7 +879,8 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_nested_invocation>
         COMMENT "Copying TBB DLL for test_recipe_nested_invocation")
 endif()
-vixen_gtest_discover_tests(SVO test_recipe_nested_invocation)
+vixen_gtest_discover_tests(SVO test_recipe_nested_invocation
+    GPU_TESTS "^RecipeNestedInvocationGpuParityTest\\..*")
 
 # ===========================================================================
 # W-RT Slice 1 feasibility spike (2026-08-07) — standalone proof that VK_KHR_ray_query works
@@ -902,7 +904,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_rayquery_feasibility>
         COMMENT "Copying TBB DLL for test_rayquery_feasibility")
 endif()
-vixen_gtest_discover_tests(SVO test_rayquery_feasibility)
+vixen_gtest_discover_tests(SVO test_rayquery_feasibility GPU)
 
 # ===========================================================================
 # Recipe-Diversity-Stress-Scene-Inc6 M1 — spatial-contract meta/resolve prototype's
@@ -935,7 +937,7 @@ if(TARGET TBB::tbb)
             $<TARGET_FILE:TBB::tbb> $<TARGET_FILE_DIR:test_recipe_declared_position_render>
         COMMENT "Copying TBB DLL for test_recipe_declared_position_render")
 endif()
-vixen_gtest_discover_tests(SVO test_recipe_declared_position_render)
+vixen_gtest_discover_tests(SVO test_recipe_declared_position_render GPU)
 
 # ===========================================================================
 # Uber-Shader Splice Tests (Lazy-Procedural-Delta-Baseline Inc0 M5 Task 11 —
