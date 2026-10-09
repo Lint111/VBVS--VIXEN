@@ -1,0 +1,297 @@
+{
+  "parameter": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 7,
+        "dispatch_count": 4,
+        "first_changed_tick": 31,
+        "first_matching_settled_tick": 31,
+        "settled_match_frames": 2,
+        "presented_frames_to_change": 2,
+        "dispatch_to_frame_end_ms": 436.174,
+        "capture_completion_ms": 573.263,
+        "dispatch_ms": 0.285,
+        "dispatch_to_flatten_ms": 0.076,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            30
+          ],
+          "registry": [
+            30
+          ],
+          "shader_request": [],
+          "bake": [
+            30
+          ],
+          "publish": [
+            30
+          ],
+          "compile": [],
+          "materialize": [
+            30
+          ],
+          "render": [
+            30,
+            31
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.029,
+          "registry": 0.001,
+          "shader_request": 0,
+          "bake": 33.465,
+          "publish": 0.015,
+          "compile": 0,
+          "materialize": 21.152,
+          "render": 263.726,
+          "registry_exclusive": 0.001,
+          "render_exclusive": 242.574
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 9,
+        "dispatch_count": 4,
+        "first_changed_tick": 61,
+        "first_matching_settled_tick": 61,
+        "settled_match_frames": 2,
+        "presented_frames_to_change": 2,
+        "dispatch_to_frame_end_ms": 471.183,
+        "capture_completion_ms": 614.294,
+        "dispatch_ms": 0.168,
+        "dispatch_to_flatten_ms": 0.052,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            60
+          ],
+          "registry": [
+            60
+          ],
+          "shader_request": [],
+          "bake": [
+            60
+          ],
+          "publish": [
+            60
+          ],
+          "compile": [],
+          "materialize": [
+            60
+          ],
+          "render": [
+            60,
+            61
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.033,
+          "registry": 0.001,
+          "shader_request": 0,
+          "bake": 40.017,
+          "publish": 0.013,
+          "compile": 0,
+          "materialize": 34.685,
+          "render": 290.065,
+          "registry_exclusive": 0.001,
+          "render_exclusive": 255.38
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 10,
+        "dispatch_count": 4,
+        "first_changed_tick": 91,
+        "first_matching_settled_tick": 91,
+        "settled_match_frames": 2,
+        "presented_frames_to_change": 2,
+        "dispatch_to_frame_end_ms": 482.461,
+        "capture_completion_ms": 617.975,
+        "dispatch_ms": 0.188,
+        "dispatch_to_flatten_ms": 0.077,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            90
+          ],
+          "registry": [
+            90
+          ],
+          "shader_request": [],
+          "bake": [
+            90
+          ],
+          "publish": [
+            90
+          ],
+          "compile": [],
+          "materialize": [
+            90
+          ],
+          "render": [
+            90,
+            91
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.04,
+          "registry": 0.002,
+          "shader_request": 0,
+          "bake": 41.786,
+          "publish": 0.016,
+          "compile": 0,
+          "materialize": 20.715,
+          "render": 301.461,
+          "registry_exclusive": 0.002,
+          "render_exclusive": 280.74600000000004
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": false,
+      "123": false
+    },
+    "first_edit_identity_at_tick": {
+      "63": false,
+      "93": true,
+      "123": true
+    },
+    "frame_spans_ms": {
+      "0": 947.302,
+      "1": 167.755,
+      "2": 154.863,
+      "3": 198.965,
+      "4": 94.178,
+      "5": 94.368,
+      "6": 90.116,
+      "7": 88.498,
+      "8": 87.503,
+      "9": 89.937,
+      "10": 93.418,
+      "11": 88.521,
+      "12": 92.286,
+      "13": 103.406,
+      "14": 90.665,
+      "15": 90.087,
+      "16": 93.072,
+      "17": 87.557,
+      "18": 88.15,
+      "19": 89.143,
+      "20": 91.958,
+      "21": 94.293,
+      "22": 90.099,
+      "23": 89.539,
+      "24": 89.919,
+      "25": 93.099,
+      "26": 91.129,
+      "27": 90.375,
+      "28": 89.36,
+      "29": 160.618,
+      "30": 210.29,
+      "31": 88.874,
+      "32": 89.123,
+      "33": 89.426,
+      "34": 95.087,
+      "35": 88.939,
+      "36": 87.185,
+      "37": 87.703,
+      "38": 113.046,
+      "39": 93.411,
+      "40": 90.412,
+      "41": 90.081,
+      "42": 85.68,
+      "43": 85.779,
+      "44": 86.922,
+      "45": 88.165,
+      "46": 92.273,
+      "47": 91.447,
+      "48": 92.704,
+      "49": 96.295,
+      "50": 94.057,
+      "51": 91.368,
+      "52": 90.748,
+      "53": 90.207,
+      "54": 90.958,
+      "55": 88.925,
+      "56": 89.911,
+      "57": 89.174,
+      "58": 88.576,
+      "59": 151.309,
+      "60": 244.298,
+      "61": 87.563,
+      "62": 91.422,
+      "63": 91.217,
+      "64": 97.967,
+      "65": 92.547,
+      "66": 87.807,
+      "67": 91.268,
+      "68": 150.971,
+      "69": 98.478,
+      "70": 92.427,
+      "71": 91.848,
+      "72": 89.352,
+      "73": 89.182,
+      "74": 92.266,
+      "75": 90.612,
+      "76": 89.733,
+      "77": 89.482,
+      "78": 91.012,
+      "79": 91.199,
+      "80": 90.214,
+      "81": 89.368,
+      "82": 89.775,
+      "83": 89.696,
+      "84": 90.985,
+      "85": 91.1,
+      "86": 91.886,
+      "87": 90.869,
+      "88": 92.427,
+      "89": 160.956,
+      "90": 248.348,
+      "91": 98.704,
+      "92": 89.048,
+      "93": 89.64,
+      "94": 98.701,
+      "95": 90.305,
+      "96": 87.212,
+      "97": 85.214,
+      "98": 131.333,
+      "99": 91.748,
+      "100": 89.995,
+      "101": 90.443,
+      "102": 88.034,
+      "103": 86.821,
+      "104": 88.825,
+      "105": 90.731,
+      "106": 87.337,
+      "107": 87.538,
+      "108": 87.153,
+      "109": 89.458,
+      "110": 89.312,
+      "111": 89.051,
+      "112": 89.693,
+      "113": 88.544,
+      "114": 88.391,
+      "115": 90.541,
+      "116": 89.001,
+      "117": 88.644,
+      "118": 89.048,
+      "119": 157.386,
+      "120": 159.248,
+      "121": 159.516,
+      "122": 150.105,
+      "123": 145.822,
+      "124": 134.852,
+      "125": 93.88,
+      "126": 88.579,
+      "127": 87.033,
+      "128": 88.948,
+      "129": 88.667,
+      "130": 89.557,
+      "131": 88.952
+    }
+  }
+}

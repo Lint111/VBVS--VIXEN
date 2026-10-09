@@ -6,6 +6,7 @@
 #include <cmath>       // std::tan for the LOD ray-cone (raySizeCoef) computation
 #include <filesystem>  // CaptureFrameToPng: exact-path rename (M4b)
 #include <cstdio>      // std::sscanf for VIXEN_TIER_M8_FLIGHT_AIM_OFFSET (M8 Task 23)
+#include <chrono>
 #include <cstdlib>     // std::getenv/atoi for VIXEN_WINDOW_WIDTH/HEIGHT overrides
 #include <cstring>     // std::memcpy for M5's shadeM5IndirectLumaBits float reinterpretation
 #include <iostream>    // E11-T1: std::cout for the [PolicyStencilTiles] teardown readback print
@@ -372,7 +373,20 @@ bool VulkanGraphApplication::Render() {
 
         // Render a complete frame via the graph (it internally handles event processing + deferred
         // recompilation, image acquisition, command recording, queue submission with semaphores, present).
+        if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
+            const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            std::fprintf(stderr, "[RECIPE/latency] phase=render edge=begin wall_us=%lld\n",
+                static_cast<long long>(wallUs));
+        }
         VkResult result = renderGraph->RenderFrame();
+        if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
+            const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            std::fprintf(stderr, "[RECIPE/latency] phase=render edge=end wall_us=%lld\n",
+                static_cast<long long>(wallUs));
+        }
+
 
         // Event-driven swapchain recreation is handled internally; VK_ERROR_OUT_OF_DATE_KHR triggers
         // events that mark nodes for recompilation.
