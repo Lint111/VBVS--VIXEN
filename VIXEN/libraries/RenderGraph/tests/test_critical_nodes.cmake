@@ -485,6 +485,7 @@ target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE ${RENDER
 if(TARGET SVO)
     target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE SVO)
 endif()
+target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE VoxelDocument)
 if(TARGET stb)
     target_link_libraries(test_rendergraph_criticalnodes_gpurender2 PRIVATE stb)
 else()
