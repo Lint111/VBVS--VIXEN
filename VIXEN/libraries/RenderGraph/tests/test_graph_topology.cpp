@@ -180,6 +180,37 @@ TEST_F(GraphTopologyTest, TopologicalSort_UsesInsertionOrderForIndependentNodes)
     EXPECT_EQ(sorted, insertionOrder);
 }
 
+TEST_F(GraphTopologyTest, LightingDispatchChainSurvivesReversedAndShuffledTieOrders) {
+    MockNode march("test_dispatch");
+    MockNode shadowWave("shadow_visibility_wave");
+    MockNode shade("spatial_reuse");
+    MockNode independentA("independent_a");
+    MockNode independentB("independent_b");
+
+    const std::vector<std::vector<NodeInstance*>> tieOrders{
+        {&march, &shadowWave, &shade, &independentA, &independentB},
+        {&independentB, &independentA, &shade, &shadowWave, &march},
+        {&shadowWave, &independentB, &march, &independentA, &shade},
+    };
+
+    for (const auto& tieOrder : tieOrders) {
+        GraphTopology candidate;
+        for (NodeInstance* node : tieOrder) candidate.AddNode(node);
+        candidate.AddEdge(MakeEdge(&march, &shadowWave));
+        candidate.AddEdge(MakeEdge(&shadowWave, &shade));
+
+        const auto sorted = candidate.TopologicalSort();
+        const auto indexOf = [&sorted](const NodeInstance* node) {
+            const auto it = std::find(sorted.begin(), sorted.end(), node);
+            return it == sorted.end() ? sorted.size() : static_cast<size_t>(it - sorted.begin());
+        };
+
+        ASSERT_EQ(sorted.size(), tieOrder.size());
+        EXPECT_LT(indexOf(&march), indexOf(&shadowWave));
+        EXPECT_LT(indexOf(&shadowWave), indexOf(&shade));
+    }
+}
+
 TEST_F(GraphTopologyTest, TopologicalSort_Diamond) {
     MockNode nodeA("A");
     MockNode nodeB("B");

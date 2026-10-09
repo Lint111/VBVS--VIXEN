@@ -609,6 +609,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Slice C: plumbing synthesized at the wire site; push-gatherer handle assigned there.
     NodeHandle spatialReusePushConstantGatherer{};
     NodeHandle spatialReuseNode = renderGraph->AddNode<ComputeStageNodeType>("spatial_reuse");
+    // SpatialReuseShade reads the visibility bits that ShadowVisibilityWave writes into
+    // HitRecordBuffer. Its shader descriptor is supplied through sceneProviders below; this
+    // separate gatherer declares the GPU read hazard to ResourceAccessTracker.
+    NodeHandle spatialReuseReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_read_gatherer");
     NodeHandle skySphereNode = renderGraph->AddNode<SkySphereNodeType>("sky_sphere");
 
     NodeHandle sceneRadianceNode = renderGraph->AddNode<SceneRadianceNodeType>("scene_radiance");
@@ -994,7 +998,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle hitAccumCellRadianceBuffer{};
     NodeHandle hitAccumCellShadeShaderLib{}, hitAccumCellShadeNode{};
     NodeHandle hitAccumCellShadeReadGatherer{}, hitAccumCellShadeWriteGatherer{};
-    NodeHandle spatialReuseCellReadGatherer{};
     if (hitAccumResolveEnabled) {
         hitAccumCellRadianceBuffer = renderGraph->AddNode<StorageBufferNodeType>("hit_accum_cell_radiance_buffer");
         hitAccumCellShadeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("hit_accum_cell_shade_shader_lib");
@@ -1004,9 +1007,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
         hitAccumCellShadeReadGatherer  = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_cell_shade_read_gatherer");
         hitAccumCellShadeWriteGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("hit_accum_cell_shade_write_gatherer");
         // W-LEAN L3: NO standalone resolve — the composite is SpatialReuseShade's
-        // own VIXEN_SRS_CELL_RESOLVE axis. SRS gains its first buffer READ
-        // gatherer for the fold's inputs {cellRadiance, table}.
-        spatialReuseCellReadGatherer = renderGraph->AddNode<BufferSyncGathererNodeType>("spatial_reuse_cell_read_gatherer");
+        // own VIXEN_SRS_CELL_RESOLVE axis. The shared SpatialReuse read gatherer also
+        // carries the fold's optional {cellRadiance, table} inputs.
     }
     hitAccumCellRadianceBuffer_ = hitAccumCellRadianceBuffer;
 
@@ -2927,6 +2929,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (reservoirBufferA + reservoirBufferB — both physical buffers, see this block's own
     // declaration comment for why BOTH are declared regardless of which is "current").
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReadGatherer))->PreRegisterBufferSlots(1);
+    // SpatialReuseShade reads HitRecordBuffer plus, in the optional cell-resolve path,
+    // {cellRadiance, hitAccumTable}. One gatherer feeds the stage's single BUFFER_READ_ARRAY.
+    static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseReadGatherer))
+        ->PreRegisterBufferSlots(hitAccumResolveEnabled ? 3u : 1u);
     static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(directLightingReservoirWriteGatherer))->PreRegisterBufferSlots(2);
     // W1a: gather writes {requests, payloads}; wave reads {requests} writes {results};
     // apply reads {results, payloads}.
@@ -2973,7 +2979,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (hitAccumResolveEnabled) {
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeReadGatherer))->PreRegisterBufferSlots(1);
         static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(hitAccumCellShadeWriteGatherer))->PreRegisterBufferSlots(1);
-        static_cast<BufferSyncGathererNode*>(renderGraph->GetInstance(spatialReuseCellReadGatherer))->PreRegisterBufferSlots(2);
     }
     // W2a (reservoir path opt-in): gather reads {reservoirA, reservoirB,
     // hitRecords} (the A/B neighbor-array hazard moved here from the shade)
@@ -9305,6 +9310,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(directLightingReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   directLightingNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
 
+    // The shade consumes the per-pixel visibility mask that ShadowVisibilityWave writes into
+    // HitRecordBuffer. Descriptor binding alone does not declare this hazard; the shared read
+    // gatherer gives FrameSyncScheduler the same Resource* as the march and wave gatherers.
+    batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
+                  spatialReuseReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+    batch.Connect(spatialReuseReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
+                  spatialReuseNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
     // Sampled Lighting Inc3 M5: reservoir ping-pong CROSS-DISPATCH hazard — the milestone's own
     // defining risk (see DirectLighting.comp's file header + the plan's Task 5 note). Unlike M4's
     // reservoir wiring (Execute-only, justified by the SAME-NODE cross-FRAME persistent-buffer/
@@ -9710,14 +9723,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                       hitAccumCellShadeWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(hitAccumCellShadeWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                       hitAccumCellShadeNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
-        // W-LEAN L3: the shade's fold reads {cellRadiance, table} — SRS's
-        // first buffer read gatherer (records were already its own class).
+        // W-LEAN L3: append the shade fold's {cellRadiance, table} reads after
+        // HitRecordBuffer in the shared SRS read gatherer.
         batch.Connect(hitAccumCellRadianceBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      spatialReuseCellReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
+                      spatialReuseReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         batch.Connect(hitAccumTableBuffer, StorageBufferNodeConfig::STORAGE_BUFFER,
-                      spatialReuseCellReadGatherer, 1, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
-        batch.Connect(spatialReuseCellReadGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
-                      spatialReuseNode, ComputeStageNodeConfig::BUFFER_READ_ARRAY, SlotRoleModifier(SlotRole::Execute));
+                      spatialReuseReadGatherer, 2, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
         // Ordering-only edges (the Blit ORDERING_WAIT_SEMAPHORE convention —
         // found live at W3c-2's first boot: shared-Resource* hazards do NOT
         // order two stages). The chain wave → cell_shade → SRS pins: the cell
@@ -9865,14 +9876,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
         }
     }
 
-    // W1b cross-dispatch hazards: the shadow wave read-modify-writes the
-    // hit-record buffer BETWEEN the march (writer) and DL/SpatialReuse
-    // (readers) — declared as its own read+write gatherer pair on that ONE
-    // shared resource (both-slots-on-one-stage: bucketing's modeFinal
-    // precedent). The scheduler orders march→wave→readers on the shared
-    // Resource* exactly as it orders the reservoir ping-pong today; verified
-    // by the SCHED identity dump + the frame-hash gate (an unordered wave
-    // reads-before-march or writes-after-shade would break the hash loudly).
+    // W1b cross-dispatch hazards: the shadow wave read-modify-writes
+    // HitRecordBuffer between the march and its lighting readers. The shared
+    // Resource* gatherers register the GPU hazards; ordering-only connections
+    // separately establish the required march → wave → SpatialReuse topology.
     batch.Connect(hitRecordBufferNode, StorageBufferNodeConfig::STORAGE_BUFFER,
                   shadowVisibilityWaveReadGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     // KI-052 fix (E12-T1): PolicyStencilTileBuffer's read side — pairs with
@@ -9888,6 +9895,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   shadowVisibilityWaveWriteGatherer, 0, SlotRoleModifier(SlotRole::Dependency | SlotRole::Execute));
     batch.Connect(shadowVisibilityWaveWriteGatherer, BufferSyncGathererNodeConfig::BUFFER_ARRAY,
                   shadowVisibilityWaveNode, ComputeStageNodeConfig::BUFFER_WRITE_ARRAY, SlotRoleModifier(SlotRole::Execute));
+
+    // In the default path, the march is the HitRecordBuffer producer and the wave is its RMW
+    // consumer. The optional accumulate pass occupies the wave's ordering-wait slot when enabled.
+    if (!hitAccumEnabled) {
+        batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      shadowVisibilityWaveNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
+
+    // SpatialReuseShade consumes this frame's visibility bits. When the optional cell shade
+    // exists, the wave → cell-shade → SRS chain below supplies this order; otherwise the
+    // direct ordering edge keeps the shade after the wave for every topology tie-break.
+    if (!hitAccumResolveEnabled) {
+        batch.Connect(shadowVisibilityWaveNode, ComputeStageNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      spatialReuseNode, ComputeStageNodeConfig::ORDERING_WAIT_SEMAPHORE);
+    }
 
     // KI-052 fix (E12-T1): the march's write side — policyStencilTileWriteGatherer feeds
     // computeDispatch's new BUFFER_WRITE_ARRAY slot (ComputeDispatchNodeConfig.h). This is
