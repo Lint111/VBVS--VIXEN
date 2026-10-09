@@ -72,10 +72,15 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
     set(VIXEN_EDITOR_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/editor")
     set(VIXEN_HUD_CAPTURE_DIR "${CMAKE_BINARY_DIR}/runtime-captures/hud")
     file(MAKE_DIRECTORY "${VIXEN_EDITOR_CAPTURE_DIR}" "${VIXEN_HUD_CAPTURE_DIR}")
+    # SaveDocument writes beside its input. Give the capture producer a build-tree copy so its
+    # save/reopen script never mutates the tracked BuiltAssets sample.
+    set(VIXEN_EDITOR_TEST_DOCUMENT "${VIXEN_EDITOR_CAPTURE_DIR}/sample_tri_layer.vxd")
+    configure_file("${VIXEN_ROOT}/BuiltAssets/documents/sample_tri_layer.vxd"
+        "${VIXEN_EDITOR_TEST_DOCUMENT}" COPYONLY)
 
     add_test(NAME vixen_editor_capture_producer
         COMMAND bash -c
-            "exec \"$<TARGET_FILE:vixen_editor>\" > \"${VIXEN_EDITOR_CAPTURE_DIR}/run_editor_script.log\" 2>&1")
+            "exec \"$<TARGET_FILE:vixen_editor>\" \"${VIXEN_EDITOR_TEST_DOCUMENT}\" > \"${VIXEN_EDITOR_CAPTURE_DIR}/run_editor_script.log\" 2>&1")
     set_tests_properties(vixen_editor_capture_producer PROPERTIES
         FIXTURES_SETUP VixenEditorCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
