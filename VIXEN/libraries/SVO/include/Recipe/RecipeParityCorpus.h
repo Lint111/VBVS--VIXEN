@@ -278,11 +278,9 @@ inline SdfInstruction float3DotOp() {
 inline SdfInstruction float3NormalizeOp() {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::Float3Normalize; return in; }
 
-// Recipe-Parameterization M2 Task 5b: ReadParam/ReadParamFloat3 corpus helpers. paramMask=1
-// mirrors RecipeRegistry::Register's convention ("data[0] is a runtime param-array index"),
-// even though evalRecipe/EmitProceduralFieldFunctionGlsl themselves dispatch on opCode alone
-// and don't inspect paramMask — set for realism/consistency with a genuinely-registerable
-// program, not because these two functions require it.
+// ReadParam/ReadParamFloat3 require paramMask=1 in RecipeRegistry::Register to mark data[0]
+// as a runtime param-array index. Typed ReadParamU32/ReadParamQ16 also store their index in
+// data[0], but do not use paramMask; the registry and GLSL emitter require it to remain zero.
 inline SdfInstruction readParamOp(int idx) {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParam; in.paramMask=1;
     in.data[0]=(float)idx; return in; }
@@ -290,10 +288,10 @@ inline SdfInstruction readParamFloat3Op(int idx) {
     SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamFloat3; in.paramMask=1;
     in.data[0]=(float)idx; return in; }
 inline SdfInstruction readParamU32Op(int idx) {
-    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamU32; in.paramMask=1;
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamU32;
     in.data[0]=(float)idx; return in; }
 inline SdfInstruction readParamQ16Op(int idx) {
-    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamQ16; in.paramMask=1;
+    SdfInstruction in{}; in.opCode=(uint8_t)SdfOpCode::ReadParamQ16;
     in.data[0]=(float)idx; return in; }
 inline SdfInstruction typedValueOp(SdfOpCode opcode) {
     SdfInstruction in{}; in.opCode=(uint8_t)opcode; return in; }
