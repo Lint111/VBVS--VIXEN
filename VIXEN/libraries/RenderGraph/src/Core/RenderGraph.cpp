@@ -9,6 +9,7 @@
 #include "Message.h"  // FrameStartEvent, FrameEndEvent
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <stdexcept>
 #include <unordered_set>
 #include <filesystem>
@@ -1898,6 +1899,13 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // All dirty nodes are still executing
     }
 
+    if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
+        const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        std::fprintf(stderr, "[RECIPE/latency] phase=compile edge=begin wall_us=%lld\n",
+            static_cast<long long>(wallUs));
+    }
+
     // This recompile owns a fresh epoch. Any token retained by work from the previous graph shape
     // is stopped before cleanup begins; compile-time slot tasks below receive the new live token.
     BeginExecutionEpoch();
@@ -2022,6 +2030,12 @@ void RenderGraph::RecompileDirtyNodes() {
         if (!allNodesSucceeded) {
             GRAPH_LOG_WARNING("[RenderGraph] Some nodes failed to recompile - graph remains uncompiled");
         }
+    }
+    if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
+        const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        std::fprintf(stderr, "[RECIPE/latency] phase=compile edge=end wall_us=%lld\n",
+            static_cast<long long>(wallUs));
     }
 }
 

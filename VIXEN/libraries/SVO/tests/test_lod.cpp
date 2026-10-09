@@ -311,8 +311,12 @@ TEST_F(LODRayCastingTest, DisabledLODMatchesRegularCast) {
     // With LOD disabled, should get same result
     EXPECT_EQ(lodHit.hit, regularHit.hit);
     if (lodHit.hit && regularHit.hit) {
+        EXPECT_EQ(lodHit.entity, regularHit.entity);
         EXPECT_EQ(lodHit.scale, regularHit.scale);
-        EXPECT_NEAR(lodHit.tMin, regularHit.tMin, 0.001f);
+        EXPECT_EQ(lodHit.tMin, regularHit.tMin);
+        EXPECT_EQ(lodHit.tMax, regularHit.tMax);
+        EXPECT_EQ(lodHit.hitPoint, regularHit.hitPoint);
+        EXPECT_EQ(lodHit.normal, regularHit.normal);
     }
 }
 
