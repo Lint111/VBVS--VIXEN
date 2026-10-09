@@ -9,6 +9,7 @@
 #include "ResidencyDefault.h"  // Lazy-Procedural-Delta-Baseline Inc0 M2: DeriveResidencyDefault
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>    // std::isspace for whitespace-safe boolean env flags
 #include <cstdio>    // std::snprintf (BrickDataHash log line)
 #include <cstdlib>   // std::getenv
@@ -515,7 +516,20 @@ void BodyOctreeSceneNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     // off-tick unload(g)+load(g+1)+flip — the old buffers are retired, not freed behind a stall.
     bool octreeRepublished = false;
     if (recipeDirty_) {
+        if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
+            const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            std::fprintf(stderr, "[RECIPE/latency] phase=materialize edge=begin wall_us=%lld\n",
+                static_cast<long long>(wallUs));
+        }
         Rematerialize(executeFrame);
+        if (std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) {
+            const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            std::fprintf(stderr, "[RECIPE/latency] phase=materialize edge=end wall_us=%lld\n",
+                static_cast<long long>(wallUs));
+        }
+
         recipeDirty_      = false;
         octreeRepublished = true;
     }

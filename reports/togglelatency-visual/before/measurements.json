@@ -1,0 +1,1868 @@
+{
+  "toggle": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 0,
+        "dispatch_count": 1,
+        "first_changed_tick": 32,
+        "first_matching_settled_tick": 32,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 1560.855,
+        "capture_completion_ms": 1829.343,
+        "dispatch_ms": 0.112,
+        "dispatch_to_flatten_ms": 0.092,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            30
+          ],
+          "registry": [
+            30
+          ],
+          "shader_request": [
+            30
+          ],
+          "bake": [
+            30
+          ],
+          "publish": [
+            30
+          ],
+          "compile": [
+            31
+          ],
+          "materialize": [
+            30
+          ],
+          "render": [
+            30,
+            31,
+            32
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.037,
+          "registry": 1.056,
+          "shader_request": 1.001,
+          "bake": 41.547,
+          "publish": 0.014,
+          "compile": 1002.002,
+          "materialize": 26.36,
+          "render": 63.338,
+          "registry_exclusive": 0.05500000000000016,
+          "render_exclusive": 36.978
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 0,
+        "dispatch_count": 1,
+        "first_changed_tick": 62,
+        "first_matching_settled_tick": 62,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 630.215,
+        "capture_completion_ms": 842.317,
+        "dispatch_ms": 0.093,
+        "dispatch_to_flatten_ms": 0.07,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            60
+          ],
+          "registry": [
+            60
+          ],
+          "shader_request": [
+            60
+          ],
+          "bake": [
+            60
+          ],
+          "publish": [
+            60
+          ],
+          "compile": [
+            61
+          ],
+          "materialize": [
+            60
+          ],
+          "render": [
+            60,
+            61,
+            62
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.036,
+          "registry": 0.679,
+          "shader_request": 0.641,
+          "bake": 42.474,
+          "publish": 0.019,
+          "compile": 112.454,
+          "materialize": 19.746,
+          "render": 52.334,
+          "registry_exclusive": 0.038000000000000034,
+          "render_exclusive": 32.58800000000001
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 9,
+        "dispatch_count": 1,
+        "first_changed_tick": 92,
+        "first_matching_settled_tick": 92,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 715.464,
+        "capture_completion_ms": 935.978,
+        "dispatch_ms": 0.09,
+        "dispatch_to_flatten_ms": 0.078,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            90
+          ],
+          "registry": [
+            90
+          ],
+          "shader_request": [
+            90
+          ],
+          "bake": [
+            90
+          ],
+          "publish": [
+            90
+          ],
+          "compile": [
+            91
+          ],
+          "materialize": [
+            90
+          ],
+          "render": [
+            90,
+            91,
+            92
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.033,
+          "registry": 0.855,
+          "shader_request": 0.808,
+          "bake": 35.706,
+          "publish": 0.012,
+          "compile": 96.421,
+          "materialize": 23.062,
+          "render": 81.577,
+          "registry_exclusive": 0.04699999999999993,
+          "render_exclusive": 58.515
+        }
+      },
+      {
+        "dispatch_tick": 120,
+        "action": 10,
+        "dispatch_count": 1,
+        "first_changed_tick": 122,
+        "first_matching_settled_tick": 122,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 651.945,
+        "capture_completion_ms": 858.218,
+        "dispatch_ms": 0.112,
+        "dispatch_to_flatten_ms": 0.067,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            120
+          ],
+          "registry": [
+            120
+          ],
+          "shader_request": [
+            120
+          ],
+          "bake": [
+            120
+          ],
+          "publish": [
+            120
+          ],
+          "compile": [
+            121
+          ],
+          "materialize": [
+            120
+          ],
+          "render": [
+            120,
+            121,
+            122
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.025,
+          "registry": 0.806,
+          "shader_request": 0.76,
+          "bake": 44.937,
+          "publish": 0.012,
+          "compile": 105.053,
+          "materialize": 29.813,
+          "render": 68.598,
+          "registry_exclusive": 0.04600000000000004,
+          "render_exclusive": 38.785
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": false,
+      "123": true
+    },
+    "first_edit_identity_at_tick": {
+      "63": false,
+      "93": true,
+      "123": false
+    },
+    "frame_spans_ms": {
+      "0": 397.4,
+      "1": 79.037,
+      "2": 89.446,
+      "3": 87.982,
+      "4": 82.989,
+      "5": 85.611,
+      "6": 86.098,
+      "7": 85.182,
+      "8": 84.463,
+      "9": 84.432,
+      "10": 85.213,
+      "11": 85.326,
+      "12": 84.359,
+      "13": 86.993,
+      "14": 87.3,
+      "15": 87.774,
+      "16": 88.234,
+      "17": 86.515,
+      "18": 86.431,
+      "19": 87.266,
+      "20": 88.969,
+      "21": 86.254,
+      "22": 83.812,
+      "23": 83.236,
+      "24": 84.112,
+      "25": 83.643,
+      "26": 82.886,
+      "27": 83.285,
+      "28": 82.496,
+      "29": 8.214,
+      "30": 84.803,
+      "31": 1012.536,
+      "32": 13.322,
+      "33": 14.103,
+      "34": 32.75,
+      "35": 101.215,
+      "36": 89.212,
+      "37": 87.659,
+      "38": 93.241,
+      "39": 85.942,
+      "40": 85.8,
+      "41": 87.487,
+      "42": 87.7,
+      "43": 96.556,
+      "44": 86.839,
+      "45": 90.356,
+      "46": 89.191,
+      "47": 87.684,
+      "48": 89.344,
+      "49": 88.541,
+      "50": 90.308,
+      "51": 88.568,
+      "52": 84.281,
+      "53": 84.621,
+      "54": 85.492,
+      "55": 82.338,
+      "56": 83.425,
+      "57": 82.889,
+      "58": 84.123,
+      "59": 14.28,
+      "60": 74.485,
+      "61": 123.728,
+      "62": 12.322,
+      "63": 12.487,
+      "64": 18.871,
+      "65": 86.264,
+      "66": 86.642,
+      "67": 83.978,
+      "68": 84.185,
+      "69": 85.05,
+      "70": 84.524,
+      "71": 83.839,
+      "72": 84.664,
+      "73": 87.181,
+      "74": 83.707,
+      "75": 83.058,
+      "76": 84.382,
+      "77": 84.509,
+      "78": 83.819,
+      "79": 89.907,
+      "80": 87.863,
+      "81": 88.368,
+      "82": 86.358,
+      "83": 86.098,
+      "84": 86.942,
+      "85": 88.431,
+      "86": 88.991,
+      "87": 89.719,
+      "88": 87.094,
+      "89": 22.607,
+      "90": 82.975,
+      "91": 122.0,
+      "92": 11.377,
+      "93": 17.67,
+      "94": 19.313,
+      "95": 88.71,
+      "96": 88.264,
+      "97": 87.839,
+      "98": 87.09,
+      "99": 86.432,
+      "100": 85.072,
+      "101": 86.366,
+      "102": 86.131,
+      "103": 86.646,
+      "104": 86.116,
+      "105": 88.006,
+      "106": 90.988,
+      "107": 88.007,
+      "108": 84.995,
+      "109": 85.747,
+      "110": 85.733,
+      "111": 85.234,
+      "112": 86.495,
+      "113": 90.113,
+      "114": 88.898,
+      "115": 86.693,
+      "116": 85.367,
+      "117": 86.841,
+      "118": 87.257,
+      "119": 21.93,
+      "120": 95.855,
+      "121": 115.804,
+      "122": 10.577,
+      "123": 11.776,
+      "124": 16.955,
+      "125": 85.134,
+      "126": 83.954,
+      "127": 84.752,
+      "128": 82.756,
+      "129": 83.872,
+      "130": 83.955,
+      "131": 83.851
+    }
+  },
+  "parameter": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 7,
+        "dispatch_count": 1,
+        "first_changed_tick": null,
+        "first_matching_settled_tick": null,
+        "settled_match_frames": null,
+        "presented_frames_to_change": null,
+        "dispatch_to_frame_end_ms": null,
+        "capture_completion_ms": null,
+        "dispatch_ms": 0.168,
+        "dispatch_to_flatten_ms": 0.131,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            30
+          ],
+          "registry": [
+            30
+          ],
+          "shader_request": [],
+          "bake": [
+            30
+          ],
+          "publish": [
+            30
+          ],
+          "compile": [],
+          "materialize": [
+            30
+          ],
+          "render": [
+            30,
+            31,
+            32,
+            33
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.064,
+          "registry": 0.013,
+          "shader_request": 0,
+          "bake": 28.181,
+          "publish": 0.011,
+          "compile": 0,
+          "materialize": 16.657,
+          "render": 508.055,
+          "registry_exclusive": 0.013,
+          "render_exclusive": 491.398
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 9,
+        "dispatch_count": 1,
+        "first_changed_tick": null,
+        "first_matching_settled_tick": null,
+        "settled_match_frames": null,
+        "presented_frames_to_change": null,
+        "dispatch_to_frame_end_ms": null,
+        "capture_completion_ms": null,
+        "dispatch_ms": 0.091,
+        "dispatch_to_flatten_ms": 0.072,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            60
+          ],
+          "registry": [
+            60
+          ],
+          "shader_request": [],
+          "bake": [
+            60
+          ],
+          "publish": [
+            60
+          ],
+          "compile": [],
+          "materialize": [
+            60
+          ],
+          "render": [
+            60,
+            61,
+            62,
+            63
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.038,
+          "registry": 0.002,
+          "shader_request": 0,
+          "bake": 29.525,
+          "publish": 0.01,
+          "compile": 0,
+          "materialize": 19.825,
+          "render": 534.233,
+          "registry_exclusive": 0.002,
+          "render_exclusive": 514.4079999999999
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 10,
+        "dispatch_count": 1,
+        "first_changed_tick": null,
+        "first_matching_settled_tick": null,
+        "settled_match_frames": null,
+        "presented_frames_to_change": null,
+        "dispatch_to_frame_end_ms": null,
+        "capture_completion_ms": null,
+        "dispatch_ms": 0.112,
+        "dispatch_to_flatten_ms": 0.072,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            90
+          ],
+          "registry": [
+            90
+          ],
+          "shader_request": [],
+          "bake": [
+            90
+          ],
+          "publish": [
+            90
+          ],
+          "compile": [],
+          "materialize": [
+            90
+          ],
+          "render": [
+            90,
+            91,
+            92,
+            93
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.03,
+          "registry": 0.002,
+          "shader_request": 0,
+          "bake": 24.81,
+          "publish": 0.01,
+          "compile": 0,
+          "materialize": 14.371,
+          "render": 443.195,
+          "registry_exclusive": 0.002,
+          "render_exclusive": 428.824
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": true,
+      "123": true
+    },
+    "first_edit_identity_at_tick": {
+      "63": true,
+      "93": true,
+      "123": true
+    },
+    "frame_spans_ms": {
+      "0": 410.398,
+      "1": 105.338,
+      "2": 104.747,
+      "3": 295.647,
+      "4": 85.088,
+      "5": 85.218,
+      "6": 86.004,
+      "7": 86.541,
+      "8": 86.848,
+      "9": 85.473,
+      "10": 83.89,
+      "11": 84.053,
+      "12": 83.193,
+      "13": 83.503,
+      "14": 83.59,
+      "15": 83.504,
+      "16": 83.305,
+      "17": 83.961,
+      "18": 246.892,
+      "19": 83.614,
+      "20": 84.055,
+      "21": 84.656,
+      "22": 84.13,
+      "23": 83.881,
+      "24": 84.127,
+      "25": 84.33,
+      "26": 84.572,
+      "27": 83.858,
+      "28": 84.144,
+      "29": 154.559,
+      "30": 165.985,
+      "31": 84.363,
+      "32": 203.812,
+      "33": 84.042,
+      "34": 90.369,
+      "35": 83.992,
+      "36": 83.533,
+      "37": 83.886,
+      "38": 98.84,
+      "39": 84.094,
+      "40": 84.32,
+      "41": 84.479,
+      "42": 84.51,
+      "43": 84.343,
+      "44": 83.801,
+      "45": 84.157,
+      "46": 83.959,
+      "47": 83.995,
+      "48": 84.841,
+      "49": 86.399,
+      "50": 92.995,
+      "51": 277.775,
+      "52": 84.756,
+      "53": 85.788,
+      "54": 85.455,
+      "55": 85.103,
+      "56": 85.254,
+      "57": 84.808,
+      "58": 84.886,
+      "59": 87.937,
+      "60": 166.783,
+      "61": 214.457,
+      "62": 85.504,
+      "63": 99.123,
+      "64": 90.555,
+      "65": 83.206,
+      "66": 83.989,
+      "67": 84.962,
+      "68": 110.54,
+      "69": 84.392,
+      "70": 85.429,
+      "71": 83.908,
+      "72": 84.246,
+      "73": 85.249,
+      "74": 85.12,
+      "75": 83.834,
+      "76": 84.373,
+      "77": 83.079,
+      "78": 83.698,
+      "79": 83.929,
+      "80": 84.323,
+      "81": 84.233,
+      "82": 82.769,
+      "83": 84.342,
+      "84": 90.044,
+      "85": 250.145,
+      "86": 84.647,
+      "87": 83.064,
+      "88": 84.397,
+      "89": 85.621,
+      "90": 155.858,
+      "91": 141.682,
+      "92": 86.53,
+      "93": 85.584,
+      "94": 92.075,
+      "95": 85.436,
+      "96": 84.984,
+      "97": 85.771,
+      "98": 109.183,
+      "99": 85.456,
+      "100": 84.872,
+      "101": 245.536,
+      "102": 84.136,
+      "103": 85.102,
+      "104": 84.298,
+      "105": 84.459,
+      "106": 84.883,
+      "107": 84.165,
+      "108": 84.401,
+      "109": 85.154,
+      "110": 85.296,
+      "111": 84.073,
+      "112": 86.484,
+      "113": 84.959,
+      "114": 84.437,
+      "115": 85.362,
+      "116": 84.177,
+      "117": 83.258,
+      "118": 83.704,
+      "119": 85.88,
+      "120": 85.676,
+      "121": 86.105,
+      "122": 85.487,
+      "123": 88.0,
+      "124": 85.088,
+      "125": 83.349,
+      "126": 83.368,
+      "127": 83.204,
+      "128": 84.477,
+      "129": 88.259,
+      "130": 82.97,
+      "131": 83.987
+    }
+  },
+  "create": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 1,
+        "dispatch_count": 1,
+        "first_changed_tick": 32,
+        "first_matching_settled_tick": 32,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 17187.223,
+        "capture_completion_ms": 17315.805,
+        "dispatch_ms": 0.102,
+        "dispatch_to_flatten_ms": 0.065,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            30
+          ],
+          "registry": [
+            30
+          ],
+          "shader_request": [
+            30
+          ],
+          "bake": [
+            30
+          ],
+          "publish": [
+            30
+          ],
+          "compile": [
+            31
+          ],
+          "materialize": [
+            30
+          ],
+          "render": [
+            30,
+            31,
+            32
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.026,
+          "registry": 0.625,
+          "shader_request": 0.586,
+          "bake": 24.389,
+          "publish": 0.01,
+          "compile": 16576.131,
+          "materialize": 16.173,
+          "render": 328.688,
+          "registry_exclusive": 0.039000000000000035,
+          "render_exclusive": 312.515
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 9,
+        "dispatch_count": 1,
+        "first_changed_tick": 62,
+        "first_matching_settled_tick": 62,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 724.817,
+        "capture_completion_ms": 865.233,
+        "dispatch_ms": 0.097,
+        "dispatch_to_flatten_ms": 0.067,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            60
+          ],
+          "registry": [
+            60
+          ],
+          "shader_request": [
+            60
+          ],
+          "bake": [
+            60
+          ],
+          "publish": [
+            60
+          ],
+          "compile": [
+            61
+          ],
+          "materialize": [
+            60
+          ],
+          "render": [
+            60,
+            61,
+            62
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.031,
+          "registry": 0.613,
+          "shader_request": 0.568,
+          "bake": 30.777,
+          "publish": 0.009,
+          "compile": 109.424,
+          "materialize": 18.462,
+          "render": 311.79600000000005,
+          "registry_exclusive": 0.04500000000000004,
+          "render_exclusive": 293.33400000000006
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 10,
+        "dispatch_count": 1,
+        "first_changed_tick": 92,
+        "first_matching_settled_tick": 92,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 745.711,
+        "capture_completion_ms": 894.791,
+        "dispatch_ms": 0.125,
+        "dispatch_to_flatten_ms": 0.085,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            90
+          ],
+          "registry": [
+            90
+          ],
+          "shader_request": [
+            90
+          ],
+          "bake": [
+            90
+          ],
+          "publish": [
+            90
+          ],
+          "compile": [
+            91
+          ],
+          "materialize": [
+            90
+          ],
+          "render": [
+            90,
+            91,
+            92
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.032,
+          "registry": 1.115,
+          "shader_request": 1.065,
+          "bake": 27.583,
+          "publish": 0.01,
+          "compile": 91.325,
+          "materialize": 19.417,
+          "render": 338.414,
+          "registry_exclusive": 0.050000000000000044,
+          "render_exclusive": 318.99699999999996
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": false,
+      "123": false
+    },
+    "first_edit_identity_at_tick": {
+      "63": false,
+      "93": true,
+      "123": true
+    },
+    "frame_spans_ms": {
+      "0": 411.747,
+      "1": 102.506,
+      "2": 102.155,
+      "3": 102.373,
+      "4": 84.06,
+      "5": 83.921,
+      "6": 84.843,
+      "7": 85.42,
+      "8": 92.127,
+      "9": 386.637,
+      "10": 84.49,
+      "11": 84.177,
+      "12": 83.147,
+      "13": 83.693,
+      "14": 84.164,
+      "15": 85.094,
+      "16": 85.411,
+      "17": 84.803,
+      "18": 85.213,
+      "19": 86.853,
+      "20": 84.106,
+      "21": 83.495,
+      "22": 83.428,
+      "23": 83.188,
+      "24": 83.494,
+      "25": 83.549,
+      "26": 83.929,
+      "27": 83.693,
+      "28": 84.318,
+      "29": 85.35,
+      "30": 186.805,
+      "31": 16660.062,
+      "32": 84.408,
+      "33": 83.497,
+      "34": 138.115,
+      "35": 84.069,
+      "36": 83.371,
+      "37": 82.456,
+      "38": 97.618,
+      "39": 84.031,
+      "40": 83.655,
+      "41": 83.611,
+      "42": 83.243,
+      "43": 82.862,
+      "44": 166.887,
+      "45": 83.355,
+      "46": 83.698,
+      "47": 83.057,
+      "48": 83.236,
+      "49": 82.745,
+      "50": 83.893,
+      "51": 85.004,
+      "52": 85.699,
+      "53": 83.824,
+      "54": 84.74,
+      "55": 84.676,
+      "56": 83.802,
+      "57": 84.36,
+      "58": 84.08,
+      "59": 134.391,
+      "60": 173.475,
+      "61": 195.177,
+      "62": 85.686,
+      "63": 86.733,
+      "64": 92.931,
+      "65": 85.851,
+      "66": 84.089,
+      "67": 85.419,
+      "68": 114.221,
+      "69": 84.809,
+      "70": 85.318,
+      "71": 85.403,
+      "72": 84.551,
+      "73": 84.704,
+      "74": 84.273,
+      "75": 86.509,
+      "76": 92.047,
+      "77": 85.982,
+      "78": 84.691,
+      "79": 84.743,
+      "80": 86.094,
+      "81": 83.708,
+      "82": 83.126,
+      "83": 82.198,
+      "84": 82.579,
+      "85": 82.67,
+      "86": 84.306,
+      "87": 84.248,
+      "88": 84.195,
+      "89": 84.325,
+      "90": 197.613,
+      "91": 175.785,
+      "92": 87.264,
+      "93": 85.507,
+      "94": 92.058,
+      "95": 82.703,
+      "96": 83.433,
+      "97": 89.374,
+      "98": 259.739,
+      "99": 82.554,
+      "100": 83.877,
+      "101": 84.367,
+      "102": 82.661,
+      "103": 83.473,
+      "104": 84.446,
+      "105": 84.931,
+      "106": 84.889,
+      "107": 84.145,
+      "108": 84.883,
+      "109": 84.708,
+      "110": 83.526,
+      "111": 84.16,
+      "112": 84.118,
+      "113": 83.972,
+      "114": 84.186,
+      "115": 85.005,
+      "116": 85.206,
+      "117": 87.048,
+      "118": 85.563,
+      "119": 94.48,
+      "120": 87.361,
+      "121": 88.735,
+      "122": 86.77,
+      "123": 85.676,
+      "124": 85.208,
+      "125": 83.357,
+      "126": 218.648,
+      "127": 83.121,
+      "128": 84.203,
+      "129": 83.698,
+      "130": 83.158,
+      "131": 82.664
+    }
+  },
+  "delete": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 2,
+        "dispatch_count": 1,
+        "first_changed_tick": 32,
+        "first_matching_settled_tick": 32,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 1503.184,
+        "capture_completion_ms": 1643.561,
+        "dispatch_ms": 0.133,
+        "dispatch_to_flatten_ms": 0.083,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            30
+          ],
+          "registry": [
+            30
+          ],
+          "shader_request": [
+            30
+          ],
+          "bake": [
+            30
+          ],
+          "publish": [
+            30
+          ],
+          "compile": [
+            31
+          ],
+          "materialize": [
+            30
+          ],
+          "render": [
+            30,
+            31,
+            32
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.031,
+          "registry": 0.855,
+          "shader_request": 0.808,
+          "bake": 26.683,
+          "publish": 0.011,
+          "compile": 900.658,
+          "materialize": 15.947,
+          "render": 301.88100000000003,
+          "registry_exclusive": 0.04699999999999993,
+          "render_exclusive": 285.934
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 9,
+        "dispatch_count": 1,
+        "first_changed_tick": 62,
+        "first_matching_settled_tick": 62,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 729.22,
+        "capture_completion_ms": 860.847,
+        "dispatch_ms": 0.146,
+        "dispatch_to_flatten_ms": 0.178,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            60
+          ],
+          "registry": [
+            60
+          ],
+          "shader_request": [
+            60
+          ],
+          "bake": [
+            60
+          ],
+          "publish": [
+            60
+          ],
+          "compile": [
+            61
+          ],
+          "materialize": [
+            60
+          ],
+          "render": [
+            60,
+            61,
+            62
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.033,
+          "registry": 1.088,
+          "shader_request": 1.039,
+          "bake": 34.815,
+          "publish": 0.014,
+          "compile": 96.076,
+          "materialize": 17.591,
+          "render": 326.38100000000003,
+          "registry_exclusive": 0.049000000000000155,
+          "render_exclusive": 308.79
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 10,
+        "dispatch_count": 1,
+        "first_changed_tick": 92,
+        "first_matching_settled_tick": 92,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 747.963,
+        "capture_completion_ms": 878.783,
+        "dispatch_ms": 0.11,
+        "dispatch_to_flatten_ms": 0.082,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            90
+          ],
+          "registry": [
+            90
+          ],
+          "shader_request": [
+            90
+          ],
+          "bake": [
+            90
+          ],
+          "publish": [
+            90
+          ],
+          "compile": [
+            91
+          ],
+          "materialize": [
+            90
+          ],
+          "render": [
+            90,
+            91,
+            92
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.038,
+          "registry": 0.824,
+          "shader_request": 0.778,
+          "bake": 27.945,
+          "publish": 0.012,
+          "compile": 103.406,
+          "materialize": 26.993,
+          "render": 330.896,
+          "registry_exclusive": 0.04599999999999993,
+          "render_exclusive": 303.903
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": false,
+      "123": false
+    },
+    "first_edit_identity_at_tick": {
+      "63": false,
+      "93": true,
+      "123": true
+    },
+    "frame_spans_ms": {
+      "0": 483.397,
+      "1": 108.853,
+      "2": 109.428,
+      "3": 118.445,
+      "4": 88.199,
+      "5": 85.696,
+      "6": 85.404,
+      "7": 87.134,
+      "8": 89.186,
+      "9": 89.692,
+      "10": 85.411,
+      "11": 84.737,
+      "12": 84.309,
+      "13": 83.599,
+      "14": 83.361,
+      "15": 83.633,
+      "16": 83.097,
+      "17": 83.765,
+      "18": 84.052,
+      "19": 83.353,
+      "20": 83.435,
+      "21": 83.929,
+      "22": 83.491,
+      "23": 83.759,
+      "24": 84.627,
+      "25": 84.135,
+      "26": 84.207,
+      "27": 83.161,
+      "28": 84.044,
+      "29": 84.578,
+      "30": 158.618,
+      "31": 986.38,
+      "32": 86.576,
+      "33": 88.697,
+      "34": 93.501,
+      "35": 84.478,
+      "36": 83.827,
+      "37": 84.095,
+      "38": 110.752,
+      "39": 85.077,
+      "40": 85.083,
+      "41": 85.814,
+      "42": 85.441,
+      "43": 86.02,
+      "44": 85.138,
+      "45": 83.318,
+      "46": 88.489,
+      "47": 91.329,
+      "48": 83.992,
+      "49": 85.43,
+      "50": 85.416,
+      "51": 85.133,
+      "52": 85.237,
+      "53": 85.714,
+      "54": 85.319,
+      "55": 84.699,
+      "56": 84.003,
+      "57": 85.11,
+      "58": 84.792,
+      "59": 103.456,
+      "60": 192.318,
+      "61": 182.409,
+      "62": 85.746,
+      "63": 87.012,
+      "64": 95.562,
+      "65": 86.573,
+      "66": 85.651,
+      "67": 85.236,
+      "68": 96.389,
+      "69": 84.641,
+      "70": 84.241,
+      "71": 85.263,
+      "72": 85.631,
+      "73": 85.904,
+      "74": 84.182,
+      "75": 84.207,
+      "76": 86.628,
+      "77": 84.914,
+      "78": 86.688,
+      "79": 85.967,
+      "80": 85.48,
+      "81": 85.383,
+      "82": 86.552,
+      "83": 88.254,
+      "84": 88.308,
+      "85": 85.909,
+      "86": 85.038,
+      "87": 84.018,
+      "88": 84.619,
+      "89": 87.869,
+      "90": 188.541,
+      "91": 190.919,
+      "92": 85.757,
+      "93": 84.839,
+      "94": 89.994,
+      "95": 83.856,
+      "96": 83.758,
+      "97": 83.65,
+      "98": 102.847,
+      "99": 83.559,
+      "100": 84.193,
+      "101": 84.447,
+      "102": 84.338,
+      "103": 84.211,
+      "104": 83.97,
+      "105": 84.133,
+      "106": 83.82,
+      "107": 84.327,
+      "108": 89.921,
+      "109": 262.613,
+      "110": 88.048,
+      "111": 85.769,
+      "112": 84.208,
+      "113": 84.63,
+      "114": 84.422,
+      "115": 83.233,
+      "116": 84.081,
+      "117": 84.318,
+      "118": 85.336,
+      "119": 97.374,
+      "120": 87.239,
+      "121": 115.182,
+      "122": 115.48,
+      "123": 88.085,
+      "124": 87.001,
+      "125": 85.123,
+      "126": 84.628,
+      "127": 83.863,
+      "128": 84.537,
+      "129": 84.376,
+      "130": 253.966,
+      "131": 84.747
+    }
+  },
+  "reorder": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 3,
+        "dispatch_count": 1,
+        "first_changed_tick": 32,
+        "first_matching_settled_tick": 32,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 29993.637,
+        "capture_completion_ms": 30155.317,
+        "dispatch_ms": 0.121,
+        "dispatch_to_flatten_ms": 0.156,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            30
+          ],
+          "registry": [
+            30
+          ],
+          "shader_request": [
+            30
+          ],
+          "bake": [
+            30
+          ],
+          "publish": [
+            30
+          ],
+          "compile": [
+            31
+          ],
+          "materialize": [
+            30
+          ],
+          "render": [
+            30,
+            31,
+            32
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.033,
+          "registry": 1.091,
+          "shader_request": 1.038,
+          "bake": 41.82,
+          "publish": 0.015,
+          "compile": 29208.895,
+          "materialize": 34.312,
+          "render": 436.774,
+          "registry_exclusive": 0.052999999999999936,
+          "render_exclusive": 402.462
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 9,
+        "dispatch_count": 1,
+        "first_changed_tick": 62,
+        "first_matching_settled_tick": 62,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 1036.038,
+        "capture_completion_ms": 1198.94,
+        "dispatch_ms": 0.116,
+        "dispatch_to_flatten_ms": 0.149,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            60
+          ],
+          "registry": [
+            60
+          ],
+          "shader_request": [
+            60
+          ],
+          "bake": [
+            60
+          ],
+          "publish": [
+            60
+          ],
+          "compile": [
+            61
+          ],
+          "materialize": [
+            60
+          ],
+          "render": [
+            60,
+            61,
+            62
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.044,
+          "registry": 0.626,
+          "shader_request": 0.584,
+          "bake": 47.975,
+          "publish": 0.013,
+          "compile": 137.306,
+          "materialize": 34.641,
+          "render": 524.4060000000001,
+          "registry_exclusive": 0.04200000000000004,
+          "render_exclusive": 489.76500000000004
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 10,
+        "dispatch_count": 1,
+        "first_changed_tick": 92,
+        "first_matching_settled_tick": 92,
+        "settled_match_frames": 3,
+        "presented_frames_to_change": 3,
+        "dispatch_to_frame_end_ms": 808.626,
+        "capture_completion_ms": 947.142,
+        "dispatch_ms": 0.245,
+        "dispatch_to_flatten_ms": 0.099,
+        "dispatch_to_flatten_frames": 0,
+        "phase_ticks": {
+          "flatten": [
+            90
+          ],
+          "registry": [
+            90
+          ],
+          "shader_request": [
+            90
+          ],
+          "bake": [
+            90
+          ],
+          "publish": [
+            90
+          ],
+          "compile": [
+            91
+          ],
+          "materialize": [
+            90
+          ],
+          "render": [
+            90,
+            91,
+            92
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0.054,
+          "registry": 0.802,
+          "shader_request": 0.754,
+          "bake": 42.829,
+          "publish": 0.013,
+          "compile": 119.149,
+          "materialize": 34.516,
+          "render": 356.654,
+          "registry_exclusive": 0.04800000000000004,
+          "render_exclusive": 322.138
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": false,
+      "123": false
+    },
+    "first_edit_identity_at_tick": {
+      "63": false,
+      "93": true,
+      "123": true
+    },
+    "frame_spans_ms": {
+      "0": 914.758,
+      "1": 153.932,
+      "2": 134.727,
+      "3": 132.511,
+      "4": 95.333,
+      "5": 92.629,
+      "6": 92.689,
+      "7": 95.034,
+      "8": 94.021,
+      "9": 93.394,
+      "10": 97.012,
+      "11": 95.772,
+      "12": 101.15,
+      "13": 99.109,
+      "14": 93.787,
+      "15": 91.413,
+      "16": 92.456,
+      "17": 92.305,
+      "18": 92.913,
+      "19": 96.687,
+      "20": 115.735,
+      "21": 97.214,
+      "22": 94.55,
+      "23": 97.784,
+      "24": 95.822,
+      "25": 93.417,
+      "26": 100.27,
+      "27": 94.156,
+      "28": 96.482,
+      "29": 163.698,
+      "30": 305.259,
+      "31": 29296.592,
+      "32": 89.322,
+      "33": 92.127,
+      "34": 90.016,
+      "35": 77.685,
+      "36": 83.535,
+      "37": 81.112,
+      "38": 130.785,
+      "39": 77.873,
+      "40": 79.484,
+      "41": 102.965,
+      "42": 92.302,
+      "43": 91.568,
+      "44": 95.671,
+      "45": 91.205,
+      "46": 81.812,
+      "47": 79.936,
+      "48": 77.684,
+      "49": 77.505,
+      "50": 78.864,
+      "51": 79.994,
+      "52": 79.563,
+      "53": 77.717,
+      "54": 76.668,
+      "55": 79.544,
+      "56": 91.249,
+      "57": 92.351,
+      "58": 91.65,
+      "59": 153.185,
+      "60": 326.029,
+      "61": 258.401,
+      "62": 129.111,
+      "63": 99.674,
+      "64": 108.652,
+      "65": 77.551,
+      "66": 77.687,
+      "67": 77.54,
+      "68": 111.556,
+      "69": 91.922,
+      "70": 94.289,
+      "71": 89.035,
+      "72": 91.128,
+      "73": 88.274,
+      "74": 88.475,
+      "75": 87.498,
+      "76": 89.921,
+      "77": 95.911,
+      "78": 90.094,
+      "79": 96.028,
+      "80": 97.167,
+      "81": 88.747,
+      "82": 93.735,
+      "83": 89.033,
+      "84": 92.342,
+      "85": 90.163,
+      "86": 87.078,
+      "87": 90.646,
+      "88": 90.956,
+      "89": 139.927,
+      "90": 248.184,
+      "91": 196.247,
+      "92": 77.527,
+      "93": 77.16,
+      "94": 105.947,
+      "95": 87.905,
+      "96": 87.476,
+      "97": 86.511,
+      "98": 115.461,
+      "99": 86.439,
+      "100": 86.987,
+      "101": 86.501,
+      "102": 86.973,
+      "103": 91.654,
+      "104": 90.442,
+      "105": 87.27,
+      "106": 84.859,
+      "107": 85.574,
+      "108": 86.215,
+      "109": 86.413,
+      "110": 87.219,
+      "111": 87.517,
+      "112": 89.347,
+      "113": 91.412,
+      "114": 89.177,
+      "115": 93.804,
+      "116": 93.325,
+      "117": 89.83,
+      "118": 89.016,
+      "119": 130.767,
+      "120": 107.284,
+      "121": 91.604,
+      "122": 92.858,
+      "123": 88.793,
+      "124": 89.666,
+      "125": 92.348,
+      "126": 90.228,
+      "127": 91.713,
+      "128": 95.21,
+      "129": 91.408,
+      "130": 90.125,
+      "131": 87.151
+    }
+  },
+  "program_field": {
+    "edits": [
+      {
+        "dispatch_tick": 30,
+        "action": 5,
+        "dispatch_count": 1,
+        "first_changed_tick": null,
+        "first_matching_settled_tick": null,
+        "settled_match_frames": null,
+        "presented_frames_to_change": null,
+        "dispatch_to_frame_end_ms": null,
+        "capture_completion_ms": null,
+        "dispatch_ms": 0.203,
+        "dispatch_to_flatten_ms": null,
+        "dispatch_to_flatten_frames": null,
+        "phase_ticks": {
+          "flatten": [],
+          "registry": [],
+          "shader_request": [],
+          "bake": [],
+          "publish": [],
+          "compile": [],
+          "materialize": [],
+          "render": [
+            30,
+            31,
+            32,
+            33
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0,
+          "registry": 0,
+          "shader_request": 0,
+          "bake": 0,
+          "publish": 0,
+          "compile": 0,
+          "materialize": 0,
+          "render": 672.8820000000001,
+          "registry_exclusive": 0,
+          "render_exclusive": 672.8820000000001
+        }
+      },
+      {
+        "dispatch_tick": 60,
+        "action": 9,
+        "dispatch_count": 1,
+        "first_changed_tick": null,
+        "first_matching_settled_tick": null,
+        "settled_match_frames": null,
+        "presented_frames_to_change": null,
+        "dispatch_to_frame_end_ms": null,
+        "capture_completion_ms": null,
+        "dispatch_ms": 0.068,
+        "dispatch_to_flatten_ms": null,
+        "dispatch_to_flatten_frames": null,
+        "phase_ticks": {
+          "flatten": [],
+          "registry": [],
+          "shader_request": [],
+          "bake": [],
+          "publish": [],
+          "compile": [],
+          "materialize": [],
+          "render": [
+            60,
+            61,
+            62,
+            63
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0,
+          "registry": 0,
+          "shader_request": 0,
+          "bake": 0,
+          "publish": 0,
+          "compile": 0,
+          "materialize": 0,
+          "render": 440.64,
+          "registry_exclusive": 0,
+          "render_exclusive": 440.64
+        }
+      },
+      {
+        "dispatch_tick": 90,
+        "action": 10,
+        "dispatch_count": 1,
+        "first_changed_tick": null,
+        "first_matching_settled_tick": null,
+        "settled_match_frames": null,
+        "presented_frames_to_change": null,
+        "dispatch_to_frame_end_ms": null,
+        "capture_completion_ms": null,
+        "dispatch_ms": 0.068,
+        "dispatch_to_flatten_ms": null,
+        "dispatch_to_flatten_frames": null,
+        "phase_ticks": {
+          "flatten": [],
+          "registry": [],
+          "shader_request": [],
+          "bake": [],
+          "publish": [],
+          "compile": [],
+          "materialize": [],
+          "render": [
+            90,
+            91,
+            92,
+            93
+          ]
+        },
+        "phases_ms": {
+          "flatten": 0,
+          "registry": 0,
+          "shader_request": 0,
+          "bake": 0,
+          "publish": 0,
+          "compile": 0,
+          "materialize": 0,
+          "render": 398.017,
+          "registry_exclusive": 0,
+          "render_exclusive": 398.017
+        }
+      }
+    ],
+    "initial_identity_at_tick": {
+      "63": true,
+      "93": true,
+      "123": true
+    },
+    "first_edit_identity_at_tick": {
+      "63": true,
+      "93": true,
+      "123": true
+    },
+    "frame_spans_ms": {
+      "0": 495.434,
+      "1": 108.483,
+      "2": 123.569,
+      "3": 120.912,
+      "4": 89.6,
+      "5": 89.51,
+      "6": 92.581,
+      "7": 94.333,
+      "8": 95.106,
+      "9": 92.294,
+      "10": 92.122,
+      "11": 97.321,
+      "12": 90.9,
+      "13": 89.807,
+      "14": 94.021,
+      "15": 90.776,
+      "16": 90.982,
+      "17": 90.71,
+      "18": 89.784,
+      "19": 89.599,
+      "20": 89.548,
+      "21": 90.49,
+      "22": 89.101,
+      "23": 88.847,
+      "24": 88.652,
+      "25": 87.125,
+      "26": 86.728,
+      "27": 87.924,
+      "28": 90.859,
+      "29": 180.629,
+      "30": 168.582,
+      "31": 169.375,
+      "32": 168.0,
+      "33": 167.887,
+      "34": 166.236,
+      "35": 100.914,
+      "36": 103.388,
+      "37": 91.771,
+      "38": 90.445,
+      "39": 92.927,
+      "40": 93.698,
+      "41": 90.72,
+      "42": 89.577,
+      "43": 89.24,
+      "44": 90.381,
+      "45": 90.267,
+      "46": 90.975,
+      "47": 94.024,
+      "48": 90.792,
+      "49": 92.295,
+      "50": 91.336,
+      "51": 92.976,
+      "52": 90.134,
+      "53": 90.715,
+      "54": 88.906,
+      "55": 91.094,
+      "56": 91.893,
+      "57": 95.753,
+      "58": 90.794,
+      "59": 154.414,
+      "60": 141.58,
+      "61": 112.189,
+      "62": 98.493,
+      "63": 89.395,
+      "64": 87.873,
+      "65": 88.626,
+      "66": 86.459,
+      "67": 85.706,
+      "68": 87.559,
+      "69": 88.523,
+      "70": 87.555,
+      "71": 87.984,
+      "72": 89.766,
+      "73": 90.769,
+      "74": 87.748,
+      "75": 86.291,
+      "76": 87.36,
+      "77": 87.675,
+      "78": 89.99,
+      "79": 94.668,
+      "80": 93.247,
+      "81": 86.739,
+      "82": 88.831,
+      "83": 89.769,
+      "84": 85.618,
+      "85": 84.927,
+      "86": 85.709,
+      "87": 85.93,
+      "88": 86.539,
+      "89": 148.456,
+      "90": 128.928,
+      "91": 89.499,
+      "92": 89.965,
+      "93": 90.394,
+      "94": 99.022,
+      "95": 93.039,
+      "96": 89.843,
+      "97": 88.702,
+      "98": 88.253,
+      "99": 90.28,
+      "100": 93.017,
+      "101": 92.674,
+      "102": 91.797,
+      "103": 92.044,
+      "104": 91.135,
+      "105": 90.541,
+      "106": 89.76,
+      "107": 90.34,
+      "108": 88.912,
+      "109": 87.767,
+      "110": 88.092,
+      "111": 88.929,
+      "112": 101.493,
+      "113": 89.401,
+      "114": 87.455,
+      "115": 92.141,
+      "116": 92.235,
+      "117": 87.404,
+      "118": 86.927,
+      "119": 148.152,
+      "120": 118.584,
+      "121": 89.002,
+      "122": 89.915,
+      "123": 92.613,
+      "124": 88.497,
+      "125": 89.758,
+      "126": 88.865,
+      "127": 87.311,
+      "128": 87.792,
+      "129": 87.954,
+      "130": 88.45,
+      "131": 86.552
+    }
+  }
+}
