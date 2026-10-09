@@ -25,8 +25,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
             WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
             ENVIRONMENT "${_celshade_env};VIXEN_CELSHADE_CAPTURE_PREFIX=${_celshade_capture_dir}/stars-${_band_count};VIXEN_CELSHADE_BAND_COUNT=${_band_count}"
             ENVIRONMENT_MODIFICATION "VIXEN_STARLIGHT_DEMO=set:1"
-            LABELS "Application"
-            RUN_SERIAL TRUE)
+            LABELS "Application")
     endforeach()
 
     add_test(NAME CelShading.CaptureCornell
@@ -35,8 +34,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         ENVIRONMENT "${_celshade_env};VIXEN_CELSHADE_CAPTURE_PREFIX=${_celshade_capture_dir}/cornell;VIXEN_CELSHADE_BAND_COUNT=3"
         ENVIRONMENT_MODIFICATION "VIXEN_DDGI_CORNELL_VIRTUAL_DEMO=set:1"
-        LABELS "Application"
-        RUN_SERIAL TRUE)
+        LABELS "Application")
 
     add_test(NAME CelShading.ModeSwitch
         COMMAND ${_celshade_binary} --gtest_filter=CelShading.ModeSwitchTakesEffectOnTheLiveNode)
@@ -44,8 +42,7 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         ENVIRONMENT "${_celshade_env};VIXEN_CELSHADE_CAPTURE_PREFIX=${_celshade_capture_dir}/mode-switch"
         ENVIRONMENT_MODIFICATION "VIXEN_STARLIGHT_DEMO=set:1"
-        LABELS "Application"
-        RUN_SERIAL TRUE)
+        LABELS "Application")
 
     add_test(NAME CelShading.ParameterBounds
         COMMAND ${_celshade_binary} --gtest_filter=CelShading.ParameterBoundsRenderWithoutThrowing)
@@ -53,8 +50,15 @@ if(TARGET VixenApp AND TARGET GTest::gtest_main)
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         ENVIRONMENT "${_celshade_env}"
         ENVIRONMENT_MODIFICATION "VIXEN_STARLIGHT_DEMO=set:1"
-        LABELS "Application"
-        RUN_SERIAL TRUE)
+        LABELS "Application")
+
+    vixen_lock_gpu_tests(TESTS
+        CelShading.CaptureStarsBands2
+        CelShading.CaptureStarsBands3
+        CelShading.CaptureStarsBands5
+        CelShading.CaptureCornell
+        CelShading.ModeSwitch
+        CelShading.ParameterBounds)
 
     message(STATUS "[Application Tests] Added: test_cel_shading_graph (cel ramp, live mode switching, and scene captures)")
 endif()
