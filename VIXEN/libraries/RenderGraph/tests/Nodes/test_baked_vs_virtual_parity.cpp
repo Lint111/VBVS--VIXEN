@@ -132,6 +132,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -189,6 +190,80 @@ struct PushConstants {
                                // matches that so sizeof(pc) == the real VkPushConstantRange.
 };
 static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (std430 push block, 16-byte rounded)");
+
+// R464's test-only mirror for the procedural SDF marcher. The production editor path is
+// recipe-space sphere tracing, so there is no ESVO voxel/brick scale to report. gridDim and
+// gridBound identify the occupancy acceleration cell instead.
+struct SdfTraceCpu {
+    uint32_t steps = 0;
+    uint32_t termination = 0;
+    uint32_t recipeId = 0;
+    uint32_t gridDim = 0;
+    float t = 0.0f;
+    float sdf = 0.0f;
+    float position[3]{};
+    float gradient[3]{};
+    float gridBound = 0.0f;
+    float tNear = 0.0f;
+    float tFar = 0.0f;
+    float lastStep = 0.0f;
+};
+static_assert(sizeof(SdfTraceCpu) == 64, "SdfTraceCpu must match the test-only 16-word shader record");
+
+std::string InjectRimleakTraceSupport(std::string source) {
+    constexpr const char* kSceneBindingsDirective = "\n#include \"SceneBindings.glsl\"";
+    constexpr const char* kDeclaration = R"glsl(
+#ifdef VIXEN_RIMLEAK_TRACE
+layout(std430, binding = 48) buffer RimleakSdfTraceBuffer { uint rimleakSdfTraceWords[]; };
+void rimleakRecordSdfTrace(ivec2 pixel, uint steps, uint termination, uint recipeId,
+                           uint gridDim, float t, float sdf, vec3 position, vec3 gradient,
+                           float gridBound, float tNear, float tFar, float lastStep);
+#endif
+)glsl";
+    constexpr const char* kDefinition = R"glsl(
+#ifdef VIXEN_RIMLEAK_TRACE
+void rimleakRecordSdfTrace(ivec2 pixel, uint steps, uint termination, uint recipeId,
+                           uint gridDim, float t, float sdf, vec3 position, vec3 gradient,
+                           float gridBound, float tNear, float tFar, float lastStep) {
+    ivec2 size = imageSize(outputImage);
+    if (any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(pixel, size))) return;
+    uint base = (uint(pixel.y) * uint(size.x) + uint(pixel.x)) * 16u;
+    rimleakSdfTraceWords[base + 0u] = steps;
+    rimleakSdfTraceWords[base + 1u] = termination;
+    rimleakSdfTraceWords[base + 2u] = recipeId;
+    rimleakSdfTraceWords[base + 3u] = gridDim;
+    rimleakSdfTraceWords[base + 4u] = floatBitsToUint(t);
+    rimleakSdfTraceWords[base + 5u] = floatBitsToUint(sdf);
+    rimleakSdfTraceWords[base + 6u] = floatBitsToUint(position.x);
+    rimleakSdfTraceWords[base + 7u] = floatBitsToUint(position.y);
+    rimleakSdfTraceWords[base + 8u] = floatBitsToUint(position.z);
+    rimleakSdfTraceWords[base + 9u] = floatBitsToUint(gradient.x);
+    rimleakSdfTraceWords[base + 10u] = floatBitsToUint(gradient.y);
+    rimleakSdfTraceWords[base + 11u] = floatBitsToUint(gradient.z);
+    rimleakSdfTraceWords[base + 12u] = floatBitsToUint(gridBound);
+    rimleakSdfTraceWords[base + 13u] = floatBitsToUint(tNear);
+    rimleakSdfTraceWords[base + 14u] = floatBitsToUint(tFar);
+    rimleakSdfTraceWords[base + 15u] = floatBitsToUint(lastStep);
+}
+#endif
+)glsl";
+
+    const size_t versionEnd = source.find('\n');
+    if (versionEnd == std::string::npos) return {};
+    source.insert(versionEnd + 1, "#define VIXEN_RIMLEAK_TRACE 1\n");
+    // Match the directive at the beginning of its line. A plain-text search also matches
+    // explanatory comments in BodyInstanceRayMarch.comp; injecting there would turn the
+    // commented example include into a second live SceneBindings include.
+    const size_t directivePrefix = source.find(kSceneBindingsDirective);
+    if (directivePrefix == std::string::npos) return {};
+    const size_t sceneInclude = directivePrefix + 1;
+    source.insert(sceneInclude, kDeclaration);
+    const size_t actualInclude = sceneInclude + std::strlen(kDeclaration);
+    const size_t includeEnd = source.find('\n', actualInclude);
+    if (includeEnd == std::string::npos) return {};
+    source.insert(includeEnd + 1, kDefinition);
+    return source;
+}
 
 // ---------------------------------------------------------------------------
 // KI-032 fix: this file's colorImg (binding 0) readback went permanently dark when
@@ -318,6 +393,11 @@ SdfInstruction twist(float k) {
 SdfInstruction readParam(uint32_t index) {
     SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::ReadParam;
     in.paramMask = 1; in.data[0] = static_cast<float>(index);
+    return in;
+}
+SdfInstruction cylinderAt(float halfHeight, float radius) {
+    SdfInstruction in{}; in.opCode = (uint8_t)SdfOpCode::Cylinder;
+    in.data[0] = halfHeight; in.data[1] = radius;
     return in;
 }
 SdfInstruction mathSub() {
@@ -490,6 +570,165 @@ std::vector<ParityRecipe> BuildCorpus() {
     }
 
     return out;
+}
+
+enum class AnalyticSurface : uint32_t {
+    None = 0u, Box = 1u, SphereCavity = 2u, CylinderCavity = 3u
+};
+
+struct AnalyticRayHit {
+    bool hit = false;
+    float t = 1e30f;
+    AnalyticSurface surface = AnalyticSurface::None;
+};
+
+glm::vec3 CameraRay(const PushConstants& pc, uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+    const glm::vec2 uv((static_cast<float>(x) + 0.5f) / static_cast<float>(width),
+                       (static_cast<float>(y) + 0.5f) / static_cast<float>(height));
+    glm::vec2 ndc = uv * 2.0f - 1.0f;
+    ndc.y = -ndc.y;
+    const float tanHalfFov = std::tan(glm::radians(pc.fov * 0.5f));
+    return glm::normalize(pc.cameraDir + pc.cameraRight * ndc.x * tanHalfFov * pc.aspect +
+                          pc.cameraUp * ndc.y * tanHalfFov);
+}
+
+float BoxSdf(const glm::vec3& point, const glm::vec3& halfExtents) {
+    const glm::vec3 q = glm::abs(point) - halfExtents;
+    return glm::length(glm::max(q, glm::vec3(0.0f))) +
+           std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+}
+
+float BoxMinusSphereSdf(const glm::vec3& point, const glm::vec3& halfExtents, float sphereRadius) {
+    return std::max(BoxSdf(point, halfExtents), sphereRadius - glm::length(point));
+}
+
+float CylinderSdf(const glm::vec3& point, float halfHeight, float radius) {
+    const glm::vec2 q(glm::length(glm::vec2(point.x, point.z)) - radius,
+                      std::abs(point.y) - halfHeight);
+    return std::min(std::max(q.x, q.y), 0.0f) + glm::length(glm::max(q, glm::vec2(0.0f)));
+}
+
+float BoxMinusCylinderSdf(const glm::vec3& point, const glm::vec3& halfExtents,
+                          float halfHeight, float radius) {
+    return std::max(BoxSdf(point, halfExtents), -CylinderSdf(point, halfHeight, radius));
+}
+
+AnalyticRayHit AnalyticBoxMinusSphere(const glm::vec3& origin, const glm::vec3& direction,
+                                      const glm::vec3& halfExtents, float sphereRadius) {
+    constexpr float kSurfaceTolerance = 2e-5f;
+    AnalyticRayHit nearest;
+    const auto accept = [&](float t, AnalyticSurface surface, AnalyticRayHit& current) {
+        if (t < 0.0f || t >= current.t) return;
+        const glm::vec3 point = origin + direction * t;
+        if (surface == AnalyticSurface::Box) {
+            if (glm::length(point) < sphereRadius - kSurfaceTolerance) return;
+        } else if (BoxSdf(point, halfExtents) > kSurfaceTolerance) {
+            return;
+        }
+        current = {true, t, surface};
+    };
+
+    float tNear = -1e30f;
+    float tFar = 1e30f;
+    bool boxSpanValid = true;
+    for (int axis = 0; axis < 3; ++axis) {
+        const float o = origin[axis];
+        const float d = direction[axis];
+        const float h = halfExtents[axis];
+        if (std::abs(d) < 1e-8f) {
+            if (o < -h || o > h) boxSpanValid = false;
+            continue;
+        }
+        float a = (-h - o) / d;
+        float b = ( h - o) / d;
+        if (a > b) std::swap(a, b);
+        tNear = std::max(tNear, a);
+        tFar = std::min(tFar, b);
+    }
+    if (boxSpanValid && tNear <= tFar && tFar >= 0.0f) {
+        accept(tNear >= 0.0f ? tNear : tFar, AnalyticSurface::Box, nearest);
+    }
+
+    const float sphereB = glm::dot(origin, direction);
+    const float sphereC = glm::dot(origin, origin) - sphereRadius * sphereRadius;
+    const float sphereDisc = sphereB * sphereB - sphereC;
+    if (sphereDisc >= 0.0f) {
+        const float root = std::sqrt(sphereDisc);
+        accept(-sphereB - root, AnalyticSurface::SphereCavity, nearest);
+        accept(-sphereB + root, AnalyticSurface::SphereCavity, nearest);
+    }
+    return nearest;
+}
+
+bool RayEntersSphereOpening(const glm::vec3& origin, const glm::vec3& direction,
+                            const glm::vec3& halfExtents, float sphereRadius) {
+    if (direction.y >= 0.0f) return false;
+    const float tTop = (halfExtents.y - origin.y) / direction.y;
+    if (tTop < 0.0f) return false;
+    const glm::vec3 point = origin + direction * tTop;
+    return std::abs(point.x) <= halfExtents.x && std::abs(point.z) <= halfExtents.z &&
+           glm::length(point) < sphereRadius;
+}
+
+AnalyticRayHit AnalyticBoxMinusCylinder(const glm::vec3& origin, const glm::vec3& direction,
+                                        const glm::vec3& halfExtents,
+                                        float cylinderHalfHeight, float cylinderRadius) {
+    constexpr float kSurfaceTolerance = 2e-5f;
+    constexpr float kFaceTolerance = 1e-6f;
+    AnalyticRayHit nearest;
+    const auto acceptBox = [&](float t) {
+        if (t < 0.0f || t >= nearest.t) return;
+        const glm::vec3 point = origin + direction * t;
+        if (CylinderSdf(point, cylinderHalfHeight, cylinderRadius) < -kSurfaceTolerance) return;
+        nearest = {true, t, AnalyticSurface::Box};
+    };
+    const auto acceptCylinder = [&](float t) {
+        if (t < 0.0f || t >= nearest.t) return;
+        const glm::vec3 point = origin + direction * t;
+        if (std::abs(point.y) > cylinderHalfHeight + kSurfaceTolerance ||
+            BoxSdf(point, halfExtents) > kSurfaceTolerance) return;
+        nearest = {true, t, AnalyticSurface::CylinderCavity};
+    };
+
+    // Test all six box planes independently. A ray can enter through the cutter opening,
+    // so the first box-plane candidate may be removed by the subtraction while a later
+    // side face remains the true first hit.
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(direction[axis]) < 1e-8f) continue;
+        for (float sign : {-1.0f, 1.0f}) {
+            const float t = (sign * halfExtents[axis] - origin[axis]) / direction[axis];
+            if (t < 0.0f || t >= nearest.t) continue;
+            const glm::vec3 point = origin + direction * t;
+            bool withinFace = true;
+            for (int other = 0; other < 3; ++other) {
+                if (other != axis && std::abs(point[other]) >
+                        halfExtents[other] + kFaceTolerance) withinFace = false;
+            }
+            if (withinFace) acceptBox(t);
+        }
+    }
+
+    const float a = direction.x * direction.x + direction.z * direction.z;
+    const float b = 2.0f * (origin.x * direction.x + origin.z * direction.z);
+    const float c = origin.x * origin.x + origin.z * origin.z -
+                    cylinderRadius * cylinderRadius;
+    const float discriminant = b * b - 4.0f * a * c;
+    if (a > 1e-12f && discriminant >= 0.0f) {
+        const float root = std::sqrt(discriminant);
+        acceptCylinder((-b - root) / (2.0f * a));
+        acceptCylinder((-b + root) / (2.0f * a));
+    }
+    return nearest;
+}
+
+bool RayEntersCylinderOpening(const glm::vec3& origin, const glm::vec3& direction,
+                             const glm::vec3& halfExtents, float cylinderRadius) {
+    if (direction.y >= 0.0f) return false;
+    const float tTop = (halfExtents.y - origin.y) / direction.y;
+    if (tTop < 0.0f) return false;
+    const glm::vec3 point = origin + direction * tTop;
+    return std::abs(point.x) <= halfExtents.x && std::abs(point.z) <= halfExtents.z &&
+           point.x * point.x + point.z * point.z < cylinderRadius * cylinderRadius;
 }
 
 }  // namespace
@@ -682,11 +921,18 @@ protected:
                       VkBuffer tierRef, VkBuffer occGrid,
                       const PushConstants& pc, uint32_t w, uint32_t h,
                       std::vector<uint8_t>& rgba, double& ms,
-                      std::vector<HitRecordCpu>* outHitRecords = nullptr) {
+                      std::vector<HitRecordCpu>* outHitRecords = nullptr,
+                      std::vector<SdfTraceCpu>* outSdfTraces = nullptr) {
         ASSERT_TRUE(deviceConfirmed_);
         VkBuffer traceBuf=VK_NULL_HANDLE;
         VkDeviceMemory traceMem=VK_NULL_HANDLE;
         CreateHostBuffer(256, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, traceBuf, traceMem, true);
+        VkBuffer rimleakTraceBuf=VK_NULL_HANDLE;
+        VkDeviceMemory rimleakTraceMem=VK_NULL_HANDLE;
+        const VkDeviceSize rimleakTraceSize = outSdfTraces != nullptr
+            ? VkDeviceSize(w) * VkDeviceSize(h) * 16 * sizeof(uint32_t) : 256;
+        CreateHostBuffer(rimleakTraceSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                         rimleakTraceBuf, rimleakTraceMem, true);
         VkBuffer dummySdf=VK_NULL_HANDLE, dummyLookup=VK_NULL_HANDLE, dummyMip=VK_NULL_HANDLE, dummyIter=VK_NULL_HANDLE,
                  dummyTierRef=VK_NULL_HANDLE, dummyOccGrid=VK_NULL_HANDLE;
         VkDeviceMemory dSdfMem=VK_NULL_HANDLE, dLookupMem=VK_NULL_HANDLE, dMipMem=VK_NULL_HANDLE, dIterMem=VK_NULL_HANDLE,
@@ -756,7 +1002,7 @@ protected:
         // (root-caused 2026-07-15, Recipe-Parameterization M4 — was previously misdiagnosed
         // as a boot-recompile descriptor-staleness bug in KI-028; that issue is real but
         // unrelated to this test's symmetric bakedHits=0/virtualHits=0 failure).
-        const std::array<VkDescriptorSetLayoutBinding,22> bindings = {
+        const std::array<VkDescriptorSetLayoutBinding,23> bindings = {
             bindL(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bindL(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bindL(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -779,6 +1025,7 @@ protected:
             bindL(22,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Sampled Lighting Inc2 M3: PrevCameraConfigSSBO
             bindL(35,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1: InstanceSkipMaskBuffer
             bindL(47,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R424 hot localToWorld/worldToLocal stream
+            bindL(48,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),  // R464 test-only procedural SDF trace
         };
         VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         dslci.bindingCount = uint32_t(bindings.size()); dslci.pBindings = bindings.data();
@@ -800,7 +1047,7 @@ protected:
 
         const std::array<VkDescriptorPoolSize,2> poolSizes = {{
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  3},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 19},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 20},
         }};
         VkDescriptorPoolCreateInfo dpci{}; dpci.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets=1; dpci.poolSizeCount=uint32_t(poolSizes.size()); dpci.pPoolSizes=poolSizes.data();
@@ -822,7 +1069,8 @@ protected:
             lightingI{dummyLighting,0,VK_WHOLE_SIZE}, hitRecordI{dummyHitRecord,0,VK_WHOLE_SIZE},
             shadowI{dummyShadow,0,VK_WHOLE_SIZE}, accumI{dummyAccum,0,VK_WHOLE_SIZE},
             prevCamI{dummyPrevCam,0,VK_WHOLE_SIZE},
-            skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE}, instTransformI{instTransform,0,VK_WHOLE_SIZE};
+            skipMaskI{dummySkipMask,0,VK_WHOLE_SIZE}, instTransformI{instTransform,0,VK_WHOLE_SIZE},
+            rimleakTraceI{rimleakTraceBuf,0,VK_WHOLE_SIZE};
 
         auto wI = [&](uint32_t b, VkDescriptorImageInfo* info) {
             VkWriteDescriptorSet w{}; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -834,7 +1082,7 @@ protected:
             w.dstSet=ds; w.dstBinding=b; w.descriptorCount=1;
             w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; w.pBufferInfo=info; return w;
         };
-        const std::array<VkWriteDescriptorSet,22> writes = {
+        const std::array<VkWriteDescriptorSet,23> writes = {
             wI(0,&colImg), wB(1,&nodesI), wB(2,&bricksI), wB(3,&matsI), wB(4,&traceI),
             wB(5,&cfgI), wI(9,&idImgI), wB(10,&instI), wB(11,&sdfI), wB(12,&lookupI), wB(13,&mipI),
             wB(14,&iterI), wB(15,&tierRefI), wB(16,&occGridI),
@@ -842,6 +1090,7 @@ protected:
             wI(21,&historyImgI), wB(22,&prevCamI),
             wB(35,&skipMaskI),  // Recipe-Live-App-Bucketed-Dispatch Inc4 M1
             wB(47,&instTransformI),  // R424 hot localToWorld/worldToLocal stream
+            wB(48,&rimleakTraceI),
         };
         vkUpdateDescriptorSets(logicalDevice_, uint32_t(writes.size()), writes.data(), 0, nullptr);
 
@@ -876,6 +1125,19 @@ protected:
         hitRecordBarrier.buffer=dummyHitRecord; hitRecordBarrier.offset=0; hitRecordBarrier.size=VK_WHOLE_SIZE;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
             0,0,nullptr,1,&hitRecordBarrier,0,nullptr);
+        if (outSdfTraces != nullptr) {
+            VkBufferMemoryBarrier sdfTraceBarrier{};
+            sdfTraceBarrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            sdfTraceBarrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;
+            sdfTraceBarrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+            sdfTraceBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+            sdfTraceBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+            sdfTraceBarrier.buffer=rimleakTraceBuf;
+            sdfTraceBarrier.offset=0;
+            sdfTraceBarrier.size=VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&sdfTraceBarrier,0,nullptr);
+        }
 
         VkImageMemoryBarrier toSrc{}; toSrc.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         toSrc.oldLayout=VK_IMAGE_LAYOUT_GENERAL; toSrc.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -910,6 +1172,36 @@ protected:
             std::memcpy(outHitRecords->data(), hrMapped, size_t(hitRecordBufSize));
             vkUnmapMemory(logicalDevice_, dHitRecordMem);
         }
+        if (outSdfTraces != nullptr) {
+            void* traceMapped = nullptr;
+            ASSERT_EQ(vkMapMemory(logicalDevice_, rimleakTraceMem, 0, rimleakTraceSize, 0, &traceMapped), VK_SUCCESS);
+            outSdfTraces->assign(size_t(w) * h, SdfTraceCpu{});
+            const auto asFloat = [](uint32_t bits) {
+                float value = 0.0f;
+                std::memcpy(&value, &bits, sizeof(value));
+                return value;
+            };
+            const auto* words = static_cast<const uint32_t*>(traceMapped);
+            for (size_t i = 0; i < outSdfTraces->size(); ++i) {
+                const uint32_t* record = words + i * 16;
+                SdfTraceCpu& trace = (*outSdfTraces)[i];
+                trace.steps = record[0];
+                trace.termination = record[1];
+                trace.recipeId = record[2];
+                trace.gridDim = record[3];
+                trace.t = asFloat(record[4]);
+                trace.sdf = asFloat(record[5]);
+                for (size_t axis = 0; axis < 3; ++axis) {
+                    trace.position[axis] = asFloat(record[6 + axis]);
+                    trace.gradient[axis] = asFloat(record[9 + axis]);
+                }
+                trace.gridBound = asFloat(record[12]);
+                trace.tNear = asFloat(record[13]);
+                trace.tFar = asFloat(record[14]);
+                trace.lastStep = asFloat(record[15]);
+            }
+            vkUnmapMemory(logicalDevice_, rimleakTraceMem);
+        }
 
         vkDeviceWaitIdle(logicalDevice_);
         vkDestroyBuffer(logicalDevice_,rb,nullptr); vkFreeMemory(logicalDevice_,rbMem,nullptr);
@@ -924,6 +1216,7 @@ protected:
         vkDestroyImage(logicalDevice_,idImg,nullptr);    vkFreeMemory(logicalDevice_,idMem,nullptr);
         vkDestroyImage(logicalDevice_,historyImg,nullptr); vkFreeMemory(logicalDevice_,historyMem,nullptr);
         vkDestroyBuffer(logicalDevice_,traceBuf,nullptr); vkFreeMemory(logicalDevice_,traceMem,nullptr);
+        vkDestroyBuffer(logicalDevice_,rimleakTraceBuf,nullptr); vkFreeMemory(logicalDevice_,rimleakTraceMem,nullptr);
         if (dummySdf     != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummySdf,nullptr);     vkFreeMemory(logicalDevice_,dSdfMem,nullptr); }
         if (dummyLookup  != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyLookup,nullptr);  vkFreeMemory(logicalDevice_,dLookupMem,nullptr); }
         if (dummyMip     != VK_NULL_HANDLE) { vkDestroyBuffer(logicalDevice_,dummyMip,nullptr);     vkFreeMemory(logicalDevice_,dMipMem,nullptr); }
@@ -1034,7 +1327,9 @@ protected:
     // ---- VIRTUAL path: register in a RecipeRegistry, splice+runtime-compile, render a
     // PROVIDER_PROCEDURAL BodyInstance. ZERO bake calls. ----
     void RenderVirtual(const ParityRecipe& r, std::vector<uint8_t>& rgba, uint32_t kW, uint32_t kH,
-                       const PushConstants& pc, std::vector<HitRecordCpu>& hitRecords) {
+                       const PushConstants& pc, std::vector<HitRecordCpu>& hitRecords,
+                       bool useOccupancyGrid = true,
+                       std::vector<SdfTraceCpu>* outSdfTraces = nullptr) {
         using C = BodyOctreeSceneNodeConfig;
 
         Vixen::SVO::RecipeRegistry registry;
@@ -1053,7 +1348,7 @@ protected:
             entry.bytecode.data(), uint32_t(entry.bytecode.size()), entry.boundCenter, entry.boundRadius);
         EXPECT_EQ(occGrid.ok, r.expectOccupancyGrid)
             << "recipe '" << r.name << "': occupancy grid eligibility mismatch vs corpus expectation";
-        if (occGrid.ok) {
+        if (occGrid.ok && useOccupancyGrid) {
             entry.occupancyGridValues   = std::move(occGrid.values);
             entry.occupancyGridDim      = occGrid.dim;
             entry.occupancyGridAabbMin  = occGrid.aabbMin;
@@ -1062,8 +1357,12 @@ protected:
         constexpr uint32_t kRecipeId = 2u;
         ASSERT_EQ(registry.Register(kRecipeId, entry), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
 
-        const std::string rawSource = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
+        std::string rawSource = ReadFile(BODY_INSTANCE_RAYMARCH_COMP_PATH);
         ASSERT_FALSE(rawSource.empty());
+        if (outSdfTraces != nullptr) {
+            rawSource = InjectRimleakTraceSupport(std::move(rawSource));
+            ASSERT_FALSE(rawSource.empty()) << "failed to inject test-only SDF trace support";
+        }
         std::vector<float> occupancyBlob;
         const std::string spliced = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
             rawSource, registry, &occupancyBlob);
@@ -1120,7 +1419,7 @@ protected:
             buf(C::OCTREE_SDF_BUFFER_Slot::index),
             buf(C::OCTREE_BRICKLOOKUP_BUFFER_Slot::index), buf(C::OCTREE_MIPPOOL_BUFFER_Slot::index),
             buf(C::OCTREE_TIERREFTABLE_BUFFER_Slot::index), buf(C::OCTREE_OCCUPANCYGRID_BUFFER_Slot::index),
-            pc, kW, kH, rgba, ms, &hitRecords));
+            pc, kW, kH, rgba, ms, &hitRecords, outSdfTraces));
 
         vkDeviceWaitIdle(logicalDevice_);
         node->Cleanup(CleanupReason::FinalTeardown);
@@ -1227,6 +1526,497 @@ TEST_F(BakedVsVirtualParityTest, VirtualRendersGeometricallyEquivalentToBaked) {
 
     EXPECT_TRUE(sawDomainModifierRecipe)
         << "corpus must include at least one domain-modifier (non-occupancy-grid-eligible) recipe";
+}
+
+TEST_F(BakedVsVirtualParityTest, RimleakSlabSphereMatchesAnalyticAndOccupancyOracle) {
+    constexpr uint32_t kW = 500, kH = 500;
+    // EditorDocumentModel::FlattenToRecipeEntry copies enabled layer instructions directly
+    // into the procedural preview recipe. The live preview therefore uses the document's
+    // authored recipe units (Box(1,.3,1) minus Sphere(.55)); voxel-to-world scaling applies
+    // only to the CPU bake path.
+    const glm::vec3 halfExtents(1.0f, 0.3f, 1.0f);
+    constexpr float kSphereRadius = 0.55f;
+    const glm::vec3 target(0.0f);
+    ParityRecipe recipe;
+    recipe.name = "rimleak_slab_sphere";
+    recipe.worldTarget = target;
+    recipe.worldSpaceProgram = {
+        boxAt(halfExtents),
+        sphereAt(target, kSphereRadius),
+        combine(SdfOpCode::Subtract, 0.0f),
+    };
+    recipe.expectOccupancyGrid = true;
+
+    // Match EditorApplication::ApplyDocumentToScene + CameraNode: the recipe's derived
+    // bound radius is fitted with 45-degree vertical FOV and 1.15 padding, then the capture
+    // harness places the orbit camera at yaw=0, pitch=1.45 radians. FitEditorCameraToBounds
+    // uses the flattened recipe's authored units directly for the procedural preview.
+    const auto cameraBounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+        recipe.worldSpaceProgram.data(), static_cast<uint32_t>(recipe.worldSpaceProgram.size()));
+    ASSERT_TRUE(cameraBounds.ok);
+    constexpr float kVerticalFovDegrees = 45.0f;
+    constexpr float kCameraPadding = 1.15f;
+    constexpr float kCameraPitch = 1.45f;
+    constexpr float kCameraYaw = 0.0f;
+    const float halfFov = glm::radians(kVerticalFovDegrees * 0.5f);
+    const float cameraDistance = cameraBounds.radius / std::sin(halfFov) * kCameraPadding;
+    const glm::vec3 orbitOffset(
+        cameraDistance * std::cos(kCameraPitch) * std::sin(kCameraYaw),
+        cameraDistance * std::sin(kCameraPitch),
+        cameraDistance * std::cos(kCameraPitch) * std::cos(kCameraYaw));
+    const PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
+                                         cameraBounds.center, kW, kH, 1);
+    std::vector<uint8_t> guardedRgba, unguardedRgba;
+    std::vector<HitRecordCpu> guardedHits, unguardedHits;
+    std::vector<SdfTraceCpu> traces, unguardedTraces;
+    ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, guardedRgba, kW, kH, pc, guardedHits,
+                                          /*useOccupancyGrid=*/true, &traces));
+    ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, unguardedRgba, kW, kH, pc, unguardedHits,
+                                          /*useOccupancyGrid=*/false, &unguardedTraces));
+    ASSERT_EQ(guardedHits.size(), size_t(kW) * kH);
+    ASSERT_EQ(unguardedHits.size(), size_t(kW) * kH);
+    ASSERT_EQ(traces.size(), size_t(kW) * kH);
+
+    std::vector<uint8_t> analyticMask(size_t(kW) * kH, 0u);
+    std::vector<uint8_t> openingMask(size_t(kW) * kH, 0u);
+    std::vector<AnalyticSurface> surfaces(size_t(kW) * kH, AnalyticSurface::None);
+    size_t openingPixels = 0, cavityWallPixels = 0, throughEscapePixels = 0;
+    size_t analyticMismatches = 0, guardedMisses = 0, guardedFalseHits = 0;
+    size_t epsilonFalseHits = 0, nonEpsilonFalseHits = 0;
+    size_t guardedOraclePixelDifferences = 0, hitRecordFieldDifferences = 0;
+    size_t rgbaPixelDifferences = 0;
+    std::vector<size_t> oracleDifferencePixels, analyticMissPixels, analyticFalseHitPixels;
+    float minFalseHitSdf = std::numeric_limits<float>::infinity();
+    float maxFalseHitSdf = -std::numeric_limits<float>::infinity();
+    float maxHitRecordDelta = 0.0f;
+    float maxHitTDelta = 0.0f, maxPositionDelta = 0.0f, maxNormalDelta = 0.0f;
+    size_t maxHitRecordPixel = size_t(kW) * kH;
+
+    for (uint32_t y = 0; y < kH; ++y) {
+        for (uint32_t x = 0; x < kW; ++x) {
+            const size_t index = size_t(y) * kW + x;
+            const glm::vec3 ray = CameraRay(pc, x, y, kW, kH);
+            const bool opening = RayEntersSphereOpening(pc.cameraPos, ray, halfExtents, kSphereRadius);
+            const AnalyticRayHit analytic = AnalyticBoxMinusSphere(
+                pc.cameraPos, ray, halfExtents, kSphereRadius);
+            const bool guarded = (guardedHits[index].flags & kHitRecordFlagHit) != 0u;
+            const bool unguarded = (unguardedHits[index].flags & kHitRecordFlagHit) != 0u;
+            openingMask[index] = opening ? 1u : 0u;
+            analyticMask[index] = analytic.hit ? 1u : 0u;
+            surfaces[index] = analytic.surface;
+            if (opening) {
+                ++openingPixels;
+                if (analytic.hit && analytic.surface == AnalyticSurface::SphereCavity) ++cavityWallPixels;
+                if (!analytic.hit) ++throughEscapePixels;
+            }
+            if (guarded != analytic.hit) {
+                ++analyticMismatches;
+                if (analytic.hit) {
+                    ++guardedMisses;
+                    analyticMissPixels.push_back(index);
+                } else {
+                    ++guardedFalseHits;
+                    const glm::vec3 p(guardedHits[index].worldPos[0],
+                                      guardedHits[index].worldPos[1],
+                                      guardedHits[index].worldPos[2]);
+                    const float sdfAtReportedHit = BoxMinusSphereSdf(p, halfExtents, kSphereRadius);
+                    minFalseHitSdf = std::min(minFalseHitSdf, sdfAtReportedHit);
+                    maxFalseHitSdf = std::max(maxFalseHitSdf, sdfAtReportedHit);
+                    if (analyticFalseHitPixels.size() < 3) analyticFalseHitPixels.push_back(index);
+                    if (sdfAtReportedHit > 0.0f && sdfAtReportedHit < 1e-3f) ++epsilonFalseHits;
+                    else ++nonEpsilonFalseHits;
+                }
+            }
+            if (guarded != unguarded) {
+                ++guardedOraclePixelDifferences;
+                oracleDifferencePixels.push_back(index);
+            }
+            if (std::memcmp(guardedRgba.data() + index * 4,
+                            unguardedRgba.data() + index * 4, 4) != 0)
+                ++rgbaPixelDifferences;
+            if (guarded && unguarded) {
+                const HitRecordCpu& a = guardedHits[index];
+                const HitRecordCpu& b = unguardedHits[index];
+                const float hitTDelta = std::abs(a.hitT - b.hitT);
+                const float positionDelta = std::max({std::abs(a.worldPos[0] - b.worldPos[0]),
+                                                       std::abs(a.worldPos[1] - b.worldPos[1]),
+                                                       std::abs(a.worldPos[2] - b.worldPos[2])});
+                const float normalDelta = std::max({std::abs(a.worldNormal[0] - b.worldNormal[0]),
+                                                      std::abs(a.worldNormal[1] - b.worldNormal[1]),
+                                                      std::abs(a.worldNormal[2] - b.worldNormal[2])});
+                float delta = std::max(std::abs(a.hitT - b.hitT),
+                    std::max(positionDelta, normalDelta));
+                if (delta > maxHitRecordDelta) {
+                    maxHitRecordDelta = delta;
+                    maxHitRecordPixel = index;
+                }
+                maxHitTDelta = std::max(maxHitTDelta, hitTDelta);
+                maxPositionDelta = std::max(maxPositionDelta, positionDelta);
+                maxNormalDelta = std::max(maxNormalDelta, normalDelta);
+                // The GLSL HitRecord declares three uints in _pad0; std430 rounds the
+                // record to 64 bytes, leaving one implicit tail-padding word. The CPU mirror
+                // uses four words so memcpy remains safe, but the last word is not a field and
+                // is not part of R434's observable output equality contract.
+                if (std::memcmp(&a, &b, sizeof(HitRecordCpu) - sizeof(uint32_t)) != 0)
+                    ++hitRecordFieldDifferences;
+            }
+        }
+    }
+
+    std::printf("[R464_ANALYTIC] opening=%zu cavityWall=%zu trueEscape=%zu total=%u\n",
+                openingPixels, cavityWallPixels, throughEscapePixels, kW * kH);
+    std::printf("[R464_MASK] analyticMismatches=%zu guardedMisses=%zu guardedFalseHits=%zu "
+                "epsilonFalseHits=%zu nonEpsilonFalseHits=%zu guardVsOraclePixels=%zu "
+                "rgbaPixelDifferences=%zu hitRecordFieldDifferences=%zu maxDelta=%.9g "
+                "maxHitTDelta=%.9g maxPositionDelta=%.9g maxNormalDelta=%.9g "
+                "maxDeltaPixel=(%zu,%zu)\n",
+                analyticMismatches, guardedMisses, guardedFalseHits, epsilonFalseHits,
+                nonEpsilonFalseHits, guardedOraclePixelDifferences, rgbaPixelDifferences,
+                hitRecordFieldDifferences, maxHitRecordDelta, maxHitTDelta, maxPositionDelta,
+                maxNormalDelta, maxHitRecordPixel % kW, maxHitRecordPixel / kW);
+    std::printf("[R464_FALSE_HIT_SDF] reported-hit SDF range=[%.9g,%.9g] EPS=5e-6\n",
+                minFalseHitSdf, maxFalseHitSdf);
+
+    auto pickPixel = [&](auto predicate, bool preferLargestRadius) -> size_t {
+        size_t chosen = size_t(kW) * kH;
+        float chosenRadius = preferLargestRadius ? -1.0f : 1e30f;
+        for (uint32_t y = 0; y < kH; ++y) {
+            for (uint32_t x = 0; x < kW; ++x) {
+                const size_t index = size_t(y) * kW + x;
+                if (!predicate(index)) continue;
+                const float dx = static_cast<float>(x) + 0.5f - 0.5f * static_cast<float>(kW);
+                const float dy = static_cast<float>(y) + 0.5f - 0.5f * static_cast<float>(kH);
+                const float radius2 = dx * dx + dy * dy;
+                if ((preferLargestRadius && radius2 > chosenRadius) ||
+                    (!preferLargestRadius && radius2 < chosenRadius)) {
+                    chosen = index;
+                    chosenRadius = radius2;
+                }
+            }
+        }
+        return chosen;
+    };
+    const size_t centerEscape = pickPixel([&](size_t i) {
+        return openingMask[i] && !analyticMask[i];
+    }, false);
+    const size_t cavityWall = pickPixel([&](size_t i) {
+        return openingMask[i] && analyticMask[i] && surfaces[i] == AnalyticSurface::SphereCavity;
+    }, false);
+    const size_t rimWall = pickPixel([&](size_t i) {
+        return openingMask[i] && analyticMask[i] && surfaces[i] == AnalyticSurface::SphereCavity;
+    }, true);
+
+    const auto logTrace = [&](const char* label, size_t index,
+                              const std::vector<SdfTraceCpu>& sourceTraces,
+                              const std::vector<HitRecordCpu>& sourceHits) {
+        ASSERT_LT(index, size_t(kW) * kH) << "could not find analytic ray category " << label;
+        const uint32_t x = static_cast<uint32_t>(index % kW);
+        const uint32_t y = static_cast<uint32_t>(index / kW);
+        const SdfTraceCpu& t = sourceTraces[index];
+        const HitRecordCpu& hit = sourceHits[index];
+        const bool hasHit = (hit.flags & kHitRecordFlagHit) != 0u;
+        std::printf("[R464_TRACE] %s pixel=(%u,%u) analyticSurface=%u hit=%u steps=%u "
+                    "termination=%u sdf=%.9g p=(%.9g,%.9g,%.9g) grad=(%.9g,%.9g,%.9g) "
+                    "t=%.9g span=(%.9g,%.9g) gridDim=%u gridBound=%.9g lastStep=%.9g "
+                    "voxel=NA brick=NA",
+                    label, x, y, static_cast<uint32_t>(surfaces[index]),
+                    hasHit ? 1u : 0u, t.steps, t.termination, t.sdf,
+                    t.position[0], t.position[1], t.position[2],
+                    t.gradient[0], t.gradient[1], t.gradient[2], t.t, t.tNear, t.tFar,
+                    t.gridDim, t.gridBound, t.lastStep);
+        if (hasHit) {
+            std::printf(" hitPos=(%.9g,%.9g,%.9g) normal=(%.9g,%.9g,%.9g)\n",
+                    hit.worldPos[0], hit.worldPos[1], hit.worldPos[2],
+                        hit.worldNormal[0], hit.worldNormal[1], hit.worldNormal[2]);
+        } else {
+            std::printf(" hitPos=NA normal=NA\n");
+        }
+    };
+    logTrace("hole-center-escape-guarded", centerEscape, traces, guardedHits);
+    logTrace("hole-center-escape-unguarded", centerEscape, unguardedTraces, unguardedHits);
+    logTrace("hole-cavity-wall-guarded", cavityWall, traces, guardedHits);
+    logTrace("hole-cavity-wall-unguarded", cavityWall, unguardedTraces, unguardedHits);
+    logTrace("hole-rim-wall-guarded", rimWall, traces, guardedHits);
+    logTrace("hole-rim-wall-unguarded", rimWall, unguardedTraces, unguardedHits);
+    logTrace("black-crescent-left", size_t(260) * kW + 210, traces, guardedHits);
+    logTrace("black-crescent-right", size_t(260) * kW + 289, traces, guardedHits);
+    logTrace("white-strip", size_t(255) * kW + 206, traces, guardedHits);
+    for (size_t index : oracleDifferencePixels) {
+        logTrace("guard-vs-unguarded-difference-guarded", index, traces, guardedHits);
+        logTrace("guard-vs-unguarded-difference-unguarded", index, unguardedTraces, unguardedHits);
+    }
+    if (maxHitRecordPixel < size_t(kW) * kH) {
+        const HitRecordCpu& guarded = guardedHits[maxHitRecordPixel];
+        const HitRecordCpu& unguarded = unguardedHits[maxHitRecordPixel];
+        std::printf("[R464_MAX_DELTA] pixel=(%zu,%zu) hitT=(%.9g,%.9g) "
+                    "position=(%.9g,%.9g,%.9g)/(%.9g,%.9g,%.9g) "
+                    "normal=(%.9g,%.9g,%.9g)/(%.9g,%.9g,%.9g)\n",
+                    maxHitRecordPixel % kW, maxHitRecordPixel / kW,
+                    guarded.hitT, unguarded.hitT,
+                    guarded.worldPos[0], guarded.worldPos[1], guarded.worldPos[2],
+                    unguarded.worldPos[0], unguarded.worldPos[1], unguarded.worldPos[2],
+                    guarded.worldNormal[0], guarded.worldNormal[1], guarded.worldNormal[2],
+                    unguarded.worldNormal[0], unguarded.worldNormal[1], unguarded.worldNormal[2]);
+        logTrace("max-delta-guarded", maxHitRecordPixel, traces, guardedHits);
+        logTrace("max-delta-unguarded", maxHitRecordPixel, unguardedTraces, unguardedHits);
+    }
+    for (size_t index : analyticMissPixels)
+        logTrace("analytic-surface-guarded-miss", index, traces, guardedHits);
+    for (size_t index : analyticFalseHitPixels) {
+        const HitRecordCpu& hit = guardedHits[index];
+        const glm::vec3 p(hit.worldPos[0], hit.worldPos[1], hit.worldPos[2]);
+        std::printf("[R464_FALSE_HIT] pixel=(%zu,%zu) analytic=escape sdfAtHit=%.9g\n",
+                    index % kW, index / kW, BoxMinusSphereSdf(p, halfExtents, kSphereRadius));
+        logTrace("analytic-escape-guarded-hit", index, traces, guardedHits);
+    }
+
+    EXPECT_GT(openingPixels, 0u);
+    EXPECT_GT(cavityWallPixels, 0u) << "the analytic top opening should expose part of the sphere cavity wall";
+    EXPECT_GT(throughEscapePixels, 0u) << "the central opening should contain genuine through-rays";
+    EXPECT_EQ(analyticMismatches, 0u)
+        << "every analytic box or sphere-cavity surface must be hit; only analytic escapes may be background";
+    EXPECT_EQ(guardedOraclePixelDifferences, 0u)
+        << "occupancy-guarded and guard-disabled renders must agree on every pixel's hit bit";
+    EXPECT_EQ(rgbaPixelDifferences, 0u)
+        << "occupancy guard changed rendered RGBA on " << rgbaPixelDifferences << " pixels";
+}
+
+TEST_F(BakedVsVirtualParityTest, RimleakEditorCaptureRecipeMatchesAnalyticAndOccupancyOracle) {
+    constexpr uint32_t kW = 500, kH = 500;
+    const glm::vec3 halfExtents(1.0f);
+    constexpr float kSphereRadius = 0.6f;
+    constexpr float kSmoothUnionRadius = 0.15f;
+    constexpr float kCylinderHalfHeight = 1.5f;
+    constexpr float kCylinderRadius = 0.35f;
+
+    // This is the exact default sample_tri_layer.vxd program at editor frame 5:
+    // Box(1,1,1), Sphere(0,0,0,0) - ReadParam(0) => radius .6,
+    // SmoothUnion(.15), Cylinder(1.5,.35), Subtract. Layer instructions are copied into
+    // the live procedural recipe unchanged by EditorDocumentModel::FlattenToRecipeEntry.
+    ParityRecipe recipe;
+    recipe.name = "rimleak_editor_capture_sample_tri_layer";
+    recipe.worldTarget = glm::vec3(0.0f);
+    recipe.worldSpaceProgram = {
+        boxAt(halfExtents), sphereAt(glm::vec3(0.0f), 0.0f), readParam(0), mathSub(),
+        combine(SdfOpCode::SmoothUnion, kSmoothUnionRadius),
+        cylinderAt(kCylinderHalfHeight, kCylinderRadius),
+        combine(SdfOpCode::Subtract, 0.0f),
+    };
+    recipe.worldParamSnapshot = {kSphereRadius};
+    recipe.expectOccupancyGrid = false;  // capture log: non-whitelisted opcode, gridDim=0
+
+    // ApplyEditorPreviewBounds derives from the maximum authored parameter value (.1.5),
+    // then FitEditorCameraToBounds uses recipe units, 45-degree FOV and 1.15 padding.
+    std::array<float, 6> parameterMaxima{};
+    parameterMaxima[0] = 1.5f;
+    const auto cameraBounds = Vixen::SVO::Recipe::DeriveConservativeBounds(
+        recipe.worldSpaceProgram.data(), static_cast<uint32_t>(recipe.worldSpaceProgram.size()),
+        parameterMaxima);
+    ASSERT_TRUE(cameraBounds.ok);
+    recipe.authoredBoundCenter = cameraBounds.center;
+    recipe.authoredBoundRadius = cameraBounds.radius;
+
+    constexpr float kVerticalFovDegrees = 45.0f;
+    constexpr float kCameraPadding = 1.15f;
+    constexpr float kCameraPitch = 1.45f;
+    constexpr float kCameraYaw = 0.0f;
+    const float halfFov = glm::radians(kVerticalFovDegrees * 0.5f);
+    const float cameraDistance = cameraBounds.radius / std::sin(halfFov) * kCameraPadding;
+    const glm::vec3 orbitOffset(
+        cameraDistance * std::cos(kCameraPitch) * std::sin(kCameraYaw),
+        cameraDistance * std::sin(kCameraPitch),
+        cameraDistance * std::cos(kCameraPitch) * std::cos(kCameraYaw));
+    const PushConstants pc = MakeCamera(cameraBounds.center + orbitOffset,
+                                         cameraBounds.center, kW, kH, 1);
+
+    std::vector<uint8_t> guardedRgba, unguardedRgba;
+    std::vector<HitRecordCpu> guardedHits, unguardedHits;
+    std::vector<SdfTraceCpu> traces, unguardedTraces;
+    ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, guardedRgba, kW, kH, pc, guardedHits,
+                                          /*useOccupancyGrid=*/true, &traces));
+    ASSERT_NO_FATAL_FAILURE(RenderVirtual(recipe, unguardedRgba, kW, kH, pc, unguardedHits,
+                                          /*useOccupancyGrid=*/false, &unguardedTraces));
+
+    size_t openingPixels = 0, cavityWallPixels = 0, throughEscapePixels = 0;
+    size_t analyticMismatches = 0, guardedMisses = 0, guardedFalseHits = 0;
+    size_t guardOraclePixelDifferences = 0, rgbaPixelDifferences = 0;
+    size_t hitRecordFieldDifferences = 0;
+    uint32_t maximumSteps = 0;
+    uint64_t totalSteps = 0;
+    float minFalseHitSdf = std::numeric_limits<float>::infinity();
+    float maxFalseHitSdf = -std::numeric_limits<float>::infinity();
+    std::vector<uint8_t> openingMask(size_t(kW) * kH, 0u);
+    std::vector<uint8_t> analyticMask(size_t(kW) * kH, 0u);
+    std::vector<AnalyticSurface> surfaces(size_t(kW) * kH, AnalyticSurface::None);
+    std::vector<size_t> surfaceMissPixels, falseHitPixels, guardDifferencePixels;
+
+    for (uint32_t y = 0; y < kH; ++y) {
+        for (uint32_t x = 0; x < kW; ++x) {
+            const size_t index = size_t(y) * kW + x;
+            const glm::vec3 ray = CameraRay(pc, x, y, kW, kH);
+            const bool opening = RayEntersCylinderOpening(pc.cameraPos, ray, halfExtents,
+                                                           kCylinderRadius);
+            const AnalyticRayHit analytic = AnalyticBoxMinusCylinder(
+                pc.cameraPos, ray, halfExtents, kCylinderHalfHeight, kCylinderRadius);
+            const bool guarded = (guardedHits[index].flags & kHitRecordFlagHit) != 0u;
+            const bool unguarded = (unguardedHits[index].flags & kHitRecordFlagHit) != 0u;
+            if (guarded != analytic.hit && surfaceMissPixels.size() < 8) {
+                const glm::vec3 analyticPoint = pc.cameraPos + ray * analytic.t;
+                std::printf("[R464_EDITOR_MISMATCH] pixel=(%u,%u) analyticHit=%u surface=%u "
+                            "analyticT=%.9g analyticP=(%.9g,%.9g,%.9g) analyticSdf=%.9g "
+                            "ray=(%.9g,%.9g,%.9g) marcherHit=%u termination=%u sdf=%.9g\n",
+                            x, y, analytic.hit ? 1u : 0u, static_cast<uint32_t>(analytic.surface),
+                            analytic.t, analyticPoint.x, analyticPoint.y, analyticPoint.z,
+                            BoxMinusCylinderSdf(analyticPoint, halfExtents, kCylinderHalfHeight,
+                                                kCylinderRadius),
+                            ray.x, ray.y, ray.z, guarded ? 1u : 0u,
+                            traces[index].termination, traces[index].sdf);
+            }
+            openingMask[index] = opening ? 1u : 0u;
+            analyticMask[index] = analytic.hit ? 1u : 0u;
+            surfaces[index] = analytic.surface;
+            maximumSteps = std::max(maximumSteps, traces[index].steps);
+            totalSteps += traces[index].steps;
+            if (opening) {
+                ++openingPixels;
+                if (analytic.hit && analytic.surface == AnalyticSurface::CylinderCavity)
+                    ++cavityWallPixels;
+                if (!analytic.hit) ++throughEscapePixels;
+            }
+            if (guarded != analytic.hit) {
+                ++analyticMismatches;
+                if (analytic.hit) {
+                    ++guardedMisses;
+                    if (surfaceMissPixels.size() < 8) surfaceMissPixels.push_back(index);
+                } else {
+                    ++guardedFalseHits;
+                    const glm::vec3 hitPosition(guardedHits[index].worldPos[0],
+                                                guardedHits[index].worldPos[1],
+                                                guardedHits[index].worldPos[2]);
+                    const float hitSdf = BoxMinusCylinderSdf(hitPosition, halfExtents,
+                                                              kCylinderHalfHeight,
+                                                              kCylinderRadius);
+                    minFalseHitSdf = std::min(minFalseHitSdf, hitSdf);
+                    maxFalseHitSdf = std::max(maxFalseHitSdf, hitSdf);
+                    if (falseHitPixels.size() < 8) falseHitPixels.push_back(index);
+                }
+            }
+            if (guarded != unguarded) {
+                ++guardOraclePixelDifferences;
+                if (guardDifferencePixels.size() < 8) guardDifferencePixels.push_back(index);
+            }
+            if (std::memcmp(guardedRgba.data() + index * 4,
+                            unguardedRgba.data() + index * 4, 4) != 0)
+                ++rgbaPixelDifferences;
+            if (guarded && unguarded &&
+                std::memcmp(&guardedHits[index], &unguardedHits[index],
+                            sizeof(HitRecordCpu) - sizeof(uint32_t)) != 0)
+                ++hitRecordFieldDifferences;
+        }
+    }
+
+    std::printf("[R464_EDITOR_ANALYTIC] opening=%zu cylinderWall=%zu trueEscape=%zu total=%u "
+                "boundsRadius=%.9g cameraDistance=%.9g occupancyGrid=none\n",
+                openingPixels, cavityWallPixels, throughEscapePixels, kW * kH,
+                cameraBounds.radius, cameraDistance);
+    std::printf("[R464_EDITOR_MASK] analyticMismatches=%zu guardedMisses=%zu guardedFalseHits=%zu "
+                "falseHitSdf=[%.9g,%.9g] guardVsOraclePixels=%zu rgbaPixelDifferences=%zu "
+                "hitRecordFieldDifferences=%zu averageSteps=%.6g maximumSteps=%u\n",
+                analyticMismatches, guardedMisses, guardedFalseHits,
+                minFalseHitSdf, maxFalseHitSdf, guardOraclePixelDifferences,
+                rgbaPixelDifferences, hitRecordFieldDifferences,
+                static_cast<double>(totalSteps) / static_cast<double>(size_t(kW) * kH),
+                maximumSteps);
+
+    const auto pickPixel = [&](auto predicate, bool preferLargestRadius) -> size_t {
+        size_t chosen = size_t(kW) * kH;
+        float chosenRadius = preferLargestRadius ? -1.0f : 1e30f;
+        for (uint32_t y = 0; y < kH; ++y) {
+            for (uint32_t x = 0; x < kW; ++x) {
+                const size_t index = size_t(y) * kW + x;
+                if (!predicate(index)) continue;
+                const float dx = static_cast<float>(x) + 0.5f - 0.5f * static_cast<float>(kW);
+                const float dy = static_cast<float>(y) + 0.5f - 0.5f * static_cast<float>(kH);
+                const float radius2 = dx * dx + dy * dy;
+                if ((preferLargestRadius && radius2 > chosenRadius) ||
+                    (!preferLargestRadius && radius2 < chosenRadius)) {
+                    chosen = index;
+                    chosenRadius = radius2;
+                }
+            }
+        }
+        return chosen;
+    };
+
+    const auto logTrace = [&](const char* label, size_t index,
+                              const std::vector<SdfTraceCpu>& sourceTraces,
+                              const std::vector<HitRecordCpu>& sourceHits) {
+        ASSERT_LT(index, size_t(kW) * kH) << "could not find ray category " << label;
+        const uint32_t x = static_cast<uint32_t>(index % kW);
+        const uint32_t y = static_cast<uint32_t>(index / kW);
+        const SdfTraceCpu& t = sourceTraces[index];
+        const HitRecordCpu& hit = sourceHits[index];
+        const bool hasHit = (hit.flags & kHitRecordFlagHit) != 0u;
+        std::printf("[R464_EDITOR_TRACE] %s pixel=(%u,%u) analyticSurface=%u hit=%u steps=%u "
+                    "termination=%u sdf=%.9g p=(%.9g,%.9g,%.9g) grad=(%.9g,%.9g,%.9g) "
+                    "t=%.9g span=(%.9g,%.9g) gridDim=%u gridBound=%.9g lastStep=%.9g "
+                    "voxel=NA brick=NA",
+                    label, x, y, static_cast<uint32_t>(surfaces[index]), hasHit ? 1u : 0u,
+                    t.steps, t.termination, t.sdf,
+                    t.position[0], t.position[1], t.position[2],
+                    t.gradient[0], t.gradient[1], t.gradient[2], t.t, t.tNear, t.tFar,
+                    t.gridDim, t.gridBound, t.lastStep);
+        if (hasHit) {
+            const glm::vec3 normal(hit.worldNormal[0], hit.worldNormal[1], hit.worldNormal[2]);
+            const glm::vec3 keyDirection = glm::normalize(glm::vec3(1.0f, 1.0f, -1.0f));
+            std::printf(" hitPos=(%.9g,%.9g,%.9g) normal=(%.9g,%.9g,%.9g) keyNdotL=%.9g\n",
+                        hit.worldPos[0], hit.worldPos[1], hit.worldPos[2],
+                        normal.x, normal.y, normal.z, glm::max(glm::dot(normal, keyDirection), 0.0f));
+        } else {
+            std::printf(" hitPos=NA normal=NA\n");
+        }
+    };
+
+    const size_t centerEscape = pickPixel([&](size_t i) {
+        return openingMask[i] && !analyticMask[i];
+    }, false);
+    const size_t cavityWall = pickPixel([&](size_t i) {
+        return openingMask[i] && analyticMask[i] &&
+               surfaces[i] == AnalyticSurface::CylinderCavity;
+    }, false);
+    const size_t rimWall = pickPixel([&](size_t i) {
+        return openingMask[i] && analyticMask[i] &&
+               surfaces[i] == AnalyticSurface::CylinderCavity;
+    }, true);
+    logTrace("hole-center-escape", centerEscape, traces, guardedHits);
+    logTrace("hole-cavity-wall", cavityWall, traces, guardedHits);
+    logTrace("hole-rim-wall", rimWall, traces, guardedHits);
+    logTrace("black-crescent-left", size_t(260) * kW + 210, traces, guardedHits);
+    logTrace("black-crescent-right", size_t(260) * kW + 289, traces, guardedHits);
+    logTrace("white-strip", size_t(255) * kW + 206, traces, guardedHits);
+    logTrace("black-crescent-left-unguarded", size_t(260) * kW + 210, unguardedTraces, unguardedHits);
+    logTrace("black-crescent-right-unguarded", size_t(260) * kW + 289, unguardedTraces, unguardedHits);
+    logTrace("white-strip-unguarded", size_t(255) * kW + 206, unguardedTraces, unguardedHits);
+    for (size_t index : surfaceMissPixels)
+        logTrace("analytic-surface-guarded-miss", index, traces, guardedHits);
+    for (size_t index : falseHitPixels)
+        logTrace("analytic-escape-guarded-hit", index, traces, guardedHits);
+    for (size_t index : guardDifferencePixels)
+        logTrace("guard-vs-unguarded-difference", index, traces, guardedHits);
+
+    EXPECT_GT(openingPixels, 0u);
+    EXPECT_GT(cavityWallPixels, 0u)
+        << "the top bore should reveal the cylinder's inner wall from the tilted camera";
+    EXPECT_GT(throughEscapePixels, 0u)
+        << "the central bore should contain true through-rays because the cutter exceeds box height";
+    EXPECT_EQ(analyticMismatches, 0u)
+        << "only analytic box/cylinder surfaces may be hits; only analytic escapes may be background";
+    EXPECT_EQ(guardOraclePixelDifferences, 0u)
+        << "occupancy-guarded and guard-disabled renders must agree on every pixel hit bit";
+    EXPECT_EQ(rgbaPixelDifferences, 0u)
+        << "occupancy-guarded and guard-disabled rendered RGBA must agree on every pixel";
+    EXPECT_EQ(hitRecordFieldDifferences, 0u)
+        << "guarded and unguarded observable hit fields must agree; this sample has no grid";
 }
 
 TEST(ParityCorpusTest, ReadParamSnapshotsFollowProgramCoordinateSpaces) {

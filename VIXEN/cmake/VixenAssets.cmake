@@ -58,6 +58,7 @@ function(vixen_stage_assets target src_dir)
         add_custom_command(OUTPUT "${_stage_stamp}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_dest}"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${src_dir}" "${_dest}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/vixen_stage_assets"
             COMMAND ${CMAKE_COMMAND} -E touch "${_stage_stamp}"
             DEPENDS ${_stage_inputs}
             COMMENT "vixen_stage_assets: staging ${src_dir} -> ${_dest}"

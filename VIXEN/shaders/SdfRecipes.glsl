@@ -149,11 +149,23 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     float b    = dot(oc, rd);
     float c    = dot(oc, oc) - boundRadius * boundRadius;
     float disc = b * b - c;
-    if (disc < 0.0) return false;
+    if (disc < 0.0) {
+#ifdef VIXEN_RIMLEAK_TRACE
+        rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), 0u, 0u, recipeId, 0u,
+                              0.0, 1e30, ro, vec3(0.0), 0.0, 0.0, 0.0, 0.0);
+#endif
+        return false;
+    }
     float sq    = sqrt(disc);
     float tNear = max(-b - sq, 0.0);
     float tFar  = -b + sq;
-    if (tFar < 0.0) return false;
+    if (tFar < 0.0) {
+#ifdef VIXEN_RIMLEAK_TRACE
+        rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), 0u, 0u, recipeId, 0u,
+                              0.0, 1e30, ro, vec3(0.0), 0.0, tNear, tFar, 0.0);
+#endif
+        return false;
+    }
 
     // Task 13: fetch this recipe's occupancy grid metadata once (constant per call, not
     // per march step) — a gridDim==0 recipe pays only this one switch dispatch and then
@@ -162,12 +174,24 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
     getRecipeOccupancyGrid(recipeId, gridOffset, gridDim, gridAabbMin, gridCellSize);
 
     float t = tNear;
-    const int   MAX_STEPS = 128;
-    const float EPS       = 1e-3;
+    const int   MAX_STEPS = 1024;
+    const float EPS       = 5e-6;
+#ifdef VIXEN_RIMLEAK_TRACE
+    float traceLastD = 1e30;
+    float traceLastT = tNear;
+    vec3  traceLastP = ro + rd * tNear;
+    float traceLastGridBound = 0.0;
+    float traceLastStep = 0.0;
+#endif
     for (int i = 0; i < MAX_STEPS; ++i) {
         stepsUsed = uint(i + 1);
         vec3  p = ro + rd * t;
         float d = evalRecipeField(recipeId, p, params);
+#ifdef VIXEN_RIMLEAK_TRACE
+        traceLastD = d;
+        traceLastT = t;
+        traceLastP = p;
+#endif
         if (d < EPS) {
             // Central-difference gradient — mirrors sdfGradient's h/EPS coincidence above.
             const float h = 1e-3;
@@ -177,6 +201,11 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
             float gz = evalRecipeField(recipeId, p + e.yyx, params) - evalRecipeField(recipeId, p - e.yyx, params);
             hitNormal = normalize(vec3(gx, gy, gz));
             hitT      = t;
+#ifdef VIXEN_RIMLEAK_TRACE
+            rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 1u, recipeId,
+                                  gridDim, t, d, p, vec3(gx, gy, gz), traceLastGridBound,
+                                  tNear, tFar, traceLastStep);
+#endif
             return true;
         }
         // Task 13 empty-space skip: the coarse grid's stored value at p is a conservative
@@ -208,9 +237,37 @@ bool traceUberRecipeBody(uint recipeId, vec3 boundCenter, float boundRadius, flo
         // Preserve the identity-scale stepping sequence used by legacy instances.
         float stepScale = clamp(conservativeStepScale, 0.0, 1.0);
         if (stepScale < 1.0) step *= stepScale;
+#ifdef VIXEN_RIMLEAK_TRACE
+        traceLastGridBound = gridBound;
+        traceLastStep = step;
+#endif
         t += step;
-        if (t > tFar) return false;
+        if (t > tFar) {
+#ifdef VIXEN_RIMLEAK_TRACE
+            const float h = 1e-3;
+            vec2 e = vec2(h, 0.0);
+            vec3 gradient = vec3(
+                evalRecipeField(recipeId, traceLastP + e.xyy, params) - evalRecipeField(recipeId, traceLastP - e.xyy, params),
+                evalRecipeField(recipeId, traceLastP + e.yxy, params) - evalRecipeField(recipeId, traceLastP - e.yxy, params),
+                evalRecipeField(recipeId, traceLastP + e.yyx, params) - evalRecipeField(recipeId, traceLastP - e.yyx, params));
+            rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 2u, recipeId,
+                                  gridDim, traceLastT, traceLastD, traceLastP, gradient,
+                                  traceLastGridBound, tNear, tFar, traceLastStep);
+#endif
+            return false;
+        }
     }
+#ifdef VIXEN_RIMLEAK_TRACE
+    const float h = 1e-3;
+    vec2 e = vec2(h, 0.0);
+    vec3 gradient = vec3(
+        evalRecipeField(recipeId, traceLastP + e.xyy, params) - evalRecipeField(recipeId, traceLastP - e.xyy, params),
+        evalRecipeField(recipeId, traceLastP + e.yxy, params) - evalRecipeField(recipeId, traceLastP - e.yxy, params),
+        evalRecipeField(recipeId, traceLastP + e.yyx, params) - evalRecipeField(recipeId, traceLastP - e.yyx, params));
+    rimleakRecordSdfTrace(ivec2(gl_GlobalInvocationID.xy), stepsUsed, 3u, recipeId, gridDim,
+                          traceLastT, traceLastD, traceLastP, gradient, traceLastGridBound,
+                          tNear, tFar, traceLastStep);
+#endif
     return false;
 }
 #endif // VIXEN_UBER_RECIPE_SPLICED
