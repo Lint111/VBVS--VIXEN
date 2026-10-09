@@ -1,0 +1,58 @@
+[
+  {
+    "file": "editor/editor_capture_105.png",
+    "before_sha256": "ed362a4235d54e8120fb0e109a7f2ae53d01053d76a7fe9a4e84a8f74068e054",
+    "after_sha256": "8d28d52feb20f12a350e1b55c3db55f6aa6a8a28ee60b1836d9acc8183ae04a1",
+    "byte_identical": false,
+    "bytes_before": 8305,
+    "bytes_after": 8100
+  },
+  {
+    "file": "editor/editor_capture_45.png",
+    "before_sha256": "ed362a4235d54e8120fb0e109a7f2ae53d01053d76a7fe9a4e84a8f74068e054",
+    "after_sha256": "8d28d52feb20f12a350e1b55c3db55f6aa6a8a28ee60b1836d9acc8183ae04a1",
+    "byte_identical": false,
+    "bytes_before": 8305,
+    "bytes_after": 8100
+  },
+  {
+    "file": "editor/editor_capture_5.png",
+    "before_sha256": "14a4264775cb4edddf755147dac2c9cad1b5aba5176242b87f838476c4e977a5",
+    "after_sha256": "bfcdcfddb1c4e1138ca808ea061891ce3554ced883e3c4d85c7148b1235187af",
+    "byte_identical": false,
+    "bytes_before": 9180,
+    "bytes_after": 8363
+  },
+  {
+    "file": "editor/editor_capture_75.png",
+    "before_sha256": "14a4264775cb4edddf755147dac2c9cad1b5aba5176242b87f838476c4e977a5",
+    "after_sha256": "bfcdcfddb1c4e1138ca808ea061891ce3554ced883e3c4d85c7148b1235187af",
+    "byte_identical": false,
+    "bytes_before": 9180,
+    "bytes_after": 8363
+  },
+  {
+    "file": "hud/hud_capture_45.png",
+    "before_sha256": "a1c51bb5d2681ae6ae6d1b94471ac3504af9096327911f7b057baf78811c0e8f",
+    "after_sha256": "8822405f57c40e0cf79bceaabe49c967c5129b9a55580f877c6f8610e2b9ceb1",
+    "byte_identical": false,
+    "bytes_before": 27566,
+    "bytes_after": 35684
+  },
+  {
+    "file": "hud/hud_capture_5.png",
+    "before_sha256": "d8fa9e72538eb38bec7fafcfa429aaf5ad7862890331b64ae87241503b92193d",
+    "after_sha256": "513e03efe104fbbf6cd5510ebe2e04b164c194cedd5feec029a6fc4c4e98cefa",
+    "byte_identical": false,
+    "bytes_before": 25009,
+    "bytes_after": 33116
+  },
+  {
+    "file": "hud/hud_capture_75.png",
+    "before_sha256": "40089ffdea2fc8e32cc78b6c18cd9e8c6ee2316a4fabf226d921493a4c3b7af3",
+    "after_sha256": "aa4569d2a1b5ff02885a939ac1924506d9c062fbc7ee98e1c53c4f30e049efc4",
+    "byte_identical": false,
+    "bytes_before": 26542,
+    "bytes_after": 34623
+  }
+]
