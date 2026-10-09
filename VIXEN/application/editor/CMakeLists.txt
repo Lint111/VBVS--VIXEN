@@ -80,7 +80,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
         FIXTURES_SETUP VixenEditorCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:vixen_editor>"
         TIMEOUT 180)
-    vixen_set_suite_properties(RenderGraph TESTS vixen_editor_capture_producer
+    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_editor_capture_producer
         TEST_ENVIRONMENT
             # R426 makes bi-modal cel the body-shading default; keep the legacy test override off.
             "VIXEN_TEST_CELSHADE_LAMBERT_GGX=0"
@@ -96,7 +96,7 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN)
         FIXTURES_SETUP VixenHudCapture
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:VIXEN>"
         TIMEOUT 180)
-    vixen_set_suite_properties(RenderGraph TESTS vixen_hud_capture_producer
+    vixen_set_suite_properties(RenderGraph GPU TESTS vixen_hud_capture_producer
         TEST_ENVIRONMENT
             "VIXEN_HUD_SCRIPT=A@30,B@60"
             "VIXEN_HUD_CAPTURE_FRAMES=5,45,75"
@@ -124,5 +124,6 @@ if(BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET VIXEN AND TARGE
             TIMEOUT 300
             LABELS "VIXENCapture;WSL"
             ENVIRONMENT "DISPLAY=:0;${VIXEN_CTEST_GPU_ENVIRONMENT}")
+        vixen_lock_gpu_tests(TESTS vixen_wsl_capture_witness)
     endif()
 endif()
