@@ -47,21 +47,21 @@ The schedule evidence matches the sole source delta. The editor dispatch fingerp
 | Witness | Result |
 |---|---|
 | Cornell loop on merged tree | **PASS** — serial `HeadlessCornellGraph` repeat-until-fail 50/50; 0 failures; 4,178.58 sec total |
-| RenderGraph and SVO CTest suites | **PENDING** — rerun serially; only the known opcode-94 recipe parity failure is allowed |
-| Editor gates, including R6 | **PENDING** — rerun serially |
-| No-op rebuild | **PENDING** — queued `cmake --build` after the test witnesses |
+| RenderGraph and SVO CTest selection | **UNFINISHED at checkpoint** — 1,691/2,116 selected tests completed; `RecipeGlslNumericalParityTest.Hash32GoldenVectorsMatchCpuAndGpuBitwise` was active when stopped. The queued command exited 143 on checkpoint interruption. |
+| Editor gates, including R6 | **UNFINISHED** — `vixen_editor_capture_producer` timed out at 180.37 sec; six dependent `EditorToggleUndoCapture` tests, including R6, were `Not Run`. `vixen_hud_capture_producer` passed in 55.43 sec. |
+| No-op rebuild | **UNFINISHED** — queued `cmake --build .tmp/merged-c0e23a10-plus-fix/build/wsl --parallel 4` remained memory-blocked and was canceled at checkpoint (wrapper exit 143); it did not run. |
 
-An earlier parallel CTest attempt was stopped after it exposed shared-fixture and overlapping-editor-capture races. It is not counted as a witness. The final suite runs will be serialized, so any remaining failure is a real result to investigate rather than a race inferred from that attempt.
+The serial command was `ctest --test-dir .tmp/merged-c0e23a10-plus-fix/build/wsl -L 'RenderGraph|SVO' --output-on-failure --parallel 1`, admitted by the global queue. At the checkpoint it had completed 1,691 of 2,116 selected tests; the CTest command was interrupted with exit 143. The allowed opcode-94 failure was not reached in this partial run. The earlier parallel attempt observed it but also had fixture/process overlap, so that attempt is not a final suite witness. The editor producer reached capture tick 115 and wrote several images before the configured 180-second limit. Retrying with CTest's `--timeout 600` and running the dependent editor gates remain outstanding.
 
 ### Recovery and STOPs
 
 - The initial relative capture-output path resolved under the applications' binary working directories and produced `stbi_write_png` errors. Rerunning with an absolute output root produced all expected captures.
 - The first quiet windowed-capture job was killed by the queue idle watchdog after it had written its images. Repeating it with a periodic heartbeat completed and verified all seven files.
-- **STOPs:** None identified in capture comparison. Required test witnesses are still pending.
+- **STOP at checkpoint (2026-10-09 21:50 UTC):** stopped the active suite at 1,691/2,116 and canceled the still memory-blocked no-op rebuild. Remaining: recover `vixen_editor_capture_producer` using `ctest --timeout 600`, rerun dependent editor/R6 gates, finish the remaining 425 selected tests (including the opcode-94 case and serial calibration-store tests), then run the no-op rebuild. No capture difference was unattributed.
 
 ## SPT DISPOSITION
 
-Five incidental workflow issues were filed through the SPT proposal CLI and are committed in `.spt-proposals/beamflake.jsonl`. No SPT task was created.
+Six incidental workflow issues were filed through the SPT proposal CLI and are committed in `.spt-proposals/beamflake.jsonl`. No SPT task was created.
 
 ## CONSOLIDATION ISSUES
 
@@ -70,3 +70,4 @@ Five incidental workflow issues were filed through the SPT proposal CLI and are 
 - Queue needs progress signaling for quiet long-running VIXEN captures
 - Calibration store tests share temp files across parallel CTest cases
 - Editor capture CTests lack cross-process serialization for shared artifacts
+- Windowed capture producer CTest timeout is below real DZN runtime
