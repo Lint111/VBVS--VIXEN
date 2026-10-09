@@ -1861,18 +1861,6 @@ void RenderGraph::RecompileDirtyNodes() {
         return;
     }
 
-    // A swapchain-recreation wave destroys resources (fences, image views, the swapchain itself,
-    // per-image command buffers/descriptor pools) that may still be in flight on the GPU from the
-    // last frame submitted before the pause. The general no-wait-during-recompile policy below is
-    // safe for ordinary dirty nodes (FrameSyncNode's per-frame sync covers those), but a resize wave
-    // tears down nearly the whole graph's per-image resources in one pass -- without a hard
-    // synchronization point here, CleanupImpl calls hit "still in use" validation errors (and can
-    // segfault) on any driver that doesn't happen to have finished the prior frame yet. Bound to
-    // ONLY the recreation case so ordinary recompiles keep the fast, wait-free path.
-    if (pausedForRecreation_) {
-        WaitForGraphDevicesIdle({});
-    }
-
     // Log which nodes triggered recompilation
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] ===== RECOMPILATION TRIGGERED =====");
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Dirty nodes count: " + std::to_string(dirtyNodes.size()));
@@ -1950,11 +1938,15 @@ void RenderGraph::RecompileDirtyNodes() {
         }
     }
 
+    // A frame-slot fence/timeline wait protects reuse of that slot. It does not protect command
+    // buffers owned by other slots when a dirty-wave cleanup frees the whole per-flight ring.
+    // Drain graph devices once after invalidating the prior execution epoch and before any
+    // CleanupImpl destroys submitted resources. Recompilation is occasional; this wait is bounded
+    // to dirty waves, not frame rendering. WaitForGraphDevicesIdle uses DeviceNode owners, avoiding
+    // non-owning node device pointers that may be stale during cleanup.
+    WaitForGraphDevicesIdle({});
+
     // Recompile each node exactly once, in topological order.
-    // Note: We skip vkDeviceWaitIdle during recompilation because:
-    // 1. FrameSyncNode already handles frame-in-flight synchronization
-    // 2. Node pointers may be stale during cleanup (accessing node->GetDevice() unsafe)
-    // 3. Individual nodes handle their own device waits in CleanupImpl if needed
     for (NodeInstance* node : nodesToRecompile) {
         // Check if any input dependencies failed during this recompilation
         bool dependencyFailed = false;
