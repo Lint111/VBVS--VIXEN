@@ -17,6 +17,7 @@
 #include <Core/GraphTopology.h>
 #include <Core/NodeType.h>
 #include <algorithm>
+#include <functional>
 
 // Use the centralized Vulkan globals (inline/selectany) to avoid
 // duplicate strong-symbol definitions across test translation units.
@@ -160,6 +161,23 @@ TEST_F(GraphTopologyTest, TopologicalSort_Linear) {
     EXPECT_EQ(sorted[0], &nodeA);
     EXPECT_EQ(sorted[1], &nodeB);
     EXPECT_EQ(sorted[2], &nodeC);
+}
+
+TEST_F(GraphTopologyTest, TopologicalSort_UsesInsertionOrderForIndependentNodes) {
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
+
+    std::vector<NodeInstance*> insertionOrder{&nodeA, &nodeB, &nodeC};
+    std::sort(insertionOrder.begin(), insertionOrder.end(), std::less<NodeInstance*>{});
+    std::reverse(insertionOrder.begin(), insertionOrder.end());
+    for (NodeInstance* node : insertionOrder) {
+        topology->AddNode(node);
+    }
+
+    const auto sorted = topology->TopologicalSort();
+    ASSERT_EQ(sorted.size(), insertionOrder.size());
+    EXPECT_EQ(sorted, insertionOrder);
 }
 
 TEST_F(GraphTopologyTest, TopologicalSort_Diamond) {

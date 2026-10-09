@@ -10,8 +10,8 @@ GraphTopology::GraphTopology() {
 }
 
 void GraphTopology::AddNode(NodeInstance* node) {
-    if (node) {
-        nodes.insert(node);
+    if (node && nodes.insert(node).second) {
+        nodesInInsertionOrder.push_back(node);
     }
 }
 
@@ -28,6 +28,9 @@ void GraphTopology::RemoveNode(NodeInstance* node) {
     );
 
     nodes.erase(node);
+    nodesInInsertionOrder.erase(
+        std::remove(nodesInInsertionOrder.begin(), nodesInInsertionOrder.end(), node),
+        nodesInInsertionOrder.end());
 }
 
 void GraphTopology::AddEdge(const GraphEdge& edge) {
@@ -40,8 +43,8 @@ void GraphTopology::AddEdge(const GraphEdge& edge) {
             edges.push_back(edge);
 
             // Ensure both nodes are in the graph
-            nodes.insert(edge.source);
-            nodes.insert(edge.target);
+            AddNode(edge.source);
+            AddNode(edge.target);
         } else {
             LOG_DEBUG("Edge already exists: " + edge.source->GetInstanceName() +
                      " -> " + edge.target->GetInstanceName());
@@ -58,6 +61,7 @@ void GraphTopology::RemoveEdge(const GraphEdge& edge) {
 
 void GraphTopology::Clear() {
     nodes.clear();
+    nodesInInsertionOrder.clear();
     edges.clear();
 }
 
@@ -111,9 +115,9 @@ std::vector<NodeInstance*> GraphTopology::TopologicalSort() const {
     std::vector<NodeInstance*> stack;
 
     // Visit all nodes
-    for (NodeInstance* node : nodes) {
-        if (visited.find(node) == visited.end()) {
-            TopologicalSortHelper(node, visited, stack);
+    for (auto node = nodesInInsertionOrder.rbegin(); node != nodesInInsertionOrder.rend(); ++node) {
+        if (visited.find(*node) == visited.end()) {
+            TopologicalSortHelper(*node, visited, stack);
         }
     }
 
@@ -147,7 +151,7 @@ void GraphTopology::TopologicalSortHelper(
 std::vector<NodeInstance*> GraphTopology::GetRootNodes() const {
     std::vector<NodeInstance*> roots;
 
-    for (NodeInstance* node : nodes) {
+    for (NodeInstance* node : nodesInInsertionOrder) {
         bool hasIncoming = false;
         for (const auto& edge : edges) {
             if (edge.target == node) {
@@ -167,7 +171,7 @@ std::vector<NodeInstance*> GraphTopology::GetRootNodes() const {
 std::vector<NodeInstance*> GraphTopology::GetLeafNodes() const {
     std::vector<NodeInstance*> leaves;
 
-    for (NodeInstance* node : nodes) {
+    for (NodeInstance* node : nodesInInsertionOrder) {
         bool hasOutgoing = false;
         for (const auto& edge : edges) {
             if (edge.source == node) {

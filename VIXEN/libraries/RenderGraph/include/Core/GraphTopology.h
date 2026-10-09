@@ -72,6 +72,10 @@ public:
 
 private:
     std::set<NodeInstance*> nodes;
+    // Keep a stable tie-breaker for topological traversal. The set remains the
+    // membership/index API, but its pointer ordering must not determine execution
+    // order across graph instances allocated at different addresses.
+    std::vector<NodeInstance*> nodesInInsertionOrder;
     std::vector<GraphEdge> edges;
 
     // Helper methods for cycle detection
