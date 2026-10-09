@@ -1,5 +1,6 @@
 #include "BindingStore.h"
 #include <algorithm>
+#include <charconv>
 
 namespace Vixen::AppFlow {
 
@@ -57,6 +58,16 @@ bool BindingStore::TryGetForSelector(const std::string& selector, BoundAction& o
         if (selector.compare(selector.size() - p.suffix.size(), p.suffix.size(), p.suffix) != 0) continue;
         std::string mid = selector.substr(p.prefix.size(), selector.size() - p.prefix.size() - p.suffix.size());
         if (mid.empty()) continue;
+        const auto action = registry_.find(static_cast<uint16_t>(p.action));
+        if (action == registry_.end()) continue;
+        const auto param = std::find_if(action->second.begin(), action->second.end(),
+            [&](const FlowParamSchema& schema) { return p.paramName == schema.name; });
+        if (param == action->second.end()) continue;
+        if (param->type == Generated::FlowParamType::Int) {
+            int32_t value;
+            const auto parsed = std::from_chars(mid.data(), mid.data() + mid.size(), value);
+            if (parsed.ec != std::errc{} || parsed.ptr != mid.data() + mid.size()) continue;
+        }
         out = BoundAction{p.action, p.on, {{p.paramName, mid}},
                           {FlowTriggerKind::ElementTrigger, p.triggerId}};
         return true;

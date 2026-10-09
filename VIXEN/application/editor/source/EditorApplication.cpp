@@ -26,6 +26,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <sstream>
@@ -38,6 +40,15 @@
 #endif
 
 namespace {
+// R463 capture instrumentation only; steady timestamps correlate with shared backend spans.
+void TraceEditorLatency(const char* phase, const char* edge, long tick, int action = -1) {
+    if (!std::getenv("VIXEN_EDITOR_LATENCY_TRACE")) return;
+    const auto wallUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    std::fprintf(stderr, "[RECIPE/latency] phase=%s edge=%s tick=%ld action=%d wall_us=%lld\n",
+        phase, edge, tick, action, static_cast<long long>(wallUs));
+}
+
 // Parses selector-equivalent editor operations such as
 // "parameter_up:0@30,program_up:0@45,undo@60,redo@75,save@90,reopen@105".
 // A malformed token is logged and skipped; it never aborts the editor.
@@ -608,6 +619,7 @@ void EditorApplication::BuildRenderGraph() {
 }
 
 bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
+    TraceEditorLatency("flatten", "begin", updateTick_);
     Vixen::SVO::RecipeRegistry::RecipeEntry entry;
     Vixen::Editor::DocumentDiagnostic diagnostic;
     const Vixen::Editor::DocumentBakeSnapshot snapshot = doc_.CaptureBakeSnapshot();
@@ -616,6 +628,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         return false;
     }
     ApplyEditorPreviewBounds(entry, doc_);
+    TraceEditorLatency("flatten", "end", updateTick_);
+    TraceEditorLatency("registry", "begin", updateTick_);
 
     // Runtime parameter values remain per-instance data. Only a changed canonical bytecode
     // program replaces the registry entry and triggers a shader splice rebuild.
@@ -628,7 +642,9 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         }
         proceduralPreviewRegistered_ = true;
         lastProceduralProgram_ = entry.bytecode;
+        TraceEditorLatency("shader_request", "begin", updateTick_);
         RecompileProceduralShader();
+        TraceEditorLatency("shader_request", "end", updateTick_);
     } else if (!SameProgram(entry.bytecode, lastProceduralProgram_)) {
         const auto result = ReplaceProceduralRecipe(kEditorProceduralRecipeId, entry);
         if (result != Vixen::SVO::RecipeRegistry::RegisterResult::Ok) {
@@ -637,9 +653,13 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
             return false;
         }
         lastProceduralProgram_ = entry.bytecode;
+        TraceEditorLatency("shader_request", "begin", updateTick_);
         RecompileProceduralShader();
+        TraceEditorLatency("shader_request", "end", updateTick_);
     }
 
+    TraceEditorLatency("registry", "end", updateTick_);
+    TraceEditorLatency("bake", "begin", updateTick_);
     Vixen::SVO::RecipeRegistry reg;
     static constexpr uint32_t kRecipeId = 1u;
     const auto result = reg.Register(kRecipeId, entry);
@@ -656,6 +676,8 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
         return false;
     }
 
+    TraceEditorLatency("bake", "end", updateTick_);
+    TraceEditorLatency("publish", "begin", updateTick_);
     lastBakeSnapshot_ = snapshot;
     for (size_t i = 0; i < lastPreviewParameterValues_.size(); ++i) {
         lastPreviewParameterValues_[i] = snapshot.parameterValues[i];
@@ -676,6 +698,7 @@ bool EditorApplication::ApplyDocumentToScene(bool reframeCamera) {
     for (size_t i = 0; i < snapshot.parameterValues.size(); ++i)
         inst.material.recipeParams[i] = snapshot.parameterValues[i];
     SetBodyInstances({inst});
+    TraceEditorLatency("publish", "end", updateTick_);
 
     if (entry.parameterValues.size() != snapshot.parameterValues.size() ||
         !std::equal(snapshot.parameterValues.begin(), snapshot.parameterValues.end(),
@@ -840,6 +863,7 @@ bool EditorApplication::ReopenSavedDocument() {
 }
 
 void EditorApplication::PreTick() {
+    TraceEditorLatency("frame", "begin", updateTick_);
     // graph.Run() consolidation: the scripted-action injector runs in PreTick() (before Update())
     // instead of at the top of Update(). Behavior-identical: PreTick() is called by
     // VulkanApplicationBase::Tick() immediately before Update(), and updateTick_ only advances at
@@ -871,6 +895,7 @@ void EditorApplication::PreTick() {
     // registry -> handler -> ActionStack -> re-flatten dispatch, not a shortcut.
     for (const auto& action : scriptedActions_) {
         if (action.frame != updateTick_) continue;
+        TraceEditorLatency("dispatch", "begin", updateTick_, static_cast<int>(action.kind));
         switch (action.kind) {
             // The three edit kinds emit one canonical, parseable "[EDITOR/state] <op> ..." line
             // each (mask + undo/redo depths + dispatch result). This state-dump is the R6 gate's
@@ -977,6 +1002,7 @@ void EditorApplication::PreTick() {
                 break;
             }
         }
+        TraceEditorLatency("dispatch", "end", updateTick_, static_cast<int>(action.kind));
     }
     } catch (const std::exception& e) {
         lastEditorError_ = std::string("PreTick: ") + e.what();
@@ -1007,7 +1033,9 @@ void EditorApplication::Update() {
     if (auto* selection = GetUiSelectionProviderNode()) {
         const std::string clickedId = selection->DrainClickedElementId();
         if (!clickedId.empty()) {
+            TraceEditorLatency("dispatch", "begin", updateTick_);
             rt_.DispatchBySelector(clickedId);
+            TraceEditorLatency("dispatch", "end", updateTick_);
         }
     }
 
@@ -1101,15 +1129,18 @@ void EditorApplication::Update() {
 }
 
 void EditorApplication::PostTick() {
+    TraceEditorLatency("frame", "end", updateTick_ - 1);
     // VulkanApplicationBase::Tick calls this only after Render(), when compute_render_target
     // contains the completed scene image for the Update tick that scheduled the capture.
     if (!pendingCapturePath_.empty()) {
         const std::string path = std::move(pendingCapturePath_);
         pendingCapturePath_.clear();
         std::string captureErr;
+        TraceEditorLatency("readback", "begin", updateTick_ - 1);
         if (!CaptureFrameToPng(path, captureErr)) {
             logger_->Error("[EditorApplication] CaptureFrameToPng failed for " + path + ": " + captureErr);
         }
+        TraceEditorLatency("readback", "end", updateTick_ - 1);
     }
     VulkanGraphApplication::PostTick();
 }

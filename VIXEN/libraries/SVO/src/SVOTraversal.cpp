@@ -570,6 +570,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         return castRayGpuMirror(origin, direction, tMin, tMax);
     }
 
+    // LOD enablement is constant for this ray. Preserve the body traversal choice
+    // above, then keep disabled cones out of the ESVO termination path.
+    if (lodParams != nullptr && !lodParams->isEnabled()) {
+        lodParams = nullptr;
+    }
+
     glm::vec3 rayDir;
     if (!validateRayInput(origin, direction, rayDir)) {
         return miss;
@@ -672,7 +678,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // If the projected pixel size at current distance exceeds the
             // voxel size, terminate at this LOD level (coarse detail acceptable).
             // ================================================================
-            if (lodParams != nullptr && lodParams->isEnabled()) {
+            if (lodParams != nullptr) {
                 // Convert ESVO normalized t to world-space distance
                 // state.t_min is entry into current voxel in [0,1] normalized space
                 float worldDistance = (tRayStart + state.t_min * worldRayLength);

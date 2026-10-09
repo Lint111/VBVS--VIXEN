@@ -56,6 +56,7 @@ function(vixen_stage_assets target src_dir)
         file(GLOB_RECURSE _stage_inputs CONFIGURE_DEPENDS LIST_DIRECTORIES false "${src_dir}/*")
         set(_stage_stamp "${CMAKE_CURRENT_BINARY_DIR}/vixen_stage_assets/${_stage_hash}.stamp")
         add_custom_command(OUTPUT "${_stage_stamp}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/vixen_stage_assets"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_dest}"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${src_dir}" "${_dest}"
             COMMAND ${CMAKE_COMMAND} -E touch "${_stage_stamp}"
