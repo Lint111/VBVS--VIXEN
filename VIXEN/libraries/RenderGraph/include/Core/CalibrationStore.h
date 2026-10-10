@@ -17,7 +17,7 @@
  *
  * File format:
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "gpuName": "NVIDIA GeForce RTX 3080",
  *   "gpuVendorId": 4318,
  *   "timestamp": "2025-01-08T12:00:00Z",
@@ -28,6 +28,7 @@
  */
 
 #include "TaskProfileRegistry.h"
+#include <CacheCodec.h>
 #include "MessageBus.h"
 #include "Message.h"
 #include <nlohmann/json.hpp>
@@ -37,6 +38,9 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <iterator>
+#include <system_error>
+#include <utility>
 
 namespace Vixen::RenderGraph {
 
@@ -129,7 +133,7 @@ struct CalibrationStoreResult {
  */
 class CalibrationStore {
 public:
-    static constexpr uint32_t CURRENT_VERSION = 1;
+    static constexpr uint32_t CURRENT_VERSION = 2;
 
     /**
      * @brief Construct autonomous CalibrationStore (event-driven)
@@ -314,15 +318,18 @@ public:
             // Save profiles via registry
             registry_->SaveState(j);
 
-            // Write to file
-            std::ofstream file(filePath);
-            if (!file.is_open()) {
-                result.message = "Failed to open file for writing: " + filePath.string();
+            // Bind the record to this GPU and protect the complete JSON payload from partial
+            // writes. The checksum excludes its own field and the finished document is atomically
+            // published beside the previous one.
+            const auto checksumInput = j.dump();
+            j["checksum"] = std::to_string(CashSystem::CacheChecksum64(
+                checksumInput.data(), checksumInput.size()));
+            const auto jsonText = j.dump(2);
+            std::string writeError;
+            if (!Vixen::AtomicWriteText(filePath, jsonText, &writeError)) {
+                result.message = "Failed to atomically save calibration file: " + writeError;
                 return result;
             }
-
-            file << j.dump(2);  // Pretty print with 2-space indent
-            file.close();
 
             result.success = true;
             result.profileCount = registry_->GetTaskCount();
@@ -358,6 +365,13 @@ public:
             return result;
         }
 
+        const auto reject = [this, &result](std::string message) {
+            registry_->ResetAllCalibration();
+            result.message = std::move(message);
+            lastResult_ = result;
+            return result;
+        };
+
         try {
             auto filePath = GetFilePath();
 
@@ -369,24 +383,54 @@ public:
                 return result;
             }
 
-            // Read file
-            std::ifstream file(filePath);
-            if (!file.is_open()) {
-                result.message = "Failed to open file for reading: " + filePath.string();
-                return result;
+            std::error_code sizeError;
+            const auto fileSize = std::filesystem::file_size(filePath, sizeError);
+            constexpr std::uintmax_t maxCalibrationBytes = 16ULL * 1024ULL * 1024ULL;
+            if (sizeError || fileSize > maxCalibrationBytes) {
+                return reject("Calibration file size is invalid or exceeds the limit");
             }
 
-            nlohmann::json j;
-            file >> j;
+            // Read the bounded file before parsing so an incomplete or oversized write cannot
+            // feed unbounded input to the JSON reader.
+            std::ifstream file(filePath, std::ios::binary);
+            if (!file.is_open()) {
+                return reject("Failed to open calibration file for reading: " + filePath.string());
+            }
+            const std::string jsonText{
+                std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+            if (file.bad() || jsonText.size() != fileSize) {
+                return reject("Calibration file was truncated while reading");
+            }
             file.close();
+
+            nlohmann::json j = nlohmann::json::parse(jsonText);
+            if (!j.is_object()) {
+                return reject("Calibration file is not a JSON object");
+            }
+
+            const auto savedChecksum = j.value("checksum", std::string{});
+            if (savedChecksum.empty()) {
+                return reject("Calibration file has no checksum");
+            }
+            j.erase("checksum");
+            const auto checksumInput = j.dump();
+            const auto expectedChecksum = std::to_string(CashSystem::CacheChecksum64(
+                checksumInput.data(), checksumInput.size()));
+            if (savedChecksum != expectedChecksum) {
+                return reject("Calibration checksum mismatch");
+            }
 
             // Version check
             uint32_t version = j.value("version", 0u);
             if (version != CURRENT_VERSION) {
-                result.message = "Version mismatch: file v" + std::to_string(version) +
-                               ", expected v" + std::to_string(CURRENT_VERSION);
-                // Could add migration logic here in future
-                return result;
+                return reject("Version mismatch: file v" + std::to_string(version) +
+                              ", expected v" + std::to_string(CURRENT_VERSION));
+            }
+
+            const auto savedVendor = j.value("gpuVendorId", 0u);
+            const auto savedDevice = j.value("gpuDeviceId", 0u);
+            if (savedVendor != gpu_.vendorId || savedDevice != gpu_.deviceId) {
+                return reject("Calibration GPU identity mismatch");
             }
 
             // Phase 7.2: Driver version check
@@ -409,6 +453,7 @@ public:
                            " profiles from " + filePath.string() + driverNote;
         }
         catch (const std::exception& e) {
+            registry_->ResetAllCalibration();
             result.message = std::string("Load failed: ") + e.what();
         }
 

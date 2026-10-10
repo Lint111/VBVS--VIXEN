@@ -55,8 +55,8 @@ public:
     std::shared_ptr<PipelineLayoutWrapper> GetOrCreate(const PipelineLayoutCreateParams& ci);
 
     // Serialization (not implemented for layouts)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    bool SerializePayloadToFile(const std::filesystem::path& path) const override;
+    bool DeserializePayloadFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "PipelineLayoutCacher"; }
 
 protected:

@@ -162,6 +162,7 @@ CacherBase* MainCacher::CreateCacherByName(
         return nullptr;
     }
     newCacher->SetMainCacher(this);  // AR#8: cacher reaches siblings via its owner, not Instance()
+    newCacher->SetCacheDeviceIdentity(registry.GetDeviceIdentifier().GetHash());
 
     // Initialize with device (required before DeserializeFromFile)
     newCacher->Initialize(device);

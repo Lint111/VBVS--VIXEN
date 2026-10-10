@@ -313,7 +313,7 @@ void ShaderModuleCacher::Cleanup() {
     LOG_INFO("Cleanup complete");
 }
 
-bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) const {
+bool ShaderModuleCacher::SerializePayloadToFile(const std::filesystem::path& path) const {
     try {
         std::ofstream file(path, std::ios::binary);
         if (!file.is_open()) {
@@ -375,7 +375,7 @@ bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) cons
     }
 }
 
-bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+bool ShaderModuleCacher::DeserializePayloadFromFile(const std::filesystem::path& path, void* device) {
     try {
         if (!std::filesystem::exists(path)) {
             LOG_INFO("DeserializeFromFile: Cache file doesn't exist: " + path.string());
