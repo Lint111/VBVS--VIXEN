@@ -45,3 +45,13 @@ The unstarted four-token recovery wait and its dependent witness were canceled w
 bash /home/liory/.local/bin/with-test-lock.sh --agent gpuyield --resource build --label native-timer-and-tile-recovery-two-pairs --credits 2 -- bash .tmp/gpuyield-run3/native-bounded.sh
 bash /home/liory/.local/bin/with-test-lock.sh --agent gpuyield --resource gpu --label recovered-final-driver-and-full-suite-two-pairs --credits 15 --exclusive -- bash .tmp/gpuyield-run3/final-recovery-witness.sh
 ```
+
+The queue's --exclusive flag overrides --credits 2 and reserves all 15 tokens. The final correctness/recovery invocation therefore uses the ordinary GPU resource mutex, with a shared CPU cohort:
+
+```bash
+bash /home/liory/.local/bin/with-test-lock.sh --agent gpuyield --resource gpu --label recovered-final-gpu-serialized-shared-host --credits 2 -- bash .tmp/gpuyield-run3/final-recovery-witness.sh
+```
+
+The planned recovery matrix repeats unbounded native controls in that batch. Earlier completed 9e9550f2 controls remain labeled 15-token/full-host exclusive. The pending matrix must not be represented as a result.
+
+Capture helpers remove owned generated editor/hud PNGs before producer execution and require exactly nine post-start image timestamps before byte comparison. Initial-red-capture-provenance.json records the stale-output finding; these initial-red files are not an after witness. Frozen long raw logs are gzip-compressed; decompress before applying the summarizer directly.

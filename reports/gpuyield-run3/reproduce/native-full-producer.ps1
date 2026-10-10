@@ -4,6 +4,7 @@ $env:TEMP='C:\vixen-native\gpuyield\.tmp\native-runtime-temp'
 $env:TMP=$env:TEMP
 New-Item -ItemType Directory -Force $env:TEMP | Out-Null
 New-Item -ItemType Directory -Force $Output | Out-Null
+Remove-Item -LiteralPath "$Output\status.json","$Output\vixen-perf.csv" -ErrorAction SilentlyContinue
 $env:VIXEN_RENDER_SCALE='1.0'
 $env:VIXEN_WINDOW_WIDTH="$Width"
 $env:VIXEN_WINDOW_HEIGHT="$Height"
@@ -11,7 +12,8 @@ $env:VIXEN_GPUYIELD_TRACE=if($DisableTrace){$null}else{'1'}
 $env:VIXEN_EDITOR_TEST_CAMERA='top-down'
 $env:VIXEN_EXIT_AFTER_FRAMES="$Frames"
 $env:VIXEN_PERF_CSV="$Output\vixen-perf.csv"
-if ($HardwareQuery) {$env:VIXEN_RTQUERY_TRAVERSAL='1'; $env:VIXEN_RT_LIGHTING='force'}
+$env:VIXEN_RTQUERY_TRAVERSAL=if($HardwareQuery){'1'}else{$null}
+$env:VIXEN_RT_LIGHTING=if($HardwareQuery){'force'}else{$null}
 $start=[Diagnostics.ProcessStartInfo]::new()
 $start.FileName=$env:ComSpec
 $start.Arguments='/d /s /c ""'+$Binary+'" >"'+$Output+'\vixen.log" 2>"'+$Output+'\host.log""'

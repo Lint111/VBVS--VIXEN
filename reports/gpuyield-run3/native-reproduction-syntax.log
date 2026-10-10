@@ -1,0 +1,8 @@
+[box:flow] native-reproduction-syntax cpu=34% target=90% depth=1 free=2 baseline=1 granted=1 mode=static
+[box:flow] native-reproduction-syntax cpu=38% target=90% admit
+[box:flow] native-reproduction-syntax memory=admit avail=62851MB projected=1024MB estimate=class-p91 samples=1284 reserved=16055MB total=80425MB reserve=4096MB disk=519509MB
+[box:flow] native-reproduction-syntax granted tokens=12 mask=24,25
+[box:flow] native-reproduction-syntax running on cores 24,25 (light)
+PowerShell syntax PASS: C:\vixen-native\gpuyield\.tmp\run-native-producer.ps1
+PowerShell syntax PASS: C:\vixen-native\gpuyield\.tmp\native-recovery-matrix.ps1
+UT_JOB_DONE light native-reproduction-syntax exit=0 state=OK

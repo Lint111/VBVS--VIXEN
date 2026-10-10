@@ -2,7 +2,7 @@
 
 ## LANDABLE NOW
 
-**PARTIAL — final recovery witnesses pending.** Runtime changes are committed through `23037fa9`; the timestamp-validator correction is `1ece70bd`. This is not certification that all requested gates pass. The verified shell/indirect conversions and native hardware-ray artifact are complete; the latest Dozen recovery and native pacing repair still need their final execution witnesses.
+**PARTIAL — HOLD the integrated runtime tip.** Runtime changes are committed through `23037fa9`; the timestamp-validator correction is `1ece70bd`. This is not certification that all requested gates pass. The verified shell/indirect conversions and native hardware-ray artifact are complete; the latest Dozen recovery and native pacing repair still need their final execution witnesses. Both latest Linux and native builds pass.
 
 Started 2026-10-10 17:17:15 UTC; checkpoint 20:17:15 UTC. Starting merged baseline `3b2482d95deef62b3fda03cac9282f9b9764ce3b`, wave `4ddea47390880152d35371193e10c7ac722101d9`, pinned kernel `c3fb3847979e3f9eef04783510c42b70d7058ae7`. Only the assigned primary checkout and explicitly authorized `C:\vixen-native\gpuyield` checkout were edited. No push, branch creation or branch switch. [Run 2](gpuyield-run2.md) is preserved.
 
@@ -28,7 +28,7 @@ Native timing exposed a separate pacing error: requested 16.67 ms deadlines used
 
 ### Native overhead — last complete runtime `9e9550f2`
 
-All rows are scale 1.0, 500 frames, mean GPU-clock pass spans after 10 warmup frames. Diagnostic logging was enabled for bounded runs. A later recovery rerun, including logging-disabled measurements, is queued; this table must not be represented as its result.
+All rows are scale 1.0, 500 frames, mean GPU-clock pass spans after 10 warmup frames. Diagnostic logging was enabled for bounded runs. The later recovery rerun, including logging-disabled measurements, never launched before the checkpoint; this table is the earlier complete 9e9550f2 result.
 
 | Resolution / pass | Unbounded ms | Tuned bounded ms | Change |
 |---|---:|---:|---:|
@@ -69,7 +69,7 @@ The tuned primary GPU span improved 87.5% against the native static-tile candida
 | AMD native / hardware query | 500 / 852 | 0.389360 / 0.409480 | 0.389360 / 0.409480 | 1.415400 | PASS at 9e9550f2 |
 | AMD native / hardware launch fixture | 500 / 40,500 | 0.003640 / 0.016400 | Separate 81-tile fixture | 0.344840 | 1,000,000 RGBA bytes identical |
 | Dozen / run-2 fixed 64 tiles | 500 / 32,000 | ~1.74 / 2.257480 | Unbatched | ~83 ms mean | Passes old 16.67 ms chunk gate; fails new 2 ms maximum |
-| Dozen / affine near-budget cliff | incomplete | Retained raw logs | Some chunks exceed 2 ms | Not a 500-frame witness | exit 139; new failure |
+| Dozen / affine near-budget cliff | 184 measured frames / 68,028 chunks | 1.058080 / 2.197040 | 1.058080 / 2.197040 (unbatched) | Incomplete | exit 139; new failure |
 
 Native device is AMD Radeon(TM) 8060S Graphics, driver 8388967. Four inner timestamp pairs had equal, nonzero ticks and a positive enclosing interval. The validator now records these as zero-resolution dispatch pairs instead of missing results, while rejecting backwards/missing queries and nonpositive outer intervals. Vulkan requires non-decreasing timestamp values, not strictly increasing values: [official reference](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp.html). Four focused validator regression checks pass. Zero shader-resolution samples are never used as free command cost.
 
@@ -83,11 +83,11 @@ Native device is AMD Radeon(TM) 8060S Graphics, driver 8388967. Four inner times
 | Indirect/grouped actual GPU oracle | PASS; all hit bytes, bucket/tile coverage, reverse ordering, late producers, second execution and invalid current-producer rejection |
 | Seven generation/typed contract tests + metric fixtures | PASS |
 | Conservative accounting / submit / affine costs | 11 PASS at 9e9550f2; latest four cost cases plus three actual-node unknown-cost cases PASS (7/7); five unchanged SubmitRecord cases also passed at 9e9550f2 |
-| Native full producer | Eight 500-frame runs PASS at 9e9550f2; latest pacing/query-reference repair awaits native build/rerun |
+| Native full producer | Eight 500-frame runs PASS at 9e9550f2; latest pacing/query-reference repair native build PASS, producer rerun pending |
 | Native hardware rays | All four tests PASS; hardware launch byte/timing evidence above |
 | Full ShaderManagement | Initial full suite: 57 PASS, 1 disabled |
-| Full RenderGraph/SVO | Initial 2,138-test run: 15 failures including capture regressions/dependents and accepted opcode-94 red; recovery queued |
-| Merged cache gate / R6 / PNG capture comparison | Required final recovery queued; initial capture producer failures prevent a passing claim |
+| Full RenderGraph/SVO | Initial 2,138-test run: 15 failures including capture regressions/dependents and accepted opcode-94 red; recovery did not launch before checkpoint |
+| Merged cache gate / R6 / PNG capture comparison | Final recovery did not launch before checkpoint; initial capture producer failures prevent a passing claim |
 | No-op rebuild | PASS after runtime recovery: ninja: no work to do |
 
 Native recovery ladder A: moved from the WSL CMake file(LOCK) stall to explicitly authorized NTFS clone; used vcvars64, SDK 1.4.350.0 and documented configure/build wrappers through the box queue. MSVC generated-header/alignment/max-macro compile problems were repaired identically for control and candidate. StreamProgress exposed real Ninja progress to the queue watchdog. Linux Git fetch resolves the WSL worktree pointer, native Git fast-forwards, and private TEMP/TMP isolates native scratch. Native exit status uses owned Diagnostics.Process handles rather than a launcher proxy. Exact commands and presets: [reproduction](gpuyield-run3/reproduce/README.md).
@@ -96,9 +96,15 @@ B: fresh pinned generation and the 22 checks passed; no generated hand edits, in
 
 ### STOPs / checkpoint handoff
 
-Pending at draft time: latest native build and high-resolution pacing measurement; Dozen 500-frame recovery; full-suite recovery with cache/R6; new fixture PNG byte comparison. The near-budget cliff recovery must execute before the lane can be declared clean. Remaining production hardware-ray graph coverage needs the existing offscreen graph to instantiate actual TraceRaysNode/hit stages; the fixture and production ray-query producer are independently useful verified evidence.
+Stopped heavy work at **2026-10-10 20:16:50 UTC**, 25 seconds before the scheduled three-hour checkpoint. The final GPU wrapper `recovered-final-gpu-serialized-shared-host` (PID 1860893) was still waiting; its payload **never launched**. Sent SIGTERM; returned **143**. No native producer or CTest child was launched by this queued recovery job. This is a checkpoint handoff, **not baseline unobtainable**. The required queue/tool routes work; there was insufficient admitted execution time for the final recovery. [Exact status](gpuyield-run3/checkpoint-status.json).
 
-No new items will be taken after 20:17:15 UTC. Heavy work still running at that point will be stopped with ownership-specific cleanup, its actual point and status retained here, and all completed artifacts committed.
+- **HOLD integrated runtime tip:** latest affine-cliff/query-reference repair passes both builds and its CPU regressions but lacks a new Dozen 500-frame execution witness. Last executed Dozen runtime exited 139 and exceeded 2 ms; its new failure remains open until the recovery executes.
+- **Native performance unfinished:** MSVC NTFS producer/hardware targets build and the earlier eight 500-frame controls complete; high-resolution pacing, logging-disabled overhead and latest sizing require producer reruns. Old measured native frame time is approximately 31.4 ms, so real-time full-resolution output is not claimed.
+- **Full gates unfinished:** initial full ShaderManagement passes; initial RenderGraph/SVO has the producer-dependent reds plus accepted opcode-94 signature. Full-suite recovery, merged cache gate and R6 did not execute. Five unchanged SubmitRecord cases passed earlier; all four latest affine-cost and three actual unknown-cost cases pass (7/7).
+- **PNG proof unfinished:** failed producers refreshed only two images; seven files are stale. No new nine-image byte proof is claimed. Recovery helpers clear outputs and require fresh provenance, including clearing native completion status/CSV before reruns.
+- **Optional-path timing coverage unfinished:** shell/indirect/grouped actual GPU byte tests pass, but separate 2 ms per-chunk timing tables were not exported. Native hardware fixture has 40,500 timing samples and complete raw-byte equality, but full production TraceRaysNode graph/hit-stage coverage remains absent.
+
+All completed source changes and useful audit artifacts are committed. Artifact JSON, shell/Python helper syntax and native PowerShell helper syntax pass the light queue. No features were left uncommitted because later witnesses could not execute. Reproduction helpers and the exact canceled/replacement queue invocations are retained for the next lane. The ordinary GPU resource serializes device access while allowing a CPU cohort; --exclusive overrides credit counts and reserves the whole host.
 
 ## CONSOLIDATION ISSUES (non-facade deltas this lane needed)
 
@@ -119,3 +125,6 @@ No new items will be taken after 20:17:15 UTC. Heavy work still running at that 
 - proposed: Release recorded query-pool references when growing chunk instrumentation
 - proposed: Derive native queue reservations from compiler parallelism
 - proposed: Validate quantized inner GPU timestamps separately from command bounds
+- proposed: Separate GPU exclusivity from whole-host timing reservations
+- proposed: Require fresh capture provenance in runtime fixture gates
+- proposed: Reset native renderer feature flags for each witness mode

@@ -1,0 +1,56 @@
+[
+  {
+    "path": "build/gpuyield/runtime-captures/hud/hud_capture_75.png",
+    "mtime_ns": 1791638064806816352,
+    "sha256": "aa4569d2a1b5ff02885a939ac1924506d9c062fbc7ee98e1c53c4f30e049efc4",
+    "fresh_since_run3_start": false
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/hud/hud_capture_5.png",
+    "mtime_ns": 1791659316125523913,
+    "sha256": "513e03efe104fbbf6cd5510ebe2e04b164c194cedd5feec029a6fc4c4e98cefa",
+    "fresh_since_run3_start": true
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/hud/hud_capture_45.png",
+    "mtime_ns": 1791638058429876287,
+    "sha256": "8822405f57c40e0cf79bceaabe49c967c5129b9a55580f877c6f8610e2b9ceb1",
+    "fresh_since_run3_start": false
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/editor/editor_capture_5.png",
+    "mtime_ns": 1791659276348622160,
+    "sha256": "de5a4f5589def978041522371b857998cb0770bb94fca28bc27589da6a9250a6",
+    "fresh_since_run3_start": true
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/editor/editor_capture_105.png",
+    "mtime_ns": 1791638039207897833,
+    "sha256": "655e96957436415eec087cff26376cfeaa909858342cf45e5d1f55834314e362",
+    "fresh_since_run3_start": false
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/editor/editor_capture_25.png",
+    "mtime_ns": 1791638024028407462,
+    "sha256": "edb981afb4208b7485b9652e780992d6bd60f3c6e85d29b4ff3881b0546f105d",
+    "fresh_since_run3_start": false
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/editor/editor_capture_75.png",
+    "mtime_ns": 1791638034128366574,
+    "sha256": "edb981afb4208b7485b9652e780992d6bd60f3c6e85d29b4ff3881b0546f105d",
+    "fresh_since_run3_start": false
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/editor/editor_capture_45.png",
+    "mtime_ns": 1791638029225246104,
+    "sha256": "655e96957436415eec087cff26376cfeaa909858342cf45e5d1f55834314e362",
+    "fresh_since_run3_start": false
+  },
+  {
+    "path": "build/gpuyield/runtime-captures/editor/editor_capture_115.png",
+    "mtime_ns": 1791638040600367341,
+    "sha256": "655e96957436415eec087cff26376cfeaa909858342cf45e5d1f55834314e362",
+    "fresh_since_run3_start": false
+  }
+]

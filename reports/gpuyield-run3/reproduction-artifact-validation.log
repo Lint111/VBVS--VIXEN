@@ -1,0 +1,7 @@
+[box:flow] reproduction-artifact-validation cpu=46% target=90% depth=1 free=1 baseline=1 granted=1 mode=static
+[box:flow] reproduction-artifact-validation cpu=40% target=90% admit
+[box:flow] reproduction-artifact-validation memory=admit avail=68761MB projected=1024MB estimate=class-p91 samples=1283 reserved=9205MB total=80425MB reserve=4096MB disk=519276MB
+[box:flow] reproduction-artifact-validation granted tokens=9 mask=18,19
+[box:flow] reproduction-artifact-validation running on cores 18,19 (light)
+Shell/Python reproduction syntax and artifact JSON PASS
+UT_JOB_DONE light reproduction-artifact-validation exit=0 state=OK

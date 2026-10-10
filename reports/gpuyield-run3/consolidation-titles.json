@@ -15,5 +15,8 @@
   "Use a native high-resolution contract for renderer frame pacing",
   "Release recorded query-pool references when growing chunk instrumentation",
   "Derive native queue reservations from compiler parallelism",
-  "Validate quantized inner GPU timestamps separately from command bounds"
+  "Validate quantized inner GPU timestamps separately from command bounds",
+  "Separate GPU exclusivity from whole-host timing reservations",
+  "Require fresh capture provenance in runtime fixture gates",
+  "Reset native renderer feature flags for each witness mode"
 ]
