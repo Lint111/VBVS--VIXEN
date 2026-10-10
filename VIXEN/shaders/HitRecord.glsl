@@ -50,11 +50,11 @@
 // instance's emission intensity, so SpatialReuseShade.comp can add a self-lit
 // term at the primary hit without re-deriving it from bodyInstances[] a
 // second time. [2] has split ownership: bits 0..3 = ShadowVisibilityWave's
-// analytic-light bitmask (bit i = light i unoccluded), bit 4 = its ReSTIR
-// reservoir-ray answer, bits 5..7 reserved, and bits 8..15 = the primary
-// policy stencil (regime bits 8..10, VIRTUAL bit 11, MATERIALIZED bit 12,
-// bits 13..15 reserved). The march owns bits 8..15; both shadow phases use
-// masked RMWs and own only bits 0..4. (VIXEN_SHADOW_DBG's
+// analytic-light bits for lights 0..3; lights 4..15 use bits 16..27. Bit 4
+// remains the ReSTIR reservoir-ray answer, bits 5..7 are reserved, and bits
+// 8..15 remain the primary policy stencil (regime bits 8..10, VIRTUAL bit 11,
+// MATERIALIZED bit 12, bits 13..15 reserved). Both shadow phases use masked
+// RMWs and preserve every field they do not own. (VIXEN_SHADOW_DBG's
 // debug packing reuses all three under #ifdef, but that path never coexists
 // with a real frame's [0]/[1]/[2] content.)
 // ============================================================================
@@ -71,6 +71,14 @@
 // Rides the bestHit selection (overwritten/cleared whenever a later,
 // non-far-field instance wins), never a sticky global.
 #define HITRECORD_FLAG_FAR_FIELD 0x4u
+
+// Analytic visibility uses the low nibble for lights 0..3 and the spare high
+// word region for lights 4..15. This keeps the reservoir answer at bit 4 and
+// the primary policy stencil at bits 8..15 under their existing owners.
+const uint kAnalyticLightVisibilityFieldMask = 0x0FFF000Fu;
+uint analyticLightVisibilityBit(uint lightIndex) {
+    return 1u << (lightIndex < 4u ? lightIndex : lightIndex + 12u);
+}
 
 struct HitRecord {
     vec3  albedo;

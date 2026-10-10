@@ -10,8 +10,8 @@ struct Light {
 struct LightingConfig {
     uint lightCount;
     float ambientIntensity;
-    Light lights[4];
-    float celSpillPurposeScales[4];
+    Light lights[16];
+    float celSpillPurposeScales[16];
     uint shadingMode;
     uint celBandCount;
     float celShadowThreshold;

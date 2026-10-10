@@ -43,6 +43,9 @@
 #include "ShellOctreeGpu.h"   // Vixen::SVO::BodyInstanceGpu
 #include "TestVkValidation.h"
 #include "VulkanGlobalNames.h"  // VixenSelectWslGpuIcd
+#include "Generated/LightingConfig.g.h"
+#include "Recipe/UberShaderSplice.h"
+#include <sstream>
 #include "ShaderBundleBuilder.h"  // shading and visibility-wave shaders compiled at test runtime
 
 #include <vulkan/vulkan.h>
@@ -114,36 +117,9 @@ struct PushConstants {
 };
 static_assert(sizeof(PushConstants) == 96, "PushConstants must be 96 bytes (matches shader std430 push block)");
 
-// Host-side mirror of Generated/LightingConfig.g.h (Sampled Lighting Inc0 M1) — a single
-// directional light, matching the field layout test_lightingconfig_sdi_parity.cpp proves.
-struct LightCpu {
-    float directionX, directionY, directionZ;
-    uint32_t kind;
-    float radianceX, radianceY, radianceZ;
-    float range;
-};
-static_assert(sizeof(LightCpu) == 32, "LightCpu std430 mirror size");
-
-struct LightingConfigCpu {
-    uint32_t lightCount;
-    float ambientIntensity;
-    uint8_t _pad0[8];
-    LightCpu lights[4];
-    float celSpillPurposeScales[4];
-    uint32_t shadingMode;
-    uint32_t celBandCount;
-    float celShadowThreshold;
-    float celLitThreshold;
-    float celRampSoftness;
-    float celLitHueShiftDegrees;
-    float celShadowHueShiftDegrees;
-    float celBandFalloffStart;
-    float celBandFalloffEnd;
-    float celLightSpillScale;
-    float _celTailPadding0;
-    float _celTailPadding1;
-};
-static_assert(sizeof(LightingConfigCpu) == 208, "LightingConfigCpu std430 mirror size");
+// Use the same generated upload type as the runtime; reflection parity is
+// checked separately against the shipped GLSL layout.
+using LightingConfigCpu = Vixen::Gpu::LightingConfig;
 
 // Host-side mirror of Generated/ShadowConfig.g.h (Sampled Lighting Inc1 M4).
 struct ShadowConfigCpu {
@@ -308,6 +284,8 @@ bool ReferenceOccluded(const glm::vec3& surfacePoint, const glm::vec3& normal,
 
 class ShadowCorrectnessTest : public ::testing::Test {
 protected:
+    void VerifyDirectionalShadow(bool registeredRecipes);
+
     VkInstance       instance_       = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkDevice         logicalDevice_  = VK_NULL_HANDLE;
@@ -584,6 +562,7 @@ protected:
             builder.SetProgramName("SpatialReuseShade")
                    .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                    .AddIncludePath(shaderDir)
+                   .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
                    .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
                                      shaderDir / "SpatialReuseShade.comp", "main")
                    .EnableSdiGeneration(false);
@@ -609,6 +588,7 @@ protected:
             builder.SetProgramName("ShadowVisibilityWave")
                    .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                    .AddIncludePath(shaderDir)
+                   .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
                    .AddStageFromFile(ShaderManagement::ShaderStage::Compute,
                                      shaderDir / "ShadowVisibilityWave.comp", "main")
                    .EnableSdiGeneration(false);
@@ -620,6 +600,28 @@ protected:
             return result.bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
         }();
         return spirv;
+    }
+
+    static std::vector<uint32_t> RecipeConsumerSpirv(
+        const char* filename, const Vixen::SVO::RecipeRegistry& registry) {
+        const std::filesystem::path shaderDir(VIXEN_SHADER_SOURCE_DIR);
+        std::ifstream file(shaderDir / filename);
+        std::ostringstream source;
+        source << file.rdbuf();
+        ShaderManagement::ShaderBundleBuilder builder;
+        builder.SetProgramName(filename)
+            .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+            .AddIncludePath(shaderDir)
+            .AddIncludePath(shaderDir.parent_path() / "libraries/SVO/shaders")
+            .AddStage(ShaderManagement::ShaderStage::Compute,
+                Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(source.str(), registry))
+            .EnableSdiGeneration(false);
+        const auto result = builder.Build();
+        if (!result.success || !result.bundle) {
+            ADD_FAILURE() << filename << ": " << result.errorMessage;
+            return {};
+        }
+        return result.bundle->GetSpirv(ShaderManagement::ShaderStage::Compute);
     }
 
     // Dispatches the REAL current production shading chain: BodyInstanceRayMarch.comp writes
@@ -635,14 +637,17 @@ protected:
                            const PushConstants& pc, uint32_t w, uint32_t h,
                            std::vector<uint8_t>& outRgba,
                            const std::vector<uint32_t>* selectionPixelIndices = nullptr,
-                           std::vector<SelectionCandidate>* outSelections = nullptr) {
+                           std::vector<SelectionCandidate>* outSelections = nullptr,
+                           const Vixen::SVO::RecipeRegistry* registry = nullptr) {
         ASSERT_TRUE(softwareConfirmed_) << "ABORT: not the software rasterizer; refusing to submit.";
         ASSERT_EQ(selectionPixelIndices != nullptr, outSelections != nullptr)
             << "pick readback requires both requested pixel indices and an output vector";
 
         const std::vector<uint32_t>& shadeSpirv = SpatialReuseShadeSpirv();
         ASSERT_FALSE(shadeSpirv.empty()) << "SpatialReuseShade.comp SPIR-V is empty (build failed above)";
-        const std::vector<uint32_t>& waveSpirv = ShadowVisibilityWaveSpirv();
+        const std::vector<uint32_t> waveSpirv = registry
+            ? RecipeConsumerSpirv("ShadowVisibilityWave.comp", *registry)
+            : ShadowVisibilityWaveSpirv();
         ASSERT_FALSE(waveSpirv.empty()) << "ShadowVisibilityWave.comp SPIR-V is empty (build failed above)";
 
         // --- Scene SSBOs shared by BOTH dispatches (read-only in both, same content). ---
@@ -758,6 +763,13 @@ protected:
         VkImageView probeVisView = CreateView(probeVisImg, kProbeVisFmt);
         ASSERT_NE(probeIrrView, VK_NULL_HANDLE); ASSERT_NE(probeVisView, VK_NULL_HANDLE);
 
+        // SpatialReuseShade always declares the sky cache at binding 35, even when
+        // the test configuration disables reading it. Keep its reflected type exact.
+        VkImage skySphereImg = VK_NULL_HANDLE; VkDeviceMemory skySphereMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateImage(4, 4, kProbeIrrFmt, skySphereImg, skySphereMem));
+        VkImageView skySphereView = CreateView(skySphereImg, kProbeIrrFmt);
+        ASSERT_NE(skySphereView, VK_NULL_HANDLE);
+
         const ProbeGridConfigCpu probeGrid{};  // all-zero: probeGridEnabled=0 (byte-identity escape hatch)
         VkBuffer probeGridBuf = VK_NULL_HANDLE; VkDeviceMemory probeGridMem = VK_NULL_HANDLE;
         CreateHostBuffer(sizeof(ProbeGridConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, probeGridBuf, probeGridMem, false);
@@ -775,7 +787,9 @@ protected:
 
         // --- Pass 1: BodyInstanceRayMarch.comp. It initializes HitRecordBuffer and leaves
         // outputImage declared but unwritten; only HitRecordBuffer/idOutputImage are outputs. ---
-        const std::vector<uint32_t> marchSpirv = ReadSpirv(GLSL_RAYMARCH_SPV);
+        const std::vector<uint32_t> marchSpirv = registry
+            ? RecipeConsumerSpirv("BodyInstanceRayMarch.comp", *registry)
+            : ReadSpirv(GLSL_RAYMARCH_SPV);
         ASSERT_FALSE(marchSpirv.empty()) << "Failed to read compiled SPIR-V at " << GLSL_RAYMARCH_SPV;
         VkShaderModuleCreateInfo marchSmci{};
         marchSmci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -814,7 +828,7 @@ protected:
         // undetected because BodyInstanceRayMarch.comp stopped writing colour before this
         // test ever exercised its downstream shading path). Binding 18 is the ONLY one of
         // 16-19 the march's main() actually touches (hitRecords[idx] = rec).
-        const std::array<VkDescriptorSetLayoutBinding, 17> marchBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 18> marchBindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -832,6 +846,7 @@ protected:
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo marchDslci{};
         marchDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -845,8 +860,7 @@ protected:
         // declares it, so it's absent here, matching the "declare exactly what the shader
         // reflects" discipline this file's own binding-36 precedent (test_shadow_correctness's
         // sibling B1 tests) established.
-        // Binding 35 (InstanceSkipMaskBuffer) is required too -- SpatialReuseShade.comp
-        // #includes SceneBindings.glsl, same as every other consumer of that shared file.
+        // Binding 35 is the sky cache storage image declared by SpatialReuseShade.comp.
         const std::array<VkDescriptorSetLayoutBinding, 28> shadeBindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -874,7 +888,7 @@ protected:
             bind(32, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(33, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(35, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo shadeDslci{};
@@ -885,7 +899,7 @@ protected:
 
         // ShadowVisibilityWave.comp's reflected storage-buffer bindings. It reads scene/light
         // inputs and the shadow config, and read/writes HitRecordBuffer at binding 17.
-        const std::array<VkDescriptorSetLayoutBinding, 16> waveBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 17> waveBindings = {
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -902,6 +916,7 @@ protected:
             bind(18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(48, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
         VkDescriptorSetLayoutCreateInfo waveDslci{};
         waveDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -995,7 +1010,7 @@ protected:
         VkDescriptorSet shadeDescSet = VK_NULL_HANDLE;
         ASSERT_EQ(vkAllocateDescriptorSets(logicalDevice_, &shadeDsai, &shadeDescSet), VK_SUCCESS);
 
-        const VkDescriptorPoolSize wavePoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16};
+        const VkDescriptorPoolSize wavePoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 17};
         VkDescriptorPoolCreateInfo waveDpci{};
         waveDpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         waveDpci.maxSets = 1; waveDpci.poolSizeCount = 1; waveDpci.pPoolSizes = &wavePoolSize;
@@ -1039,6 +1054,7 @@ protected:
         VkDescriptorBufferInfo ddgiDebugInfo{ddgiDebugBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo probeIrrInfo{VK_NULL_HANDLE, probeIrrView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorImageInfo probeVisInfo{VK_NULL_HANDLE, probeVisView, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo skySphereInfo{VK_NULL_HANDLE, skySphereView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo probeGridInfo{probeGridBuf, 0, VK_WHOLE_SIZE};
 
         auto wImg = [&](VkDescriptorSet set, uint32_t b, VkDescriptorImageInfo* info) {
@@ -1056,7 +1072,7 @@ protected:
             return w2;
         };
 
-        const std::array<VkWriteDescriptorSet, 17> marchWrites = {
+        const std::array<VkWriteDescriptorSet, 18> marchWrites = {
             wImg(marchDescSet, 0, &colorInfo),
             wBuf(marchDescSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(marchDescSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -1074,6 +1090,7 @@ protected:
             wBuf(marchDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &hitRecordInfo),  // HitRecordBuffer (real slot, not 17 -- see marchBindings' own comment)
             wBuf(marchDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
             wBuf(marchDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
+            wBuf(marchDescSet, 16, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(marchWrites.size()), marchWrites.data(), 0, nullptr);
 
@@ -1104,12 +1121,12 @@ protected:
             wImg(shadeDescSet, 32, &probeIrrInfo),
             wImg(shadeDescSet, 33, &probeVisInfo),
             wBuf(shadeDescSet, 34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &probeGridInfo),
-            wBuf(shadeDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
+            wImg(shadeDescSet, 35, &skySphereInfo),
             wBuf(shadeDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(shadeWrites.size()), shadeWrites.data(), 0, nullptr);
 
-        const std::array<VkWriteDescriptorSet, 16> waveWrites = {
+        const std::array<VkWriteDescriptorSet, 17> waveWrites = {
             wBuf(waveDescSet, 1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(waveDescSet, 2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
             wBuf(waveDescSet, 3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &matsInfo),
@@ -1126,6 +1143,7 @@ protected:
             wBuf(waveDescSet, 18, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &shadowInfo),
             wBuf(waveDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
             wBuf(waveDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
+            wBuf(waveDescSet, 48, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &sdfInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(waveWrites.size()), waveWrites.data(), 0, nullptr);
 
@@ -1156,6 +1174,7 @@ protected:
         barrierToGeneral(worldPosImg);
         barrierToGeneral(probeIrrImg);
         barrierToGeneral(probeVisImg);
+        barrierToGeneral(skySphereImg);
 
         // Pass 1: march. Writes HitRecordBuffer (+ idOutputImage).
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, marchPipeline);
@@ -1253,12 +1272,14 @@ protected:
         vkDestroyImageView(logicalDevice_, worldPosView, nullptr);
         vkDestroyImageView(logicalDevice_, probeIrrView, nullptr);
         vkDestroyImageView(logicalDevice_, probeVisView, nullptr);
+        vkDestroyImageView(logicalDevice_, skySphereView, nullptr);
         vkDestroyImage(logicalDevice_, colorImg, nullptr); vkFreeMemory(logicalDevice_, colorMem, nullptr);
         vkDestroyImage(logicalDevice_, idImg, nullptr);    vkFreeMemory(logicalDevice_, idMem, nullptr);
         vkDestroyImage(logicalDevice_, historyImg, nullptr); vkFreeMemory(logicalDevice_, historyMem, nullptr);
         vkDestroyImage(logicalDevice_, worldPosImg, nullptr); vkFreeMemory(logicalDevice_, worldPosMem, nullptr);
         vkDestroyImage(logicalDevice_, probeIrrImg, nullptr); vkFreeMemory(logicalDevice_, probeIrrMem, nullptr);
         vkDestroyImage(logicalDevice_, probeVisImg, nullptr); vkFreeMemory(logicalDevice_, probeVisMem, nullptr);
+        vkDestroyImage(logicalDevice_, skySphereImg, nullptr); vkFreeMemory(logicalDevice_, skySphereMem, nullptr);
         vkDestroyBuffer(logicalDevice_, traceBuf, nullptr);   vkFreeMemory(logicalDevice_, traceMem, nullptr);
         vkDestroyBuffer(logicalDevice_, counterBuf, nullptr); vkFreeMemory(logicalDevice_, counterMem, nullptr);
         vkDestroyBuffer(logicalDevice_, dummyNodes, nullptr);   vkFreeMemory(logicalDevice_, dummyNodesMem, nullptr);
@@ -1297,9 +1318,9 @@ LightingConfigCpu MakeLighting(const glm::vec3& lightDir) {
     LightingConfigCpu cfg{};
     cfg.lightCount = 1u;
     cfg.ambientIntensity = 0.05f;  // low ambient so shadowed vs lit is visually decisive
-    cfg.lights[0].directionX = lightDir.x;
-    cfg.lights[0].directionY = lightDir.y;
-    cfg.lights[0].directionZ = lightDir.z;
+    cfg.lights[0].direction_or_positionX = lightDir.x;
+    cfg.lights[0].direction_or_positionY = lightDir.y;
+    cfg.lights[0].direction_or_positionZ = lightDir.z;
     cfg.lights[0].kind = 0u;  // directional
     cfg.lights[0].radianceX = 1.0f;
     cfg.lights[0].radianceY = 1.0f;
@@ -1313,9 +1334,9 @@ LightingConfigCpu MakePointLighting(const glm::vec3& lightPosition, const glm::v
     LightingConfigCpu cfg{};
     cfg.lightCount = 1u;
     cfg.ambientIntensity = ambientIntensity;
-    cfg.lights[0].directionX = lightPosition.x;
-    cfg.lights[0].directionY = lightPosition.y;
-    cfg.lights[0].directionZ = lightPosition.z;
+    cfg.lights[0].direction_or_positionX = lightPosition.x;
+    cfg.lights[0].direction_or_positionY = lightPosition.y;
+    cfg.lights[0].direction_or_positionZ = lightPosition.z;
     cfg.lights[0].kind = 1u;  // point
     cfg.lights[0].radianceX = radiance.x;
     cfg.lights[0].radianceY = radiance.y;
@@ -1343,7 +1364,7 @@ ShadowConfigCpu MakeShadow(bool enabled) {
 // real occlusion, not a global darkening.
 // ---------------------------------------------------------------------------
 // @last-pass: 2026-09-01
-TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
+void ShadowCorrectnessTest::VerifyDirectionalShadow(bool registeredRecipes) {
     std::cout << "[ lavapipe ] selected physical device: '" << selectedDeviceName_
               << "' (software rasterizer confirmed)\n";
     ASSERT_TRUE(softwareConfirmed_);
@@ -1362,11 +1383,28 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
     const glm::vec3 litControlCenter(12.0f, 0.0f, 0.0f);  // far to the side, no occluder above it
     const float litControlRadius = 3.0f;
 
-    const std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
+    std::vector<Vixen::SVO::BodyInstanceGpu> instances = {
         MakeProceduralSphere(targetCenter, targetRadius, 0.9f, 0.9f, 0.9f),        // slot 0: target
         MakeProceduralSphere(occluderCenter, occluderRadius, 0.2f, 0.2f, 0.2f),    // slot 1: occluder
         MakeProceduralSphere(litControlCenter, litControlRadius, 0.9f, 0.9f, 0.9f),// slot 2: control
     };
+
+    Vixen::SVO::RecipeRegistry registry;
+    if (registeredRecipes) {
+        for (size_t i = 0; i < instances.size(); ++i) {
+            Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
+            Vixen::SVO::Recipe::SdfInstruction sphere{};
+            sphere.opCode = static_cast<uint8_t>(Vixen::SVO::Recipe::SdfOpCode::Sphere);
+            sphere.data[3] = instances[i].material.recipeParams[0];
+            entry.bytecode = {sphere};
+            entry.boundRadius = sphere.data[3] + 0.01f;
+            entry.stepRelaxation = 0.9f;
+            const uint32_t recipeId = 2u + static_cast<uint32_t>(i);
+            ASSERT_EQ(registry.Register(recipeId, entry), Vixen::SVO::RecipeRegistry::RegisterResult::Ok);
+            instances[i].material.recipeId = recipeId;
+        }
+    }
+    const auto* recipes = registeredRecipes ? &registry : nullptr;
 
     // GEOMETRY FIX (2026-08-03): the camera used to sit at surfacePoint+(0,0,20) aimed at the
     // sphere CENTER -- but "aim at center from a point offset along the surface normal" only
@@ -1427,7 +1465,20 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
     constexpr uint32_t kW = 8, kH = 8;  // small; only the dead-center pixel is checked
     const uint32_t centerX = kW / 2, centerY = kH / 2;
 
-    const LightingConfigCpu lighting = MakeLighting(lightDir);
+    LightingConfigCpu lighting = MakeLighting(lightDir);
+    if (registeredRecipes) {
+        // Only the last declared slot carries energy: a lost high visibility bit
+        // would wrongly darken the lit control despite a correct first four bits.
+        const uint32_t last = static_cast<uint32_t>(std::size(lighting.lights) - 1);
+        const auto light = lighting.lights[0];
+        for (uint32_t i = 0; i <= last; ++i) {
+            lighting.lights[i] = light;
+            lighting.celSpillPurposeScales[i] = 1.0f;
+            if (i != last)
+                lighting.lights[i].radianceX = lighting.lights[i].radianceY = lighting.lights[i].radianceZ = 0.0f;
+        }
+        lighting.lightCount = last + 1;
+    }
 
     // --- Reference: independent CPU ray-vs-sphere occlusion check ---
     const std::vector<glm::vec3> centers = {targetCenter, occluderCenter, litControlCenter};
@@ -1452,9 +1503,9 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
     const ShadowConfigCpu shadowOn = MakeShadow(true);
     std::vector<uint8_t> rgbaTarget, rgbaLit;
     ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadowOn,
-        makeCamera(eyeTarget, dirTarget, static_cast<int32_t>(instances.size())), kW, kH, rgbaTarget));
+        makeCamera(eyeTarget, dirTarget, static_cast<int32_t>(instances.size())), kW, kH, rgbaTarget, nullptr, nullptr, recipes));
     ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadowOn,
-        makeCamera(eyeLit, dirLit, static_cast<int32_t>(instances.size())), kW, kH, rgbaLit));
+        makeCamera(eyeLit, dirLit, static_cast<int32_t>(instances.size())), kW, kH, rgbaLit, nullptr, nullptr, recipes));
 
     auto luminance = [&](const std::vector<uint8_t>& rgba, uint32_t x, uint32_t y, uint32_t w) {
         const size_t idx = (static_cast<size_t>(y) * w + x) * 4;
@@ -1485,11 +1536,72 @@ TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
     const ShadowConfigCpu shadowOff = MakeShadow(false);
     std::vector<uint8_t> rgbaTargetNoShadow;
     ASSERT_NO_FATAL_FAILURE(RenderSceneShaded(instances, lighting, shadowOff,
-        makeCamera(eyeTarget, dirTarget, static_cast<int32_t>(instances.size())), kW, kH, rgbaTargetNoShadow));
+        makeCamera(eyeTarget, dirTarget, static_cast<int32_t>(instances.size())), kW, kH, rgbaTargetNoShadow, nullptr, nullptr, recipes));
     const int targetLumaNoShadow = luminance(rgbaTargetNoShadow, centerX, centerY, kW);
     std::printf("[SHADOW-CORRECTNESS] target with shadows DISABLED luma=%d\n", targetLumaNoShadow);
     EXPECT_GT(targetLumaNoShadow, targetLuma + 20)
         << "disabling shadows did not brighten the previously-occluded pixel";
+}
+
+TEST_F(ShadowCorrectnessTest, OccludedPixelMatchesCpuReferenceShadowRay) {
+    VerifyDirectionalShadow(false);
+}
+
+TEST_F(ShadowCorrectnessTest, RegisteredRecipesCastAndReceiveThroughLastDeclaredLight) {
+    VerifyDirectionalShadow(true);
+}
+
+TEST_F(ShadowCorrectnessTest, CelPointLightFalloffAndPurposeRemainLocalThroughLastSlot) {
+    // Hold albedo, normal, band and view angle constant. Radial distance is the
+    // only changing input, so other scene lights cannot conceal broken falloff.
+    constexpr uint32_t width = 8, height = 8;
+    const glm::vec3 source(0.0f);
+    const glm::vec3 albedo(0.35f, 0.18f, 0.08f);
+    const uint32_t last = static_cast<uint32_t>(std::size(LightingConfigCpu{}.lights)-1);
+    for (const uint32_t slot : {0u, last}) {
+        float previousLuma = 1000.0f;
+        for (const float fraction : {0.20f, 0.45f, 0.70f, 1.05f}) {
+            constexpr float range = 8.0f;
+            const glm::vec3 center(0.0f, 0.0f, -(fraction*range+1.0f));
+            const auto target = MakeProceduralSphere(center, 1.0f, albedo.r, albedo.g, albedo.b);
+            auto lighting = MakePointLighting(source, glm::vec3(0.8f, 0.6f, 0.3f), range, 0.05f);
+            const auto light = lighting.lights[0];
+            for (uint32_t i = 0; i <= slot; ++i) {
+                lighting.lights[i] = light;
+                lighting.celSpillPurposeScales[i] = 4.0f;
+                if (i != slot) lighting.lights[i].radianceX =
+                    lighting.lights[i].radianceY = lighting.lights[i].radianceZ = 0.0f;
+            }
+            lighting.lightCount = slot+1;
+            lighting.shadingMode = 1u;
+            lighting.celBandCount = 4u;
+            lighting.celShadowThreshold = 0.2f;
+            lighting.celLitThreshold = 0.7f;
+            lighting.celRampSoftness = 0.05f;
+            lighting.celLitHueShiftDegrees = 18.0f;
+            lighting.celShadowHueShiftDegrees = -18.0f;
+            lighting.celBandFalloffStart = 100.0f;
+            lighting.celBandFalloffEnd = 200.0f;
+            lighting.celLightSpillScale = 0.012f;
+            PushConstants pc{};
+            pc.cameraPos = center + glm::vec3(0, 0, 20);
+            pc.cameraDir = glm::vec3(0, 0, -1);
+            pc.cameraUp = glm::vec3(0, 1, 0);
+            pc.cameraRight = glm::vec3(1, 0, 0);
+            pc.fov = 1.0f;
+            pc.aspect = 1.0f;
+            pc.instanceCount = 1;
+            std::vector<uint8_t> rgba;
+            ASSERT_NO_FATAL_FAILURE(RenderSceneShaded({target}, lighting, MakeShadow(true),
+                pc, width, height, rgba));
+            const size_t offset = (height/2*width+width/2)*4;
+            const float luminance = .2126f*rgba[offset]+.7152f*rgba[offset+1]+.0722f*rgba[offset+2];
+            std::printf("[CEL-RADIAL] slot=%u distance/range=%.2f luma=%.3f\n", slot, fraction, luminance);
+            EXPECT_LT(luminance, previousLuma);
+            previousLuma = luminance;
+            if (fraction > 1.0f) EXPECT_LT(luminance, 6.0f) << "out-of-range receiver must be ambient-only";
+        }
+    }
 }
 
 TEST_F(ShadowCorrectnessTest, EmissivePointLightFacesThreeBodiesTowardTheStar) {
@@ -1511,9 +1623,9 @@ TEST_F(ShadowCorrectnessTest, EmissivePointLightFacesThreeBodiesTowardTheStar) {
         starCenter + glm::vec3(23.0f, 12.0f, -25.0f),
         starCenter + glm::vec3(23.0f, -14.0f, -25.0f),
     };
-    const glm::vec3 configuredPosition(lighting.lights[0].directionX,
-                                       lighting.lights[0].directionY,
-                                       lighting.lights[0].directionZ);
+    const glm::vec3 configuredPosition(lighting.lights[0].direction_or_positionX,
+                                       lighting.lights[0].direction_or_positionY,
+                                       lighting.lights[0].direction_or_positionZ);
 
     constexpr uint32_t kW = 8, kH = 8;
     const auto centerLuma = [](const std::vector<uint8_t>& rgba) {

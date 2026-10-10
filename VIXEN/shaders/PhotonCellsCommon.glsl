@@ -205,7 +205,7 @@ int PhotonCellQuantize(float flux) {
 
 vec3 PhotonCellClampedDiffuseFlux(HitRecord rec) {
     vec3 flux = rec.albedo * uintBitsToFloat(rec._pad0[1]);
-    uint lightCount = min(lightingConfig.lightCount, 4u);
+    uint lightCount = min(lightingConfig.lightCount, uint(lightingConfig.lights.length()));
     for (uint i = 0u; i < lightCount; ++i) {
         Light light = lightingConfig.lights[i];
         float distanceToLight;
@@ -214,7 +214,7 @@ vec3 PhotonCellClampedDiffuseFlux(HitRecord rec) {
         float ndotl = max(dot(rec.worldNormal, lightDir), 0.0);
         float visibility = 1.0;
         if (shadowConfig.enabled != 0u) {
-            visibility = ((rec._pad0[2] >> i) & 1u) != 0u ? 1.0 : 0.0;
+            visibility = (rec._pad0[2] & analyticLightVisibilityBit(i)) != 0u ? 1.0 : 0.0;
         }
         flux += visibility * attenuation * ndotl * (rec.albedo / kPhotonCellPi) * light.radiance;
     }

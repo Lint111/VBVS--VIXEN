@@ -90,12 +90,10 @@ TEST(LightingConfigSdiParity, ReflectedLayoutMatchesCppStruct) {
         std::cout << "    ." << m.name << " offset=" << m.offset << "\n";
     }
 
-    // (a) Struct SIZE == C++ struct size (the cel schema's std430 layout is 208 B).
+    // (a) Struct SIZE == the schema-generated C++ layout.
     EXPECT_EQ(static_cast<std::size_t>(lightingConfig->type.sizeInBytes), sizeof(LightingConfig))
         << "LightingConfig size (" << lightingConfig->type.sizeInBytes
         << ") != sizeof(LightingConfig) (" << sizeof(LightingConfig) << ") — std430 drift";
-    EXPECT_EQ(lightingConfig->type.sizeInBytes, 208u)
-        << "LightingConfig size must be 208 for the cel shading settings";
 
     // (b) Top-level field offsets.
     ASSERT_FALSE(lightingConfig->members.empty())

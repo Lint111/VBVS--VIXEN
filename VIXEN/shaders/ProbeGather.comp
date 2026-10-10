@@ -38,6 +38,10 @@
 
 layout(local_size_x = PROBE_UPDATE_MAX_RAYS_PER_PROBE, local_size_y = 1, local_size_z = 1) in;
 
+layout(std430, binding = 48) readonly buffer OccupancyGridBuffer { float occupancyGrid[]; };
+#include "recipe/SdfCoreKernels.g.glsl"
+// VIXEN_UBER_RECIPE_SPLICE_MARKER
+
 #include "SceneBindings.glsl"          // scene SSBOs + TraceWorld (KI-018 precedent); shadow rays go to the wave instead
 
 #include "Generated/LightTreeBuffer.glsl"

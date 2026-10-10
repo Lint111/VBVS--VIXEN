@@ -421,6 +421,7 @@ std::vector<CornellWorldSpaceBody> BuildCornellWorldSpaceBodies() {
 }  // namespace
 
 void VulkanGraphApplication::BuildRenderGraph() {
+    proceduralShaderLibNodes_.clear();
     // The unattended HUD capture runner can exercise the production graph without DISPLAY or a
     // swapchain. Keep ordinary app launches on the window presentation path.
     if (envFlagEnabled("VIXEN_HUD_OFFSCREEN_CAPTURE")) {
@@ -511,7 +512,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
-    computeShaderLibNode_ = computeShaderLib;  // stored so RecompileProceduralShader can MarkNodeNeedsRecompile (Inc0 M5)
+    computeShaderLibNode_ = computeShaderLib;
+    proceduralShaderLibNodes_.push_back(computeShaderLib);
     NodeHandle descriptorGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("push_constant_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("compute_descriptors");
@@ -2243,12 +2245,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // lands directly after #version, before the provider's M10 inserts, where the old
     // LIFO hand order put TRACE last — same defines, different byte order, so that one
     // debug-debug combo mints a distinct cache entry (functionally identical GLSL).
-    const auto makeLightingFamily = [](const char* shaderName, const char* programName) {
+    const auto makeLightingFamily = [this](const char* shaderName, const char* programName) {
         ShaderManagement::ShaderFamily::Config cfg;
         cfg.name = programName;
         cfg.stage = ShaderManagement::ShaderStage::Compute;
         return std::make_shared<ShaderManagement::ShaderFamily>(cfg,
-            [shaderName]() {
+            [this, shaderName]() {
                 std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
                     std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
@@ -2296,6 +2298,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                     if (fnl2 == std::string::npos) source += "\n" + noMipDef;
                     else source.insert(fnl2 + 1, noMipDef);
                 }
+                if (source.find("// VIXEN_UBER_RECIPE_SPLICE_MARKER") != std::string::npos) {
+                    // Every traversal consumer compiles the registry's same emitted
+                    // fields and grid offsets. The march owns the shared grid upload.
+                    source = Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
+                        source, proceduralRecipes_, nullptr);
+                }
                 return source;
             });
     };
@@ -2319,6 +2327,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         NodeHandle libHandle,
         std::shared_ptr<ShaderManagement::ShaderFamily> family,
         std::vector<std::string> shaderFeatures) {
+        proceduralShaderLibNodes_.push_back(libHandle);
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family, shaderFeatures](int vulkanVer, int spirvVer) {
             auto builder = family->MakeBuilder(shaderFeatures);
@@ -2328,6 +2337,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .AddIncludePath("libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
                    .EnableCaching(&shaderCacheManager_);
             return builder;
@@ -2374,6 +2388,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     const auto registerWaveLightingFamily = [this, waveShaderFeatures, resolveWaveFeatures](
                                                 NodeHandle libHandle,
                                                 std::shared_ptr<ShaderManagement::ShaderFamily> family) {
+        proceduralShaderLibNodes_.push_back(libHandle);
         auto* libNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(libHandle));
         libNode->RegisterShaderBuilder([this, family, waveShaderFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
             auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveShaderFeatures);
@@ -2384,6 +2399,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .AddIncludePath("libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
                    .EnableCaching(&shaderCacheManager_);
             return builder;
@@ -2493,34 +2513,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // (plain lighting-family registration; the shared feature set is inert for
     // it — the ProbeApply precedent).
     if (hitAccumResolveEnabled) {
-        ShaderManagement::ShaderFamily::Config cellCfg;
-        cellCfg.name = "HitAccumCellShade";
-        cellCfg.stage = ShaderManagement::ShaderStage::Compute;
-        auto cellShadeFamily = std::make_shared<ShaderManagement::ShaderFamily>(cellCfg,
-            [this]() {
-                std::vector<std::filesystem::path> possiblePaths = {
-#ifdef VIXEN_SHADER_SOURCE_DIR
-                    std::filesystem::path(std::string(VIXEN_SHADER_SOURCE_DIR) + "/HitAccumCellShade.comp"),
-#endif
-                    std::filesystem::path("shaders/HitAccumCellShade.comp"),
-                    std::filesystem::path("../shaders/HitAccumCellShade.comp"),
-                };
-                std::filesystem::path compPath;
-                for (const auto& p : possiblePaths) {
-                    if (std::filesystem::exists(p)) { compPath = p; break; }
-                }
-                if (compPath.empty()) {
-                    throw std::runtime_error("HitAccumCellShade.comp not found - check shader search paths");
-                }
-                std::ifstream in(compPath);
-                std::stringstream buf;
-                buf << in.rdbuf();
-                // The march's splice, second consumer — nullptr blob: the
-                // march's own provider owns SetOccupancyGrid (a second move
-                // of identical content would be redundant, not wrong).
-                return Vixen::SVO::Recipe::SpliceProceduralRecipesIntoSource(
-                    buf.str(), proceduralRecipes_, nullptr);
-            });
+        auto cellShadeFamily = makeLightingFamily("HitAccumCellShade.comp", "HitAccumCellShade");
+        proceduralShaderLibNodes_.push_back(hitAccumCellShadeShaderLib);
         auto* cellLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(hitAccumCellShadeShaderLib));
         cellLibNode->RegisterShaderBuilder([this, cellShadeFamily, lightingShaderFeatures](int vulkanVer, int spirvVer) {
             auto builder = cellShadeFamily->MakeBuilder(lightingShaderFeatures);
@@ -2555,6 +2549,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
         if (waveSlotSwizzleEnabled) {
             waveReservoirFeatures.push_back(kFeatureWaveSlotSwizzle.define);
         }
+        proceduralShaderLibNodes_.push_back(waveReservoirShaderLib);
         auto* waveResLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(waveReservoirShaderLib));
         waveResLibNode->RegisterShaderBuilder([this, waveReservoirFamily, waveReservoirFeatures, resolveWaveFeatures](int vulkanVer, int spirvVer) {
             auto [resolvedFeatures, useRayQuery] = resolveWaveFeatures(waveReservoirFeatures);
@@ -2565,6 +2560,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                    .AddIncludePath("../shaders")
 #ifdef VIXEN_SHADER_SOURCE_DIR
                    .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+                   .AddIncludePath("libraries/SVO/shaders")
+                   .AddIncludePath("../libraries/SVO/shaders")
+#ifdef VIXEN_SVO_SHADER_SOURCE_DIR
+                   .AddIncludePath(VIXEN_SVO_SHADER_SOURCE_DIR)
 #endif
                    .EnableCaching(&shaderCacheManager_);
             return builder;

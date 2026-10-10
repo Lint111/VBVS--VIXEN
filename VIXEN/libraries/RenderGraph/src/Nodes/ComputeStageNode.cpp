@@ -443,6 +443,7 @@ void ComputeStageNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmd,
     if (gpuPerfLogger_) {
         gpuPerfLogger_->RecordDispatchEnd(cmd, frameIndex, dispatchX * 8, dispatchY * 8);
     }
+    if (postDispatchRecorderForTest_) postDispatchRecorderForTest_(cmd);
 
     // Consumer is the last writer of the swapchain image → hand it to Present.
     if (isConsumer && swapchainInfo && swapchainInfo->UsesWsiSynchronization()) {
