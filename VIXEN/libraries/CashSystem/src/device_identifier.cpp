@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <vector>
 #include <cstring>
+#include <sstream>
 
 namespace CashSystem {
 
@@ -85,20 +86,23 @@ void DeviceRegistry::ClearAll() {
 bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);
 
-    // Save cacher registry manifest first (list of active cachers)
+    // Save a device-bound manifest before the individual cache envelopes.
     auto manifestPath = directory / "cacher_registry.txt";
-    std::ofstream manifest(manifestPath);
-    if (!manifest) {
-        LOG_ERROR("Failed to create manifest file");
-        return false;
-    }
-
+    std::ostringstream manifest;
     for (const auto& cacher : m_deviceCachers) {
         if (cacher) {
+            cacher->SetCacheDeviceIdentity(m_deviceId.GetHash());
             manifest << cacher->name() << "\n";
         }
     }
-    manifest.close();
+    const auto manifestText = manifest.str();
+    const std::vector<char> manifestBytes(manifestText.begin(), manifestText.end());
+    std::string manifestError;
+    if (!WriteCacheEnvelopeBytesAtomically(
+            manifestPath, m_deviceId.GetHash(), "device-cacher-registry", manifestBytes, &manifestError)) {
+        LOG_ERROR("Failed to atomically save cacher manifest: " + manifestError);
+        return false;
+    }
     LOG_INFO("Saved cacher manifest with " + std::to_string(m_deviceCachers.size()) + " entries");
 
     std::vector<std::function<bool()>> tasks;
@@ -136,8 +140,12 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
     // first GetCacher() call (lazy deserialization)
     auto manifestPath = directory / "cacher_registry.txt";
     if (std::filesystem::exists(manifestPath)) {
-        std::ifstream manifest(manifestPath);
-        if (manifest) {
+        std::vector<char> manifestBytes;
+        std::string manifestError;
+        const auto manifestStatus = ReadCacheEnvelopeBytes(
+            manifestPath, m_deviceId.GetHash(), "device-cacher-registry", manifestBytes, &manifestError);
+        if (manifestStatus == CacheFileStatus::Loaded) {
+            std::istringstream manifest(std::string(manifestBytes.begin(), manifestBytes.end()));
             std::string cacherName;
             LOG_DEBUG("Pre-creating cachers from manifest...");
 
@@ -162,9 +170,9 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
                     }
                 }
             }
-            manifest.close();
-
             LOG_INFO("Pre-created " + std::to_string(m_deviceCachers.size()) + " cachers from manifest");
+        } else if (manifestStatus != CacheFileStatus::Missing) {
+            LOG_WARNING("Rejected device cacher manifest " + manifestPath.string() + ": " + manifestError);
         }
     } else {
         LOG_INFO("No manifest found (legacy or first run)");
@@ -174,6 +182,7 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
 
     for (auto& cacher : m_deviceCachers) {
         if (cacher) {
+            cacher->SetCacheDeviceIdentity(m_deviceId.GetHash());
             auto cacheFile = directory / (std::string(cacher->name()) + ".cache");
             CacherBase* cacherPtr = cacher.get();
             auto* device = m_device;
