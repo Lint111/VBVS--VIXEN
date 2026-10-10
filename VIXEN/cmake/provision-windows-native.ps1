@@ -93,13 +93,18 @@ function Test-Version([string]$Actual, [string]$Expected) {
 function Get-VisualStudioStatus {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path $vswhere)) { return $null }
-    $versionRange = "[$VisualStudioPackageVersion,$VisualStudioPackageVersion]"
-    $installPath = & $vswhere -latest -products * -version $versionRange `
-        -requires Microsoft.VisualStudio.Workload.NativeDesktop `
+    # The pinned version (17.14.41) is the release's display version; vswhere's -version filters on the
+    # internal build number (17.14.37710.x), so filter on the 17.14 line and compare the display version.
+    # Build Tools names its C++ workload VCTools (NativeDesktop exists only in the full editions).
+    $installPath = & $vswhere -latest -products * -version '[17.14,17.15)' `
+        -requires Microsoft.VisualStudio.Workload.VCTools `
                   Microsoft.VisualStudio.Component.Windows11SDK.26100 `
         -property installationPath 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $installPath) { return $null }
-    return ($installPath | Select-Object -First 1).Trim()
+    $installPath = ($installPath | Select-Object -First 1).Trim()
+    $display = & $vswhere -path $installPath -property catalog_productDisplayVersion 2>$null
+    if (-not $display -or -not ($display | Select-Object -First 1).StartsWith($VisualStudioPackageVersion)) { return $null }
+    return $installPath
 }
 
 function Get-CMakeCommand {
@@ -320,8 +325,8 @@ function Install-Git($Inventory) {
 function Install-CMake($Inventory) {
     $cmakeRow = $Inventory | Where-Object Tool -eq 'CMake'
     if ($cmakeRow.Status -eq 'present') { Write-Step "CMake $CMakeVersion is present; skipping."; return $true }
-    $installer = Get-WingetInstaller 'Kitware.CMake' $CMakeVersion '.msi'
     if (-not (Require-Administrator 'CMake')) { return $false }
+    $installer = Get-WingetInstaller 'Kitware.CMake' $CMakeVersion '.msi'
     Invoke-Native (Join-Path $env:SystemRoot 'System32\msiexec.exe') @('/i', $installer, '/qn', '/norestart', 'ADD_CMAKE_TO_PATH=0')
     return $true
 }
@@ -329,12 +334,20 @@ function Install-CMake($Inventory) {
 function Install-VisualStudio($Inventory) {
     $vsRow = $Inventory | Where-Object Tool -eq 'Visual Studio 2022 Build Tools + Windows SDK'
     if ($vsRow.Status -eq 'present') { Write-Step 'The pinned VS Build Tools workload and Windows SDK are present; skipping.'; return $true }
-    $installer = Get-WingetInstaller 'Microsoft.VisualStudio.2022.BuildTools' $VisualStudioPackageVersion '.exe'
     if (-not (Require-Administrator 'Visual Studio 2022 Build Tools')) { return $false }
-    Invoke-Native $installer @('--quiet', '--wait', '--norestart',
-        '--add', 'Microsoft.VisualStudio.Workload.NativeDesktop',
-        '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100',
-        '--includeRecommended')
+    $components = @('--add', 'Microsoft.VisualStudio.Workload.VCTools',
+        '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100', '--includeRecommended')
+    # An existing Build Tools install on the pinned line is modified in place to add the workload.
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $existing = if (Test-Path $vswhere) { & $vswhere -latest -products Microsoft.VisualStudio.Product.BuildTools -version '[17.14,17.15)' -property installationPath 2>$null } else { $null }
+    if ($existing) {
+        $setup = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\setup.exe'
+        Write-Step "Adding the C++ build tools workload to the existing Build Tools at $existing."
+        Invoke-Native $setup (@('modify', '--installPath', ($existing | Select-Object -First 1).Trim(), '--quiet', '--norestart') + $components)
+        return $true
+    }
+    $installer = Get-WingetInstaller 'Microsoft.VisualStudio.2022.BuildTools' $VisualStudioPackageVersion '.exe'
+    Invoke-Native $installer (@('--quiet', '--wait', '--norestart') + $components)
     return $true
 }
 
