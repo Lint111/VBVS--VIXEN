@@ -25,6 +25,7 @@ def summarize(log, probe, expected_frames, node=None, aggregate_budget_ms=None):
     chunks, dispatches, frames, budgets, counts, hosts = [], [], [], [], [], {}
     submissions, submission_counts, totals = [], [], []
     invalid_timestamp_pairs = 0
+    zero_resolution_dispatch_pairs = 0
     for row in rows:
         if node and any(tag in row for tag in ("[GPUYIELD]", "[GPUYIELD_CHUNK]", "[GPUYIELD_SUBMISSION]")):
             fields = dict(re.findall(r"(\w+)=([^ ]+)", row))
@@ -35,7 +36,11 @@ def summarize(log, probe, expected_frames, node=None, aggregate_budget_ms=None):
             for prefix in ("", "dispatch_"):
                 start = int(fields.get(prefix + "start_ticks", "0"))
                 end = int(fields.get(prefix + "end_ticks", "0"))
-                invalid_timestamp_pairs += start == 0 or end <= start
+                # Available inner queries may occupy the same hardware tick.
+                # Keep a positive enclosing command interval as the budget witness.
+                invalid_timestamp_pairs += start == 0 or (end < start if prefix else end <= start)
+                if prefix and start != 0 and end == start:
+                    zero_resolution_dispatch_pairs += 1
             chunks.append(float(re.search(r"elapsed_gpu_ms=([\d.]+)", row)[1]))
             if "dispatch_gpu_ms=" in row:
                 dispatches.append(float(re.search(r"dispatch_gpu_ms=([\d.]+)", row)[1]))
@@ -62,7 +67,8 @@ def summarize(log, probe, expected_frames, node=None, aggregate_budget_ms=None):
     result = {"gpu_measurement": "elapsed GPU clock, including any preemption",
               "chunks": distribution(chunks), "dispatch_intervals": distribution(dispatches), "frame_maxima": distribution(frames),
               "host_calls": {op: distribution(values) for op, values in hosts.items()},
-              "invalid_timestamp_pairs": invalid_timestamp_pairs}
+              "invalid_timestamp_pairs": invalid_timestamp_pairs,
+              "zero_resolution_dispatch_pairs": zero_resolution_dispatch_pairs}
     result["submissions"] = distribution(submissions)
     count_distribution = distribution(submission_counts)
     result["submissions_per_frame"] = ({key.removesuffix("_ms"): value
