@@ -1455,7 +1455,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
     auto* renderTarget = static_cast<RenderTargetNode*>(renderGraph->GetInstance(renderTargetNode));
     renderTarget->SetParameter(RenderTargetNodeConfig::PARAM_SCALE, renderScale);
-    const VkExtent2D renderExtent = RenderTargetNode::ComputeFollowExtent({width, height}, renderScale);
+    const VkExtent2D renderExtent = RenderTargetNode::ComputeFollowExtent(
+        {static_cast<uint32_t>(width), static_cast<uint32_t>(height)}, renderScale);
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Render-scale=" + std::to_string(renderScale) +
                          " (VIXEN_RENDER_SCALE env; 1.0 = full resolution)");
