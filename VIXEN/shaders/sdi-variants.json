@@ -56,6 +56,20 @@
       ]
     },
     {
+      "name": "ExposureMeter",
+      "source": "ExposureMeter.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
+      "name": "ExposureReduce",
+      "source": "ExposureReduce.comp",
+      "variants": [
+        []
+      ]
+    },
+    {
       "name": "ExposureTonemap",
       "source": "ExposureTonemap.comp",
       "variants": [

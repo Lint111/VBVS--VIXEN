@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
-// Sampled Lighting Inc3 M2 (KI-023): persistent worldPos/depth companion history image,
-// mirroring AccumulationHistoryNode's own "one persistent resource, not a ring" pattern.
+// Persistent worldPos/depth companion history pair, with immutable previous-frame input and
+// separate current-frame output roles matching AccumulationHistoryNode.
 
 #include "Nodes/WorldPosHistoryNode.h"
 #include "Core/NodeRegistration.h"
@@ -69,36 +69,49 @@ void WorldPosHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(width_) + "x" + std::to_string(height_) + ")");
     }
 
-    if (image_ == VK_NULL_HANDLE) {
-        CreateImage(GetDevice(), commandPool);
+    if (images_[0] == VK_NULL_HANDLE || images_[1] == VK_NULL_HANDLE) {
+        DestroyImages();
+        CreateImage(GetDevice(), commandPool, 0);
+        CreateImage(GetDevice(), commandPool, 1);
+        nextWriteImageIndex_ = 1;
         createdWidth_  = width_;
         createdHeight_ = height_;
     } else if (width_ != createdWidth_ || height_ != createdHeight_) {
         NODE_LOG_INFO("[WorldPosHistoryNode] Extent changed (" + std::to_string(createdWidth_) + "x" +
                       std::to_string(createdHeight_) + " -> " + std::to_string(width_) + "x" +
                       std::to_string(height_) + ") - recreating worldPos history image");
-        DestroyImage();
-        CreateImage(GetDevice(), commandPool);
+        DestroyImages();
+        CreateImage(GetDevice(), commandPool, 0);
+        CreateImage(GetDevice(), commandPool, 1);
+        nextWriteImageIndex_ = 1;
         createdWidth_  = width_;
         createdHeight_ = height_;
         NODE_LOG_INFO("[WorldPosHistoryNode] worldPos history image recreated " + std::to_string(createdWidth_) +
                       "x" + std::to_string(createdHeight_));
     } else {
-        NODE_LOG_INFO("[WorldPosHistoryNode] Reusing persistent worldPos history image across recompile");
+        NODE_LOG_INFO("[WorldPosHistoryNode] Reusing persistent worldPos history image pair across recompile");
     }
 
-    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW, view_);
-    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE,      image_);
+    const uint32_t currentIndex = nextWriteImageIndex_;
+    const uint32_t previousIndex = 1u - currentIndex;
+    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW, views_[previousIndex]);
+    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE,      images_[previousIndex]);
+    ctx.Out(WorldPosHistoryNodeConfig::CURRENT_WORLDPOS_IMAGE_VIEW, views_[currentIndex]);
+    ctx.Out(WorldPosHistoryNodeConfig::CURRENT_WORLDPOS_IMAGE,      images_[currentIndex]);
 
-    NODE_LOG_INFO("[WorldPosHistoryNode] Outputs published (" + std::to_string(width_) + "x" +
-                  std::to_string(height_) + ", R32G32B32A32_SFLOAT storage image)");
+    NODE_LOG_INFO("[WorldPosHistoryNode] World-position history image pair published (" +
+                  std::to_string(width_) + "x" + std::to_string(height_) +
+                  ", R32G32B32A32_SFLOAT storage images)");
 }
 
 void WorldPosHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
-    // Not a ring -- the same persistent image/view is re-emitted every frame (last frame's write
-    // must still be here for this frame's reproject branch to read).
-    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW, view_);
-    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE,      image_);
+    const uint32_t currentIndex = nextWriteImageIndex_;
+    const uint32_t previousIndex = 1u - currentIndex;
+    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE_VIEW, views_[previousIndex]);
+    ctx.Out(WorldPosHistoryNodeConfig::WORLDPOS_IMAGE,      images_[previousIndex]);
+    ctx.Out(WorldPosHistoryNodeConfig::CURRENT_WORLDPOS_IMAGE_VIEW, views_[currentIndex]);
+    ctx.Out(WorldPosHistoryNodeConfig::CURRENT_WORLDPOS_IMAGE,      images_[currentIndex]);
+    nextWriteImageIndex_ = previousIndex;
 }
 
 void WorldPosHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
@@ -110,11 +123,15 @@ void WorldPosHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         return;
     }
 
-    NODE_LOG_INFO("[WorldPosHistoryNode] Cleanup (final teardown) - destroying worldPos history image");
-    DestroyImage();
+    NODE_LOG_INFO("[WorldPosHistoryNode] Cleanup (final teardown) - destroying worldPos history image pair");
+    DestroyImages();
 }
 
-void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool) {
+void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool,
+                                      uint32_t imageIndex) {
+    VkImage& image = images_[imageIndex];
+    VkDeviceMemory& memory = memories_[imageIndex];
+    VkImageView& view = views_[imageIndex];
     VkDevice         vkDevice = device->device;
     VkPhysicalDevice physDev  = *device->gpu;
 
@@ -135,13 +152,13 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image_) != VK_SUCCESS) {
+    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image) != VK_SUCCESS) {
         throw std::runtime_error("[WorldPosHistoryNode] vkCreateImage failed");
     }
 
     // --- Allocate device-local memory via real memory-type selection ---
     VkMemoryRequirements req{};
-    vkGetImageMemoryRequirements(vkDevice, image_, &req);
+    vkGetImageMemoryRequirements(vkDevice, image, &req);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -153,35 +170,35 @@ void WorldPosHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool comman
         "WorldPosHistoryNode R32G32B32A32_SFLOAT image"
     );
 
-    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory_) != VK_SUCCESS) {
-        vkDestroyImage(vkDevice, image_, nullptr);
-        image_ = VK_NULL_HANDLE;
+    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
+        vkDestroyImage(vkDevice, image, nullptr);
+        image = VK_NULL_HANDLE;
         throw std::runtime_error("[WorldPosHistoryNode] vkAllocateMemory failed");
     }
 
-    vkBindImageMemory(vkDevice, image_, memory_, 0);
+    vkBindImageMemory(vkDevice, image, memory, 0);
 
     // --- Create image view ---
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image            = image_;
+    viewInfo.image            = image;
     viewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format           = kFormat;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view_) != VK_SUCCESS) {
+    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view) != VK_SUCCESS) {
         throw std::runtime_error("[WorldPosHistoryNode] vkCreateImageView failed");
     }
 
     // One-time UNDEFINED -> GENERAL transition. Storage images stay GENERAL across dispatches.
-    TransitionToGeneral(commandPool);
+    TransitionToGeneral(commandPool, image);
 
     NODE_LOG_INFO("[WorldPosHistoryNode] Created R32G32B32A32_SFLOAT storage image at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +
                   " (transitioned UNDEFINED->GENERAL)");
 }
 
-void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool) {
+void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage image) {
     VkDevice vkDevice = GetDevice()->device;
 
     VkCommandBufferAllocateInfo allocInfo{};
@@ -211,7 +228,7 @@ void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool) {
     barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image               = image_;
+    barrier.image               = image;
     barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
     vkCmdPipelineBarrier(
@@ -246,15 +263,26 @@ void WorldPosHistoryNode::TransitionToGeneral(VkCommandPool commandPool) {
     vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 }
 
-void WorldPosHistoryNode::DestroyImage() {
+void WorldPosHistoryNode::DestroyImages() {
     if (!GetDevice()) return;
     VkDevice vkDevice = GetDevice()->device;
 
-    if (view_   != VK_NULL_HANDLE) { vkDestroyImageView(vkDevice, view_,   nullptr); view_   = VK_NULL_HANDLE; }
-    if (image_  != VK_NULL_HANDLE) { vkDestroyImage    (vkDevice, image_,  nullptr); image_  = VK_NULL_HANDLE; }
-    if (memory_ != VK_NULL_HANDLE) { vkFreeMemory      (vkDevice, memory_, nullptr); memory_ = VK_NULL_HANDLE; }
+    for (uint32_t i = 0; i < 2; ++i) {
+        if (views_[i] != VK_NULL_HANDLE) {
+            vkDestroyImageView(vkDevice, views_[i], nullptr);
+            views_[i] = VK_NULL_HANDLE;
+        }
+        if (images_[i] != VK_NULL_HANDLE) {
+            vkDestroyImage(vkDevice, images_[i], nullptr);
+            images_[i] = VK_NULL_HANDLE;
+        }
+        if (memories_[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(vkDevice, memories_[i], nullptr);
+            memories_[i] = VK_NULL_HANDLE;
+        }
+    }
 
-    NODE_LOG_INFO("[WorldPosHistoryNode] worldPos history image destroyed");
+    NODE_LOG_INFO("[WorldPosHistoryNode] worldPos history image pair destroyed");
 }
 
 } // namespace Vixen::RenderGraph

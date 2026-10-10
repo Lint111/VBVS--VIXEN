@@ -1,0 +1,52 @@
+#version 460
+
+// Completes the frame-wide exposure reduction after ExposureMeter.comp has
+// written one clamped log-luminance sum and valid-pixel count per 16x16 tile.
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout(binding = 0, rgba16f) readonly uniform image2D sceneRadianceHistoryOutput;
+
+struct TileExposure {
+    float logLuminanceSum;
+    uint validPixelCount;
+};
+
+layout(std430, binding = 1) buffer ExposureMeterResult {
+    float ev100;
+    uint reserved;
+    TileExposure tileStats[];
+} result;
+
+shared float logLuminanceSum[256];
+shared uint validPixelCount[256];
+
+void main() {
+    uint lane = gl_LocalInvocationIndex;
+    uvec2 extent = uvec2(imageSize(sceneRadianceHistoryOutput));
+    uint tilesX = (extent.x + 15u) / 16u;
+    uint tilesY = (extent.y + 15u) / 16u;
+    uint tileCount = tilesX * tilesY;
+
+    float laneLogSum = 0.0;
+    uint lanePixelCount = 0u;
+    for (uint tileIndex = lane; tileIndex < tileCount; tileIndex += 256u) {
+        laneLogSum += result.tileStats[tileIndex].logLuminanceSum;
+        lanePixelCount += result.tileStats[tileIndex].validPixelCount;
+    }
+
+    logLuminanceSum[lane] = laneLogSum;
+    validPixelCount[lane] = lanePixelCount;
+    barrier();
+    for (uint stride = 128u; stride != 0u; stride >>= 1u) {
+        if (lane < stride) {
+            logLuminanceSum[lane] += logLuminanceSum[lane + stride];
+            validPixelCount[lane] += validPixelCount[lane + stride];
+        }
+        barrier();
+    }
+
+    if (lane == 0u) {
+        result.ev100 = validPixelCount[0] == 0u
+            ? 0.0
+            : -logLuminanceSum[0] / float(validPixelCount[0]);
+    }
+}

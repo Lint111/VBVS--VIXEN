@@ -20,17 +20,16 @@ public:
 };
 
 /**
- * @brief Allocates the worldPos/depth companion history image (Sampled Lighting Inc3 M2 --
- * KI-023 prerequisite): a SINGLE persistent 2D STORAGE image, sized to the render target's
+ * @brief Allocates the worldPos/depth companion history pair (Sampled Lighting Inc3 M2 --
+ * KI-023 prerequisite): two persistent 2D STORAGE images, sized to the render target's
  * extent, rgba32f (worldPos.xyz in .xyz, hitT/depth in .w).
  *
- * Mirrors AccumulationHistoryNode exactly (see its own file header for the full "one
- * persistent resource, not a ring" rationale) -- the only structural difference is format
- * (rgba32f vs rgba8, since world-space positions need float precision, not [0,1] color range)
+ * Mirrors AccumulationHistoryNode exactly -- the only structural difference is format
+ * (rgba32f vs rgba16f, since world-space positions need float precision, not [0,1] color range)
  * and usage (worldPos/depth geometry, not shaded color).
  *
- * Written each frame by DirectLighting.comp alongside historyImage's own write, at the same
- * pixelCoords; read back at the reprojected texel to validate reprojection GEOMETRICALLY
+ * Written each frame by SpatialReuseShade.comp alongside the current radiance output, at the same
+ * pixelCoords; read back from the immutable previous image at the reprojected texel to validate GEOMETRICALLY
  * (length(histWorldPos - bestWorldPos) > epsilon) rather than by color-consistency -- the fix
  * for KI-023 (a converged history legitimately differs from a noisy current sample once Inc3's
  * ReSTIR lands, so a color-based reject would fight the noise). This same buffer is available
@@ -40,7 +39,7 @@ public:
  * at Compile via a one-shot command buffer, identical mechanics to AccumulationHistoryNode.
  *
  * Lifecycle: persists across graph recompile (same extent); released only on FinalTeardown. A
- * genuine resize recreates the image at the new extent with fresh uninitialized content -- safe
+ * genuine resize recreates both images at the new extent with fresh uninitialized content -- safe
  * because the shader's existing alpha>=1.0 / bounds-reject guards already skip reading historyImage
  * (and now this buffer) whenever there's no valid prior frame to reproject from.
  */
@@ -58,13 +57,15 @@ protected:
     void TypedCleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void CreateImage(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool commandPool);
-    void TransitionToGeneral(VkCommandPool commandPool);
-    void DestroyImage();
+    void CreateImage(Vixen::Vulkan::Resources::VulkanDevice* device, VkCommandPool commandPool,
+                    uint32_t imageIndex);
+    void TransitionToGeneral(VkCommandPool commandPool, VkImage image);
+    void DestroyImages();
 
-    VkImage        image_  = VK_NULL_HANDLE;
-    VkDeviceMemory memory_ = VK_NULL_HANDLE;
-    VkImageView    view_   = VK_NULL_HANDLE;
+    VkImage        images_[2]  = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkDeviceMemory memories_[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkImageView    views_[2]   = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    uint32_t nextWriteImageIndex_ = 1;
 
     uint32_t width_  = 0;
     uint32_t height_ = 0;

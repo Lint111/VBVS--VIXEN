@@ -11,7 +11,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts (declared early for reuse)
 namespace AccumulationHistoryNodeCounts {
     static constexpr size_t INPUTS  = 4;  // VULKAN_DEVICE_IN, COMMAND_POOL, WIDTH, HEIGHT
-    static constexpr size_t OUTPUTS = 2;  // HISTORY_IMAGE_VIEW, HISTORY_IMAGE
+    static constexpr size_t OUTPUTS = 4;  // previous/current history views and images
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -19,15 +19,12 @@ namespace AccumulationHistoryNodeCounts {
  * @brief Pure constexpr resource configuration for AccumulationHistoryNode
  * (Sampled Lighting Inc2 M1)
  *
- * Allocates the temporal-accumulation history target: a SINGLE persistent
- * STORAGE image (NOT a per-frame-in-flight ring like PickIdTargetNode/
- * RenderTargetNode -- history must survive ACROSS frames by design, so a
- * ring would defeat its whole purpose; see AccumulationHistoryNode.h's file
- * header for the full rationale), sized to the render target's extent and
- * format-matched to outputImage (VK_FORMAT_R8G8B8A8_UNORM, RenderTargetNode's
- * own default -- confirmed from RenderTargetNode.cpp, not rgba16f) so a
- * future blend can read/write it and the swapchain output through the same
- * format contract.
+ * Allocates a pair of persistent STORAGE images for immutable previous-frame
+ * history and a distinct current-frame output. The two image roles swap once
+ * per graph execution; see AccumulationHistoryNode.h for the lifetime rationale.
+ * Both images are sized to the render target's extent and use
+ * VK_FORMAT_R16G16B16A16_SFLOAT so they preserve the scene-linear HDR radiance
+ * that the display transform consumes.
  *
  * Inputs: 4
  *   - VULKAN_DEVICE_IN  (VulkanDevice*)  Device for allocation + the one-shot transition queue
@@ -35,17 +32,20 @@ namespace AccumulationHistoryNodeCounts {
  *   - WIDTH             (uint32_t)       Image width  (RenderTargetNode WIDTH_OUT -- the RENDER
  *                                         extent, matching outputImage's own bounds, not the window)
  *   - HEIGHT            (uint32_t)       Image height (RenderTargetNode HEIGHT_OUT)
- * Outputs: 2
- *   - HISTORY_IMAGE_VIEW (VkImageView)  The persistent history image's view (constant across frames)
- *   - HISTORY_IMAGE      (VkImage)      The persistent history image (for a future copy/blit if needed)
+ * Outputs: 4
+ *   - HISTORY_IMAGE_VIEW         (VkImageView) Previous-frame image view
+ *   - HISTORY_IMAGE              (VkImage)     Previous-frame image handle
+ *   - CURRENT_HISTORY_IMAGE_VIEW (VkImageView) Current-frame output view
+ *   - CURRENT_HISTORY_IMAGE      (VkImage)     Current-frame output handle
  *
  * Layout: the compute shader will use the image as a STORAGE image (VK_IMAGE_LAYOUT_GENERAL). The
  * node performs a one-time UNDEFINED -> GENERAL transition at Compile (storage images stay GENERAL
  * thereafter), mirroring PickIdTargetNode's own transition pattern.
  *
- * Lifecycle: the image persists across graph recompile (same extent); released only on
- * FinalTeardown. A genuine resize recreates it at the new extent (M1: uninitialized content on
- * recreate is fine -- accumulation is disabled this milestone, so nothing reads it yet).
+ * Lifecycle: both images persist across graph recompile (same extent); released only on
+ * FinalTeardown. A genuine resize recreates the pair at the new extent. The accumulation config
+ * resets the frame counter after recompile, so the first frame uses alpha >= 1 and skips history
+ * reads before populating the new pair.
  */
 CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
                       AccumulationHistoryNodeCounts::INPUTS,
@@ -86,6 +86,14 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    OUTPUT_SLOT(CURRENT_HISTORY_IMAGE_VIEW, VkImageView, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(CURRENT_HISTORY_IMAGE, VkImage, 3,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
     // ----- Constructor: runtime descriptor initialization -----
     AccumulationHistoryNodeConfig() {
         HandleDescriptor deviceDesc{"VulkanDevice*"};
@@ -98,13 +106,14 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
         INIT_INPUT_DESC(WIDTH,  "width",  ResourceLifetime::Transient, uint32Desc);
         INIT_INPUT_DESC(HEIGHT, "height", ResourceLifetime::Transient, uint32Desc);
 
-        // Output: the persistent history image's view/image (Persistent lifetime -- constant
-        // across frames by design, unlike a ring's per-frame-rotating handle).
+        // Each output role selects one of the pair's persistent views/images for this frame.
         HandleDescriptor viewDesc{"VkImageView"};
         INIT_OUTPUT_DESC(HISTORY_IMAGE_VIEW, "history_image_view", ResourceLifetime::Persistent, viewDesc);
+        INIT_OUTPUT_DESC(CURRENT_HISTORY_IMAGE_VIEW, "current_history_image_view", ResourceLifetime::Persistent, viewDesc);
 
         HandleDescriptor imageDesc{"VkImage"};
         INIT_OUTPUT_DESC(HISTORY_IMAGE, "history_image", ResourceLifetime::Persistent, imageDesc);
+        INIT_OUTPUT_DESC(CURRENT_HISTORY_IMAGE, "current_history_image", ResourceLifetime::Persistent, imageDesc);
     }
 
     // ----- Compile-time validation -----
@@ -122,6 +131,10 @@ CONSTEXPR_NODE_CONFIG(AccumulationHistoryNodeConfig,
     static_assert(std::is_same_v<HISTORY_IMAGE_VIEW_Slot::Type, VkImageView>,
                   "HISTORY_IMAGE_VIEW must be VkImageView");
     static_assert(HISTORY_IMAGE_Slot::index == 1, "HISTORY_IMAGE must be at index 1");
+    static_assert(CURRENT_HISTORY_IMAGE_VIEW_Slot::index == 2,
+                  "CURRENT_HISTORY_IMAGE_VIEW must be at index 2");
+    static_assert(CURRENT_HISTORY_IMAGE_Slot::index == 3,
+                  "CURRENT_HISTORY_IMAGE must be at index 3");
 
     VALIDATE_NODE_CONFIG(AccumulationHistoryNodeConfig, AccumulationHistoryNodeCounts);
 };

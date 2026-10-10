@@ -100,7 +100,8 @@ layout(std430, binding = 19) readonly buffer AccumulationConfigSSBO {
     AccumulationConfig accumulationConfig;
 };
 
-layout(rgba16f, binding = 20) uniform image2D sceneRadianceHistory;
+layout(rgba16f, binding = 20) uniform readonly image2D sceneRadianceHistory;
+layout(rgba16f, binding = 48) uniform writeonly image2D sceneRadianceHistoryOutput;
 
 // ============================================================================
 // PREV-FRAME CAMERA MATRIX (binding 21)
@@ -118,7 +119,8 @@ layout(std430, binding = 21) readonly buffer PrevCameraConfigSSBO {
 // AND the write (moved from DirectLighting.comp, M5 — this pass is now the sole
 // producer of a pixel's worldPos/hitT each frame, matching its sole ownership of
 // historyImage/outputImage).
-layout(rgba32f, binding = 22) uniform image2D worldPosHistoryImage;
+layout(rgba32f, binding = 22) uniform readonly image2D worldPosHistoryImage;
+layout(rgba32f, binding = 49) uniform writeonly image2D worldPosHistoryOutput;
 
 // ============================================================================
 // RESERVOIR CONFIG (binding 23)
@@ -919,7 +921,7 @@ void main() {
         CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
 #endif
         imageStore(sceneRadianceImage, pixelCoords, outStore);
-        imageStore(sceneRadianceHistory, pixelCoords, blended);
+        imageStore(sceneRadianceHistoryOutput, pixelCoords, blended);
     } else {
         vec4 historyStore = vec4(outColor, 1.0);
         vec4 outStore = vec4(outColor, 1.0);
@@ -934,9 +936,9 @@ void main() {
         // temporal accumulation is disabled (the default). Keep the history image
         // synchronized with the current scene so the first HDR witness is not black.
 #ifdef VIXEN_SRS_CELL_RESOLVE
-        imageStore(sceneRadianceHistory, pixelCoords, historyStore);
+        imageStore(sceneRadianceHistoryOutput, pixelCoords, historyStore);
 #else
-        imageStore(sceneRadianceHistory, pixelCoords, historyStore);
+        imageStore(sceneRadianceHistoryOutput, pixelCoords, historyStore);
 #endif
 #ifdef VIXEN_MINING_BEAM
         CompositeMiningBeams(outStore, pc.cameraPos, rayDir, anyHitRT, recReadback.hitT);
@@ -946,5 +948,5 @@ void main() {
 
     // Sampled Lighting Inc3 M2 (KI-023): write this frame's worldPos/hitT into the
     // companion history buffer — moved here verbatim from DirectLighting.comp (M5).
-    imageStore(worldPosHistoryImage, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
+    imageStore(worldPosHistoryOutput, pixelCoords, vec4(bestWorldPos, recReadback.hitT));
 }

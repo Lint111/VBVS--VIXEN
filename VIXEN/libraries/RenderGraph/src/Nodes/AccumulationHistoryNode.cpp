@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Lior Yanai (eLiorg). Licensed under the MIT License.
-// Sampled Lighting Inc2 M1: persistent temporal-accumulation history image, allocated +
-// transitioned + wired for the scene-linear HDR accumulation seam.
+// Persistent temporal-accumulation history pair, allocated + transitioned for the
+// scene-linear HDR accumulation seam.
 
 #include "Nodes/AccumulationHistoryNode.h"
 #include "Core/NodeRegistration.h"
@@ -70,39 +70,51 @@ void AccumulationHistoryNode::TypedCompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(width_) + "x" + std::to_string(height_) + ")");
     }
 
-    // Image is persistent across a same-size recompile, but MUST follow the render extent --
-    // a stale image left at the startup size would be out of bounds after a resize (mirrors
+    // The image pair is persistent across a same-size recompile, but MUST follow the render extent --
+    // stale images left at the startup size would be out of bounds after a resize (mirrors
     // PickIdTargetNode's own followSwapchainExtent discipline).
-    if (image_ == VK_NULL_HANDLE) {
-        CreateImage(GetDevice(), commandPool);
+    if (images_[0] == VK_NULL_HANDLE || images_[1] == VK_NULL_HANDLE) {
+        DestroyImages();
+        CreateImage(GetDevice(), commandPool, 0);
+        CreateImage(GetDevice(), commandPool, 1);
+        nextWriteImageIndex_ = 1;
         createdWidth_  = width_;
         createdHeight_ = height_;
     } else if (width_ != createdWidth_ || height_ != createdHeight_) {
         NODE_LOG_INFO("[AccumulationHistoryNode] Extent changed (" + std::to_string(createdWidth_) + "x" +
                       std::to_string(createdHeight_) + " -> " + std::to_string(width_) + "x" +
                       std::to_string(height_) + ") - recreating history image");
-        DestroyImage();
-        CreateImage(GetDevice(), commandPool);
+        DestroyImages();
+        CreateImage(GetDevice(), commandPool, 0);
+        CreateImage(GetDevice(), commandPool, 1);
+        nextWriteImageIndex_ = 1;
         createdWidth_  = width_;
         createdHeight_ = height_;
         NODE_LOG_INFO("[AccumulationHistoryNode] history image recreated " + std::to_string(createdWidth_) +
                       "x" + std::to_string(createdHeight_));
     } else {
-        NODE_LOG_INFO("[AccumulationHistoryNode] Reusing persistent history image across recompile");
+        NODE_LOG_INFO("[AccumulationHistoryNode] Reusing persistent history image pair across recompile");
     }
 
-    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, view_);
-    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      image_);
+    const uint32_t currentIndex = nextWriteImageIndex_;
+    const uint32_t previousIndex = 1u - currentIndex;
+    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, views_[previousIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      images_[previousIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, views_[currentIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE,      images_[currentIndex]);
 
-    NODE_LOG_INFO("[AccumulationHistoryNode] Outputs published (" + std::to_string(width_) + "x" +
-                  std::to_string(height_) + ", R16G16B16A16_SFLOAT storage image)");
+    NODE_LOG_INFO("[AccumulationHistoryNode] History image pair published (" + std::to_string(width_) + "x" +
+                  std::to_string(height_) + ", R16G16B16A16_SFLOAT storage images)");
 }
 
 void AccumulationHistoryNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
-    // Not a ring -- the same persistent image/view is re-emitted every frame (the whole point of
-    // "history": last frame's write must still be here for this frame to read).
-    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, view_);
-    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      image_);
+    const uint32_t currentIndex = nextWriteImageIndex_;
+    const uint32_t previousIndex = 1u - currentIndex;
+    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE_VIEW, views_[previousIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::HISTORY_IMAGE,      images_[previousIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE_VIEW, views_[currentIndex]);
+    ctx.Out(AccumulationHistoryNodeConfig::CURRENT_HISTORY_IMAGE,      images_[currentIndex]);
+    nextWriteImageIndex_ = previousIndex;
 }
 
 void AccumulationHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
@@ -115,11 +127,15 @@ void AccumulationHistoryNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         return;
     }
 
-    NODE_LOG_INFO("[AccumulationHistoryNode] Cleanup (final teardown) - destroying history image");
-    DestroyImage();
+    NODE_LOG_INFO("[AccumulationHistoryNode] Cleanup (final teardown) - destroying history image pair");
+    DestroyImages();
 }
 
-void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool) {
+void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool commandPool,
+                                         uint32_t imageIndex) {
+    VkImage& image = images_[imageIndex];
+    VkDeviceMemory& memory = memories_[imageIndex];
+    VkImageView& view = views_[imageIndex];
     VkDevice         vkDevice = device->device;
     VkPhysicalDevice physDev  = *device->gpu;
 
@@ -140,13 +156,13 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
     imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image_) != VK_SUCCESS) {
+    if (vkCreateImage(vkDevice, &imgInfo, nullptr, &image) != VK_SUCCESS) {
         throw std::runtime_error("[AccumulationHistoryNode] vkCreateImage failed");
     }
 
     // --- Allocate device-local memory via real memory-type selection ---
     VkMemoryRequirements req{};
-    vkGetImageMemoryRequirements(vkDevice, image_, &req);
+    vkGetImageMemoryRequirements(vkDevice, image, &req);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -158,36 +174,36 @@ void AccumulationHistoryNode::CreateImage(VulkanDevice* device, VkCommandPool co
         "AccumulationHistoryNode R16G16B16A16_SFLOAT image"
     );
 
-    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory_) != VK_SUCCESS) {
-        vkDestroyImage(vkDevice, image_, nullptr);
-        image_ = VK_NULL_HANDLE;
+    if (vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
+        vkDestroyImage(vkDevice, image, nullptr);
+        image = VK_NULL_HANDLE;
         throw std::runtime_error("[AccumulationHistoryNode] vkAllocateMemory failed");
     }
 
-    vkBindImageMemory(vkDevice, image_, memory_, 0);
+    vkBindImageMemory(vkDevice, image, memory, 0);
 
     // --- Create image view ---
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image            = image_;
+    viewInfo.image            = image;
     viewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format           = kFormat;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view_) != VK_SUCCESS) {
+    if (vkCreateImageView(vkDevice, &viewInfo, nullptr, &view) != VK_SUCCESS) {
         throw std::runtime_error("[AccumulationHistoryNode] vkCreateImageView failed");
     }
 
     // One-time UNDEFINED -> GENERAL transition. Storage images stay GENERAL across dispatches, so
     // this single transition makes the descriptor (always GENERAL) correct for every frame.
-    TransitionToGeneral(commandPool);
+    TransitionToGeneral(commandPool, image);
 
     NODE_LOG_INFO("[AccumulationHistoryNode] Created R16G16B16A16_SFLOAT storage image at " +
                   std::to_string(width_) + "x" + std::to_string(height_) +
                   " (transitioned UNDEFINED->GENERAL)");
 }
 
-void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool) {
+void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool, VkImage image) {
     VkDevice vkDevice = GetDevice()->device;
 
     // One-shot command buffer for the layout transition.
@@ -218,7 +234,7 @@ void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool) {
     barrier.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image               = image_;
+    barrier.image               = image;
     barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
     vkCmdPipelineBarrier(
@@ -255,15 +271,26 @@ void AccumulationHistoryNode::TransitionToGeneral(VkCommandPool commandPool) {
     vkFreeCommandBuffers(vkDevice, commandPool, 1, &cmd);
 }
 
-void AccumulationHistoryNode::DestroyImage() {
+void AccumulationHistoryNode::DestroyImages() {
     if (!GetDevice()) return;
     VkDevice vkDevice = GetDevice()->device;
 
-    if (view_   != VK_NULL_HANDLE) { vkDestroyImageView(vkDevice, view_,   nullptr); view_   = VK_NULL_HANDLE; }
-    if (image_  != VK_NULL_HANDLE) { vkDestroyImage    (vkDevice, image_,  nullptr); image_  = VK_NULL_HANDLE; }
-    if (memory_ != VK_NULL_HANDLE) { vkFreeMemory      (vkDevice, memory_, nullptr); memory_ = VK_NULL_HANDLE; }
+    for (uint32_t i = 0; i < 2; ++i) {
+        if (views_[i] != VK_NULL_HANDLE) {
+            vkDestroyImageView(vkDevice, views_[i], nullptr);
+            views_[i] = VK_NULL_HANDLE;
+        }
+        if (images_[i] != VK_NULL_HANDLE) {
+            vkDestroyImage(vkDevice, images_[i], nullptr);
+            images_[i] = VK_NULL_HANDLE;
+        }
+        if (memories_[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(vkDevice, memories_[i], nullptr);
+            memories_[i] = VK_NULL_HANDLE;
+        }
+    }
 
-    NODE_LOG_INFO("[AccumulationHistoryNode] History image destroyed");
+    NODE_LOG_INFO("[AccumulationHistoryNode] History image pair destroyed");
 }
 
 } // namespace Vixen::RenderGraph
