@@ -1,0 +1,536 @@
+[box:flow] gpuyield-post-wave-build cpu=23% target=90% depth=2 free=2 baseline=3 granted=1 mode=static
+[box:flow] gpuyield-post-wave-build cpu=25% target=90% admit
+[box:flow] gpuyield-post-wave-build memory=admit avail=73410MB projected=11970MB estimate=class-max samples=985 reserved=4185MB total=80425MB reserve=4096MB disk=553483MB
+[box:flow] gpuyield-post-wave-build granted tokens=13 mask=26,27
+[box:flow] gpuyield-post-wave-build running on cores 26,27 (build)
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Using system ccache: /home/liory/.local/bin/ccache
+-- VIXEN: found an existing Vulkan (/home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64/include) — skipping auto-provision.
+-- VIXEN: Vulkan validation layers: OFF (build type: Release; layer path: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64/share/vulkan/explicit_layer.d)
+-- [ProvisionWslVulkan] cache hit: /home/liory/.cache/vixen/wsl-vulkan/mesa/build/src/microsoft/vulkan/libvulkan_dzn.so
+-- VIXEN: gdb not found (set -DVIXEN_AUTO_PROVISION_GDB=ON to auto-fetch, no sudo required) — no debugger target available.
+-- Attempting auto locate Vulkan using CMake......
+-- Vulkan SDK found: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.vulkan-sdk/1.4.350.1/x86_64
+-- FetchContent base directory: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- *************************************************************
+-- gaia-ecs v1.0.0 (Release)
+-- Copyright (c) 2021-2026 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: GNU
+-- CompPath: /usr/bin/g++
+-- CompSim: 
+-- CPU: x86_64
+-- *************************************************************
+-- VIXEN: Gaia source verified at a2e62491b56a8589c31da97128f0658088050a70
+-- Checking for one of the modules 'hwloc'
+-- IPO enabled
+-- HWLOC target HWLOC::hwloc_1_11 doesn't exist. The tbbbind target cannot be created
+-- HWLOC target HWLOC::hwloc_2 doesn't exist. The tbbbind_2_0 target cannot be created
+-- HWLOC target HWLOC::hwloc_2_5 doesn't exist. The tbbbind_2_5 target cannot be created
+-- KernelDispatch library configured (E7 dispatch D1: Tier-A extraction + data-only ABI)
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- GoogleTest fetched - test targets available to subdirectories
+-- Using the multi-header code from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/.tmp/fetch/nlohmann_json-src/include/
+-- nlohmann/json fetched - available to all libraries
+-- miniz fetched - ZIP compression available to all libraries
+-- VulkanMemoryAllocator (VMA) fetched - GPU memory management available
+-- VIXEN: wayland-scanner not found; GLFW Wayland backend disabled (X11 only).
+-- VIXEN: X11 dev provisioned at /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/.windowing-deps; GLFW X11 backend enabled.
+-- Including X11 support
+-- GLFW fetched - cross-platform window/surface/input available
+-- Could NOT find Freetype (missing: FREETYPE_LIBRARY FREETYPE_INCLUDE_DIRS) 
+-- Found Freetype::Freetype - Freetype font engine enabled
+-- RmlUi + FreeType fetched - moddable UI available
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- EventBus: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- CashSystem: Precompiled headers enabled
+-- RenderGraphCore: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- ✓ test_rendergraph_subgraph configured (GraphScope/SubGraphType/flattening)
+-- ✓ test_ui_hit_mask configured (UI hit-mask math)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- ⊗ test_resource_management moved to ResourceManagement library
+-- Configuring test_slot_task (trimmed build compatible)
+-- ✓ test_slot_task configured (Phase C budget-aware execution)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_a (Timer/ResourceDependencyTracker/RecompileDedup)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_b (LoopManager/PerFrameResources/GPUQueryManager)
+-- [RenderGraph Tests] Added: test_rendergraph_coresystems_c (NodeLogging/GPUQueryManagerIntegration/TimelineCapacityTracker)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra1 (merged: device/window/command_pool/swap_chain/frame_sync/render_target/compute_dispatch/blit/blend_mode)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_infra2 (merged: pick_ray/instance_buffer/pick_id_target/dynamic_instance_buffer/mvp_uniform/acceleration_structure/body_octree_lifetime)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_pushconstant (merged: push_constant_gatherer_node/selection_set)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_descriptorgatherer (merged: descriptor_resource_gatherer_node/selection_resolve)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender1 (merged: body_instance_raymarch_render/hitrecord_readback)
+-- [RenderGraph Tests] Added: test_recipe_pool_render (I4.1 pool render gate; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_mip_fallback_render (Sparse-Mip ESVO LOD Inc1 M3; standalone, own STB_IMAGE_WRITE_IMPLEMENTATION)
+-- [RenderGraph Tests] Added: test_baked_vs_virtual_parity (Lazy-Procedural-Delta-Baseline Inc0 M6 Task 14)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_gpurender2b (merged: recipe_authoring_gate/shadow_correctness)
+-- [RenderGraph Tests] Added: test_appflow_editor_toggle_render (AppFlow Inc-2 M4 GPU render-gate)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_sdiparity (merged: octree_config/lightingconfig/hitrecord/shadowconfig/accumulationconfig/prevcameraconfig sdi_parity + reservoirconfig_layout)
+-- [RenderGraph Tests] Added: test_rendergraph_criticalnodes_windowedcapture (merged: editor_toggle_undo_capture/hud_render_capture)
+-- [RenderGraph Tests] Added: test_procedural_recipe_render (P2.2 M2 live procedural compute)
+-- [RenderGraph Tests] Added: test_shell_revalidate_node (Surface-Shell GPU dispatch live-gate)
+-- [RenderGraph Tests] Added: test_recipe_instance_bucketing (Recipe GPU Instance Bucketing Inc2 M1 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketed_indirect_dispatch (Recipe GPU Instance Bucketing Inc2 M2 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_multi_bucket_compositing (Recipe GPU Instance Bucketing Inc2 M3 live-run gate)
+-- [RenderGraph Tests] Added: test_recipe_bucketing_perf (Recipe GPU Instance Bucketing Inc2 M4 performance live-run gate)
+-- [RenderGraph Tests] Added: test_switch_cost_isolation (Recipe Bucketed-Dispatch Overhead Inc3 M0 gating spike)
+-- [RenderGraph Tests] Added: test_hiz_downsample_mirror (Raster-proxy B1 M2 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_mirror (Raster-proxy B2 CPU mirror)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_mirror (Raster-proxy B1 M3 CPU mirror)
+-- [RenderGraph Tests] Added: test_proxy_interval_prepass_device (Raster-proxy B2 device parity)
+-- [RenderGraph Tests] Added: test_instance_occlusion_cull_device (Raster-proxy B1 M3 device gate)
+-- [RenderGraph Tests] Added: test_b1_occlusion_ab (Raster-proxy B1 M4 A/B gate)
+-- ⊗ fail-scenario tests skipped (VIXEN_FAIL_SCENARIOS=OFF)
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_rendergraph_nodeconn configured (NodeParameterManager/AccumulationGather/PassThroughStorage)
+-- ✓ test_sdi_stage_wiring configured (Semantic Wiring S2)
+-- ✓ test_connection_concepts configured (Sprint 6.0.1)
+-- ✓ test_connection_rule configured (Sprint 6.0.1)
+-- ✓ test_graph_lifecycle_hooks configured (trimmed build: FALSE)
+-- ✓ test_rendergraph_dispatch configured (GroupDispatch/TaskQueue/MultiDispatchIntegration/PredictionErrorTracker/TaskProfile)
+-- ✓ test_rendergraph_tracking configured (ResourceAccessTracker/WaveScheduler/GraphTaskLowering)
+-- [RenderGraph Tests] Added: test_rendergraph_voxelsystems (SceneGenerators/VoxelTraversal)
+-- ✓ test_ui_hud_smoke configured (S1: HUD data model headless smoke)
+-- ✓ test_ui_composition_host configured (M-ui: composition host + inspector fragment)
+-- ✓ test_view_hud_golden configured (View Contract Inc-2: golden-mirror gate)
+-- ✓ test_view_editor_layers_golden configured (Inc-A2: golden-mirror gate)
+-- ✓ test_view_editor_layers_reconcile configured (Inc-B: external-change reconcile proof)
+-- ✓ test_view_selection_provider configured (Inc-C: multi-instance selection proof)
+-- ✓ test_set_mutation_dispatch configured (Inc-D Milestone 1: set-mutation dispatch proof)
+-- ✓ test_rendergraph_viewblob configured (ViewBlob/ViewStore/ViewBlobFile/BlobView)
+-- ✓ test_view_wire_roundtrip configured (View Contract Inc-3: UTVA wire round-trip)
+-- ✓ test_view_wire_soa_roundtrip configured (View Contract Inc-5: SoA wire round-trip)
+-- ✓ test_typed_accessor_emitter configured (View Contract Inc-5b Milestone A: generated accessor equivalence)
+-- ✓ test_view_container_builder configured (native UTVC container decode)
+-- ✓ test_rendergraph_syncbarrier configured (BarrierTypes/FrameSyncScheduler/FrameSyncNodeTimeline/PassGroupSchedule/GraphTopology)
+-- ✓ test_pass_group_node_smoke configured (auto-sync P4 M3)
+-- ✓ test_rendergraph_nodes configured (PartialBrickUpload/BandwidthAbMeasurement/BufferSyncGathererNode/ProbeGridConfigLayout)
+-- [CompileTimeResourceSystem Tests] Added: 2 test executables (1 disabled, merged 7->1 for PDB consolidation)
+-- VoxelComponents: Precompiled headers enabled
+-- VoxelData: Precompiled headers enabled
+-- GaiaVoxelWorld: Precompiled headers enabled
+-- SVO: Precompiled headers enabled
+-- [SVO Tests] SKIPPED cpu_body_render — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- [SVO Tests] SKIPPED cpu_body_render_diag — UNDERTOW consumer headers (render/) absent (standalone VIXEN build)
+-- GaiaArchetypes: Precompiled headers enabled
+-- Libraries configured - all static libraries defined
+-- [codegen] using discovered Undertow schema catalogue: /home/liory/projects/undertow/core/src/Undertow.Authoring/Schema/schemas.json
+-- [codegen] using tracked Yeroket kernel pin: c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- [codegen] reusing pinned kernel snapshot: /home/liory/.cache/vixen/kernel-codegen/sources/yeroket-c3fb3847979e3f9eef04783510c42b70d7058ae7
+-- vixen_generate_node_manifest: wrote 65 node type(s) to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- vixen_link_used_nodes: VixenApp scoped-linked 65 node OBJECT librar(y/ies) (whole-archived) from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/generated/node_manifest.cmake
+-- VixenApp: Precompiled headers enabled (using Core/Headers.h)
+-- VIXEN: Shaders compile at runtime from /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/VIXEN/shaders
+-- VIXEN: Generated shader files output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/shaders
+-- VIXEN: SDI headers output to /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield/application/main/generated/sdi
+-- VIXEN: TBB DLL will be copied to output directory
+-- [Application Tests] Added: test_app_run_tick (Tick/Run classification, offline)
+-- [Application Tests] Added: test_hud_view (HudView Register + SetHudView projection, offline)
+-- [Application Tests] Added: test_view_blob_equiv (View Contract Inc-2b: native==header==datafile proof gate)
+-- [Application Tests] Added: test_headless_ui_graph (offscreen UI render/readback)
+-- [Application Tests] Added: test_headless_cornell_graph (production graph offscreen render/readback)
+-- [Application Tests] Added: test_headless_starfield_graph (isolated production graph captures and pixel comparison)
+-- [Application Tests] Added: vixen_lookdev_capture (16 states/angles, repeat-pixel witness)
+-- [Application Tests] Added: test_cel_shading_graph (cel ramp, live mode switching, and scene captures)
+-- Application configured - all executables defined
+-- RenderGraph/SVO verification target available: rendergraph_svo_tests
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (2.4s)
+-- Generating done (1.0s)
+-- Build files have been written to: /home/liory/projects/VBVS--VIXEN/.claude-worktrees/gpuyield/build/gpuyield
+[0/4] Re-checking globbed directories...
+[1/359] Building CXX object libraries/Core/CMakeFiles/Core.dir/src/RuntimeCachePaths.cpp.o
+[2/359] Linking CXX static library lib/libCore.a
+[3/359] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/AsyncShaderBundleBuilder.cpp.o
+[4/359] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderBundleBuilder.cpp.o
+[5/359] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderCacheManager.cpp.o
+[6/359] Building CXX object libraries/ShaderManagement/CMakeFiles/ShaderManagement.dir/src/ShaderFamily.cpp.o
+[7/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/BulkMaterialization.cpp.o
+[8/359] Linking CXX static library lib/libShaderManagement.a
+[9/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/cmake_pch.hxx.gch
+[10/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/AccelerationStructureCacher.cpp.o
+[11/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOTypes.cpp.o
+[12/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/ISVOStructure.cpp.o
+[13/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOBuilder.cpp.o
+[14/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/ContourBuilder.cpp.o
+[15/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/AttributeIntegrator.cpp.o
+[16/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/LaineKarrasOctree.cpp.o
+[17/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOTraversal.cpp.o
+[18/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVOBrickDDA.cpp.o
+[19/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/VoxelSamplers.cpp.o
+[20/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SVORebuild.cpp.o
+[21/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Serialization.cpp.o
+[22/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/SceneGenerator.cpp.o
+[23/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/RecipePackLoader.cpp.o
+[24/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Recipe/LodSelection.cpp.o
+[25/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Recipe/RecipeComposition.cpp.o
+[26/359] Building CXX object libraries/SVO/CMakeFiles/SVO.dir/src/Recipe/MultiBodyRenderer.cpp.o
+[27/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/DescriptorSetLayoutCacher.cpp.o
+[28/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/ComputePipelineCacher.cpp.o
+[29/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/MeshCacher.cpp.o
+[30/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/RenderPassCacher.cpp.o
+[31/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/SamplerCacher.cpp.o
+[32/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/TextureCacher.cpp.o
+[33/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/VoxelAABBCacher.cpp.o
+[34/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/VoxelSceneCacher.cpp.o
+[35/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/descriptor_cacher.cpp.o
+[36/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/device_identifier.cpp.o
+[37/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/main_cacher.cpp.o
+[38/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/pipeline_layout_cacher.cpp.o
+[39/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/pipeline_cacher.cpp.o
+[40/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/shader_compilation_cacher.cpp.o
+[41/359] Linking CXX static library lib/libSVO.a
+[42/359] Building CXX object libraries/CashSystem/CMakeFiles/CashSystem.dir/src/shader_module_cacher.cpp.o
+[43/359] Linking CXX static library lib/libCashSystem.a
+[44/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/DirectConnectionRule.cpp.o
+[45/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Connection/Rules/VariadicConnectionRule.cpp.o
+[46/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/GraphLifecycleHooks.cpp.o
+[47/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/NodeInstance.cpp.o
+[48/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/EngineContext.cpp.o
+[49/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/RenderGraph.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp: In member function ‘void Vixen::RenderGraph::RenderGraph::SetDeviceBudgetManager(std::shared_ptr<ResourceManagement::DeviceBudgetManager>)’:
+../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:514:37: warning: ‘void CashSystem::MainCacher::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  514 |     GetMainCacher().SetBudgetManager(deviceBudgetManager_.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Core/RenderGraph.h:20,
+                 from ../../VIXEN/libraries/RenderGraph/src/Core/RenderGraph.cpp:3:
+../../VIXEN/libraries/CashSystem/include/MainCacher.h:570:10: note: declared here
+  570 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/);
+      |          ^~~~~~~~~~~~~~~~
+[50/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphCore.dir/src/Core/ResourceDependencyTracker.cpp.o
+[51/359] Linking CXX static library lib/libRenderGraphCore.a
+[52/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BlitNode.dir/src/Nodes/BlitNode.cpp.o
+[53/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ConstantNode.dir/src/Nodes/ConstantNode.cpp.o
+[54/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_CommandPoolNode.dir/src/Nodes/CommandPoolNode.cpp.o
+[55/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeDispatchNode.dir/src/Nodes/ComputeDispatchNode.cpp.o
+[56/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputeStageNode.dir/src/Nodes/ComputeStageNode.cpp.o
+[57/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProxyRasterStageNode.dir/src/Nodes/ProxyRasterStageNode.cpp.o
+[58/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ComputePipelineNode.dir/src/Nodes/ComputePipelineNode.cpp.o
+[59/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MultiDispatchNode.dir/src/Nodes/MultiDispatchNode.cpp.o
+[60/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthBufferNode.dir/src/Nodes/DepthBufferNode.cpp.o
+[61/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderTargetNode.dir/src/Nodes/RenderTargetNode.cpp.o
+[62/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PickIdTargetNode.dir/src/Nodes/PickIdTargetNode.cpp.o
+[63/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceBufferNode.dir/src/Nodes/InstanceBufferNode.cpp.o
+[64/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_StorageBufferNode.dir/src/Nodes/StorageBufferNode.cpp.o
+[65/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DynamicInstanceBufferNode.dir/src/Nodes/DynamicInstanceBufferNode.cpp.o
+[66/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightingConfigNode.dir/src/Nodes/LightingConfigNode.cpp.o
+[67/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShadowConfigNode.dir/src/Nodes/ShadowConfigNode.cpp.o
+[68/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationConfigNode.dir/src/Nodes/AccumulationConfigNode.cpp.o
+[69/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccumulationHistoryNode.dir/src/Nodes/AccumulationHistoryNode.cpp.o
+[70/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_WorldPosHistoryNode.dir/src/Nodes/WorldPosHistoryNode.cpp.o
+[71/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DepthTargetNode.dir/src/Nodes/DepthTargetNode.cpp.o
+[72/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PrevCameraConfigNode.dir/src/Nodes/PrevCameraConfigNode.cpp.o
+[73/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_HitAccumParamsConfigNode.dir/src/Nodes/HitAccumParamsConfigNode.cpp.o
+[74/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ReservoirConfigNode.dir/src/Nodes/ReservoirConfigNode.cpp.o
+[75/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MiningBeamBufferNode.dir/src/Nodes/MiningBeamBufferNode.cpp.o
+[76/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LightTreeBufferNode.dir/src/Nodes/LightTreeBufferNode.cpp.o
+[77/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeGridConfigNode.dir/src/Nodes/ProbeGridConfigNode.cpp.o
+[78/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ProbeAtlasNode.dir/src/Nodes/ProbeAtlasNode.cpp.o
+[79/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_MvpUniformNode.dir/src/Nodes/MvpUniformNode.cpp.o
+[80/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorResourceGathererNode.dir/src/Nodes/DescriptorResourceGathererNode.cpp.o
+[81/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DescriptorSetNode.dir/src/Nodes/DescriptorSetNode.cpp.o
+[82/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_DeviceNode.dir/src/Nodes/DeviceNode.cpp.o
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp: In member function ‘void Vixen::RenderGraph::DeviceNode::CreateDeviceBudgetManager(CashSystem::DeviceRegistry&)’:
+../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:610:36: warning: ‘void CashSystem::DeviceRegistry::SetBudgetManager(ResourceManagement::DeviceBudgetManager*)’ is deprecated: Budget manager is accessed via VulkanDevice - this method is a no-op [-Wdeprecated-declarations]
+  610 |     deviceRegistry.SetBudgetManager(budgetManager.get());
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+In file included from ../../VIXEN/libraries/RenderGraph/include/Nodes/DeviceNode.h:7,
+                 from ../../VIXEN/libraries/RenderGraph/src/Nodes/DeviceNode.cpp:3:
+../../VIXEN/libraries/CashSystem/include/DeviceIdentifier.h:197:10: note: declared here
+  197 |     void SetBudgetManager(ResourceManagement::DeviceBudgetManager* /*manager*/) {
+      |          ^~~~~~~~~~~~~~~~
+[83/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_FrameSyncNode.dir/src/Nodes/FrameSyncNode.cpp.o
+[84/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GeometryRenderNode.dir/src/Nodes/GeometryRenderNode.cpp.o
+[85/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_InstanceNode.dir/src/Nodes/InstanceNode.cpp.o
+[86/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_GraphicsPipelineNode.dir/src/Nodes/GraphicsPipelineNode.cpp.o
+[87/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PresentNode.dir/src/Nodes/PresentNode.cpp.o
+[88/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_LoopBridgeNode.dir/src/Nodes/LoopBridgeNode.cpp.o
+[89/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PassGroupNode.dir/src/Nodes/PassGroupNode.cpp.o
+[90/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RenderPassNode.dir/src/Nodes/RenderPassNode.cpp.o
+[91/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SwapChainNode.dir/src/Nodes/SwapChainNode.cpp.o
+[92/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_ShaderLibraryNode.dir/src/Nodes/ShaderLibraryNode.cpp.o
+[93/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TextureLoaderNode.dir/src/Nodes/TextureLoaderNode.cpp.o
+[94/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VertexBufferNode.dir/src/Nodes/VertexBufferNode.cpp.o
+[95/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelAABBConverterNode.dir/src/Nodes/VoxelAABBConverterNode.cpp.o
+[96/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_VoxelGridNode.dir/src/Nodes/VoxelGridNode.cpp.o
+[97/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_AccelerationStructureNode.dir/src/Nodes/AccelerationStructureNode.cpp.o
+[98/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_RayTracingPipelineNode.dir/src/Nodes/RayTracingPipelineNode.cpp.o
+[99/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_TraceRaysNode.dir/src/Nodes/TraceRaysNode.cpp.o
+[100/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellParamsConfigNode.dir/src/Nodes/PhotonCellParamsConfigNode.cpp.o
+[101/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellDepositNode.dir/src/Nodes/PhotonCellDepositNode.cpp.o
+[102/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellFoldNode.dir/src/Nodes/PhotonCellFoldNode.cpp.o
+[103/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_PhotonCellClearNode.dir/src/Nodes/PhotonCellClearNode.cpp.o
+[104/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_BodyOctreeSceneNode.dir/src/Nodes/BodyOctreeSceneNode.cpp.o
+[105/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_SkyProjectionNode.dir/src/Nodes/SkyProjectionNode.cpp.o
+[106/359] Building CXX object libraries/VoxelDocument/CMakeFiles/VoxelDocument.dir/src/EditorDocumentModel.cpp.o
+[107/359] Building CXX object libraries/RenderGraph/CMakeFiles/RenderGraphNode_UIRenderNode.dir/src/Nodes/UIRenderNode.cpp.o
+[108/359] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/VulkanGraphApplication.cpp.o
+[109/359] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildUIGraph.cpp.o
+[110/359] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildInstancingDemoGraph.cpp.o
+[111/359] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildRenderGraph.cpp.o
+[112/359] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildAutoSyncDemoGraph.cpp.o
+[113/359] Linking CXX static library lib/libRenderGraphNodes.a
+[114/359] Building CXX object application/main/CMakeFiles/VixenApp.dir/source/graph/BuildFanInDemoGraph.cpp.o
+[115/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_sampling_compile_gate.dir/test_sampling_compile_gate.cpp.o
+[116/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_subgraph.dir/test_subgraph_nodes.cpp.o
+[117/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_slot_task.dir/test_slot_task.cpp.o
+[118/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_coresystems_a.dir/Core/test_recompile_dedup.cpp.o
+[119/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_device_node.cpp.o
+[120/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_render_target_node.cpp.o
+[121/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra1.dir/Nodes/test_compute_dispatch_node.cpp.o
+[122/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_infra2.dir/Nodes/test_acceleration_structure_node.cpp.o
+[123/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_pushconstant.dir/Nodes/test_push_constant_gatherer_node.cpp.o
+[124/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_baked_vs_virtual_parity.dir/Nodes/test_baked_vs_virtual_parity.cpp.o
+[125/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_gpurender2b.dir/Nodes/test_shadow_correctness.cpp.o
+[126/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_criticalnodes_descriptorgatherer.dir/Nodes/test_descriptor_resource_gatherer_node.cpp.o
+[127/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_multi_bucket_compositing.dir/Nodes/test_recipe_multi_bucket_compositing.cpp.o
+[128/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_recipe_bucketing_perf.dir/Nodes/test_recipe_bucketing_perf.cpp.o
+[129/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_sdi_stage_wiring.dir/test_sdi_stage_wiring.cpp.o
+[130/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_connection_rule.dir/test_connection_rule.cpp.o
+[131/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_dispatch.dir/test_task_profile.cpp.o
+[132/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_syncbarrier.dir/test_graph_topology.cpp.o
+[133/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_rendergraph_tracking.dir/test_graph_task_lowering.cpp.o
+[134/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_svo_builder.dir/test_svo_builder.cpp.o
+[135/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_voxel_injection.dir/test_voxel_injection.cpp.o
+[136/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_bulk_materialization_dispatch.dir/test_bulk_materialization_dispatch.cpp.o
+[137/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_svo_types.dir/test_svo_types.cpp.o
+[138/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_sdf_recipes.dir/test_sdf_recipes.cpp.o
+[139/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_lod_ladder.dir/test_lod_ladder.cpp.o
+[140/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_body_footprint_regime.dir/test_body_footprint_regime.cpp.o
+[141/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_multi_body_renderer.dir/test_multi_body_renderer.cpp.o
+[142/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_composition.dir/test_recipe_composition.cpp.o
+[143/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_soa_sdf_serialize.dir/test_soa_sdf_serialize.cpp.o
+[144/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_soa_mip_serialize.dir/test_soa_mip_serialize.cpp.o
+[145/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_ref_table.dir/test_tier_ref_table.cpp.o
+[146/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_crossing_construction.dir/test_tier_crossing_construction.cpp.o
+[147/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_crossing_mirror_parity.dir/test_tier_crossing_mirror_parity.cpp.o
+[148/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_stored_sdf_march_mirror.dir/test_stored_sdf_march_mirror.cpp.o
+[149/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_channel_format.dir/test_channel_format.cpp.o
+[150/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_mip_sample_filter.dir/test_mip_sample_filter.cpp.o
+[151/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_mip_sample_bake.dir/test_mip_sample_bake.cpp.o
+[152/359] Building CXX object libraries/RenderGraph/tests/CMakeFiles/test_node_self_registration.dir/test_node_self_registration.cpp.o
+[153/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_mip_aniso_pool.dir/test_mip_aniso_pool.cpp.o
+[154/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_reservoir_mirror.dir/test_reservoir_mirror.cpp.o
+[155/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_light_tree.dir/test_light_tree.cpp.o
+[156/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_hit_accumulation_mirror.dir/test_hit_accumulation_mirror.cpp.o
+[157/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_cell_footprint_regime.dir/test_cell_footprint_regime.cpp.o
+[158/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_resolvable_level.dir/test_resolvable_level.cpp.o
+[159/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_frustum_cull.dir/test_frustum_cull.cpp.o
+[160/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_address.dir/test_tier_address.cpp.o
+[161/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_math.dir/test_tier_math.cpp.o
+[162/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_ref.dir/test_tier_ref.cpp.o
+[163/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_direction.dir/test_tier_direction.cpp.o
+[164/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_tier_magnitude.dir/test_tier_magnitude.cpp.o
+[165/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_instance_sort.dir/test_instance_sort.cpp.o
+[166/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_residency_trigger.dir/test_residency_trigger.cpp.o
+[167/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_occlusion_gate.dir/test_occlusion_gate.cpp.o
+[168/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_sdf_bake.dir/test_sdf_bake.cpp.o
+[169/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_shell_derive.dir/test_shell_derive.cpp.o
+[170/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_codegen.dir/test_recipe_codegen.cpp.o
+[171/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_codegen_glsl.dir/test_recipe_codegen_glsl.cpp.o
+[172/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_parity_fixture_export.dir/test_recipe_parity_fixture_export.cpp.o
+[173/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_glsl_numerical_parity.dir/test_recipe_glsl_numerical_parity.cpp.o
+[174/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_nested_invocation.dir/test_recipe_nested_invocation.cpp.o
+[175/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_uber_shader_splice.dir/test_uber_shader_splice.cpp.o
+[176/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_declared_position_render.dir/test_recipe_declared_position_render.cpp.o
+[177/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_bake.dir/test_recipe_bake.cpp.o
+[178/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_bake_center.dir/test_recipe_bake_center.cpp.o
+[179/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_container_parity.dir/test_recipe_container_parity.cpp.o
+[180/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_eval_parity.dir/test_recipe_eval_parity.cpp.o
+[181/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_registry.dir/test_recipe_registry.cpp.o
+[182/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_bounds.dir/test_recipe_bounds.cpp.o
+[183/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_interval_pruning.dir/test_recipe_interval_pruning.cpp.o
+[184/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_occupancy.dir/test_recipe_occupancy.cpp.o
+[185/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_manifest.dir/test_recipe_manifest.cpp.o
+[186/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_ingest.dir/test_recipe_ingest.cpp.o
+[187/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_pack_loader.dir/test_recipe_pack_loader.cpp.o
+[188/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_boot_ingest.dir/test_recipe_boot_ingest.cpp.o
+[189/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_voxel_document_flatten.dir/test_voxel_document_flatten.cpp.o
+[190/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_octree_pool.dir/test_octree_pool.cpp.o
+[191/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_baker.dir/test_recipe_baker.cpp.o
+[192/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_generation_cost_benchmark.dir/test_generation_cost_benchmark.cpp.o
+[193/359] Building CXX object libraries/SVO/tests/CMakeFiles/benchmark_materialization_simd.dir/benchmark_materialization_simd.cpp.o
+[194/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_recipe_simd_parity.dir/test_recipe_simd_parity.cpp.o
+[195/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_samplers.dir/test_samplers.cpp.o
+[196/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_residency_default.dir/test_residency_default.cpp.o
+[197/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_octree_queries.dir/test_octree_queries.cpp.o
+[198/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_ray_casting_comprehensive.dir/test_ray_casting_comprehensive.cpp.o
+[199/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_brick_creation.dir/test_brick_creation.cpp.o
+[200/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_attribute_registry_integration.dir/test_attribute_registry_integration.cpp.o
+[201/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_brick_traversal.dir/test_brick_traversal.cpp.o
+[202/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_rebuild_hierarchy.dir/test_rebuild_hierarchy.cpp.o
+[203/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_cornell_box.dir/test_cornell_box.cpp.o
+[204/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_lod.dir/test_lod.cpp.o
+[205/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_shell_octree.dir/test_shell_octree.cpp.o
+[206/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_shell_octree_gpu.dir/test_shell_octree_gpu.cpp.o
+[207/359] Building CXX object libraries/SVO/tests/CMakeFiles/test_gpu_parity.dir/test_gpu_parity.cpp.o
+[208/359] Linking CXX static library lib/libVoxelDocument.a
+[209/359] Building CXX object libraries/SVO/tests/CMakeFiles/cpu_castray_cmp.dir/cpu_castray_cmp_main.cpp.o
+[210/359] Linking CXX static library lib/libVixenApp.a
+[211/359] Building CXX object application/main/CMakeFiles/VIXEN.dir/source/main.cpp.o
+[212/359] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/main.cpp.o
+[213/359] no-new-mutex declaration gate (scripts/check-no-new-mutex.sh)
+WARN: VIXEN/libraries/KernelDispatch/include/KernelDispatch/TaskExecutor.h: 3 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+WARN: VIXEN/libraries/KernelDispatch/src/TaskExecutor.cpp: 1 owning declaration(s) declared but UNCLASSIFIED — needs an inventory row
+PASS: no-new-mutex — scanned 833 files, 83 mutex-syntax files, 47 owning declarations, 2 UNCLASSIFIED row(s)
+[214/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_subgraph
+[215/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_core
+[216/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_shadermirrors
+[217/359] Linking CXX executable libraries/RenderGraph/tests/test_sampling_compile_gate
+[218/359] Linking CXX executable libraries/RenderGraph/tests/test_ui_hit_mask
+[219/359] Linking CXX executable libraries/RenderGraph/tests/test_slot_task
+[220/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_a
+[221/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_b
+[222/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_coresystems_c
+[223/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra1
+[224/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_infra2
+[225/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_pushconstant
+[226/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_descriptorgatherer
+[227/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender1
+[228/359] Linking CXX executable libraries/RenderGraph/tests/test_recipe_pool_render
+[229/359] Linking CXX executable libraries/RenderGraph/tests/test_mip_fallback_render
+[230/359] Linking CXX executable libraries/RenderGraph/tests/test_baked_vs_virtual_parity
+[231/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2
+[232/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_gpurender2b
+[233/359] Linking CXX executable libraries/RenderGraph/tests/test_appflow_editor_toggle_render
+[234/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_sdiparity
+[235/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_criticalnodes_windowedcapture
+[236/359] Linking CXX executable libraries/RenderGraph/tests/test_procedural_recipe_render
+[237/359] Linking CXX executable libraries/RenderGraph/tests/test_shell_revalidate_node
+[238/359] Linking CXX executable libraries/RenderGraph/tests/test_recipe_instance_bucketing
+[239/359] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketed_indirect_dispatch
+[240/359] Linking CXX executable libraries/RenderGraph/tests/test_recipe_multi_bucket_compositing
+[241/359] Linking CXX executable libraries/RenderGraph/tests/test_recipe_bucketing_perf
+[242/359] Linking CXX executable libraries/RenderGraph/tests/test_switch_cost_isolation
+[243/359] Linking CXX executable libraries/RenderGraph/tests/test_hiz_downsample_mirror
+[244/359] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_mirror
+[245/359] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_mirror
+[246/359] Linking CXX executable libraries/RenderGraph/tests/test_proxy_interval_prepass_device
+[247/359] Linking CXX executable libraries/RenderGraph/tests/test_instance_occlusion_cull_device
+[248/359] Linking CXX executable libraries/RenderGraph/tests/test_b1_occlusion_ab
+[249/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodeconn
+[250/359] Linking CXX executable libraries/RenderGraph/tests/test_sdi_stage_wiring
+[251/359] Linking CXX executable libraries/RenderGraph/tests/test_connection_concepts
+[252/359] Linking CXX executable libraries/RenderGraph/tests/test_connection_rule
+[253/359] Linking CXX executable libraries/RenderGraph/tests/test_graph_lifecycle_hooks
+[254/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_dispatch
+[255/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_tracking
+[256/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_voxelsystems
+[257/359] Linking CXX executable libraries/RenderGraph/tests/test_ui_hud_smoke
+[258/359] Linking CXX executable libraries/RenderGraph/tests/test_ui_composition_host
+[259/359] Linking CXX executable libraries/RenderGraph/tests/test_view_hud_golden
+[260/359] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_golden
+[261/359] Linking CXX executable libraries/RenderGraph/tests/test_view_editor_layers_reconcile
+[262/359] Linking CXX executable libraries/RenderGraph/tests/test_view_selection_provider
+[263/359] Linking CXX executable libraries/RenderGraph/tests/test_set_mutation_dispatch
+[264/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_viewblob
+[265/359] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_roundtrip
+[266/359] Linking CXX executable libraries/RenderGraph/tests/test_view_wire_soa_roundtrip
+[267/359] Linking CXX executable libraries/RenderGraph/tests/test_typed_accessor_emitter
+[268/359] Linking CXX executable libraries/RenderGraph/tests/test_view_container_builder
+[269/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_syncbarrier
+[270/359] Linking CXX executable libraries/RenderGraph/tests/test_node_self_registration
+[271/359] Linking CXX executable libraries/RenderGraph/tests/test_photon_cell_nodes
+[272/359] Linking CXX executable libraries/RenderGraph/tests/test_pass_group_node_smoke
+[273/359] Linking CXX executable libraries/RenderGraph/tests/test_rendergraph_nodes
+[274/359] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_compile_time_resource_system
+[275/359] Linking CXX executable libraries/RenderGraph/tests/CompileTimeResourceSystem/test_recursive_validation
+[276/359] Linking CXX executable libraries/SVO/tests/test_svo_builder
+[277/359] Linking CXX executable libraries/SVO/tests/test_voxel_injection
+[278/359] Linking CXX executable libraries/SVO/tests/test_bulk_materialization_dispatch
+[279/359] Linking CXX executable libraries/SVO/tests/test_svo_types
+[280/359] Linking CXX executable libraries/SVO/tests/test_sdf_recipes
+[281/359] Linking CXX executable libraries/SVO/tests/test_lod_ladder
+[282/359] Linking CXX executable libraries/SVO/tests/test_body_footprint_regime
+[283/359] Linking CXX executable libraries/SVO/tests/test_multi_body_renderer
+[284/359] Linking CXX executable libraries/SVO/tests/test_recipe_composition
+[285/359] Linking CXX executable libraries/SVO/tests/test_soa_sdf_serialize
+[286/359] Linking CXX executable libraries/SVO/tests/test_soa_mip_serialize
+[287/359] Linking CXX executable libraries/SVO/tests/test_tier_ref_table
+[288/359] Linking CXX executable libraries/SVO/tests/test_tier_crossing_construction
+[289/359] Linking CXX executable libraries/SVO/tests/test_tier_crossing_mirror_parity
+[290/359] Linking CXX executable libraries/SVO/tests/test_stored_sdf_march_mirror
+[291/359] Linking CXX executable libraries/SVO/tests/test_channel_format
+[292/359] Linking CXX executable libraries/SVO/tests/test_mip_sample_filter
+[293/359] Linking CXX executable libraries/SVO/tests/test_mip_sample_bake
+[294/359] Linking CXX executable libraries/SVO/tests/test_mip_aniso_pool
+[295/359] Linking CXX executable libraries/SVO/tests/test_light_tree
+[296/359] Linking CXX executable libraries/SVO/tests/test_reservoir_mirror
+[297/359] Linking CXX executable libraries/SVO/tests/test_hit_accumulation_mirror
+[298/359] Linking CXX executable libraries/SVO/tests/test_resolvable_level
+[299/359] Linking CXX executable libraries/SVO/tests/test_cell_footprint_regime
+[300/359] Linking CXX executable libraries/SVO/tests/test_frustum_cull
+[301/359] Linking CXX executable libraries/SVO/tests/test_tier_address
+[302/359] Linking CXX executable libraries/SVO/tests/test_tier_math
+[303/359] Linking CXX executable libraries/SVO/tests/test_tier_ref
+[304/359] Linking CXX executable libraries/SVO/tests/test_tier_direction
+[305/359] Linking CXX executable libraries/SVO/tests/test_tier_magnitude
+[306/359] Linking CXX executable libraries/SVO/tests/test_instance_sort
+[307/359] Linking CXX executable libraries/SVO/tests/test_residency_trigger
+[308/359] Linking CXX executable libraries/SVO/tests/test_occlusion_gate
+[309/359] Linking CXX executable libraries/SVO/tests/test_sdf_bake
+[310/359] Linking CXX executable libraries/SVO/tests/test_shell_derive
+[311/359] Linking CXX executable libraries/SVO/tests/test_recipe_codegen
+[312/359] Linking CXX executable libraries/SVO/tests/test_recipe_codegen_glsl
+[313/359] Linking CXX executable libraries/SVO/tests/test_recipe_parity_fixture_export
+[314/359] Linking CXX executable libraries/SVO/tests/test_recipe_glsl_numerical_parity
+[315/359] Linking CXX executable libraries/SVO/tests/test_recipe_kernel_glsl_roundtrip
+[316/359] Linking CXX executable libraries/SVO/tests/test_recipe_nested_invocation
+[317/359] Linking CXX executable libraries/SVO/tests/test_rayquery_feasibility
+[318/359] Linking CXX executable libraries/SVO/tests/test_recipe_declared_position_render
+[319/359] Linking CXX executable libraries/SVO/tests/test_uber_shader_splice
+[320/359] Linking CXX executable libraries/SVO/tests/test_recipe_bake
+[321/359] Linking CXX executable libraries/SVO/tests/test_recipe_bake_center
+[322/359] Linking CXX executable libraries/SVO/tests/test_recipe_eval_parity
+[323/359] Linking CXX executable libraries/SVO/tests/test_recipe_container_parity
+[324/359] Linking CXX executable libraries/SVO/tests/test_recipe_registry
+[325/359] Linking CXX executable libraries/SVO/tests/test_recipe_bounds
+[326/359] Linking CXX executable libraries/SVO/tests/test_recipe_interval_pruning
+[327/359] Linking CXX executable libraries/SVO/tests/test_recipe_occupancy
+[328/359] Linking CXX executable libraries/SVO/tests/test_recipe_manifest
+[329/359] Linking CXX executable libraries/SVO/tests/test_recipe_ingest
+[330/359] Linking CXX executable libraries/SVO/tests/test_recipe_boot_ingest
+[331/359] Linking CXX executable libraries/SVO/tests/test_recipe_pack_loader
+[332/359] Linking CXX executable libraries/SVO/tests/test_voxel_document_flatten
+[333/359] Linking CXX executable libraries/SVO/tests/test_octree_pool
+[334/359] Linking CXX executable libraries/SVO/tests/test_recipe_baker
+[335/359] Linking CXX executable libraries/SVO/tests/test_generation_cost_benchmark
+[336/359] Linking CXX executable libraries/SVO/tests/benchmark_materialization_simd
+[337/359] Linking CXX executable libraries/SVO/tests/test_recipe_simd_parity
+[338/359] Linking CXX executable libraries/SVO/tests/test_residency_default
+[339/359] Linking CXX executable libraries/SVO/tests/test_samplers
+[340/359] Linking CXX executable libraries/SVO/tests/test_octree_queries
+[341/359] Linking CXX executable libraries/SVO/tests/test_brick_view
+[342/359] Linking CXX executable libraries/SVO/tests/test_entity_brick_view
+[343/359] Linking CXX executable libraries/SVO/tests/test_ray_casting_comprehensive
+[344/359] Linking CXX executable libraries/SVO/tests/test_brick_creation
+[345/359] Linking CXX executable libraries/SVO/tests/test_attribute_registry_integration
+[346/359] Linking CXX executable libraries/SVO/tests/test_brick_traversal
+[347/359] Linking CXX executable libraries/SVO/tests/test_rebuild_hierarchy
+[348/359] Linking CXX executable libraries/SVO/tests/test_cornell_box
+[349/359] Linking CXX executable libraries/SVO/tests/test_lod
+[350/359] Linking CXX executable libraries/SVO/tests/test_shell_octree
+[351/359] Linking CXX executable libraries/SVO/tests/test_shell_octree_gpu
+[352/359] Linking CXX executable libraries/SVO/tests/test_gpu_parity
+[353/359] Linking CXX executable libraries/SVO/tests/cpu_castray_cmp
+[354/359] Linking CXX executable binaries/VIXEN
+[355/359] Building CXX object application/editor/CMakeFiles/vixen_editor.dir/source/EditorApplication.cpp.o
+[356/359] Linking CXX executable binaries/vixen_editor
+UT_JOB_DONE build gpuyield-post-wave-build exit=0 state=OK

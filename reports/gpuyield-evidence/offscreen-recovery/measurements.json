@@ -1,0 +1,27 @@
+{
+  "candidate/vixen.log": {
+    "frame_tile_gpu_total_ms": {
+      "samples": 7,
+      "mean": 88.07184,
+      "p50": 87.5768,
+      "p95": 90.21772,
+      "p99": 90.21772,
+      "max": 90.21772
+    },
+    "maximum_submission_per_frame_ms": {
+      "samples": 7,
+      "mean": 1.7616857142857143,
+      "p50": 1.61272,
+      "p95": 2.16648,
+      "p99": 2.16648,
+      "max": 2.16648
+    },
+    "submission_counts": [
+      64
+    ],
+    "budgets_ms": [
+      16.666666
+    ],
+    "budget_violations": 0
+  }
+}

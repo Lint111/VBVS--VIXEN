@@ -1,0 +1,184 @@
+{
+  "editor-concurrent/vixen-perf.csv": {
+    "whole_frame_gpu_span_ms": {
+      "samples": 492,
+      "mean": 86.40461605691057,
+      "p50": 85.7853,
+      "p95": 90.7869,
+      "p99": 92.3261,
+      "max": 96.4262
+    },
+    "esvo_traverse_shade_ms": {
+      "samples": 492,
+      "mean": 79.88336402439025,
+      "p50": 79.3756,
+      "p95": 83.548,
+      "p99": 85.0872,
+      "max": 89.1754
+    },
+    "direct_lighting_ms": {
+      "samples": 492,
+      "mean": 0.0004873170731707317,
+      "p50": 0.00048,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "spatial_reuse_ms": {
+      "samples": 492,
+      "mean": 0.15216317073170732,
+      "p50": 0.151,
+      "p95": 0.1624,
+      "p99": 0.1704,
+      "max": 0.18316
+    },
+    "probe_gather_ms": {
+      "samples": 492,
+      "mean": 0.00048723577235772355,
+      "p50": 0.00048,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.00064
+    },
+    "shadow_visibility_wave_ms": {
+      "samples": 492,
+      "mean": 4.9495737398373985,
+      "p50": 4.91748,
+      "p95": 5.4408,
+      "p99": 5.57112,
+      "max": 5.697
+    },
+    "shadow_ray_trace_ms": {
+      "samples": 492,
+      "mean": 0.00048634146341463414,
+      "p50": 0.00048,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.00064
+    },
+    "probe_apply_ms": {
+      "samples": 492,
+      "mean": 0.0004868292682926829,
+      "p50": 0.00048,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "render_target_blit_ms": {
+      "samples": 492,
+      "mean": 0.009701626016260163,
+      "p50": 0.00952,
+      "p95": 0.01096,
+      "p99": 0.0116,
+      "max": 0.03612
+    },
+    "ui_composite_render_ms": {
+      "samples": 492,
+      "mean": 0.04909967479674797,
+      "p50": 0.04848,
+      "p95": 0.05576,
+      "p99": 0.05732,
+      "max": 0.0592
+    }
+  },
+  "hud-profile/vixen-perf.csv": {
+    "whole_frame_gpu_span_ms": {
+      "samples": 77,
+      "mean": 193.3620909090909,
+      "p50": 192.112,
+      "p95": 199.642,
+      "p99": 251.972,
+      "max": 251.972
+    },
+    "esvo_traverse_shade_ms": {
+      "samples": 77,
+      "mean": 189.18557142857142,
+      "p50": 187.892,
+      "p95": 195.063,
+      "p99": 248.206,
+      "max": 248.206
+    },
+    "direct_lighting_ms": {
+      "samples": 77,
+      "mean": 0.0005231168831168831,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.00064,
+      "max": 0.00064
+    },
+    "spatial_reuse_ms": {
+      "samples": 77,
+      "mean": 0.14822857142857143,
+      "p50": 0.14684,
+      "p95": 0.15896,
+      "p99": 0.16072,
+      "max": 0.16072
+    },
+    "probe_gather_ms": {
+      "samples": 77,
+      "mean": 0.0005179220779220778,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "shadow_visibility_wave_ms": {
+      "samples": 77,
+      "mean": 2.6771054545454547,
+      "p50": 2.65512,
+      "p95": 2.83504,
+      "p99": 3.28368,
+      "max": 3.28368
+    },
+    "shadow_ray_trace_ms": {
+      "samples": 77,
+      "mean": 0.0005184415584415584,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "probe_apply_ms": {
+      "samples": 77,
+      "mean": 0.0005189610389610389,
+      "p50": 0.00052,
+      "p95": 0.00056,
+      "p99": 0.0006,
+      "max": 0.0006
+    },
+    "render_target_blit_ms": {
+      "samples": 77,
+      "mean": 0.009705974025974026,
+      "p50": 0.00972,
+      "p95": 0.01064,
+      "p99": 0.01092,
+      "max": 0.01092
+    },
+    "ui_composite_render_ms": {
+      "samples": 77,
+      "mean": 0.026923116883116882,
+      "p50": 0.027,
+      "p95": 0.02904,
+      "p99": 0.03108,
+      "max": 0.03108
+    }
+  },
+  "editor-concurrent/vixen.log": {
+    "render_loop_wall_seconds": 44.728000000002794
+  },
+  "fixtures/editor/run_editor_script.log": {
+    "render_loop_wall_seconds": 38.979999999995925
+  },
+  "fixtures/hud/run_hud_script.log": {
+    "render_loop_wall_seconds": 15.80399999999645
+  },
+  "hud-profile/vixen.log": {
+    "render_loop_wall_seconds": 16.964999999996508
+  },
+  "windowed/editor.log": {
+    "render_loop_wall_seconds": 16.034999999996217
+  },
+  "windowed/hud.log": {
+    "render_loop_wall_seconds": 17.831999999994878
+  }
+}

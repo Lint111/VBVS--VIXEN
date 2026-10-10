@@ -1,0 +1,20 @@
+[box:flow] gpuyield-canonical-shapes cpu=48% target=90% depth=2 free=0 baseline=1 granted=1 mode=dynamic
+[box:flow] gpuyield-canonical-shapes queued — need=1 tokens projected=59MB estimate=class samples=1307
+[box:flow] gpuyield-canonical-shapes cpu=30% target=90% admit
+[box:flow] gpuyield-canonical-shapes memory=admit avail=69633MB projected=59MB estimate=class samples=1307 reserved=22849MB total=80425MB reserve=4096MB disk=553390MB
+[box:flow] gpuyield-canonical-shapes granted tokens=3 mask=6,7
+[box:flow] gpuyield-canonical-shapes running on cores 6,7 (light)
+hand marker: 0 hits
+retired kind reference: 0 hits
+any entity container: 0 hits
+bespoke relation: 0 hits
+retired signature: 0 hits
+ordering hint: 0 hits
+second declaration channel: 0 hits
+row identity field: 0 hits
+minted abstraction: 0 hits
+substrate namespace: 0 hits
+baked member: 0 hits
+pipe review: 0 hits
+No Undertow runtime paths or schema/system declarations changed; runtime-throw and exemplar rules are inapplicable.
+UT_JOB_DONE light gpuyield-canonical-shapes exit=0 state=OK

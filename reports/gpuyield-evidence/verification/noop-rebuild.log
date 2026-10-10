@@ -1,0 +1,9 @@
+[box:flow] gpuyield-noop-rebuild cpu=12% target=90% depth=2 free=7 baseline=3 granted=1 mode=static
+[box:turn] gpuyield joins the line beside its queued gpuyield-post-wave-rendergraph-svo-suite: free=7 covers need=1 + line=3
+[box:flow] gpuyield-noop-rebuild cpu=14% target=90% admit
+[box:flow] gpuyield-noop-rebuild memory=admit avail=73512MB projected=11970MB estimate=class-max samples=977 reserved=4456MB total=80425MB reserve=4096MB disk=553236MB
+[box:flow] gpuyield-noop-rebuild granted tokens=0 mask=0,1
+[box:flow] gpuyield-noop-rebuild running on cores 0,1 (build)
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+UT_JOB_DONE build gpuyield-noop-rebuild exit=0 state=OK

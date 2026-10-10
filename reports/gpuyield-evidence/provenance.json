@@ -1,0 +1,25 @@
+{
+  "baseline_source_sha": "5da61a1897c40ae2f5b7affc1a44d594c4976d24",
+  "implementation_commit": "b4cacedf",
+  "tested_merged_source_sha": "a5cc7f3330ec888a929880a7467a888c04760235",
+  "merged_wave_sha": "742fddb6",
+  "kernel_pin": "c3fb3847979e3f9eef04783510c42b70d7058ae7",
+  "device": "Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics)",
+  "icd": "/home/liory/.cache/vixen/wsl-vulkan/dzn_icd.json",
+  "executable_sha256": {
+    "build/gpuyield/binaries/VIXEN.baseline": "d1592abcc04b604f3d74568ee31fc038fe2e77c3fe76426ddf729aeb77d6995a",
+    "build/gpuyield/binaries/vixen_editor.baseline": "741e0fe96b60e03f90ccbbbf9397dc71e1cb6bbc761731b4041aaad849c04e1e",
+    "build/gpuyield/binaries/VIXEN": "68457bffebe89f71fd34a6e4f0d957a3bba6142f4ba8c13241ad0bb86df4b892",
+    "build/gpuyield/binaries/vixen_editor": "69b6a6ac8289d30615eabee109a734fc0453bcd89b6a5502814d956b0d58f81d",
+    ".tmp/gpuyield/gpu-cadence-probe": "2ea03006e16d0a37b91a69aaecdffb45a94b96a6b9f44d934d3ec35d256b0393",
+    ".tmp/gpuyield/gpu-cadence-probe.spv": "057a9e8a09e92ecd4da8471cfe7a70c75bcf58a7eb5ed00ad4ce6db3dc6beb9f"
+  },
+  "final_verdict": "R477 PARTIAL: required interactive budget failure unclassified; merged cache launcher omitted",
+  "cpu_reservations": {
+    "original_and_premerge_runs": 2,
+    "merged_full_suite_and_offscreen_fixtures": 2,
+    "merged_completed_windowed_probe": 4,
+    "merged_failed_matched_probe": 2,
+    "offscreen_diagnostic_replays": 2
+  }
+}

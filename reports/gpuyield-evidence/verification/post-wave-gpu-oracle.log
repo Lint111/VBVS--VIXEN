@@ -1,0 +1,1 @@
+[GPUYIELD_TILES] device=Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics) extent=500x500 groups=8 submissions=64 budget_ms=16.666666 total_gpu_ms=87.511560 p50_ms=1.354920 p95_ms=1.525800 p99_ms=1.949640 max_ms=1.949640 identity=rgba,hit-record,sdf-trace

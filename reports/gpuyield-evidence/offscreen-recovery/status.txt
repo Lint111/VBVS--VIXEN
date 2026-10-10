@@ -1,0 +1,2 @@
+baseline failed with status 1
+candidate failed with status 1

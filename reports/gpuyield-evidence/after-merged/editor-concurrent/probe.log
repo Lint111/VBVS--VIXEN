@@ -1,0 +1,3 @@
+WARNING: dzn is not a conformant Vulkan implementation, testing use only.
+Dropped Escape call with ulEscapeCode : 0x03007703
+device=Microsoft Direct3D12 (AMD Radeon(TM) 8060S Graphics) period_ns=16666666

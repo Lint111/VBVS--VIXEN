@@ -1,0 +1,59 @@
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=45% target=90% depth=1 free=0 baseline=1 granted=1 mode=static
+[box:turn] gpuyield yielding to its queued gpuyield-offscreen-baseline-candidate-recovery (fair interleaving)
+[box:turn] gpuyield — my turn now
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=45% target=90% depth=1 free=1 baseline=1 granted=1 mode=static
+[box:flow] gpuyield-real-failed-producer-budget-gate queued — need=1 tokens projected=56MB estimate=class samples=1304
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=41% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68017MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545755MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=39% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68287MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545759MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=40% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68488MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545758MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=45% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68482MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545758MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=57% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68255MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545758MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=47% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68095MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545758MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=46% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=68084MB projected=56MB estimate=class samples=1304 reserved=7955MB total=80425MB reserve=4096MB disk=545758MB
+[box:flow] gpuyield-real-failed-producer-budget-gate cpu=44% target=90% admit
+[box:flow] gpuyield-real-failed-producer-budget-gate memory=admit avail=67897MB projected=56MB estimate=class samples=1304 reserved=7898MB total=80425MB reserve=4096MB disk=545758MB
+[box:flow] gpuyield-real-failed-producer-budget-gate granted tokens=0 mask=0,1
+[box:flow] gpuyield-real-failed-producer-budget-gate running on cores 0,1 (light)
+Running main() from ../../.tmp/fetch/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from EditorToggleUndoCapture
+[ RUN      ] EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget
+../../VIXEN/libraries/RenderGraph/tests/Nodes/test_editor_toggle_undo_capture.cpp:424: Failure
+Expected: (*maximum) <= (*budget), actual: 1103.538086 vs 16.666665999999999
+[16:34:15.648] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=1188.768766 max_submission_ms=1103.538086 budget_ms=16.666666
+
+[  FAILED  ] EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget (3 ms)
+[----------] 1 test from EditorToggleUndoCapture (3 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (3 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget
+
+ 1 FAILED TEST
+UT_JOB_FAILED light gpuyield-real-failed-producer-budget-gate exit=1 log=/home/liory/.local/state/undertow/undertow-box-logs/1791640887-light-gpuyield-real-failed-producer-budget-gate.log state=PAYLOAD_FAIL
+---- last 12 output lines ----
+  | [16:34:15.648] [test_dispatch] [INFO] [GPUYIELD] node=test_dispatch submissions=64 total_gpu_ms=1188.768766 max_submission_ms=1103.538086 budget_ms=16.666666
+  | 
+  | [  FAILED  ] EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget (3 ms)
+  | [----------] 1 test from EditorToggleUndoCapture (3 ms total)
+  | 
+  | [----------] Global test environment tear-down
+  | [==========] 1 test from 1 test suite ran. (3 ms total)
+  | [  PASSED  ] 0 tests.
+  | [  FAILED  ] 1 test, listed below:
+  | [  FAILED  ] EditorToggleUndoCapture.GpuSubmissionsRespectDeclaredBudget
+  | 
+  |  1 FAILED TEST
+------------------------------
+UT_JOB_DONE light gpuyield-real-failed-producer-budget-gate exit=1 state=PAYLOAD_FAIL
