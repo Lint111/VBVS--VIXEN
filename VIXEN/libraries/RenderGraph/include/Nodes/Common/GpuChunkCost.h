@@ -35,9 +35,12 @@ public:
         // A measured fixed-latency floor cannot be repaired by splitting work.
         // Retain the measured launch scale instead of creating ever more commands;
         // the observed submission gate still reports an unattainable budget.
-        const double available = budgetNs * 0.95 - fixedNs_;
-        const double edge = available > 0 ? std::sqrt(available / unitNs_)
-                                         : std::sqrt(double(anchorUnits_));
+        // The full-tile observation already includes command latency. Extra
+        // fixed allowance protects clipped commands and batch packing; subtracting
+        // it again for subdivision makes a latency spike create more submissions.
+        const double edge = fixedNs_ < budgetNs * 0.95
+            ? std::sqrt(budgetNs * 0.95 / unitNs_)
+            : std::sqrt(double(anchorUnits_));
         return std::max(1u, static_cast<uint32_t>(std::min(double(maximum), edge)));
     }
 private:

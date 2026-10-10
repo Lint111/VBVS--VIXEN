@@ -20,6 +20,12 @@
 #include <cstring>
 #include <limits>
 #include <thread>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 // Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
 #define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
@@ -31,6 +37,25 @@
 namespace Vixen::RenderGraph {
 
 namespace {
+void PaceFrameUntil(std::chrono::steady_clock::time_point deadline) {
+#ifdef _WIN32
+    struct Timer {
+        HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr,
+            CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_MODIFY_STATE | SYNCHRONIZE);
+        ~Timer() { if (handle) CloseHandle(handle); }
+    };
+    thread_local Timer timer;
+    const auto remaining = deadline - std::chrono::steady_clock::now();
+    if (remaining <= std::chrono::steady_clock::duration::zero()) return;
+    if (timer.handle) {
+        LARGE_INTEGER due{};
+        due.QuadPart = -(std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count() + 99) / 100;
+        if (SetWaitableTimer(timer.handle, &due, 0, nullptr, nullptr, FALSE) &&
+            WaitForSingleObject(timer.handle, INFINITE) == WAIT_OBJECT_0) return;
+    }
+#endif
+    std::this_thread::sleep_until(deadline);
+}
 uint64_t HashExecutionNodeNames(const std::vector<NodeInstance*>& executionOrder) {
     constexpr uint64_t offsetBasis = 14695981039346656037ULL;
     constexpr uint64_t prime = 1099511628211ULL;
@@ -1272,7 +1297,7 @@ VkResult RenderGraph::RenderFrame() {
             capacityTracker_.GetConfig().gpuTimeBudgetNs);
         const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
         const auto paceStart = std::chrono::steady_clock::now();
-        std::this_thread::sleep_until(frameExecuteStart + frameBudget);
+        PaceFrameUntil(frameExecuteStart + frameBudget);
         if (traceYield) {
             const auto paceEnd = std::chrono::steady_clock::now();
             const auto ticks = [](auto time) {

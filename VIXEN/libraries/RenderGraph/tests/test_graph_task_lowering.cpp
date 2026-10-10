@@ -557,3 +557,10 @@ TEST(GpuChunkCost, FixedLatencyFloorRetainsLaunchScaleAndUnknownReservesBudget) 
     EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
     EXPECT_GT(cost.Estimate(1), 2'000'000u);
 }
+
+TEST(GpuChunkCost, NearBudgetFixedLatencyDoesNotCollapseIntoThousandsOfCommands) {
+    GpuChunkCost cost;
+    cost.Observe(49, 49, 1'200'000);
+    cost.Observe(1, 49, 1'700'000);
+    EXPECT_GE(cost.Edge(2'000'000, 63, 7), 7u);
+}

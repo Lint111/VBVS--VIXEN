@@ -452,16 +452,6 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
 }
 
 std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData, bool leaveImageInGeneral, bool writesNoImage) {
-    // Begin command buffer recording
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;
-
-    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
-    }
-
     // Get inputs
     VkPipeline pipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
@@ -524,6 +514,14 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     if (count > 1)
         recordedBuffers.insert(recordedBuffers.end(), extraBuffers.begin(), extraBuffers.begin() + (count - 1));
     if (tileQueryCapacities_[frameIndex] < count) {
+        if (tileQueries_[frameIndex]) {
+            // Release recorded pool references before replacing their backing storage.
+            if (vkResetCommandBuffer(cmdBuffer, 0) != VK_SUCCESS)
+                throw std::runtime_error("ComputeDispatchNode: query-growth command reset failed");
+            for (VkCommandBuffer buffer : extraBuffers)
+                if (vkResetCommandBuffer(buffer, 0) != VK_SUCCESS)
+                    throw std::runtime_error("ComputeDispatchNode: query-growth tile reset failed");
+        }
         tileQueryCapacities_[frameIndex] = std::max(count, tileQueryCapacities_[frameIndex] * 2u);
         tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(
             vulkanDevice, 1, tileQueryCapacities_[frameIndex] * 4);
@@ -532,6 +530,16 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     tileBudgets_[frameIndex] = budgetNs;
     tileWorkGroupCounts_[frameIndex].clear();
     auto& tileQuery = *tileQueries_[frameIndex];
+    // Begin command buffer recording
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+
+    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
+    }
+
     tileQuery.ResetQueries(cmdBuffer, 0);
     tileQuery.WriteTimestamp(cmdBuffer, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
 
