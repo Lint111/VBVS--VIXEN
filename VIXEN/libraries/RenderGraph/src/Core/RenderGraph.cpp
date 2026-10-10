@@ -1270,7 +1270,20 @@ VkResult RenderGraph::RenderFrame() {
     if (frameResult == VK_SUCCESS && !frameAborted_) {
         const auto frameBudget = std::chrono::nanoseconds(
             capacityTracker_.GetConfig().gpuTimeBudgetNs);
+        const bool traceYield = std::getenv("VIXEN_GPUYIELD_TRACE") != nullptr;
+        const auto paceStart = std::chrono::steady_clock::now();
         std::this_thread::sleep_until(frameExecuteStart + frameBudget);
+        if (traceYield) {
+            const auto paceEnd = std::chrono::steady_clock::now();
+            const auto ticks = [](auto time) {
+                return static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    time.time_since_epoch()).count());
+            };
+            std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-execute-core start_ns=%lld end_ns=%lld result=0\n",
+                ticks(frameExecuteStart), ticks(paceStart));
+            std::fprintf(stderr, "[GPUYIELD_HOST] operation=frame-pace start_ns=%lld end_ns=%lld result=0\n",
+                ticks(paceStart), ticks(paceEnd));
+        }
     }
 
     return frameResult;  // Phase 2a: VK_SUCCESS, or the failure recorded if a node's Execute threw
