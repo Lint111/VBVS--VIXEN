@@ -570,7 +570,29 @@ TEST(GpuChunkCost, FixedLatencyDoesNotHideAnOverBudgetFullTile) {
     cost.Observe(49, 49, 1'000'000);
     cost.Observe(1, 49, 3'000'000);
     cost.Observe(49, 49, 4'000'000);
-    EXPECT_LT(cost.Edge(2'000'000, 63, 7), 7u);
-    EXPECT_GE(cost.Edge(2'000'000, 63, 7), 4u);
+    EXPECT_LT(cost.Edge(2'000'000, 63, 3), 7u);
+    EXPECT_GE(cost.Edge(2'000'000, 63, 3), 4u);
     EXPECT_GE(cost.Estimate(49), 4'400'000u);
+}
+
+TEST(GpuChunkCost, SmallerFullTilesUpdateThroughputAfterLargerCalibration) {
+    // Native 1080p: the anchor was set by a 134-edge tile; later 121-edge full
+    // tiles ran 2.6 ms and were filed as latency, so the launch never shrank.
+    GpuChunkCost cost;
+    cost.Observe(64, 64, 1'500'000);
+    cost.Observe(49, 49, 4'000'000);
+    EXPECT_GE(cost.Estimate(49), 4'400'000u);
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+    cost.Observe(16, 16, 1'000'000);
+    EXPECT_LE(cost.Edge(2'000'000, 63, 3), 4u);
+}
+
+TEST(GpuChunkCost, EdgeNeverSubdividesBelowTheColdLaunch) {
+    GpuChunkCost cost;
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
+    cost.Observe(49, 49, 1'000'000);
+    cost.Observe(49, 49, 50'000'000);
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
+    EXPECT_EQ(cost.Edge(2'000'000, 5, 7), 5u);
+    EXPECT_GE(cost.Estimate(49), 55'000'000u);
 }

@@ -17,7 +17,9 @@ public:
             fixedNs_ += std::max(0.0, unitNs_ - next) * anchorUnits_;
             unitNs_ = next;
             anchorUnits_ = units;
-        } else if (units == anchorUnits_) {
+        } else if (units == anchorUnits_ || units == fullTileUnits) {
+            // A full tile at any launch scale measures throughput; a smaller full
+            // tile that runs over budget must not be filed as fixed latency.
             unitNs_ = std::max(unitNs_, upper / units);
         } else {
             fixedNs_ = std::max(fixedNs_, upper - unitNs_ * units);
@@ -31,7 +33,12 @@ public:
         return anchorUnits_ ? static_cast<uint64_t>(std::ceil(fixedNs_ + unitNs_ * units)) : 0;
     }
     uint32_t Edge(uint64_t budgetNs, uint32_t maximum, uint32_t cold) const {
-        if (!anchorUnits_) return std::max(1u, std::min(maximum, cold));
+        // Never subdivide below the cold launch: every command carries a launch
+        // floor, so below that scale more commands only add floors (Dozen collapsed
+        // to 3,969 commands and lost the device). The submission gate still
+        // reports any shortfall at the floor.
+        const uint32_t floor = std::max(1u, std::min(maximum, cold));
+        if (!anchorUnits_) return floor;
         // A measured fixed-latency floor cannot be repaired by splitting work.
         // Retain the measured launch scale instead of creating ever more commands;
         // the observed submission gate still reports an unattainable budget.
@@ -43,7 +50,7 @@ public:
         const double edge = fixedNs_ < budgetNs * 0.95
             ? throughputEdge
             : std::min(throughputEdge, std::sqrt(double(anchorUnits_)));
-        return std::max(1u, static_cast<uint32_t>(std::min(double(maximum), edge)));
+        return std::max(floor, static_cast<uint32_t>(std::min(double(maximum), edge)));
     }
 private:
     uint64_t anchorUnits_ = 0;
