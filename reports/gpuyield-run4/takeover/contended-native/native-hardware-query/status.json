@@ -1,0 +1,12 @@
+{
+    "exit":  0,
+    "binary":  "C:\\vixen-native\\gpuyield\\build\\gpuyield-native\\binaries\\vixen_editor.exe",
+    "wall_seconds":  9.9014037999999989,
+    "binary_sha256":  "B1B7D41F1F2C119821E26E5164766188A30EDA1020B273FB17B07960922F166A",
+    "hardware_query":  true,
+    "width":  500,
+    "scale":  1,
+    "frames":  500,
+    "pid":  26956,
+    "height":  500
+}

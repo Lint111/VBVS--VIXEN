@@ -1,0 +1,141 @@
+{
+  "queue_pid": 3246198,
+  "reason": "Prevent concurrent relinking of binaries used by the active cache gate",
+  "processes": [
+    {
+      "pid": 3246198,
+      "parent": 3246149,
+      "comm": "bash"
+    },
+    {
+      "pid": 3247473,
+      "parent": 3246198,
+      "comm": "bash"
+    },
+    {
+      "pid": 3247528,
+      "parent": 3246198,
+      "comm": "bash"
+    },
+    {
+      "pid": 3284232,
+      "parent": 3246198,
+      "comm": "sleep"
+    },
+    {
+      "pid": 3247474,
+      "parent": 3247473,
+      "comm": "tee"
+    },
+    {
+      "pid": 3247476,
+      "parent": 3247473,
+      "comm": "tee"
+    },
+    {
+      "pid": 3247500,
+      "parent": 3247473,
+      "comm": "cmake"
+    },
+    {
+      "pid": 3279548,
+      "parent": 3247528,
+      "comm": "sleep"
+    },
+    {
+      "pid": 3247503,
+      "parent": 3247500,
+      "comm": "ninja"
+    },
+    {
+      "pid": 3247663,
+      "parent": 3247503,
+      "comm": "sh"
+    },
+    {
+      "pid": 3247667,
+      "parent": 3247503,
+      "comm": "sh"
+    },
+    {
+      "pid": 3284032,
+      "parent": 3247503,
+      "comm": "sh"
+    },
+    {
+      "pid": 3284052,
+      "parent": 3247503,
+      "comm": "sh"
+    },
+    {
+      "pid": 3247670,
+      "parent": 3247663,
+      "comm": "cmake"
+    },
+    {
+      "pid": 3247672,
+      "parent": 3247667,
+      "comm": "cmake"
+    },
+    {
+      "pid": 3284033,
+      "parent": 3284032,
+      "comm": "g++"
+    },
+    {
+      "pid": 3284053,
+      "parent": 3284052,
+      "comm": "g++"
+    },
+    {
+      "pid": 3247676,
+      "parent": 3247670,
+      "comm": "ccache"
+    },
+    {
+      "pid": 3247678,
+      "parent": 3247672,
+      "comm": "ccache"
+    },
+    {
+      "pid": 3284036,
+      "parent": 3284033,
+      "comm": "collect2"
+    },
+    {
+      "pid": 3284058,
+      "parent": 3284053,
+      "comm": "collect2"
+    },
+    {
+      "pid": 3247957,
+      "parent": 3247676,
+      "comm": "g++"
+    },
+    {
+      "pid": 3247979,
+      "parent": 3247678,
+      "comm": "g++"
+    },
+    {
+      "pid": 3284039,
+      "parent": 3284036,
+      "comm": "ld"
+    },
+    {
+      "pid": 3284061,
+      "parent": 3284058,
+      "comm": "ld"
+    },
+    {
+      "pid": 3247958,
+      "parent": 3247957,
+      "comm": "cc1plus"
+    },
+    {
+      "pid": 3247981,
+      "parent": 3247979,
+      "comm": "cc1plus"
+    }
+  ]
+}
