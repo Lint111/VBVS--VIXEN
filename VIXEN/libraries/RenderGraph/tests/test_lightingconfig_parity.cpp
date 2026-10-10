@@ -26,7 +26,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
-#include <iterator>
 
 using Vixen::Gpu::Light;
 using Vixen::Gpu::LightingConfig;
@@ -50,38 +49,40 @@ TEST(LightingConfigParity, LightStd430Layout) {
 }
 
 // ---------------------------------------------------------------------------
-// LightingConfig keeps the 32-byte Light stride and the parallel purpose
-// array. Its capacity is declared by the schema, never mirrored in this test.
+// LightingConfig (std430, 208 bytes): lightCount@0, ambientIntensity@4,
+// lights[4]@16, per-light spill-purpose scales@144, cel settings@160.
 // ---------------------------------------------------------------------------
 
 TEST(LightingConfigParity, LightingConfigStd430Layout) {
-    constexpr size_t count = std::extent_v<decltype(LightingConfig::lights)>;
-    constexpr size_t purposeOffset = 16u + count * sizeof(Light);
-    constexpr size_t settingsOffset = purposeOffset + count * sizeof(float);
-    EXPECT_EQ(sizeof(LightingConfig), settingsOffset + 48u);
+    EXPECT_EQ(sizeof(LightingConfig), 208u) << "LightingConfig std430 size drifted from the documented 208 B";
     EXPECT_EQ(offsetof(LightingConfig, lightCount), 0u);
     EXPECT_EQ(offsetof(LightingConfig, ambientIntensity), 4u);
-    EXPECT_EQ(offsetof(LightingConfig, lights), 16u);
-    EXPECT_EQ(offsetof(LightingConfig, celSpillPurposeScales), purposeOffset);
-    EXPECT_EQ(offsetof(LightingConfig, shadingMode), settingsOffset);
-    EXPECT_EQ(offsetof(LightingConfig, celBandCount), settingsOffset + 4u);
-    EXPECT_EQ(offsetof(LightingConfig, celShadowThreshold), settingsOffset + 8u);
-    EXPECT_EQ(offsetof(LightingConfig, celLitThreshold), settingsOffset + 12u);
-    EXPECT_EQ(offsetof(LightingConfig, celRampSoftness), settingsOffset + 16u);
-    EXPECT_EQ(offsetof(LightingConfig, celLitHueShiftDegrees), settingsOffset + 20u);
-    EXPECT_EQ(offsetof(LightingConfig, celShadowHueShiftDegrees), settingsOffset + 24u);
-    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffStart), settingsOffset + 28u);
-    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffEnd), settingsOffset + 32u);
-    EXPECT_EQ(offsetof(LightingConfig, celLightSpillScale), settingsOffset + 36u);
-    EXPECT_EQ(offsetof(LightingConfig, exposureCompensationEV), settingsOffset + 40u);
+    EXPECT_EQ(offsetof(LightingConfig, lights), 16u)
+        << "lights[] must sit at offset 16 (std430 16-byte alignment of the nested Light struct)";
+    EXPECT_EQ(offsetof(LightingConfig, celSpillPurposeScales), 144u);
+    EXPECT_EQ(offsetof(LightingConfig, shadingMode), 160u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandCount), 164u);
+    EXPECT_EQ(offsetof(LightingConfig, celShadowThreshold), 168u);
+    EXPECT_EQ(offsetof(LightingConfig, celLitThreshold), 172u);
+    EXPECT_EQ(offsetof(LightingConfig, celRampSoftness), 176u);
+    EXPECT_EQ(offsetof(LightingConfig, celLitHueShiftDegrees), 180u);
+    EXPECT_EQ(offsetof(LightingConfig, celShadowHueShiftDegrees), 184u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffStart), 188u);
+    EXPECT_EQ(offsetof(LightingConfig, celBandFalloffEnd), 192u);
+    EXPECT_EQ(offsetof(LightingConfig, celLightSpillScale), 196u);
+    EXPECT_EQ(offsetof(LightingConfig, exposureCompensationEV), 200u);
 }
 
 TEST(LightingConfigParity, LightsArrayStridesAtExactLightSize) {
+    // Each element of lights[kMaxLightsInc0] must stride at exactly sizeof(Light)
+    // with no inter-element padding (mirrors the OctreeConfig channels[] contract
+    // and TierRef's array-stride proof).
     LightingConfig cfg{};
     const auto* p0 = reinterpret_cast<const uint8_t*>(&cfg.lights[0]);
     const auto* p1 = reinterpret_cast<const uint8_t*>(&cfg.lights[1]);
     EXPECT_EQ(static_cast<std::size_t>(p1 - p0), sizeof(Light));
-    EXPECT_EQ(std::size(cfg.lights), std::size(cfg.celSpillPurposeScales));
+    EXPECT_EQ(std::extent<decltype(cfg.lights)>::value, 4u)
+        << "kMaxLightsInc0 must stay 4 — update this test deliberately if the cap changes";
 }
 
 TEST(LightingConfigParity, IsTriviallyCopyableStandardLayout) {

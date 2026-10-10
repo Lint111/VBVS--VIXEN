@@ -23,7 +23,7 @@
 //         shade resolves pixel→instance→recipe through it).
 //   [1] = WorldHit.emission (written by the march — NEVER touched here).
 //   [2] = shared word; this wave read-modify-writes ONLY the fields it owns.
-//         Bits 0..3 and 16..27 = analytic-light visibility (light i
+//         Bits 0..3 = analytic-light visibility (bit i = light i
 //         unoccluded; all-ones for miss pixels / disabled shadows / lights
 //         past lightCount — exact-math-safe: the shade pass only consumes a
 //         bit when NdotL>0 for that light, mirroring the merged shader's own
@@ -107,8 +107,8 @@ uint waveSlot() { return gl_GlobalInvocationID.x; }
 // own compiled variant, running post-SpatialReuseGather: derives the combined
 // reservoir's chosen-sample shadow ray from (combined reservoir + HitRecord),
 // traces it, and answers _pad0[2] BIT 4 — the analytic phase (the default
-// variant, bits 0..3 and 16..27) already ran earlier in the frame and is
-// preserved by RMW here. Dispatched ONLY when the reservoir path is enabled (same CPU gate
+// variant, bits 0..3) already ran earlier in the frame and is preserved by
+// RMW here. Dispatched ONLY when the reservoir path is enabled (same CPU gate
 // as the gather). Trace formula is VERBATIM the pre-split inline shade's
 // (origin + biasEpsilon along the normal, tmax = the actual light distance —
 // NOT maxShadowDistance) so the answer is bit-equal to what the merged shader
@@ -182,7 +182,7 @@ void main() {
     }
 }
 
-#else  // the ANALYTIC phase (default variant) — bits 0..3 and 16..27
+#else  // the ANALYTIC phase (default variant) — bits 0..3
 
 
 void main() {
@@ -229,8 +229,7 @@ void main() {
             if (tileIdx < tileWords.length() && tileWords[tileIdx] == 0u) {
                 incrPolicyStencilTileSkip();
                 uint beforeWord = hitRecords[slot]._pad0[2];
-                uint afterWord = (beforeWord & ~kAnalyticLightVisibilityFieldMask) |
-                                 kAnalyticLightVisibilityFieldMask;
+                uint afterWord = (beforeWord & ~0xFu) | 0xFu;
                 hitRecords[slot]._pad0[2] = afterWord;
 #ifdef VIXEN_POLICY_STENCIL
                 recordPolicyStencilAnalytic(beforeWord, afterWord);
@@ -246,7 +245,7 @@ void main() {
     // no-trace path), lights past lightCount, and NdotL<=0 lights (whose bit
     // is never consumed — the shade pass gates on NdotL first, exactly as the
     // merged shader gated before tracing).
-    uint visBits = kAnalyticLightVisibilityFieldMask;
+    uint visBits = 0xFFFFFFFFu;
 
     uint flags = hitRecords[slot].flags;
 
@@ -263,10 +262,8 @@ void main() {
         vec3 worldNormal = hitRecords[slot].worldNormal;
         vec3 shadowOrigin = worldPos + worldNormal * shadowConfig.biasEpsilon;
 
-        uint lightCount = min(lightingConfig.lightCount, uint(lightingConfig.lights.length()));
-        for (uint i = 0u; i < lightCount; ++i) {
+        for (uint i = 0u; i < lightingConfig.lightCount; ++i) {
             Light light = lightingConfig.lights[i];
-            if (max(max(light.radiance.r, light.radiance.g), light.radiance.b) <= 0.0) continue;
             float distanceToLight;
             vec3 lightDir = lightDirectionAt(light, worldPos, distanceToLight);
             float attenuation = lightRangeAttenuation(light, distanceToLight);
@@ -285,7 +282,7 @@ void main() {
                 : TraceWorldShadow(shadowOrigin, lightDir, 0.0, maxShadowDistance);
             recordCompositionShadowWave(
                 1u, g_lastShadowCompositionRegime, g_lastShadowCompositionSourceMask);
-            if (occluded) visBits &= ~analyticLightVisibilityBit(i);
+            if (occluded) visBits &= ~(1u << i);
         }
     }
 
@@ -294,8 +291,7 @@ void main() {
     // primary policy stencil. The march re-baselines the full word each frame;
     // this phase updates only its analytic-light field.
     uint beforeWord = hitRecords[slot]._pad0[2];
-    uint afterWord = (beforeWord & ~kAnalyticLightVisibilityFieldMask) |
-                     (visBits & kAnalyticLightVisibilityFieldMask);
+    uint afterWord = (beforeWord & ~0xFu) | (visBits & 0xFu);
     hitRecords[slot]._pad0[2] = afterWord;
 #ifdef VIXEN_POLICY_STENCIL
     recordPolicyStencilAnalytic(beforeWord, afterWord);

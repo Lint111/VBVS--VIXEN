@@ -10,7 +10,7 @@ using Yeroket.Util.KernelFramework;
 // std430 offsets (see LightingConfig.g.h for the emitted static_asserts):
 // Light keeps its original 32-byte stride so Lambert+GGX addresses every
 // existing light exactly as before. LightingConfig stores the per-light cel
-// spill-purpose scales after the lights array, then cel settings.
+// spill-purpose scales after the lights array at byte 144, then cel settings.
 [GpuStruct]
 public struct Light
 {
@@ -24,9 +24,7 @@ public struct Light
 // variable-length array — Inc0 scope is a small fixed light set.
 public static class LightingConfigLimits
 {
-    // Shared analytic sources, including individual practical emitters. HitRecord
-    // reserves bits 0..3 and 16..27 for these 16 answers; policy/ReSTIR stay intact.
-    public const int kMaxLightsInc0 = 16;
+    public const int kMaxLightsInc0 = 4;
 }
 
 [GpuStruct]

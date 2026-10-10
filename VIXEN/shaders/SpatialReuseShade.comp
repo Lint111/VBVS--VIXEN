@@ -500,8 +500,7 @@ void CompositeMiningBeams(inout vec4 outputRadiance, vec3 rayOrigin, vec3 rayDir
 // Sampled Lighting Inc1 M4 -> DirectLighting.comp M1 -> here M5)
 // ============================================================================
 // W1b: takes the pixel's wave-computed visibility bitmask (HitRecord._pad0[2]
-// bits 0..3 and 16..27, indexed by analyticLightVisibilityBit — [0] stays
-// the march's instIdx)
+// bits 0..3, bit i = light i unoccluded — [0] stays the march's instIdx)
 // instead of tracing inline — the derivation, the
 // NdotL-before-trace gate, and shadowConfig semantics all live in
 // ShadowVisibilityWave.comp now, mirroring this function's own original order
@@ -535,7 +534,7 @@ vec3 computeLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, vec3 ray
 
         float shadowFactor = 1.0;
         if (shadowConfig.enabled != 0u) {
-            shadowFactor = (visBits & analyticLightVisibilityBit(i)) != 0u ? 1.0 : 0.0;
+            shadowFactor = ((visBits >> i) & 1u) != 0u ? 1.0 : 0.0;
         }
 
         Lo += evalBRDF(color, roughness, normal, viewDir, lightDir) * light.radiance *
@@ -612,7 +611,7 @@ vec3 computeCelLightingWithShadows(vec3 color, vec3 normal, vec3 worldPos, Light
 
         float shadowFactor = 1.0;
         if (shadowConfig.enabled != 0u) {
-            shadowFactor = (visBits & analyticLightVisibilityBit(i)) != 0u ? 1.0 : 0.0;
+            shadowFactor = ((visBits >> i) & 1u) != 0u ? 1.0 : 0.0;
         }
         if (shadowFactor <= 0.0) continue;
 
@@ -784,8 +783,8 @@ void main() {
                 float shadowFactor = 1.0;
                 if (shadowConfig.enabled != 0u) {
                     // W1b/W2 seam: the reservoir ray's answer arrives via the
-                    // wave in HitRecord._pad0[2] BIT 4 (bits 0..3 and 16..27
-                    // are the analytic-light mask; see HitRecord.glsl's ledger) —
+                    // wave in HitRecord._pad0[2] BIT 4 (bits 0..3 are the
+                    // analytic-light bitmask; see HitRecord.glsl's ledger) —
                     // the ray itself is derivable from the combined reservoir
                     // + this record, so no inline trace and no request buffer.
                     // ⚠ Until the wave's reservoir section lands (W2's seam
