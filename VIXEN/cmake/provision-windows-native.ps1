@@ -253,6 +253,20 @@ function Write-Inventory($Inventory) {
     }
 }
 
+# Windows Installer (msiexec runs as SYSTEM) cannot open a package on the \\wsl.localhost share
+# (error 1620), and installers launched from a UNC path can be blocked. Stage any installer that lives
+# on a UNC path into a local folder before running it; the project cache stays the source.
+function Get-LocalInstaller([string]$Path) {
+    if (-not $Path.StartsWith('\\')) { return $Path }
+    $leaf = Split-Path -Leaf (Split-Path -Parent $Path)
+    $localDir = Join-Path $env:ProgramData (Join-Path 'vixen-provision' $leaf)
+    New-Item -ItemType Directory -Path $localDir -Force | Out-Null
+    $local = Join-Path $localDir (Split-Path -Leaf $Path)
+    Copy-Item -LiteralPath $Path -Destination $local -Force
+    Write-Step "Staged installer locally: $local"
+    return $local
+}
+
 function Get-WingetInstaller([string]$Id, [string]$Version, [string]$Extension) {
     $winget = Get-ToolCommand 'winget.exe'
     if (-not $winget) { throw 'winget.exe is unavailable; install the package through its official installer before provisioning.' }
@@ -261,14 +275,14 @@ function Get-WingetInstaller([string]$Id, [string]$Version, [string]$Extension) 
     $cached = Get-ChildItem -Path $packageDir -Recurse -File -Filter "*$Extension" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cached) {
         Write-Step "Using cached $Id $Version installer: $($cached.FullName)"
-        return $cached.FullName
+        return (Get-LocalInstaller $cached.FullName)
     }
     Invoke-Native $winget @('download', '--exact', '--id', $Id, '--version', $Version,
         '--architecture', 'x64', '--download-directory', $packageDir,
         '--accept-source-agreements', '--skip-dependencies')
     $installer = Get-ChildItem -Path $packageDir -Recurse -File -Filter "*$Extension" | Select-Object -First 1
     if (-not $installer) { throw "winget did not cache an $Extension installer for $Id $Version in $packageDir" }
-    return $installer.FullName
+    return (Get-LocalInstaller $installer.FullName)
 }
 
 function Install-Python($Inventory) {
@@ -362,6 +376,7 @@ function Install-Vulkan($Inventory) {
         }
     }
     if (-not (Require-Administrator "Vulkan SDK $VulkanVersion")) { return $false }
+    $installer = Get-LocalInstaller $installer
     $sdkRoot = "${env:SystemDrive}\VulkanSDK\$VulkanVersion"
     Invoke-Native $installer @('--root', $sdkRoot, '--accept-licenses', '--default-answer', '--confirm-command', 'install')
     Set-Content -Path (Join-Path $ToolRoot 'vulkan-sdk-root.txt') -Value $sdkRoot -Encoding ascii
