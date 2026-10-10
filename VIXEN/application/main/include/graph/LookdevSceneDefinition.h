@@ -35,6 +35,8 @@ enum class Material : uint8_t {
     Water,
     Figure,
     Lamp,
+    Window,
+    Worklight,
     Count,
 };
 
@@ -62,6 +64,9 @@ inline constexpr int kResolution = 64;
 inline constexpr int kBrickDepth = 3;
 inline constexpr float kWorldSpan = 10.0f;
 inline constexpr glm::vec3 kFloodlightGridPosition{39.0f, 36.0f, 25.0f};
+inline constexpr glm::vec3 kNightFloodlightGridPosition{40.6f, 36.0f, 32.0f};
+inline constexpr glm::vec3 kWindowLightGridPosition{32.0f, 37.0f, 24.75f};
+inline constexpr glm::vec3 kWorklightGridPosition{32.0f, 47.3f, 32.0f};
 
 inline const std::array<LightingPreset, 4>& LightingPresets() {
     // Directions point from the scene toward the light source. Colors are the
@@ -70,13 +75,19 @@ inline const std::array<LightingPreset, 4>& LightingPresets() {
         {"midday",          {-0.35f, 0.88f, 0.32f}, {0xfc/255.0f, 0xc6/255.0f, 0x64/255.0f}, 1.10f, 0.14f, -3.25f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
         {"late-afternoon",  {-0.78f, 0.38f, 0.22f}, {0xe9/255.0f, 0xb1/255.0f, 0x63/255.0f}, 1.00f, 0.13f, -3.25f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
         {"overcast",        {-0.18f, 0.96f, 0.16f}, {0xd6/255.0f, 0xdf/255.0f, 0xe7/255.0f}, 0.78f, 0.24f, -3.50f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 0.0f},
-        {"night-service",   {-0.28f, 0.78f, 0.38f}, {0x99/255.0f, 0xb5/255.0f, 0xca/255.0f}, 0.10f, 0.05f, -4.75f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 6.0f},
+        {"night-service",   {-0.28f, 0.78f, 0.38f}, {0x99/255.0f, 0xb5/255.0f, 0xca/255.0f}, 0.10f, 0.05f, -5.10f, {0xf9/255.0f, 0xb5/255.0f, 0x5c/255.0f}, 8.0f},
     }};
     return presets;
 }
 
-inline const std::array<Primitive, 26>& Primitives() {
-    static const std::array<Primitive, 26> primitives{{
+inline bool ServiceLightsEnabled(const LightingPreset& preset) {
+    // The existing flood channel is authored only for night-service; use that
+    // established preset input instead of adding a separate switch.
+    return preset.floodIntensity > 0.0f;
+}
+
+inline const std::array<Primitive, 39>& Primitives() {
+    static const std::array<Primitive, 39> primitives{{
         // Angular crawler hull, tracks, raised command module and 70/30 accent
         // plates use the working-machine palette from visual bible §3.
         {Shape::Box,       Group::Machine, Material::Hull,       {31, 27, 32}, {13, 8, 10}, 0.35f},
@@ -93,6 +104,21 @@ inline const std::array<Primitive, 26>& Primitives() {
         {Shape::Box,       Group::Machine, Material::DarkMetal,  {28, 33, 21.3f}, {2.2f, 0.75f, 0.4f}, 0.05f},
         {Shape::Box,       Group::Machine, Material::DarkMetal,  {35, 33, 21.3f}, {2.2f, 0.75f, 0.4f}, 0.05f},
         {Shape::Box,       Group::Machine, Material::Lamp,       kFloodlightGridPosition, {1.0f, 0.8f, 1.0f}, 0.12f},
+        // Warm service windows run around the raised cab so every review angle
+        // sees an emissive row, with the same point-light source used for spill.
+        {Shape::Box,       Group::Machine, Material::Window,     {28.5f, 37, 24.75f}, {0.8f, 0.65f, 0.15f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {32.0f, 37, 24.75f}, {0.8f, 0.65f, 0.15f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {35.5f, 37, 24.75f}, {0.8f, 0.65f, 0.15f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {28.5f, 37, 39.25f}, {0.8f, 0.65f, 0.15f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {32.0f, 37, 39.25f}, {0.8f, 0.65f, 0.15f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {35.5f, 37, 39.25f}, {0.8f, 0.65f, 0.15f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {23.75f, 37, 29.0f}, {0.15f, 0.65f, 0.8f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {23.75f, 37, 32.0f}, {0.15f, 0.65f, 0.8f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {23.75f, 37, 35.0f}, {0.15f, 0.65f, 0.8f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {40.25f, 37, 29.0f}, {0.15f, 0.65f, 0.8f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {40.25f, 37, 32.0f}, {0.15f, 0.65f, 0.8f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Window,     {40.25f, 37, 35.0f}, {0.15f, 0.65f, 0.8f}, 0.05f},
+        {Shape::Box,       Group::Machine, Material::Worklight,  kWorklightGridPosition, {0.7f, 0.35f, 0.5f}, 0.08f},
 
         // Layered rock and foliage masses based on the C16 reference-world colors.
         {Shape::Ellipsoid, Group::Rock, Material::Rock,     {10, 17, 45}, {6, 7, 6}, 0.0f},
@@ -157,6 +183,8 @@ inline glm::vec3 MaterialColor(Material material) {
         case Material::Water:      return Srgb8ToLinear(0x62ade0); // C26: river blue
         case Material::Figure:     return Srgb8ToLinear(0xfcca5b); // safety yellow scale cue
         case Material::Lamp:       return Srgb8ToLinear(0xf9b55c); // lighting track: sodium pool
+        case Material::Window:     return Srgb8ToLinear(0xe9bf6b); // bible: warm service windows
+        case Material::Worklight:  return Srgb8ToLinear(0xf9b55c); // bible: sodium task lighting
     }
     return Srgb8ToLinear(0x808080);
 }
@@ -184,12 +212,13 @@ inline float SmoothBlend(Group group) {
     }
 }
 
-inline Vixen::SVO::Recipe::SdfInstruction PrimitiveInstruction(const Primitive& primitive) {
+inline Vixen::SVO::Recipe::SdfInstruction PrimitiveInstruction(
+    const Primitive& primitive, const glm::vec3& recipeOriginGrid = glm::vec3(0.0f)) {
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
 
     const float scale = kWorldSpan / static_cast<float>(kResolution);
-    const glm::vec3 center = GridToWorld(primitive.center);
+    const glm::vec3 center = GridToWorld(primitive.center - recipeOriginGrid);
     const glm::vec3 extent = GridToWorld(primitive.extent);
     SdfInstruction instruction{};
     instruction.opCode = static_cast<uint8_t>(primitive.shape == Shape::Box
@@ -204,12 +233,32 @@ inline Vixen::SVO::Recipe::SdfInstruction PrimitiveInstruction(const Primitive& 
     return instruction;
 }
 
-inline std::vector<MaterialRecipe> BuildMaterialRecipes() {
+inline bool IsServiceEmitter(Material material) {
+    return material == Material::Lamp || material == Material::Window || material == Material::Worklight;
+}
+
+inline glm::vec3 EmitterOrigin(Material material, bool serviceLightsEnabled) {
+    switch (material) {
+        case Material::Lamp:
+            return serviceLightsEnabled ? kNightFloodlightGridPosition : kFloodlightGridPosition;
+        case Material::Window: return kWindowLightGridPosition;
+        case Material::Worklight: return kWorklightGridPosition;
+        default: return glm::vec3(0.0f);
+    }
+}
+
+inline std::vector<MaterialRecipe> BuildMaterialRecipes(const LightingPreset& preset) {
     using Vixen::SVO::Recipe::SdfInstruction;
     using Vixen::SVO::Recipe::SdfOpCode;
+    const bool serviceLightsEnabled = ServiceLightsEnabled(preset);
 
     std::array<std::vector<Primitive>, static_cast<size_t>(Material::Count)> primitivesByMaterial;
-    auto gather = [&](const Primitive& primitive) {
+    auto gather = [&](const Primitive& sourcePrimitive) {
+        Primitive primitive = sourcePrimitive;
+        if (serviceLightsEnabled && primitive.material == Material::Lamp) {
+            primitive.center = kNightFloodlightGridPosition;
+            primitive.extent = {1.2f, 0.9f, 1.2f};
+        }
         primitivesByMaterial[static_cast<size_t>(primitive.material)].push_back(primitive);
     };
     for (const Primitive& primitive : Primitives()) gather(primitive);
@@ -220,14 +269,19 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes() {
         const auto& primitives = primitivesByMaterial[materialIndex];
         if (primitives.empty()) continue;
 
+        const Material material = static_cast<Material>(materialIndex);
+        if (!serviceLightsEnabled && material != Material::Lamp && IsServiceEmitter(material)) continue;
+        const glm::vec3 recipeOrigin = serviceLightsEnabled && IsServiceEmitter(material)
+            ? EmitterOrigin(material, serviceLightsEnabled) : glm::vec3(0.0f);
+
         Vixen::SVO::RecipeRegistry::RecipeEntry entry{};
         entry.boundCenter = glm::vec3(5.0f);
         entry.boundRadius = 9.0f;
         entry.stepRelaxation = 0.9f;
         entry.bytecode.reserve(primitives.size() * 2 - 1);
-        entry.bytecode.push_back(PrimitiveInstruction(primitives.front()));
+        entry.bytecode.push_back(PrimitiveInstruction(primitives.front(), recipeOrigin));
         for (size_t i = 1; i < primitives.size(); ++i) {
-            entry.bytecode.push_back(PrimitiveInstruction(primitives[i]));
+            entry.bytecode.push_back(PrimitiveInstruction(primitives[i], recipeOrigin));
             SdfInstruction combine{};
             const float blend = SmoothBlend(primitives[i].group);
             combine.opCode = static_cast<uint8_t>(blend > 0.0f
@@ -236,20 +290,21 @@ inline std::vector<MaterialRecipe> BuildMaterialRecipes() {
             entry.bytecode.push_back(combine);
         }
 
-        const Material material = static_cast<Material>(materialIndex);
         recipes.push_back({material, RecipeId(material), std::move(entry)});
     }
     return recipes;
 }
 
 inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
-    const std::vector<MaterialRecipe>& recipes) {
+    const std::vector<MaterialRecipe>& recipes, const LightingPreset& preset) {
+    const bool serviceLightsEnabled = ServiceLightsEnabled(preset);
     std::vector<Vixen::SVO::BodyInstanceGpu> instances;
     instances.reserve(recipes.size());
     for (const MaterialRecipe& recipe : recipes) {
         const glm::vec3 color = MaterialColor(recipe.material);
-        const glm::vec3 instanceOrigin = recipe.material == Material::Lamp
-            ? GridToWorld(kFloodlightGridPosition) : glm::vec3(0.0f);
+        const glm::vec3 instanceOrigin = recipe.material == Material::Lamp ||
+                (serviceLightsEnabled && IsServiceEmitter(recipe.material))
+            ? GridToWorld(EmitterOrigin(recipe.material, serviceLightsEnabled)) : glm::vec3(0.0f);
         Vixen::SVO::BodyInstanceGpu instance{};
 
         // Keep each procedural body at its authored origin and unit size while
@@ -265,7 +320,9 @@ inline std::vector<Vixen::SVO::BodyInstanceGpu> BodyInstances(
         materialData.color[2] = color.b;
         materialData.providerKind = 1u;
         materialData.recipeId = recipe.recipeId;
-        if (recipe.material == Material::Lamp) materialData.recipeParams[3] = 2.0f;
+        if (recipe.material == Material::Lamp) materialData.recipeParams[3] = serviceLightsEnabled ? 0.25f : 2.0f;
+        if (recipe.material == Material::Window || recipe.material == Material::Worklight)
+            materialData.recipeParams[3] = 0.25f;
         instances.push_back(instance);
     }
     return instances;
@@ -275,6 +332,7 @@ inline std::vector<Vixen::Gpu::Light> Lights(const LightingPreset& preset) {
     auto normalized = [](glm::vec3 v) { return glm::normalize(v); };
     const glm::vec3 keyColor = SrgbToLinear(preset.keyColorSrgb);
     const glm::vec3 floodColor = SrgbToLinear(preset.floodColorSrgb);
+    const glm::vec3 serviceColor = Srgb8ToLinear(0xe9bf6b);
 
     Vixen::Gpu::Light key{};
     const glm::vec3 keyDirection = normalized(preset.keyDirection);
@@ -287,7 +345,9 @@ inline std::vector<Vixen::Gpu::Light> Lights(const LightingPreset& preset) {
     key.radianceZ = keyColor.z * preset.keyIntensity;
 
     Vixen::Gpu::Light flood{};
-    const glm::vec3 floodPosition = GridToWorld(kFloodlightGridPosition);
+    const bool serviceLightsEnabled = ServiceLightsEnabled(preset);
+    const glm::vec3 floodPosition = GridToWorld(serviceLightsEnabled
+        ? kNightFloodlightGridPosition : kFloodlightGridPosition);
     flood.direction_or_positionX = floodPosition.x;
     flood.direction_or_positionY = floodPosition.y;
     flood.direction_or_positionZ = floodPosition.z;
@@ -296,7 +356,32 @@ inline std::vector<Vixen::Gpu::Light> Lights(const LightingPreset& preset) {
     flood.radianceY = floodColor.y * preset.floodIntensity;
     flood.radianceZ = floodColor.z * preset.floodIntensity;
     flood.range = 7.0f;
-    return {key, flood};
+    if (!serviceLightsEnabled) return {key, flood};
+
+    auto pointLight = [](const glm::vec3& position, const glm::vec3& color, float intensity, float range) {
+        Vixen::Gpu::Light light{};
+        const glm::vec3 worldPosition = GridToWorld(position);
+        light.direction_or_positionX = worldPosition.x;
+        light.direction_or_positionY = worldPosition.y;
+        light.direction_or_positionZ = worldPosition.z;
+        light.kind = 1u;
+        light.radianceX = color.r * intensity;
+        light.radianceY = color.g * intensity;
+        light.radianceZ = color.b * intensity;
+        light.range = range;
+        return light;
+    };
+
+    Vixen::Gpu::Light windows = pointLight(kWindowLightGridPosition, serviceColor, 3.5f, 8.0f);
+    Vixen::Gpu::Light worklight = pointLight(kWorklightGridPosition, floodColor, 5.0f, 8.0f);
+    flood.range = 8.0f;
+    return {key, windows, worklight, flood};
+}
+
+inline std::vector<float> CelSpillPurposeScales(const LightingPreset& preset) {
+    return ServiceLightsEnabled(preset)
+        ? std::vector<float>{1.0f, 4.0f, 4.0f, 4.0f}
+        : std::vector<float>{1.0f, 1.0f};
 }
 
 } // namespace Vixen::App::Lookdev
