@@ -256,7 +256,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         lastPipeline = currentPipeline;
         lastPipelineLayout = currentPipelineLayout;
         lastDescriptorSets = currentDescriptorSets;
-        workGroupCostUpperBoundNs_ = 0;
+        chunkCost_ = {};
     }
 
     // Calculate push constants (time updates every frame)
@@ -369,8 +369,7 @@ void ComputeDispatchNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     auto record = SubmitRecord::FromSubmitInfo2(si, submitFence);
     record.submissionBudgetNs = tileBudgets_[currentFrameIndex];
     for (uint32_t groups : tileWorkGroupCounts_[currentFrameIndex]) {
-        record.commandCostUpperBoundsNs.push_back(workGroupCostUpperBoundNs_ > 0
-            ? static_cast<uint64_t>(std::ceil(groups * workGroupCostUpperBoundNs_)) : 0);
+        record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(groups));
     }
     submissionBatches_[currentFrameIndex] = record.SubmissionBatches();
     if (!GetOwningGraph()->PublishSubmit(this, std::move(record))) {
@@ -421,10 +420,8 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             }
             totalMs += ms;
             if (i < tileWorkGroupCounts_[frameIndex].size() && tileWorkGroupCounts_[frameIndex][i]) {
-                // Retain the high-water observation, including barriers/timestamps, with
-                // ten percent margin. Never replace it with an average or free unknown cost.
-                workGroupCostUpperBoundNs_ = std::max(workGroupCostUpperBoundNs_,
-                    ms * 1.1e6 / tileWorkGroupCounts_[frameIndex][i]);
+                chunkCost_.Observe(tileWorkGroupCounts_[frameIndex][i],
+                    tileNominalWorkGroupCounts_[frameIndex], ms * 1.0e6);
             }
         }
         totalMs = 0;
@@ -436,8 +433,7 @@ void ComputeDispatchNode::CollectTileTiming(uint32_t frameIndex) {
             uint64_t groups = 0;
             for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
                 groups += tileWorkGroupCounts_[frameIndex][i];
-            if (groups)
-                workGroupCostUpperBoundNs_ = std::max(workGroupCostUpperBoundNs_, elapsed * 1.1e6 / groups);
+            if (groups) chunkCost_.ObserveBatch(groups, batch.count, elapsed * 1.0e6);
             if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
                 NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
                     " first_chunk=" + std::to_string(batch.first) +
@@ -508,9 +504,9 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     const uint64_t budgetNs = std::max(uint64_t{1},
         std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs));
     const uint32_t edge = canTile_
-        ? std::max(1u, std::min(std::max(dispatchX, dispatchY), workGroupCostUpperBoundNs_ > 0
-            ? static_cast<uint32_t>(std::sqrt(budgetNs * 0.95 / workGroupCostUpperBoundNs_)) : 7u))
+        ? chunkCost_.Edge(budgetNs, std::max(dispatchX, dispatchY), 7)
         : std::max(1u, std::max(dispatchX, dispatchY));
+    tileNominalWorkGroupCounts_[frameIndex] = std::min(edge, dispatchX) * std::min(edge, dispatchY);
     const uint32_t count = std::max(1u, ((dispatchX + edge - 1) / edge) * ((dispatchY + edge - 1) / edge));
     auto& extraBuffers = tileCommandBuffers_[frameIndex];
     if (extraBuffers.size() + 1 < count) {
@@ -527,10 +523,12 @@ std::vector<VkCommandBuffer> ComputeDispatchNode::RecordComputeCommands(Context&
     std::vector<VkCommandBuffer> recordedBuffers{cmdBuffer};
     if (count > 1)
         recordedBuffers.insert(recordedBuffers.end(), extraBuffers.begin(), extraBuffers.begin() + (count - 1));
-    if (tileCounts_[frameIndex] != count) {
-        tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(vulkanDevice, 1, count * 4);
-        tileCounts_[frameIndex] = count;
+    if (tileQueryCapacities_[frameIndex] < count) {
+        tileQueryCapacities_[frameIndex] = std::max(count, tileQueryCapacities_[frameIndex] * 2u);
+        tileQueries_[frameIndex] = std::make_unique<GPUTimestampQuery>(
+            vulkanDevice, 1, tileQueryCapacities_[frameIndex] * 4);
     }
+    tileCounts_[frameIndex] = count;
     tileBudgets_[frameIndex] = budgetNs;
     tileWorkGroupCounts_[frameIndex].clear();
     auto& tileQuery = *tileQueries_[frameIndex];
@@ -817,6 +815,8 @@ void ComputeDispatchNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
         }
         for (auto& query : tileQueries_) query.reset();
         tileCounts_.fill(0);
+        tileQueryCapacities_.fill(0);
+        chunkCost_ = {};
         tileBudgets_.fill(0);
 
         // Free command buffers

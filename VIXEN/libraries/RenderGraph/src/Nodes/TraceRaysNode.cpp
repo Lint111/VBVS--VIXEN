@@ -74,7 +74,7 @@ void TraceRaysNode::TypedCompileImpl(TypedCompileContext& ctx) {
 
     // Get pipeline data
     auto* nextPipeline = ctx.In(TraceRaysNodeConfig::RT_PIPELINE_DATA);
-    if (pipelineData_ != nextPipeline) pixelCostUpperBoundNs_ = 0;
+    if (pipelineData_ != nextPipeline) chunkCost_ = {};
     pipelineData_ = nextPipeline;
     if (!pipelineData_ || !pipelineData_->IsValid()) {
         throw std::runtime_error("[TraceRaysNode] RT_PIPELINE_DATA is null or invalid");
@@ -237,6 +237,8 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         tileBudgets_.resize(currentFrame + 1);
         tilePixelCounts_.resize(currentFrame + 1);
         submissionBatches_.resize(currentFrame + 1);
+        tileNominalPixelCounts_.resize(currentFrame + 1);
+        tileQueryCapacities_.resize(currentFrame + 1);
     }
     CollectTileTiming(currentFrame);
 
@@ -270,10 +272,8 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
         throw std::runtime_error("TraceRaysNode: launch dimensions must be positive");
     const auto& capacity = GetOwningGraph()->GetCapacityTracker().GetConfig();
     const uint64_t budgetNs = std::min(capacity.gpuTimeBudgetNs, capacity.gpuSubmissionBudgetNs);
-    const double calibratedEdge = pixelCostUpperBoundNs_ > 0
-        ? std::sqrt(0.95 * budgetNs / pixelCostUpperBoundNs_) : 56.0;
-    const uint32_t edge = std::max(1u, static_cast<uint32_t>(std::min(
-        double(std::max(width_, height_)), calibratedEdge)));
+    const uint32_t edge = chunkCost_.Edge(budgetNs, std::max(width_, height_), 56);
+    tileNominalPixelCounts_[currentFrame] = uint64_t(std::min(edge, width_)) * std::min(edge, height_);
     const uint64_t planeTiles = uint64_t(1 + (width_ - 1) / edge) * (1 + (height_ - 1) / edge);
     if (planeTiles > std::numeric_limits<uint32_t>::max() / 4u / depth_)
         throw std::runtime_error("TraceRaysNode: too many timestamped launch tiles");
@@ -291,11 +291,12 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     }
     std::vector<VkCommandBuffer> recorded{cmdBuffer};
     recorded.insert(recorded.end(), extra.begin(), extra.begin() + (count - 1u));
-    if (tileCounts_[currentFrame] != count) {
+    if (tileQueryCapacities_[currentFrame] < count) {
+        tileQueryCapacities_[currentFrame] = std::max(count, tileQueryCapacities_[currentFrame] * 2u);
         tileQueries_[currentFrame] = std::make_unique<Vixen::Vulkan::Resources::GPUTimestampQuery>(
-            vulkanDevice_, 1, count * 4);
-        tileCounts_[currentFrame] = count;
+            vulkanDevice_, 1, tileQueryCapacities_[currentFrame] * 4);
     }
+    tileCounts_[currentFrame] = count;
     tileBudgets_[currentFrame] = budgetNs;
     auto& pixels = tilePixelCounts_[currentFrame];
     pixels.clear();
@@ -489,8 +490,7 @@ void TraceRaysNode::TypedExecuteImpl(TypedExecuteContext& ctx) {
     auto record = SubmitRecord::FromSubmitInfo2(info, inFlightFence);
     record.submissionBudgetNs = budgetNs;
     for (uint64_t pixelCount : pixels)
-        record.commandCostUpperBoundsNs.push_back(pixelCostUpperBoundNs_ > 0
-            ? static_cast<uint64_t>(std::ceil(pixelCount * pixelCostUpperBoundNs_)) : 0);
+        record.commandCostUpperBoundsNs.push_back(chunkCost_.Estimate(pixelCount));
     submissionBatches_[currentFrame] = record.SubmissionBatches();
     if (!GetOwningGraph()->PublishSubmit(this, std::move(record))) {
         std::lock_guard submitLock(vulkanDevice_->SubmitMutex(vulkanDevice_->queue));
@@ -520,8 +520,7 @@ void TraceRaysNode::CollectTileTiming(uint32_t frame) {
     for (uint32_t i = 0; i < tileCounts_[frame]; ++i) {
         const double ms = query->GetElapsedMs(0, i * 4, i * 4 + 3);
         if (tilePixelCounts_[frame][i])
-            pixelCostUpperBoundNs_ = std::max(pixelCostUpperBoundNs_,
-                ms * 1.1e6 / tilePixelCounts_[frame][i]);
+            chunkCost_.Observe(tilePixelCounts_[frame][i], tileNominalPixelCounts_[frame], ms * 1.0e6);
         if (std::getenv("VIXEN_GPUYIELD_TRACE")) {
             NODE_LOG_INFO("[GPUYIELD_CHUNK] node=" + GetInstanceName() +
                 " flight=" + std::to_string(frame) + " chunk=" + std::to_string(i) +
@@ -541,7 +540,7 @@ void TraceRaysNode::CollectTileTiming(uint32_t frame) {
         uint64_t pixels = 0;
         for (std::size_t i = batch.first; i < batch.first + batch.count; ++i)
             pixels += tilePixelCounts_[frame][i];
-        if (pixels) pixelCostUpperBoundNs_ = std::max(pixelCostUpperBoundNs_, ms * 1.1e6 / pixels);
+        if (pixels) chunkCost_.ObserveBatch(pixels, batch.count, ms * 1.0e6);
         if (std::getenv("VIXEN_GPUYIELD_TRACE"))
             NODE_LOG_INFO("[GPUYIELD_SUBMISSION] node=" + GetInstanceName() +
                 " first_chunk=" + std::to_string(batch.first) +
@@ -571,7 +570,9 @@ void TraceRaysNode::TypedCleanupImpl(TypedCleanupContext& ctx) {
     tileBudgets_.clear();
     tilePixelCounts_.clear();
     submissionBatches_.clear();
-    pixelCostUpperBoundNs_ = 0;
+    tileNominalPixelCounts_.clear();
+    tileQueryCapacities_.clear();
+    chunkCost_ = {};
     DestroyResources();
 }
 

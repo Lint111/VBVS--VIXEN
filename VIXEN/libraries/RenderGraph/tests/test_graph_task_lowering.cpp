@@ -1,3 +1,4 @@
+#include "Nodes/Common/GpuChunkCost.h"
 #include <gtest/gtest.h>
 
 #include "Core/GraphTaskLowering.h"
@@ -530,3 +531,29 @@ TEST(SubmitRecord, SemaphoreOnlyCompletionStillSubmitsItsFence) {
 }
 
 } // namespace
+
+TEST(GpuChunkCost, ClippedLatencyDoesNotAmplifyThroughputCost) {
+    GpuChunkCost cost;
+    cost.Observe(49, 49, 1'200'000);
+    cost.Observe(1, 49, 800'000);
+    EXPECT_GE(cost.Edge(2'000'000, 63, 7), 5u);
+    EXPECT_GE(cost.Estimate(1), 880'000u);
+    EXPECT_GE(cost.Estimate(49), 1'320'000u);
+}
+TEST(GpuChunkCost, LargerLaunchRetainsEveryEarlierSampleBound) {
+    GpuChunkCost cost;
+    cost.Observe(49, 49, 20'000);
+    cost.Observe(4, 49, 8'000);
+    cost.Observe(1024, 1024, 100'000);
+    EXPECT_GE(cost.Estimate(49), 22'000u);
+    EXPECT_GE(cost.Estimate(4), 8'800u);
+    EXPECT_GE(cost.Estimate(1024), 110'000u);
+}
+TEST(GpuChunkCost, FixedLatencyFloorRetainsLaunchScaleAndUnknownReservesBudget) {
+    GpuChunkCost cost;
+    EXPECT_EQ(cost.Estimate(49), 0u);
+    cost.Observe(49, 49, 1'000'000);
+    cost.Observe(1, 49, 3'000'000);
+    EXPECT_EQ(cost.Edge(2'000'000, 63, 7), 7u);
+    EXPECT_GT(cost.Estimate(1), 2'000'000u);
+}

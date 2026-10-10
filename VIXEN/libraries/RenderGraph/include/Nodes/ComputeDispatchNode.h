@@ -2,6 +2,7 @@
 #include <array>
 #include "Core/SubmitChannel.h"
 #include "GPUTimestampQuery.h"
+#include "Nodes/Common/GpuChunkCost.h"
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
@@ -124,7 +125,9 @@ private:
     std::array<uint64_t, 4> tileBudgets_{};
     std::array<std::vector<uint32_t>, 4> tileWorkGroupCounts_;
     std::array<std::vector<SubmitRecord::Batch>, 4> submissionBatches_;
-    double workGroupCostUpperBoundNs_ = 0;
+    std::array<uint32_t, 4> tileNominalWorkGroupCounts_{};
+    std::array<uint32_t, 4> tileQueryCapacities_{};
+    GpuChunkCost chunkCost_;
     bool canTile_ = false;
 
 

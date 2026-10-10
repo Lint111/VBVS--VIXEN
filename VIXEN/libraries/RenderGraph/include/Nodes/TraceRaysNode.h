@@ -8,6 +8,7 @@
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include <memory>
 #include "GPUTimestampQuery.h"
+#include "Nodes/Common/GpuChunkCost.h"
 #include "Core/SubmitChannel.h"
 
 namespace Vixen::Vulkan::Resources {
@@ -102,7 +103,9 @@ private:
     std::vector<uint64_t> tileBudgets_;
     std::vector<std::vector<uint64_t>> tilePixelCounts_;
     std::vector<std::vector<SubmitRecord::Batch>> submissionBatches_;
-    double pixelCostUpperBoundNs_ = 0;
+    std::vector<uint64_t> tileNominalPixelCounts_;
+    std::vector<uint32_t> tileQueryCapacities_;
+    GpuChunkCost chunkCost_;
     uint32_t tileOriginOffset_ = 0;
     uint32_t fullLaunchExtentOffset_ = 0;
 
