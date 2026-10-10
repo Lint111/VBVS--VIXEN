@@ -696,18 +696,22 @@ protected:
         VkBuffer hitRecordBuf = VK_NULL_HANDLE; VkDeviceMemory hitRecordMem = VK_NULL_HANDLE;
         CreateHostBuffer(hitRecordSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hitRecordBuf, hitRecordMem, true);
 
-        // --- SpatialReuseShade-only bindings (19/20/22/23/24/25/26/27/31/34; 21 is the
-        // march's own too but unread by both here, still bound to satisfy reflection). ---
+        // --- SpatialReuseShade-only bindings (19/20/22/23/24/25/26/27/31/34/48/49; 21 is
+        // the march's own too but unread by both here, still bound to satisfy reflection). ---
         const AccumulationConfigCpu accum{};  // all-zero: enabled=0 skips the accumulate seam
         VkBuffer accumBuf = VK_NULL_HANDLE; VkDeviceMemory accumMem = VK_NULL_HANDLE;
         CreateHostBuffer(sizeof(AccumulationConfigCpu), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, accumBuf, accumMem, false);
         UploadHostBuffer(accumMem, &accum, sizeof(AccumulationConfigCpu));
 
-        const VkFormat kHistoryFmt = VK_FORMAT_R8G8B8A8_UNORM;
+        const VkFormat kHistoryFmt = VK_FORMAT_R16G16B16A16_SFLOAT;
         VkImage historyImg = VK_NULL_HANDLE; VkDeviceMemory historyMem = VK_NULL_HANDLE;
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kHistoryFmt, historyImg, historyMem));
         VkImageView historyView = CreateView(historyImg, kHistoryFmt);
         ASSERT_NE(historyView, VK_NULL_HANDLE);
+        VkImage historyOutputImg = VK_NULL_HANDLE; VkDeviceMemory historyOutputMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kHistoryFmt, historyOutputImg, historyOutputMem));
+        VkImageView historyOutputView = CreateView(historyOutputImg, kHistoryFmt);
+        ASSERT_NE(historyOutputView, VK_NULL_HANDLE);
 
         const PrevCameraConfigCpu prevCamera{};  // all-zero: reprojectionEnabled=0 skips its use
         VkBuffer prevCameraBuf = VK_NULL_HANDLE; VkDeviceMemory prevCameraMem = VK_NULL_HANDLE;
@@ -719,6 +723,10 @@ protected:
         ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kWorldPosFmt, worldPosImg, worldPosMem));
         VkImageView worldPosView = CreateView(worldPosImg, kWorldPosFmt);
         ASSERT_NE(worldPosView, VK_NULL_HANDLE);
+        VkImage worldPosOutputImg = VK_NULL_HANDLE; VkDeviceMemory worldPosOutputMem = VK_NULL_HANDLE;
+        ASSERT_NO_FATAL_FAILURE(CreateImage(w, h, kWorldPosFmt, worldPosOutputImg, worldPosOutputMem));
+        VkImageView worldPosOutputView = CreateView(worldPosOutputImg, kWorldPosFmt);
+        ASSERT_NE(worldPosOutputView, VK_NULL_HANDLE);
 
         const ReservoirConfigCpu reservoirCfg{};  // all-zero: reservoirEnabled=0 (byte-identity escape hatch)
         VkBuffer reservoirCfgBuf = VK_NULL_HANDLE; VkDeviceMemory reservoirCfgMem = VK_NULL_HANDLE;
@@ -847,7 +855,7 @@ protected:
         // sibling B1 tests) established.
         // Binding 35 (InstanceSkipMaskBuffer) is required too -- SpatialReuseShade.comp
         // #includes SceneBindings.glsl, same as every other consumer of that shared file.
-        const std::array<VkDescriptorSetLayoutBinding, 28> shadeBindings = {
+        const std::array<VkDescriptorSetLayoutBinding, 30> shadeBindings = {
             bind(0,  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             bind(1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
@@ -876,6 +884,8 @@ protected:
             bind(34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             bind(47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            bind(48, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            bind(49, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
         VkDescriptorSetLayoutCreateInfo shadeDslci{};
         shadeDslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1029,8 +1039,10 @@ protected:
         VkDescriptorBufferInfo skipMaskInfo{dummySkipMask, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo accumInfo{accumBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo historyInfo{VK_NULL_HANDLE, historyView, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo historyOutputInfo{VK_NULL_HANDLE, historyOutputView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo prevCameraInfo{prevCameraBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo worldPosInfo{VK_NULL_HANDLE, worldPosView, VK_IMAGE_LAYOUT_GENERAL};
+        VkDescriptorImageInfo worldPosOutputInfo{VK_NULL_HANDLE, worldPosOutputView, VK_IMAGE_LAYOUT_GENERAL};
         VkDescriptorBufferInfo reservoirCfgInfo{reservoirCfgBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo lightTreeInfo{lightTreeBuf, 0, VK_WHOLE_SIZE};
         VkDescriptorBufferInfo reservoirAInfo{reservoirA, 0, VK_WHOLE_SIZE};
@@ -1077,7 +1089,7 @@ protected:
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(marchWrites.size()), marchWrites.data(), 0, nullptr);
 
-        const std::array<VkWriteDescriptorSet, 28> shadeWrites = {
+        const std::array<VkWriteDescriptorSet, 30> shadeWrites = {
             wImg(shadeDescSet, 0, &colorInfo),
             wBuf(shadeDescSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &nodesInfo),
             wBuf(shadeDescSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &bricksInfo),
@@ -1106,6 +1118,8 @@ protected:
             wBuf(shadeDescSet, 34, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &probeGridInfo),
             wBuf(shadeDescSet, 35, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &skipMaskInfo),
             wBuf(shadeDescSet, 47, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &transformInfo),
+            wImg(shadeDescSet, 48, &historyOutputInfo),
+            wImg(shadeDescSet, 49, &worldPosOutputInfo),
         };
         vkUpdateDescriptorSets(logicalDevice_, static_cast<uint32_t>(shadeWrites.size()), shadeWrites.data(), 0, nullptr);
 
@@ -1250,13 +1264,17 @@ protected:
         vkDestroyImageView(logicalDevice_, colorView, nullptr);
         vkDestroyImageView(logicalDevice_, idView, nullptr);
         vkDestroyImageView(logicalDevice_, historyView, nullptr);
+        vkDestroyImageView(logicalDevice_, historyOutputView, nullptr);
         vkDestroyImageView(logicalDevice_, worldPosView, nullptr);
+        vkDestroyImageView(logicalDevice_, worldPosOutputView, nullptr);
         vkDestroyImageView(logicalDevice_, probeIrrView, nullptr);
         vkDestroyImageView(logicalDevice_, probeVisView, nullptr);
         vkDestroyImage(logicalDevice_, colorImg, nullptr); vkFreeMemory(logicalDevice_, colorMem, nullptr);
         vkDestroyImage(logicalDevice_, idImg, nullptr);    vkFreeMemory(logicalDevice_, idMem, nullptr);
         vkDestroyImage(logicalDevice_, historyImg, nullptr); vkFreeMemory(logicalDevice_, historyMem, nullptr);
+        vkDestroyImage(logicalDevice_, historyOutputImg, nullptr); vkFreeMemory(logicalDevice_, historyOutputMem, nullptr);
         vkDestroyImage(logicalDevice_, worldPosImg, nullptr); vkFreeMemory(logicalDevice_, worldPosMem, nullptr);
+        vkDestroyImage(logicalDevice_, worldPosOutputImg, nullptr); vkFreeMemory(logicalDevice_, worldPosOutputMem, nullptr);
         vkDestroyImage(logicalDevice_, probeIrrImg, nullptr); vkFreeMemory(logicalDevice_, probeIrrMem, nullptr);
         vkDestroyImage(logicalDevice_, probeVisImg, nullptr); vkFreeMemory(logicalDevice_, probeVisMem, nullptr);
         vkDestroyBuffer(logicalDevice_, traceBuf, nullptr);   vkFreeMemory(logicalDevice_, traceMem, nullptr);
