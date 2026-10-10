@@ -1,5 +1,5 @@
 {
-  "note": "Validated report artifacts; command logs are preserved separately.",
+  "note": "Hashes are of committed Git blob bytes after text line-ending normalization. Command logs are preserved separately.",
   "files": [
     {
       "path": "capture-identity.json",
@@ -148,8 +148,8 @@
     },
     {
       "path": "native-after.csv",
-      "bytes": 85204,
-      "sha256": "e9c32cce3741ca94bb55beffeec6d62e546cb2e14e4b365be6cb61f9bc04c8db"
+      "bytes": 84305,
+      "sha256": "59c3b2211368a932edbbae76adaab3b06bca83664e1441ddeb503b6b83b9b948"
     },
     {
       "path": "native-after.json",
@@ -163,8 +163,8 @@
     },
     {
       "path": "native-contended.csv",
-      "bytes": 2533,
-      "sha256": "200576046d011cba0e4aa59eee27bc2789e53b094eabc271c4430c0f359f16ee"
+      "bytes": 2505,
+      "sha256": "4f2dfb8bf0ccbdddab3eebf6ab04d59cf19e749a0789d0862690a0e86f0b1fd3"
     },
     {
       "path": "native-invocation-status.txt",
@@ -173,8 +173,8 @@
     },
     {
       "path": "native-isolated.csv",
-      "bytes": 78549,
-      "sha256": "a682a959ee2702bd56e7ad5e94300160c25e6ee8bfcdcfe1e56212e693d3cffb"
+      "bytes": 77648,
+      "sha256": "743552dcdb5dab592be263c786280cb1fea24d2a9f9654394fa82ebbc4a99882"
     },
     {
       "path": "native-isolated.json",
@@ -183,8 +183,8 @@
     },
     {
       "path": "native-poll.csv",
-      "bytes": 18469,
-      "sha256": "4b92331f9364d323021f516719082a93ab979aee738d325ec8f2c45d94a6d375"
+      "bytes": 18263,
+      "sha256": "58ea7cc14cdf2d4a928b4eb2346b0b5410de52f66bc3d0a12bb374c030034261"
     },
     {
       "path": "native-poll.json",
@@ -193,8 +193,8 @@
     },
     {
       "path": "native-traced.csv",
-      "bytes": 3058,
-      "sha256": "69d91ed681ab8b3844d1cad5f433be7a6e8c14a20c61ba63055abffe7cbdb1b7"
+      "bytes": 3024,
+      "sha256": "f38b7255fcec75ff8908bf0c618e52e86a00d8bee9c521f0f0cb1bcf3259263e"
     },
     {
       "path": "native-traced.json",
@@ -208,8 +208,8 @@
     },
     {
       "path": "native-under-editor/probe.csv",
-      "bytes": 84040,
-      "sha256": "86016c2e4efc4271f046bebcc591df67d0ca7d3188f8a0ecc67ef0b7202cda02"
+      "bytes": 83152,
+      "sha256": "b8ab27ba5e38fbd8983f8f0e5ac56403a22af99c577e97811a6faed2f4776d45"
     },
     {
       "path": "native-under-editor/timing.json",
@@ -223,8 +223,8 @@
     },
     {
       "path": "native-unloaded.csv",
-      "bytes": 2533,
-      "sha256": "200576046d011cba0e4aa59eee27bc2789e53b094eabc271c4430c0f359f16ee"
+      "bytes": 2505,
+      "sha256": "4f2dfb8bf0ccbdddab3eebf6ab04d59cf19e749a0789d0862690a0e86f0b1fd3"
     },
     {
       "path": "native-unloaded.json",
